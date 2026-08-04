@@ -10655,5 +10655,19 @@
   "verified_against": "",
   "test": "turbotab/test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim",
   "verified_ev": "L48. test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim asserts the prototype's whole style block appears verbatim in index.html. GUIDED-159's .map-step.waiting and GUIDED-157's .answer .rg-map were each written next to the rule they extend, which is inside that block, and the guard went red on the full suite - the only failure in 1893. Neither agent could have known: the rule they sat beside was the right neighbour and the wrong container, and nothing in the file says the block is frozen."
+ },
+ {
+  "id": "TEST-049",
+  "area": "TEST",
+  "sev": "high",
+  "item": "revertprobe.py mutates the shared working tree, so it is unsafe whenever a second agent is writing that tree - and the same is true of any tree-wide git operation a subagent might reach for",
+  "detail": "",
+  "ev": "docs/turbotab/tools/revertprobe.py - the harness reverts a fix, runs a test and restores, all in the live tree. L48 ran 24 revert probes while five subagent chunks wrote the same tree in parallel. Named by the L48 execution agent in its own report, in prose, after a subagent ran 'git stash push' on four shared modules and popped it about twenty seconds later while four other agents were writing: 'It popped clean and nothing was lost, but four other agents were writing that tree and their work was inside the blast radius. The revert harness is not safe under a second writer, and neither is a stash.' Nothing was lost on either occasion; the hazard is that nothing would have said so if it had been.",
+  "act": "TWO SEPARABLE PIECES. (1) THE RULE, which is cheap and belongs beside the git add -A rule in AGENT_ONBOARD section 06: a subagent never runs a tree-wide git operation - no stash, no checkout, no clean, no reset - because unlike git add -A these are not merely a false claim about a commit, they can destroy another writer's uncommitted work and leave no record that they did. (2) THE INSTRUMENT, which is the real fix and needs design: revertprobe.py should either take an exclusive lock for the duration of a probe, or run the probe in a git worktree so the revert is isolated from every other writer. The worktree form is preferable because it composes with parallel subagents rather than serializing them, and because a lock that an agent can forget to take is the class of guard this project has already ruled is not a guard. NOT A HYPOTHETICAL: the probe's whole value is that it goes RED for a stated reason, and a probe whose revert races another agent's edit can go red for that agent's reason instead, which reads as a passing probe on a defect that was never load-bearing.",
+  "status": "OPEN",
+  "note": "FILED BY THE ADJUDICATOR AT L48, and it is section 06's most common gap firing in the ordinary way: the class was named in the report's own prose, correctly and unprompted, and 16 rows were filed beside it without this one. The execution agent surfaced the breach itself rather than hiding it, which is why the class exists to be filed at all.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "docs/turbotab/tools/revertprobe.py - the harness reverts a fix, runs a test and restores, all in the live tree. L48 ran 24 revert probes while five subagent chunks wrote the same tree in parallel. Named by the L48 execution agent in its own report, in prose, after a subagent ran 'git stash push' on four shared modules and popped it about twenty seconds later while four other agents were writing: 'It popped clean and nothing was lost, but four other agents were writing that tree and their work was inside the blast radius. The revert harness is not safe under a second writer, and neither is a stash.' Nothing was lost on either occasion; the hazard is that nothing would have said so if it had been."
  }
 ]

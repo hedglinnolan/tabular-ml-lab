@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**314 of 816 closed.**
+**314 of 817 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 445 |
+| `OPEN` | 446 |
 | `PARTIAL` | 57 |
 | `FIXED` | 308 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 445
+## OPEN — 446
 
 
 ### Guided-door drive feedback — 68
@@ -337,7 +337,7 @@ Nothing is closed without a regression test named after it.
 | `MINE-043` | low | pages/06 defines fallback plotting stubs that shadow visualizations.py on ImportError | `pages/06_Train_and_Compare.py:66-90; visualizations.py:53-88, 91-126` | Unchanged at HEAD. visualizations.py is a first-party module in the repository root and cannot legitimately be missing, so the fallback can only fire on an unrelated ImportError… |
 | `MINE-044` | low | visualizations.plot_residuals will pandas-align if handed two Series with different indexes | `visualizations.py:91-126 vs 141-142; pages/06_Train_and_Compare.py:2604, 2623` | Unchanged at HEAD, and the inconsistency inside one file is the tell: plot_bland_altman coerces both arguments and plot_residuals does not, so the safe idiom was known and applied… |
 
-### Migration safety net — 33
+### Migration safety net — 34
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -365,6 +365,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-039` | high | Every Makefile test target exits 4 without running a single test: PYTEST_OPTS passes --timeout=60 and pytest-timeout is not installed in venv/, so the documented command and the CI target are both… | `Makefile:18,24,44; requirements-dev.txt:25` | Makefile:18 sets PYTEST_OPTS := --timeout=60 -q and every target interpolates it, so 'make test' produces 'error: unrecognized arguments: --timeout=60' and 'make: *** [test] Error… |
 | `TEST-044` | high | A FIXED row can name a regression test that exercises a DIFFERENT module than the row is about, and ledger.py check is satisfied - so the gate passes on a test that could not have failed if the fix… | `the instance is IMPORT-109, found at L44-D by the MISC-019 sweep and re-verified by the adjudicator: the row…` | FILED BY THE ADJUDICATOR AT L44. THIS IS MISC-019'S CLASS AT A SHARPER GRANULARITY AND IT IS THE MECHANICALLY DETECTABLE ONE. MISC-019 asks whether a fix reached every surface the… |
 | `TEST-048` | high | pageharness's document.querySelector returns null for selectors that DO match the markup, so setMap was a total no-op under the harness for the whole life of the analysis map | `L48-B. turbotab/pageharness.py:431 querySelector returns null unconditionally and querySelectorAll returns…` | Found by chunk 5 while building GUIDED-159's test. The general form: an instrument that abstains and an instrument that denies are different claims, and this one rendered them as… |
+| `TEST-049` | high | revertprobe.py mutates the shared working tree, so it is unsafe whenever a second agent is writing that tree - and the same is true of any tree-wide git operation a subagent might reach for | `docs/turbotab/tools/revertprobe.py - the harness reverts a fix, runs a test and restores, all in the live…` | FILED BY THE ADJUDICATOR AT L48, and it is section 06's most common gap firing in the ordinary way: the class was named in the report's own prose, correctly and unprompted, and 16… |
 | `TEST-027` | medium | utils/persistence.py is dead code — zero importers — yet contains the reproducibility manifest the new Project layer needs | `utils/persistence.py:1-158; zero import sites repo-wide` | Unchanged at HEAD - verified unreachable, not merely uncovered. The trap the row names is the one to record: it is tempting to adopt this wholesale as the Project serializer, and… |
 | `TEST-028` | medium | visualizations.py returns figures nobody inspects — the safest module to move and the easiest to break unnoticed | `visualizations.py:12,53,91,129,170; consumers pages/06_Train_and_Compare.py:69…` | Unchanged at HEAD: the module is genuinely pure and genuinely untested - the two tests that name it check that it imports, not what it draws. That combination is the row's point… |
 | `TEST-029` | medium | ml.feature_steps and ml.baseline_models are uncovered and produce the numbers the manuscript compares against | `ml/feature_steps.py:11,39; ml/baseline_models.py:21,150` | Unchanged at HEAD: both still uncovered, and both still produce published numbers. The seed sensitivity is the specific hazard - PCA's sign convention and KMeans' init are… |
