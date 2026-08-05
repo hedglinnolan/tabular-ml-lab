@@ -1354,6 +1354,13 @@
             <div id="profMore"></div>
             <div class="findlist" id="profRest"></div>
 
+            <!-- METABOLOMICS_PACK.md §11 · where the selected pack declines to
+                 be confident. Not findings: nothing here read the table. The
+                 block is built only when the server sends one, because a lens
+                 whose §11 has not been written must produce nothing rather than
+                 an empty heading that reads as "no hedges". -->
+            <div class="hedges" id="packHedges"></div>
+
             <!-- GUIDED-153 · WHAT CAME BACK HERE. A noticing set aside earlier
                  reappears at the step that can act on it, attributed to where it
                  was set aside — PRODUCT_VISION §04's promise, which was open for
@@ -2969,6 +2976,7 @@
     renderData();
     renderTarget();
     renderEda();
+    renderPackHedges();
     renderDocks();
     renderInterview();
     renderFigureSurface();
@@ -5251,6 +5259,71 @@
                       esc(x.title) + "</p>") + "</div>";
         }).join("");
     });
+  }
+
+  /* ═════════ THE PACK'S §11 · WHERE IT DECLINES TO BE CONFIDENT ═════════
+     Every sentence here is the server's. The page composes no prose, picks no
+     order and cuts no list — `items` arrives ranked and whole, and the count
+     line quotes `n` and `showing` rather than measuring the array, so a page
+     that dropped one would disagree with itself visibly instead of silently.
+
+     THE BADGE IS PER ITEM AND SO IS `both_sides`. Before this, `both_sides` was
+     required on every DISPUTED claim in the engine and rendered by nothing — the
+     badge's tooltip said "both positions are stated" while no surface stated
+     them. A DISPUTED item here shows both positions and the sensitivity
+     analysis, which is the whole of DOMAIN_SCIENCE §01's rendering obligation. */
+  function renderPackHedges(){
+    var box = $("packHedges");
+    if (!box) return;
+    var h = P ? P.pack_hedges : null;
+    if (!h){ box.innerHTML = ""; return; }
+
+    var out = '<p class="cb-head">' + esc(h.title) + "</p>";
+    out += '<p class="f-because">' + esc(h.why) + "</p>";
+    /* The bound, quoted. GUIDED-209: a served list states what it is showing
+       out of what, in both directions, and the numbers are attributes as well
+       as prose because the count is data and trap 7 is the machine-readable
+       form ending up lossier. */
+    out += '<p class="more-detail" data-hedge-showing="' + esc(String(h.showing)) +
+           '" data-hedge-of="' + esc(String(h.n)) + '">' +
+           esc("Showing " + h.showing + " of " + h.n +
+               (h.complete ? " — all of them." : ".")) + "</p>";
+
+    (h.items || []).forEach(function(it){
+      out += '<article class="calm" id="hedge-' + esc(it.key) + '"><div>';
+      out += '<p class="f-title">' + esc(it.rank + " · " + it.statement) +
+             evidenceBadge({ evidence_status: it.evidence_status,
+                             evidence_source: it.source }) + "</p>";
+      if (it.both_sides)
+        out += '<p class="f-because"><b>Both positions.</b> ' +
+               esc(it.both_sides) + "</p>";
+      if (it.stated_default)
+        out += '<p class="f-because"><b>What this app suggests, and why.</b> ' +
+               esc(it.stated_default) + "</p>";
+      if (it.sensitivity)
+        out += '<p class="f-because"><b>Run it the other way.</b> ' +
+               esc(it.sensitivity) + "</p>";
+      out += '<p class="f-because"><b>What the app does.</b> ' +
+             esc(it.what_the_app_does) + "</p>";
+      out += "</div></article>";
+    });
+
+    /* §11 item 12 is a hard stop and its refusals are the content, not a
+       footnote. Rendered in the refusal shape the prevalence surface already
+       uses, because a refusal that offers nothing is indistinguishable from a
+       missing feature. */
+    (h.refuses || []).forEach(function(r){
+      out += '<div class="refused-card" id="hedge-refuse-' + esc(r.key) + '">';
+      out += '<p class="r-reason">' + esc(r.reason) +
+             evidenceBadge({ evidence_status: r.evidence_status,
+                             evidence_source: r.source }) + "</p>";
+      var offer = r.offer || {};
+      if (offer.label)
+        out += '<p class="r-offer">Instead: <b>' + esc(offer.label) + "</b>. " +
+               esc(offer.note || "") + "</p>";
+      out += "</div>";
+    });
+    box.innerHTML = out;
   }
 
   function renderExploreStack(){

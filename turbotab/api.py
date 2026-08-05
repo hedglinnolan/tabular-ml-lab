@@ -373,9 +373,21 @@ def _disclosures(project: AnalysisProject) -> Dict[str, Any]:
 
 
 def _payload(project: AnalysisProject) -> Dict[str, Any]:
+    from turbotab import packs as _packs
+
     body = project.to_dict()
     body["sample"] = project.head(8)
     body["disclosures"] = _disclosures(project)
+    # `METABOLOMICS_PACK.md` §11 — where the selected pack declines to be
+    # confident. HERE rather than on `/lens`, and that is trap #6 avoided by
+    # looking: the page never fetches `/lens` at all, so a hedge block served
+    # there would be composed correctly, correct on the wire, and invisible to
+    # every person who ever used the app. This payload is what the page holds as
+    # `P` after every load and every decision.
+    #
+    # `None` when no selected pack has any, so the key is absent-shaped rather
+    # than an empty block asserting that a pack has nothing to hedge.
+    body["pack_hedges"] = _packs.hedges(project.lens or [])
     return body
 
 

@@ -23,7 +23,16 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # repository's prose.
 SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules",
              ".venv", "venv", "env", ".env", "site-packages",
-             "build", "dist"}
+             "build", "dist",
+             # A NESTED CHECKOUT OF THIS REPOSITORY IS NOT MORE SOURCE.
+             # `docs/turbotab/tools/worktree.py` puts subagent worktrees here,
+             # and each one is a full copy — so the walker read every file
+             # twice and, worse, read `docs/audit/` at a path where
+             # `EXEMPT_PREFIXES` no longer matched it. The gate then failed on
+             # quoted historical prose that is exempt at its real location.
+             # This is not relaxing the gate: the same files are still scanned,
+             # once, where they live.
+             ".worktrees"}
 EXEMPT_PREFIXES = (os.path.join("docs", "audit"),)
 
 # British -> American. Bare stems, matched as substrings so inflections are

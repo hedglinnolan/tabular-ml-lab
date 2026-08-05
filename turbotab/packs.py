@@ -370,6 +370,81 @@ class Claim:
                 **self.evidence.to_dict()}
 
 
+@dataclass(frozen=True)
+class Hedge(Claim):
+    """A place a pack states a position rather than acting on one.
+
+    `METABOLOMICS_PACK.md` §11, *"where confident automation would embarrass
+    us"* — thirteen ranked items that are the pack's credibility rather than its
+    confidence. **They are badges and refusals, not detectors**: nothing here
+    reads the table, and every one of them is true of the sub-domain before any
+    data arrives.
+
+    **A `Hedge` IS a `Claim`**, by subclassing rather than by resemblance, and
+    that is the load-bearing part. `evidence.py check` walks module-level tuples
+    of `Claim` and resolves every source in them; a parallel structure beside
+    `Claim` would have been outside the gate on the day it was written, which is
+    `GUIDED-025`'s shape — two extension mechanisms that do not meet.
+
+    Three fields `Claim` does not have, each because an obligation needs it:
+
+    * **`sensitivity`** is `DOMAIN_SCIENCE.md` §01's third clause. A DISPUTED
+      item is *"never defaulted silently. Both sides stated. **A sensitivity
+      analysis offered.**"* `Evidence.both_sides` carries the second clause and
+      nothing carried the third, so a DISPUTED badge could be well-formed while
+      the app offered the user no way to find out whether the dispute mattered
+      for their study. **Required on DISPUTED.**
+    * **`stated_default`** is §11 item 1's *"assert a default with a stated
+      rationale, never a rule."* It is a recommendation and NOT a
+      pre-selection — `may_preselect` is still computed from the badge, so a
+      DISPUTED hedge with a stated default recommends in prose and pre-selects
+      nothing. Those are two different acts and only the second is forbidden.
+    * **`what_the_app_does`** is required on all of them, because a position
+      with no consequence is a paragraph. It is the sentence a reader checks the
+      behavior against.
+
+    **The status is per item and comes from the file, not from a policy.**
+    Seven of the thirteen are DISPUTED, two are CONVENTION and four are SETTLED,
+    and badging all thirteen DISPUTED would be the second, uncalibrated layer of
+    caution `AGENT_ONBOARD.md` §00 names as a defect: it makes *"OPLS-DA is a
+    rotation and does not reduce overfitting"* — which §08 marks settled among
+    chemometricians — read exactly like *"nobody agrees on the QC RSD
+    threshold"*, which is the failure the badge exists to prevent.
+    """
+    rank: int = 0
+    what_the_app_does: str = ""
+    sensitivity: Optional[str] = None
+    stated_default: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.rank < 1:
+            raise EvidenceError(
+                f"hedge {self.key!r}: §11 is a RANKED list and the rank is part "
+                f"of the content — item 1 is where the field's disagreement is "
+                f"most likely to reach a reader. A hedge with no rank cannot be "
+                f"served in the order the research put them in.")
+        if len(self.what_the_app_does) <= 20:
+            raise EvidenceError(
+                f"hedge {self.key!r}: a position with no consequence is a "
+                f"paragraph. State what the app does about it, which is the "
+                f"sentence a reader can check the behavior against.")
+        if self.evidence.status == DISPUTED and not (self.sensitivity or "").strip():
+            raise EvidenceError(
+                f"hedge {self.key!r}: DISPUTED is *never defaulted silently, "
+                f"both sides stated, and a sensitivity analysis offered* "
+                f"(`DOMAIN_SCIENCE.md` §01). `both_sides` carries the second "
+                f"clause; this carries the third, and a DISPUTED item with no "
+                f"way to find out whether the dispute matters for THIS study "
+                f"leaves the user exactly where they started.")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {**super().to_dict(), "rank": self.rank,
+                "what_the_app_does": self.what_the_app_does,
+                "sensitivity": self.sensitivity,
+                "stated_default": self.stated_default}
+
+
 def _badge_payload(evidence: Evidence,
                    claims: Sequence["Claim"] = ()) -> Dict[str, Any]:
     """The badge a consumer reads, at the granularity the sentence has.
@@ -724,6 +799,426 @@ def _pooled_qc(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
                     "n_qc": n_minor, "rsd_qc": round(rsd_minor, 3),
                     "rsd_participants": round(rsd_rest, 3)})
     return None
+
+
+# ── metabolomics · §11, where confident automation would embarrass us ────────
+#
+# Thirteen ranked positions, in the research's own order. **Badges and refusals,
+# not detectors** — nothing below reads a table, because none of it is about one
+# table. It is where the sub-domain does not agree with itself, and stating that
+# is what makes the pack credible rather than confident.
+#
+# THE STATUS IS PER ITEM AND IS READ OUT OF THE FILE. Seven DISPUTED, two
+# CONVENTION, four SETTLED. Sections §02, §04, §06, §07 and §08 badge these
+# points themselves, and where the file says [SETTLED among chemometricians] the
+# hedge says SETTLED — a uniform DISPUTED over all thirteen would make a settled
+# technical fact read like a live disagreement, which is `GUIDED-170` pointing
+# the other way and is the exact failure the badge exists to prevent.
+
+_M11 = "research/METABOLOMICS_PACK.md#11 · Where confident automation would embarrass us"
+_M02 = "research/METABOLOMICS_PACK.md#02 · Quality filtering"
+_M03 = "research/METABOLOMICS_PACK.md#03 · Missing data"
+_M04 = "research/METABOLOMICS_PACK.md#04 · Normalization, transformation, scaling"
+_M05 = "research/METABOLOMICS_PACK.md#05 · Batch correction and drift"
+_M06 = "research/METABOLOMICS_PACK.md#06 · EDA and presentation"
+_M07 = "research/METABOLOMICS_PACK.md#07 · Is untargeted metabolomics compositional?"
+_M08 = "research/METABOLOMICS_PACK.md#08 · Feature selection and modeling"
+
+
+class SoftwareDefaultRefusal(PackRefusal):
+    """A number that belongs to a version of somebody else's software.
+
+    **§11 item 12 is a hard stop**: *any claim about a specific software default
+    — MetaboAnalyst's IQR filter, `pmp`'s blank fold change, structToolbox's
+    D-ratio — changes between versions, and the right move is to read it from
+    the user's installed version rather than to hard-code it.* This app has read
+    no version, so it does not carry the numbers and says so.
+
+    A subclass rather than a bare `PackRefusal` for the reason
+    `PrevalenceRefusal` is one: the gate that walks refusal call sites finds it
+    by subclassing, so a refusal added later cannot go out unbadged because
+    nobody remembered to extend a list.
+    """
+
+
+#: The three §11 item 12 names, and nothing else. A fourth would be this module
+#: inventing a refusal the research did not ask for, which is the same defect as
+#: inventing a threshold.
+SOFTWARE_DEFAULTS_REFUSED = (
+    ("metaboanalyst_iqr_filter",
+     "the near-constant IQR filter, scaled to feature count"),
+    ("pmp_blank_fold_change", "the blank fold change shipped by `pmp`"),
+    ("structtoolbox_dratio", "the D-ratio acceptance criterion in structToolbox"),
+)
+
+SOFTWARE_DEFAULT_EVIDENCE = Evidence(status=SETTLED, source=_M11)
+
+
+def software_default(key: str) -> Dict[str, Any]:
+    """Always refuses, and the refusal is the feature.
+
+    There is no branch that returns a number. A function that could return one
+    would be a place a later loop puts a constant in, and the whole content of
+    item 12 is that this app has no standing to state these values.
+    """
+    label = dict(SOFTWARE_DEFAULTS_REFUSED).get(key)
+    if label is None:
+        raise PackError(
+            f"{key!r} is not one of the three software defaults §11 item 12 "
+            f"names: {[k for k, _ in SOFTWARE_DEFAULTS_REFUSED]}.")
+    raise SoftwareDefaultRefusal(
+        f"This app does not carry {label}. It is a fact about a version of "
+        f"somebody else's software, it changes between versions, and this app "
+        f"has read no version — so quoting a number here would be asserting "
+        f"something it has not checked.",
+        evidence=SOFTWARE_DEFAULT_EVIDENCE,
+        offer={
+            "label": "Read it from the version you ran",
+            "note": ("Take the value from the release you actually used and "
+                     "state it in your methods with the software name and "
+                     "version. The research asks for exactly that, and it is "
+                     "also what the filtering chain has to report anyway: every "
+                     "threshold, in order, with the features remaining after "
+                     "each step."),
+        })
+
+
+METABOLOMICS_HEDGES: Tuple[Hedge, ...] = (
+    Hedge(
+        key="qc_rsd_threshold", rank=1,
+        statement=("There is no consensus QC RSD threshold, and the scoping "
+                   "review of pooled-QC practice says so outright."),
+        evidence=Evidence(
+            status=DISPUTED, source=_M02,
+            both_sides=(
+                "30% is the most commonly published untargeted cutoff and is "
+                "the QComics acceptance criterion; 20% is stricter and is "
+                "standard in targeted assays; 25% is a third value in "
+                "circulation for LC-MS. Against all three, the scoping review "
+                "of pooled-QC practice states plainly that there is no widely "
+                "accepted metric for delineating acceptable from unacceptable "
+                "data quality.")),
+        stated_default=(
+            "30%, because it is the most commonly published untargeted cutoff "
+            "and is the QComics acceptance criterion. That is a default with a "
+            "stated rationale and it is not a rule — pick one, state it in your "
+            "methods, and the app will show what each one costs in features."),
+        sensitivity=(
+            "Read the QC RSD cumulative distribution with lines at 20, 25 and "
+            "30 rather than accepting one of them unseen. That figure shows "
+            "exactly what a threshold costs, and overlaying it before and after "
+            "drift correction is the most persuasive QC figure in the field."),
+        what_the_app_does=(
+            "States all three values with the rationale for the one it "
+            "suggests, and never filters on any of them without being told to. "
+            "Which value was used goes in the filtering waterfall.")),
+    Hedge(
+        key="blank_ratio_fold_change", rank=2,
+        statement=("The blank-ratio fold change is genuinely unsettled, and "
+                   "the pack asserts none of the values in use."),
+        evidence=Evidence(
+            status=DISPUTED, source=_M02,
+            both_sides=(
+                "3x, 5x, 10x and 20x are all in use as the ratio of the median "
+                "in biological samples to the median in blanks, and the "
+                "research calls this genuinely no consensus. What is not in "
+                "dispute is the blank itself: it has to be a process blank — "
+                "water through the full extraction with the same labware — "
+                "because a solvent-only injection cannot detect plasticizer "
+                "contamination.")),
+        sensitivity=(
+            "Run the blank filter at the low and the high end of the range and "
+            "report how many features each removes, as a row of the filtering "
+            "waterfall rather than as a single number nobody can check."),
+        what_the_app_does=(
+            "Names the four values in circulation and asserts none of them. "
+            "The number `pmp` ships is refused rather than quoted — see item "
+            "12, which is a hard stop rather than a preference.")),
+    Hedge(
+        key="imputation_method", rank=3,
+        statement=("The metabolomics and the proteomics imputation benchmarks "
+                   "disagree with each other, and the disagreement is the "
+                   "finding rather than a gap to be closed."),
+        evidence=Evidence(
+            status=DISPUTED, source=_M03,
+            both_sides=(
+                "The metabolomics benchmark makes QRILC the best performer "
+                "under MNAR — it draws from a truncated distribution estimated "
+                "by quantile regression, with much smaller error than random "
+                "forest, SVD and kNN — and random forest the best under "
+                "MCAR/MAR. A major proteomics benchmark reports random forest "
+                "consistently robust across all MNAR situations and most "
+                "suitable for label-free work when the mechanism is unknown. "
+                "Both are cited, both are presented, and the pack does not "
+                "pretend the contradiction is resolved.")),
+        stated_default=(
+            "Diagnose before choosing. If the missingness-versus-intensity plot "
+            "shows censoring, QRILC or GSimp; if missingness is flat with "
+            "respect to intensity, random forest or kNN. Half-minimum stays "
+            "available as the match-what-everyone-else-published option with "
+            "its caveat attached, and a feature whose missingness differs by "
+            "group is reported as presence/absence rather than imputed."),
+        sensitivity=(
+            "Always run the primary analysis under two imputation schemes and "
+            "report whether conclusions change. This sensitivity analysis is "
+            "the single highest-value thing a tool can add here — cheap, almost "
+            "never done, and it directly answers the reviewer's objection."),
+        what_the_app_does=(
+            "Carries both benchmarks and suppresses neither, and runs the fork "
+            "for real: `turbotab/sensitivity.py` re-fits every model on the "
+            "same training rows and scores it on the same held-out rows with "
+            "the missing-value handling varied, and reports whether the "
+            "substantive conclusion changed.")),
+    Hedge(
+        key="pareto_vs_autoscaling", rank=4,
+        statement=("Pareto scaling is the metabolomics cultural default and is "
+                   "stated here as a convention rather than as a fact: it "
+                   "reduces masking by abundant metabolites, it is sensitive to "
+                   "large fold changes, and van den Berg's own analysis "
+                   "preferred autoscaling and range scaling."),
+        evidence=Evidence(status=CONVENTION_STATUS, source=_M04),
+        stated_default=(
+            "Pareto, as the field convention, with autoscaling pushed beside it "
+            "as the alternative rather than buried in a variant list."),
+        sensitivity=(
+            "Side-by-side PCA under two or three scaling choices, which makes "
+            "the arbitrariness visible and honest."),
+        what_the_app_does=(
+            "Registers Pareto as the pack's scaling default with that reason "
+            "attached and pushes autoscaling against it, and never presents "
+            "Pareto as the correct choice. The near-universal published "
+            "combination — sum or PQN, then log, then Pareto — is a convention "
+            "and not settled, and a tool that presented it as correct would be "
+            "confidently wrong. Scaling is also for the multivariate path only: "
+            "fold changes and box plots are computed from the normalized but "
+            "unscaled copy, because a fold change in z-units is meaningless.")),
+    Hedge(
+        key="compositionality", rank=5,
+        statement=("Whether untargeted metabolomics is compositional is "
+                   "genuinely disputed, and confident wrongness in either "
+                   "direction would embarrass the tool."),
+        evidence=Evidence(
+            status=DISPUTED, source=_M07,
+            both_sides=(
+                "For: the detector and the ion source have finite capacity, ion "
+                "suppression means one compound's abundance genuinely affects "
+                "another's measured signal, and any normalization that divides "
+                "by a total — TIC, sum, MSTUS, mol% — imposes closure and makes "
+                "the data compositional by construction. Against: untargeted "
+                "work observes a small, biased, technology-dependent subset "
+                "while compositional theory concerns a closed whole; features "
+                "sit on incommensurable scales, so the ratio of one feature's "
+                "intensity to another's is not a ratio of amounts; and zeros "
+                "and left-censoring are pervasive while CLR cannot tolerate "
+                "them. The empirical evidence cuts both ways and neither half "
+                "is suppressed here: a 2025 result reports CLR-transformed data "
+                "explaining less variance in the first two components and "
+                "failing to resolve sample clustering at the same resolution, "
+                "and multiomic time-series work reports CLR revealing novel "
+                "relationships and stronger associations.")),
+        stated_default=(
+            "Do not CLR-transform by default. Use PQN or median-fold plus log, "
+            "warn about closure whenever a sum-based normalizer is chosen, and "
+            "phrase results from such an analysis in relative language."),
+        sensitivity=(
+            "Offer CLR or ILR as an explicit sensitivity analysis with a "
+            "documented zero-replacement strategy — multiplicative or "
+            "Bayesian-multiplicative, not half-minimum, because that choice "
+            "propagates into the geometric mean of every sample."),
+        what_the_app_does=(
+            "Neither position is suppressed, and the closure warning escalates "
+            "rather than being uniform: it goes high-priority when the "
+            "normalizer is sum, TIC or mol%, when a few features carry a large "
+            "fraction of total signal, or when a treatment plausibly causes a "
+            "large global shift — and in that last case the app says plainly "
+            "that group differences in every other feature may be an artifact "
+            "of the normalizer.")),
+    Hedge(
+        key="batch_correction", rank=6,
+        statement=("ComBat is both the standard between-batch method and "
+                   "demonstrably capable of manufacturing FDR-corrected false "
+                   "positives on pure noise, so it is never presented as "
+                   "safe."),
+        evidence=Evidence(
+            status=DISPUTED, source=_M05,
+            both_sides=(
+                "For correcting the data: ComBat is the most cited "
+                "between-batch method and it works when batches are balanced "
+                "with respect to the outcome. Against: a 2020 simulation "
+                "applied ComBat to randomly generated data with no true signal "
+                "and produced alarming numbers of FDR- and "
+                "Bonferroni-corrected false positives, in balanced designs as "
+                "well as unbalanced ones, and a 2016 reanalysis found ComBat "
+                "inflating a result from eleven genes to over a thousand under "
+                "an unbalanced design. Including batch as a covariate or a "
+                "random effect in the model instead is statistically the "
+                "cleanest, because it propagates uncertainty rather than "
+                "pretending corrected values are observed — settled in "
+                "biostatistics and contrarian in metabolomics practice, where "
+                "correct-then-test dominates.")),
+        stated_default=(
+            "Model the batch rather than correct the data, on the univariate "
+            "path. That is a recommendation with a reason, not a rule, and "
+            "correcting the data stays available."),
+        sensitivity=(
+            "Report QC RSD and D-ratio both before and after correction, and "
+            "check an INDEPENDENT quantity — technical-replicate correlation, "
+            "or a known positive control. QC RSD improving after a QC-fitted "
+            "correction is circular: the correction was fitted to minimize "
+            "exactly that number, so the improvement is not evidence the "
+            "analysis is sound."),
+        what_the_app_does=(
+            "Exposes the fork between correcting the data and modeling the "
+            "batch rather than hiding it, and refuses a confounded design "
+            "outright: if a group is wholly or nearly contained in one batch "
+            "then batch and biology are the same variable, no method can "
+            "separate them, and anything corrected there would be guessing.")),
+    Hedge(
+        key="oplsda_is_a_rotation", rank=7,
+        statement=("OPLS-DA rotates the PLS solution so between-class "
+                   "variation concentrates in one predictive component. It "
+                   "improves interpretability; it does not improve predictive "
+                   "performance and it does not reduce overfitting, because "
+                   "the predictive subspace is the same."),
+        evidence=Evidence(status=SETTLED, source=_M08),
+        what_the_app_does=(
+            "Will not imply that OPLS-DA fixes overfitting anywhere, and lists "
+            "believing that it does in the anti-pattern registry. The research "
+            "marks this settled among chemometricians and widely misunderstood "
+            "by practitioners, and calling OPLS-DA overfitting-resistant is a "
+            "technical error a chemometrician would catch instantly — which is "
+            "why this item is SETTLED and not DISPUTED. The overfitting problem "
+            "is real and belongs to the whole family: when features are at "
+            "least twice samples, PLS-DA readily separates randomly assigned "
+            "labels, and what answers that is permutation testing with "
+            "selection redone inside every permutation.")),
+    Hedge(
+        key="q2_threshold", rank=8,
+        statement=("Q-squared above 0.5 is a rule of thumb rather than a test, "
+                   "and nothing in this app gates on it."),
+        evidence=Evidence(
+            status=DISPUTED, source=_M08,
+            both_sides=(
+                "In its favor, it is the field's habitual pass mark and is "
+                "embedded in SIMCA-era practice. Against it, Triba et al. "
+                "showed that in metabolomics the K-fold cross-validation "
+                "parameters depend strongly on which individuals land in which "
+                "validation subset, and that a simple permutation of dataset "
+                "rows can flip the conclusion about model significance; "
+                "Szymanska et al. found perfect classification or a Q-squared "
+                "of 0.99 attainable purely by chance through a lucky split, and "
+                "reported the number of misclassifications and AUROC to be more "
+                "efficient and reliable diagnostic statistics than Q-squared.")),
+        sensitivity=(
+            "Report the nested-CV performance distribution — the spread of "
+            "outer-fold values, not a single number — beside the permutation "
+            "test, rather than one Q-squared against one line."),
+        what_the_app_does=(
+            "Carries no pass/fail gate on Q-squared anywhere, and no PASS/FAIL "
+            "stamp on any threshold: using Q-squared as a gate is in the "
+            "anti-pattern registry, and a permutation test with at least a "
+            "thousand permutations is what the multivariate path reports "
+            "instead.")),
+    Hedge(
+        key="sample_size", rank=9,
+        statement=("No valid generic power calculation exists for untargeted "
+                   "work, so any specific claim is framed as detectable-effect-"
+                   "size guidance with its assumptions shown."),
+        evidence=Evidence(
+            status=DISPUTED, source=_M08,
+            both_sides=(
+                "Conventional power calculation requires an effect size that "
+                "hypothesis-free untargeted work does not have. The practical "
+                "guidance that circulates is real and is labeled as guidance: "
+                "controlled interventions with large effects have identified "
+                "biomarkers with four to twenty subjects per arm, human "
+                "observational cohorts need substantially more, anything under "
+                "about twenty per group is hypothesis-generating only, and "
+                "anything claimed as a biomarker needs an independent "
+                "validation cohort. Against reading any of it as a rule: a "
+                "post-hoc power figure is statistically meaningless, which is "
+                "why the answer is a detectable-effect-size curve instead.")),
+        sensitivity=(
+            "Given n, alpha after FDR correction, and the observed per-feature "
+            "CV, report what fold change was detectable at 80% power — and put "
+            "it in the limitations rather than leaving a reviewer to compute "
+            "it."),
+        what_the_app_does=(
+            "Offers no power calculation and no post-hoc power number. A claim "
+            "about what this study could see is framed as a detectable effect "
+            "size with its assumptions printed beside it.")),
+    Hedge(
+        key="eighty_percent_rule", rank=10,
+        statement=("The 80% rule has a plain form and a modified form and which "
+                   "one is in use changes which features survive: the plain "
+                   "rule keeps a feature detected in at least 80% of samples, "
+                   "the modified rule keeps it if it is detected in at least "
+                   "80% of the samples of at least one class."),
+        evidence=Evidence(status=CONVENTION_STATUS, source=_M02),
+        stated_default=(
+            "The modified form, and the pack says why rather than asserting it: "
+            "the plain rule silently deletes metabolites present in cases and "
+            "absent in controls, which is precisely the kind of finding the "
+            "study is looking for."),
+        sensitivity=(
+            "Report the feature count under both forms in the filtering "
+            "waterfall, so the cost of the choice is visible instead of "
+            "inferred."),
+        what_the_app_does=(
+            "States which form was applied rather than leaving it implicit, and "
+            "applies every filter using only QCs, blanks and overall "
+            "missingness — never the group labels, because filtering features "
+            "by a group difference before testing them is circular and inflates "
+            "false positives.")),
+    Hedge(
+        key="hotelling_versus_group_ellipses", rank=11,
+        statement=("Hotelling's T-squared ellipse and group-wise 95% confidence "
+                   "ellipses are different objects, and mixing them up in a "
+                   "rendered figure would be a visible, elementary error."),
+        evidence=Evidence(status=SETTLED, source=_M06),
+        what_the_app_does=(
+            "Draws them differently and labels them explicitly. The T-squared "
+            "ellipse is a single ellipse over all samples defining the "
+            "multivariate 95% region — an outlier boundary — and is rendered as "
+            "a single dashed grey outline. Group-wise confidence ellipses "
+            "describe where each group's mean and spread lie and are rendered "
+            "filled and group-colored. Papers routinely mislabel one as the "
+            "other, and a T-squared ellipse labeled as a group confidence "
+            "ellipse is in the anti-pattern registry.")),
+    Hedge(
+        key="software_defaults", rank=12,
+        statement=("A specific software default is a fact about a version, and "
+                   "this app has read no version — so it does not carry those "
+                   "numbers and refuses to supply them."),
+        evidence=Evidence(status=SETTLED, source=_M11),
+        what_the_app_does=(
+            "Refuses all three the research names rather than quoting them: the "
+            "near-constant IQR filter scaled to feature count, the blank fold "
+            "change shipped by `pmp`, and the D-ratio acceptance criterion in "
+            "structToolbox. They change between versions, the right source is "
+            "the release you actually ran, and this app cannot read it. The "
+            "refusals are served beside this item with what to do instead — a "
+            "refusal that offers nothing is indistinguishable from a missing "
+            "feature.")),
+    Hedge(
+        key="microbiome_analogy", rank=13,
+        statement=("Compositional data analysis is settled for microbiome "
+                   "relative-abundance data, and that consensus is not imported "
+                   "into metabolomics by analogy."),
+        evidence=Evidence(status=SETTLED, source=_M07),
+        what_the_app_does=(
+            "States the specific ways the analogy fails rather than gesturing "
+            "at it. Untargeted metabolomics observes a small, biased, "
+            "technology-dependent subset rather than a closed whole. Features "
+            "sit on incommensurable scales — ionization efficiency varies by "
+            "orders of magnitude — so a ratio of two feature intensities is not "
+            "a ratio of amounts, and CLR's geometric mean is taken across "
+            "exactly those incommensurable quantities. Zeros and left-censoring "
+            "are pervasive while CLR cannot tolerate them, so every CLR "
+            "analysis needs a zero replacement whose choice then contaminates "
+            "all features through the geometric mean. And with absolute "
+            "quantification the data are genuinely absolute.")),
+)
 
 
 # ── dietary ──────────────────────────────────────────────────────────────────
@@ -1483,6 +1978,14 @@ class Pack:
     # Findings this pack reads differently. Declared, not hardcoded in
     # `reframe()`.
     reframings: Tuple[Reframing, ...] = ()
+    # WHERE THIS PACK DECLINES TO BE CONFIDENT. `METABOLOMICS_PACK.md` §11's
+    # shape, and it is a field on `Pack` rather than a metabolomics-only global
+    # because every research file has the same section under a different name —
+    # `GENOMICS_PACK.md` and `CLINICAL_SURVEY_PACK.md` both carry one, and a
+    # structure that fit exactly one pack would be the parallel dict
+    # `GUIDED-025` is about. Empty is the honest state for a pack whose §11 has
+    # not been built; it is not a claim that the pack has nothing to hedge.
+    hedges: Tuple["Hedge", ...] = ()
     # THE RECIPE TABLE IS CANONICAL for anything that resolves to a variant of
     # a preprocessing operation (`GUIDED-025`). A pack's variant preferences
     # live here as `recipes.Operation` / `recipes.Default` and are registered at
@@ -1574,6 +2077,7 @@ PACKS: Dict[str, Pack] = {
     METABOLOMICS: Pack(
         key=METABOLOMICS, label=LENS_LABELS[METABOLOMICS],
         detectors=(_left_censored, _acquisition_order, _pooled_qc),
+        hedges=METABOLOMICS_HEDGES,
         looks_for=(
             LooksFor("pack::metabolomics::left_censored",
                      "missing values clustering in the lowest-abundance "
@@ -2151,6 +2655,74 @@ def recipe_origins(lens: Sequence[str]) -> List[Dict[str, Any]]:
                         "selector": d.selector, "origin": d.origin,
                         "reason": d.reason})
     return out
+
+
+#: The one place the hedge block's own prose lives, so the page composes none of
+#: it. `COPY_DECK.md`'s rule: a sentence a user reads is a sentence some server
+#: composed.
+HEDGE_TITLE = "Where this app declines to be confident"
+HEDGE_WHY = (
+    "These are the places the field does not agree with itself, or agrees on "
+    "something the tools around it get wrong. None of them is a reading of your "
+    "table — they are true of this kind of measurement before any data arrives, "
+    "and they are here so the app's confidence is legible rather than uniform.")
+
+
+def hedges(lens: Sequence[str]) -> Optional[Dict[str, Any]]:
+    """Every selected pack's §11 positions, ranked, with the bound stated.
+
+    `None` — not an empty block — when no selected pack has any. *Nothing to
+    say* and *a section that says nothing* are different sentences, and a pack
+    whose §11 has not been built must produce the first.
+
+    **`GUIDED-209`: the list states its bound and is not cut.** `n` is what
+    exists, `showing` is what is in `items`, and they are equal because nothing
+    here is truncated — a hedge register that dropped its tail would be the
+    surface most likely to drop the awkward one. The two numbers are served
+    rather than implied so a reader and a test can both check the equality
+    instead of trusting it.
+
+    The refusals ride here rather than on their own route because they are §11
+    item 12's whole content: three numbers this app will not supply. A refusal
+    computed and reachable only from its own test is `GUIDED-060` again.
+    """
+    chosen = normalize_quiet(lens)
+    items: List[Hedge] = []
+    for key in chosen:
+        pack = PACKS.get(key)
+        if pack is not None:
+            items.extend(pack.hedges)
+    if not items:
+        return None
+    items.sort(key=lambda h: (h.rank, h.key))
+
+    refusals = []
+    for key, _label in SOFTWARE_DEFAULTS_REFUSED:
+        try:
+            software_default(key)
+        except SoftwareDefaultRefusal as refusal:
+            # THE REFUSAL IS RAISED ON THE SERVED PATH rather than described
+            # here. `software_default` has no branch that returns a number, so
+            # this loop is the only way the payload can be built and there is
+            # nowhere for a later loop to put a constant.
+            refusals.append({"key": key, **refusal.to_dict()})
+    return {
+        "title": HEDGE_TITLE,
+        "why": HEDGE_WHY,
+        "source": _M11,
+        "items": [h.to_dict() for h in items],
+        "n": len(items),
+        "showing": len(items),
+        "complete": True,
+        "n_refused": len(refusals),
+        "refuses": refusals,
+        # The distribution, so a reader can see at a glance that the badges are
+        # not uniform. A block where every item said DISPUTED would be telling
+        # them nothing, and this is the number that shows it does not.
+        "by_status": {status: sum(1 for h in items
+                                  if h.evidence.status == status)
+                      for status in EVIDENCE_STATUSES},
+    }
 
 
 def _and_list(items: Sequence[str]) -> str:
