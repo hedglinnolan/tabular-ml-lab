@@ -89,8 +89,21 @@ def test_the_gate_passes_and_says_how_much_it_is_holding():
 
 def test_every_marker_in_the_corpus_says_what_it_holds():
     """No bare markers left, asserted over the corpus rather than a list."""
+    # THE POSITIVE CONTROL, and `GUIDED-045` is why it is written down: an
+    # all-absence assertion passes hardest on an empty corpus, so *no bare
+    # markers* is the same output for a clean corpus, a corpus with no markers
+    # at all, and a glob that matched nothing.
+    files = sorted(RESEARCH.glob("*.md"))
+    assert len(files) >= 5, f"only {len(files)} research files found in {RESEARCH}"
+    markers = sum(len(E._VERIFY.findall(p.read_text(encoding="utf-8")))
+                  for p in files)
+    assert markers >= 9, (
+        f"only {markers} [verify-at-build] markers are in the corpus. The "
+        f"assertion below is an absence claim and would pass on a corpus with "
+        f"none; this is what makes it mean something")
+
     bare = []
-    for path in sorted(RESEARCH.glob("*.md")):
+    for path in files:
         for lineno, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1):
             for m in E._VERIFY.finditer(line):
                 payload = m.group(1).strip().lower()

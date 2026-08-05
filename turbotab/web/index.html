@@ -85,7 +85,7 @@
   .tb-btn:hover{border-color:var(--accent);color:var(--accent-ink)}
 
   /* ═════════ SHELL ═════════ */
-  .shell{display:flex;align-items:flex-start;max-width:1240px;margin:0 auto}
+  .shell{display:flex;align-items:flex-start;max-width:1500px;margin:0 auto}
   .rail{flex:0 0 236px;padding:30px 18px 40px;position:sticky;top:var(--topbar-h);align-self:flex-start;
         max-height:calc(100vh - var(--topbar-h));overflow-y:auto}
   .rail-inner{display:flex;flex-direction:column;gap:20px}
@@ -475,8 +475,63 @@
     *,*::before,*::after{transition:none !important;animation:none !important}
     html{scroll-behavior:auto !important}
   }
+  /* ═════════ STUDY · the right column ═════════ `GUIDED-174` + `GUIDED-160`
+
+     **ONE PANEL, NOT TWO, AND THAT IS THE DESIGN.** §10 opens with the
+     allocation: *"modeling is the left column, learning is the right panel,
+     both means both columns. There is no third place."* The product owner
+     proposed this column for HIS DATA; the design language had already
+     reserved it for teaching. Reading the two as competitors is the mistake
+     the row names — §10's layer 3 is *"the concept explained with THEIR
+     columns and THEIR numbers, not abstractions"*, and that **needs the table
+     on screen to point at.** The working table is layer 3's substrate.
+
+     The shell grows from 1240 to 1500 rather than the feed shrinking. 236 rail
+     + 800 feed + 340 study + gutters, and the feed's 800 is what §03's measure
+     rule is written against — narrowing it to make room would trade a
+     specified constraint for an unspecified one.
+
+     STICKY AND SCROLLED SEPARATELY, because the whole point is that it stays
+     beside the decision. Opt-in per §10 layer 3, and it remembers: a panel
+     that closes itself on every render is not persistent.
+
+     IT HIDES AT THE SAME BREAKPOINT THE RAIL DOES. Below 900px there is no
+     second column to be beside, and a stacked "right panel" is a modal with
+     extra steps — which §10 forbids in its second sentence. */
+  .study{flex:0 0 340px;position:sticky;top:var(--topbar-h);align-self:flex-start;
+         max-height:calc(100vh - var(--topbar-h));overflow-y:auto;
+         padding:30px 22px 40px;border-left:1px solid var(--line-soft)}
+  .study.is-closed{flex:0 0 44px;padding:30px 6px;overflow:visible}
+  .study.is-closed .study-body{display:none}
+  .study-head{display:flex;align-items:center;justify-content:space-between;gap:8px;
+              margin:0 0 14px}
+  .study-title{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+               color:var(--faint)}
+  .study-toggle{border:1px solid var(--line);background:var(--surface);border-radius:7px;
+                font:inherit;font-size:11px;padding:3px 8px;color:var(--muted);cursor:pointer}
+  .study-toggle:hover{border-color:var(--accent);color:var(--accent-ink)}
+  .study-sect{margin:0 0 20px}
+  .study-sect > h3{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+                   color:var(--muted);margin:0 0 7px}
+  .study-note{font-size:12px;color:var(--muted);margin:6px 0 0;line-height:1.5}
+  /* THEIR numbers, in the app's teaching voice — §03's serif plane, which is
+     the one §10 layer 2 already names for explanation. */
+  .study-teach{font-family:var(--serif);font-size:13.5px;line-height:1.55;color:var(--ink);
+               margin:0}
+  .study-teach em{font-style:normal;font-family:var(--mono);font-size:12px;
+                  color:var(--accent-ink)}
+  .study-tbl{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px}
+  .study-tbl th{text-align:left;font-weight:600;color:var(--faint);padding:2px 6px 4px 0;
+                border-bottom:1px solid var(--line-soft);white-space:nowrap}
+  .study-tbl td{padding:2px 6px 2px 0;color:var(--ink);white-space:nowrap;
+                max-width:96px;overflow:hidden;text-overflow:ellipsis}
+  .study-empty{font-size:12px;color:var(--muted);line-height:1.5;margin:0}
+
   @media (max-width:900px){
     .rail{display:none}
+    /* §10's second sentence: education never lives in a modal. Stacked below
+       the feed, a "right panel" is one. */
+    .study{display:none}
     .feed{max-width:100%;padding:22px 16px 40vh}
     .find{grid-template-columns:1fr}
     .fthumb{height:66px;max-width:150px}
@@ -1674,6 +1729,26 @@
       </div>
     </section>
   </main>
+
+  <!-- ═════════ STUDY · the right column ═════════ `GUIDED-174` · `GUIDED-160` · `GUIDED-178`
+       ONE PANEL. §10: *"modeling is the left column, learning is the right
+       panel, both means both columns. There is no third place."* Three
+       sections, each a state of the same object rather than a component of
+       its own: the working table the decisions are about, the concept taught
+       on THAT table's columns, and what the models will be given — which is
+       the one that has nothing to say before the seal and says so. -->
+  <aside class="study" id="study" aria-label="Your data, beside the decisions">
+    <div class="study-head">
+      <span class="study-title" id="studyTitle">Your data</span>
+      <button class="study-toggle" id="studyToggle" data-study-toggle="1"
+              type="button" aria-expanded="true" aria-controls="studyBody">Hide</button>
+    </div>
+    <div class="study-body" id="studyBody">
+      <div class="study-sect" id="studyTable"></div>
+      <div class="study-sect" id="studyTeach"></div>
+      <div class="study-sect" id="studyModels"></div>
+    </div>
+  </aside>
 </div>
 
 <script>
@@ -3013,8 +3088,132 @@
 
 
   /* ═════════ RENDER ═════════ */
+  /* ═════════ THE STUDY COLUMN ═════════ `GUIDED-174` · `GUIDED-160` · `GUIDED-178`
+
+     **ONE PANEL AND THREE SECTIONS, AND THAT IS THE DESIGN RATHER THAN A
+     LAYOUT.** `DESIGN_LANGUAGE.md` §10 opens by allocating the screen —
+     *"modeling is the left column, learning is the right panel, both means
+     both columns. There is no third place."* The product owner proposed a
+     column for HIS DATA and the design language had already reserved that
+     column for TEACHING, and the row's own ruling is that reading the two as
+     competitors is the mistake: §10's layer 3 is *"the concept explained with
+     their columns and their numbers, not abstractions"*, which needs the table
+     on screen to point at. **The working table is layer 3's substrate.**
+
+     Nothing here composes a sentence the server has not sent, except the
+     count lines, which are arithmetic over `P` and are labeled as such. */
+  var STUDY_OPEN = true;
+
+  function studyTableHTML(){
+    if (!P || !P.columns || !P.columns.length){
+      return "<h3>Your data</h3><p class=\"study-empty\">No table yet. This " +
+             "panel fills in the moment a file is read.</p>";
+    }
+    /* THE BOUND IS STATED, because a truncated list nobody records reads as a
+       complete answer — `GUIDED-195`, and `capSaid` is the house helper. */
+    var cols = P.columns, shown = cols.slice(0, 12);
+    var h = "<h3>Your data</h3>";
+    h += '<table class="study-tbl"><tr><th>column</th><th>type</th><th>missing</th></tr>';
+    shown.forEach(function(c){
+      h += "<tr><td>" + esc(c.name) + "</td><td>" + esc(c.dtype) + "</td><td>" +
+           num(c.n_missing, 0) + "</td></tr>";
+    });
+    h += "</table>";
+    h += '<p class="study-note">' +
+         capSaid("study-columns", shown.length, cols.length, "columns") +
+         " · " + num(P.n_working_rows === undefined ? P.n_rows : P.n_working_rows, 0) +
+         " rows in the working table.</p>";
+    return h;
+  }
+
+  /* §10 LAYER 3, ON THEIR COLUMNS. Layer 2 — the "Why we ask" disclosure — was
+     carrying this job at 135 abstract words, and §10 names that failure before
+     it happened: layer 1 cites EXPERTISE REVERSAL and layer 2 cites SPLIT
+     ATTENTION, and a long abstract disclosure breaks both at once. The
+     question does not get shorter (his standing ruling: hard questions stay
+     hard and we invest in pedagogy) — the explanation moves to the surface
+     §10 built for it, and gets to name the user's own columns.
+
+     The SENTENCE is the server's `consumer` text, which already says what the
+     answer changes. What this adds is the part layer 2 structurally cannot:
+     the columns it will change, by name. */
+  function studyTeachHTML(){
+    var q = null, qs = (LAST_DATA_PLAN || {}).questions || [];
+    for (var i = 0; i < qs.length; i++){
+      if (qs[i].status === "asked" && (qs[i].consumer || qs[i].why)){ q = qs[i]; break; }
+    }
+    if (!q) return "";
+    var all = q.columns || q.affected_columns || [];
+    var subject = all.slice(0, 6);
+    var h = "<h3>On your columns</h3>";
+    h += '<p class="study-teach">' + esc(q.consumer || q.why) + "</p>";
+    if (subject.length){
+      /* THE BOUND THROUGH `capSaid`, and the first draft got this wrong in
+         the way L50 already filed. It read *"and N more"*, which says how many
+         are HIDDEN and never how many there ARE — the two counts a reader
+         needs collapsed into one. That is `GUIDED-195`'s own instance list,
+         and the truncation gate caught it here within the hour, in the panel
+         written by the agent who filed it. */
+      h += '<p class="study-note">It changes ' +
+           subject.map(function(c){ return "<em>" + esc(c) + "</em>"; }).join(", ") +
+           ". " + capSaid("study-teach-columns", subject.length, all.length,
+                          "columns") + "</p>";
+    }
+    return h;
+  }
+
+  /* `GUIDED-178`, AND IT IS A PLACEHOLDER ON PURPOSE.
+     `project.resolved_recipes()` short-circuits on `if not self.selected_models:
+     return out`, and `selected_models` is gated on `barrier_raised` — so
+     `/recipes.models` is `{}` for the ENTIRE pre-seal journey. There is no
+     per-model data at Preprocess to render, and a deck with content here would
+     be fabricated. This says what is missing and which step fills it, which is
+     the shape `/recipes` already uses.
+
+     And the row's own ruling on what the card may show once it CAN: a
+     training-row preview labeled *preview, not applied* — never *"what will be
+     fed into the model"*, because clause §06 fits every stateful transform
+     inside the fold and those numbers do not exist until the fold does. */
+  function studyModelsHTML(){
+    var models = (LAT && LAT.models) || {};
+    var keys = Object.keys(models);
+    if (!keys.length){
+      return "<h3>What the models get</h3>" +
+             '<p class="study-empty">Nothing yet, and the step that fills it ' +
+             "has not happened. Each model's recipe is resolved once models are " +
+             "chosen, which is after the split is drawn — before that there is " +
+             "no per-model table to show, and a preview here would be invented." +
+             "</p>";
+    }
+    var shown = keys.slice(0, 4);
+    var h = "<h3>What the models get</h3>";
+    shown.forEach(function(k){
+      h += '<p class="study-note"><em>' + esc(k) + "</em> — " +
+           num((models[k].operations || []).length, 0) + " step(s).</p>";
+    });
+    h += '<p class="study-note">' + capSaid("study-models", shown.length,
+                                            keys.length, "models") + "</p>";
+    return h;
+  }
+
+  function renderStudy(){
+    var host = $("study");
+    if (!host) return;
+    host.classList.toggle("is-closed", !STUDY_OPEN);
+    var toggle = $("studyToggle");
+    if (toggle){
+      toggle.textContent = STUDY_OPEN ? "Hide" : "Show";
+      toggle.setAttribute("aria-expanded", STUDY_OPEN ? "true" : "false");
+    }
+    if (!STUDY_OPEN) return;
+    $("studyTable").innerHTML = studyTableHTML();
+    $("studyTeach").innerHTML = studyTeachHTML();
+    $("studyModels").innerHTML = studyModelsHTML();
+  }
+
   function renderAll(){
     if (!P) return;
+    renderStudy();
     renderData();
     renderTarget();
     renderEda();
@@ -5573,6 +5772,13 @@
            plan is what says so — so it is re-rendered here, after the plan
            lands, rather than in `renderData` which runs before it. */
         renderData();
+        /* AND THE STUDY COLUMN, for the same reason, and it is `GUIDED-156`'s
+           shape a third time: layer 3 reads `LAST_DATA_PLAN` to find the
+           question it is teaching about, and `renderAll` runs before this
+           fetch resolves — so the teaching section rendered empty on the
+           render the user actually sees and filled in on some later one,
+           which to a person is the same as never. */
+        renderStudy();
         /* AND THE TARGET CARD, for the same reason as the line above: the
            task-type row inside it is drawn from the Router's status for
            `confirm_task_type` (`GUIDED-156`), and `renderAll` runs
@@ -6807,6 +7013,7 @@
       "[data-lat-cell],[data-prep-mech],[data-prep-route],[data-prep-settle]," +
       "[data-pick-model],[data-train-start],[data-train-cancel],[data-instab],[data-keep-id],[data-promote]," +
       "[data-sel-rank],[data-sel-set]," +
+      "[data-study-toggle]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose]," +
       "[data-plaus-route]," +
       "[data-miss-mech-for],[data-miss-preview]," +
@@ -7267,6 +7474,14 @@
       decide("set_impossible_missing", t.dataset.impossible,
              { column: t.dataset.impossible },
              "Setting those entries to missing…");
+      return;
+    }
+    if (t.hasAttribute("data-study-toggle")){
+      /* §10 layer 3 is OPT-IN AND PERSISTENT. The state lives here rather than
+         being recomputed, because a panel that reopens itself on every render
+         is not a preference — it is a decoration that ignores you. */
+      STUDY_OPEN = !STUDY_OPEN;
+      renderStudy();
       return;
     }
     if (t.hasAttribute("data-plaus-route")){
