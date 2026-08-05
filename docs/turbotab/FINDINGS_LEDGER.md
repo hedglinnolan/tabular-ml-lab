@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**328 of 834 closed.**
+**331 of 845 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 449 |
+| `OPEN` | 457 |
 | `PARTIAL` | 57 |
-| `FIXED` | 322 |
+| `FIXED` | 325 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 449
+## OPEN — 457
 
 
-### Guided-door drive feedback — 71
+### Guided-door drive feedback — 78
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -103,6 +103,12 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-209` | medium | A server-side list cut to a literal bound before it is served, with nothing saying so - 43 payload keys, and the sharpest is in the exported manuscript | `L49-D, answering 08 check 5 by looking one surface over from GUIDED-195. An AST walk over every non-test…` | sibling-of: GUIDED-195. Not swept in L49 because the disposition differs per site and a single rule applied to all 43 would be wrong for about half of them. |
 | `GUIDED-210` | medium | route_missingness_bulk is a capability with no consumer - the server answers it and no attribute in the page posts it | `L49-D. project.route_missingness_bulk exists, api.py:768 handles it, L48-C drove it and gave it an…` | Found while building GUIDED-192's consumer. Related to GUIDED-208: the missing answer for a settled block and the unrouted bulk kind may be the same hole from two sides. |
 | `GUIDED-214` | medium | A DISPUTED badge assembled as a hand-written dict bypasses the both_sides requirement the Evidence constructor exists to enforce | `L50-F2. turbotab/sensitivity.py:165 serves evidence_status DISPUTED in a hand-written dict with no…` | sibling-of: GUIDED-211 and TEST-052. |
+| `GUIDED-216` | medium | A research pack specifies a PRESENTATION its finding shape cannot carry, and guard #1 makes the gap read as a prohibition rather than a hole | `L50-B and L50-C/E, filed as the CLASS. packs.py's docstring generalizes DOMAIN_PACKS.md guard #1 to 'adding a…` | THE LIVE CONSEQUENCE, and it is what makes this more than bookkeeping: a user who reads only the Explore stack gets the genomics classification and the coaching and NOT the… |
+| `GUIDED-217` | medium | Single-cell is required by the research to be detected and REFUSED, nothing detects it, and the new data-type reader confidently calls it raw counts | `L50-B. GENOMICS_PACK.md's scope paragraph is explicit and quantified: single-cell is out of scope and must be…` | sibling-of: GUIDED-215. Both are the same failure with opposite signs: one refused a lens it should have accepted, this accepts a matrix it should refuse. |
+| `GUIDED-218` | medium | The composed-field sweep drives a hand-listed set of payloads, so a route added later joins it unswept and the sweep's own coverage statement is silently incomplete | `L50-B and L50-C/E, and it is 08 check 5's answer. test_every_field_the_server_composes_has_a_reader…` | sibling-of: GUIDED-147 and GUIDED-197. Third instance of the same shape: an instrument whose scope is a hand list passes for exactly as long as nobody adds a thing. |
+| `GUIDED-219` | medium | The evidence badge's own tooltip is composed in the page, so the semantics of SETTLED, CONVENTION and DISPUTED live in two places | `L50-B, noticed while wiring the data-type card's badges and deliberately not acted on. index.html's…` | sibling-of: GUIDED-207. Not touched because it changes every badge on the page and that is a wider blast radius than the brief that found it. |
+| `GUIDED-221` | medium | The redundancy estimate counts every numeric column, so run_order, age, bmi and the outcome sit in the block as singletons and inflate the effective-feature count that would reach a manuscript | `L50-E. packs._redundancy reads every numeric column, so on metabolomics_redundant.csv it reports about 105…` | **test:** `turbotab/test_the_redundancy_estimate_reaches_an_upload.py::test_the_five_columns_it_does_not_group_are_each_accounted_for` — sibling-of: GUIDED-222. The two are one… |
+| `GUIDED-222` | medium | The genomics expression-block selector is a shape rule the research does not license, and it decides the classification for two of the nine signatures | `L50-B, and its builder named it as the piece it was least sure of. A single covariate sets the maximum of the…` | sibling-of: GUIDED-221. Filed at medium rather than high because the failure is loud - a dropped gene is named on the card - rather than silent. |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
@@ -110,6 +116,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-036` | low | The item-correlation figure's caption tells the reader that loadings and reliability appear 'below'; the app produces neither | `turbotab/figure_specs.py:2786-2788 — The shared `method_note` composed by _correlations reads "…Pearson…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `GUIDED-151` | low | engine.SEVERITY_RANK has no `blocker` key and ml/router.py's has one at 0, so a finding carrying that severity would rank LAST in the list the app presents and first in the Router - the two rank… | `turbotab/engine.py:195 SEVERITY_RANK = {'critical': 0, 'warning': 1, 'caution': 2, 'info': 3} and…` | FOUND AT L45-B WHILE BUILDING attention.NEVER_COLLAPSED, which holds both words because ml/router.py:77 holds both and a set that knew only one would be a rule depending on which… |
 | `GUIDED-206` | low | Project.set_orientation assigns self.df with no undo-stack entry - the only installer that did not | `L49-C, found by routing all twelve installers through one door. Every other pass that swaps the working table…` | Not fixed in L49 because changing what is undoable is a product decision, and the loop that found it was building a provenance mechanism. |
+| `GUIDED-220` | low | A column name repeated verbatim in the source CSV is renamed by pandas before the app sees it, so the most obviously duplicated gene identifier there is cannot be detected | `L50-C. pandas renames a repeated header to TP53.1, and the dot puts it outside every identifier grammar - so…` | **test:** `turbotab/test_the_gene_id_diagnostics_reach_an_upload.py::test_a_repeated_column_name_is_not_read_as_a_version` — Named in SHAPES_NOT_COVERED in the test file, not only… |
 
 ### Application state / lockbox — 66
 
@@ -340,7 +347,7 @@ Nothing is closed without a regression test named after it.
 | `MINE-043` | low | pages/06 defines fallback plotting stubs that shadow visualizations.py on ImportError | `pages/06_Train_and_Compare.py:66-90; visualizations.py:53-88, 91-126` | Unchanged at HEAD. visualizations.py is a first-party module in the repository root and cannot legitimately be missing, so the fallback can only fire on an unrelated ImportError… |
 | `MINE-044` | low | visualizations.plot_residuals will pandas-align if handed two Series with different indexes | `visualizations.py:91-126 vs 141-142; pages/06_Train_and_Compare.py:2604, 2623` | Unchanged at HEAD, and the inconsistency inside one file is the tell: plot_bland_altman coerces both arguments and plot_residuals does not, so the safe idiom was known and applied… |
 
-### Migration safety net — 34
+### Migration safety net — 35
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -375,6 +382,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-030` | medium | tests/workflow/* is order-dependent by design and silently degrades to false passes if pytest ordering changes | `tests/workflow/conftest.py:9-15; tests/workflow/test_state_invalidation.py:145-150` | Unchanged at HEAD, and the adjacent test is worth naming precisely because it looks like a fix and is not: tests/test_suite_is_order_independent.py guards RNG reseeding - that… |
 | `TEST-031` | medium | The plain-dict fake state in tests/workflow/ is the ready-made bridge to the Project object — the only asset that transfers directly | `tests/conftest.py:60-85, :88-122, :125-145; tests/workflow/conftest.py:41-45` | Unchanged at HEAD and this is the most useful row in the batch, because it is an ASSET rather than a defect. The test helpers already run against a plain dict, so a Project that… |
 | `TEST-047` | medium | tests/test_the_target_is_asked_a_different_question.py:50 asserts 'binary variable written as text' for a column it names meds_chol - the exact NHANES column that in reality holds Python booleans… | `L48-B, found while fixing GUIDED-158. The fixture supplies the one shape that made the false sentence true…` | sibling-of: GUIDED-158, and an instance of trap #3 rather than of GUIDED-158's own defect. |
+| `TEST-054` | medium | A test docstring that names the mechanism making it pass, where no assertion checks that mechanism - trap #3b one layer down, in the docstring rather than the name | `L50-C, found by a revert probe returning GREEN - NOT LOAD-BEARING. The probe reverted _VERSIONED_VOCABULARIES…` | sibling-of: GUIDED-145 and TEST-046. Filed as the CLASS. The instance is fixed; the detector for it is not built, and unlike TEST-046's attribute scan there is no obvious… |
 | `TEST-033` | low | _NOT_STAGE_RESULTS in tests/integration/test_cascade_dag_equivalence.py:31 is defined and never referenced - a dead exclusion set that reads as if it were enforcing something | `tests/integration/test_cascade_dag_equivalence.py:31` | Filed post-Loop-1; not part of the 370 Tier-1 rows. |
 | `TEST-043` | low | A guard that searches the tree for a pattern has its own source inside the search space, so it flags the text in which it names what it is looking for - three instances in one loop | `reported by the L43 agent as its fourth divergence: the pragma check flagged the comment recording the…` | THE AGENT'S OWN SENTENCE IS THE ROW: `three times in one loop is a pattern I should have seen after the first - a guard whose own text is inside its search space has to say so.`… |
 | `TEST-045` | low | A parametrized test whose id contains a non-ASCII character cannot be addressed by revertprobe.py, so the one class of test this project requires a probe for is the one class that can silently have… | `Found at L46-C. turbotab/test_a_deferred_noticing_comes_back_where_it_said.py originally keyed its cases…` | FILED AT L46 AND FIXED IN THE INSTANCE ONLY - the test's own ids are now ASCII. THE CLASS IS WHY IT IS A ROW: LOOP.md section 09 requires a named regression test verified to fail… |
@@ -678,10 +686,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 322
+## FIXED — 325
 
 
-### Guided-door drive feedback — 127
+### Guided-door drive feedback — 128
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -778,6 +786,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-197` | high | The L43-A1 late sweep enumerates /features, /recipes and /preprocess and gates NOTHING - 39 unread fields and 4 fully-dark path shapes printed into captured stdout behind zero assertions | `L48-B, found while fixing GUIDED-171 by reading the exemption before building. Two exemptions exist and the…` | **test:** `turbotab/test_the_three_unswept_payloads_are_swept.py::test_every_dark_family_here_names_a_reader_or_a_row` — L49-A2. The late sweep enumerated /features, /recipes and… |
 | `GUIDED-198` | high | Six of eighteen feature transforms are unreachable from the Guided door: the page never reads Transform.needs and never composes params, so every press 400s | `L48-B, driven on clinical_labs.csv. featPickerHTML reads row.n_inputs and renders the column selects but…` | **test:** `turbotab/test_the_transform_that_needs_a_parameter_gets_a_control_for_it.py::test_the_press_carries_the_parameter_the_row_rendered_a_control_for` — L49-B. RE-DERIVED… |
 | `GUIDED-204` | high | L48's blank-provenance block was composed, served on two routes and read by no surface on the page for a whole loop - trap #6 inside the fix for a trap #6 | `L49-C, found while wiring the general mechanism. missingness.provenance was built at L48, served on…` | **test:** `turbotab/test_every_writer_that_can_blank_a_cell_files_it.py::test_the_page_actually_renders_the_provenance_sentence` — The general lesson is the one A3 is about: a… |
+| `GUIDED-215` | high | The lens contradiction detector equated genomics with counts and refused the genomics lens on six of the nine expression shapes its own research file describes | `L50-B, found by driving the fixtures L50-F1 shipped. contradiction() direction 3 raised a 409 in the app's…` | **test:** `turbotab/test_the_genomics_data_type_card_reaches_a_person.py::test_the_genomics_lens_is_no_longer_refused_on_a_matrix_that_is_not_counts` — THE FIXTURES FOUND IT.… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
@@ -949,7 +958,7 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 
-### Migration safety net — 13
+### Migration safety net — 15
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -966,6 +975,8 @@ Nothing is closed without a regression test named after it.
 | `TEST-041` | medium | Four turbotab test files read figures.REGISTRY, which is populated only as an import side effect of figure_specs, and one of them asserted a count over it before anything had imported the populator… | `turbotab/figures.py:REGISTRY is an empty dict filled by turbotab/figure_specs.py's module body…` | **test:** `turbotab/test_the_registry_cannot_be_observed_empty.py::test_a_cold_import_of_figures_alone_sees_the_specs` — FOUND WHILE FIXING TEST-040 AND IT IS THE SAME PROPERTY… |
 | `TEST-046` | medium | A test docstring that names a page control its body never presses is trap #3b in its page-control form, and nothing detected it - the standing answer was to read docstrings against bodies by hand | `L48-A2. AGENT_ONBOARD.md 07 names trap #3b and the standing answer found GUIDED-145 once and nothing for five…` | **test:** `turbotab/test_a_test_that_names_a_control_presses_it.py::test_no_test_names_a_control_its_body_never_touches` — Both instances fixed rather than declared. NOT COVERED… |
 | `TEST-053` | medium | The American-spelling gate walked a nested checkout of the repository and failed on exempt prose at a path where its exemption no longer matched | `L50. docs/turbotab/tools/worktree.py (built this loop for A1) puts subagent worktrees under .worktrees/, and…` | **test:** `tests/test_american_spelling.py::test_no_british_spellings` — No revert probe: the gate IS the probe - it went red on the real condition and green on the fix, which is… |
+| `TEST-055` | medium | A closed-set assertion on a pack that is being filled out asserts that no further detector may ever exist | `L50. test_the_four_diagnostics_reach_a_person_and_carry_their_badges asserted equality against a five-element…` | **test:** `turbotab/test_the_gene_id_diagnostics_reach_an_upload.py::test_the_four_diagnostics_reach_a_person_and_carry_their_badges` — Found by merging two worktrees rather than… |
+| `TEST-056` | medium | Inserting a seeded draw in the middle of a fixture generator changes every draw after it, and the L50 brief quoted pre-insertion numbers to a subagent | `L50. make_genomics_siblings.py draws from ONE seeded generator in file order. The estimated-counts block was…` | **test:** `turbotab/test_the_genomics_data_type_card_reaches_a_person.py::test_the_estimated_counts_and_fpkm_separator_is_measured` — Filed because the near-miss is instructive… |
 
 ### Other — 11
 

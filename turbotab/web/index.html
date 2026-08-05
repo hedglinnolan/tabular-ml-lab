@@ -600,6 +600,29 @@
   .refused-card .r-pending{ font-size:12.5px; margin:6px 0 0; }
   .answered-card{ border-left:3px solid var(--ok); background:var(--ok-tint);
                   border-radius:0 9px 9px 0; padding:11px 13px; font-size:13.5px; }
+  /* ── the genomics data-type card (GENOMICS_PACK.md §02) ───────────── */
+  .gx-head{ font-size:11.5px; text-transform:uppercase; letter-spacing:.07em;
+            color:var(--faint); margin:14px 0 6px; display:flex; gap:9px;
+            align-items:baseline; flex-wrap:wrap; }
+  .gx-conf{ font-size:12.5px; color:var(--muted); margin:2px 0 9px; }
+  .gx-ask{ font-size:13px; margin:9px 0; padding:9px 11px; max-width:74ch;
+           border-left:3px solid var(--accent); background:var(--surface);
+           border-radius:0 7px 7px 0; }
+  .gx-note{ font-size:12px; color:var(--faint); margin:10px 0 0; max-width:74ch; }
+  /* The three states are three components rather than one with a modifier, for
+     the reason the disclosure band below records: *Ruled out* and *Needs an
+     answer first* must not be mistakable for one another, and a shared base
+     with a color swap is how two things drift back into one. */
+  .chip.gx-enabled{ color:var(--ok); border-color:var(--ok); }
+  .chip.gx-disabled{ color:var(--stop); border-color:var(--stop); }
+  .chip.gx-requires_input{ color:var(--warn); border-color:var(--warn); }
+  #genomicsBox table.mini td{ white-space:normal; vertical-align:top;
+                              padding:5px 10px 5px 0; }
+  #genomicsBox table.mini td:first-child{ white-space:normal; max-width:26ch; }
+  #genomicsBox table.mini{ font-family:inherit; font-size:12.5px;
+                           line-height:1.55; }
+  #genomicsBox table.mini td.mono{ font-family:var(--mono); font-size:11.5px;
+                                   white-space:nowrap; }
   /* GUIDED-078. The disclosure band. `.is-sealed` and `.is-exploratory` are
      two components, not one component with a modifier, because §03's whole
      requirement is that they cannot be mistaken for one another — a shared
@@ -1412,6 +1435,25 @@
                  failure the offer exists to prevent, arriving one layer later
                  (`GUIDED-060`). -->
             <div class="prev" id="prevalenceBox" style="margin-top:16px;display:none;"></div>
+
+            <!-- `research/GENOMICS_PACK.md` §02's *"what your numbers are"*
+                 card, which the pack calls its single most valuable artifact.
+                 The classification decides what is legal downstream — TPM fed
+                 to a count model runs cleanly and reports p-values that are
+                 wrong — so this is the one genomics surface that has to reach a
+                 person rather than a curl.
+
+                 Offered under the genomics lens only, the same rule the
+                 prevalence box follows: a pack changes what is drawn, and on
+                 any other table the surface is not there rather than there and
+                 empty.
+
+                 EVERY SENTENCE HERE IS THE SERVER'S, including the capability
+                 matrix's. `GUIDED-207` is why: a payload that said
+                 `disabled_because: "count_model"` would make this page hold a
+                 copy of the research, and the copy the user reads is the one
+                 nothing tests. -->
+            <div class="prev" id="genomicsBox" style="margin-top:16px;display:none;"></div>
           </div>
         </div>
       </div>
@@ -2981,6 +3023,7 @@
     renderInterview();
     renderFigureSurface();
     renderPrevalence();
+    renderGenomicsCard();
     renderDisclosures();
     renderFeatureStep();
     renderPreprocessStep();
@@ -3749,6 +3792,115 @@
                                          unavailable: [], not_drawn: [] });
       })
       .catch(function(e){ setErr(e.message); });
+  }
+
+  /* ═════════ WHAT YOUR NUMBERS ARE ═════════
+     `research/GENOMICS_PACK.md` §02, whose Presentation clause asks for a card
+     carrying the classification, the confidence, the evidence that drove it and
+     a capability matrix — and calls it *the single most valuable artifact in
+     the pack*, because the classification decides what is legal downstream and
+     getting it wrong is the commonest real failure in the field.
+
+     THREE THINGS THIS PAGE DOES NOT DO, each of them deliberate.
+
+     It does not decide what a state means. `state_label` arrives composed —
+     *Open to you*, *Ruled out*, *Needs an answer first* — beside `state`, which
+     is used for nothing but a class name. `GUIDED-207` filed the shape where a
+     payload NAMES what an interface must construct: the interface then holds
+     the rule, the two drift, and the copy a user reads is the untested one.
+
+     It does not cut a list. `GUIDED-209`: the server sends `n` and `showing`
+     and they are equal, and both are printed, so a later loop that starts
+     truncating has to move a number somebody can see.
+
+     It does not compose a refusal. A lens that is not genomics gets no box at
+     all rather than an empty one, and a matrix the reader could not classify
+     gets the SERVER's sentence about why — *"the app is not going to name the
+     nearest one"* — which is an answer and not a missing feature. */
+
+  function genomicsRowsHTML(card){
+    var h = "";
+
+    var ev = card.evidence || { rows: [], n: 0, showing: 0 };
+    h += '<div class="gx-head">Why we read it that way ' +
+         capSaid("genomics-evidence", ev.showing, ev.n, "readings") + "</div>";
+    h += '<table class="mini"><tbody>';
+    (ev.rows || []).forEach(function(r){
+      h += "<tr><td>" + esc(r.label) + '</td><td class="mono">' +
+           esc(r.value) + "</td><td>" + esc(r.statement) + "</td></tr>";
+    });
+    h += "</tbody></table>";
+
+    var caps = card.capabilities || { rows: [], n: 0, showing: 0 };
+    h += '<div class="gx-head">What that opens and closes ' +
+         capSaid("genomics-capabilities", caps.showing, caps.n, "steps") +
+         "</div>";
+    h += '<p class="prev-why">' + esc(card.scope_note || "") + "</p>";
+    h += '<table class="mini"><tbody>';
+    (caps.rows || []).forEach(function(r){
+      h += '<tr data-cap-key="' + esc(r.key) + '" data-cap-state="' +
+           esc(r.state) + '"><td>' + esc(r.label) + "</td>" +
+           '<td><span class="chip gx-' + esc(r.state) + '">' +
+           esc(r.state_label) + "</span></td><td>" + esc(r.because) +
+           evidenceBadge({ evidence_status: r.evidence_status,
+                           evidence_source: r.source }) + "</td></tr>";
+    });
+    return h + "</tbody></table>";
+  }
+
+  function genomicsCardHTML(card){
+    if (!card.read){
+      /* A MATRIX THAT MATCHED NOTHING IS AN ANSWER, and the server's sentence
+         for it is the one that says the app will not name the nearest shape.
+         Rendering silence here would make a considered refusal look like a
+         surface that failed to load. */
+      return '<div class="refused-card"><p class="r-reason">' +
+             esc(card.reason || "") +
+             evidenceBadge({ evidence_status: card.evidence_status,
+                             evidence_source: card.source }) + "</p></div>";
+    }
+    var c = card.classification || {};
+    var h = '<div class="answered-card" id="gxCard">';
+    h += '<p class="prev-lab">What your numbers are: <b>' + esc(c.label) +
+         "</b>" + evidenceBadge({ evidence_status: card.evidence_status,
+                                  evidence_source: card.source }) + "</p>";
+    h += '<p class="gx-conf" data-confidence="' + esc(c.confidence) + '">' +
+         esc(c.confidence) + " confidence — " + esc(c.confidence_because) +
+         "</p>";
+    h += '<p class="prev-why">' + esc(c.coaching) + "</p>";
+    if (c.question){
+      /* THE ASK IS A SENTENCE, NOT A CONTROL, and that is the honest form of
+         it: §02 says to ask which tool produced the matrix, and nothing in this
+         app can act on the answer yet. A dropdown that recorded nothing would
+         be a capability asserted by its affordance. */
+      h += '<p class="gx-ask">' + esc(c.question) + "</p>";
+    }
+    h += genomicsRowsHTML(card);
+    var block = card.block || {};
+    if (block.n_excluded){
+      h += '<p class="gx-note">' + esc(block.excluded.join(", ")) +
+           (block.n_excluded === 1 ? " was" : " were") +
+           " read as a covariate beside the matrix rather than as part of it, " +
+           "and left out of the readings above." + "</p>";
+    }
+    return h + "</div>";
+  }
+
+  function renderGenomicsCard(){
+    var box = $("genomicsBox");
+    if (!box || !P) return;
+    var lens = P.lens || [];
+    if (lens.indexOf("genomics") === -1){ box.style.display = "none"; return; }
+    api("/project/" + P.id + "/genomics/data_type")
+      .then(function(card){
+        box.style.display = "";
+        ownChild(box, "gxOut", "gx-out").innerHTML = genomicsCardHTML(card);
+      })
+      .catch(function(){
+        /* A 404 means the table is too narrow to be an expression matrix, which
+           is not an error the user caused and not a sentence worth a banner. */
+        box.style.display = "none";
+      });
   }
 
   /* ═════════ GUIDED-078 · THE DISCLOSURES ═════════

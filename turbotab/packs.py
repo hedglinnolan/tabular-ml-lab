@@ -1219,6 +1219,208 @@ METABOLOMICS_HEDGES: Tuple[Hedge, ...] = (
             "all features through the geometric mean. And with absolute "
             "quantification the data are genuinely absolute.")),
 )
+# ── metabolomics · redundancy · METABOLOMICS_PACK.md §01 ────────────────────
+
+REDUNDANCY_EVIDENCE = Evidence(
+    status=SETTLED,
+    source=("research/METABOLOMICS_PACK.md#Redundancy detection — a real "
+            "differentiator"))
+
+REDUNDANCY_CLAIMS = (
+    Claim("not_independent",
+          "Untargeted features are not independent: one compound produces "
+          "adducts, isotopologues, dimers and in-source fragments, so a "
+          "feature count is not a compound count.",
+          REDUNDANCY_EVIDENCE),
+    # THE THRESHOLDS ARE A CONVENTION AND THE CLAIM SAYS SO. §01 states
+    # `r > 0.9` and `±0.05–0.1 min` without a citation behind either, which is
+    # what a field convention looks like when it is written down. Badging the
+    # arithmetic SETTLED alongside the biology would be the coarse-badge defect
+    # `GUIDED-064` was filed for, in the direction that flatters the app.
+    Claim("cut_points",
+          "The r > 0.9 correlation cut and the ±0.05–0.1 min retention-time "
+          "window are field conventions rather than derived quantities, and a "
+          "different cut gives a different effective count.",
+          Evidence(
+              status=CONVENTION_STATUS,
+              source=("research/METABOLOMICS_PACK.md#Redundancy detection — a "
+                      "real differentiator"))),
+)
+
+#: §01's own number. Signed rather than absolute: two ions of one molecule rise
+#: and fall together, and a strongly ANTI-correlated pair is evidence of two
+#: compounds rather than one.
+_REDUNDANCY_R = 0.9
+
+#: How many samples two features must both be observed in before their
+#: correlation is used. A correlation over eleven overlapping rows crosses 0.9
+#: easily and means nothing, and the features with the fewest observations are
+#: exactly the faint ionization products this reading is about.
+_REDUNDANCY_MIN_OVERLAP = 20
+
+#: How much of the block must collapse before this is worth saying. **The app's
+#: number, not the research's** — §01 gives a method and a consequence and no
+#: reporting threshold. The consequence is a claim in a manuscript's
+#: data-description sentence, and a claim off by two features in four hundred is
+#: not wrong in the way §01 means.
+_REDUNDANCY_MIN_COLLAPSE = 0.05
+
+
+def _correlation_clusters(matrix: np.ndarray,
+                          threshold: float) -> List[List[int]]:
+    """Connected components of the >threshold correlation graph.
+
+    **Single linkage, and the chain is why the largest cluster is reported.**
+    Two features joined through a third are one cluster here even where they do
+    not correlate with each other, which is right for an adduct series — the
+    parent ion links the sodium and potassium adducts that are each faint — and
+    is also how a spuriously-linked pair drags two compounds together. The size
+    of the largest cluster is what makes that visible to a reader instead of
+    disappearing into a total.
+    """
+    n = matrix.shape[0]
+    adjacency = matrix > threshold
+    seen = np.zeros(n, dtype=bool)
+    clusters: List[List[int]] = []
+    for start in range(n):
+        if seen[start]:
+            continue
+        seen[start] = True
+        stack, member = [start], [start]
+        while stack:
+            node = stack.pop()
+            for neighbor in np.nonzero(adjacency[node])[0]:
+                if not seen[neighbor]:
+                    seen[neighbor] = True
+                    stack.append(int(neighbor))
+                    member.append(int(neighbor))
+        clusters.append(sorted(member))
+    return clusters
+
+
+def _redundancy(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """How many compounds the feature count is really counting.
+
+    §01 asks for clustering on near-identical retention time **and** high
+    inter-feature correlation. **Only the second half is built, and the first
+    half is not built rather than approximated.** Neither retention time nor m/z
+    is recoverable from any table this repository can read — `mz_0001` is an
+    ordinal index and there is no RT column anywhere — so the co-elution test has
+    no input. `test_the_redundancy_estimate_reaches_a_person` carries the RT half
+    as a failing test naming what the data would have to supply, which is
+    `GUIDED-119`'s form and is the honest alternative to a fabricated column.
+
+    **The two corrections point opposite ways, and both are reported.**
+    Requiring correlation alone merges *more* than requiring correlation and
+    co-elution would, so supplying a retention time could only split these
+    groups and never merge them — that correction raises the effective count.
+    Pushing the other way: a column observed in fewer than
+    `_REDUNDANCY_MIN_OVERLAP` samples has no computable correlation with
+    anything and is counted here as independent, and measuring it could only
+    lower the count. **So this is not a one-sided bound and the finding does not
+    claim to be one.** The first draft of it did — *"a lower bound"* — which was
+    true of the retention-time half alone and false of the reading as a whole,
+    and it is exactly the kind of tidy sentence `DOMAIN_SCIENCE.md` §01 is about.
+    Both directions are named, with the count of columns in the second.
+
+    Reported, never applied. Collapsing a feature block changes what is
+    analyzed, so it is `offered`.
+    """
+    cols = _numeric(df)
+    # The pack's own assay precondition rather than a second one. Every other
+    # metabolomics detector gates on `_is_assay_wide`, and a redundancy reading
+    # with its own wider floor would be silent on a table the three beside it
+    # spoke about, for a reason nothing records.
+    if not _is_assay_wide(df):
+        return None
+    frame = df[cols]
+    corr = frame.corr(method="pearson",
+                      min_periods=_REDUNDANCY_MIN_OVERLAP).to_numpy(dtype=float)
+    np.fill_diagonal(corr, 0.0)
+    corr = np.nan_to_num(corr, nan=0.0)
+
+    clusters = _correlation_clusters(corr, _REDUNDANCY_R)
+    effective = len(clusters)
+    collapsed = len(cols) - effective
+    if collapsed < max(3, round(_REDUNDANCY_MIN_COLLAPSE * len(cols))):
+        return None
+
+    observed = frame.notna().sum()
+    unmeasurable = int((observed < _REDUNDANCY_MIN_OVERLAP).sum())
+    multi = sorted((c for c in clusters if len(c) > 1), key=len, reverse=True)
+    largest = len(multi[0])
+    factor = len(cols) / max(effective, 1)
+    # A NAMED EXAMPLE, so the number is checkable against the table rather than
+    # only reportable. The largest cluster, because it is also the one a chain
+    # would show up in.
+    example = [cols[i] for i in multi[0]]
+    return _finding(
+        "pack::metabolomics::redundancy", "warning",
+        (f"{len(cols):,} numeric columns, but about {effective:,} "
+         f"independent quantities"),
+        (f"{len(multi):,} groups of columns move together at a Pearson "
+         f"correlation above {_REDUNDANCY_R} — {collapsed:,} of the "
+         f"{len(cols):,} numeric columns sit inside a group with at least one "
+         f"other, and the largest group holds {largest:,}. The biggest is "
+         f"`{'`, `'.join(example[:4])}`"
+         + ("" if largest <= 4 else f" and {largest - 4:,} more") + ". "
+         f"A compound count read off this table's width — {len(cols):,} — "
+         f"overstates it by about {factor:.1f}×.\n\n"
+         f"**Clustered on correlation only, and the two things that leaves out "
+         f"pull opposite ways.** The research clusters on near-identical "
+         f"retention time *and* correlation, and this table carries no "
+         f"retention time; supplying one could only split these groups and "
+         f"never merge them, which would raise the {effective:,}. Against that, "
+         + (f"{unmeasurable:,} column"
+            f"{'s are' if unmeasurable != 1 else ' is'} observed in fewer than "
+            f"{_REDUNDANCY_MIN_OVERLAP} samples, so no correlation could be "
+            f"computed for "
+            f"{'them' if unmeasurable != 1 else 'it'} and "
+            f"{'they are' if unmeasurable != 1 else 'it is'} counted here as "
+            f"independent — measuring "
+            f"{'them' if unmeasurable != 1 else 'it'} could only lower it."
+            if unmeasurable else
+            "every column here is observed often enough for its correlations "
+            "to be computed, so nothing is counted as independent merely for "
+            "want of overlap.")),
+        ("Untargeted features are not independent. One compound leaves the "
+         "source as several ions — `[M+H]+`, `[M+Na]+`, `[M+K]+`, `[M+NH4]+` — "
+         "and shows up again as its carbon-13 isotopologue, its dimer and its "
+         "in-source fragments, all rising and falling together because they are "
+         "the same molecules. Two numbers depend on which count you use: the "
+         "one in the manuscript's data-description sentence, and the "
+         "denominator of the multiple-testing correction. Nothing is collapsed "
+         "here — merging features changes what is analyzed, and which member of "
+         "a group represents the compound is a decision about the chemistry."),
+        confidence="high", pack=METABOLOMICS, marker="offered",
+        evidence=REDUNDANCY_EVIDENCE, claims=REDUNDANCY_CLAIMS,
+        columns=example[:8],
+        params={
+            "n_columns": len(cols),
+            "effective_features": effective,
+            # NOT "lower bound". Two corrections and they point opposite ways,
+            # so a single direction word here would be the machine-readable form
+            # asserting more than the sentence beside it — `GUIDED-064`'s class
+            # in the direction that flatters the app.
+            "co_elution_would": "split groups, never merge them",
+            "n_columns_below_min_overlap": unmeasurable,
+            "n_collapsed": collapsed,
+            "n_groups": len(multi),
+            "largest_group": largest,
+            "overstatement_factor": round(factor, 2),
+            "r_threshold": _REDUNDANCY_R,
+            "min_overlapping_samples": _REDUNDANCY_MIN_OVERLAP,
+            "clustered_on": ["inter-feature correlation"],
+            "not_clustered_on": ["retention time"],
+            "retention_time_column": None,
+            "largest_group_columns": example,
+            "largest_group_columns_shown": min(4, largest),
+            "largest_group_columns_total": largest,
+            "groups": [[cols[i] for i in c] for c in multi],
+            "groups_shown": len(multi),
+            "groups_total": len(multi),
+        },
+        fix_label="", fix_kind="none")
 
 
 # ── dietary ──────────────────────────────────────────────────────────────────
@@ -1777,6 +1979,1515 @@ def _counts_at_p_over_n(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
                 "model_prior": "regularized_first"})
 
 
+# ── genomics · what your numbers are (§02) ──────────────────────────────────
+#
+# §02 is titled *"the highest-leverage diagnostic in the pack"* and says why:
+# **it determines what is legal downstream, and getting it wrong is the
+# commonest real failure.** Nine signatures, one hard rule, and five branches of
+# coaching that each close or open a route.
+#
+# ## THE ORIENTATION THAT DECIDES EVERY STATISTIC
+#
+# §01 is explicit that the field convention is **genes in rows, samples in
+# columns** — the transpose of what the rest of this app assumes. This app's
+# tables are **samples in rows** (`turbotab/orientation.py` is the question that
+# establishes it), so §02's *"per column"* is **per sample** here and a row sum
+# is a **library size**. Get that backwards and every statistic below is
+# transposed: the CPM test would ask whether every gene sums to 1e6, which is
+# true of nothing.
+#
+# ## WHICH COLUMNS ARE THE MATRIX
+#
+# An expression export arrives with covariates beside it — `age` sits in every
+# genomics fixture in this tree — and a covariate inside the block moves exactly
+# one family of statistics: the **extremes**. A row sum barely notices one column
+# in 496 and a global maximum is decided by it, which is the difference between
+# reading `genomics_vst.csv` as topping out at 14.2 (VST) and at 79 (nothing in
+# the table). So `expression_block` drops a column that is BOTH all-integer AND
+# wholly outside the range the continuous majority occupies — measured, this
+# drops `age` from the VST and microarray matrices and **nothing at all** from
+# the other six, because on those `age` sits inside the range and changes no
+# reading. On an all-integer matrix there is no continuous majority to be outside
+# of, nothing is dropped, and that is correct: raw counts are integers too.
+#
+# It is a shape rule and not a name rule (guard #2), and the columns it dropped
+# are named on the card so a reader can disagree with it.
+
+DATA_TYPE_EVIDENCE = Evidence(
+    # CONVENTION rather than SETTLED, and the distinction is the badge doing its
+    # job. §02's table is a **reading convention** — the bands, the "≫1e4", the
+    # "roughly but not exactly equal" — and the thresholds under it are this
+    # module's, measured on the fixtures. What IS settled is the hard rule and
+    # each branch of the coaching, and those travel as their own claims below.
+    status=CONVENTION_STATUS,
+    source=("research/GENOMICS_PACK.md#02 · Data-type detection — the "
+            "highest-leverage diagnostic in the pack"))
+
+# THE ONE LINE §02 STATES AS A RULE. Quoted rather than paraphrased: *"any
+# negative value rules out raw counts, CPM, TPM and FPKM."* It is asserted as a
+# rule and not as a heuristic, which means it runs FIRST and no later branch may
+# reach past it.
+NEGATIVES_RULE_EVIDENCE = Evidence(
+    status=SETTLED,
+    source=("research/GENOMICS_PACK.md#02 · Data-type detection — the "
+            "highest-leverage diagnostic in the pack"))
+
+# §00: *"Formally undecidable from the matrix alone. Both rescale each sample to
+# exactly 1e6; TPM divides by effective length BEFORE the rescale, which erases
+# the trace. No column-sum, distributional or skew test separates them."*
+UNDECIDABLE_EVIDENCE = Evidence(
+    status=SETTLED,
+    source="research/GENOMICS_PACK.md#00 · The non-defaultable set")
+
+NORMALIZATION_EVIDENCE = Evidence(
+    status=SETTLED,
+    source="research/GENOMICS_PACK.md#04 · Normalization — no default asserted")
+
+FIGURE_INPUT_EVIDENCE = Evidence(
+    status=SETTLED,
+    source="research/GENOMICS_PACK.md#07 · EDA and presentation — the priority")
+
+ID_VOCABULARY_EVIDENCE = Evidence(
+    status=CONVENTION_STATUS,
+    source="research/GENOMICS_PACK.md#01 · Import and structure")
+
+# ── the nine signatures §02's table names ────────────────────────────────────
+
+RAW_COUNTS = "raw_counts"
+ESTIMATED_COUNTS = "estimated_counts"
+CPM_OR_TPM = "cpm_or_tpm"
+TMM_SCALED_CPM = "tmm_scaled_cpm"
+FPKM = "fpkm"
+VST = "vst"
+RLOG = "rlog"
+MICROARRAY = "microarray"
+LOG_RATIO = "log_ratio"
+
+#: In §02's own order, so a reader can put the table beside this list.
+SIGNATURES: Tuple[str, ...] = (RAW_COUNTS, ESTIMATED_COUNTS, CPM_OR_TPM,
+                               TMM_SCALED_CPM, FPKM, VST, RLOG, MICROARRAY,
+                               LOG_RATIO)
+
+SIGNATURE_NAMES: Dict[str, str] = {
+    RAW_COUNTS: "raw counts",
+    ESTIMATED_COUNTS: "estimated counts",
+    CPM_OR_TPM: "CPM or TPM",
+    TMM_SCALED_CPM: "TMM- or median-of-ratios-scaled CPM",
+    FPKM: "FPKM/RPKM",
+    VST: "variance-stabilized values (VST)",
+    RLOG: "regularized-log values (rlog)",
+    MICROARRAY: "microarray log2 intensity (RMA)",
+    LOG_RATIO: "already log-ratio, z-scored or batch-corrected",
+}
+
+# ── the thresholds, each measured on the shipped fixtures ───────────────────
+#
+# Every one of these is written down with what it was measured against, for the
+# reason `orientation.py` records: a threshold chosen against a constructed
+# signal is a threshold nobody has seen fail.
+
+#: The library-size total CPM and TPM rescale to. §02 row 3.
+_LIBRARY_TOTAL = 1e6
+
+#: §02 row 3's *"±1e-3"*, read as RELATIVE. `genomics_cpm.csv`'s widest row-sum
+#: deviation is 79 in 1e6 — 7.9e-5, which is the `age` column and nothing else —
+#: so the fixture clears this by more than an order of magnitude.
+_LIBRARY_EXACT = 1e-3
+
+#: §02 row 4's *"roughly but not exactly equal near 1e6"*. Measured:
+#: `genomics_tmm_cpm.csv`'s loudest row is 1.140 of the total and its quietest
+#: 0.854, so the widest TMM deviation is 0.140; `genomics_fpkm.csv`'s QUIETEST
+#: deviation is 0.339 (its row sums run 0.355–0.661 of 1e6). A quarter sits
+#: 1.8× above the loudest thing that must pass and 1.4× below the quietest thing
+#: that must not.
+_LIBRARY_NEAR = 0.25
+
+#: §02 rows 1 and 2, *"max ≫1e4"*. `genomics_expression.csv` maxes at 26,471.
+_COUNT_SCALE = 1e4
+
+#: §02 rows 6 and 7, *"max ~15–25"*. `genomics_vst.csv` maxes at 14.2 and
+#: `genomics_microarray.csv` at 15.8, so the ceiling is above both by design —
+#: it is the top of the band §02 names, not a fitted bound.
+_STABILIZED_CEILING = 25.0
+
+#: §02 row 6's *"repeated floor"*, as a share of cells sitting on the minimum.
+#: Measured: `genomics_vst.csv` puts 15.3% of its cells on 2.0 (every zero
+#: count), `genomics_microarray.csv` 0.017% (five cells that hit the clip). Two
+#: percent is 7.7× below the first and 118× above the second — and the two ARE
+#: the pair this separates, because both are continuous, both top out near 15,
+#: and both have a minimum of exactly 2.0.
+_FLOOR_SHARE = 0.02
+
+#: §02 row 7, rlog's *"small negatives permitted"*, read literally: how far
+#: below zero the floor may sit as a fraction of the ceiling. rlog is a
+#: log-expression scale whose zeros are shrunk to a small negative floor, so its
+#: negatives are a rounding error against its range; row 9's matrix is centred
+#: on zero, so its negatives are half of it.
+#:
+#: **NO SHIPPED FIXTURE IS RLOG AND THIS SAYS SO.** The separator is checked
+#: against a constructed frame in
+#: `test_the_genomics_data_type_card_reaches_a_person.py` and against
+#: `wide_assay.csv` on the other side, where the ratio is 0.98 — two orders of
+#: magnitude clear of this — so the value is a statement of the shape rather
+#: than a boundary fitted between two examples.
+_RLOG_NEGATIVE_SHARE = 0.1
+
+#: Row 9's *"symmetric around 0"*, as the distance the median may sit from it.
+_CENTRED_MEDIAN = 0.5
+
+#: The two library-size spreads the estimated-counts/FPKM split is measured
+#: against, named rather than folded into one midpoint so a reader can see how
+#: far apart they actually are. §02 separates those two rows by max and skew and
+#: those overlap; this is what does not. Measured over the block this module
+#: reads, on `genomics_estimated_counts.csv` and `genomics_fpkm.csv`.
+_ESTIMATED_COUNTS_CV = 0.271
+_FPKM_CV = 0.114
+
+#: How much of the block must carry a probe-style ID before §02 row 8's second
+#: half is satisfied. `genomics_microarray.csv` renames every column, so this is
+#: a floor and not a tuned value.
+_PROBE_SHARE = 0.5
+
+#: The ID vocabularies §01 lists, in its own order. Read for ONE purpose here —
+#: telling an array probe from a gene — and deliberately not used to guess
+#: orientation, which is `orientation.py`'s question and is asked, never
+#: inferred.
+_ID_PATTERNS: Tuple[Tuple[str, str], ...] = (
+    ("ensembl_gene", r"^ENS[A-Z]{0,4}G\d{11}(\.\d+)?$"),
+    ("ensembl_transcript", r"^ENS[A-Z]{0,4}T\d{11}(\.\d+)?$"),
+    ("refseq", r"^[NX][MR]_\d+"),
+    ("affymetrix", r"^\d+(_[a-z]+)?_at$"),
+    ("illumina", r"^ILMN_\d+$"),
+    ("agilent", r"^A_\d+_P\d+$"),
+)
+
+#: Which of those are array PROBES rather than gene or transcript identifiers.
+#: §02 row 8's *"probe-style IDs"* is the second half of the microarray
+#: signature, and an Ensembl id would satisfy the first half of it wrongly.
+_PROBE_VOCABULARIES = frozenset({"affymetrix", "illumina", "agilent"})
+
+
+def id_vocabulary(columns: Sequence[str]) -> Dict[str, Any]:
+    """Which identifier vocabulary these column labels are drawn from.
+
+    §01's detection cascade, step 1, used for the one question §02 asks of it.
+    Returns the share of labels matching each vocabulary rather than a verdict,
+    because a mixed vocabulary is itself a §01 finding and a function that
+    returned one name could not say so.
+    """
+    labels = [str(c) for c in columns]
+    hits: Dict[str, int] = {}
+    for name, pattern in _ID_PATTERNS:
+        n = sum(1 for label in labels if re.match(pattern, label))
+        if n:
+            hits[name] = n
+    total = max(len(labels), 1)
+    probe = sum(n for name, n in hits.items() if name in _PROBE_VOCABULARIES)
+    return {"matched": {k: round(v / total, 4) for k, v in hits.items()},
+            "probe_share": round(probe / total, 4),
+            "n_labels": len(labels)}
+
+
+def _integral_column(series: pd.Series) -> bool:
+    values = series.dropna().to_numpy(dtype=float, na_value=np.nan)
+    if values.size == 0:
+        return False
+    try:
+        return bool(np.all(np.equal(np.mod(values, 1), 0)))
+    except (TypeError, ValueError):                            # pragma: no cover
+        return False
+
+
+def expression_block(df: pd.DataFrame,
+                     minimum: int = 30) -> Optional[Dict[str, Any]]:
+    """The columns that are the expression matrix, and the ones that are not.
+
+    See the section comment above for why this exists and what it may drop. Two
+    properties worth stating rather than leaving to be discovered:
+
+    * **It drops nothing from an all-integer table.** Raw counts are integers,
+      so there is no continuous majority for a covariate to sit outside of, and
+      the honest answer is to keep everything and say so.
+    * **It never drops more than it can name.** `excluded` is the whole list,
+      uncut (`GUIDED-209`), because the card shows it and a reader who thinks
+      the app dropped a gene needs to be able to check.
+    """
+    cols = _numeric(df)
+    if len(cols) < minimum or df.empty:
+        return None
+    integral = [c for c in cols if _integral_column(df[c])]
+    continuous = [c for c in cols if c not in integral]
+    excluded: List[str] = []
+    if continuous:
+        rest = df[continuous].to_numpy(dtype=float)
+        lo, hi = float(np.nanmin(rest)), float(np.nanmax(rest))
+        for c in integral:
+            values = df[c].dropna().to_numpy(dtype=float)
+            if values.size and (float(values.min()) > hi
+                                or float(values.max()) < lo):
+                excluded.append(str(c))
+    kept = [str(c) for c in cols if str(c) not in set(excluded)]
+    if len(kept) < minimum:
+        return None
+    return {"columns": kept, "excluded": excluded,
+            "n_columns": len(kept), "n_excluded": len(excluded),
+            "n_samples": int(len(df))}
+
+
+def read_matrix(df: pd.DataFrame,
+                minimum: int = 30) -> Optional[Dict[str, Any]]:
+    """§02's statistics, on this app's orientation.
+
+    *"Per column: sum, min, max, median, % zeros, % integer. Per matrix: global
+    max, negatives present."* — read **per sample**, because this app's rows are
+    samples and §02's are genes. A row sum here is a library size.
+
+    ## THE % INTEGER TRAP, DECIDED RATHER THAN LEFT AMBIGUOUS
+
+    Computed over ALL cells, *% integer* reads about 15% on the CPM, FPKM and
+    VST matrices — **because a zero is an integer**, and those matrices are 15%
+    zeros. That number describes the zero fraction and nothing else. So two are
+    reported and they answer different questions:
+
+    * `pct_integer` — over the **non-zero** cells, which is what *"are these
+      integers"* means once the zeros are set aside, and what the card shows;
+    * `all_integral` — whether **every** cell is a whole number, which is what
+      §02 row 1 actually requires and what the classifier gates on.
+
+    `pct_integer_all` is carried too, and only so the card can show why the
+    naive reading is misleading.
+    """
+    block = expression_block(df, minimum=minimum)
+    if block is None:
+        return None
+    cols = block["columns"]
+    values = df[cols].to_numpy(dtype=float)
+    if values.size == 0:                                       # pragma: no cover
+        return None
+    finite = np.isfinite(values)
+    if not finite.any():                                       # pragma: no cover
+        return None
+    per_sample_sum = np.nansum(values, axis=1)
+    lo = float(np.nanmin(values))
+    hi = float(np.nanmax(values))
+    nonzero = values[finite & (values != 0)]
+    whole = np.equal(np.mod(values[finite], 1), 0)
+    floor_cells = int(np.sum(values[finite] == lo))
+    with np.errstate(all="ignore"):
+        deviation = np.abs(per_sample_sum - _LIBRARY_TOTAL) / _LIBRARY_TOTAL
+    return {
+        **block,
+        # PER SAMPLE — §02's "per column", transposed to this app's rows.
+        "library_size": {
+            "min": float(per_sample_sum.min()),
+            "max": float(per_sample_sum.max()),
+            "median": float(np.median(per_sample_sum)),
+            "cv": float(per_sample_sum.std(ddof=1) / per_sample_sum.mean())
+            if len(per_sample_sum) > 1 and per_sample_sum.mean() else 0.0,
+        },
+        "sample_median": {"min": float(np.nanmedian(values, axis=1).min()),
+                          "max": float(np.nanmedian(values, axis=1).max())},
+        # PER MATRIX.
+        "min": lo,
+        "max": hi,
+        "median": float(np.nanmedian(values)),
+        "negatives": bool(lo < 0),
+        "pct_zeros": float(np.mean(values[finite] == 0)),
+        "pct_integer": float(np.mean(np.equal(np.mod(nonzero, 1), 0)))
+        if nonzero.size else 0.0,
+        "pct_integer_all": float(np.mean(whole)),
+        "all_integral": bool(np.all(whole)),
+        "floor_share": float(floor_cells / max(int(finite.sum()), 1)),
+        "library_deviation": {"min": float(deviation.min()),
+                              "max": float(deviation.max())},
+        "ids": id_vocabulary(cols),
+    }
+
+
+def _classify(m: Dict[str, Any]) -> Dict[str, Any]:
+    """§02's table, in §02's order, with the hard rule first.
+
+    Returns the signature keys the reading supports — **more than one where the
+    matrix genuinely cannot separate them**, which is two of the nine rows and
+    is the whole reason this returns a list. Never an empty list and never a
+    guess: an unreadable matrix comes back as `keys: []` with `read: False` one
+    level up, because *"the app may be silent"* is an available answer and
+    *"probably CPM"* is not.
+    """
+    keys: List[str] = []
+    # ── THE HARD RULE, FIRST AND UNCONDITIONALLY (SETTLED) ──────────────────
+    # *"Any negative value rules out raw counts, CPM, TPM and FPKM."* Written as
+    # the outermost branch rather than as a filter applied afterwards, so no
+    # later test can reach past it — a `sums to 1e6` test on a mean-centred
+    # matrix would otherwise be free to fire.
+    if m["negatives"]:
+        if (m["max"] <= _STABILIZED_CEILING
+                and m["floor_share"] >= _FLOOR_SHARE
+                and m["max"] > 0
+                and abs(m["min"]) <= _RLOG_NEGATIVE_SHARE * m["max"]):
+            keys = [RLOG]
+        elif abs(m["median"]) <= _CENTRED_MEDIAN:
+            keys = [LOG_RATIO]
+        return {"keys": keys, "ruled_out": [RAW_COUNTS, CPM_OR_TPM, FPKM]}
+
+    within = m["library_deviation"]["max"]
+    stabilized = (m["max"] <= _STABILIZED_CEILING and m["pct_zeros"] == 0.0)
+    if m["all_integral"] and m["max"] > _COUNT_SCALE:
+        keys = [RAW_COUNTS]
+    elif within <= _LIBRARY_EXACT:
+        # §00: formally undecidable. TWO NAMES, and the app does not choose.
+        keys = [CPM_OR_TPM]
+    elif within <= _LIBRARY_NEAR:
+        keys = [TMM_SCALED_CPM]
+    elif stabilized and m["floor_share"] >= _FLOOR_SHARE:
+        keys = [VST]
+    elif stabilized and m["ids"]["probe_share"] >= _PROBE_SHARE:
+        keys = [MICROARRAY]
+    elif (not m["all_integral"] and m["max"] > _COUNT_SCALE
+          and m["pct_zeros"] > 0):
+        # WHY THE ZERO CLAUSE, WHICH §02 DOES NOT ASK FOR. Without it this
+        # branch fires on `metabolomics_untargeted.csv` under a genomics lens
+        # and calls 395 LC-MS peak areas *"estimated counts or FPKM"*. Both of
+        # those rows are derived FROM counts — a zero count is a zero TPM and a
+        # zero FPKM — and §02 row 1 puts 20–60% zeros on the matrix they come
+        # from, so a transcript quantification with no zero anywhere in it is
+        # not one. Measured: all five count-family fixtures here are 15.3%
+        # zeros and the metabolomics panel is 0.0%.
+        #
+        # The weakest possible form — ANY zero, not a band — because the band
+        # would be a threshold this pack invented, and the direction to be wrong
+        # in is silence on a real matrix rather than a confident sentence about
+        # somebody else's assay.
+        #
+        # §02 SEPARATES THESE TWO ROWS BY MAX AND SKEW, AND THEY OVERLAP.
+        # Measured on the two fixtures that carry them, the separator that does
+        # work is the library-size spread: `genomics_estimated_counts.csv` keeps
+        # the raw matrix's coefficient of variation because nothing normalized
+        # it, and `genomics_fpkm.csv` sits at less than half of that because
+        # FPKM divided the library size out. §02 says **ask** for this row, so
+        # both names come back, ORDERED by that spread, and the card asks.
+        estimated_first = m["library_size"]["cv"] >= (
+            _ESTIMATED_COUNTS_CV + _FPKM_CV) / 2
+        keys = ([ESTIMATED_COUNTS, FPKM] if estimated_first
+                else [FPKM, ESTIMATED_COUNTS])
+    return {"keys": keys, "ruled_out": []}
+
+
+# ── the branched coaching (§02), quoted where §02 quotes ────────────────────
+
+COACHING_EVIDENCE = Evidence(
+    status=SETTLED,
+    source=("research/GENOMICS_PACK.md#02 · Data-type detection — the "
+            "highest-leverage diagnostic in the pack"))
+
+# The normalization CHOICE, as against the fact that one is needed. Carried at
+# DISPUTED with both positions, and it is the same disagreement the pack's
+# `normalization` prior already declines to resolve — one text, so the card and
+# the prior cannot drift.
+NORMALIZATION_CHOICE_EVIDENCE = Evidence(
+    status=DISPUTED,
+    source="research/GENOMICS_PACK.md#04 · Normalization — no default asserted",
+    both_sides=(
+        "CPM, TPM and VST are not interchangeable and the choice depends on "
+        "the assay and the question. The research asserts no default and "
+        "neither does this pack; the disagreement is the finding, and "
+        "declining is recorded rather than absent."))
+
+COACHING: Dict[str, str] = {
+    RAW_COUNTS: (
+        "Raw counts are the one input that lets a count model estimate "
+        "measurement precision. DESeq2: \"only the count values allow "
+        "assessing the measurement precision correctly\", and it \"internally "
+        "corrects for library size, so transformed or normalized values should "
+        "not be used as input\". Do not pre-normalize these."),
+    ESTIMATED_COUNTS: (
+        "Estimated counts come out of salmon, kallisto or RSEM, and the "
+        "fractions are real: a read that maps to several transcripts is split "
+        "between them. They are not raw counts and they are not normalized "
+        "values, and those two have opposite downstream treatment — which is "
+        "why the research says to ask rather than to infer."),
+    CPM_OR_TPM: (
+        "These are already per-sample-normalized, which closes off the "
+        "negative-binomial route because count-level variance has been "
+        "destroyed. Either recover the raw counts, which is strongly "
+        "preferred, or use a limma-style Gaussian workflow on log2(x + "
+        "offset). Feeding these to a count model runs silently and its "
+        "p-values are wrong."),
+    TMM_SCALED_CPM: (
+        "The scaling here corrects library composition and not only depth, "
+        "which is what CPM, TPM and FPKM do not do: if a few genes take most "
+        "of the reads in one sample, every other gene's value in that sample "
+        "is deflated. In the comparison the research cites, TMM and "
+        "median-of-ratios controlled the false-positive rate where total-count "
+        "and RPKM normalization did not. They are still normalized values, so "
+        "the count-model route is closed."),
+    FPKM: (
+        "FPKM and RPKM are not comparable across samples even in principle. "
+        "Wagner, Kim and Lynch (Theory Biosci 131:281, 2012) showed RPKM/FPKM "
+        "violates the invariance a relative-molar-concentration measure has to "
+        "satisfy, and Dillies and colleagues (Brief Bioinform 14:671, 2013) "
+        "found total-count and RPKM normalization did not control the "
+        "false-positive rate where TMM and median-of-ratios did. They are also "
+        "already per-sample-normalized, so the count-model route is closed."),
+    VST: (
+        "Variance-stabilized values are for visualization, clustering and PCA. "
+        "They are never the input to a differential-expression test — a test "
+        "on them is typically anticonservative, which means it reports more "
+        "than it has found."),
+    RLOG: (
+        "Regularized-log values are for visualization, clustering and PCA. "
+        "They are never the input to a differential-expression test — a test "
+        "on them is typically anticonservative, which means it reports more "
+        "than it has found."),
+    MICROARRAY: (
+        "This is a hybridization intensity rather than a count, and the whole "
+        "count toolchain does not apply to it — no library size, no dispersion "
+        "estimate, no negative binomial. limma is the tool built for this "
+        "assay."),
+    LOG_RATIO: (
+        "There are negative values in this matrix, which rules out raw counts, "
+        "CPM, TPM and FPKM — that is a rule rather than a reading. What is "
+        "left is a matrix that has already been put on a relative scale: a "
+        "log-ratio against a reference, a z-score within each gene, or a "
+        "batch-corrected residual. Which of those it is decides what a "
+        "comparison across samples means, and the numbers do not say."),
+}
+
+#: How firmly the reading holds, per signature, and why — composed here rather
+#: than on the page, because a confidence a reader cannot interrogate is a
+#: number with no argument behind it.
+CONFIDENCE: Dict[str, Tuple[str, str]] = {
+    RAW_COUNTS: ("high", "Every value is a whole number and the matrix reaches "
+                         "well past ten thousand. Nothing else in the table "
+                         "reads that way."),
+    ESTIMATED_COUNTS: ("medium", "Two signatures fit these numbers and the "
+                                 "research says to ask rather than to choose "
+                                 "between them."),
+    CPM_OR_TPM: ("high", "Every sample sums to one million, which is a "
+                         "construction rather than a coincidence. Which of the "
+                         "two it is cannot be recovered from the matrix at "
+                         "all."),
+    TMM_SCALED_CPM: ("high", "Every sample sums to near one million and none "
+                             "of them sums to exactly one million, which is "
+                             "what a composition-aware rescaling leaves "
+                             "behind."),
+    FPKM: ("medium", "Two signatures fit these numbers and the research says "
+                     "to ask rather than to choose between them."),
+    VST: ("high", "Continuous values with a ceiling in the teens and a floor "
+                  "that a large share of the matrix sits exactly on — the "
+                  "floor is every zero count, mapped to one value."),
+    RLOG: ("medium", "The shape fits, and no shipped example of this "
+                     "transform exists to check the reading against — so it "
+                     "is offered as the likeliest rather than asserted."),
+    MICROARRAY: ("high", "Continuous values inside the intensity band, no "
+                         "zeros anywhere, and the column labels are array "
+                         "probe identifiers rather than gene identifiers."),
+    LOG_RATIO: ("high", "There are negative values, which is a rule and not a "
+                        "reading, and the matrix is centred on zero."),
+}
+
+# ── the capability matrix — §02's *"single most valuable artifact"* ──────────
+#
+# *"A capability matrix showing which downstream steps are now enabled,
+# disabled, or require input."*
+#
+# ## `GUIDED-207` IS THE DESIGN CONSTRAINT AND IT IS WORTH SAYING WHY
+#
+# The natural shape for this is `{"count_model": "disabled", "because":
+# "normalized"}` — a KEY standing for a sentence somebody else has to write.
+# That is `GUIDED-207` exactly: a field that NAMES what an interface must
+# construct rather than DESCRIBING it, filed as trap #1 at field granularity.
+# The interface would then hold a copy of the rule, the two would drift, and the
+# one the user reads is the one nothing tests.
+#
+# **So the server composes the sentence and the page renders it.** Every row
+# carries `because` in full, its own badge, and `state_label` — so even the
+# three-way state does not have to be translated by a reader. `state` is left in
+# the payload for styling and for the record, and nothing needs it to build the
+# row.
+#
+# ## AND WHAT THESE ROWS ARE ABOUT
+#
+# TurboTab fits no count model and runs no differential-expression test. These
+# rows are about **the data** and hold wherever it is taken next; `scope_note`
+# says so on the card, because a matrix of capabilities beside an app that has
+# none of them would read as a list of buttons.
+
+ENABLED = "enabled"
+DISABLED = "disabled"
+REQUIRES_INPUT = "requires_input"
+
+STATE_LABELS: Dict[str, str] = {
+    ENABLED: "Open to you",
+    DISABLED: "Ruled out",
+    REQUIRES_INPUT: "Needs an answer first",
+}
+
+CAPABILITY_LABELS: Dict[str, str] = {
+    "count_model": "A count model of differential expression (DESeq2, edgeR)",
+    "gaussian_workflow": "A Gaussian workflow on log values (limma)",
+    "per_sample_normalization": "Scaling each sample to a common library size",
+    "log_transform": "A log transform before modeling",
+    "pca_and_clustering":
+        "PCA, clustering and the sample-to-sample correlation heatmap",
+    "cross_sample_comparison": "Comparing one gene's values across samples",
+}
+
+#: The order the rows are served in, hardest-first: what the classification
+#: CLOSES comes before what it leaves open.
+CAPABILITIES: Tuple[str, ...] = (
+    "count_model", "gaussian_workflow", "per_sample_normalization",
+    "log_transform", "pca_and_clustering", "cross_sample_comparison")
+
+_SCOPE_NOTE = (
+    "These rows are about your data, not about this app: TurboTab fits no "
+    "count model and runs no differential-expression test. They say what this "
+    "matrix will and will not support, wherever you take it next.")
+
+
+def _count_family(estimated: bool) -> Dict[str, Tuple[str, str, Evidence]]:
+    """Raw and estimated counts. One function because they differ in one row."""
+    return {
+        "count_model": (
+            (REQUIRES_INPUT,
+             "These are estimated counts, and whether a count model may take "
+             "them depends on the tool that produced them and on how they were "
+             "imported — rounding them and whether an offset for effective "
+             "length is carried across are both decisions, and the matrix "
+             "records neither. Estimated counts and normalized values are both "
+             "non-integer and their downstream treatment is opposite, which is "
+             "why this is asked.",
+             COACHING_EVIDENCE)
+            if estimated else
+            (ENABLED,
+             "This is the one input that lets a count model estimate "
+             "measurement precision — DESeq2: \"only the count values allow "
+             "assessing the measurement precision correctly\". It corrects for "
+             "library size internally, so do not hand it normalized values.",
+             COACHING_EVIDENCE)),
+        "gaussian_workflow": (
+            ENABLED,
+            "Counts can enter a Gaussian workflow through a mean-variance "
+            "weighting, which is the standard route where a count model is not "
+            "wanted. It is a second route rather than a better one.",
+            COACHING_EVIDENCE),
+        "per_sample_normalization": (
+            REQUIRES_INPUT,
+            "Total depth varies across the samples in this table, so a "
+            "correction is needed — but no default is asserted for which. TMM "
+            "and median-of-ratios correct library composition as well as depth "
+            "and are near-interchangeable; CPM, TPM and FPKM correct depth "
+            "only and are not substitutes for them. Which is right depends on "
+            "the assay and on what you are asking.",
+            NORMALIZATION_CHOICE_EVIDENCE),
+        "log_transform": (
+            REQUIRES_INPUT,
+            "A log here is one option among several rather than something the "
+            "app can derive. Concentrations are log-normal by construction, "
+            "which is why a log is automatic elsewhere in this app; counts are "
+            "not concentrations and that argument does not transfer.",
+            NORMALIZATION_EVIDENCE),
+        "pca_and_clustering": (
+            REQUIRES_INPUT,
+            "A sample PCA is computed on variance-stabilized values and never "
+            "on raw counts — on counts the first component becomes a "
+            "library-size artifact. Which stabilizing transform to use is the "
+            "open question here, not whether to use one.",
+            FIGURE_INPUT_EVIDENCE),
+        "cross_sample_comparison": (
+            REQUIRES_INPUT,
+            "Not until the library sizes are corrected. Total depth varies "
+            "across these samples, so an uncorrected comparison reads depth as "
+            "expression.",
+            NORMALIZATION_EVIDENCE),
+    }
+
+
+def _depth_normalized(cross: Tuple[str, str, Evidence]
+                      ) -> Dict[str, Tuple[str, str, Evidence]]:
+    """CPM/TPM, TMM-scaled CPM and FPKM. They differ only on the last row, and
+    that row is where the research is sharpest."""
+    return {
+        "count_model": (
+            DISABLED,
+            "These values are already per-sample-normalized, which destroys "
+            "count-level variance and closes off the negative-binomial route. "
+            "Feeding them to a count model runs silently and its p-values are "
+            "wrong — nothing errors, and the numbers that come out look "
+            "ordinary.",
+            COACHING_EVIDENCE),
+        "gaussian_workflow": (
+            ENABLED,
+            "This is the route to use when the raw counts cannot be recovered: "
+            "a limma-style Gaussian workflow on log2 of the value plus an "
+            "offset. Recovering the raw counts is still strongly preferred.",
+            COACHING_EVIDENCE),
+        "per_sample_normalization": (
+            DISABLED,
+            "It has already been done — that is what these values are. "
+            "Normalizing a second time leaves numbers nobody can interpret.",
+            NORMALIZATION_EVIDENCE),
+        "log_transform": (
+            REQUIRES_INPUT,
+            "log2 of the value plus an offset is the usual next step, and the "
+            "offset is a real choice rather than a formality: it decides what "
+            "happens to the zeros, and this matrix has them.",
+            NORMALIZATION_EVIDENCE),
+        "pca_and_clustering": (
+            ENABLED,
+            "These support a sample PCA once they are on a log scale. The "
+            "thing to watch for is a first component that tracks library size "
+            "or the zero fraction rather than the condition — that is a "
+            "normalization problem, not biology.",
+            FIGURE_INPUT_EVIDENCE),
+        "cross_sample_comparison": cross,
+    }
+
+
+def _stabilized(name: str) -> Dict[str, Tuple[str, str, Evidence]]:
+    return {
+        "count_model": (
+            DISABLED,
+            f"{name} values are for visualization, clustering and PCA, and are "
+            f"never the input to a differential-expression test. A test on "
+            f"them is typically anticonservative — it reports more than it has "
+            f"found.",
+            COACHING_EVIDENCE),
+        "gaussian_workflow": (
+            DISABLED,
+            "The same rule covers this one: a test on stabilized values is a "
+            "test on the output of a transform built for looking at data, and "
+            "it is typically anticonservative. Go back to the counts.",
+            COACHING_EVIDENCE),
+        "per_sample_normalization": (
+            DISABLED,
+            "Size-factor normalization is inside the transform that produced "
+            "these values. Scaling them again would be normalizing twice.",
+            NORMALIZATION_EVIDENCE),
+        "log_transform": (
+            DISABLED,
+            "These are already on a log scale. Taking a log of them would be a "
+            "log of a log, and the result is not interpretable in any unit.",
+            NORMALIZATION_EVIDENCE),
+        "pca_and_clustering": (
+            ENABLED,
+            "This is exactly what these values are for. It is the single most "
+            "expected figure in the field and this is its intended input.",
+            FIGURE_INPUT_EVIDENCE),
+        "cross_sample_comparison": (
+            ENABLED,
+            "The transform is fitted across the samples together, so the "
+            "values are on one comparable scale.",
+            NORMALIZATION_EVIDENCE),
+    }
+
+
+CAPABILITY_MATRIX: Dict[str, Dict[str, Tuple[str, str, Evidence]]] = {
+    RAW_COUNTS: _count_family(estimated=False),
+    ESTIMATED_COUNTS: _count_family(estimated=True),
+    CPM_OR_TPM: _depth_normalized((
+        REQUIRES_INPUT,
+        "CPM and TPM behave differently here and the matrix cannot say which "
+        "this is. TPM divides by effective length before rescaling, which "
+        "makes it the wrong basis for a cross-sample differential-expression "
+        "comparison; CPM does not have that problem. Both rescale each sample "
+        "to exactly one million, so the trace that would tell them apart is "
+        "gone — your pipeline knows, and the numbers do not.",
+        UNDECIDABLE_EVIDENCE)),
+    TMM_SCALED_CPM: _depth_normalized((
+        ENABLED,
+        "This is what the scaling was for. Correcting library composition as "
+        "well as depth is what makes a gene comparable between samples, and in "
+        "the comparison the research cites this family controlled the "
+        "false-positive rate where total-count and RPKM normalization did not.",
+        NORMALIZATION_EVIDENCE)),
+    FPKM: _depth_normalized((
+        DISABLED,
+        "FPKM and RPKM are not comparable across samples even in principle. "
+        "Wagner, Kim and Lynch showed RPKM/FPKM violates the invariance a "
+        "relative-molar-concentration measure has to satisfy, and Dillies and "
+        "colleagues found total-count and RPKM normalization did not control "
+        "the false-positive rate where TMM and median-of-ratios did. This is "
+        "not a caution about precision; the quantity is not the same quantity "
+        "in two samples.",
+        COACHING_EVIDENCE)),
+    VST: _stabilized("Variance-stabilized"),
+    RLOG: _stabilized("Regularized-log"),
+    MICROARRAY: {
+        "count_model": (
+            DISABLED,
+            "This is a hybridization intensity rather than a count. The whole "
+            "count toolchain does not apply — there is no library size, no "
+            "dispersion to estimate and nothing for a negative binomial to "
+            "model.",
+            COACHING_EVIDENCE),
+        "gaussian_workflow": (
+            ENABLED,
+            "limma was built for this assay and these values are its intended "
+            "input: a linear model per probe with variance shrunk across "
+            "probes, which is what makes a small number of arrays estimable at "
+            "all.",
+            COACHING_EVIDENCE),
+        "per_sample_normalization": (
+            DISABLED,
+            "RMA already normalizes across arrays. Scaling again would be "
+            "normalizing twice.",
+            NORMALIZATION_EVIDENCE),
+        "log_transform": (
+            DISABLED,
+            "RMA output is already log2. Taking a log of it would be a log of "
+            "a log.",
+            NORMALIZATION_EVIDENCE),
+        "pca_and_clustering": (
+            ENABLED,
+            "Array intensities are a standard input to a sample PCA and to a "
+            "sample-to-sample correlation heatmap.",
+            FIGURE_INPUT_EVIDENCE),
+        "cross_sample_comparison": (
+            ENABLED,
+            "RMA normalizes across the arrays together, so intensities are "
+            "comparable between samples.",
+            NORMALIZATION_EVIDENCE),
+    },
+    LOG_RATIO: {
+        "count_model": (
+            DISABLED,
+            "There are negative values in this matrix, and any negative value "
+            "rules out raw counts, CPM, TPM and FPKM. There is no count scale "
+            "left here for a count model to work on.",
+            NEGATIVES_RULE_EVIDENCE),
+        "gaussian_workflow": (
+            ENABLED,
+            "A centred, roughly symmetric matrix is a Gaussian workflow's "
+            "natural input. What it cannot tell you is what the values are "
+            "centred against.",
+            COACHING_EVIDENCE),
+        "per_sample_normalization": (
+            DISABLED,
+            "These are ratios or standard scores rather than depths. There is "
+            "no library size left in them to correct.",
+            NORMALIZATION_EVIDENCE),
+        "log_transform": (
+            DISABLED,
+            "Some of these values are negative, so a log of them is undefined "
+            "— and they are already on a ratio or standard-score scale.",
+            NORMALIZATION_EVIDENCE),
+        "pca_and_clustering": (
+            ENABLED,
+            "A centred matrix is a direct PCA input, and at this width the "
+            "sample-to-sample heatmap is the figure that replaces a "
+            "feature-by-feature correlation matrix.",
+            FIGURE_INPUT_EVIDENCE),
+        "cross_sample_comparison": (
+            REQUIRES_INPUT,
+            "These values are already relative to something and the matrix "
+            "does not say what. A log-ratio against a reference, a z-score "
+            "within each gene and a batch-corrected residual mean three "
+            "different things when compared across samples.",
+            NORMALIZATION_EVIDENCE),
+    },
+}
+
+
+def capability_rows(key: str) -> List[Dict[str, Any]]:
+    """The capability matrix for one signature, as rows an interface renders.
+
+    Never cut, and it says how many there are (`GUIDED-209`) — the count is
+    added by the caller that serves it, beside a `showing` that equals it.
+    """
+    table = CAPABILITY_MATRIX[key]
+    out = []
+    for capability in CAPABILITIES:
+        state, because, evidence = table[capability]
+        out.append({"key": capability,
+                    "label": CAPABILITY_LABELS[capability],
+                    "state": state,
+                    "state_label": STATE_LABELS[state],
+                    "because": because,
+                    **evidence.to_dict()})
+    return out
+
+
+def _reading(value: float) -> str:
+    """A measured value as a reader would write it.
+
+    `{:,.4g}` turns 26,471 into `2.647e+04` — correct, and not the sentence a
+    person reads a count matrix's ceiling in. So: thousands separators above
+    one, significant figures below it.
+    """
+    if value == 0:
+        return "0"
+    if abs(value) >= 1000:
+        return f"{value:,.0f}"
+    if abs(value) >= 1:
+        return f"{value:,.2f}".rstrip("0").rstrip(".")
+    return f"{value:.3g}"
+
+
+def _evidence_rows(m: Dict[str, Any], keys: Sequence[str]) -> List[Dict[str, Any]]:
+    """The readings that drove the classification, in the app's own words.
+
+    §02 asks the card to show *"the evidence that drove it"*. Each row is a
+    measured quantity, its value already formatted, and the sentence saying what
+    that value means — composed here so no interface has to know, for instance,
+    that a floor share is about zero counts.
+
+    **The library-size rows are omitted where the matrix has negatives**, and
+    that is the recorded-absence rule rather than an oversight: a row sum over a
+    matrix centred on zero is a number with no meaning, and `wide_assay.csv`
+    reads a coefficient of variation of 900% for exactly that reason. Silence
+    beats a true number that answers nothing.
+    """
+    rows: List[Dict[str, Any]] = []
+    rows.append({
+        "key": "shape",
+        "label": "Shape",
+        "value": f"{m['n_columns']:,} columns across {m['n_samples']:,} samples",
+        "statement": (
+            "Rows are samples and columns are features here, which is the "
+            "transpose of the genomics convention — so every reading below is "
+            "per sample where the field would say per gene, and a row total is "
+            "a library size.")})
+    if m["negatives"]:
+        rows.append({
+            "key": "negatives",
+            "label": "Negative values",
+            "value": f"lowest is {m['min']:,.2f}",
+            "statement": (
+                "Any negative value rules out raw counts, CPM, TPM and FPKM. "
+                "That is asserted as a rule and not as a reading, so nothing "
+                "below can reach past it.")})
+    else:
+        rows.append({
+            "key": "negatives",
+            "label": "Negative values",
+            "value": "none",
+            "statement": (
+                "Nothing is below zero, so the rule that rules out raw counts, "
+                "CPM, TPM and FPKM does not apply here.")})
+        library = m["library_size"]
+        fold = library["max"] / library["min"] if library["min"] else float("inf")
+        rows.append({
+            "key": "library_size",
+            "label": "Library size per sample",
+            "value": (f"{library['min']:,.0f} to {library['max']:,.0f} "
+                      f"({fold:.1f}-fold, CV {library['cv']:.1%})"),
+            "statement": (
+                "The row total. Whether it is constant, near-constant or "
+                "varying is what separates raw counts from CPM, from a "
+                "composition-aware rescaling and from FPKM."
+                if fold < float("inf") else
+                "The row total, which one sample reads as zero.")})
+    rows.append({
+        "key": "integrality",
+        "label": "Whole numbers",
+        "value": ("every value" if m["all_integral"]
+                  else f"{m['pct_integer']:.1%} of the non-zero values"),
+        "statement": (
+            "Read over the NON-ZERO values, deliberately. Over every cell it "
+            f"would read {m['pct_integer_all']:.0%}, because a zero is a whole "
+            f"number and {m['pct_zeros']:.0%} of this matrix is zero — a "
+            "figure that describes the zeros and not the values.")})
+    rows.append({
+        "key": "zeros",
+        "label": "Zeros",
+        "value": f"{m['pct_zeros']:.1%} of cells",
+        "statement": (
+            "A count matrix is 20 to 60 per cent zeros, and everything derived "
+            "from one inherits them — a zero count is a zero TPM.")})
+    rows.append({
+        "key": "range",
+        "label": "Range",
+        "value": f"{_reading(m['min'])} to {_reading(m['max'])}",
+        "statement": (
+            "The ceiling is most of the reading: past ten thousand is a count "
+            "scale, and a ceiling in the teens is a value that has already "
+            "been put on a log scale.")})
+    # THE FLOOR ROW IS ABOUT A *NON-ZERO* FLOOR, and the guard is not cosmetic.
+    # On raw counts 15% of the cells sit on zero, so an ungated row would have
+    # said *"15.3% of cells sit on 0"* under the heading `Repeated floor` — true,
+    # already said one row up as the zero fraction, and read as though the count
+    # matrix carried a stabilizing floor it does not have.
+    if m["floor_share"] >= _FLOOR_SHARE and m["min"] != 0:
+        rows.append({
+            "key": "floor",
+            "label": "Repeated floor",
+            "value": (f"{m['floor_share']:.1%} of cells sit on "
+                      f"{_reading(m['min'])}"),
+            "statement": (
+                "A large share of the matrix on one exact value at the bottom "
+                "is what a variance-stabilizing transform does to every zero "
+                "count: they all land on the same number.")})
+    if m["ids"]["probe_share"] > 0:
+        rows.append({
+            "key": "identifiers",
+            "label": "Column identifiers",
+            "value": f"{m['ids']['probe_share']:.0%} array probe IDs",
+            "statement": (
+                "Array probe identifiers rather than gene or transcript "
+                "identifiers. That is half of the microarray signature and the "
+                "numbers are the other half.")})
+    if m["n_excluded"]:
+        rows.append({
+            "key": "excluded",
+            "label": "Read as covariates, not features",
+            "value": ", ".join(m["excluded"]),
+            "statement": (
+                "Whole-number columns lying entirely outside the range the "
+                "rest of the matrix occupies. They are left out of the "
+                "readings above, because one such column decides a maximum "
+                "even though it barely moves a row total — and if one of them "
+                "is a gene, the reading above is wrong and this is where you "
+                "would see it.")})
+    return rows
+
+
+def data_type_card(df: pd.DataFrame,
+                   minimum: int = 30) -> Optional[Dict[str, Any]]:
+    """§02's *"what your numbers are"* card — the pack's most valuable artifact.
+
+    *"Classification, confidence, the evidence that drove it, and a capability
+    matrix showing which downstream steps are now enabled, disabled, or require
+    input."*
+
+    `None` where the table is not wide enough to be an expression matrix at all.
+    A card that comes back with `read: False` is the other case and it is a real
+    answer: the matrix was read and matched no signature, which §02 leaves open
+    and which the app says out loud rather than rounding to the nearest row.
+    """
+    m = read_matrix(df, minimum=minimum)
+    if m is None:
+        return None
+    verdict = _classify(m)
+    keys = verdict["keys"]
+    lead = keys[0] if keys else None
+    if lead is None:
+        return {
+            "read": False,
+            "reason": (
+                "These columns do not match any of the nine shapes the "
+                "research describes for an expression matrix. The app is not "
+                "going to name the nearest one: the classification decides "
+                "what is legal downstream, and a guess here is worse than no "
+                "answer."),
+            "block": {k: m[k] for k in ("n_columns", "n_samples", "excluded",
+                                        "n_excluded")},
+            "evidence": {"rows": _evidence_rows(m, keys),
+                         "n": len(_evidence_rows(m, keys)),
+                         "showing": len(_evidence_rows(m, keys))},
+            **DATA_TYPE_EVIDENCE.to_dict(),
+        }
+    names = [SIGNATURE_NAMES[k] for k in keys]
+    # `str.capitalize()` LOWERCASES THE TAIL, so it turns "TMM- or
+    # median-of-ratios-scaled CPM" into "Tmm- … cpm" and "FPKM/RPKM" into
+    # "Fpkm/rpkm". Every name here is an acronym or contains one.
+    def _lead_capital(text: str) -> str:
+        return text[:1].upper() + text[1:]
+    confidence, confidence_because = CONFIDENCE[lead]
+    undecidable = lead == CPM_OR_TPM
+    ask = len(keys) > 1 or undecidable
+    if undecidable:
+        question = (
+            "Which did your pipeline produce, CPM or TPM? Both rescale every "
+            "sample to exactly one million and TPM divides by effective length "
+            "before that rescale, so the trace is gone from the matrix — no "
+            "test on these numbers separates them. You know; they do not.")
+        label = "CPM or TPM, and the matrix cannot say which"
+    elif ask:
+        question = (
+            f"Which tool produced this matrix? {_lead_capital(names[0])} and "
+            f"{names[1]} are both non-integer, both non-negative and both have "
+            f"varying totals per sample, and the research separates them by "
+            f"maximum and skew, which overlap. What separates them here is the "
+            f"spread of the library sizes, and that is evidence rather than a "
+            f"determination.")
+        label = f"{_lead_capital(names[0])} or {names[1]}"
+    else:
+        question = None
+        label = _lead_capital(names[0])
+    rows = _evidence_rows(m, keys)
+    capabilities = capability_rows(lead)
+    return {
+        "read": True,
+        "classification": {
+            "keys": list(keys),
+            "names": names,
+            "label": label,
+            "confidence": confidence,
+            "confidence_because": confidence_because,
+            "requires_input": bool(ask),
+            "question": question,
+            "coaching": COACHING[lead],
+            "ruled_out": [SIGNATURE_NAMES[k] for k in verdict["ruled_out"]],
+        },
+        # BOTH LISTS UNCUT AND BOTH SAYING SO (`GUIDED-209`). `showing` equals
+        # `n` because nothing is dropped, and it is served rather than implied
+        # so that a later loop cutting one has to change a number a reader can
+        # see.
+        "evidence": {"rows": rows, "n": len(rows), "showing": len(rows)},
+        "capabilities": {"rows": capabilities, "n": len(capabilities),
+                         "showing": len(capabilities)},
+        "scope_note": _SCOPE_NOTE,
+        "block": {k: m[k] for k in ("n_columns", "n_samples", "excluded",
+                                    "n_excluded")},
+        "measured": {k: m[k] for k in (
+            "min", "max", "median", "negatives", "pct_zeros", "pct_integer",
+            "pct_integer_all", "all_integral", "floor_share", "library_size")},
+        **DATA_TYPE_EVIDENCE.to_dict(),
+    }
+
+
+def _genomics_data_type(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """§02, as a finding — so the reading reaches the Explore stack too.
+
+    The CARD is served on its own route and carries the capability matrix. This
+    is the same reading in the engine's own shape, which is what puts it in
+    front of a person who never opens the card: the classification, what drove
+    it, and the branch of coaching it selects.
+    """
+    card = data_type_card(df)
+    if card is None or not card.get("read"):
+        return None
+    reading = card["classification"]
+    m = card["measured"]
+    lead = reading["keys"][0]
+    closed = [row["label"] for row in card["capabilities"]["rows"]
+              if row["state"] == DISABLED]
+    detail = (
+        f"{card['block']['n_columns']:,} columns across "
+        f"{card['block']['n_samples']:,} samples. "
+        f"{reading['confidence_because']}")
+    # A ROW TOTAL OVER A MATRIX CENTRED ON ZERO IS A NUMBER WITH NO MEANING —
+    # `wide_assay.csv` reads a coefficient of variation of 900% for exactly that
+    # reason. Trap 9: return nothing rather than a value, and say why in a
+    # sentence rather than by leaving a key out, because an absent key and a
+    # question nobody asked look the same.
+    spread = None if m["negatives"] else round(m["library_size"]["cv"], 4)
+    spread_note = (
+        "Not reported: this matrix has negative values, so a row total is not "
+        "a library size and its spread would be a number about nothing."
+        if m["negatives"] else
+        "How much the row totals vary across samples. It is what separates a "
+        "matrix nothing has normalized from one that has been rescaled.")
+    return _finding(
+        "pack::genomics::data_type", "warning" if closed else "info",
+        f"What your numbers are: {reading['label']}",
+        detail,
+        (reading["coaching"] + (" " + reading["question"]
+                                if reading["question"] else "")),
+        confidence=reading["confidence"], pack=GENOMICS, marker="convention",
+        evidence=DATA_TYPE_EVIDENCE,
+        claims=(
+            Claim("classification",
+                  f"These values read as {reading['label'].lower()}, and what "
+                  f"that closes off downstream follows from it rather than "
+                  f"from anything the app prefers.",
+                  COACHING_EVIDENCE),
+            Claim("hard_rule",
+                  "Any negative value rules out raw counts, CPM, TPM and "
+                  "FPKM. That is a rule and it runs before every reading.",
+                  NEGATIVES_RULE_EVIDENCE),
+        ),
+        columns=list(card["block"]["excluded"]),
+        params={"signatures": list(reading["keys"]),
+                "requires_input": reading["requires_input"],
+                "lead": lead,
+                "n_features": card["block"]["n_columns"],
+                "library_size_cv": spread,
+                "library_size_cv_note": spread_note,
+                "pct_zeros": round(m["pct_zeros"], 4),
+                "pct_integer_nonzero": round(m["pct_integer"], 4),
+                "matrix_max": round(m["max"], 4),
+                "negatives": m["negatives"],
+                # THE CLOSED ROWS AS SENTENCES, not as keys. A list of
+                # capability names here would be `GUIDED-207` in the record
+                # layer: nothing could render it and nothing could check it.
+                "closed": closed})
+# ── genomics · gene identifiers · GENOMICS_PACK.md §01, "Gene IDs" ───────────
+#
+# §01 asks for four readings off one classification — *"classify vocabulary;
+# report version suffixes present …, duplicate IDs after symbol mapping
+# (many-to-one), mixed vocabularies, and Excel corruption"* — so the
+# classification is one function and the four findings read it. Four detectors
+# rather than one finding with four paragraphs, because their severities are not
+# the same thing: three of them describe identifiers that need reconciling before
+# a join, and the fourth describes data that has already been destroyed.
+
+GENE_ID_EVIDENCE = Evidence(
+    status=SETTLED,
+    source="research/GENOMICS_PACK.md#Gene IDs")
+
+#: Identifier grammars, ordered so the specific ones are tried before the
+#: general ones — `1000000_at` is an Affymetrix probe set and not the Entrez gene
+#: 1000000, and the only thing that says so is that `_at` was tested first.
+#:
+#: MATCHED AS WHOLE STRINGS, never as substrings. That is the rule
+#: `tests/test_a_name_registry_matches_exactly_or_says_nothing.py` exists for,
+#: and it bites here: `MARCH1` contains `MAR`, `ENSG00000141510` contains
+#: `ENSG0000014151`, and every symbol contains a shorter symbol.
+_ID_GRAMMARS: Tuple[Tuple[str, "re.Pattern"], ...] = (
+    ("Ensembl accessions", re.compile(r"^ENS(?:[A-Z]{3,4})?[EGTP]\d{11}(?:\.\d+)?$")),
+    ("RefSeq accessions", re.compile(r"^[NX][MRP]_\d{5,9}(?:\.\d+)?$")),
+    ("Affymetrix probe sets", re.compile(r"^\d+_(?:[a-z]{1,2}_)?at$")),
+    ("Illumina probes", re.compile(r"^ILMN_\d{6,9}$")),
+    ("Entrez gene IDs", re.compile(r"^\d{1,9}$")),
+    ("HGNC symbols", re.compile(r"^[A-Z][A-Z0-9]{1,14}(?:-[A-Z0-9]{1,6})?$")),
+)
+
+#: The two vocabularies whose identifiers legitimately carry a `.N` version.
+#: A `.1` on anything else is far more likely to be pandas de-duplicating a
+#: repeated column name than an annotation release, and reading it as a version
+#: would report a defect the file does not have.
+_VERSIONED_VOCABULARIES = ("Ensembl accessions", "RefSeq accessions")
+
+_VERSION_SUFFIX = re.compile(r"\.(\d+)$")
+
+#: What Excel makes of a gene symbol. Both directions, because the rendering is
+#: locale-dependent and `Mar-1` and `1-Mar` are the same accident.
+_EXCEL_DATE = re.compile(
+    r"^(?:\d{1,2}[-/](?:jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)"
+    r"|(?:jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[-/]\d{1,2})"
+    r"(?:[-/]\d{2,4})?$", re.I)
+
+#: Excel serial numbers for 1990-01-01 and 2035-12-31, from the `1899-12-30`
+#: epoch. An autoconverted symbol lands in *the year the file was opened*, and
+#: outside this band the reading is not worth making: there were no supplementary
+#: Excel gene lists before 1990, and after 2035 is the future.
+_EXCEL_SERIAL_WINDOW = (32874, 49674)
+
+#: How much of the identifier set must be HGNC symbols before a bare five-digit
+#: integer is read as a corrupted date rather than as an Entrez gene ID. **This
+#: number is the app's and not the research's** — §01 names the corruption and
+#: names no rule for telling `44621`-the-serial from `44621`-the-Entrez-ID,
+#: because nothing in the string distinguishes them. What distinguishes them is
+#: the company they keep, and this is the threshold on "company".
+_SYMBOL_DOMINANCE = 0.5
+
+#: Two floors before any of this is said at all. A table with eleven recognized
+#: identifiers among four hundred numeric columns is not a gene matrix and the
+#: readings below would be about noise.
+_MIN_RECOGNIZED = 20
+_MIN_RECOGNIZED_SHARE = 0.4
+
+
+@dataclass(frozen=True)
+class GeneIdReading:
+    """One classification of an identifier set, read by four detectors.
+
+    `vocabularies` maps a grammar name to the identifiers matching it, with the
+    Excel-corrupted ones already removed — a corrupted symbol is not a member of
+    the symbol vocabulary, it is the wreck of one.
+    """
+    columns: Tuple[str, ...]
+    vocabularies: Dict[str, Tuple[str, ...]]
+    unclassified: Tuple[str, ...]
+    versioned: Tuple[str, ...]
+    duplicate_bases: Dict[str, Tuple[str, ...]]
+    excel_dates: Tuple[str, ...]
+    excel_serials: Tuple[str, ...]
+
+    @property
+    def recognized(self) -> int:
+        return (sum(len(v) for v in self.vocabularies.values())
+                + len(self.excel_dates) + len(self.excel_serials))
+
+    @property
+    def corrupted(self) -> Tuple[str, ...]:
+        return tuple(self.excel_dates) + tuple(self.excel_serials)
+
+
+def _base_identifier(name: str) -> str:
+    """The identifier with its version stripped, for collision counting."""
+    return _VERSION_SUFFIX.sub("", name)
+
+
+def read_gene_ids(df: pd.DataFrame) -> Optional[GeneIdReading]:
+    """Classify the identifier set, or decline where there is not one.
+
+    **The identifiers are the COLUMN NAMES here**, and that is orientation
+    rather than an implementation detail. §01 is written for the field
+    convention, genes in rows; this app's tables are samples in rows, so the
+    gene identifiers arrive as a header. A file with an identifier *column* is
+    the orientation problem §01 handles before this diagnostic runs, and
+    `test_a_transposed_assay_table_is_turned_around_before_diagnosis` is where
+    that lives.
+
+    Returns `None` — never a reading with empty fields — where the numeric block
+    is too narrow to be an assay or where too little of it belongs to any gene-ID
+    grammar. `nhanes_dietary.csv`'s `DR1TKCAL` and `WTDRD1` are shaped exactly
+    like HGNC symbols and there are ten of them, which is why the floor is a
+    count *and* a share.
+    """
+    cols = _numeric(df)
+    if not _is_assay_wide(df):
+        return None
+
+    buckets: Dict[str, List[str]] = {}
+    unclassified: List[str] = []
+    dates: List[str] = []
+    for name in cols:
+        if _EXCEL_DATE.match(name):
+            dates.append(name)
+            continue
+        for vocabulary, grammar in _ID_GRAMMARS:
+            if grammar.match(name):
+                buckets.setdefault(vocabulary, []).append(name)
+                break
+        else:
+            unclassified.append(name)
+
+    # THE SERIAL AMBIGUITY, resolved by the company the integer keeps and by
+    # nothing else. A five-digit integer is both an Excel serial and a perfectly
+    # ordinary Entrez gene ID. Two conditions, and both are readings of the rest
+    # of the set: no integer identifier falls OUTSIDE the serial window (one that
+    # does proves the table uses Entrez), and the set is mostly HGNC symbols
+    # (which is what Excel destroys). Where either fails, the integers stay
+    # Entrez and this finding is not made — `DOMAIN_SCIENCE.md` §01.2's litmus,
+    # applied to the detection rather than to the action.
+    integers = buckets.get("Entrez gene IDs", [])
+    low, high = _EXCEL_SERIAL_WINDOW
+    in_window = [n for n in integers if low <= int(n) <= high]
+    outside = [n for n in integers if n not in set(in_window)]
+    symbols = buckets.get("HGNC symbols", [])
+    non_integer = sum(len(v) for k, v in buckets.items() if k != "Entrez gene IDs")
+    share = len(symbols) / max(non_integer + len(outside), 1)
+    serials: List[str] = []
+    if in_window and not outside and share >= _SYMBOL_DOMINANCE:
+        serials = in_window
+        buckets.pop("Entrez gene IDs", None)
+
+    versioned = tuple(
+        n for vocabulary in _VERSIONED_VOCABULARIES
+        for n in buckets.get(vocabulary, [])
+        if _VERSION_SUFFIX.search(n))
+
+    collisions: Dict[str, Tuple[str, ...]] = {}
+    for vocabulary, members in buckets.items():
+        seen: Dict[str, List[str]] = {}
+        for name in members:
+            seen.setdefault(_base_identifier(name), []).append(name)
+        for base, names in seen.items():
+            if len(names) > 1:
+                collisions[base] = tuple(names)
+
+    reading = GeneIdReading(
+        columns=tuple(cols),
+        vocabularies={k: tuple(v) for k, v in sorted(buckets.items())},
+        unclassified=tuple(unclassified), versioned=versioned,
+        duplicate_bases=collisions, excel_dates=tuple(dates),
+        excel_serials=tuple(serials))
+    if reading.recognized < _MIN_RECOGNIZED:
+        return None
+    if reading.recognized / max(len(cols), 1) < _MIN_RECOGNIZED_SHARE:
+        return None
+    return reading
+
+
+def _gene_id_excel_corruption(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """Gene symbols Excel turned into dates. **The hard stop.**
+
+    `DOMAIN_SCIENCE.md` §01.2's shape exactly: high-confidence detection,
+    irreversible-if-wrong action, and no signal in the data that resolves the
+    ambiguity. `1-Mar` could have been `MARCH1`; it could also have been a date
+    somebody meant. `MARCH1` and `MARC1` are both real genes and only one of them
+    converts. And a serial carries no month name at all.
+
+    So the finding proposes nothing and pre-selects nothing —
+    `fix_kind="none"`, which `router._is_repairable` reads as a report rather
+    than a fork, so this cannot become a question the interview asks.
+    """
+    reading = read_gene_ids(df)
+    if reading is None or not reading.corrupted:
+        return None
+    damaged = reading.corrupted
+    return _finding(
+        "pack::genomics::gene_id_excel_corruption", "critical",
+        (f"{len(damaged):,} gene identifiers have been converted to dates"
+         + (" and serial numbers" if reading.excel_serials else "")),
+        (f"`{'`, `'.join(damaged[:6])}`"
+         + ("" if len(damaged) <= 6 else
+            f" and {len(damaged) - 6:,} more, {len(damaged):,} of "
+            f"{len(reading.columns):,} numeric columns in all")
+         + f". {len(reading.excel_dates):,} are date strings and "
+           f"{len(reading.excel_serials):,} are bare serial numbers, which is "
+           f"the same accident after a numeric cell format. Ziemann, Eren & "
+           f"El-Osta (*Genome Biology* 17:177, 2016) found gene-name conversion "
+           f"errors in ~20% of papers carrying supplementary Excel gene lists, "
+           f"and Abeysooriya et al. (*PLoS Comput Biol* 2021) found the rate had "
+           f"risen. HGNC renamed `SEPT*` to `SEPTIN*` and `MARCH*` to `MARCHF*` "
+           f"partly because of it. **TurboTab has not repaired any of these and "
+           f"will not.**"),
+        ("The original symbols are gone, and which ones they were is not "
+         "recoverable from this file. `1-Mar` is what Excel makes of `MARCH1`, "
+         "and it is also what Excel makes of a date somebody typed — nothing "
+         "here separates those. A serial is worse: it carries no month name at "
+         "all. A repair that guessed would put a named gene into a results "
+         "table on the strength of a guess, which is the one failure a gene "
+         "list cannot survive. Re-export from the source with the identifier "
+         "column formatted as text, or import it as text."),
+        confidence="high", pack=GENOMICS, marker="offered",
+        evidence=GENE_ID_EVIDENCE,
+        columns=list(damaged),
+        params={
+            "columns": list(damaged),
+            "columns_shown": min(6, len(damaged)),
+            "columns_total": len(damaged),
+            "n_date_strings": len(reading.excel_dates),
+            "n_serial_numbers": len(reading.excel_serials),
+            "date_strings": list(reading.excel_dates),
+            "serial_numbers": list(reading.excel_serials),
+            "serial_window": list(_EXCEL_SERIAL_WINDOW),
+            # NAMED IN THE PAYLOAD, not only in the prose. `GUIDED-064`'s class:
+            # the machine-readable form must not be lossier than the sentence,
+            # and *never auto-repair* is the whole content of this finding.
+            "hard_stop": "never_auto_repair_gene_symbols",
+            "hard_stop_because": (
+                "The research is explicit — never auto-repair, report and "
+                "stop. Nothing in the file says which symbol a date or a "
+                "serial used to be, so a repair would be a guess wearing the "
+                "app's authority."),
+        },
+        fix_label="", fix_kind="none")
+
+
+def _gene_id_versions(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """Versioned accessions, which join to unversioned annotation as nothing.
+
+    The failure §01 names is that the join **fails silently** — the rows do not
+    error, they disappear — so the number that matters is how many identifiers
+    would be dropped, and it is in the sentence.
+    """
+    reading = read_gene_ids(df)
+    if reading is None or not reading.versioned:
+        return None
+    versioned = reading.versioned
+    families = sorted(
+        v for v in _VERSIONED_VOCABULARIES if reading.vocabularies.get(v))
+    return _finding(
+        "pack::genomics::gene_id_versions", "warning",
+        f"{len(versioned):,} identifiers carry a version suffix",
+        (f"`{'`, `'.join(versioned[:4])}`"
+         + ("" if len(versioned) <= 4 else
+            f" and {len(versioned) - 4:,} more")
+         + f" — {len(versioned):,} of {len(reading.columns):,} numeric columns, "
+           f"all of them {' or '.join(families)}. The suffix is the "
+           f"annotation release the identifier was written against."),
+        ("Joined against an unversioned annotation table, every one of these "
+         "matches nothing — and the join does not error, it drops the row. A "
+         "differential-expression result computed after that silent loss is "
+         "computed on the genes that happened to survive, and the gene count in "
+         "the methods section is the count before the loss. Stripping the "
+         "suffix is usually right and it is not always right: two versions of "
+         "one accession collapse onto each other, which is the reading beside "
+         "this one."),
+        confidence="high", pack=GENOMICS, marker="offered",
+        evidence=GENE_ID_EVIDENCE,
+        columns=list(versioned[:8]),
+        params={"columns": list(versioned),
+                "columns_shown": min(4, len(versioned)),
+                "columns_total": len(versioned),
+                "n_versioned": len(versioned),
+                "n_identifiers": len(reading.columns),
+                "vocabularies": families},
+        fix_label="", fix_kind="none")
+
+
+def _gene_id_duplicates(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """One gene, two columns — the many-to-one §01 warns about.
+
+    **The honest scope, stated in the finding rather than only here.** §01 says
+    *"duplicate IDs after symbol mapping"*, and this app has no symbol-mapping
+    table: it cannot see two Ensembl accessions that map to one HGNC symbol.
+    What it can see is a collision among the identifiers **as written**, which is
+    what merging two annotation releases produces and is the commonest way the
+    many-to-one arrives. The rest of the class is out of reach and the finding
+    says which half it is reporting.
+    """
+    reading = read_gene_ids(df)
+    if reading is None or not reading.duplicate_bases:
+        return None
+    bases = sorted(reading.duplicate_bases)
+    doubled = sum(len(reading.duplicate_bases[b]) for b in bases)
+    example = reading.duplicate_bases[bases[0]]
+    return _finding(
+        "pack::genomics::gene_id_duplicates", "warning",
+        f"{len(bases):,} accessions appear more than once",
+        (f"`{bases[0]}` is here as `{'` and `'.join(example[:2])}`"
+         + ("" if len(bases) == 1 else
+            f", and {len(bases) - 1:,} other accession"
+            f"{'s' if len(bases) > 2 else ''} repeat the same way")
+         + f" — {doubled:,} columns standing for {len(bases):,} genes. That is "
+           f"what merging two annotation releases produces."),
+        ("The same gene counted twice is counted twice by everything "
+         "downstream: it is two rows in a multiple-testing correction, two "
+         "features a regularized model can split its coefficient across, and "
+         "two entries in a ranked list a reader will read as two findings. "
+         "Which copy to keep depends on which annotation release the study "
+         "means, and that is not in this file. This is the half of the "
+         "many-to-one the app can see — identifiers that collide **as "
+         "written**. Two distinct accessions that map to one gene symbol need "
+         "the mapping table, which the app does not have."),
+        confidence="high", pack=GENOMICS, marker="offered",
+        evidence=GENE_ID_EVIDENCE,
+        columns=[c for b in bases[:3] for c in reading.duplicate_bases[b]],
+        params={"bases": bases,
+                "bases_shown": min(1, len(bases)),
+                "bases_total": len(bases),
+                "n_duplicate_bases": len(bases),
+                "n_duplicate_columns": doubled,
+                "duplicates": {b: list(reading.duplicate_bases[b])
+                               for b in bases},
+                "covers": "identifiers that collide as written",
+                "does_not_cover": "many-to-one that appears only after mapping "
+                                  "to gene symbols, which needs a mapping table "
+                                  "the app does not have"},
+        fix_label="", fix_kind="none")
+
+
+def _gene_id_mixed_vocabulary(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """Two identifier grammars in one feature block.
+
+    The floor is a count and a share together, because one stray `TP53` among
+    four hundred Ensembl accessions is a typo and not a second vocabulary.
+    """
+    reading = read_gene_ids(df)
+    if reading is None:
+        return None
+    total = sum(len(v) for v in reading.vocabularies.values())
+    present = {name: members for name, members in reading.vocabularies.items()
+               if len(members) >= 5 and len(members) / max(total, 1) >= 0.05}
+    if len(present) < 2:
+        return None
+    ordered = sorted(present, key=lambda k: -len(present[k]))
+    parts = ", ".join(f"{len(present[k]):,} {k}" for k in ordered)
+    return _finding(
+        "pack::genomics::gene_id_mixed_vocabulary", "warning",
+        f"The feature names use {len(present)} different identifier vocabularies",
+        (f"{parts} — {total:,} classified identifiers across "
+         f"{len(reading.columns):,} numeric columns"
+         + ("" if not reading.unclassified else
+            f", with {len(reading.unclassified):,} belonging to no grammar the "
+            f"app knows")
+         + "."),
+        ("Each vocabulary joins to a different annotation table, so there is no "
+         "single join that annotates all of these features — and a merge that "
+         "silently keeps only the vocabulary it recognized would drop the rest "
+         "without erroring. Reconciling them means knowing which release "
+         "produced each block, which is a fact about how the file was "
+         "assembled rather than a fact in the file. The app reports the mix and "
+         "maps nothing."),
+        confidence="high", pack=GENOMICS, marker="offered",
+        evidence=GENE_ID_EVIDENCE,
+        columns=[present[k][0] for k in ordered],
+        params={"vocabularies": {k: len(present[k]) for k in ordered},
+                "examples": {k: list(present[k][:3]) for k in ordered},
+                "examples_shown_per_vocabulary": 3,
+                "n_classified": total,
+                "n_unclassified": len(reading.unclassified),
+                "n_columns": len(reading.columns)},
+        fix_label="", fix_kind="none")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Reframing — a pack changes the ANSWER, not the question
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2076,7 +3787,14 @@ def _survey_recipes() -> None:
 PACKS: Dict[str, Pack] = {
     METABOLOMICS: Pack(
         key=METABOLOMICS, label=LENS_LABELS[METABOLOMICS],
-        detectors=(_left_censored, _acquisition_order, _pooled_qc),
+        # L50 built D's three families and E's redundancy pass in separate
+        # worktrees, and both added to this tuple. Merged rather than picked:
+        # they are independent readings and the ORDER is hardest-first
+        # (`LOOP.md` §02) — `_redundancy` computes over the matrix while the
+        # other three read names and dtypes, so it is the one most likely to
+        # have bent the abstraction and it goes first.
+        detectors=(_redundancy, _left_censored, _acquisition_order,
+                   _pooled_qc),
         hedges=METABOLOMICS_HEDGES,
         looks_for=(
             LooksFor("pack::metabolomics::left_censored",
@@ -2088,6 +3806,10 @@ PACKS: Dict[str, Pack] = {
             LooksFor("pack::metabolomics::pooled_qc",
                      "pooled quality-control rows, which are not participants "
                      "and must not be modeled"),
+            LooksFor("pack::metabolomics::redundancy",
+                     "groups of features that rise and fall together, which is "
+                     "one compound wearing several feature names — and how many "
+                     "independent quantities the panel really holds"),
         ),
         recipes=_metabolomics_recipes,
         reframings=(
@@ -2158,11 +3880,54 @@ PACKS: Dict[str, Pack] = {
         )),
     GENOMICS: Pack(
         key=GENOMICS, label=LENS_LABELS[GENOMICS],
-        detectors=(_counts_at_p_over_n,),
+        # HARDEST FIRST (`LOOP.md` §02), which here is the one that decides what
+        # the other is allowed to say: §02 calls data-type detection *"the
+        # highest-leverage diagnostic in the pack"* because it determines what
+        # is legal downstream, and a p/n reading on a matrix nobody has
+        # classified is a true sentence about the wrong object.
+        # Merged from two worktrees, hardest-first, and the order is an
+        # argument rather than a convenience. `_genomics_data_type` decides
+        # what every other reading is ALLOWED to say — §02 is titled *"the
+        # highest-leverage diagnostic in the pack"* because it determines what
+        # is legal downstream — so a p/n reading on a matrix nobody has
+        # classified is a true sentence about the wrong object. The corruption
+        # reading is next: it is the one that had to resolve an ambiguity the
+        # data does not resolve (a five-digit integer is both an Excel serial
+        # and an Entrez gene ID) and the only one here that is a hard stop.
+        detectors=(_genomics_data_type, _gene_id_excel_corruption,
+                   _counts_at_p_over_n, _gene_id_versions,
+                   _gene_id_duplicates, _gene_id_mixed_vocabulary),
         looks_for=(
+            # A NOUN PHRASE, and the second person is what a guard here
+            # forbids: *"what your numbers actually are"* was the first
+            # draft and `test_the_hover_names_what_is_looked_for_and_never_
+            # what_was_found` caught it. A hover is read BEFORE the question is
+            # answered, so a sentence about this table would be asserting
+            # something about every table. The CARD says *what your numbers
+            # are*, because by then it has read them.
+            LooksFor("pack::genomics::data_type",
+                     "which of the nine shapes an expression matrix comes in "
+                     "these values are — raw counts, estimated counts, CPM or "
+                     "TPM, a composition-scaled CPM, FPKM, a "
+                     "variance-stabilized matrix, an array intensity — and "
+                     "which downstream steps each of those closes off"),
             LooksFor("pack::genomics::counts_p_over_n",
                      "count columns far outnumbering samples, which orders the "
                      "model shelf toward regularized fits"),
+            LooksFor("pack::genomics::gene_id_excel_corruption",
+                     "gene symbols Excel has turned into dates or serial "
+                     "numbers, which are reported and never repaired because "
+                     "nothing says which symbol a date used to be"),
+            LooksFor("pack::genomics::gene_id_versions",
+                     "version suffixes on accessions, which join to unversioned "
+                     "annotation as nothing at all and drop genes without "
+                     "erroring"),
+            LooksFor("pack::genomics::gene_id_duplicates",
+                     "accessions that appear more than once, which is one gene "
+                     "counted twice by everything downstream"),
+            LooksFor("pack::genomics::gene_id_mixed_vocabulary",
+                     "more than one identifier vocabulary in the feature "
+                     "names, which no single annotation join can cover"),
             # The considered refusal is a thing the pack will do, so it is named
             # here for the same reason it is a prior with `variant: None`: a
             # decline nobody can see is indistinguishable from never asking.
@@ -3032,24 +4797,53 @@ def contradiction(df: pd.DataFrame, lens: Sequence[str]) -> Optional[Dict[str, A
     #
     # So the claim is made only where the columns that refute it exist, and it
     # names them.
+    #
+    # ── AND IT WAS STILL WRONG, BECAUSE IT EQUATED GENOMICS WITH COUNTS ─────
+    #
+    # *"495 of its measurement columns are not counts … Counts and
+    # concentrations are different objects"* — raised at 409, in the app's most
+    # interruptive voice, against `genomics_cpm.csv`, which is a CPM matrix, and
+    # against the TMM, FPKM, VST, microarray, estimated-count and log-ratio
+    # siblings beside it. **Six of the nine shapes §02 describes for an
+    # expression matrix are non-integer**, so a fractional value is not evidence
+    # against the genomics lens; it is evidence about which of the nine this is.
+    # The premise was false and it blocked the lens on seven of the eight
+    # genomics fixtures in this tree — the contradiction detector asserting
+    # something false about its own field, in the mechanism built to catch a
+    # false reading.
+    #
+    # `count_matrix(df) is None` therefore is no longer sufficient. The claim
+    # now needs the data-type reader to have found NO signature at all: not
+    # counts, and not any of the other eight either. That is a table this lens
+    # genuinely does not describe, and `metabolomics_untargeted.csv` — 395
+    # continuous columns with no zero anywhere — is still exactly it.
     non_integral = [c for c in numeric if not _is_integral(df[c])]
+    reading = data_type_card(df) if GENOMICS in chosen else None
+    recognized = bool(reading and reading.get("read"))
     if (GENOMICS in chosen and _is_assay_wide(df) and count_matrix(df) is None
-            and len(non_integral) >= _MIN_BLANKS_TO_READ):
+            and len(non_integral) >= _MIN_BLANKS_TO_READ
+            and not recognized):
         return {
             "kind": "stated_genomics_but_values_are_not_counts",
             "message": (
                 f"You described this as {LENS_LABELS[GENOMICS].lower()}, and "
-                f"{len(non_integral):,} of its measurement columns are not "
-                f"counts — `"
+                f"these values are not counts and are not any of the other "
+                f"eight shapes an expression matrix comes in either — not CPM "
+                f"or TPM, not a composition-scaled CPM, not FPKM, not a "
+                f"variance-stabilized matrix, not an array intensity, not a "
+                f"log-ratio. {len(non_integral):,} of its measurement columns "
+                f"hold fractional values — `"
                 + "`, `".join(non_integral[:5])
-                + "` hold fractional values. Counts and concentrations are "
-                  "different objects, and the difference decides whether a log "
-                  "transform is derived or merely one option among several."),
+                + "` among them — and nothing in the totals, the zeros or the "
+                  "range matches. A continuous panel with no zero anywhere in "
+                  "it reads as concentrations."),
             "n_numeric": len(numeric), "n_rows": len(df),
             "suggests": [METABOLOMICS],
             "exits": [_LENS_RESOLVE, _lens_attest(
                 "Continue with the genomics lens. The p-much-greater-than-n "
-                "prior applies; the disagreement about counts is recorded.")],
+                "prior applies; the disagreement about what the values are is "
+                "recorded, and the data-type card will say it read nothing "
+                "rather than name a shape.")],
         }
     return None
 

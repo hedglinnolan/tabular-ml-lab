@@ -1756,6 +1756,62 @@ async def nutrition_prevalence(project_id: str, nutrient: str,
         return payload                                     # pragma: no cover
 
 
+@app.get("/project/{project_id}/genomics/data_type")
+async def genomics_data_type(project_id: str) -> Dict[str, Any]:
+    """§02's *"what your numbers are"* card — the genomics pack's own words for
+    what this matrix is, and what that closes off.
+
+    `research/GENOMICS_PACK.md` §02 calls this **the highest-leverage diagnostic
+    in the pack** and the card **the single most valuable artifact in it**, for
+    one reason: the classification decides what is legal downstream, and getting
+    it wrong is the commonest real failure. TPM handed to a count model runs
+    cleanly and reports p-values that are wrong.
+
+    **Offered under the genomics lens only**, and a 409 otherwise, for the same
+    reason the prevalence route refuses outside the dietary lens: the app does
+    not infer the field from column names. `wide_assay.csv` is 45 continuous
+    columns centred on zero and there is nothing in the numbers that says
+    whether they are expression, spectra or sensor readings. The user's answer
+    to the lens question is what licenses the sentence.
+
+    **Three answers and no fourth**, which is what stops this rounding to the
+    nearest row:
+
+    * `read: True` — the matrix matched, with the classification, the evidence,
+      and the capability matrix;
+    * `read: False` — the matrix was read and matched none of the nine shapes,
+      which is an ANSWER and says so;
+    * a 409 for the lens, or a 404 for a table too narrow to be an expression
+      matrix at all.
+
+    Every list in the payload is uncut and says how many it holds
+    (`GUIDED-209`), and every capability row carries the whole sentence rather
+    than a key standing for one (`GUIDED-207`) — a page that had to translate
+    `disabled_because: "count_model"` into prose would be holding a second copy
+    of the research.
+    """
+    from turbotab import packs as _packs
+
+    project = _project(project_id)
+    if _packs.GENOMICS not in (project.lens or []):
+        raise HTTPException(
+            409,
+            "What a number in a matrix IS — a count, a CPM, a variance-"
+            "stabilized value — is a claim about the assay that produced it, "
+            "and this project's lens does not say the measurements are "
+            "genomic. The app does not infer the field from column names: "
+            "answer the lens question and this reading applies.")
+    card = _packs.data_type_card(project.working_table)
+    if card is None:
+        raise HTTPException(
+            404,
+            "This table is not wide enough to be an expression matrix. The "
+            "reading needs a block of measurement columns to read; with fewer "
+            "than that there is nothing here the research's nine signatures "
+            "describe.")
+    return card
+
+
 @app.get("/project/{project_id}/evidence/missingness")
 async def evidence_missingness(project_id: str) -> Dict[str, Any]:
     """Dtype-routed missingness decisions, each naming its own column.

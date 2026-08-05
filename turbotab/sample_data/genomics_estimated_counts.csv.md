@@ -14,8 +14,14 @@ may not silently pick between this and raw counts.
 **The ambiguity this fixture is FOR.** Estimated counts and FPKM are both
 non-integer, non-negative, with varying sums, and §02's table separates them
 only by max and skew — which overlap. The measured difference on these two
-fixtures is the library-size spread: this matrix keeps the raw matrix's
-coefficient of variation (~0.27) because nothing normalized it, and
-`genomics_fpkm.csv` sits near 0.10 because FPKM divided the library size out.
-A classifier that cannot tell them apart should **say both and ask**, which is
-what §02 already requires for this row.
+fixtures is the **library-size spread**: this matrix keeps the raw matrix's,
+because nothing normalized it, and `genomics_fpkm.csv`'s is markedly smaller
+because FPKM divided the library size out. A classifier that cannot tell them
+apart should **say both and ask**, which is what §02 already requires here.
+
+**No number is quoted, deliberately.** This generator draws from one seeded
+stream in file order, so inserting a block above this one moves every draw
+below it — which happened, and a brief that had quoted these figures went stale
+the same afternoon (`TEST-056`). The spread is asserted where it can be
+re-measured rather than stated where it can rot:
+`turbotab/test_the_fixture_constants_match_the_fixtures.py`.

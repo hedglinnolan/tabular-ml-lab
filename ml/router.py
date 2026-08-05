@@ -1010,6 +1010,18 @@ PACK_DEFER: Dict[str, str] = {
     # participant flow, so it belongs where the cohort is still being decided.
     "dietary::implausible_intake": "explore",
     "metabolomics::pooled_qc": "explore",
+    # WHAT THE COLUMNS ARE. All four gene-ID readings are about identifiers
+    # rather than values, and the remedy for every one of them is a change to
+    # the table itself — re-export with the identifier column formatted as text,
+    # strip or keep a version suffix, pick which duplicate to drop, reconcile two
+    # vocabularies against one annotation release. `explore` is the last step at
+    # which the table can still be replaced, which is what makes it the right
+    # destination and `preprocess` the wrong one: none of these is a statistical
+    # transform fitted inside a fold.
+    "genomics::gene_id_excel_corruption": "explore",
+    "genomics::gene_id_versions": "explore",
+    "genomics::gene_id_duplicates": "explore",
+    "genomics::gene_id_mixed_vocabulary": "explore",
     # The value is real; its handling is a transform.
     "clinical::censored_values": "preprocess",
     "clinical::default_value_mass": "preprocess",
@@ -1019,8 +1031,20 @@ PACK_DEFER: Dict[str, str] = {
     "metabolomics::run_order": "preprocess",
     "dietary::compositional": "preprocess",
     "genomics::counts_p_over_n": "preprocess",
+    # WHAT THE NUMBERS ARE decides which transforms are legal on them — whether
+    # a log is a transform or a second log, whether a per-sample rescale is a
+    # correction or a double-normalization. The reading itself is a fact about
+    # the table and repairs nothing, so it does not belong at `explore` beside
+    # the value-is-not-what-it-appears family; the step it changes is this one.
+    "genomics::data_type": "preprocess",
     # Which covariate enters the model.
     "dietary::energy_adjustment": "features",
+    # And which of a redundant group represents its compound. The reading is
+    # about the feature block rather than about any value in it: nothing is
+    # collapsed, and choosing a representative — or choosing to keep the whole
+    # group and correct the multiple-testing denominator instead — is a decision
+    # about what enters the model.
+    "metabolomics::redundancy": "features",
     # How the fit estimates. The survey-design family.
     "dietary::survey_weights": "train",
     "dietary::partial_design": "train",

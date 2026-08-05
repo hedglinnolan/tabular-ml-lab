@@ -59,6 +59,15 @@ FIXTURES = {
     "nhanes_dietary": ("DR1TKCAL", {P.DIETARY}),
     "nhanes_partial_design": ("DR1TKCAL", {P.DIETARY}),
     "nhanes_kilojoules": ("DR1TKCAL", {P.DIETARY}),
+    # L51's two siblings, in the matrix for the reason every fixture here is:
+    # each is a table one pack DOES match, which is where the other four get
+    # their chance to fire on something they do not. `genomics_gene_ids.csv` is
+    # the hardest of those chances yet — 97 of its column names are all-caps
+    # alphanumeric tokens, which is the shape an NHANES variable name has, and
+    # 14 of them are date strings, which is the shape a survey sentinel does not
+    # have and a careless reading might.
+    "genomics_gene_ids": ("condition", {P.GENOMICS}),
+    "metabolomics_redundant": ("responder", {P.METABOLOMICS}),
 }
 
 REAL_PACKS = [P.METABOLOMICS, P.GENOMICS, P.DIETARY, P.CLINICAL, P.SURVEY]
@@ -175,7 +184,16 @@ def test_no_pack_adds_a_question_to_a_fixture_it_does_match_either():
     # removed ten questions from an interview that should never have asked ten
     # was being credited with repairing an unscalable baseline. What it removes
     # now is what it actually contributes.
-    assert removed == {(P.GENOMICS, "genomics_expression"): 1}, removed
+    #
+    # `genomics_gene_ids.csv` joined the matrix at L51 and removes the same one
+    # for the same reason — it is the counts fixture with its columns renamed,
+    # so the sentinel reading the genomics reframing corrects is identical. It
+    # is listed rather than folded into the sentence above because the whole
+    # value of this assertion is that it is an enumeration: a fixture that
+    # started removing a question nobody expected would otherwise arrive as a
+    # silently larger number.
+    assert removed == {(P.GENOMICS, "genomics_expression"): 1,
+                       (P.GENOMICS, "genomics_gene_ids"): 1}, removed
 
 
 # ── the other half: a pack that never fires is worthless ─────────────────────

@@ -181,7 +181,11 @@ PACKS_WITH_DETECTORS = {
     "metabolomics": ("metabolomics_untargeted.csv", "metabolomics",
                      "responder", 3),
     "survey": ("survey_sentinels.csv", "survey", "sought_support", 2),
-    "genomics": ("genomics_expression.csv", "genomics", "condition", 1),
+    # TWO SINCE L50-B: `GENOMICS_PACK.md` §02's data-type reading joined the
+    # p/n one. The count is written out rather than derived for the reason the
+    # rest of this table is — a detector that stops firing has to change a
+    # number here, and a length read off the pack would move with it silently.
+    "genomics": ("genomics_expression.csv", "genomics", "condition", 2),
 }
 
 

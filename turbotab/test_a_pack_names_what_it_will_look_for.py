@@ -64,8 +64,17 @@ DATA = Path(__file__).resolve().parent / "sample_data"
 # make is a capability the user cannot know they are buying — which is the half
 # of the key match this file calls the worse one.
 FIXTURE = {
-    P.METABOLOMICS: ("metabolomics_untargeted",),
-    P.GENOMICS: ("genomics_expression",),
+    # A TUPLE AT L51, and the reason is the same *promise nobody keeps* half.
+    # `metabolomics_untargeted.csv` draws its 392 features independently — the
+    # largest off-diagonal correlation anywhere in it is 0.87 — so the
+    # redundancy phrase could not be kept on it, and a registry that could only
+    # promise what one fixture triggers promises three detectors in four.
+    P.METABOLOMICS: ("metabolomics_untargeted", "metabolomics_redundant"),
+    # And here for the sharper version of it. `genomics_expression.csv` names
+    # its columns `gene_0001`, which belongs to no identifier vocabulary at all,
+    # so three of §01's four gene-ID diagnostics had nothing to fire on and the
+    # fourth — mixed vocabularies — needs two vocabularies in one file.
+    P.GENOMICS: ("genomics_expression", "genomics_gene_ids"),
     P.DIETARY: ("dietary_recalls", "nhanes_dietary", "nhanes_partial_design",
                 "nhanes_kilojoules"),
     # A TUPLE AT L41 for the same reason the dietary one is: the two survey
