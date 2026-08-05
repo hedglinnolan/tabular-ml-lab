@@ -84,3 +84,4 @@ README_PUBLIC.md
 .tools/
 Tabular ML Lab.app/
 .venv-stamp
+.worktrees/

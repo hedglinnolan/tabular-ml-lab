@@ -121,13 +121,21 @@ loses an afternoon.
 
 | Tool | What it is for |
 |---|---|
-| `docs/turbotab/tools/ledger.py` | `stats` · `next` · `add` · `set` · `regen` · `check`. **`data/findings.json` is the source of truth and `FINDINGS_LEDGER.md` is generated** — edit the JSON through the tool, never the markdown. |
+| `docs/turbotab/tools/ledger.py` | `stats` · `next` · `add` · `set` · `regen` · `check`. **`data/findings.json` is the source of truth and `FINDINGS_LEDGER.md` is generated** — edit the JSON through the tool, never the markdown. **File every note through a Python file, never through a shell heredoc** — see below. |
+| `docs/turbotab/tools/worktree.py` | `add <name>` / `remove <name>` / `check <path>`. Creates a subagent worktree **and refuses one whose base is wrong**: `HEAD` must descend from `TurboTab` and `turbotab/` must exist on disk. L49's built-in isolation branched three subagents from a commit 367 behind and 16 ahead with no `turbotab/` at all, and only one of them thought to look. |
 | `docs/turbotab/tools/register.py` | The feature register, same shape. Every capability gets a row: `core` / `both` / `classic-only` / `guided-only`, with a reason. |
 | `docs/turbotab/tools/evidence.py check` | Every pack claim carries a badge and a `source` that resolves to a real file and section. |
 | `docs/turbotab/tools/copydeck.py` | `regen` after changing any user-facing string; `check` fails if the deck drifted. Half generated, half hand-assembled. |
 | `docs/turbotab/tools/revertprobe.py` | **The revert harness, and it checks the *reason*.** Each revert declares an `expect` fragment that must appear in the failure. It reports `RED for '<reason>'`, `RED FOR THE WRONG REASON`, `GREEN — NOT LOAD-BEARING`, or `ANCHOR ERROR`. Use it; a hand-rolled revert that goes red for an import error reads as a pass. |
 | `turbotab/pageharness.py` | **Runs the page's real controller in node** against responses captured from a `TestClient` drive. `__harness.calls()` reports exactly which routes it fetched. This is how a behavior claim gets verified. It knows nothing about pixels and says so. |
 | `docs/turbotab/tools/pageprobe.py` | The static half, for claims that are genuinely about the file. |
+
+**And never pass prose to a tool through a shell heredoc.** A backtick inside `<<'EOF'` or `-c "…"`
+is command substitution, and `zsh` eats it silently — so `` `sbp` `` arrives as nothing and the note
+reads *"1 feature (: = 1, = 0) was read as binary"*. **This has damaged three ledger notes across two
+loops**, each time in the same shape: the tool succeeded, the gate stayed green, and the record was
+quietly wrong about itself. Write the note in a `.py` file and run that file. It costs one extra
+file and it cannot fail this way.
 
 **The five gates run in `.githooks/pre-commit` and refuse the commit**: ledger schema, register
 schema, American spelling, copy deck, evidence badges. They are a hook rather than an instruction
@@ -193,7 +201,14 @@ The same hazard reaches the certifying instrument. `revertprobe.py` reverts a fi
 restores, **in the live tree**, and L48 ran twenty-four probes while five chunks wrote in parallel.
 The failure mode is not a probe that fails — it is a probe whose revert races another writer's edit
 and goes red **for that writer's reason**, which reads exactly like a probe certifying a fix. **Do
-not run a probe, or a suite you intend to quote, while a subagent is writing.**
+not run a probe, or a suite you intend to quote, while ANYTHING is writing the tree — including
+you.**
+
+That last clause is not padding. The rule first said *"while a subagent is writing"*, and L49 broke
+it **within the hour of writing it**: its subagents were safely in worktrees, and the lead agent
+edited four source files while its own quotable suite ran against the same tree. It killed the run
+rather than quote it, which was right, and the sentence had named the wrong writer. **A suite is
+quotable only if the tree did not move under it**, and who moved it does not matter.
 
 **You are the only writer** to `findings.json`, `register.json` and their generated markdown while
 your loop runs.
