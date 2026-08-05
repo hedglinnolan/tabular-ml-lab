@@ -2,7 +2,7 @@
 
 Same structure and same discipline as the four science packs: every recommendation carries
 **SETTLED** · **CONVENTION** · **DISPUTED**, every claim names a source that resolves, and anything
-not read in primary text is marked **[verify-at-build]**. Proposed at `DESIGN_LANGUAGE.md` §05.2 and
+not read in primary text is marked **[verify-at-build: legend]**. Proposed at `DESIGN_LANGUAGE.md` §05.2 and
 scheduled by the product owner at L46 (`ROADMAP.md`, *"`research/INTERACTION_PACK.md` is
 scheduled"*).
 
@@ -133,7 +133,7 @@ second reader reports the PDF sha256 matched).
 > Computers & Education 101:150–167 (2016): 61 primary studies, **N = 7,036**, 140 pairwise
 > comparisons, random effects — *"An overall positive effect of animation over static graphics was
 > found, with a Hedges's g effect size of 0.226 (95% CI 0.12–0.33)."* Höffler & Leutner's earlier
-> meta-analysis of 76 comparisons from 26 studies reports d = 0.37 `[verify-at-build]` — read only
+> meta-analysis of 76 comparisons from 26 studies reports d = 0.37 `[verify-at-build: 0.37]` — read only
 > as quoted inside Berney & Bétrancourt, not in primary.
 > **[DISPUTED]**, and the scope caveat must travel with it: the corpus is **instructional
 > multimedia**, not interface feedback. It does not license "UI motion aids comprehension." What it
@@ -167,7 +167,9 @@ second reader reports the PDF sha256 matched).
 > **What *is* supported on timing is the easing, not the staging.** Kim, Correll & Heer 2019 records:
 > *"Dragicevic et al. compared time distortion methods, such as slow-in / slow-out and
 > fast-in / fast-out, and found that slow-in / slow-out enabled users to better track visual
-> objects."* **[CONVENTION]** `[verify-at-build]` — read as quoted, not in primary.
+> objects."* **[CONVENTION]** `[verify-at-build: no number]` — the claim is that slow-in /
+> slow-out helped tracking, which is a direction rather than a threshold. Read as quoted, not
+> in primary.
 
 ### 01.3 · The modern re-test, and it changes the shape of the question
 
@@ -473,8 +475,8 @@ literature argues against it.**
 > **Fatigue over time is measured, and it is real.** van der Sijs reports one study where override
 > rates rose from ~50% to ~75% over five years; Embi & Leonard's randomised controlled study (178
 > physicians, 907 eligible alerts, 36 weeks, Poisson regression) found the decay directly.
-> **[CONVENTION]** `[verify-at-build]` — read as reported by the refutation pass, not in primary
-> here.
+> **[CONVENTION]** `[verify-at-build: 50% and 75%]` — the override rates are the numbers this
+> claim rests on. Read as reported by the refutation pass, not in primary here.
 
 > **The two most-repeated numbers in this field have no basis.** The Joint Commission's *"85 to 99
 > percent of alarm signals do not require clinical intervention"* is sourced in Sentinel Event Alert
@@ -521,14 +523,17 @@ there is decay over time.
 > **↳ AND THE CLINICAL STANDARD OF CARE IS EXPOSURE, NOT AVOIDANCE.** Staab's 2023 review of
 > persistent postural-perceptual dizziness lists, as treatment for the visually induced component,
 > *"habituation exercises"* — graded **exposure** to moving visual stimuli, including screens.
-> **[CONVENTION]** `[verify-at-build]` — reached by the refutation pass, not by the first reader.
+> **[CONVENTION]** `[verify-at-build: no number]` — the claim is that graded exposure is the
+> listed treatment, which carries no threshold. Reached by the refutation pass, not by the
+> first reader.
 > This does not argue against honoring the preference: a preference is a preference. It argues
 > against justifying it as harm-prevention, which the clinical literature does not support in this
 > form. The nearest controlled work located — Chaudhary et al., 40 adults, 20 motion-sensitive — is
 > a protocol/exploratory study.
 
 > **The "35% of adults have vestibular dysfunction" figure measures something else** — a modified
-> Romberg balance test in adults 40+. **[SETTLED]** as a fact about the figure `[verify-at-build]`.
+> Romberg balance test in adults 40+. **[SETTLED]** as a fact about the figure
+`[verify-at-build: 35]`.
 
 ### 06.2 · Duration — the correction this pack owes the design language
 

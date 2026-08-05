@@ -82,9 +82,71 @@ PACKAGE = ROOT / "turbotab"
 # A heading in a research file, at any level.
 _HEADING = re.compile(r"^#{1,6}\s+(.*?)\s*$", re.M)
 
-# `[verify-at-build]` and `[verify-at-build: what]`. The second form names the
-# numbers, and those are the ones that must not become literals.
+# `[verify-at-build]` and `[verify-at-build: what]`.
+#
+# **A BARE MARKER PROTECTS NOTHING, AND THAT WAS TRUE FOR EIGHT OF NINE.**
+# `GUIDED-212`. This gate builds its held-out set from the marker's PAYLOAD, so
+# a marker with nothing after the colon contributes no numbers and is never
+# checked against anything. `AGENT_ONBOARD.md` §00, `ROADMAP.md` condition 6 and
+# `LOOP.md` §04 all describe `[verify-at-build]` as *structurally forbidden from
+# shipping as a constant* — **a guarantee three documents call structural, held
+# for one marker in nine.**
+#
+# So a bare marker is now a gate FAILURE in its own right. An uncheckable
+# marker is the recorded-absence rule's case, not a pass: *nobody said which
+# number* and *there is no number* are different claims and were rendering as
+# one. Two sentinels make the second one sayable:
+#
+#   `[verify-at-build: no number]` — the claim is qualitative. Two of the six
+#     real markers are: slow-in/slow-out easing, and habituation exercises as a
+#     standard of care. Neither has a threshold to hold out of the code.
+#   `[verify-at-build: legend]`    — the line DEFINES the marker rather than
+#     using it. Two of the nine are legends, and counting them as claims made
+#     the corpus look better protected than it was.
 _VERIFY = re.compile(r"\[verify-at-build:?\s*([^\]]*)\]")
+
+def _code_only(source: str) -> str:
+    """`source` with every string literal and comment blanked out.
+
+    Exact rather than approximate, and line-aligned so a failure can name the
+    line. Strings and comments are prose — a number quoted inside a `reason` is
+    discussion, not a constant — and that is the distinction this gate turns on.
+
+    Three regexes could not draw it. They missed docstrings entirely, so a
+    number in one read as code; patched to eat triple quotes they mis-aligned
+    on a nested apostrophe; and on Python 3.12+ an f-string tokenizes into
+    START / MIDDLE / END rather than one STRING, so prose between the braces
+    leaked through as well. A regex approximating Python is a second
+    implementation of Python to keep in sync, which is this project's
+    most-repeated defect one level down.
+
+    Falls back to the raw source if the file will not tokenize: a gate that
+    silently reads nothing is worse than one that over-reports.
+    """
+    import io
+    import tokenize as _tok
+
+    prose = {_tok.STRING, _tok.COMMENT}
+    middle = getattr(_tok, "FSTRING_MIDDLE", None)
+    if middle is not None:
+        prose.add(middle)
+
+    lines = [""] * (source.count("\n") + 2)
+    try:
+        for kind, text, (row, col), _end, _ in _tok.generate_tokens(
+                io.StringIO(source).readline):
+            if kind in prose or "\n" in text or row >= len(lines):
+                continue
+            pad = max(0, col - len(lines[row]))
+            lines[row] = lines[row] + (" " * pad) + text
+    except (_tok.TokenError, IndentationError, SyntaxError):
+        return source
+    return "\n".join(lines)
+
+
+#: Payloads that declare, rather than name, what is held out.
+_NO_NUMBER = "no number"
+_LEGEND = "legend"
 
 # A bare number inside a verify-at-build note. `50%`, `0.8`, `40`.
 _NUMBER = re.compile(r"\b(\d+(?:\.\d+)?)\s*%?")
@@ -323,22 +385,53 @@ def check() -> int:
 
     # ── 6 · no `[verify-at-build]` number as a literal in an emitter ────────
     unverified = set()
+    n_declared, n_legend = 0, 0
     for path in sorted(RESEARCH.glob("*.md")):
         text = path.read_text(encoding="utf-8")
-        for m in _VERIFY.finditer(text):
-            for n in _NUMBER.findall(m.group(1)):
-                unverified.add((path.name, n))
+        for lineno, line in enumerate(text.split("\n"), 1):
+            for m in _VERIFY.finditer(line):
+                payload = m.group(1).strip().lower()
+                if payload == _LEGEND:
+                    n_legend += 1
+                    continue
+                if payload == _NO_NUMBER:
+                    n_declared += 1
+                    continue
+                numbers = _NUMBER.findall(m.group(1))
+                if not numbers:
+                    # THE FAILURE THIS GATE DID NOT HAVE. A marker that names
+                    # no number is a marker this check cannot enforce, and it
+                    # read as a pass for a dozen loops.
+                    problems.append(
+                        f"{path.name}:{lineno} carries a bare "
+                        f"[verify-at-build] with no number after it, so "
+                        f"nothing is held out of the code and the marker "
+                        f"guarantees nothing. Name the number the claim rests "
+                        f"on, or say `[verify-at-build: {_NO_NUMBER}]` if the "
+                        f"claim is qualitative, or `[verify-at-build: "
+                        f"{_LEGEND}]` if this line defines the marker.")
+                    continue
+                for n in numbers:
+                    unverified.add((path.name, n))
 
     for path in emitters:
         source = path.read_text(encoding="utf-8")
         # Strings and comments are prose, not constants. Only code lines count —
         # otherwise quoting a number in a `reason` would fail the gate, and the
         # reasons are exactly where a number SHOULD be discussed.
-        code = "\n".join(
-            line.split("#", 1)[0] for line in source.split("\n")
-            if not line.strip().startswith("#"))
-        code = re.sub(r'"(?:[^"\\]|\\.)*"', '""', code)
-        code = re.sub(r"'(?:[^'\\]|\\.)*'", "''", code)
+        # TOKENIZED, NOT REGEXED — and the change is the gate learning its own
+        # lesson. This stripped strings and comments with three regexes, which
+        # missed DOCSTRINGS entirely: a number inside one survived as "code",
+        # so `packs.py`'s prose about *a 40-column clinical table* tripped the
+        # check the moment `METABOLOMICS_PACK.md`'s 40 was first held out at
+        # L51. Patching the regex to eat triple quotes then mis-aligned on a
+        # nested apostrophe and reported a line that did not contain the
+        # number at all.
+        #
+        # A regex approximating Python is a second implementation of Python to
+        # keep in sync, which is this project's most-repeated defect one level
+        # down. `tokenize` is exact and it is what `parsecheck.py` already uses.
+        code = _code_only(source)
         for filename, number in sorted(unverified):
             # `\b` on both sides so `50` does not match inside `250`.
             if re.search(rf"(?<![\w.]){re.escape(number)}(?![\w.])", code):
@@ -362,7 +455,8 @@ def check() -> int:
           f"hand-written badges resolve; "
           f"{n_calls} findings/refusals badged at the call site across "
           f"{len(emitters)} emitter(s); {len(unverified)} [verify-at-build] "
-          f"number(s) held out of the code")
+          f"number(s) held out of the code, {n_declared} marker(s) declared to "
+          f"carry no number, {n_legend} legend(s)")
     return 0
 
 

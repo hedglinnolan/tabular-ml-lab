@@ -210,6 +210,15 @@ edited four source files while its own quotable suite ran against the same tree.
 rather than quote it, which was right, and the sentence had named the wrong writer. **A suite is
 quotable only if the tree did not move under it**, and who moved it does not matter.
 
+**And the sibling, which cost L50 an hour of a person's evening: a suite is quotable only if nothing
+else is competing for the MACHINE.** Not merely if nothing else is writing the tree. L50 ran the
+`turbotab/` suite against a box already holding two pytest shells orphaned from a session two days
+earlier, plus its own second suite, plus a guard that spawns 136 file-level pytest subprocesses of
+its own. It took **two hours** for a forty-minute suite and read as a hang. Nothing was wrong and
+nothing was measurable. **Run `ps` before you start anything heavy, and again at twenty minutes** —
+a timing you cannot attribute is not a number, and a suite you are waiting on without looking at is
+a stall you are choosing.
+
 **You are the only writer** to `findings.json`, `register.json` and their generated markdown while
 your loop runs.
 

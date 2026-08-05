@@ -8,7 +8,7 @@ draws, and what makes it publication-grade). Every recommendation carries **SETT
 **Research caveat, recorded because it changes how these numbers should be treated.** The session's
 egress proxy blocked publisher domains (ACS, Springer, Nature, PMC, Bioconductor). The content below
 comes from search-surfaced excerpts of primary sources plus domain knowledge. Items marked
-**[verify-at-build]** are specific numeric thresholds that must be checked against the cited paper
+**[verify-at-build: legend]** are specific numeric thresholds that must be checked against the cited paper
 before shipping — being wrong about a number is the worst failure mode a pack has.
 
 ---
@@ -919,7 +919,11 @@ Ranked. Places the pack must hedge explicitly rather than assert.
 11. **Hotelling's T² vs group confidence ellipses.** Mixing these up in a rendered figure would be a
     visible, elementary error.
 12. **Any claim about a specific software default** (MetaboAnalyst's 40% IQR filter, `pmp`'s blank
-    fold change, structToolbox's D-ratio). These change between versions. **[verify-at-build]** and,
+    fold change, structToolbox's D-ratio). These change between versions.
+    **[verify-at-build: no number]** — item 12's own remedy is to read them from the user's
+    installed version rather than hard-code one, so there is no number to hold out; the 40%
+    above is an example of the kind of default, not a threshold this app uses. L50-F2 ships
+    all three as refusals with a `BLOCKED.md` entry, which is that position implemented. And,
     better, read them from the user's installed version rather than hard-coding.
 13. **"Metabolomics is compositional like microbiome data."** The analogy is false in specific,
     articulable ways. Do not import the microbiome consensus.

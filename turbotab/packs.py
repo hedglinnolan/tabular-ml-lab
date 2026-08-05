@@ -3658,10 +3658,51 @@ def read_matrix(df: pd.DataFrame,
         "pct_integer_all": float(np.mean(whole)),
         "all_integral": bool(np.all(whole)),
         "floor_share": float(floor_cells / max(int(finite.sum()), 1)),
+        # THE THIRD OF SINGLE-CELL'S THREE CRITERIA. `GUIDED-217`, and it is
+        # here rather than in the refusal because a reading computes and a
+        # refusal decides — the other two criteria are `pct_zeros` and
+        # `n_columns`, both already above.
+        "median_nonzero": float(np.median(nonzero)) if nonzero.size else 0.0,
         "library_deviation": {"min": float(deviation.min()),
                               "max": float(deviation.max())},
         "ids": id_vocabulary(cols),
     }
+
+
+#: `GENOMICS_PACK.md`'s scope paragraph, verbatim: *"Single-cell is out of scope
+#: and must be detected and refused — zero fraction >80–90% with >1,000 columns
+#: and median non-zero count ≤3."* Three criteria, all three required.
+#:
+#: The zero fraction is stated as a RANGE, and the app takes the lower end. The
+#: direction matters and it is the safe one: refusing at 80% refuses a little
+#: more than the research demands, and the cost of a false refusal is a user
+#: told to bring bulk data, while the cost of a false acceptance is the app
+#: confidently opening a negative-binomial route on a matrix the pack has
+#: declared out of scope.
+_SINGLE_CELL_ZERO_SHARE = 0.80
+_SINGLE_CELL_MIN_COLUMNS = 1000
+_SINGLE_CELL_MEDIAN_NONZERO = 3.0
+
+SINGLE_CELL = "single_cell"
+
+
+def reads_as_single_cell(m: Dict[str, Any]) -> bool:
+    """All three of the scope paragraph's criteria, together.
+
+    `GUIDED-217`. L50 built the nine-signature reader and not this, and the
+    consequence was worse than an omission: a single-cell count matrix is
+    integral, non-negative and reaches past ten thousand, so it classified as
+    **raw counts at high confidence** and the capability matrix then opened the
+    count-model route. A confident classification of the one input the research
+    says must be refused.
+
+    Conjunctive on purpose. Any one of the three alone describes ordinary bulk
+    data — a wide matrix, a sparse matrix, a low-depth matrix — and the pack
+    names all three together.
+    """
+    return (m["pct_zeros"] > _SINGLE_CELL_ZERO_SHARE
+            and m["n_columns"] > _SINGLE_CELL_MIN_COLUMNS
+            and m["median_nonzero"] <= _SINGLE_CELL_MEDIAN_NONZERO)
 
 
 def _classify(m: Dict[str, Any]) -> Dict[str, Any]:
@@ -4318,6 +4359,35 @@ def data_type_card(df: pd.DataFrame,
     m = read_matrix(df, minimum=minimum)
     if m is None:
         return None
+    # ── OUT OF SCOPE, BEFORE ANYTHING IS CLASSIFIED ────────────────────────
+    # `GUIDED-217`. In front of the cascade rather than after it, for the same
+    # reason the negatives rule is the outermost branch of `_classify`: a
+    # refusal reached only after a classification has been made is a
+    # classification the app has already made. The pack's scope paragraph is
+    # not a caveat on the reading — it is a statement about which matrices this
+    # reader may speak about at all.
+    if reads_as_single_cell(m):
+        return {
+            "read": False,
+            "out_of_scope": SINGLE_CELL,
+            "reason": (
+                f"{m['pct_zeros']:.0%} of these values are zero across "
+                f"{m['n_columns']:,} columns, with a median non-zero count of "
+                f"{m['median_nonzero']:.0f}. That is single-cell data, and "
+                "this pack is scoped to bulk transcriptomics. The app is not "
+                "going to classify it: the count models it would then offer "
+                "assume a variance structure single-cell data does not have, "
+                "and it would be confident and wrong rather than silent."),
+            "block": {k: m[k] for k in ("n_columns", "n_samples", "excluded",
+                                        "n_excluded")},
+            "criteria": {
+                "pct_zeros": m["pct_zeros"],
+                "n_columns": m["n_columns"],
+                "median_nonzero": m["median_nonzero"],
+            },
+            "evidence": {"rows": [], "n": 0, "showing": 0},
+            **DATA_TYPE_EVIDENCE.to_dict(),
+        }
     verdict = _classify(m)
     keys = verdict["keys"]
     lead = keys[0] if keys else None
