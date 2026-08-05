@@ -2083,6 +2083,60 @@
     if (msg) atControl(AT_CONTROL, esc(msg), "warn");
     if (!msg) clearRefusal();
   }
+  /* ═════════ A CONTROLLER-WIDE THROW IS NOT A MESSAGE ═════════ `GUIDED-196`.
+
+     The boot's terminal `.catch(function(e){ setErr(e.message); })` cannot
+     tell a REQUEST that failed from an EXCEPTION that escaped `renderAll`, and
+     it reported both as a sentence in the error sink. Observed live: the page
+     was transiently in a state where a renderer called a function that did not
+     exist, `renderAll` died after `renderData`, and the whole journey rendered
+     as an upload step with one error line — which reads as *the server said
+     no*, not as *this page is broken*. `GUIDED-139` is why it matters: one
+     such error once killed every pull affordance in the door and nothing said
+     so.
+
+     A request failure is the app working. A `ReferenceError` or a `TypeError`
+     escaping a renderer is the app not working, and the honest form says which
+     — and says that what is on screen is incomplete, because that is the part
+     a person cannot otherwise know. The stack goes to the console rather than
+     to the user: the sentence is for them, the stack is for whoever is asked
+     about it afterwards. */
+  var PROGRAMMING_ERRORS = ["ReferenceError", "TypeError", "RangeError",
+                            "SyntaxError"];
+
+  function reportControllerError(err, where){
+    var name = (err && err.name) || "";
+    var programming = PROGRAMMING_ERRORS.indexOf(name) !== -1;
+    if (!programming){
+      setErr((err && err.message) || String(err));
+      return false;
+    }
+    try { console.error("TurboTab: " + where + " threw", err); } catch (_){ }
+    setErr("This page stopped part-way through drawing your project — " +
+           where + " raised a " + name + ". Nothing about your data is lost " +
+           "and nothing has been recorded from this render, but what you can " +
+           "see below is incomplete. Reloading is safe.");
+    var band = $("refusal");
+    if (band){
+      band.innerHTML = '<p class="r-why">The interface failed while rendering, ' +
+                       'which is a fault in this app rather than an answer ' +
+                       'about your data. The details are in the browser ' +
+                       'console.</p>';
+      band.classList.remove("is-hidden");
+    }
+    return true;
+  }
+
+  /* `renderAll` with the boundary around it. Every entry point uses this, so
+     there is one place a throw is classified rather than three. */
+  function renderAllGuarded(where){
+    try {
+      renderAll();
+    } catch (err){
+      reportControllerError(err, where || "renderAll");
+    }
+  }
+
   function clearRefusal(){
     var band = $("refusal");
     if (band){ band.innerHTML = ""; band.classList.add("is-hidden"); }
@@ -2182,8 +2236,8 @@
     fd.append("file", file);
     job("Reading " + file.name + " and running the import doctor…",
         api("/project", { method:"POST", body:fd }))
-      .then(function(p){ P = p; renderAll(); })
-      .catch(function(e){ setErr(e.message); });
+      .then(function(p){ P = p; renderAllGuarded("the project render"); })
+      .catch(function(e){ reportControllerError(e, "the project fetch"); });
   }
   function decide(kind, subject, payload, label){
     if (!P) return;
@@ -2208,7 +2262,7 @@
           headers:{ "Content-Type":"application/json" },
           body: JSON.stringify(body)
         }))
-      .then(function(p){ P = p; renderAll(); })
+      .then(function(p){ P = p; renderAllGuarded("the project render"); })
       .catch(function(e){
         setErr(e.message);
         if (e.detail) showRefusal(e.detail, body);
@@ -3990,7 +4044,7 @@
         if (body.figure) renderFigures({ admitted: [body.figure], held: [],
                                          unavailable: [], not_drawn: [] });
       })
-      .catch(function(e){ setErr(e.message); });
+      .catch(function(e){ reportControllerError(e, "the project fetch"); });
   }
 
   /* ═════════ WHAT YOUR NUMBERS ARE ═════════
@@ -7214,7 +7268,7 @@
           kind: "promote_figure", subject: t.getAttribute("data-promote"),
           payload: { figure_id: t.getAttribute("data-promote"),
                      promoted: t.getAttribute("data-promote-on") === "1" } })
-      }).then(function(body){ P = body; renderAll(); })
+      }).then(function(body){ P = body; renderAllGuarded("the project render"); })
         .catch(function(err){ setErr(err.message); });
       return;
     }
@@ -7225,7 +7279,7 @@
           kind: "keep_identifier", subject: t.getAttribute("data-keep-id"),
           payload: { column: t.getAttribute("data-keep-id"),
                      kept: t.getAttribute("data-keep-on") === "1" } })
-      }).then(function(body){ P = body; renderAll(); })
+      }).then(function(body){ P = body; renderAllGuarded("the project render"); })
         .catch(function(err){ setErr(err.message); });
       return;
     }
@@ -7453,7 +7507,7 @@
             headers:{ "Content-Type":"application/json" },
             body: JSON.stringify(body)
           }))
-        .then(function(p){ P = p; renderAll(); })
+        .then(function(p){ P = p; renderAllGuarded("the project render"); })
         .catch(function(err){ setErr(err.message); });
       return;
     }
@@ -8128,8 +8182,8 @@
   var pid = new URLSearchParams(window.location.search).get("project");
   if (pid){
     job("Reopening project…", api("/project/" + pid))
-      .then(function(p){ P = p; renderAll(); })
-      .catch(function(e){ setErr(e.message); });
+      .then(function(p){ P = p; renderAllGuarded("the project render"); })
+      .catch(function(e){ reportControllerError(e, "the project fetch"); });
   }
 })();
 </script>

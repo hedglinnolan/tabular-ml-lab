@@ -116,9 +116,28 @@ def compute_dataset_signals(
     # Missingness
     missing_counts = df.isnull().sum()
     signals.missing_rate_by_col = (missing_counts / len(df)).to_dict()
+    # ONE THRESHOLD, READ RATHER THAN RESTATED. `GUIDED-189`.
+    #
+    # This said `rate > 0.05` and `ml/missingness_plan.HIGH_MISSING_SHARE` says
+    # 0.20, and the two decide different halves of one affordance: this one
+    # raises the Explore chip, that one fills the cards the chip opens onto. A
+    # table whose worst column sits between them — `multiclass_stage.csv`, with
+    # `crp` at 10.0% and `bmi` at 7.1% — got a solid-bordered chip whose own
+    # tooltip read *"2 columns with >5% missing values"* and which opened onto
+    # an empty panel. `GUIDED-006`'s sentence: a control that silently does
+    # nothing asserts a capability that does not exist.
+    #
+    # **Neither threshold moved**, which is the row's own `act` and is also
+    # `AGENT_ONBOARD.md` §08 check 2 — the loop that pressured a threshold does
+    # not get to move it. The one that FILLS the panel is the real one, because
+    # it decides whether there is anything to look at; this one now reads it
+    # instead of holding a second copy. §06.2 was not invoked and did not need
+    # to be.
+    from ml.missingness_plan import HIGH_MISSING_SHARE
+
     signals.high_missing_cols = [
         col for col, rate in signals.missing_rate_by_col.items()
-        if rate > 0.05
+        if rate > HIGH_MISSING_SHARE
     ]
     
     # Duplicate rows
