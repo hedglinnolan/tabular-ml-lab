@@ -11059,7 +11059,7 @@
   "status": "FIXED",
   "note": "Filed because the near-miss is instructive rather than because anything broke.",
   "verified_against": "",
-  "test": "turbotab/test_the_genomics_data_type_card_reaches_a_person.py::test_the_estimated_counts_and_fpkm_separator_is_measured",
+  "test": "turbotab/test_the_fixture_constants_match_the_fixtures.py::test_the_estimated_counts_and_fpkm_separator_is_measured",
   "verified_ev": "L50. make_genomics_siblings.py draws from ONE seeded generator in file order. The estimated-counts block was inserted between the CPM block and the TMM block AFTER the first measurement run, which shifted every subsequent draw - so the library-size CV of genomics_tmm_cpm.csv and genomics_fpkm.csv changed and the numbers handed to the L50-B subagent were from before the insertion. TWO INDEPENDENT SUBAGENTS RE-DERIVED THEM AND REPORTED THE MISMATCH: the brief said 0.0635 and 0.102, the truth is 0.0524 and 0.1128 at ddof=0, and neither reproduces under any column set or estimator. The classification is unaffected - the estimated-vs-FPKM separator is still 2.4x - and the constants in packs.py are the subagents' own measurements rather than the brief's. The shipped companions never quoted a CV, so no file in the repository was wrong; only the brief was. The rule that caught it is the project's own: re-derive rather than quote forward. A generator drawing from a per-block seed would not have this property, and that is the durable fix if these fixtures grow again."
  },
  {
@@ -11159,5 +11159,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "L50. turbotab/clinical.py and turbotab/nutrition.py exist as modules; metabolomics and genomics live in packs.py. The L50 prompt had to say do not create turbotab/metabolomics.py precisely because the adjudicator had looked for exactly that file and briefly concluded the packs had no code - MISC-014, unrouted is not absent. L50 added roughly 3,000 lines to packs.py across four worktrees and produced three merge conflicts in that one file, every one of them at a detector tuple."
+ },
+ {
+  "id": "TEST-057",
+  "area": "TEST",
+  "sev": "medium",
+  "item": "The FIXED-row guard runs every test file a FIXED row names, so its cost grows with the ledger, and L50's four new pack files pushed it past its own 1800-second timeout",
+  "detail": "",
+  "ev": "L50, and the standing rule is why it is filed rather than fixed. The guard runs every test FILE that a FIXED row names - 136 of them now - and asserts no named node skips. L50 added four files to that set, all of them driving the API and the page harness, and the run crossed the guard's own 1800-second timeout. THE FAILURE IS A TIMEOUT AND NOT A LEDGER DEFECT: the assertion never ran. Every FIXED row this loop touched was audited separately and each names a node that exists in the file it names - one did not, TEST-056 pointed at the right test in the wrong file, and that is corrected. AGENT_ONBOARD 08 check 2 forbids moving a threshold in the same loop as the change that pressured it, and this loop is exactly that change, so the number stays where it is.",
+  "act": "Do not raise the timeout - that is the change the rule forbids in this loop. The durable fixes are cheaper: collect the named nodes with --collect-only and check them for skip markers rather than executing the files, or run only the files whose rows changed since the last green run. Land either on a passing run with the reasoning recorded first.",
+  "status": "OPEN",
+  "note": "Found by the guard timing out on the loop's own final suite. The guard's docstring already says it is scoped to those files rather than the whole suite BECAUSE a twenty-minute check is a check somebody turns off - it is now a thirty-minute check that fails, which is the same argument arriving at its conclusion.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "L50, and the standing rule is why it is filed rather than fixed. The guard runs every test FILE that a FIXED row names - 136 of them now - and asserts no named node skips. L50 added four files to that set, all of them driving the API and the page harness, and the run crossed the guard's own 1800-second timeout. THE FAILURE IS A TIMEOUT AND NOT A LEDGER DEFECT: the assertion never ran. Every FIXED row this loop touched was audited separately and each names a node that exists in the file it names - one did not, TEST-056 pointed at the right test in the wrong file, and that is corrected. AGENT_ONBOARD 08 check 2 forbids moving a threshold in the same loop as the change that pressured it, and this loop is exactly that change, so the number stays where it is."
  }
 ]

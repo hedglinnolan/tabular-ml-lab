@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**335 of 852 closed.**
+**335 of 853 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 458 |
+| `OPEN` | 459 |
 | `PARTIAL` | 59 |
 | `FIXED` | 329 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 458
+## OPEN — 459
 
 
 ### Guided-door drive feedback — 79
@@ -348,7 +348,7 @@ Nothing is closed without a regression test named after it.
 | `MINE-043` | low | pages/06 defines fallback plotting stubs that shadow visualizations.py on ImportError | `pages/06_Train_and_Compare.py:66-90; visualizations.py:53-88, 91-126` | Unchanged at HEAD. visualizations.py is a first-party module in the repository root and cannot legitimately be missing, so the fallback can only fire on an unrelated ImportError… |
 | `MINE-044` | low | visualizations.plot_residuals will pandas-align if handed two Series with different indexes | `visualizations.py:91-126 vs 141-142; pages/06_Train_and_Compare.py:2604, 2623` | Unchanged at HEAD, and the inconsistency inside one file is the tell: plot_bland_altman coerces both arguments and plot_residuals does not, so the safe idiom was known and applied… |
 
-### Migration safety net — 35
+### Migration safety net — 36
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -384,6 +384,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-031` | medium | The plain-dict fake state in tests/workflow/ is the ready-made bridge to the Project object — the only asset that transfers directly | `tests/conftest.py:60-85, :88-122, :125-145; tests/workflow/conftest.py:41-45` | Unchanged at HEAD and this is the most useful row in the batch, because it is an ASSET rather than a defect. The test helpers already run against a plain dict, so a Project that… |
 | `TEST-047` | medium | tests/test_the_target_is_asked_a_different_question.py:50 asserts 'binary variable written as text' for a column it names meds_chol - the exact NHANES column that in reality holds Python booleans… | `L48-B, found while fixing GUIDED-158. The fixture supplies the one shape that made the false sentence true…` | sibling-of: GUIDED-158, and an instance of trap #3 rather than of GUIDED-158's own defect. |
 | `TEST-054` | medium | A test docstring that names the mechanism making it pass, where no assertion checks that mechanism - trap #3b one layer down, in the docstring rather than the name | `L50-C, found by a revert probe returning GREEN - NOT LOAD-BEARING. The probe reverted _VERSIONED_VOCABULARIES…` | sibling-of: GUIDED-145 and TEST-046. Filed as the CLASS. The instance is fixed; the detector for it is not built, and unlike TEST-046's attribute scan there is no obvious… |
+| `TEST-057` | medium | The FIXED-row guard runs every test file a FIXED row names, so its cost grows with the ledger, and L50's four new pack files pushed it past its own 1800-second timeout | `L50, and the standing rule is why it is filed rather than fixed. The guard runs every test FILE that a FIXED…` | Found by the guard timing out on the loop's own final suite. The guard's docstring already says it is scoped to those files rather than the whole suite BECAUSE a twenty-minute… |
 | `TEST-033` | low | _NOT_STAGE_RESULTS in tests/integration/test_cascade_dag_equivalence.py:31 is defined and never referenced - a dead exclusion set that reads as if it were enforcing something | `tests/integration/test_cascade_dag_equivalence.py:31` | Filed post-Loop-1; not part of the 370 Tier-1 rows. |
 | `TEST-043` | low | A guard that searches the tree for a pattern has its own source inside the search space, so it flags the text in which it names what it is looking for - three instances in one loop | `reported by the L43 agent as its fourth divergence: the pragma check flagged the comment recording the…` | THE AGENT'S OWN SENTENCE IS THE ROW: `three times in one loop is a pattern I should have seen after the first - a guard whose own text is inside its search space has to say so.`… |
 | `TEST-045` | low | A parametrized test whose id contains a non-ASCII character cannot be addressed by revertprobe.py, so the one class of test this project requires a probe for is the one class that can silently have… | `Found at L46-C. turbotab/test_a_deferred_noticing_comes_back_where_it_said.py originally keyed its cases…` | FILED AT L46 AND FIXED IN THE INSTANCE ONLY - the test's own ids are now ASCII. THE CLASS IS WHY IT IS A ROW: LOOP.md section 09 requires a named regression test verified to fail… |
@@ -983,7 +984,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-046` | medium | A test docstring that names a page control its body never presses is trap #3b in its page-control form, and nothing detected it - the standing answer was to read docstrings against bodies by hand | `L48-A2. AGENT_ONBOARD.md 07 names trap #3b and the standing answer found GUIDED-145 once and nothing for five…` | **test:** `turbotab/test_a_test_that_names_a_control_presses_it.py::test_no_test_names_a_control_its_body_never_touches` — Both instances fixed rather than declared. NOT COVERED… |
 | `TEST-053` | medium | The American-spelling gate walked a nested checkout of the repository and failed on exempt prose at a path where its exemption no longer matched | `L50. docs/turbotab/tools/worktree.py (built this loop for A1) puts subagent worktrees under .worktrees/, and…` | **test:** `tests/test_american_spelling.py::test_no_british_spellings` — No revert probe: the gate IS the probe - it went red on the real condition and green on the fix, which is… |
 | `TEST-055` | medium | A closed-set assertion on a pack that is being filled out asserts that no further detector may ever exist | `L50. test_the_four_diagnostics_reach_a_person_and_carry_their_badges asserted equality against a five-element…` | **test:** `turbotab/test_the_gene_id_diagnostics_reach_an_upload.py::test_the_four_diagnostics_reach_a_person_and_carry_their_badges` — Found by merging two worktrees rather than… |
-| `TEST-056` | medium | Inserting a seeded draw in the middle of a fixture generator changes every draw after it, and the L50 brief quoted pre-insertion numbers to a subagent | `L50. make_genomics_siblings.py draws from ONE seeded generator in file order. The estimated-counts block was…` | **test:** `turbotab/test_the_genomics_data_type_card_reaches_a_person.py::test_the_estimated_counts_and_fpkm_separator_is_measured` — Filed because the near-miss is instructive… |
+| `TEST-056` | medium | Inserting a seeded draw in the middle of a fixture generator changes every draw after it, and the L50 brief quoted pre-insertion numbers to a subagent | `L50. make_genomics_siblings.py draws from ONE seeded generator in file order. The estimated-counts block was…` | **test:** `turbotab/test_the_fixture_constants_match_the_fixtures.py::test_the_estimated_counts_and_fpkm_separator_is_measured` — Filed because the near-miss is instructive rather… |
 
 ### Other — 11
 
