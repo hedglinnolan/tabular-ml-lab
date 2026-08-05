@@ -1022,6 +1022,20 @@ PACK_DEFER: Dict[str, str] = {
     "genomics::gene_id_versions": "explore",
     "genomics::gene_id_duplicates": "explore",
     "genomics::gene_id_mixed_vocabulary": "explore",
+    # L50-D · METABOLOMICS_PACK.md §01. Which rows are in the analysis, and
+    # which rows are the instrument checking itself. Every one of these is
+    # settled at `explore`, where the cohort is still being decided, because
+    # each of them either removes rows or says that rows nobody can add are
+    # missing.
+    "metabolomics::sample_roles": "explore",
+    "metabolomics::no_pooled_qc": "explore",
+    "metabolomics::empty_blocks": "explore",
+    "metabolomics::duplicate_ids": "explore",
+    # The grain question seen from the assay side. `explore` for the same reason
+    # the rest of this group is there — whether two rows are one subject decides
+    # what a row IS — and the finding itself asks nothing: the answer is the one
+    # already recorded at `set_grain`.
+    "metabolomics::repeated_subjects": "explore",
     # The value is real; its handling is a transform.
     "clinical::censored_values": "preprocess",
     "clinical::default_value_mass": "preprocess",
@@ -1029,6 +1043,17 @@ PACK_DEFER: Dict[str, str] = {
     "clinical::temporal_implausibility": "preprocess",
     "metabolomics::left_censored": "preprocess",
     "metabolomics::run_order": "preprocess",
+    # L50-D · the value-state family. These do not change which rows are in the
+    # analysis; they change what a transform is allowed to do to the values, so
+    # they belong where the transforms are recorded.
+    "metabolomics::zeros_or_missing": "preprocess",
+    "metabolomics::already_transformed": "preprocess",
+    "metabolomics::ion_modes": "preprocess",
+    # The acquisition inventory and its absence. `preprocess` because what they
+    # decide is whether drift correction and batch correction can run at all,
+    # and both of those are transforms fitted inside the pipeline.
+    "metabolomics::acquisition_design": "preprocess",
+    "metabolomics::no_run_order": "preprocess",
     "dietary::compositional": "preprocess",
     "genomics::counts_p_over_n": "preprocess",
     # WHAT THE NUMBERS ARE decides which transforms are legal on them — whether

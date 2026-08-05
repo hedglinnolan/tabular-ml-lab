@@ -40,6 +40,18 @@ DATA = Path(__file__).resolve().parent / "sample_data"
 # listed for a fixture must add nothing to it.
 FIXTURES = {
     "metabolomics_untargeted": ("responder", {P.METABOLOMICS}),
+    # The four L50-D siblings, DERIVED from the one above by
+    # `sample_data/make_metabolomics_siblings.py`. They are in the matrix for
+    # the reason every fixture is — a table one pack DOES match is where the
+    # other four get their chance to fire on something they do not — and these
+    # four are a real chance rather than a formality: between them they carry
+    # zeros where the original had blanks, a subject roster, a log-transformed
+    # block and duplicate column labels, which is most of what the survey and
+    # genomics detectors read.
+    "metabolomics_no_qc": ("responder", {P.METABOLOMICS}),
+    "metabolomics_paired_logged": ("responder", {P.METABOLOMICS}),
+    "metabolomics_mzmine_zeros": ("responder", {P.METABOLOMICS}),
+    "metabolomics_merged_modes": ("responder", {P.METABOLOMICS}),
     "dietary_recalls": ("hba1c", {P.DIETARY, P.CLINICAL}),
     "clinical_longitudinal": ("progressed", {P.CLINICAL}),
     # L41's clinical import fixture. In the matrix for the same reason every

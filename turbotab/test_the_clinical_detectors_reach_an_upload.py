@@ -178,8 +178,15 @@ def test_every_detector_fires_from_an_upload_and_not_from_its_own_test():
 PACKS_WITH_DETECTORS = {
     "clinical": ("clinical_labs.csv", "clinical", "readmitted", 8),
     "dietary": ("nhanes_kilojoules.csv", "dietary", "DR1TKCAL", 4),
+    # 3 -> 5 at L50-D. `METABOLOMICS_PACK.md` §01's three diagnostic families
+    # were filled out and the pack went from three detectors to thirteen; two
+    # more of them fire on this fixture, the role census and the acquisition
+    # inventory. The number is an INVENTORY of what the fixture produces rather
+    # than a behavior being pinned, which is why moving it is a correction and
+    # not trap #3c — the property this test asserts, that every pack finding
+    # reaches a person, is unchanged and is now asserted over five.
     "metabolomics": ("metabolomics_untargeted.csv", "metabolomics",
-                     "responder", 3),
+                     "responder", 5),
     "survey": ("survey_sentinels.csv", "survey", "sought_support", 2),
     # TWO SINCE L50-B: `GENOMICS_PACK.md` §02's data-type reading joined the
     # p/n one. The count is written out rather than derived for the reason the

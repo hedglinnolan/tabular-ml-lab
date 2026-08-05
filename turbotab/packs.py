@@ -690,21 +690,12 @@ def _acquisition_order(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     if len(cols) < 30:
         return None
     n = len(df)
-    order_col = None
-    for c in cols:
-        s = df[c].dropna()
-        if len(s) != n:
-            continue
-        try:
-            values = np.sort(s.to_numpy())
-        except (TypeError, ValueError):
-            continue
-        if not np.all(np.equal(np.mod(values, 1), 0)):
-            continue
-        if np.array_equal(values, np.arange(1, n + 1)) or \
-           np.array_equal(values, np.arange(0, n)):
-            order_col = c
-            break
+    # THE PERMUTATION READING MOVED TO `_permutation_column` and is called here
+    # rather than repeated. `_no_run_order` asserts *"there is no run order in
+    # this file"* and needs the same answer this one gets; two copies of the
+    # reading is the arrangement in which the app says that sentence on a table
+    # where this detector has just named a run-order column.
+    order_col = _permutation_column(df)
     if order_col is None:
         return None
 
@@ -1421,6 +1412,1375 @@ def _redundancy(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
             "groups_total": len(multi),
         },
         fix_label="", fix_kind="none")
+# ── metabolomics · §01, the three families a generic tool cannot do ──────────
+#
+# `METABOLOMICS_PACK.md` §01 specifies three diagnostic families, and this
+# repository shipped detectors for parts of two of them. What follows is the
+# rest, in the pack's own order: **sample-role detection**, **run order, batch
+# and design**, and **value-state diagnostics**.
+#
+# THE REGEX LIBRARY IS TRANSCRIBED, NOT INVENTED. Every pattern below appears
+# verbatim in §01. That matters more here than anywhere else in this file: a
+# role library assembled from recollection would look exactly like this one and
+# would be a set of claims with no record behind it, which is the failure the
+# badge exists to prevent. Where the implementation makes a decision the pack
+# does not make — a priority order, a boundary rule, an operationalization of
+# "≈ 0" — it is marked INVENTED and says so, so a reader can tell the two
+# apart. `evidence.py` cannot make that distinction; a comment can.
+
+ROLES_EVIDENCE = Evidence(
+    status=CONVENTION_STATUS,
+    source=("research/METABOLOMICS_PACK.md#Sample-role detection — the thing a "
+            "generic tool cannot do"))
+
+DESIGN_EVIDENCE = Evidence(
+    status=SETTLED,
+    source="research/METABOLOMICS_PACK.md#Run order, batch, and design")
+
+VALUE_STATE_EVIDENCE = Evidence(
+    status=SETTLED,
+    source="research/METABOLOMICS_PACK.md#Value-state diagnostics")
+
+VALUE_STATE_CONVENTION = Evidence(
+    status=CONVENTION_STATUS,
+    source="research/METABOLOMICS_PACK.md#Value-state diagnostics")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# D1 · Sample roles
+# ─────────────────────────────────────────────────────────────────────────────
+
+POOLED_QC = "pooled_qc"
+DILUTION_QC = "dilution_qc"
+BLANK = "blank"
+SYSTEM_SUITABILITY = "system_suitability"
+CALIBRANT = "calibrant"
+PROTEOMICS_REFERENCE = "proteomics_reference"
+
+ROLE_LABELS: Dict[str, str] = {
+    POOLED_QC: "pooled QC",
+    DILUTION_QC: "dilution QC",
+    BLANK: "blank",
+    SYSTEM_SUITABILITY: "system suitability",
+    CALIBRANT: "calibrant or standard",
+    PROTEOMICS_REFERENCE: "proteomics reference",
+}
+
+#: The six families, **in match priority order**, with §01's patterns verbatim.
+#:
+#: THE ORDER IS INVENTED — the pack gives a list, not a precedence — and it is
+#: ordered most-specific-first because the families overlap in exactly two
+#: places and both would otherwise resolve wrongly. `QC_2x` is a dilution QC and
+#: matches pooled QC's `^QC`; `QC_HeLa` is a proteomics reference and matches it
+#: too. Putting the two specific families ahead of the general one is the only
+#: ordering under which every example the pack itself names lands where the pack
+#: puts it, which is the nearest thing to a derivation available.
+#:
+#: `pool` IS DROPPED FROM THE PROTEOMICS FAMILY, and it is the one place this
+#: departs from the transcription. §01 lists `pool` under both pooled QC and
+#: proteomics, so as written the two families are not disjoint and every pooled
+#: QC in a metabolomics run would be reported as a proteomics reference channel.
+#: Pooled QC owns it — that is where the pack's coaching sentence lives — and
+#: the proteomics family keeps the four tokens that are unambiguously its own.
+ROLE_PATTERNS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    (DILUTION_QC, (r"dQC", r"DIL", r"QC[-_ ]?(1|2|4|8|16)x", r"RQC")),
+    (PROTEOMICS_REFERENCE, (r"HeLa", r"QC_HeLa", r"iRT", r"bridge",
+                            r"reference channel")),
+    (BLANK, (r"blank", r"BLK", r"^B\d+", r"solvent",
+             r"extraction[-_ ]?blank", r"process[-_ ]?blank", r"water")),
+    (SYSTEM_SUITABILITY, (r"SST", r"sys[-_ ]?suit", r"cond", r"equil", r"wash")),
+    (CALIBRANT, (r"CAL\d", r"STD", r"standard", r"IS", r"ISTD", r"NIST",
+                 r"SRM1950", r"LTR")),
+    (POOLED_QC, (r"^QC", r"_QC", r"PQC", r"pool", r"pooled", r"QCP", r"SQC",
+                 r"QC[-_ ]?\d+")),
+)
+
+#: §01: *"applied to sample names **and** to any metadata column named `type`,
+#: `sample_type`, `role`, `class`, `group`."* The restriction is not a
+#: convenience — it is what stops the library reading `batch` values `B1`/`B2`
+#: as `^B\d+`, i.e. as extraction blanks. Scanned columns are these plus the
+#: sample-name column, and nothing else.
+ROLE_COLUMN_NAMES = frozenset({"type", "sample_type", "role", "class", "group"})
+
+#: Names a sample identifier is written under. Used to PREFER a column, never to
+#: require one: a table whose id column is called `X.1` still gets read, by
+#: shape, below.
+SAMPLE_NAME_COLUMNS = frozenset({
+    "sample", "sample_id", "sample_name", "name", "id", "injection",
+    "injection_id", "file", "file_name", "raw_file", "run", "label"})
+
+_BARE_WORD = re.compile(r"[A-Za-z0-9]+")
+
+
+def _norm_name(column: Any) -> str:
+    """A column name reduced to lowercase words joined by single underscores."""
+    return re.sub(r"[^a-z0-9]+", "_", str(column).strip().lower()).strip("_")
+
+
+def _compile_role(pattern: str) -> Any:
+    """One §01 pattern, with the boundary rule the pack leaves implicit.
+
+    INVENTED, and load-bearing enough to be worth the paragraph. Six of the
+    pack's patterns are anchored or structural — `^QC`, `_QC`, `^B\\d+`,
+    `CAL\\d`, `QC[-_ ]?\\d+`, `sys[-_ ]?suit` — and are used exactly as written.
+    The rest are bare words, and applied as unanchored substrings they are
+    catastrophic: `IS` matches `HISTIDINE`, `cond` matches `condition`, `STD`
+    matches `STDEV`, `water` matches `wastewater_1`. A pack that reports a
+    histidine standard because a sample is named after an amino acid is the
+    governing rule broken in the one place the app has promised it will not be.
+
+    So a pattern that is **entirely alphanumeric** is given boundaries and every
+    other pattern is used verbatim. The classification is derived from the
+    pattern rather than hand-listed, so a pattern added later is bounded without
+    anybody remembering to bound it.
+
+    **The boundary blocks LETTERS and admits DIGITS**, which is the second
+    version of this rule. Blocking both was tried first and it silenced the
+    commonest way these names are actually written: `BLK03`, `STD3`, `SST1`,
+    `LTR04` are all a token with an index glued to it, and a digit abutting a
+    token is an index rather than a different word. Every hazard the rule exists
+    for is a LETTER neighbour — `HISTIDINE` around `IS`, `condition` around
+    `cond`, `STDEV` around `STD`, `wastewater` around `water` — so blocking
+    letters keeps all of them out and lets the real names in.
+    """
+    if _BARE_WORD.fullmatch(pattern):
+        return re.compile(r"(?<![A-Za-z])" + pattern + r"(?![A-Za-z])",
+                          re.IGNORECASE)
+    return re.compile(pattern, re.IGNORECASE)
+
+
+_ROLE_RE: Dict[Tuple[str, str], Any] = {
+    (family, pattern): _compile_role(pattern)
+    for family, patterns in ROLE_PATTERNS for pattern in patterns}
+
+
+def sample_name_column(df: pd.DataFrame) -> Optional[str]:
+    """The column holding sample names, by name first and by shape second.
+
+    Shape rather than uniqueness, because a duplicate sample id is one of the
+    things §01 asks to be detected: requiring uniqueness here would make the
+    duplicate-id detector unable to see the very table it is for.
+    """
+    if df is None or df.empty:
+        return None
+    text = [c for c in df.columns
+            if not pd.api.types.is_numeric_dtype(df[c])
+            and not pd.api.types.is_datetime64_any_dtype(df[c])]
+    for column in text:
+        if _norm_name(column) in SAMPLE_NAME_COLUMNS:
+            return str(column)
+    n = len(df)
+    for column in text:
+        s = df[column]
+        try:
+            distinct = int(s.nunique(dropna=True))
+        except TypeError:                                  # unhashable cells
+            continue
+        if distinct >= 0.9 * n and s.astype(str).str.len().mean() <= 40:
+            return str(column)
+    return None
+
+
+def sample_roles(df: pd.DataFrame) -> Dict[str, Any]:
+    """§01's role library, applied. **The census, including the empty families.**
+
+    Returns every family with its count, present or absent, because the absent
+    ones are the half a reviewer reads: *"I couldn't find any pooled QC
+    samples"* is only sayable by something that looked and can say what it
+    looked at.
+
+    One row gets at most one role — the first family in `ROLE_PATTERNS` order
+    that matches — and each family records the column and the pattern that made
+    the call, so the reading is inspectable rather than asserted.
+    """
+    empty = {
+        "name_column": None, "role_columns": [], "scanned_columns": [],
+        "families": {f: {"n": 0, "rows": [], "matches": []}
+                     for f, _ in ROLE_PATTERNS},
+        "present": [], "absent": [f for f, _ in ROLE_PATTERNS],
+        "n_rows": 0, "n_biological": 0,
+    }
+    if df is None or df.empty:
+        return empty
+
+    name_column = sample_name_column(df)
+    role_columns = [str(c) for c in df.columns
+                    if _norm_name(c) in ROLE_COLUMN_NAMES
+                    or _norm_name(c).replace("_", "") in
+                    {n.replace("_", "") for n in ROLE_COLUMN_NAMES}]
+    scanned = ([name_column] if name_column else []) + \
+              [c for c in role_columns if c != name_column]
+    if not scanned:
+        out = dict(empty)
+        out["n_rows"] = len(df)
+        out["n_biological"] = len(df)
+        return out
+
+    values = {c: df[c].astype(str).where(df[c].notna(), "").tolist()
+              for c in scanned}
+    families: Dict[str, Dict[str, Any]] = {
+        f: {"n": 0, "rows": [], "matches": []} for f, _ in ROLE_PATTERNS}
+
+    for position in range(len(df)):
+        for family, patterns in ROLE_PATTERNS:
+            # EVERY column that matched, not the first. The row gets one role,
+            # but §01's point is that the evidence lives in the sample name AND
+            # in the run-type column, and a reading corroborated by both is
+            # stronger than either — so recording only the first would throw
+            # away the thing the two-place rule exists to produce.
+            hits = []
+            for column in scanned:
+                text = values[column][position]
+                if not text:
+                    continue
+                for pattern in patterns:
+                    if _ROLE_RE[(family, pattern)].search(text):
+                        hits.append((column, pattern, text))
+                        break
+            if hits:
+                slot = families[family]
+                slot["n"] += 1
+                slot["rows"].append(position)
+                known = [(m["column"], m["pattern"]) for m in slot["matches"]]
+                for column, pattern, text in hits:
+                    if (column, pattern) not in known:
+                        slot["matches"].append(
+                            {"column": column, "pattern": pattern,
+                             "example": text})
+                        known.append((column, pattern))
+                break
+
+    present = [f for f, _ in ROLE_PATTERNS if families[f]["n"]]
+    absent = [f for f, _ in ROLE_PATTERNS if not families[f]["n"]]
+    non_biological = sum(families[f]["n"] for f in present)
+    return {
+        "name_column": name_column,
+        "role_columns": role_columns,
+        "scanned_columns": scanned,
+        "families": families,
+        "present": present,
+        "absent": absent,
+        "n_rows": len(df),
+        "n_biological": len(df) - non_biological,
+    }
+
+
+#: The list bound `GUIDED-209` requires. Row and column lists in a `params`
+#: payload are cut here and every cut states `..._shown` beside `..._total`, so
+#: a consumer can tell a short list from a truncated one.
+_LIST_BOUND = 200
+
+
+def _bounded(key: str, items: Sequence[Any],
+             bound: int = _LIST_BOUND) -> Dict[str, Any]:
+    """A list in a payload, with its bound stated beside it (`GUIDED-209`)."""
+    items = list(items)
+    return {key: items[:bound], f"{key}_shown": min(len(items), bound),
+            f"{key}_total": len(items), f"{key}_bound": bound}
+
+
+def _sentence(parts: Sequence[str]) -> str:
+    """Clauses joined into one sentence, **without `str.capitalize`.**
+
+    `capitalize()` upper-cases the first character and LOWER-CASES every other
+    one, so a clause naming sample `S040` shipped it as `s040`. The finding was
+    true about the count and false about the identifier, in a payload a user
+    would search their run list with. Trap #7's shape at the smallest possible
+    scale, and worth a named helper so it cannot come back.
+    """
+    text = "; ".join(p for p in parts if p)
+    return (text[:1].upper() + text[1:] + ".") if text else ""
+
+
+def _plural(n: int, one: str, many: str) -> str:
+    """`n` with the right noun. A count that reads `1 samples` is sloppy in a
+    surface whose whole argument is that it says precise things."""
+    return f"{n:,} {one if n == 1 else many}"
+
+
+def _roles_sentence(census: Dict[str, Any]) -> str:
+    parts = []
+    for family in census["present"]:
+        slot = census["families"][family]
+        match = slot["matches"][0]
+        parts.append(
+            f"{slot['n']:,} {ROLE_LABELS[family]} "
+            f"(`{match['column']}` matches `{match['pattern']}`, "
+            f"e.g. {match['example']!r})")
+    return "; ".join(parts)
+
+
+def _sample_roles_finding(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """Rows that are instrument work rather than biology, named by family.
+
+    **The class of error only the lens can see**, one level wider than
+    `_pooled_qc`: that detector reads variance and can therefore see exactly one
+    family, the one with enough replicate injections for a variance to mean
+    anything. Blanks, calibrants and system-suitability injections come in twos
+    and threes and are invisible to it, and they are the ones that most damage a
+    model, because a solvent blank is a row of near-zero intensities that any
+    fit will happily separate on.
+
+    The two readings are independent and are meant to agree. Where the variance
+    detector also fired, `params["corroborated_by"]` says so — two instruments
+    agreeing is evidence, and a disagreement between them is worth seeing.
+    """
+    if not _is_assay_wide(df):
+        return None
+    census = sample_roles(df)
+    if not census["present"]:
+        return None
+    n_non_biological = census["n_rows"] - census["n_biological"]
+    columns = sorted({m["column"] for f in census["present"]
+                      for m in census["families"][f]["matches"]})
+    params: Dict[str, Any] = {
+        "families": {f: census["families"][f]["n"] for f in census["present"]},
+        "absent_families": census["absent"],
+        "scanned_columns": census["scanned_columns"],
+        "name_column": census["name_column"],
+        "n_biological": census["n_biological"],
+        "n_non_biological": n_non_biological,
+        "matches": [m for f in census["present"]
+                    for m in census["families"][f]["matches"]],
+    }
+    for family in census["present"]:
+        params.update(_bounded(f"rows_{family}",
+                               census["families"][family]["rows"]))
+    if POOLED_QC in census["present"] and _pooled_qc(df) is not None:
+        params["corroborated_by"] = "pack::metabolomics::pooled_qc"
+    return _finding(
+        "pack::metabolomics::sample_roles", "warning",
+        f"{n_non_biological:,} of {census['n_rows']:,} rows are instrument "
+        f"runs, not biological samples",
+        (f"Reading the sample names and the run-type columns "
+         f"({', '.join('`' + c + '`' for c in census['scanned_columns'])}) "
+         f"against the field's naming conventions: {_roles_sentence(census)}. "
+         f"That leaves {census['n_biological']:,} biological samples."),
+        ("Quality-control, blank, standard and system-suitability injections "
+         "are the instrument being checked, not people being measured. They "
+         "belong in the quality assessment and out of the modeling rows, and "
+         "the reading here is the naming convention rather than the values — "
+         "so it is worth confirming against your run list."),
+        confidence="high", pack=METABOLOMICS, marker="convention",
+        evidence=ROLES_EVIDENCE,
+        columns=columns,
+        params=params)
+
+
+#: §01's coaching sentence for the absent case, **quoted rather than
+#: paraphrased**. It is the most valuable thing in this family: a reviewer reads
+#: it as the tool refusing to compute three specific things and saying which,
+#: and the last clause is the part that has a deadline attached to it.
+NO_POOLED_QC_COACHING = (
+    "I couldn't find any pooled QC samples. Pooled QCs — an aliquot of every "
+    "sample, mixed, injected every 5–10 samples — are the field's standard "
+    "evidence that your run was stable, and reviewers increasingly expect them "
+    "(Broadhurst et al. 2018, Metabolomics 14:72; mQACC 2022). Without them I "
+    "can't compute QC-RSD, D-ratio, or drift correction. If QCs were run but "
+    "aren't in this file, add them now; they cannot be reconstructed later.")
+
+#: The three things the absence makes impossible, named separately from the
+#: sentence because a machine-readable payload that drops half of what the prose
+#: said is trap #7 and this is exactly its shape.
+WITHOUT_POOLED_QC = ("QC-RSD", "D-ratio", "drift correction")
+
+
+def _no_pooled_qc(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """The refusal, with its reason — and it is the half a reviewer notices.
+
+    `DOMAIN_SCIENCE.md` §03b: an app that says nothing about an absent control
+    is indistinguishable from one that never looked. This looked, at named
+    columns, with a named pattern library, and reports that it found nothing —
+    which is a claim, and carries a badge like every other claim here.
+
+    `offered` rather than `derived`: the ABSENCE is derived, and what follows
+    from it is a choice the user makes about their own run. There is nothing to
+    pre-select and no action to take inside the app.
+    """
+    if not _is_assay_wide(df):
+        return None
+    census = sample_roles(df)
+    if POOLED_QC in census["present"]:
+        return None
+    # A table with nothing to read is not a table with no QCs. Silence over a
+    # false assertion — `AGENT_ONBOARD.md` trap #9, in words rather than in a
+    # return value.
+    if not census["scanned_columns"]:
+        return None
+    return _finding(
+        "pack::metabolomics::no_pooled_qc", "warning",
+        "No pooled QC samples in this file",
+        (NO_POOLED_QC_COACHING + " I looked at "
+         + ", ".join("`" + c + "`" for c in census["scanned_columns"])
+         + f" across all {census['n_rows']:,} rows, against the field's naming "
+           f"conventions for pooled QCs."),
+        ("Without pooled QCs there is no measurement of technical variation, "
+         "so QC-RSD filtering, the D-ratio and drift correction cannot be "
+         "computed here — not by this app and not by any other tool from this "
+         "file. That is a limit on what the analysis can claim, and it belongs "
+         "in the methods section rather than in a footnote."),
+        confidence="high", pack=METABOLOMICS, marker="offered",
+        evidence=POOLED_QC_EVIDENCE,
+        columns=census["scanned_columns"],
+        params={"scanned_columns": census["scanned_columns"],
+                "roles_found": {f: census["families"][f]["n"]
+                                for f in census["present"]},
+                "cannot_compute": list(WITHOUT_POOLED_QC),
+                "reconstructable": False,
+                "n_rows": census["n_rows"]})
+
+# ─────────────────────────────────────────────────────────────────────────────
+# D2 · Run order, batch and design
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: §01's list, verbatim, grouped by what each column IS. The pack gives one flat
+#: list — `injection.order`, `inj_order`, `run_order`, `sequence`, `acq_order`,
+#: `AcquisitionDateTime`, `batch`, `plate`, `well`, `position`, `plex`,
+#: `TMT.channel`, `polarity` — and the grouping is this file's, because the
+#: consequences differ: a missing run order disables half the diagnostics and a
+#: missing `plate` disables none.
+DESIGN_COLUMNS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("run_order", ("injection.order", "inj_order", "run_order", "sequence",
+                   "acq_order")),
+    ("timestamp", ("AcquisitionDateTime",)),
+    ("batch", ("batch",)),
+    ("plate", ("plate",)),
+    ("well", ("well",)),
+    ("position", ("position",)),
+    ("plex", ("plex",)),
+    ("tmt_channel", ("TMT.channel",)),
+    ("polarity", ("polarity",)),
+)
+
+#: §01, second paragraph: *"Also detect: group/class column; **subject ID**, to
+#: catch repeated measures (routinely missed); timepoint; known confounders
+#: (age, sex, BMI, fasting status, medication, site, storage time, freeze-thaw
+#: count)."* The names are this file's spellings of those concepts; the concepts
+#: are the pack's.
+STUDY_COLUMNS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("group", ("group", "class", "condition", "treatment", "arm", "phenotype")),
+    ("subject", ("subject", "subject_id", "patient_id", "participant_id",
+                 "individual", "donor", "person_id")),
+    ("timepoint", ("timepoint", "time_point", "visit", "week", "day", "month")),
+    ("confounder", ("age", "sex", "gender", "bmi", "fasting", "fasting_status",
+                    "medication", "site", "storage_time", "freeze_thaw",
+                    "freeze_thaw_count")),
+)
+
+
+def _name_matches(column: Any, token: str) -> bool:
+    """Normalized equality, or the token as a leading or trailing word.
+
+    Word-bounded rather than substring, for `_compile_role`'s reason one layer
+    up: `age` as a substring matches `image_id` and `percentage`, and a design
+    reader that calls an image id a confounder has asserted something false
+    about the study.
+    """
+    name, token = _norm_name(column), _norm_name(token)
+    return (name == token
+            or name.startswith(token + "_")
+            or name.endswith("_" + token)
+            or ("_" + token + "_") in ("_" + name + "_"))
+
+
+def design_columns(df: pd.DataFrame) -> Dict[str, List[str]]:
+    """Every acquisition and design column §01 names, by role. Never empty-keyed.
+
+    A column is claimed by the FIRST role that matches, so `batch` cannot also
+    be a confounder and the counts below add up.
+    """
+    found: Dict[str, List[str]] = {role: [] for role, _ in
+                                   DESIGN_COLUMNS + STUDY_COLUMNS}
+    if df is None or df.empty:
+        return found
+    taken: set = set()
+    for role, tokens in DESIGN_COLUMNS + STUDY_COLUMNS:
+        for column in df.columns:
+            if str(column) in taken:
+                continue
+            if any(_name_matches(column, token) for token in tokens):
+                found[role].append(str(column))
+                taken.add(str(column))
+    return found
+
+
+def _permutation_column(df: pd.DataFrame) -> Optional[str]:
+    """A numeric column that is a PERMUTATION of the row positions.
+
+    Factored out of `_acquisition_order` rather than reimplemented, and that is
+    the point of it existing. `_no_run_order` asserts *"there is no run order in
+    this file"*, and two independent readings of "is there a run order" is the
+    arrangement in which the app says that sentence on a table where the other
+    detector has just reported a run-order column. One reader, one answer.
+    """
+    n = len(df)
+    for column in _numeric(df):
+        s = df[column].dropna()
+        if len(s) != n:
+            continue
+        try:
+            values = np.sort(s.to_numpy())
+        except (TypeError, ValueError):
+            continue
+        if not np.all(np.equal(np.mod(values, 1), 0)):
+            continue
+        if np.array_equal(values, np.arange(1, n + 1)) or \
+           np.array_equal(values, np.arange(0, n)):
+            return str(column)
+    return None
+
+
+#: A timestamp column has to parse as one for essentially every row before it is
+#: called a timestamp. INVENTED — §01 says *"if an acquisition timestamp exists,
+#: derive run order from it"* and does not say how sure to be. Set high because
+#: the consequence is an ORDER, and an order derived from a column that is dates
+#: for 70% of rows is an order that is wrong for the other 30% silently.
+_TIMESTAMP_PARSE_SHARE = 0.95
+
+
+def acquisition_timestamp(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """A column that is an acquisition time, and the run order it implies.
+
+    Named first — `AcquisitionDateTime` and its spellings — then confirmed by
+    parsing, because a column called `run_date` holding a study visit date is
+    not an acquisition time and the name alone cannot tell them apart.
+    """
+    if df is None or df.empty:
+        return None
+    candidates = [str(c) for c in df.columns
+                  if any(_name_matches(c, t) for t in
+                         ("AcquisitionDateTime", "acquisition_datetime",
+                          "acquisition_time", "acq_time", "acq_datetime",
+                          "injection_time", "run_time", "datetime",
+                          "timestamp"))]
+    for column in candidates:
+        s = df[column]
+        if pd.api.types.is_numeric_dtype(s):
+            continue
+        try:
+            parsed = pd.to_datetime(s, errors="coerce", format="mixed")
+        except (TypeError, ValueError):                    # pragma: no cover
+            continue
+        share = float(parsed.notna().mean())
+        if share < _TIMESTAMP_PARSE_SHARE:
+            continue
+        order = parsed.rank(method="first").astype("Int64")
+        return {"column": column, "parsed_share": round(share, 3),
+                "first": str(parsed.min()), "last": str(parsed.max()),
+                "order": order}
+    return None
+
+
+def _acquisition_design(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """What this run's acquisition and design columns are, and what they permit.
+
+    An inventory rather than a complaint, at `info`. §01's Presentation section
+    asks for a data-inventory table whose first job is to become *"the seed of
+    the manuscript's data-description sentence"*, and a sentence nobody can
+    write is one nobody wrote down the inputs for.
+
+    **Derives run order from a timestamp where one exists**, which is §01's one
+    imperative in this family, and says that it derived it — a run order the app
+    computed and presented as if it had been given is the record asserting
+    something false about its own provenance.
+    """
+    if not _is_assay_wide(df):
+        return None
+    found = design_columns(df)
+    stamp = acquisition_timestamp(df)
+    permutation = _permutation_column(df)
+
+    named_order = found["run_order"]
+    structure = [role for role, _ in DESIGN_COLUMNS if found[role]]
+    if stamp and "timestamp" not in structure:
+        structure.append("timestamp")
+    design_present = [role for role, _ in STUDY_COLUMNS
+                      if role != "confounder" and found[role]]
+    if not structure and not design_present:
+        return None
+
+    order_column, order_source = None, None
+    if named_order:
+        order_column, order_source = named_order[0], "named"
+    elif stamp:
+        order_column, order_source = stamp["column"], "derived_from_timestamp"
+    elif permutation:
+        order_column, order_source = permutation, "inferred_from_shape"
+
+    said = []
+    if order_column and order_source == "derived_from_timestamp":
+        said.append(
+            f"no run-order column, but `{order_column}` parses as an "
+            f"acquisition time for {stamp['parsed_share']:.0%} of rows "
+            f"({stamp['first']} to {stamp['last']}), so run order is derived "
+            f"from it")
+    elif order_column and order_source == "named":
+        said.append(f"run order in `{order_column}`")
+    elif order_column:
+        said.append(f"no run-order column, but `{order_column}` runs 1 to "
+                    f"{len(df):,} with every position used once")
+    for role, _ in DESIGN_COLUMNS:
+        if role in ("run_order", "timestamp") or not found[role]:
+            continue
+        said.append(f"{role.replace('_', ' ')} in "
+                    + ", ".join("`" + c + "`" for c in found[role]))
+    for role in design_present:
+        said.append(f"{role} in " + ", ".join("`" + c + "`" for c in found[role]))
+    if found["confounder"]:
+        said.append("known confounders "
+                    + ", ".join("`" + c + "`" for c in found["confounder"]))
+
+    columns = [c for role, _ in DESIGN_COLUMNS + STUDY_COLUMNS
+               for c in found[role]]
+    if stamp and stamp["column"] not in columns:
+        columns.append(stamp["column"])
+    params: Dict[str, Any] = {
+        "run_order_column": order_column,
+        "run_order_source": order_source,
+        "by_role": {role: found[role] for role in found if found[role]},
+        "timestamp": {k: v for k, v in (stamp or {}).items() if k != "order"}
+                     or None,
+    }
+    params.update(_bounded("columns", columns))
+    return _finding(
+        "pack::metabolomics::acquisition_design", "info",
+        f"The acquisition and design columns in this run: "
+        f"{len(columns):,} of them",
+        "This run records " + "; ".join(said) + ".",
+        ("Run order, batch and plate are what drift correction, batch "
+         "correction and the run-order PCA overlay are computed against, and "
+         "the group-by-batch crosstab is what shows a confound before it "
+         "becomes a result. Nothing here is changed — this is the inventory the "
+         "data-description sentence is written from."),
+        confidence="high", pack=METABOLOMICS, marker="derived",
+        evidence=DESIGN_EVIDENCE,
+        columns=columns[:8],
+        params=params)
+
+
+#: §01: *"half the downstream diagnostics (drift, QC-RLSC, run-order PCA
+#: overlay) become impossible."* Named separately from the sentence for trap
+#: #7's reason — the structured payload is what everything downstream reads.
+WITHOUT_RUN_ORDER = ("drift", "QC-RLSC", "run-order PCA overlay")
+
+
+def _no_run_order(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """No run order, no timestamp, nothing shaped like either. **Said loudly.**
+
+    §01 uses the words *"say so loudly"*, which is a specification and is met by
+    saying what stops being possible rather than by an exclamation mark. Three
+    named diagnostics, in the payload as well as in the prose.
+    """
+    if not _is_assay_wide(df):
+        return None
+    found = design_columns(df)
+    if found["run_order"] or acquisition_timestamp(df) or _permutation_column(df):
+        return None
+    return _finding(
+        "pack::metabolomics::no_run_order", "warning",
+        "There is no run order in this file, and half the quality diagnostics "
+        "need one",
+        (f"No column here is named as an injection or acquisition order, none "
+         f"parses as an acquisition timestamp, and none runs 1 to "
+         f"{len(df):,} with every position used exactly once. I looked at all "
+         f"{len(df.columns):,} columns."),
+        ("Instrument drift is often the largest single variance component in a "
+         "run, and every way of seeing it is ordered by injection: drift "
+         "diagnostics, QC-RLSC correction and the run-order overlay on the PCA "
+         "scores plot all become impossible without one. The order is in the "
+         "instrument's sequence file — if you still have it, adding the column "
+         "now recovers all three."),
+        confidence="high", pack=METABOLOMICS, marker="derived",
+        evidence=DESIGN_EVIDENCE,
+        columns=[],
+        params={"cannot_compute": list(WITHOUT_RUN_ORDER),
+                "n_columns_examined": int(len(df.columns)),
+                "n_rows": int(len(df)),
+                "recoverable_from": "the instrument sequence file"})
+
+
+def _repeated_subjects(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """Subject IDs that repeat — §01's *"routinely missed"* — routed, not re-asked.
+
+    **This is the grain question arriving through a second door**, and the whole
+    design decision is what happens next. The app already asks it: question 3,
+    `set_grain`, in the lockbox, with a contradiction detector and two terminal
+    exits. Asking it again here because a lens happens to be metabolomics would
+    be the app interrogating a user about something the record already holds,
+    which this project has paid for before.
+
+    So the reading is `grain.suggestion` — **the lockbox's own ranking, not a
+    second one** — and the finding carries the pack's coaching plus a pointer to
+    where the answer lives. It cannot become a question: `fix_kind="none"` makes
+    that structural rather than a matter of restraint.
+
+    The column named in `params` resolves in `grain.suggestion(df)["columns"]`
+    by construction, because that is where it came from. `AGENT_ONBOARD.md` trap
+    #3 is a fixture handing a collaborator an id that production cannot produce;
+    taking the id FROM the collaborator is the arrangement in which that cannot
+    happen.
+    """
+    if not _is_assay_wide(df):
+        return None
+    from turbotab import grain as _grain
+
+    suggestion = _grain.suggestion(df)
+    if not suggestion["columns"]:
+        return None
+    evidence = {e["column"]: e for e in suggestion["evidence"]}
+    # THE NAME HAS TO CORROBORATE THE SHAPE, and this clause is a repair rather
+    # than a precaution. The lockbox OFFERS candidates and asserts nothing about
+    # them; this sentence says *"subject IDs repeat"*, which is a claim that the
+    # column IS a subject id. Driven without the clause it made that claim about
+    # `genomics_expression.csv` — *"60 samples from 28 subjects"* — on the
+    # strength of a column whose shape merely repeats, and about
+    # `survey_instrument.csv` in the same breath. §01 names the thing to detect
+    # as **subject ID**; a roster-shaped column with no name to match is the
+    # case the grain question exists to ask about, and asking it is what the app
+    # already does.
+    named = set(design_columns(df)["subject"])
+    column = next((c for c in suggestion["columns"]
+                   if c in evidence and c in named), None)
+    if column is None:
+        return None
+    reading = evidence[column]
+    n_subjects, n_samples = reading["n_distinct"], reading["n_rows"]
+    if n_samples <= n_subjects:                            # pragma: no cover
+        return None
+    inflation = n_samples / n_subjects
+    return _finding(
+        "pack::metabolomics::repeated_subjects", "warning",
+        f"Subject IDs repeat — {n_samples:,} samples from {n_subjects:,} "
+        f"subjects",
+        (f"`{column}` holds {n_subjects:,} distinct values across "
+         f"{n_samples:,} rows, {reading['modal_rows_per']:,} rows per value for "
+         f"{reading['regular_share']:.0%} of them. Treating these as "
+         f"{n_samples:,} independent observations would inflate your apparent "
+         f"sample size by about {inflation:.1f}× and inflate significance with "
+         f"it."),
+        ("This is the question the app has already asked — whether one person "
+         "can appear in more than one row — and the answer you gave there is "
+         "the one that governs. It decides how the held-out set is drawn, "
+         "because a subject appearing in both halves makes the held-out "
+         "estimate optimistic. Nothing is re-asked here; this is the same "
+         "question seen from the assay side, and the reason it matters more "
+         "in an assay is that the technical replicate and the repeat visit "
+         "look identical in the table."),
+        confidence="high", pack=METABOLOMICS, marker="offered",
+        evidence=DESIGN_EVIDENCE,
+        columns=[column],
+        params={"routes_to": "set_grain",
+                "grain_answer": _grain.PEOPLE_REPEAT,
+                "group_column": column,
+                "n_subjects": int(n_subjects),
+                "n_samples": int(n_samples),
+                "apparent_inflation": round(float(inflation), 2),
+                "candidate_columns": list(suggestion["columns"]),
+                "asks_nothing": True})
+
+# ─────────────────────────────────────────────────────────────────────────────
+# D3 · Value states
+# ─────────────────────────────────────────────────────────────────────────────
+
+def metabolite_columns(df: pd.DataFrame,
+                       keep_degenerate: bool = False) -> List[str]:
+    """The intensity block — the numeric columns that are measurements.
+
+    Everything below reads *"the values"*, and which values is not obvious in a
+    table that carries `run_order`, `age` and a binary outcome beside four
+    hundred features. Getting it wrong is not cosmetic: a zero census over a
+    block that includes a 0/1 outcome reports zeros in a table that has none,
+    and a dynamic range computed over `run_order` reports 80 where the answer is
+    89,000.
+
+    Two exclusions, both derived from what the column IS rather than from a
+    name list of its own: a column `design_columns` already claimed, and a
+    column with at most two distinct values, which is an indicator and not an
+    abundance.
+
+    **`keep_degenerate` exists because the second exclusion ate the defect.** An
+    all-zero feature and a constant feature both have exactly ONE distinct
+    value, so the rule written to drop a 0/1 outcome column also dropped every
+    column `_empty_blocks` is for — and it dropped them before the detector ran,
+    so the detector reported *"1 empty sample"* on a table with eight all-zero
+    features and said nothing false while missing most of the finding. With the
+    flag set the floor becomes "exactly two distinct values", which still drops
+    an indicator and keeps the degenerate columns that are the subject.
+
+    This is `AGENT_ONBOARD.md` §07's third variant seen from the production
+    side: the assertion was right and the input to it was wrong, which is why
+    reading the detector never finds it and driving a fixture does.
+    """
+    if df is None or df.empty:
+        return []
+    claimed = {c for cols in design_columns(df).values() for c in cols}
+    out = []
+    for column in _numeric(df):
+        if column in claimed:
+            continue
+        try:
+            distinct = int(df[column].nunique(dropna=True))
+        except TypeError:                                  # pragma: no cover
+            continue
+        if distinct == 2 or (distinct <= 2 and not keep_degenerate):
+            continue
+        out.append(column)
+    return out
+
+
+def _block(df: pd.DataFrame, minimum: int = 30) -> Optional[Tuple[List[str], np.ndarray]]:
+    """The intensity block as a float array, or None if there is not one."""
+    columns = metabolite_columns(df)
+    if len(columns) < minimum:
+        return None
+    with np.errstate(all="ignore"):
+        values = df[columns].to_numpy(dtype=float, na_value=np.nan)
+    return columns, values
+
+
+#: §01 names four vendors and what each writes into a cell it could not
+#: quantify. Carried as data rather than as a sentence so the payload says
+#: everything the prose does — trap #7 is the machine-readable form being the
+#: lossier of the two, and a vendor list flattened into one string is exactly
+#: that.
+ZERO_CONVENTIONS: Tuple[Tuple[str, str], ...] = (
+    ("XCMS", "fillPeaks writes a small number, not a zero"),
+    ("MZmine", "writes 0"),
+    ("MaxQuant", "writes 0, meaning not quantified"),
+    ("Progenesis", "writes 0"),
+)
+
+#: INVENTED. An export that writes zeros for non-detections writes a lot of
+#: them; one zero in a table of 2,700 cells is a value, not a convention. Driven
+#: over the fixtures, `wide_assay.csv` produced *"1 zeros across 1 features"* —
+#: true, ungrammatical, and an interruption about nothing. The floor is a share
+#: rather than a count so it does not scale wrongly with the size of the panel.
+_SYSTEMATIC_ZERO_SHARE = 0.01
+
+
+def _zeros_or_missing(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """Zeros in the intensity block, and the question the app will not answer.
+
+    §01 is unambiguous and it is the reason this is a report rather than a
+    default: *"The pack must ask: do zeros here mean 'not detected' or 'true
+    zero'? Defaulting wrong corrupts every downstream step."*
+
+    So this states the count, states that four widely-used tools disagree about
+    what they mean, and states that nothing here has been assumed. It does not
+    add a question — guard #1 forbids a pack inventing a card type and
+    `fix_kind="none"` makes that structural — and the honest form of a question
+    a pack may not ask is a report that says the app has not decided.
+    """
+    read = _block(df)
+    if read is None:
+        return None
+    columns, values = read
+    zeros = np.equal(values, 0.0) & np.isfinite(values)
+    n_zeros = int(zeros.sum())
+    finite = int(np.isfinite(values).sum())
+    n_blank_all = int(np.isnan(values).sum())
+    if n_zeros / max(finite + n_blank_all, 1) < _SYSTEMATIC_ZERO_SHARE:
+        return None
+    per_feature = zeros.sum(axis=0)
+    with_zeros = [c for c, k in zip(columns, per_feature) if k]
+    n_blank = int(np.isnan(values).sum())
+    both = n_blank > 0
+    params: Dict[str, Any] = {
+        "n_zeros": n_zeros,
+        "n_cells": finite + n_blank,
+        "share_zero": round(n_zeros / max(finite + n_blank, 1), 5),
+        "n_features_with_zeros": len(with_zeros),
+        "n_features": len(columns),
+        "n_blank_cells": n_blank,
+        "blanks_and_zeros_coexist": both,
+        "vendor_conventions": [{"tool": t, "writes": w}
+                               for t, w in ZERO_CONVENTIONS],
+        "not_defaulted": True,
+        "decides": ("whether these cells are non-detections or measured zeros, "
+                    "which changes filtering, imputation and every ratio "
+                    "computed after them"),
+    }
+    params.update(_bounded("features_with_zeros", with_zeros))
+    coexist = (
+        f"There are also {n_blank:,} genuinely blank cells, so this table uses "
+        f"both — which usually means the zeros and the blanks came from "
+        f"different steps and mean different things."
+        if both else
+        "There are no blank cells at all, which is itself informative: a table "
+        "with zeros and no blanks has usually had its non-detections written "
+        "as zeros by the export.")
+    return _finding(
+        "pack::metabolomics::zeros_or_missing", "warning",
+        f"{n_zeros:,} zeros across {len(with_zeros):,} features — and nothing "
+        f"has assumed what they mean",
+        (f"{n_zeros:,} of {finite + n_blank:,} cells in the "
+         f"{len(columns):,}-feature block are exactly zero. " + coexist + " "
+         "The tools disagree: "
+         + "; ".join(f"{tool} {writes}" for tool, writes in ZERO_CONVENTIONS)
+         + "."),
+        ("A zero that means \"below the detection limit\" and a zero that means "
+         "\"measured as none\" want opposite treatments — the first is imputed "
+         "from the detection limit, the second is a real value — and defaulting "
+         "wrong corrupts every step after it. Nothing here has defaulted: the "
+         "app needs to be told which export wrote this file."),
+        confidence="high", pack=METABOLOMICS, marker="offered",
+        evidence=VALUE_STATE_EVIDENCE,
+        columns=with_zeros[:8],
+        params=params)
+
+
+#: §01: *"a max below ~40 with a positive min and low dynamic range"*. The `~`
+#: is the pack's; the constant is this file's reading of it.
+_TRANSFORMED_MAX = 40.0
+
+#: §01: *"raw untargeted intensities span 10^2–10^9. A ratio below 10^2 means
+#: something has already been done to the data."*
+_RAW_DYNAMIC_RANGE = 100.0
+
+#: INVENTED, and it is the repair for a false statement this detector made
+#: before it existed. §01's range readings — *"a max below ~40"*, *"a ratio
+#: below 10²"* — are about ABUNDANCES. Driven across every fixture under a
+#: stated metabolomics lens, they fired on `survey_instrument.csv`: a block of
+#: 41 Likert items scored 1–5 has a maximum of 5 and a range of 5×, and the app
+#: told a survey researcher their responses had already been log-transformed.
+#: A block that is almost entirely whole numbers is a coded instrument or a
+#: count matrix, and neither is an abundance, so neither reading applies to it.
+_INTEGRAL_SHARE_MAX = 0.9
+
+#: §01: *"or column means ≈ 0"*. INVENTED — the pack does not operationalize
+#: "≈ 0", and a centered column is one whose mean is small RELATIVE TO ITS OWN
+#: SPREAD, because an absolute threshold would call a column of small
+#: concentrations centered. Named here rather than buried in an expression so a
+#: reader can disagree with it.
+_CENTERED_MEAN_RATIO = 0.1
+#: And the share of features that must be centered before the table is. Also
+#: INVENTED. Half, because scaling is applied to a whole block or to none of it.
+_CENTERED_SHARE = 0.5
+
+
+def transformation_signals(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """§01's three readings of *"this has already been transformed"*, measured.
+
+    Returns the measurements whether or not any of them fired, and separately
+    from the finding that reports them, because the readings are wanted by
+    things that are not that finding: the sibling fixtures are checked against
+    them, and a later step deciding whether a log transform is legal wants the
+    measurement rather than the card.
+    """
+    read = _block(df)
+    if read is None:
+        return None
+    columns, values = read
+    finite = values[np.isfinite(values)]
+    if not finite.size:
+        return None
+    positive = finite[finite > 0]
+    ratio = (float(positive.max() / positive.min())
+             if positive.size and positive.min() > 0 else None)
+    with np.errstate(all="ignore"):
+        means = np.nanmean(values, axis=0)
+        sds = np.nanstd(values, axis=0)
+        usable = np.isfinite(means) & np.isfinite(sds) & (sds > 0)
+        centered = (np.abs(means[usable]) < _CENTERED_MEAN_RATIO * sds[usable])
+    centered_share = float(centered.mean()) if centered.size else 0.0
+
+    integral_share = float(np.mean(np.equal(np.mod(finite, 1), 0)))
+    abundances = integral_share < _INTEGRAL_SHARE_MAX
+
+    n_negative = int((finite < 0).sum())
+    signals = []
+    if n_negative:
+        signals.append("negative_values")
+    compressed = (abundances and ratio is not None
+                  and ratio < _RAW_DYNAMIC_RANGE and finite.min() > 0)
+    if compressed and finite.max() < _TRANSFORMED_MAX:
+        signals.append("compressed_max")
+    # THE RANGE IS A SIGNAL OF THIS FINDING RATHER THAN A FINDING OF ITS OWN,
+    # and the merge is a closer reading of §01 than the split was. The pack's
+    # two bullets are *"a max below ~40 with a positive min and low dynamic
+    # range"* and *"a ratio below 10² means something has already been done to
+    # the data"* — the second is the first's threshold, stated once and reusable
+    # on its own. Built as a separate detector it was a capability with **no
+    # fixture in this repository able to fire it**, because the shape it
+    # uniquely covered (a compressed range with a maximum above 40) is a
+    # targeted panel in concentration units and nothing here is one. Merged, the
+    # weaker claim is still made — it composes a different sentence below when
+    # it is the only signal — and it is reachable.
+    elif compressed:
+        signals.append("compressed_range")
+    if centered_share >= _CENTERED_SHARE:
+        signals.append("centered_columns")
+    return {
+        "columns": columns, "signals": signals,
+        "n_negative": n_negative,
+        "min": float(finite.min()), "max": float(finite.max()),
+        "dynamic_range": ratio,
+        "integral_share": round(integral_share, 3),
+        "reads_as_abundances": abundances,
+        "centered_share": round(centered_share, 3),
+        "n_features": len(columns),
+    }
+
+
+def _already_transformed(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """Values that have already had something done to them. **Warned hard.**
+
+    §01: *"Warn hard; a second log transform is a silent catastrophe."* Silent
+    is the operative word — a log of a log produces numbers, and every plot
+    downstream renders. `critical`, because the consequence is a whole analysis
+    that looks finished and is wrong.
+
+    **The marker moves with the evidence and the id does not.** A negative value
+    in an abundance table is derived: an ion count below zero is not a
+    measurement, so nothing else explains it. A compressed maximum is a reading
+    with an innocent alternative — a targeted panel reported in µM sits in the
+    same range — so where that is the only signal the app offers the reading
+    instead of asserting it. `atwater_finding`'s rule holds: the verdict is a
+    parameter and the id is one thing, because `LooksFor` binds to an id.
+    """
+    read = transformation_signals(df)
+    if read is None or not read["signals"]:
+        return None
+    derived = "negative_values" in read["signals"]
+    said = []
+    if derived:
+        said.append(f"{read['n_negative']:,} values are negative (the smallest "
+                    f"is {read['min']:,.3g})")
+    if "compressed_max" in read["signals"]:
+        said.append(f"the largest value in the whole block is "
+                    f"{read['max']:,.3g}, with a positive minimum of "
+                    f"{read['min']:,.3g} and a dynamic range of only "
+                    f"{read['dynamic_range']:,.1f}×")
+    elif "compressed_range" in read["signals"]:
+        said.append(f"the values span only {read['dynamic_range']:,.1f}× "
+                    f"({read['min']:,.4g} to {read['max']:,.4g}) where a raw "
+                    f"run spans 10² to 10⁹, so something has been done to them "
+                    f"— though none of the specific signatures of a log "
+                    f"transform is present, so I can't say what")
+    if "centered_columns" in read["signals"]:
+        said.append(f"{read['centered_share']:.0%} of features have a mean "
+                    f"within {_CENTERED_MEAN_RATIO:.0%} of their own standard "
+                    f"deviation of zero, which is what centering leaves behind")
+    params = {"signals": read["signals"], "n_negative": read["n_negative"],
+              "min": read["min"], "max": read["max"],
+              "dynamic_range": read["dynamic_range"],
+              "centered_share": read["centered_share"],
+              "n_features": read["n_features"],
+              "raw_range_floor": _RAW_DYNAMIC_RANGE,
+              "transformed_max_ceiling": _TRANSFORMED_MAX}
+    return _finding(
+        "pack::metabolomics::already_transformed", "critical",
+        "These values look like they have already been transformed",
+        ("Raw untargeted intensities span roughly 10² to 10⁹ and are strictly "
+         "positive. Here, " + "; and ".join(said) + "."),
+        ("A second log transform on already-logged data is a silent "
+         "catastrophe: it produces numbers, every plot still renders, and the "
+         "fold changes underneath are wrong by an amount nothing in the output "
+         "reveals. Negative values also break the log outright. Before "
+         "anything is transformed here, the app needs to know what was already "
+         "done to this table and by which tool."),
+        confidence="high", pack=METABOLOMICS,
+        marker="derived" if derived else "offered",
+        evidence=VALUE_STATE_EVIDENCE,
+        columns=[],
+        params=params)
+
+
+#: pandas renames a repeated column label to `name.1`, `name.2`, … on read. A
+#: duplicate feature id therefore never ARRIVES as a duplicate: it arrives
+#: renamed, silently, and every downstream count of "how many features" is one
+#: too many. Both forms are read here, because the first is what a constructed
+#: frame carries and the second is what a real CSV carries, and a detector that
+#: saw only the first would be untestable against any file on disk.
+_MANGLED = re.compile(r"^(?P<stem>.+)\.(?P<n>[1-9]\d*)$")
+
+
+def duplicate_ids(df: pd.DataFrame) -> Dict[str, Any]:
+    """Repeated feature labels and repeated sample labels, and how they arrived."""
+    labels = [str(c) for c in df.columns]
+    seen: Dict[str, int] = {}
+    for label in labels:
+        seen[label] = seen.get(label, 0) + 1
+    literal = sorted(l for l, k in seen.items() if k > 1)
+    stems = set(labels)
+    mangled = sorted(
+        label for label in labels
+        if (m := _MANGLED.match(label)) and m.group("stem") in stems)
+    name_column = sample_name_column(df)
+    rows: List[str] = []
+    if name_column is not None:
+        counts = df[name_column].value_counts(dropna=True)
+        rows = sorted(str(v) for v, k in counts.items() if k > 1)
+    return {"literal_features": literal, "mangled_features": mangled,
+            "sample_column": name_column, "duplicate_samples": rows}
+
+
+def _duplicate_ids(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """§01's *"duplicate feature/sample IDs"*, in both of the shapes they arrive.
+
+    A duplicate id is not a nuisance here. A repeated feature is counted twice
+    in every "we measured N metabolites" sentence and twice in every multiple-
+    testing correction, and a repeated sample id is two injections the join
+    downstream will fan out or silently pick one of.
+    """
+    if not _is_assay_wide(df):
+        return None
+    read = duplicate_ids(df)
+    if not (read["literal_features"] or read["mangled_features"]
+            or read["duplicate_samples"]):
+        return None
+    said = []
+    if read["literal_features"]:
+        said.append(_plural(len(read["literal_features"]),
+                            "feature label appears", "feature labels appear")
+                    + " more than once")
+    if read["mangled_features"]:
+        said.append(
+            _plural(len(read["mangled_features"]),
+                    "column arrived", "columns arrived")
+            + " renamed with a numeric suffix — `"
+            + "`, `".join(read["mangled_features"][:4])
+            + "` — which is what the reader does when a file repeats a column "
+              "name, so the file itself carries duplicates")
+    if read["duplicate_samples"]:
+        said.append(
+            _plural(len(read["duplicate_samples"]),
+                    "sample id appears", "sample ids appear")
+            + f" in `{read['sample_column']}` on more than one row — "
+            + ", ".join(repr(s) for s in read["duplicate_samples"][:4]))
+    params: Dict[str, Any] = {"sample_column": read["sample_column"]}
+    params.update(_bounded("literal_features", read["literal_features"]))
+    params.update(_bounded("mangled_features", read["mangled_features"]))
+    params.update(_bounded("duplicate_samples", read["duplicate_samples"]))
+    columns = (read["literal_features"] + read["mangled_features"]
+               + ([read["sample_column"]] if read["duplicate_samples"]
+                  and read["sample_column"] else []))
+    return _finding(
+        "pack::metabolomics::duplicate_ids", "warning",
+        "Some features or samples are in this table more than once",
+        _sentence(said),
+        ("A feature counted twice is counted twice in the number of metabolites "
+         "you report and twice in every multiple-testing correction, which "
+         "makes the correction slightly wrong in the anticonservative "
+         "direction. A sample id on two rows is two injections of one sample, "
+         "and whichever way a later join resolves it — fanning out, or keeping "
+         "one arbitrarily — it does so without saying which."),
+        confidence="high", pack=METABOLOMICS, marker="derived",
+        evidence=VALUE_STATE_EVIDENCE,
+        columns=columns[:8],
+        params=params)
+
+
+def _empty_blocks(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """All-zero features, constant features, all-zero samples. §01's fourth bullet.
+
+    One finding for the three because they are one condition — a row or column
+    carrying no information — and three cards saying *"this contributes
+    nothing"* about the same table is three-quarters noise. Each is counted
+    separately in the payload, because they are repaired differently: a constant
+    feature is dropped, an empty sample is a failed injection somebody wants to
+    know about.
+    """
+    # `keep_degenerate=True`, and it is the whole detector. The default block
+    # drops any column with one distinct value, which is every column this
+    # finding is about.
+    columns = metabolite_columns(df, keep_degenerate=True)
+    if len(columns) < 30:
+        return None
+    with np.errstate(all="ignore"):
+        values = df[columns].to_numpy(dtype=float, na_value=np.nan)
+        finite = np.isfinite(values)
+        nonzero = finite & (values != 0.0)
+
+        feature_has_value = nonzero.any(axis=0)
+        empty_features = [c for c, ok in zip(columns, feature_has_value)
+                          if not ok]
+        constant = []
+        for index, column in enumerate(columns):
+            if not feature_has_value[index]:
+                continue
+            observed = values[:, index][finite[:, index]]
+            if observed.size and float(np.nanmax(observed)) == float(
+                    np.nanmin(observed)):
+                constant.append(column)
+
+        # A SAMPLE IS EMPTY WHEN NOTHING INFORMATIVE WAS MEASURED IN IT, and
+        # the degenerate columns are excluded from that reading rather than
+        # counted toward it. The case is concrete: a gap filler writes the same
+        # constant into every row of a feature it could not detect, including
+        # the row of an injection that failed outright. Counting that constant
+        # as "this sample has a value" reports the failed injection as fine,
+        # which is the app asserting something false about the one row a person
+        # most needs to see. A constant column carries no information about any
+        # sample by construction, so it cannot be evidence that one is present.
+        informative = np.array(
+            [c not in set(empty_features) | set(constant) for c in columns])
+        sample_has_value = (nonzero[:, informative].any(axis=1)
+                            if informative.any() else nonzero.any(axis=1))
+    empty_samples = [int(i) for i, ok in enumerate(sample_has_value) if not ok]
+    if not (empty_features or constant or empty_samples):
+        return None
+
+    name_column = sample_name_column(df)
+    empty_sample_names = ([str(df[name_column].iloc[i]) for i in empty_samples]
+                          if name_column else [])
+    said = []
+    if empty_features:
+        said.append(f"{len(empty_features):,} of {len(columns):,} features are "
+                    f"zero or blank in every sample")
+    if constant:
+        said.append(f"{len(constant):,} more hold one value in every sample "
+                    f"they were observed in")
+    if empty_samples:
+        said.append(_plural(len(empty_samples),
+                            "sample is", "samples are")
+                    + " zero or blank across every feature that carries "
+                      "information"
+                    + (" — " + ", ".join(repr(n) for n in empty_sample_names[:4])
+                       if empty_sample_names else ""))
+    params: Dict[str, Any] = {
+        "n_features": len(columns), "n_samples": int(len(df)),
+        "sample_column": name_column}
+    params.update(_bounded("empty_features", empty_features))
+    params.update(_bounded("constant_features", constant))
+    params.update(_bounded("empty_sample_rows", empty_samples))
+    params.update(_bounded("empty_sample_names", empty_sample_names))
+    return _finding(
+        "pack::metabolomics::empty_blocks", "warning",
+        "Some rows and columns here carry no information at all",
+        _sentence(said),
+        ("A feature that is zero everywhere and a feature that holds one value "
+         "everywhere cannot separate anything, and both survive every filter "
+         "that is written in terms of variance ratios because their variance is "
+         "zero rather than small. A sample that is empty across every feature "
+         "is a failed injection or a merge that matched nothing, and it is "
+         "worth knowing which before it becomes a row in a model."),
+        confidence="high", pack=METABOLOMICS, marker="derived",
+        evidence=VALUE_STATE_EVIDENCE,
+        columns=(empty_features + constant)[:8],
+        params=params)
+
+
+#: Polarity markers as a merged export writes them: appended to the feature
+#: name. `mz_0001_pos`, `784.5876@8.21_neg`, `FT0012_positive`.
+_POLARITY_TOKENS = {
+    "positive": frozenset({"pos", "positive", "esipos", "pmode", "p"}),
+    "negative": frozenset({"neg", "negative", "esineg", "nmode", "n"}),
+}
+
+#: **The marker has to be the LAST token of the feature name**, and the
+#: restriction is a repair rather than a precaution. Read as "appears anywhere",
+#: `negative_control_probe` is a negative-mode feature and `position_marker` is
+#: a positive-mode one — a control probe on an array would put both in one
+#: table and produce a confident, false report that the run carries two
+#: polarities. A merged export appends the mode; a name that merely contains the
+#: word is describing something else. The cost is that a PREFIX convention
+#: (`pos_mz_0001`) is not read, and that is named in the test file's
+#: `SHAPES_NOT_COVERED` rather than guessed at.
+def _polarity_of(name: str) -> Optional[str]:
+    # THE READER'S OWN RENAMING IS STRIPPED FIRST, and the two detectors
+    # disagreeing is what surfaced it. `mz_0011_pos.1` is a positive-mode
+    # column that `read_csv` renamed, and its last token is `1` — so the
+    # polarity census reported 196 positive features on a table where
+    # `duplicate_ids` had just reported 202 columns, six of them renamed. Two
+    # findings about one file, disagreeing about what its columns are.
+    mangled = _MANGLED.match(str(name))
+    stem = mangled.group("stem") if mangled else str(name)
+    tokens = [t for t in re.split(r"[^A-Za-z0-9]+", stem) if t]
+    if not tokens:
+        return None
+    last = tokens[-1].lower()
+    for mode, markers in _POLARITY_TOKENS.items():
+        if last in markers:
+            return mode
+    return None
+
+
+def _polarity_in_value(value: str) -> Optional[str]:
+    """A polarity column's VALUE, where any token may carry the mode.
+
+    Different from the name rule above and deliberately so: `ESI+ positive` and
+    `neg` are both whole answers to *"which polarity"*, whereas a feature name
+    is a compound in which the mode is the suffix. One rule over both would
+    have to be the loose one, and the loose one is what reads a control probe
+    as an acquisition.
+    """
+    for token in re.split(r"[^A-Za-z0-9]+", str(value)):
+        for mode, markers in _POLARITY_TOKENS.items():
+            if token.lower() in markers:
+                return mode
+    return None
+
+
+def ion_modes(df: pd.DataFrame) -> Dict[str, Any]:
+    """Which polarities this table carries, from feature names and from a column.
+
+    Two independent readings because a merged export writes the mode into the
+    feature name and an unmerged one writes it into a `polarity` column, and a
+    detector that read only one of them would be silent on half the real files.
+    """
+    # `keep_degenerate=True`: a polarity census counts feature COLUMNS, and a
+    # feature that came out all-zero is still a feature that was in the merged
+    # list. Counting the informative ones would report 188 negative-mode
+    # features where the file carries 196.
+    columns = metabolite_columns(df, keep_degenerate=True)
+    by_name: Dict[str, List[str]] = {"positive": [], "negative": []}
+    for column in columns:
+        mode = _polarity_of(column)
+        if mode:
+            by_name[mode].append(column)
+    from_column: Dict[str, int] = {}
+    polarity_columns = design_columns(df)["polarity"]
+    for column in polarity_columns:
+        for value, count in df[column].value_counts(dropna=True).items():
+            mode = _polarity_in_value(value)
+            if mode:
+                from_column[mode] = from_column.get(mode, 0) + int(count)
+    return {"by_name": by_name, "polarity_columns": polarity_columns,
+            "from_column": from_column,
+            "modes": sorted({m for m in ("positive", "negative")
+                             if by_name[m] or from_column.get(m)})}
+
+
+def _ion_modes(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """Both polarities in one table. §01's last value-state bullet.
+
+    `CONVENTION`, and it is the badge doing its job. That the two modes are
+    normalized separately and then merged is what the field does; it is not a
+    result anybody has established, and the merge strategy genuinely changes
+    the answer. Stating it as convention is the difference between telling a
+    user what is normally done and telling them what is true.
+    """
+    if not _is_assay_wide(df):
+        return None
+    read = ion_modes(df)
+    if len(read["modes"]) < 2:
+        return None
+    counts = {m: len(read["by_name"][m]) for m in read["modes"]}
+    where = ("the feature names" if all(counts.values())
+             else f"`{read['polarity_columns'][0]}`")
+    params: Dict[str, Any] = {"modes": read["modes"],
+                              "n_features_by_mode": counts,
+                              "polarity_columns": read["polarity_columns"],
+                              "rows_by_mode": read["from_column"]}
+    for mode in read["modes"]:
+        params.update(_bounded(f"features_{mode}", read["by_name"][mode]))
+    return _finding(
+        "pack::metabolomics::ion_modes", "info",
+        "Both ion modes are in this one table",
+        (f"Positive and negative mode features both appear, read from {where}: "
+         + ", ".join(f"{counts[m]:,} {m}" for m in read["modes"])
+         + ". They are two separate acquisitions of the same samples."),
+        ("The field convention is to normalize each polarity separately and "
+         "merge afterwards, because the two acquisitions have different "
+         "response ranges and different drift. Normalizing across the merged "
+         "table treats them as one measurement scale. The merge strategy "
+         "changes the result, so it is worth stating in the methods section "
+         "either way — this is a convention rather than a settled finding."),
+        confidence="high", pack=METABOLOMICS, marker="offered",
+        evidence=VALUE_STATE_CONVENTION,
+        columns=[],
+        params=params)
 
 
 # ── dietary ──────────────────────────────────────────────────────────────────
@@ -3787,15 +5147,26 @@ def _survey_recipes() -> None:
 PACKS: Dict[str, Pack] = {
     METABOLOMICS: Pack(
         key=METABOLOMICS, label=LENS_LABELS[METABOLOMICS],
-        # L50 built D's three families and E's redundancy pass in separate
-        # worktrees, and both added to this tuple. Merged rather than picked:
-        # they are independent readings and the ORDER is hardest-first
-        # (`LOOP.md` §02) — `_redundancy` computes over the matrix while the
-        # other three read names and dtypes, so it is the one most likely to
-        # have bent the abstraction and it goes first.
-        detectors=(_redundancy, _left_censored, _acquisition_order,
-                   _pooled_qc),
         hedges=METABOLOMICS_HEDGES,
+        # ORDERED BY §01's OWN ORDER — roles, then run order and design, then
+        # value states — because `findings()` preserves declaration order and
+        # that order is what a reader meets on the page. The three that predate
+        # L50 stay first: they are the ones the fixture's companion document
+        # names, and reordering them would move four assertions in
+        # `test_the_fixtures_are_what_their_companions_claim` for no reason.
+        # `_redundancy` (L50-E) is first and the placement is an argument:
+        # it is the only detector here that computes over the MATRIX rather
+        # than reading names and dtypes, so it is the one most likely to have
+        # bent the abstraction — `LOOP.md` §02's hardest-first, judged by that
+        # rather than by effort. It also answers the question a reader asks
+        # before any of the others: how many metabolites do I actually have.
+        # Merged from two worktrees that could not see each other.
+        detectors=(_redundancy,
+                   _left_censored, _acquisition_order, _pooled_qc,
+                   _sample_roles_finding, _no_pooled_qc,
+                   _acquisition_design, _no_run_order, _repeated_subjects,
+                   _zeros_or_missing, _already_transformed,
+                   _duplicate_ids, _empty_blocks, _ion_modes),
         looks_for=(
             LooksFor("pack::metabolomics::left_censored",
                      "missing values clustering in the lowest-abundance "
@@ -3810,6 +5181,43 @@ PACKS: Dict[str, Pack] = {
                      "groups of features that rise and fall together, which is "
                      "one compound wearing several feature names — and how many "
                      "independent quantities the panel really holds"),
+            # NOUN PHRASES, never claims. `LooksFor` is read on a hover BEFORE
+            # the lens question is answered, so "your blanks are non-detections"
+            # there would be the governing rule broken in the smallest possible
+            # place. Each of these names a thing to be looked FOR.
+            LooksFor("pack::metabolomics::sample_roles",
+                     "blanks, calibrants, dilution series and system-suitability "
+                     "injections among the rows, by the field's naming "
+                     "conventions"),
+            LooksFor("pack::metabolomics::no_pooled_qc",
+                     "and whether pooled QCs are absent, which is the one "
+                     "omission that cannot be repaired after the run"),
+            LooksFor("pack::metabolomics::acquisition_design",
+                     "the acquisition and design columns — injection order, "
+                     "batch, plate, well, plex, polarity — including a run "
+                     "order derivable from an acquisition timestamp"),
+            LooksFor("pack::metabolomics::no_run_order",
+                     "and whether there is no run order at all, which makes "
+                     "drift, QC-RLSC and the run-order overlay impossible"),
+            LooksFor("pack::metabolomics::repeated_subjects",
+                     "subject ids that repeat, which is the question about one "
+                     "row per person seen from the assay side"),
+            LooksFor("pack::metabolomics::zeros_or_missing",
+                     "zeros in the intensity block, which four widely-used "
+                     "exports disagree about the meaning of"),
+            LooksFor("pack::metabolomics::already_transformed",
+                     "values that have already been logged or scaled — "
+                     "negatives, a compressed maximum, an intensity range too "
+                     "narrow to be a raw run, or columns already centred"),
+            LooksFor("pack::metabolomics::duplicate_ids",
+                     "features or samples present more than once, including "
+                     "the renaming a reader does to a repeated column"),
+            LooksFor("pack::metabolomics::empty_blocks",
+                     "features that are zero everywhere, features that hold "
+                     "one value, and samples that are empty across the panel"),
+            LooksFor("pack::metabolomics::ion_modes",
+                     "positive and negative mode features sharing one table, "
+                     "which are two acquisitions rather than one"),
         ),
         recipes=_metabolomics_recipes,
         reframings=(

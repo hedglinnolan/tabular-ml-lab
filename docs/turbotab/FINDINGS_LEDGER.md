@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**331 of 845 closed.**
+**335 of 852 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 457 |
-| `PARTIAL` | 57 |
-| `FIXED` | 325 |
+| `OPEN` | 458 |
+| `PARTIAL` | 59 |
+| `FIXED` | 329 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 457
+## OPEN — 458
 
 
-### Guided-door drive feedback — 78
+### Guided-door drive feedback — 79
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -100,7 +100,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-203` | medium | Four identifier fields are composed and read by nothing, including parameters_saved - the disclosure of what leaving an identifier out actually bought | `L49-A2, found by the gate the late sweep never had. At the sealed step on survey_sentinels.csv, /features…` | Filed rather than excused, which is what the gate enforces. Referenced from turbotab/test_the_three_unswept_payloads_are_swept.py::FILED. |
 | `GUIDED-205` | medium | A receipt computed at the writer and spent only on prose - the same shape at three surfaces, and the class behind GUIDED-191 | `L49-C. coerce_numeric computed lost and put it in the sentence and nowhere else; features.apply computes…` | sibling-of: GUIDED-191. Filed as the CLASS rather than as three instances. |
 | `GUIDED-207` | medium | A payload field that NAMES what an interface must construct instead of DESCRIBING it - a field with no possible reader, and the class behind GUIDED-198 | `L49-B. Transform.needs served the bare strings edges, order, n_bins, n_components. A name is not renderable…` | sibling-of: GUIDED-198. Filed as the CLASS, per 08 check 1 - GUIDED-198 is the instance and this is what the same lens finds one surface over. |
-| `GUIDED-209` | medium | A server-side list cut to a literal bound before it is served, with nothing saying so - 43 payload keys, and the sharpest is in the exported manuscript | `L49-D, answering 08 check 5 by looking one surface over from GUIDED-195. An AST walk over every non-test…` | sibling-of: GUIDED-195. Not swept in L49 because the disposition differs per site and a single rule applied to all 43 would be wrong for about half of them. |
 | `GUIDED-210` | medium | route_missingness_bulk is a capability with no consumer - the server answers it and no attribute in the page posts it | `L49-D. project.route_missingness_bulk exists, api.py:768 handles it, L48-C drove it and gave it an…` | Found while building GUIDED-192's consumer. Related to GUIDED-208: the missing answer for a settled block and the unrouted bulk kind may be the same hole from two sides. |
 | `GUIDED-214` | medium | A DISPUTED badge assembled as a hand-written dict bypasses the both_sides requirement the Evidence constructor exists to enforce | `L50-F2. turbotab/sensitivity.py:165 serves evidence_status DISPUTED in a hand-written dict with no…` | sibling-of: GUIDED-211 and TEST-052. |
 | `GUIDED-216` | medium | A research pack specifies a PRESENTATION its finding shape cannot carry, and guard #1 makes the gap read as a prohibition rather than a hole | `L50-B and L50-C/E, filed as the CLASS. packs.py's docstring generalizes DOMAIN_PACKS.md guard #1 to 'adding a…` | THE LIVE CONSEQUENCE, and it is what makes this more than bookkeeping: a user who reads only the Explore stack gets the genomics classification and the coaching and NOT the… |
@@ -109,6 +108,8 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-219` | medium | The evidence badge's own tooltip is composed in the page, so the semantics of SETTLED, CONVENTION and DISPUTED live in two places | `L50-B, noticed while wiring the data-type card's badges and deliberately not acted on. index.html's…` | sibling-of: GUIDED-207. Not touched because it changes every badge on the page and that is a wider blast radius than the brief that found it. |
 | `GUIDED-221` | medium | The redundancy estimate counts every numeric column, so run_order, age, bmi and the outcome sit in the block as singletons and inflate the effective-feature count that would reach a manuscript | `L50-E. packs._redundancy reads every numeric column, so on metabolomics_redundant.csv it reports about 105…` | **test:** `turbotab/test_the_redundancy_estimate_reaches_an_upload.py::test_the_five_columns_it_does_not_group_are_each_accounted_for` — sibling-of: GUIDED-222. The two are one… |
 | `GUIDED-222` | medium | The genomics expression-block selector is a shape rule the research does not license, and it decides the classification for two of the nine signatures | `L50-B, and its builder named it as the piece it was least sure of. A single covariate sets the maximum of the…` | sibling-of: GUIDED-221. Filed at medium rather than high because the failure is loud - a dropped gene is named on the card - rather than silent. |
+| `GUIDED-228` | medium | The metabolomics regex library lists pool under both the pooled-QC family and the proteomics family, so as written the six role families are not disjoint | `L50-D, a correction to the research file rather than to the code. METABOLOMICS_PACK section 01's sample-role…` | Filed against the RESEARCH FILE. The standing rule is that where the file and the code disagree the file wins - this is the case where the file disagrees with itself, and the… |
+| `GUIDED-229` | medium | packs.py is 3,671 lines and holds two packs, while the other three ship as modules of their own - an asymmetry that has now cost an adjudicator and two subagents time | `L50. turbotab/clinical.py and turbotab/nutrition.py exist as modules; metabolomics and genomics live in…` | Not moved unilaterally: relocating 3,000 lines during a wide fan-out would have made every subagent diff unmergeable, and the asymmetry is a documentation defect rather than a… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
@@ -564,10 +565,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 57
+## PARTIAL — 59
 
 
-### Guided-door drive feedback — 12
+### Guided-door drive feedback — 14
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -578,11 +579,13 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-055` | high | The nutrition pack had structure and no content: nothing in the app could infer an energy unit or read an NHANES survey design | `research/NUTRITION_PACK.md section 01; turbotab/nutrition.py` | **test:** `turbotab/test_the_nutrition_pack_carries_real_content.py::test_the_drift_gate_runs_before_any_factor_is_proposed` — THE ATWATER RECONSTRUCTION: E_hat = 4P + 4C + 9F +… |
 | `GUIDED-122` | high | Guided builds no Table 1, so the participant-characteristics table every reporting standard in the four packs asks for is absent from the manuscript and two validator checks that read it are inert | `turbotab/manuscript.to_latex passes no table1_df; ml/manuscript_validator.py has 'Table 1 population matches…` | **test:** `turbotab/test_the_manuscript_is_checked.py::test_table_one_is_built_from_the_shared_core, ::test_table_one_carries_smds_and_no_p_values… |
 | `GUIDED-180` | high | 18 live decision kinds have no ACTION_CONTRACT row, and two of them - apply_bulk and route_missingness_bulk - MUTATE THE WORKING TABLE, so the leak guard is inert on the highest-blast-radius paths in… | `turbotab/devchecks.py:596 ACTION_CONTRACT holds 27 rows; the decision handler in turbotab/api.py carries 47…` | **test:** `turbotab/test_an_unlisted_decision_kind_reports_as_unclassified.py::test_every_live_kind_is_declared_or_dated AND… |
+| `GUIDED-223` | high | str.capitalize() on composed prose containing an identifier lower-cases the identifier, so a column name or sample id ships altered inside a true sentence | `L50-D, found by driving a fixture rather than by any assertion. str.capitalize() upper-cases index 0 and…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_the_duplicate_reading_covers_the_renaming_a_reader_performs` — PARTIAL: closed in packs.py, open at… |
 | `GUIDED-030` | medium | Four pack priors still have no consumer - GUIDED-024's defect surviving for a subset, now declared and counted rather than noticed | `turbotab/packs.py PACKS priors; test_every_prior_has_a_consumer_or_is_declared_unconsumed lists the four with…` | Four priors had no consumer at L21 and three still do. THE ONE REAL DEFECT IS FIXED as GUIDED-033: qc_rows_excluded stated at derived confidence that pooled QC rows are not… |
 | `GUIDED-052` | medium | No artifact stated whether its content may become model input, so promotion had no field to read and label-blindness was standing in for the rule | `docs/turbotab/PRODUCT_VISION.md artifact promotion; turbotab/figures.py FigureSpec` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_pca_is_promotable_and_calibration_is_not` — THE RULE IS RE-EXECUTABILITY, NOT LABEL-BLINDNESS… |
 | `GUIDED-101` | medium | The Explain step has no research backing and no parity register row: the four packs contain zero explainability content, so the one journey step left to build is the only one whose method choice… | `grep for SHAP, permutation importance, variable importance and explainab across the 3,602 lines of…` | SCOPING INSTRUCTION HONORED AT L36-B, and the row stays open because the research it asks for is still absent. WHAT WAS BUILT: permutation importance on the held-out rows via… |
 | `GUIDED-123` | medium | The nutrition-specific manuscript objects STROBE-nut assigns to the app are not carried into the export: energy adjustment model, misreporting rule with equation and cut-off, usual-intake handling… | `research/NUTRITION_PACK.md section 09's table marks each of these 'app' or 'app detects + user confirms'…` | **test:** `turbotab/test_the_manuscript_is_checked.py (6 tests, from ::test_the_reviewers_six_are_six_and_in_order)` — RAISED BY THE PRODUCT OWNER: are the objects carried into… |
 | `GUIDED-155` | medium | DESIGN_LANGUAGE section 05's three motion durations - 250ms Settle, 300ms Arrive, 150ms-per-section Propagate - have no source, and Propagate's form is a stagger, which has no demonstrated tracking… | `research/INTERACTION_PACK.md section 06.2, built at L46. The 200-500ms practitioner band cites no study…` | THE DURATIONS HALF IS DONE AT L47-A3 and the Propagate half is explicitly not scheduled - the PM's ruling at section 00: a form-claim about a motion with no mechanism to run does… |
+| `GUIDED-209` | medium | A server-side list cut to a literal bound before it is served, with nothing saying so - 43 payload keys, and the sharpest is in the exported manuscript | `L49-D, answering 08 check 5 by looking one surface over from GUIDED-195. An AST walk over every non-test…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_every_list_a_new_finding_serves_states_its_bound` — L50-D discharges it FOR THIS LOOP'S PAYLOADS and… |
 
 ### Application state / lockbox — 11
 
@@ -686,10 +689,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 325
+## FIXED — 329
 
 
-### Guided-door drive feedback — 128
+### Guided-door drive feedback — 132
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -787,6 +790,8 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-198` | high | Six of eighteen feature transforms are unreachable from the Guided door: the page never reads Transform.needs and never composes params, so every press 400s | `L48-B, driven on clinical_labs.csv. featPickerHTML reads row.n_inputs and renders the column selects but…` | **test:** `turbotab/test_the_transform_that_needs_a_parameter_gets_a_control_for_it.py::test_the_press_carries_the_parameter_the_row_rendered_a_control_for` — L49-B. RE-DERIVED… |
 | `GUIDED-204` | high | L48's blank-provenance block was composed, served on two routes and read by no surface on the page for a whole loop - trap #6 inside the fix for a trap #6 | `L49-C, found while wiring the general mechanism. missingness.provenance was built at L48, served on…` | **test:** `turbotab/test_every_writer_that_can_blank_a_cell_files_it.py::test_the_page_actually_renders_the_provenance_sentence` — The general lesson is the one A3 is about: a… |
 | `GUIDED-215` | high | The lens contradiction detector equated genomics with counts and refused the genomics lens on six of the nine expression shapes its own research file describes | `L50-B, found by driving the fixtures L50-F1 shipped. contradiction() direction 3 raised a 409 in the app's…` | **test:** `turbotab/test_the_genomics_data_type_card_reaches_a_person.py::test_the_genomics_lens_is_no_longer_refused_on_a_matrix_that_is_not_counts` — THE FIXTURES FOUND IT.… |
+| `GUIDED-224` | high | A precondition written to exclude one degenerate shape excluded the shape a detector exists for | `L50-D. metabolite_columns drops columns with two or fewer distinct values - written to exclude a 0/1 outcome…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_the_degenerate_columns_survive_the_block_filter` — Filed as a CLASS instance. The shape is a true… |
+| `GUIDED-226` | high | A finding asserting a column's IDENTITY on evidence that establishes only its SHAPE - and the upstream component it borrowed from was correct | `L50-D, and it is the sharpest of the four because the mistake is downstream of a correct component.…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_the_subject_claim_needs_a_name_and_not_only_a_shape` — THE GRAIN ROUTING IS THE PART TO KEEP: the… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
@@ -820,6 +825,8 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-187` | medium | exits.is_actionable states a premise the page stopped holding - it returns True for every non-attest exit on the grounds that a resolve 'needs nothing', while showRefusal enables on retry.payload… | `L48-E. turbotab/exits.py:100 is_actionable: 'a resolve exit sends the user back to the question and needs…` | **test:** `turbotab/test_a_revise_exit_is_a_way_out_too.py::test_the_predicate_agrees_with_the_page_now` — L49-E. exits.is_actionable returned True for EVERY non-attest exit on… |
 | `GUIDED-195` | medium | A rendered list with a silent slice(0, N) - six sites in the page, four still unlabeled after GUIDED-164, and the sharpest is a permutation-importance table cut to 15 | `L48-B, GUIDED-164's class, swept over the whole page. Six sites: finding-card column chips cap 5 (fixed at…` | **test:** `turbotab/test_every_cap_in_a_render_path_states_its_bound.py::test_every_slice_in_the_page_states_its_bound_or_is_named` — L49-D. THE PROMPT'S LINE NUMBERS WERE STALE… |
 | `GUIDED-200` | medium | var PICKED is declared twice in one function scope in index.html - two features sharing one namespace, and neither reader knows about the other | `L48-B. index.html declares var PICKED = {} at two sites, commented 'model key -> selected' and 'fix_kind ->…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py` — L49-E. index.html declared var PICKED twice in one function scope - once for the training shelf (model key ->… |
+| `GUIDED-225` | medium | A magnitude or range threshold applied without first establishing that the block is that KIND of quantity - the app told a survey researcher their Likert responses had been log-transformed | `L50-D. METABOLOMICS_PACK section 01's already-transformed reading uses a max below about 40 with a low…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_a_likert_block_is_not_a_log_transformed_intensity_block` — sibling-of: GUIDED-224. Both are the same… |
+| `GUIDED-227` | medium | Two detectors over one table disagreed about what its columns are, because one saw the CSV reader's renaming and the other did not | `L50-D, found by the two readings contradicting each other rather than by either failing. The polarity census…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_both_polarities_are_reported_as_a_convention_and_not_a_fact` — The polarity finding is CONVENTION… |
 | `GUIDED-201` | low | Two L48 chunks each added a CSS rule inside the prototype stylesheet that a guard compares byte for byte - the natural place to put a rule is the one place it may not go | `L48. test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim asserts the prototype's whole…` | **test:** `turbotab/test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim` — No revert probe: the guard predates this loop and is itself the probe - it went… |
 
 ### Multi-file / JSON import — 68

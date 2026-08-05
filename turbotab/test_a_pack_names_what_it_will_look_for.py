@@ -69,11 +69,33 @@ FIXTURE = {
     # largest off-diagonal correlation anywhere in it is 0.87 — so the
     # redundancy phrase could not be kept on it, and a registry that could only
     # promise what one fixture triggers promises three detectors in four.
-    P.METABOLOMICS: ("metabolomics_untargeted", "metabolomics_redundant"),
     # And here for the sharper version of it. `genomics_expression.csv` names
     # its columns `gene_0001`, which belongs to no identifier vocabulary at all,
     # so three of §01's four gene-ID diagnostics had nothing to fire on and the
     # fourth — mixed vocabularies — needs two vocabularies in one file.
+    # **A TUPLE AT L50-D, AND IT IS THIS FILE'S ARGUMENT ARRIVING WHERE IT WAS
+    # AIMED.** The metabolomics pack went from three detectors to thirteen when
+    # `METABOLOMICS_PACK.md` §01's three diagnostic families were filled out,
+    # and nine of the ten new promises could not be kept against one fixture —
+    # not because the detectors were wrong but because a single table cannot
+    # simultaneously have pooled QCs and lack them, carry a run order and lack
+    # one, hold blanks and hold zeros instead. The preconditions are exact
+    # negations, which is the case the dietary tuple above was written for.
+    #
+    # The four siblings are DERIVED from the first by
+    # `sample_data/make_metabolomics_siblings.py`, each by an operation a real
+    # export performs, and each carries a companion stating what it must and
+    # must not surface.
+    # MERGED FROM THREE WORKTREES, and the merge is the argument. Each of L50's
+    # parts added the promises it built and the ONE sibling it built them
+    # against; none could see the others. The union is what the pack actually
+    # promises, and this guard failed the moment they were brought together —
+    # which is the correct behavior and the reason it exists: four gene-ID
+    # promises with no `genomics_gene_ids` in the list, and a redundancy
+    # promise with no `metabolomics_redundant`, are promises nobody keeps.
+    P.METABOLOMICS: ("metabolomics_untargeted", "metabolomics_redundant",
+                     "metabolomics_no_qc", "metabolomics_paired_logged",
+                     "metabolomics_mzmine_zeros", "metabolomics_merged_modes"),
     P.GENOMICS: ("genomics_expression", "genomics_gene_ids"),
     P.DIETARY: ("dietary_recalls", "nhanes_dietary", "nhanes_partial_design",
                 "nhanes_kilojoules"),
