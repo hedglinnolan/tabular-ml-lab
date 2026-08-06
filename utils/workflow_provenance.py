@@ -91,6 +91,13 @@ class FeatureSelectionProvenance:
     features_kept: List[str] = field(default_factory=list)
     consensus_methods: List[str] = field(default_factory=list)
     timestamp: str = ""
+    #: The columns that were SCREENED, including every one selection dropped.
+    #: `AUDIT-023` — §A5.4 sizes for the screened set, and applying a selection
+    #: overwrites `data_config.feature_cols` in place, so without this list the
+    #: number of candidate predictors is unrecoverable the moment the button is
+    #: pressed. `n_features_before` carried the count already; the names are
+    #: here because the EDA insight and the manuscript both name columns.
+    candidates_screened: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -155,6 +162,19 @@ class TrainingProvenance:
     selected_on_holdout: bool = False
     use_cv: bool = False
     cv_folds: Optional[int] = None
+    # WHICH models a fold loop actually scored. `AUDIT-026`.
+    #
+    # `use_cv` above is the checkbox and was the only thing the Methods section
+    # read, so a run that cross-validated nothing still asserted k-fold internal
+    # validation. pages/06 skips CV for the neural network (:1455) and swallows
+    # a CV exception (:1489), so "requested" and "ran" come apart routinely.
+    #
+    # `None` rather than `[]` as the default, and the distinction is load-
+    # bearing: `None` is a record written before this field existed and the
+    # answer is unknown; `[]` is a caller who looked and found nothing
+    # cross-validated. Reporting the first as the second would assert a fact
+    # about a run nobody recorded.
+    cv_models_run: Optional[List[str]] = None
     use_hyperopt: bool = False
     class_weight_balanced: bool = False
     metrics_by_model: Dict[str, Dict[str, Any]] = field(default_factory=dict)
@@ -370,8 +390,31 @@ class WorkflowProvenance:
         n_after: int,
         features_kept: List[str],
         consensus_methods: Optional[List[str]] = None,
+        candidates_screened: Optional[List[str]] = None,
     ) -> None:
-        """Called by Feature Selection when selection is applied."""
+        """Called by Feature Selection when selection is applied.
+
+        **The screened set accumulates and never shrinks** (`AUDIT-023`).
+        Screening 40 and keeping 8, then re-opening the page and keeping 5, is
+        still a study that must be sized for 40 — §A5.4's ⚠ clause is about the
+        degrees of freedom a data-driven choice consumes, and consuming them
+        twice does not give any back. So this merges with whatever was recorded
+        before rather than replacing it, and `n_features_before` is the size of
+        the merged set rather than of this press alone.
+        """
+        prior = self.feature_selection
+        merged: List[str] = []
+        seen = set()
+        for column in (list(getattr(prior, "candidates_screened", None) or [])
+                       + list(candidates_screened or [])
+                       + list(features_kept or [])):
+            name = str(column)
+            if name not in seen:
+                merged.append(name)
+                seen.add(name)
+        n_before = max(int(n_before or 0),
+                       int(getattr(prior, "n_features_before", 0) or 0),
+                       len(merged))
         self.feature_selection = FeatureSelectionProvenance(
             method=method,
             n_features_before=n_before,
@@ -379,6 +422,7 @@ class WorkflowProvenance:
             features_kept=list(features_kept),
             consensus_methods=list(consensus_methods or []),
             timestamp=datetime.now().isoformat(),
+            candidates_screened=merged,
         )
 
     def record_split(
@@ -459,6 +503,7 @@ class WorkflowProvenance:
         selected_on_holdout: bool = False,
         use_cv: bool = False,
         cv_folds: Optional[int] = None,
+        cv_models_run: Optional[List[str]] = None,
         use_hyperopt: bool = False,
         class_weight_balanced: bool = False,
         hyperparameters: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -476,6 +521,8 @@ class WorkflowProvenance:
             selected_on_holdout=selected_on_holdout,
             use_cv=use_cv,
             cv_folds=cv_folds,
+            cv_models_run=(list(cv_models_run)
+                           if cv_models_run is not None else None),
             use_hyperopt=use_hyperopt,
             class_weight_balanced=class_weight_balanced,
             metrics_by_model=dict(metrics_by_model or {}),
@@ -681,6 +728,12 @@ class WorkflowProvenance:
             ctx["selected_on_holdout"] = self.training.selected_on_holdout
             ctx["use_cv"] = self.training.use_cv
             ctx["cv_folds"] = self.training.cv_folds
+            # `AUDIT-026`. Carried onto the methods context so the narrative
+            # reads what RAN rather than what was ticked. Stays `None` when the
+            # record does not know.
+            ctx["cv_models_run"] = (list(self.training.cv_models_run)
+                                    if self.training.cv_models_run is not None
+                                    else None)
             ctx["use_hyperopt"] = self.training.use_hyperopt
             ctx["class_weight_balanced"] = self.training.class_weight_balanced
             ctx["hyperparameters"] = self.training.hyperparameters

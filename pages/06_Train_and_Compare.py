@@ -1589,6 +1589,17 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 selected_on_holdout=len(trained_models) >= 2,
                 use_cv=st.session_state.get('use_cv', False),
                 cv_folds=st.session_state.get('cv_folds', 5) if st.session_state.get('use_cv', False) else None,
+                # AUDIT-026. The checkbox above says what was ASKED FOR; this
+                # says what a fold loop actually scored. `cv_results` is written
+                # for every trained model at :1502 — `None` when CV was skipped
+                # for the neural network (:1455) or raised and was swallowed
+                # (:1489) — so this list is always derivable here and is a
+                # positive record rather than an absence. Always a list, never
+                # None, because this call site DID look.
+                cv_models_run=[
+                    name for name, res in _model_results_local.items()
+                    if isinstance(res, dict) and res.get('cv_results')
+                ],
                 use_hyperopt=use_optimization,
                 class_weight_balanced=st.session_state.get('use_class_weight', False),
                 hyperparameters={name: selected_model_params.get(name, {}) for name in trained_models.keys()},

@@ -253,7 +253,12 @@ def test_a_stateful_choice_is_recorded_and_the_table_is_untouched():
                 if d["kind"] == "route_missingness")
     assert "will be filled" in said["text"], (
         f"the sentence does not carry the timing: {said['text']!r}")
-    assert said["payload"]["fit_on"] == "training folds only"
+    # `AUDIT-028`. THIS DOOR HAS NO FOLDS. `turbotab/training.py:416`:
+    # nothing under `turbotab/` imports `KFold`, `cross_val_score` or
+    # `cross_validate`. This assertion read "training folds only" for a
+    # dozen loops, which made it a GREEN TEST PINNING THE DEFECT — the
+    # shape filed this same loop as `TEST-060`.
+    assert said["payload"]["fit_on"] == "training rows only"
 
 
 def test_the_panel_no_longer_records_a_note_that_routes_nothing():

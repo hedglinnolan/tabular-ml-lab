@@ -204,11 +204,18 @@ def test_the_timing_is_methods_prose_not_a_ui_lecture(client, project):
     cards = client.get(f"/project/{project}/evidence/missingness").json()["cards"]
     sentences = [o["decision_sentence"] for c in cards for o in c["options"]]
     # "training fold", not "training-fold": since `GUIDED-090` the card quotes
-    # the RECORD's sentence rather than writing its own, and the record's
-    # phrasing is "within each training fold". The claim is about the timing
-    # being in the prose, which is unchanged; the hyphen was never the claim.
-    assert any("training fold" in s for s in sentences), (
-        "no sentence states that the statistic is fitted on training folds")
+    # the RECORD's sentence rather than writing its own. The claim is about the
+    # timing being in the prose, which is unchanged; the hyphen was never the
+    # claim — and by `AUDIT-028`, NEITHER IS THE SCOPE. This door fits once on
+    # the training rows (`turbotab/training.py:416`: nothing under `turbotab/`
+    # imports `KFold`, `cross_val_score` or `cross_validate`), so asserting
+    # "training fold" here pinned a sentence the door had no right to say.
+    # What the test is for is that the timing is STATED rather than hidden.
+    assert any("training fold" in s or "training rows" in s
+               for s in sentences), (
+        "no sentence states WHEN the statistic is fitted — the timing is the "
+        "thing this card exists to put in front of the user, and neither "
+        "scope's wording is present at all")
     banned = ("pipeline", "the app ", "the tool ", "click", "button", "the UI")
     for s in sentences:
         low = s.lower()

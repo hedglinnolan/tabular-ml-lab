@@ -728,8 +728,16 @@ def missingness(df: pd.DataFrame,
     card's concern about a signal-destroying fill reads *"this is refused"* or
     *"this would be refused if you answered yes"* (`GUIDED-163`).
     """
+    # `AUDIT-028`. THIS DOOR HAS NO FOLDS and the card must say so, because the
+    # card is one click away from the declaration it writes and
+    # `test_the_two_missingness_doors_agree` compares the two sentences.
+    # `turbotab/training.py:416` is the source: nothing under `turbotab/`
+    # imports `KFold`, `cross_val_score` or `cross_validate`.
+    from turbotab import missingness as _miss
+
     return _plain(missingness_plan.missingness_cards(
-        df, mechanisms=mechanisms, provenance=provenance))
+        df, mechanisms=mechanisms, provenance=provenance,
+        scope=_miss.TRAIN_ROWS))
 
 
 def imputation_preview(df: pd.DataFrame, column: str,

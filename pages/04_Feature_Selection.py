@@ -347,6 +347,11 @@ if st.button("🔍 Run Feature Selection", type="primary"):
             n_after=len(consensus),
             features_kept=list(consensus),
             consensus_methods=list(methods_to_run),
+            # `AUDIT-023`. The screened set, by name, recorded at the moment it
+            # is still knowable — the apply buttons below overwrite
+            # `data_config.feature_cols` in place and §A5.4 sizes for what was
+            # screened, not for what survived.
+            candidates_screened=list(numeric_features),
         )
     except Exception:
         pass  # Provenance recording should never break the workflow

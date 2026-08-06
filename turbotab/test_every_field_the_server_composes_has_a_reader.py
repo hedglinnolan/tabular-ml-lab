@@ -213,7 +213,14 @@ FILED = {
     ('project', 'findings_stale'): "GUIDED-147",
     ('project', 'fingerprint'): "GUIDED-147",
     ('project', 'lens'): "GUIDED-147",
-    ('project', 'n_working_rows'): "GUIDED-146",
+    # `project.n_working_rows` WAS HERE AND IS NOT ANY MORE. L51-B's study
+    # column renders it — `turbotab/web/index.html:3189`, the row count beside
+    # the working table — so the field has a reader and this table's entry
+    # would be a false statement about the page. `GUIDED-146` stays OPEN: its
+    # content is the DUPLICATED `n_rows`/`n_columns`/`name` trio and the
+    # unreachable fallback branch, which this does not touch. The entry goes,
+    # the row does not; those are different questions and the gate asks for
+    # either, not both.
     ('project', 'preprocess_settled'): "GUIDED-147",
     ('project', 'workflow_mode'): "GUIDED-147",
     ('plausibility', 'n_impossible'): "GUIDED-147",

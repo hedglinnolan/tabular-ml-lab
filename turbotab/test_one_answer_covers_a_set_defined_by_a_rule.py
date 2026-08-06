@@ -153,7 +153,12 @@ def test_one_answer_writes_one_decision_and_one_sentence(client):
     # THE SENTENCE A READER WANTS.
     assert added[0]["text"].startswith(
         f"Missing values in {len(columns):,} numeric column(s) will be filled")
-    assert "within each training fold" in added[0]["text"]
+    # `AUDIT-028`. THIS DOOR HAS NO FOLDS. `turbotab/training.py:416`:
+    # nothing under `turbotab/` imports `KFold`, `cross_val_score` or
+    # `cross_validate`. This assertion read "training folds only" for a
+    # dozen loops, which made it a GREEN TEST PINNING THE DEFECT — the
+    # shape filed this same loop as `TEST-060`.
+    assert "over the training rows" in added[0]["text"]
 
     # The plan is still per column, because everything downstream reads it —
     # what changed is that the user answered once.

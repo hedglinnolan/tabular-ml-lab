@@ -52,10 +52,14 @@ anticipated R². This module computes only what the seal already knows.
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
+
+# `AUDIT-020`. §A5.4's parameter count has exactly one implementation, and both
+# doors read it. See `candidate_parameters` below for what it replaced.
+from ml import sample_size as _sample_size
 
 #: The two-sided normal multiplier for a 95% interval. Arithmetic rather than a
 #: domain constant — it is not a threshold anybody in the research files chose,
@@ -96,7 +100,8 @@ SOURCES = {
 
 
 def candidate_parameters(frame: pd.DataFrame, target: str,
-                         group_col: Optional[str] = None) -> Dict[str, Any]:
+                         group_col: Optional[str] = None,
+                         excluded: Sequence[Any] = ()) -> Dict[str, Any]:
     """How many PARAMETERS the model may spend, not how many columns there are.
 
     `CLINICAL_SURVEY_PACK.md` §A5.4 is explicit and it is the count people get
@@ -106,32 +111,85 @@ def candidate_parameters(frame: pd.DataFrame, target: str,
     `pipeline_plan` will produce.
 
     **Counted over the columns this app will actually hand the model** — the
-    same frame `training._feature_frame` builds — rather than over the file, so
+    same frame `training.feature_frame` builds — rather than over the file, so
     the number describes the fit rather than the spreadsheet.
+
+    ## `excluded`, and why a structural exclusion is not "later dropped"
+    (`AUDIT-019`)
+
+    Three sets never reach a model: the target, the grain's group column, and
+    the per-row identifiers `identifiers.excluded` names. The first two were
+    dropped here from the beginning; the third was added to
+    `training.feature_frame` when `GUIDED-108` was fixed and **was not added
+    here**, so the seal's methods sentence reported 344 candidate parameters
+    on `survey_instrument.csv` where the models are handed 45. 299 of them
+    were `respondent_id` — a column the app structurally refuses to encode,
+    which spends no degrees of freedom, so counting it is not conservatism but
+    a number about a fit nobody performed.
+
+    The caller passes the set rather than this module deriving it, because
+    `identifiers.excluded` answers about a PROJECT and this module answers
+    about a frame. `project.seal_lockbox` is the one caller that has both.
+
+    **This does not contradict §A5.4's ⚠ clause** — *candidate predictors
+    count toward sample size even if they are later dropped; if you screen 40
+    and keep 8 you must size for 40.* That clause is about **data-driven
+    selection**, which is PROBAST's signal because it reads the OUTCOME and so
+    borrows precision the reported model does not pay for. Identifier
+    exclusion reads no outcome at all: it is `nunique == nrow` on the training
+    rows, a structural fact about the column. A column the app never offers
+    the model was never a candidate, the way a constant column is not one. A
+    user who disagrees puts it back with `project.keep_identifier`, and then
+    it is in `excluded` no longer and counts again — the count follows what
+    the app will hand the model, which is the only definition that stays true.
+
+    **AND THE ARITHMETIC IS `ml.sample_size`'s** (`AUDIT-020`). The two
+    fixes are independent and they compose: that one made a k-level factor cost
+    k−1 in ONE place, because the Classic door's `ml/dataset_profile.py` was
+    charging one parameter per column and the two doors reported different
+    events-per-parameter for the same file; this one decides WHICH columns are
+    counted at all. Merged from two worktrees that could not see each other.
+
+    The excluded columns are **reported, not silently removed**
+    (`PRODUCT_VISION.md`, *the shelf is never shortened*): `excluded_columns`
+    names them and `excluded_parameters` is what they would have added, so a
+    reader who counts columns in the data dictionary can reconcile the two
+    numbers instead of finding them merely different.
     """
-    drop = {str(target)} | ({str(group_col)} if group_col else set())
+    set_aside = {str(c) for c in excluded}
+    drop = ({str(target)} | ({str(group_col)} if group_col else set())
+            | set_aside)
     numeric, categorical, per_column = 0, 0, []
+    spent_on_excluded, excluded_seen = 0, []
     for column in frame.columns:
         name = str(column)
-        if name in drop:
+        if name in drop and name not in set_aside:
             continue
         series = frame[column]
         if isinstance(series, pd.DataFrame):                # pragma: no cover
             continue
         if pd.api.types.is_numeric_dtype(series):
-            numeric += 1
-            per_column.append({"column": name, "parameters": 1, "kind": "numeric"})
+            spent, kind = 1, "numeric"
+        else:
+            levels = int(series.dropna().nunique())
+            spent, kind = max(0, levels - 1), f"{levels} observed levels"
+        if name in set_aside:
+            # COUNTED AND SUBTRACTED, so the number that left is stated.
+            spent_on_excluded += spent
+            excluded_seen.append(name)
             continue
-        levels = int(series.dropna().nunique())
-        spent = max(0, levels - 1)
-        categorical += spent
-        per_column.append({"column": name, "parameters": spent,
-                           "kind": f"{levels} observed levels"})
+        if kind == "numeric":
+            numeric += 1
+        else:
+            categorical += spent
+        per_column.append({"column": name, "parameters": spent, "kind": kind})
     per_column.sort(key=lambda d: -d["parameters"])
     return {
         "total": int(numeric + categorical),
         "numeric": int(numeric),
         "from_categorical": int(categorical),
+        "excluded_columns": sorted(excluded_seen),
+        "excluded_parameters": int(spent_on_excluded),
         "largest": per_column[:5],
         **SOURCES["candidate_parameters"],
     }
@@ -200,14 +258,21 @@ def _push_because(task_type: str, n_test: int, events_test: Optional[int],
     candidate parameters than training rows*. It is true arithmetic — a model
     cannot estimate p parameters from fewer than p observations — but driven
     across the fixtures it fired on five of six, which is wallpaper, and it
-    fired for a reason that is not about resolution at all. The counts are
-    dominated by per-row identifier columns the app hands the model as
-    candidate predictors: `respondent_id` is 299 of `survey_instrument.csv`'s
-    344 parameters, `admission_id` is 159 of `leaky_sepsis.csv`'s 164. That is
-    a real defect and it is filed as one (`GUIDED-108`) rather than being
-    laundered through this card. The parameter count is still **reported** in
-    every statement, because `PRODUCT_VISION.md` §04 names it as an input; it
-    just does not decide whether the card is raised.
+    fired for a reason that is not about resolution at all. The counts were
+    dominated by per-row identifier columns the app was handing the model as
+    candidate predictors: `respondent_id` was 299 of `survey_instrument.csv`'s
+    344 parameters, `admission_id` 159 of `leaky_sepsis.csv`'s 164. That is a
+    real defect and it was filed as one (`GUIDED-108`) rather than being
+    laundered through this card.
+
+    **Both halves of that are now closed and the trigger stays rejected.**
+    `GUIDED-108` stopped the identifiers reaching the model and `AUDIT-019`
+    stopped them reaching this count, so the same two fixtures now report 45
+    and 5. The trigger is still not reinstated: what was measured was that it
+    is not about resolution, and a smaller number does not make *p > n* a
+    statement about what a holdout can see. The parameter count is still
+    **reported** in every statement, because `PRODUCT_VISION.md` §04 names it
+    as an input; it just does not decide whether the card is raised.
 
     `None` means do not push. The statement is still computed and still
     recorded — this decides only whether the app raises it unprompted, which is
@@ -244,13 +309,20 @@ def _push_because(task_type: str, n_test: int, events_test: Optional[int],
 
 
 def statement(frame: pd.DataFrame, target: str, task_type: str,
-              labels: List[Any], group_col: Optional[str] = None) -> Dict[str, Any]:
+              labels: List[Any], group_col: Optional[str] = None,
+              excluded: Sequence[Any] = ()) -> Dict[str, Any]:
     """What this holdout can resolve, computed at the seal.
 
     `labels` is the lockbox's own row labels, so the counts describe the split
     that was actually drawn rather than the fraction that was requested — the
     same reason `draw_holdout` reports the achieved row fraction
     (`IMPORT-255`).
+
+    `excluded` is the identifier columns this project keeps out of the models
+    — `identifiers.excluded(project)`. It is an argument rather than something
+    this module derives because the exclusion is a property of the project and
+    this function is given a frame. `AUDIT-019`, and `candidate_parameters`
+    carries the reasoning.
     """
     has_y = frame[target].notna()
     sealed = set(labels)
@@ -282,7 +354,7 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
             thin_classes = int(sum(
                 1 for level in counts.index if int(held.get(level, 0)) < 2))
 
-    parameters = candidate_parameters(frame, target, group_col)
+    parameters = candidate_parameters(frame, target, group_col, excluded)
     widest = _widest_interval(n_test)
     because = _push_because(task_type, n_test, events_test, non_events_test,
                             n_classes, thin_classes)
@@ -319,8 +391,12 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
         # the arithmetic, and the citation is served from `SOURCES` at read
         # time so one edit to the pack reference reaches every project rather
         # than only the ones sealed afterwards.
+        # `excluded_columns` and `excluded_parameters` travel with the three
+        # counts because without them `total` is a number a reader cannot
+        # reconcile against their own column list. `AUDIT-019`.
         "parameters": {k: parameters[k] for k in
-                       ("total", "numeric", "from_categorical")},
+                       ("total", "numeric", "from_categorical",
+                        "excluded_columns", "excluded_parameters")},
         # The step a single held-out row moves a proportion by. Exact counting,
         # and the most legible form of "what this instrument can resolve".
         "step_per_row": None if n_test < 1 else round(1.0 / n_test, 4),
@@ -330,7 +406,9 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
         "headline": _headline(task_type, n_test, widest, events_test,
                               n_classes),
         "sentence": _sentence(n, n_train, n_test, task_type, widest,
-                              parameters["total"], events_test, n_classes),
+                              parameters["total"], events_test, n_classes,
+                              parameters["excluded_columns"],
+                              parameters["excluded_parameters"]),
         # SAID OUT LOUD, because the absence of this line is what would turn
         # the module into the anti-pattern it exists to avoid.
         "not_a_verdict": (
@@ -365,9 +443,18 @@ def _headline(task_type: str, n_test: int, widest: Optional[float],
 def _sentence(n: int, n_train: int, n_test: int, task_type: str,
               widest: Optional[float], parameters: int,
               events_test: Optional[int],
-              n_classes: Optional[int] = None) -> str:
+              n_classes: Optional[int] = None,
+              excluded_columns: Sequence[str] = (),
+              excluded_parameters: int = 0) -> str:
     """The methods line. Reports what was done and what it can resolve, and
-    stops there — no adequacy, no adjective, no recommendation."""
+    stops there — no adequacy, no adjective, no recommendation.
+
+    `AUDIT-019`: `parameters` is now the count over the frame the models are
+    handed, and the clause that follows says which columns are not in it and
+    what they would have added. Reporting the count without the exclusion
+    would be a true number a reader cannot check; reporting the exclusion
+    without the count was the false sentence this row was filed against.
+    """
     line = (f"Of {n:,} rows with a value for the outcome, {n_test:,} were "
             f"sealed as a held-out set before exploration and {n_train:,} were "
             f"available for fitting")
@@ -376,6 +463,13 @@ def _sentence(n: int, n_train: int, n_test: int, task_type: str,
     line += (f". {parameters:,} candidate predictor parameters were available "
              f"to the models, counted including any later dropped by feature "
              f"selection")
+    if excluded_columns:
+        named = ", ".join(str(c) for c in excluded_columns)
+        line += (f", and excluding {len(excluded_columns):,} column"
+                 f"{'' if len(excluded_columns) == 1 else 's'} "
+                 f"({named}) whose every value is different, which the app "
+                 f"does not hand the model and which would otherwise have "
+                 f"added {excluded_parameters:,}")
     if widest is not None:
         line += (f"; a performance metric estimated on {n_test:,} rows carries "
                  f"a 95% interval up to {widest:.2f} wide")

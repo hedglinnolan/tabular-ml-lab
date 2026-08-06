@@ -11,6 +11,11 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any, Tuple
 from enum import Enum
 
+# `AUDIT-020` / `AUDIT-021` — one design, one module, `CLINICAL_SURVEY_PACK.md`
+# §A5.4. The threshold, the denominator and the sentence that says the rule of
+# 10 is superseded all live there so the two doors cannot state them differently.
+from ml import sample_size as _ss
+
 
 class TrainingTimeTier(Enum):
     """Expected training time tiers."""
@@ -399,7 +404,16 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
     epv = profile.events_per_variable
     minority = tp.minority_class_size if tp else None
     imbalanced = bool(tp and tp.is_imbalanced)
-    low_epv = task_type == "classification" and epv is not None and epv < 10
+    # `AUDIT-021`. `10` is this app's caution trigger and not the field's
+    # guideline — §A5.4 is [SETTLED that EPV≥10 is superseded]. It lives in
+    # `ml.sample_size.CAUTION_EPV` beside the sentence that says whose number
+    # it is, and the value is unchanged this loop: what moved is the
+    # DENOMINATOR it is applied to (`AUDIT-020`).
+    low_epv = (task_type == "classification" and epv is not None
+               and epv < _ss.CAUTION_EPV)
+    #: §A5.4's denominator. `None` where the profile predates the field, and
+    #: then the headline names no denominator rather than naming the wrong one.
+    params = getattr(profile, "n_candidate_parameters", None)
     small_n = n < 150
 
     model_info = _get_model_info()
@@ -412,10 +426,12 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
                     f"Unpenalized fits are not identifiable here — every pick below "
                     f"is regularized, and feature attribution will be unstable.")
     elif low_epv:
-        headline = (f"Dominant constraint: {minority:,} minority-class events for {p} "
-                    f"predictors (EPV = {epv:.1f}; guideline ≥ 10). Keep the model "
-                    f"lineup small, prefer penalized fits, and report confidence "
-                    f"intervals — estimates will be unstable.")
+        _denominator = (f"{params:,} candidate parameters" if params is not None
+                        else "the candidate parameters")
+        headline = (f"Dominant constraint: {minority:,} minority-class events for "
+                    f"{_denominator} (EPV = {epv:.1f}). {_ss.SUPERSEDED_SHORT} "
+                    f"Keep the model lineup small, prefer penalized fits, and "
+                    f"report confidence intervals — estimates will be unstable.")
     elif imbalanced:
         _ratio = tp.class_balance_ratio
         headline = (f"Dominant constraint: class imbalance "
@@ -602,8 +618,10 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
                           f"than generalize — reduce features first"))
     if low_epv:
         skip_list.append(("Tree ensembles / boosting / neural nets",
-                          f"EPV = {epv:.1f} cannot support high-capacity models — "
-                          f"every extra model is another chance to overfit the selection"))
+                          f"{minority:,} minority-class events across the candidate "
+                          f"parameters (EPV = {epv:.1f}) — a boosted ensemble spends "
+                          f"far more parameters than that, and every extra model is "
+                          f"another chance to overfit the selection"))
     if n < 500:
         skip_list.append(("Neural Network", f"needs roughly 500+ rows; you have {n:,}"))
     if is_high_dim and not is_wide:
@@ -1360,7 +1378,9 @@ def model_viability(profile: Any, probe: Any = None) -> Dict[str, Tuple[str, str
     is_high_dim = profile.p_n_ratio > 0.3
     epv = profile.events_per_variable
     minority = tp.minority_class_size if tp else None
-    low_epv = task_type == "classification" and epv is not None and epv < 10
+    # `AUDIT-021` — the app's caution trigger, named as that. See `select_top_picks`.
+    low_epv = (task_type == "classification" and epv is not None
+               and epv < _ss.CAUTION_EPV)
     target_outliers = bool(tp and tp.has_outliers and (tp.outlier_rate or 0) > 0.01)
 
     _gain = probe.nonlinearity_gain if probe is not None else None
@@ -1420,7 +1440,8 @@ def model_viability(profile: Any, probe: Any = None) -> Dict[str, Tuple[str, str
         if is_wide:
             return ("poor", f"memorizes rather than generalizes at p={p:,} > n={n:,}")
         if low_epv:
-            return ("poor", f"EPV={epv:.1f} cannot support this capacity")
+            return ("poor", f"EPV={epv:.1f} — high capacity overfits hardest "
+                            f"where events per candidate parameter are lowest")
         if n < min_n:
             return ("poor", f"needs roughly {min_n}+ rows; you have {n:,}")
         if n < 150:
@@ -1442,8 +1463,14 @@ def model_viability(profile: Any, probe: Any = None) -> Dict[str, Tuple[str, str
             v[k] = ("ok", "try only if the linear baseline underfits")
 
     if n < 500 or low_epv:
-        v["nn"] = ("poor", f"needs roughly 500+ rows{f' and EPV≥10' if low_epv else ''}; you have {n:,}"
-                   + (f" (EPV={epv:.1f})" if low_epv else ""))
+        # `AUDIT-021`: this used to read "needs roughly 500+ rows and EPV≥10",
+        # which states the superseded rule as a requirement. The row count is
+        # the app's own rule of thumb and says so; the EPV is reported as the
+        # measured quantity it is, with no threshold attached.
+        v["nn"] = ("poor",
+                   f"more capacity than this shape supports — a rough floor of "
+                   f"500 rows; you have {n:,}"
+                   + (f", at EPV={epv:.1f}" if low_epv else ""))
     elif n < 1000:
         v["nn"] = ("ok", f"borderline at n={n:,} — regularize heavily")
     else:

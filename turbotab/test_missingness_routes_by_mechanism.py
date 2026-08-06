@@ -155,7 +155,12 @@ def test_the_attested_path_records_the_signal_loss_rather_than_hiding_it():
     assert rec["acknowledged_signal_loss"] is True, (
         "the attestation left no mark, so the override is invisible to the "
         "methods section")
-    assert rec["defers"] is True and rec["fit_on"] == "training folds only"
+    # `AUDIT-028`. THIS DOOR HAS NO FOLDS. `turbotab/training.py:416`:
+    # nothing under `turbotab/` imports `KFold`, `cross_val_score` or
+    # `cross_validate`. This assertion read "training folds only" for a
+    # dozen loops, which made it a GREEN TEST PINNING THE DEFECT — the
+    # shape filed this same loop as `TEST-060`.
+    assert rec["defers"] is True and rec["fit_on"] == "training rows only"
 
 
 def test_not_sure_does_not_block():

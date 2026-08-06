@@ -323,7 +323,7 @@ def exceptions(df: pd.DataFrame, group: Group, mechanism: str,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def receipt(group: Group, mechanism: str, strategy_key: str,
-            label: str, defers: bool) -> str:
+            label: str, defers: bool, scope: str = "train_rows") -> str:
     """The methods sentence for one decision over N columns.
 
     Reads as prose about the study rather than about the software, and it is
@@ -332,7 +332,12 @@ def receipt(group: Group, mechanism: str, strategy_key: str,
     about one column each is not a methods section, it is a log.
     """
     noun = "numeric" if group.branch == "numeric" else "categorical"
-    where = " within each training fold" if defers else ""
+    # `AUDIT-028`. One answer over N columns is still N imputation declarations,
+    # and this sentence is the one the manuscript quotes for all of them — so it
+    # takes its scope clause from the same table as the per-column sentence
+    # rather than hard-coding the fold claim this door cannot make.
+    from turbotab import missingness as _miss
+    where = _miss._SCOPE_PHRASE[_miss._checked_scope(scope)] if defers else ""
     how = label.lower().replace("fill with ", "").replace("fill by ", "")
     if strategy_key == "leave":
         return (f"Missing values in {group.n:,} {noun} column(s) are left as "

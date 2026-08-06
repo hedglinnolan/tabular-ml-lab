@@ -60,6 +60,63 @@ LEAVE = "leave"                              # nothing, recorded
 
 ROW_LOCAL_STRATEGIES = frozenset({EXPLICIT_CATEGORY, INDICATOR, LEAVE})
 
+# ─────────────────────────────────────────────────────────────────────────────
+# WHERE a deferred statistic is fitted, which is not the same as WHETHER it is
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# `AUDIT-028`. `defers` above answers clause §06's question — does this
+# transform's output for row *i* depend on any other row? — and it answers it
+# correctly. What it does NOT answer is the question the methods sentence was
+# nevertheless using it to answer: over WHICH rows the statistic gets fitted.
+#
+# Every deferring strategy's sentence read *"within each training fold"*, and
+# the Guided door has no folds. `turbotab/training.py` calls `pipe.fit(X_train,
+# y_train)` once per model on the training partition; nothing in `turbotab/`
+# imports `KFold`, `cross_val_score` or `cross_validate` at all. So a decision
+# a user made in the Preprocess step was recorded — and exported into the
+# manuscript's Missing Data section — claiming a resampled design that §A5.5
+# calls acceptable, over a door that performs the single split §A5.5 calls "the
+# weakest option ... discouraged at typical clinical sample sizes".
+#
+# The vocabulary and the values are `turbotab/selection.py`'s deliberately, and
+# `test_the_two_scope_vocabularies_are_one` pins them together. `GUIDED-104`'s
+# adjudication set the standard this follows: *"selection.declare exists
+# precisely so a door that fits once can SAY train_rows instead of implying the
+# stronger claim."*
+#
+# THE DEFAULT IS THE WEAKER CLAIM, and that is the whole design. `selection.py`
+# defaults to `TRAIN_FOLDS` and the Guided door silently took it — which is
+# `AUDIT-027`, still open. A caller who forgets to say must understate what
+# happened, never overstate it: the governing rule permits silence and forbids a
+# false assertion, so the direction of the default is not a style choice.
+TRAIN_ROWS = "train_rows"
+TRAIN_FOLDS = "train_folds"
+FIT_SCOPES = (TRAIN_ROWS, TRAIN_FOLDS)
+
+#: The clause each scope contributes to a deferred strategy's sentence.
+_SCOPE_PHRASE = {
+    TRAIN_ROWS: " once over the training rows (held-out rows excluded)",
+    TRAIN_FOLDS: " within each training fold",
+}
+
+#: The machine-readable half of the same fact. Trap 7: the structured payload is
+#: what everything downstream reads, so it must not be lossier — or falser —
+#: than the prose beside it. This used to read "training folds only" for every
+#: deferring strategy, from the same wrong premise as the sentence.
+_SCOPE_FIT_ON = {
+    TRAIN_ROWS: "training rows only",
+    TRAIN_FOLDS: "training folds only",
+}
+
+
+def _checked_scope(scope: str) -> str:
+    if scope not in FIT_SCOPES:
+        raise MissingnessRefusal(
+            f"scope must be {TRAIN_ROWS!r} or {TRAIN_FOLDS!r}; got {scope!r}. "
+            f"There is no third option, and in particular there is no option "
+            f"that fits over the whole table.")
+    return scope
+
 # THE COMPOUND ONE, and it is here because the card was already offering it and
 # the record had nowhere to put it (`GUIDED-098`).
 #
@@ -936,8 +993,12 @@ def declare(column: str, branch: str, mechanism: str, strategy_key: str,
             uses_columns: Optional[Sequence[str]] = None,
             acknowledged: bool = False,
             n_missing: int = 0,
-            purpose: Optional[str] = None) -> Dict[str, Any]:
+            purpose: Optional[str] = None,
+            scope: str = TRAIN_ROWS) -> Dict[str, Any]:
     """Record how one column's missingness will be handled. Executes nothing.
+
+    `scope` is where a deferred statistic gets fitted, and it defaults to
+    `TRAIN_ROWS` because that is what this door does (`AUDIT-028`).
 
     Refuses three things, each for a different reason:
 
@@ -969,9 +1030,10 @@ def declare(column: str, branch: str, mechanism: str, strategy_key: str,
             f"{', '.join(allowed)}.")
     spec = strategy(strategy_key)
 
-    scope = [str(c) for c in (uses_columns or [])]
+    fit_scope = _checked_scope(scope)
+    uses = [str(c) for c in (uses_columns or [])]
     outcome_note = None
-    if strategy_key == IMPUTE_MICE and target and str(target) in scope:
+    if strategy_key == IMPUTE_MICE and target and str(target) in uses:
         # `AUDIT-005`. The recorded purpose decides which of the two true
         # sentences applies. Under prediction it is still a hard blocker; under
         # inference the configuration is the correct one and the note travels
@@ -993,11 +1055,17 @@ def declare(column: str, branch: str, mechanism: str, strategy_key: str,
         "label": spec["label"],
         "because": spec["because"],
         "defers": spec["defers"],
-        "fit_on": ("training folds only" if spec["defers"] else "row-local, applied now"),
+        # `AUDIT-028`. `fit_on` said "training folds only" for every deferring
+        # strategy over a door with no folds, and `fit_scope` is the same fact
+        # in the vocabulary `selection.py` already records it in — so a parity
+        # check can compare the two doors instead of parsing prose.
+        "fit_scope": fit_scope if spec["defers"] else None,
+        "fit_on": (_SCOPE_FIT_ON[fit_scope] if spec["defers"]
+                   else "row-local, applied now"),
         "outcome_in_scope": outcome_note,
-        "uses_columns": scope or None,
+        "uses_columns": uses or None,
         "acknowledged_signal_loss": bool(blocks(mechanism, strategy_key) and acknowledged),
-        "sentence": sentence_for(column, branch, strategy_key),
+        "sentence": sentence_for(column, branch, strategy_key, scope=fit_scope),
     }
     if mechanism == INFORMATIVE:
         # §07: recorded as a methods ASSUMPTION rather than a warning, because a
@@ -1012,8 +1080,15 @@ def declare(column: str, branch: str, mechanism: str, strategy_key: str,
 _MIXED_FILL = {"numeric": "the median", "categorical": "the most common value"}
 
 
-def sentence_for(column: str, branch: str, key: str) -> str:
-    """The methods-prose line for one (column, branch, strategy).
+def sentence_for(column: str, branch: str, key: str,
+                 scope: str = TRAIN_ROWS) -> str:
+    """The methods-prose line for one (column, branch, strategy, scope).
+
+    `scope` says over which rows a DEFERRED statistic is fitted, and it changes
+    nothing for a row-local strategy — `leave`, `explicit_category` and
+    `indicator` compute no statistic, so there is no scope for one to have
+    (`AUDIT-028`). It defaults to `TRAIN_ROWS` because a caller who does not say
+    must understate rather than overstate; see the note beside `TRAIN_ROWS`.
 
     **One composer, read by both doors** (`GUIDED-098`). The Explore card used
     to write its own `decision_sentence` per option and the record wrote
@@ -1035,11 +1110,15 @@ def sentence_for(column: str, branch: str, key: str) -> str:
         return (f"A was-it-missing indicator is added for `{column}`; the "
                 f"underlying value is left blank.")
     if key == INDICATOR_AND_IMPUTE:
+        # The compound one: the indicator is written now, the fill is deferred,
+        # and only the fill has a scope. `_MIXED_FILL` names the statistic, so
+        # the scope clause attaches to it rather than to the whole sentence.
         return (f"A was-it-missing indicator is added for `{column}`, and the "
                 f"underlying value is filled with "
-                f"{_MIXED_FILL.get(branch, 'the training-fold value')} of each "
-                f"training fold.")
-    where = " within each training fold" if strategy(key)["defers"] else ""
+                f"{_MIXED_FILL.get(branch, 'the deferred value')} computed"
+                f"{_SCOPE_PHRASE[_checked_scope(scope)]}.")
+    where = (_SCOPE_PHRASE[_checked_scope(scope)]
+             if strategy(key)["defers"] else "")
     return (f"Missing values in `{column}` will be filled using "
             f"{_LABELS[key].lower().replace('fill with ', '').replace('fill by ', '')}"
             f"{where}.")

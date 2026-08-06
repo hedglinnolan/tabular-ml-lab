@@ -2162,11 +2162,26 @@ class AnalysisProject:
         # change `seal_basis`, does not gate the seal, and has no failure mode
         # in which the seal is refused. See `turbotab/resolution.py` for why
         # that boundary is the entire point.
+        #
+        # `AUDIT-019`. **THE PARAMETER COUNT IS OVER THE FRAME THE MODELS ARE
+        # HANDED**, so the identifier columns go with it. `GUIDED-108` added
+        # `identifiers.excluded` to `training.feature_frame` and nothing
+        # brought it here, so the methods sentence said 344 candidate
+        # parameters on `survey_instrument.csv` where the models get 45 — 299
+        # of them one column the app structurally refuses to encode.
+        #
+        # It is computed HERE rather than inside `resolution`: `excluded()`
+        # answers about a project and `statement()` is given a frame, and this
+        # is the one place that holds both. `self.lockbox` is already assigned
+        # above, so `training_rows` — which `excluded()` reads — is the
+        # post-seal training partition rather than the whole table.
         try:
+            from turbotab import identifiers as _ids
             from turbotab import resolution as _res
             self.lockbox["resolution"] = _res.statement(
                 self.df, self.target or "", self.task_type or "regression",
-                list(labels), self.grain.get("group_col"))
+                list(labels), self.grain.get("group_col"),
+                excluded=_ids.excluded(self))
         except Exception as exc:                              # pragma: no cover
             # The seal succeeds without it. A study that cannot be described is
             # still a study that was sealed correctly, and refusing the barrier

@@ -130,8 +130,17 @@ class DatasetProfile:
     n_features_critical_missing: int  # >50% missing
     
     # Optional fields with defaults
-    events_per_variable: Optional[float] = None  # For classification: minority class / p
-    
+
+    #: `CLINICAL_SURVEY_PACK.md` §A5.4's *count parameters, not variables* — a
+    #: numeric column is 1, a k-level factor is k−1. Distinct from `n_features`,
+    #: which is and stays the COLUMN count: "8 predictors" is true of columns
+    #: and "8 candidate parameters" is a different claim (`AUDIT-020`).
+    n_candidate_parameters: Optional[int] = None
+
+    #: Minority-class events per CANDIDATE PARAMETER, never per column. `None`
+    #: where the quotient would be a guess — see `ml.sample_size`.
+    events_per_variable: Optional[float] = None
+
     # Target info
     target_profile: Optional[TargetProfile] = None
     
@@ -315,19 +324,37 @@ def compute_target_profile(df: pd.DataFrame, target_col: str, task_type: str, ou
 
 
 def assess_data_sufficiency(
-    n: int, 
-    p: int, 
+    n: int,
+    p: int,
     task_type: str,
-    minority_class_size: Optional[int] = None
+    minority_class_size: Optional[int] = None,
+    n_parameters: Optional[int] = None,
 ) -> Tuple[DataSufficiencyLevel, str]:
     """
     Assess data sufficiency for modeling.
-    
+
     Uses practical heuristics (not formal power calculations):
-    - Events per variable (EPV) for classification
+    - Events per candidate PARAMETER for classification
     - Observations per parameter for regression
     - Feature-to-sample ratio
+
+    `AUDIT-020` / `AUDIT-021`, and they are one design — see `ml/sample_size.py`.
+
+    `p` is the number of predictor COLUMNS and stays that, because every
+    sentence here that says "features" or "dimensionality" is true of columns.
+    `n_parameters` is `CLINICAL_SURVEY_PACK.md` §A5.4's *count parameters, not
+    variables* — a 5-level factor is 4 — and it is the only denominator EPV may
+    use. **A `None` parameter count reports no EPV at all** rather than falling
+    back to `p`: a silent fall back to the wrong denominator is the defect this
+    signature exists to remove, and the app may be silent.
+
+    The docstring caveat above ("not formal power calculations") used to be the
+    only disclosure that this is a heuristic, and it lived here where no user
+    can read it. `sample_size.SUPERSEDED` is that disclosure attached to the
+    string that ships.
     """
+    from ml import sample_size as _ss
+
     p_n_ratio = p / n if n > 0 else float('inf')
     
     narratives = []
@@ -362,20 +389,19 @@ def assess_data_sufficiency(
     else:
         narratives.append(f"Low dimensionality (p/n={p_n_ratio:.2f}). Feature space is manageable.")
     
-    # Events per variable (classification)
-    if task_type == 'classification' and minority_class_size is not None:
-        epv = minority_class_size / p if p > 0 else float('inf')
-        if epv < 5:
-            level = min(level, DataSufficiencyLevel.CRITICAL, key=lambda x: list(DataSufficiencyLevel).index(x))
-            narratives.append(f"Very low events per variable ({epv:.1f}). High overfitting risk for any model.")
-        elif epv < 10:
-            level = min(level, DataSufficiencyLevel.SCARCE, key=lambda x: list(DataSufficiencyLevel).index(x))
-            narratives.append(f"Low events per variable ({epv:.1f}). Simple models with regularization preferred.")
-        elif epv < 20:
-            narratives.append(f"Moderate events per variable ({epv:.1f}). Most models viable with care.")
-        else:
-            narratives.append(f"Good events per variable ({epv:.1f}). Classification models have adequate signal.")
-    
+    # Events per candidate PARAMETER (classification). §A5.4's denominator, and
+    # the sentence names what it counted so a reader can check the arithmetic.
+    if task_type == 'classification':
+        epv = _ss.events_per_parameter(minority_class_size, n_parameters)
+        if epv is not None:
+            if epv < 5:
+                level = min(level, DataSufficiencyLevel.CRITICAL, key=lambda x: list(DataSufficiencyLevel).index(x))
+            elif epv < _ss.CAUTION_EPV:
+                level = min(level, DataSufficiencyLevel.SCARCE, key=lambda x: list(DataSufficiencyLevel).index(x))
+            narratives.append(
+                _ss.epv_sentence(epv, minority_class_size, n_parameters))
+
+
     # Observations per parameter heuristics for neural nets
     if n < p * 20:
         narratives.append("Neural networks may struggle: typically need 20+ samples per input feature.")
@@ -640,17 +666,27 @@ def compute_dataset_profile(
         if task_type == 'classification' and target_profile.minority_class_size:
             minority_class_size = target_profile.minority_class_size
     
+    # Candidate PARAMETERS, not columns. §A5.4, and it is the same count
+    # `turbotab.resolution.candidate_parameters` charges in the Guided door —
+    # both now call `ml.sample_size`, so the two doors cannot report different
+    # numbers for the same frame (`AUDIT-020`).
+    from ml import sample_size as _ss
+    n_candidate_parameters = _ss.candidate_parameters(
+        df, feature_cols)["total"]
+
     # Compute data sufficiency
     p_n_ratio = p / n if n > 0 else float('inf')
     data_sufficiency, sufficiency_narrative = assess_data_sufficiency(
-        n, p, task_type or 'regression', minority_class_size
+        n, p, task_type or 'regression', minority_class_size,
+        n_parameters=n_candidate_parameters,
     )
-    
-    # Events per variable
+
+    # Events per candidate parameter
     events_per_variable = None
-    if task_type == 'classification' and minority_class_size is not None and p > 0:
-        events_per_variable = minority_class_size / p
-    
+    if task_type == 'classification':
+        events_per_variable = _ss.events_per_parameter(
+            minority_class_size, n_candidate_parameters)
+
     # Physiologic plausibility flags (NHANES reference only)
     reference_bundle = load_reference_bundle()
     nhanes_ref = reference_bundle["nhanes"]
@@ -684,6 +720,7 @@ def compute_dataset_profile(
         n_features_with_missing=n_features_with_missing,
         n_features_high_missing=n_features_high_missing,
         n_features_critical_missing=n_features_critical_missing,
+        n_candidate_parameters=n_candidate_parameters,
         events_per_variable=events_per_variable,
         target_profile=target_profile,
         feature_profiles=feature_profiles,

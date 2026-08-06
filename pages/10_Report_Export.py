@@ -864,6 +864,15 @@ def _build_methods_section_for_export(
         model_configs={name: {} for name in selected_for_report},
         split_config=split_config if split_config else {},
         cv_folds=st.session_state.get('cv_folds', 5) if st.session_state.get('use_cv', False) else None,
+        # AUDIT-026. Passed explicitly rather than left to be derived from
+        # `selected_results`, which is None whenever the user excluded results
+        # from the report — the CV question would then be unanswerable for a
+        # reason that has nothing to do with CV. `model_results` is the full
+        # trained set and is present either way.
+        cv_models_run=[
+            name for name, res in (model_results or {}).items()
+            if isinstance(res, dict) and res.get('cv_results')
+        ] if model_results else None,
         n_total=len(df),
         n_train=train_n,
         n_val=val_n,

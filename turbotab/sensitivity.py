@@ -254,11 +254,17 @@ def _counterfactual(project: Any, swaps: List[Dict[str, Any]]) -> Any:
             entry.update(
                 strategy=key, label=spec["label"], because=spec["because"],
                 defers=spec["defers"],
-                fit_on=("training folds only" if spec["defers"]
+                # `AUDIT-028`. The swapped arm is fitted by the same
+                # `training.train` as the recorded one — once, over the training
+                # partition — so its record says so. An arm whose sentence
+                # claims a stronger design than the arm it is compared against
+                # is the divergence this module exists to make impossible.
+                fit_scope=_miss.TRAIN_ROWS if spec["defers"] else None,
+                fit_on=(_miss._SCOPE_FIT_ON[_miss.TRAIN_ROWS] if spec["defers"]
                         else "row-local, applied now"),
                 sentence=_miss.sentence_for(entry["column"],
                                             entry.get("branch") or "numeric",
-                                            key))
+                                            key, scope=_miss.TRAIN_ROWS))
         plan.append(entry)
     other.missingness = plan
     return other

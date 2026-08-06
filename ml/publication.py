@@ -7,7 +7,7 @@ import sys
 import json
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Sequence, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -386,6 +386,20 @@ def generate_methods_section(
     split_strategy: Optional[str] = None,
     missing_data_summary: Optional[Dict] = None,
     ledger_narratives: Optional[Dict[str, str]] = None,
+    # Which models actually produced cross-validation results. `AUDIT-026`.
+    #
+    # `use_cv`/`cv_folds` are the CHECKBOX. `model_results[*]['cv_results']` is
+    # the only object that records that a fold loop RAN, and the two are
+    # routinely different: pages/06:1455 skips CV for the neural network
+    # outright, and :1489 catches a CV exception, warns, and leaves
+    # `cv_results=None`. A Methods section composed from the checkbox therefore
+    # asserts an internal validation design the run never performed.
+    #
+    # Three states on purpose, and `None` is not `[]` (trap 9): a list — even an
+    # empty one — is a caller who KNOWS which models were cross-validated;
+    # `None` is a caller who did not say, and ignorance must not be reported as
+    # either outcome.
+    cv_models_run: Optional[Sequence[str]] = None,
 ) -> str:
     """Generate a draft methods section for a publication.
 
@@ -403,6 +417,25 @@ def generate_methods_section(
     feature_names = manuscript_facts['feature_names_for_manuscript']
     selected_model_results = manuscript_facts['selected_model_results']
     bootstrap_results = manuscript_facts['selected_bootstrap_results']
+
+    # `AUDIT-026`. Resolve "did cross-validation actually run, and for what?"
+    # once, here, so every CV sentence below reads the same answer.
+    #
+    # An explicit `cv_models_run` wins. Otherwise derive it from the per-model
+    # results, which carry `cv_results` for every trained model — pages/06:1502
+    # writes the key unconditionally, `None` when no fold loop ran, so a
+    # non-empty results dict is a POSITIVE record either way and not an absence.
+    # With neither, the answer is unknown and stays unknown.
+    if cv_models_run is not None:
+        cv_models_run = [str(m) for m in cv_models_run]
+    elif selected_model_results:
+        cv_models_run = [
+            str(name) for name, res in selected_model_results.items()
+            if isinstance(res, dict) and res.get('cv_results')
+        ]
+    else:
+        cv_models_run = None
+    cv_scope_known = cv_models_run is not None
 
     # Feature counts: derive once so manuscript text stays internally consistent.
     logged_steps = generate_methods_from_log()
@@ -1180,8 +1213,42 @@ def generate_methods_section(
     if cv_to_use is None and cv_folds:
         cv_to_use = cv_folds
     
+    # `AUDIT-026`. This said "{n}-fold cross-validation was used for internal
+    # validation." on the strength of the checkbox alone. The sentence is not
+    # deleted — it is made to say what the run did, which is the honest
+    # replacement and the only one that keeps the Methods section complete.
     if cv_to_use:
-        sections.append(f" {cv_to_use}-fold cross-validation was used for internal validation.")
+        if not cv_scope_known:
+            sections.append(
+                f" {cv_to_use}-fold cross-validation was enabled in the training "
+                f"configuration. This draft was assembled without per-model "
+                f"results, so it does not report whether cross-validation "
+                f"produced scores for any model; the internal validation this "
+                f"draft can attest to is the train/validation/test split "
+                f"described above."
+            )
+        elif not cv_models_run:
+            # Requested and ran for nothing — pages/06:1455 (the neural network
+            # is excluded from CV) or :1489 (CV raised and was swallowed).
+            sections.append(
+                f" {cv_to_use}-fold cross-validation was requested but produced "
+                f"results for no model, so no cross-validated estimate is "
+                f"reported: internal validation rests on the single "
+                f"train/validation/test split described above."
+            )
+        else:
+            _cv_names = _oxford_join([_publication_model_label(m) for m in cv_models_run])
+            sections.append(
+                f" {cv_to_use}-fold cross-validation was used for internal "
+                f"validation of {_cv_names}."
+            )
+            _not_cv = [m for m in (selected_model_results or {}) if m not in set(cv_models_run)]
+            if _not_cv:
+                sections.append(
+                    f" It was not run for "
+                    f"{_oxford_join([_publication_model_label(m) for m in _not_cv])}, "
+                    f"whose reported performance comes from the held-out split alone."
+                )
 
     # Performance evaluation
     sections.append("\n\n### Performance Evaluation\n")

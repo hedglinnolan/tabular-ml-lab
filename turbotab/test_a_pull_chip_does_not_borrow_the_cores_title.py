@@ -43,9 +43,14 @@ where each promise actually lives.
 
 ## Fixture shapes — `GUIDED-097`
 
-`SHAPES` below is three targets over the two shipped fixtures that have
-columns above the recommender's 5% threshold. `SHAPES_NOT_COVERED` names the
-rest.
+`SHAPES` below is two targets over the one shipped fixture that has columns
+above the recommender's threshold. `SHAPES_NOT_COVERED` names the rest —
+**including multiclass, which this file used to cover and no longer can.**
+`GUIDED-189` made the chip read `ml/missingness_plan.HIGH_MISSING_SHARE`
+(0.20) instead of holding its own 0.05, and `multiclass_stage.csv`'s worst
+column is 10.0% — it sat between the two thresholds, which is what that row
+was about. The coverage is genuinely narrower and it is written down rather
+than papered over with a fixture built to clear a number.
 """
 from __future__ import annotations
 
@@ -65,16 +70,28 @@ DATA = Path(__file__).resolve().parent / "sample_data"
 #: The chip this row is about.
 KEY = "look::r2_missingness"
 
-#: `GUIDED-097`. Only a fixture with columns over the recommender's 5% missing
-#: threshold raises `r2_missingness` at all, which is two of the sixteen
-#: shipped CSVs — driven here at three target shapes between them.
+#: `GUIDED-097`. Only a fixture with a column over the recommender's missing
+#: threshold raises `r2_missingness` at all. That threshold is
+#: `ml/missingness_plan.HIGH_MISSING_SHARE` = 0.20 since `GUIDED-189`, and
+#: exactly one shipped CSV with a usable target clears it.
 SHAPES = {
     "continuous": ("clinic_visits.csv", "hba1c"),
     "binary_string": ("clinic_visits.csv", "outcome"),
-    "multiclass": ("multiclass_stage.csv", "disease_stage"),
 }
 
 SHAPES_NOT_COVERED = {
+    "multiclass": (
+        "COVERED UNTIL L51 AND NOT ANY MORE, which is why it is spelled out. "
+        "`multiclass_stage.csv`'s worst column is 10.0% missing — above the "
+        "chip's old private 0.05 and below the 0.20 that fills the panel it "
+        "opens onto. `GUIDED-189` deleted the duplicate threshold, so the "
+        "chip is correctly not raised here now and this file lost a shape. "
+        "No shipped CSV has both a genuine multiclass target and a column "
+        "over 0.20: `clinic_visits.csv` gets close with `notes`, which is 5 "
+        "levels and 25% missing, but it is a free-text remark column and "
+        "using it as a target to keep a number in a table is the fixture "
+        "manufacturing its own result (trap #3). The honest form is this "
+        "sentence."),
     "binary_numeric": (
         "`leaky_sepsis.csv` is the 0/1 fixture and it has no missing values at "
         "all, so it raises no `r2_missingness` recommendation and there is no "

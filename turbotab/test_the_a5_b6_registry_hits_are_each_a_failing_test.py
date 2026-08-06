@@ -58,16 +58,17 @@ def test_every_row_this_file_names_is_open_and_every_open_one_is_named():
 
 
 MARKED = [
-    "AUDIT-019",
-    "AUDIT-020",
-    "AUDIT-021",
+    # AUDIT-019 closed at L51-C. The seal's candidate-parameter count is now
+    # taken over the frame `training.feature_frame` builds, so the identifier
+    # columns the app refuses to encode are out of it — 45 rather than 344 on
+    # `survey_instrument.csv`, with what left the count named and priced.
+    # `turbotab/test_the_seal_counts_the_parameters_the_models_are_handed.py`.
     "AUDIT-022",
     "AUDIT-023",
     "AUDIT-024",
     "AUDIT-025",
     "AUDIT-026",
     "AUDIT-027",
-    "AUDIT-028",
     "AUDIT-029",
     # AUDIT-030 closed at L45-A2. The ruling was made at the L44 adjudication and
     # applied here: the Methods section no longer calls the held-out comparison a
@@ -81,41 +82,32 @@ MARKED = [
 ]
 
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-019 — filed at L43-B, not fixed this loop")
-def test_audit_019_the_seal_s_methods_sentence_states_a_candidate_parameter_count_that_in():
-    """The seal's methods sentence states a candidate-parameter count that includes the identifier columns the app refuses to give the model — 344 instead of 45 on the repo's own survey fixture
+def test_audit_019_is_closed_and_its_regression_test_is_the_one_named_here():
+    """`AUDIT-019` — fixed at L51-C, and no longer an xfail.
 
-    Where: `turbotab/resolution.py:112`
-    Registry: §A5.4: 'Compute Riley et al.'s minimum sample size for model development. Inputs: number of candidate predictor PARAMETERS — COUNT PARAMETERS, NOT VARIABLES.' The count that matters is the parameters the model may spend; the app's own badge for this function (turbotab/resolution.py:85-96, SOURCES['c
+    Same shape as `AUDIT-030` below: a closed row keeping its strict marker is
+    an xfail that now passes, which pytest reports as a failure nobody can
+    read. What stays is the pointer.
+
+    The defect was that `resolution.candidate_parameters` dropped the target
+    and the group column and nothing else, while `training.feature_frame` had
+    dropped `identifiers.excluded` since `GUIDED-108` — so the seal's methods
+    sentence reported 344 candidate predictor parameters on
+    `survey_instrument.csv` where the models are handed 45, and §A5.4's whole
+    point is that this count is the input to Riley's minimum sample size.
     """
     row = _ledger()["AUDIT-019"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-019 is still open: " + row["item"][:160])
+    assert row["status"] == "FIXED", (
+        f"AUDIT-019 is {row['status']} in the ledger and the code is fixed. "
+        f"The fix and the row close together — the subagent that made the fix "
+        f"is not the writer of findings.json, so this test is red on purpose "
+        f"until the row is set: docs/turbotab/tools/ledger.py set AUDIT-019 "
+        f"--status FIXED --test turbotab/"
+        f"test_the_seal_counts_the_parameters_the_models_are_handed.py")
+    assert "test_the_seal_counts_the_parameters_the_models_are_handed" in (
+        row.get("test") or ""), (
+        "AUDIT-019 is closed against a test this file cannot name")
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-020 — filed at L43-B, not fixed this loop")
-def test_audit_020_events_per_variable_is_computed_over_raw_columns__so_a_5_level_factor():
-    """Events-per-variable is computed over raw COLUMNS, so a 5-level factor counts as 1 parameter instead of 4 — and the resulting 'adequate signal' sentence is exported into the report
-
-    Where: `ml/dataset_profile.py:367`
-    Registry: §A5.4: 'number of candidate predictor PARAMETERS — count parameters, not variables; a 4-knot spline is 3 parameters, a 5-level factor is 4.' The app's own Guided-door implementation gets this right (turbotab/resolution.py:120-130 charges nunique−1) and badges it SETTLED against §A5.4, so this is a c
-    """
-    row = _ledger()["AUDIT-020"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-020 is still open: " + row["item"][:160])
-
-@pytest.mark.xfail(strict=True, reason="AUDIT-021 — filed at L43-B, not fixed this loop")
-def test_audit_021_the_app_states_epv____10_as__the_guideline__for_sample_size__in_both_d():
-    """The app states EPV >= 10 as 'the guideline' for sample size, in both doors, against a [SETTLED] position that the rule is superseded
-
-    Where: `ml/model_coach.py:416`
-    Registry: §A5.4, marked [SETTLED that EPV≥10 is superseded]: 'The events-per-variable rule of 10 is a legacy heuristic that both under- and over-estimates requirements depending on prevalence and expected model strength; use the criteria-based calculation.' The repo's own design doc agrees — docs/turbotab/DOM
-    """
-    row = _ledger()["AUDIT-021"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-021 is still open: " + row["item"][:160])
 
 @pytest.mark.xfail(strict=True, reason="AUDIT-022 — filed at L43-B, not fixed this loop")
 def test_audit_022_the_generated_manuscript_lists_the_sample_size_as_a_strength_for_every():
@@ -188,18 +180,6 @@ def test_audit_027_the__rank_them_for_me__panel_tells_the_user_that_what_is_actu
     assert row["status"] in ("OPEN", "PARTIAL")
     pytest.fail(
         "AUDIT-027 is still open: " + row["item"][:160])
-
-@pytest.mark.xfail(strict=True, reason="AUDIT-028 — filed at L43-B, not fixed this loop")
-def test_audit_028_every_imputation_declaration_writes__within_each_training_fold__into_t():
-    """Every imputation declaration writes 'within each training fold' into the recorded methods sentence, in a door that fits once over the training rows
-
-    Where: `turbotab/missingness.py:522`
-    Registry: §A5.5 [SETTLED that the full pipeline must be inside the loop]: internal validation must resample imputation and transformation, and 'a single train/test split is the weakest option and is discouraged at typical clinical sample sizes'. A methods sentence saying the median was computed within each tr
-    """
-    row = _ledger()["AUDIT-028"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-028 is still open: " + row["item"][:160])
 
 @pytest.mark.xfail(strict=True, reason="AUDIT-029 — filed at L43-B, not fixed this loop")
 def test_audit_029_the_generated_methods_section_tells_the_reader_that_cross_validation_w():

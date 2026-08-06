@@ -410,7 +410,16 @@ def train(project: Any, model_keys: Sequence[str], *,
         f"Each model's pipeline was composed from the recorded plan: "
         f"{n_declared} missingness declaration(s), {n_deferred} deferred "
         f"transform(s), and the per-model recipe the table resolved for it. "
-        f"Every statistic in it is fitted inside the training folds.")
+        # `AUDIT-028`. This read "Every statistic in it is fitted inside the
+        # training folds." — over the fit thirty lines below, which is
+        # `pipe.fit(X_train, y_train)`, once, per model. There are no folds in
+        # this door: nothing under `turbotab/` imports `KFold`,
+        # `cross_val_score` or `cross_validate`. The guarantee the note exists
+        # to give is that no held-out row informs a fitted statistic, and THAT
+        # is true and is what it now says — the claim is corrected to the one
+        # the door can keep, not dropped.
+        f"Every statistic in it is fitted once over the {int(len(X_train)):,} "
+        f"training rows, and the held-out rows inform none of them.")
 
     if run.exploratory:
         # The number is honest and what it MEANS is not what a clean split

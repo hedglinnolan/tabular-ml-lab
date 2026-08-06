@@ -106,13 +106,26 @@ THEORY_ANCHORS: Dict[str, Dict[str, str]] = {
             "if they're close, accuracy is lying to you."
         ),
     },
+    # `AUDIT-021`, the same claim one surface over from `ml/model_coach.py`.
+    # This entry taught the rule of 10–20 as "the classic rule" with nothing
+    # saying it has been superseded, and told the reader to count per VARIABLE.
+    # `CLINICAL_SURVEY_PACK.md` §A5.4 is [SETTLED] on both halves. The Theory
+    # Reference is where a researcher goes to learn the concept, so it is the
+    # worst of the three surfaces to leave stating the retired version.
     "sample_size": {
         "chapter": "Data Quality & Assumptions",
-        "section": "Events Per Variable (EPV)",
+        "section": "Events Per Candidate Parameter (EPV)",
         "why_it_matters": (
-            "With too few observations per feature, the model fits noise instead of "
-            "signal. The classic rule: at least 10–20 events per variable for linear "
-            "models. Neural networks need much more. Trees are moderately robust."
+            "With too few outcome events per parameter the model fits noise "
+            "instead of signal. Count PARAMETERS, not columns: a 4-knot spline "
+            "is 3 parameters and a 5-level factor is 4, and candidates count "
+            "even if you later drop them. The familiar rule of 10–20 events "
+            "per variable is a legacy heuristic — it both under- and "
+            "over-estimates what a model needs depending on prevalence and "
+            "expected model strength, and the field's criterion is now Riley "
+            "et al.'s criteria-based minimum (Stat Med 2019; pmsampsize), "
+            "which needs an anticipated model R² this app does not hold and "
+            "therefore does not compute."
         ),
         "misconception": (
             "A small dataset doesn't mean you can't do ML — it means you need simpler "
@@ -120,9 +133,13 @@ THEORY_ANCHORS: Dict[str, Dict[str, str]] = {
             "is almost always a mistake."
         ),
         "what_to_look_for": (
-            "Check the EPV ratio on the Upload page. If it's below 10, prefer "
-            "linear or tree-based models. If it's below 5, consider whether the "
-            "prediction task is feasible at all with this data."
+            "The EPV on the Upload page is events divided by candidate "
+            "parameters. It is a description of how much information the fit "
+            "has per parameter, not a pass mark: a low value is a reason to "
+            "prefer penalized linear models and to report confidence "
+            "intervals, and no value of it certifies that the sample is "
+            "adequate. Only the criteria-based calculation does that, and it "
+            "needs a number about your study that this app never asked you for."
         ),
     },
     "high_dimensionality": {

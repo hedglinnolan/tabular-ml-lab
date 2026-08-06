@@ -1041,13 +1041,54 @@ class NarrativeEngine:
             if hp_sentences:
                 parts.extend(hp_sentences)
 
-        # Cross-validation
+        # Cross-validation. `AUDIT-026`.
+        #
+        # This read the CHECKBOX — `use_cv and cv_folds` — and asserted that
+        # k-fold cross-validation was the internal validation. The checkbox is
+        # not the event: pages/06:1455 excludes the neural network from CV
+        # outright, and :1489 catches a CV failure, warns, and continues with
+        # `cv_results=None`. Train only the neural network with the box ticked
+        # and this sentence claimed a design the run never performed — §A5.5
+        # calls repeated k-fold acceptable and a single split "the weakest
+        # option ... discouraged", so the false sentence described the
+        # acceptable design and shipped the discouraged one.
+        #
+        # `cv_models_run` is recorded by `record_training` from the per-model
+        # `cv_results`. `None` means the provenance predates that record and the
+        # answer is genuinely unknown; it is NOT the same as the empty list,
+        # which is a positive record that nothing was cross-validated.
         use_cv = self.ctx.get("use_cv", False)
         cv_folds = self.ctx.get("cv_folds")
+        cv_models_run = self.ctx.get("cv_models_run")
         if use_cv and cv_folds:
-            parts.append(
-                f"{cv_folds}-fold cross-validation was used for model evaluation."
-            )
+            if cv_models_run is None:
+                parts.append(
+                    f"{cv_folds}-fold cross-validation was enabled in the "
+                    f"training configuration; this record does not state "
+                    f"whether it produced scores, so the internal validation "
+                    f"reported here is the train/validation/test split above."
+                )
+            elif not cv_models_run:
+                parts.append(
+                    f"{cv_folds}-fold cross-validation was requested but "
+                    f"produced results for no model, so model evaluation rests "
+                    f"on the held-out split alone."
+                )
+            else:
+                _ran = _oxford_join(
+                    [self._model_name(m) for m in cv_models_run])
+                parts.append(
+                    f"{cv_folds}-fold cross-validation was used for evaluation "
+                    f"of {_ran}."
+                )
+                _skipped = [m for m in models if m not in set(cv_models_run)]
+                if _skipped:
+                    parts.append(
+                        f"It was not run for "
+                        f"{_oxford_join([self._model_name(m) for m in _skipped])}, "
+                        f"whose reported performance comes from the held-out "
+                        f"split alone."
+                    )
 
         # Hyperparameter optimization
         if self.ctx.get("use_hyperopt"):

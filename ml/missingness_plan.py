@@ -267,7 +267,8 @@ def _timing_of(spec: Dict[str, Any]) -> str:
 
 def _options_for(column: str, branch: str, series: pd.Series,
                  n_missing: int,
-                 mechanism: Optional[str] = None) -> List[Dict[str, Any]]:
+                 mechanism: Optional[str] = None,
+                 scope: Optional[str] = None) -> List[Dict[str, Any]]:
     """The strategies this branch offers, FROM THE ONE TABLE THAT DECIDES.
 
     `GUIDED-090`. This used to be three hand-written lists, and they disagreed
@@ -310,7 +311,25 @@ def _options_for(column: str, branch: str, series: pd.Series,
         consequence = _CONSEQUENCE.get(key)
         option = _option(
             key, spec["label"].replace("`", ""),
-            _miss.sentence_for(column, branch, key),
+            # `AUDIT-028`. THE CARD MUST SPEAK THE DOOR'S SCOPE, because the
+            # card and the declaration it writes are one click apart and
+            # `test_the_two_missingness_doors_agree` compares them. The first
+            # merge of this row pinned the card at `TRAIN_FOLDS` and moved only
+            # the record — which left the GUIDED door showing a fold sentence
+            # on the button and writing a rows sentence into the transcript.
+            # One click, two methods sentences: the exact defect that gate was
+            # built for, reintroduced by the fix for a neighbouring one.
+            #
+            # The default stays `TRAIN_FOLDS` so CLASSIC's shipped sentence is
+            # byte-identical: when `pages/06`'s CV box is ticked,
+            # `ml/eval.make_cv_pipeline` really does re-fit the imputer inside
+            # every fold. That it is not UNCONDITIONAL — the reported held-out
+            # metrics come from a single fit on the training partition — is a
+            # live defect on the Classic card, and it is filed rather than
+            # changed here because this loop's §08 check 2 forbids moving a
+            # second door's wording in the loop that pressured the first.
+            _miss.sentence_for(column, branch, key,
+                               scope=scope or _miss.TRAIN_FOLDS),
             _timing_of(spec),
             consequence(column, n_missing, series) if consequence else
             spec["because"],
@@ -363,7 +382,8 @@ def missingness_cards(df: pd.DataFrame,
                       columns: Optional[Sequence[str]] = None,
                       threshold: float = HIGH_MISSING_SHARE,
                       mechanisms: Optional[Mapping[str, str]] = None,
-                      provenance: Optional[Mapping[str, Any]] = None
+                      provenance: Optional[Mapping[str, Any]] = None,
+                      scope: Optional[str] = None
                       ) -> List[Dict[str, Any]]:
     """One decision card per column with meaningful missingness.
 
@@ -378,6 +398,14 @@ def missingness_cards(df: pd.DataFrame,
     which is `GUIDED-091`'s rule and is why this is not defaulted to
     `not_sure`. Nothing is inferred from the data here; the only source is a
     `route_missingness` decision the user already made.
+
+    `scope` is which fitting scope the CALLING DOOR runs, and it reaches the
+    decision sentence on every option (`AUDIT-028`). `None` means Classic's
+    `TRAIN_FOLDS`, so nothing under `pages/` changes; the Guided door passes
+    `TRAIN_ROWS` because `turbotab/training.py` fits the pipeline once and
+    says so at line 416 — nothing under `turbotab/` imports `KFold`,
+    `cross_val_score` or `cross_validate`. A card and the declaration it
+    writes must not be able to say different things about the same click.
     """
     if df is None or df.empty:
         return []
@@ -416,7 +444,8 @@ def missingness_cards(df: pd.DataFrame,
         branch = ("numeric" if pd.api.types.is_numeric_dtype(series)
                   else "categorical")
         mechanism = answered.get(str(col))
-        options = _options_for(str(col), branch, series, n_missing, mechanism)
+        options = _options_for(str(col), branch, series, n_missing, mechanism,
+                               scope=scope)
         if kind == "binary":
             question = (f"Is the missingness in `{col}` informative?")
             because = ("A binary variable that was not recorded is not the same "

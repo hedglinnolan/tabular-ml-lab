@@ -253,15 +253,28 @@ def test_the_panel_hides_where_there_is_no_second_column():
 
 
 def test_the_feed_did_not_shrink_to_make_room():
-    """The shell grew instead, and that choice is asserted.
+    """The shell grew instead, and it grew by OVERRIDE rather than by edit.
 
     §03's measure rule is written against the feed's 800px. Narrowing it to fit
     a new column would trade a specified constraint for an unspecified one.
+
+    The first draft of this test read the *first* `.shell` rule in the file,
+    which is the prototype's — so it would have gone green on a page where the
+    prototype stylesheet had been edited in place. That is exactly what the
+    first draft of the panel did, and
+    `test_the_stylesheet_is_the_prototype_stylesheet_verbatim` caught it. The
+    assertion is now on the **last** rule, which is the one that wins, plus the
+    fact that the prototype's own value is still 1240.
     """
     page = PAGE.read_text(encoding="utf-8")
     assert "max-width:800px" in page, "the feed's measure changed"
-    shell = re.search(r"\.shell\{[^}]*max-width:(\d+)px", page)
-    assert shell and int(shell.group(1)) >= 1400, (
-        f"the shell is {shell.group(1) if shell else '?'}px wide. 236 rail + "
-        f"800 feed + 340 study needs room; the alternative was shrinking the "
-        f"feed, which is the constraint §03 actually specifies")
+    widths = re.findall(r"\.shell\{[^}]*max-width:\s*(\d+)px", page)
+    assert widths, "no `.shell` max-width in the page at all"
+    assert int(widths[-1]) >= 1400, (
+        f"the shell resolves to {widths[-1]}px. 236 rail + 800 feed + 340 "
+        f"study needs room; the alternative was shrinking the feed, which is "
+        f"the constraint §03 actually specifies")
+    assert widths[0] == "1240", (
+        f"the prototype's own `.shell` reads {widths[0]}px. The build widens "
+        f"the shell with an override; editing the prototype's value in place "
+        f"is what L48 filed and what this loop did anyway")

@@ -162,8 +162,10 @@ def test_the_one_option_that_is_not_a_strategy_is_still_offered_with_its_reason(
 
 # ── one composer writes the sentence ─────────────────────────────────────────
 
+@pytest.mark.parametrize("scope", [M.TRAIN_ROWS, M.TRAIN_FOLDS],
+                         ids=["the guided door, fitted once", "classic, per fold"])
 @pytest.mark.parametrize("fixture", FIXTURES)
-def test_the_card_and_the_record_write_the_same_sentence(fixture):
+def test_the_card_and_the_record_write_the_same_sentence(fixture, scope):
     """`GUIDED-098`, and it is asserted as EQUALITY of the served strings
     rather than as identity, because the card is composed on one request and
     the record on another — two processes, one composer.
@@ -171,19 +173,33 @@ def test_the_card_and_the_record_write_the_same_sentence(fixture):
     The pairing that was wrong is the one that matters: an option promising a
     training-fold median mapped to a declaration whose sentence says the value
     is left blank. One click, two methods sentences, opposite claims.
+
+    **Parametrized over the fitting scope by `AUDIT-028`, and that is a
+    widening rather than an accommodation.** The row's fix gave the two doors
+    different scopes — the guided door fits once on the training rows
+    (`turbotab/training.py:416`: nothing under `turbotab/` imports `KFold`,
+    `cross_val_score` or `cross_validate`), Classic re-fits per fold when
+    `pages/06`'s CV box is ticked. The first merge of that fix moved only the
+    RECORD and left the card pinned at `TRAIN_FOLDS`, so this gate went red on
+    a real defect: the guided door showed a fold sentence on the button and
+    wrote a rows sentence into the transcript. Comparing at a fixed scope would
+    have hidden that. Comparing at BOTH scopes says the composer is one
+    composer *whatever scope it is asked for*, which is the claim `GUIDED-098`
+    was always making.
     """
     frame = pd.read_csv(DATA / fixture)
-    for card in MP.missingness_cards(frame, threshold=0.0):
+    for card in MP.missingness_cards(frame, threshold=0.0, scope=scope):
         for option in card["options"]:
             if not option.get("is_strategy"):
                 continue
             strategy = M.strategy_for_card_option(option["key"])
             recorded = M.declare(card["column"], card["branch"], "not_sure",
-                                 strategy)
+                                 strategy, scope=scope)
             assert option["decision_sentence"] == recorded["sentence"], (
-                f"{fixture}:{card['column']} option {option['key']!r} — the "
-                f"card says {option['decision_sentence']!r} and the record "
-                f"says {recorded['sentence']!r}")
+                f"{fixture}:{card['column']} option {option['key']!r} at "
+                f"scope {scope!r} — the card says "
+                f"{option['decision_sentence']!r} and the record says "
+                f"{recorded['sentence']!r}")
 
 
 def test_the_compound_strategy_says_it_fills_and_then_fills(client):
