@@ -97,34 +97,38 @@ where the field stands, which is the only part we can enforce.
               ├─────── D · THE DOMAIN TRACK ← runs THROUGH L9 and L10,
               │        not after them. See DOMAIN_SCIENCE.md.
               │
-              │   D1  the seven primitives         ← badge ✓  purpose ✓
-              │       orientation ✓  figure spec ✓ · hard stops, sensitivity
-              │       fork, checklist engine, generalized leakage detector
-              │       remain
-              │   D2  nutrition end-to-end          ← IN PROGRESS (L27)
-              │       the reference implementation; abstractions discovered
-              │       here are the deliverable alongside the pack
-              │       L27 built the content and NONE OF IT IS REACHABLE:
-              │       nutrition.py and figure_specs.py are imported only by
-              │       their own tests. "End-to-end" is not met and D2 does
-              │       not close until an upload reaches a detector, a figure
-              │       and a refusal (`GUIDED-058`). The two halves are not
-              │       the same size: `packs.findings()` is live from
-              │       engine.py, so the detectors are a registration away —
-              │       but `figures.applicable()` has ZERO callers repo-wide,
-              │       so all three figures, L26's included, are specs with
-              │       no consumer. That is a gap in this plan and not only
-              │       in the code: DOMAIN_SCIENCE.md §05 sequences the spec
-              │       and the figures and never says who renders them.
-              │       DRIVE-009 already specifies the route — per-domain
-              │       figure selection through the pack mechanism.
+              │   D1  the seven primitives  ← badge ✓ purpose ✓
+              │       orientation ✓ figure spec ✓ hard stops ✓
+              │       sensitivity fork ✓ (L37, one axis)
+              │       checklist engine ← STARTED L52: the artifact, 12 of
+              │         TRIPOD+AI's 27 items, four-column render, and the
+              │         "what it must ask" column populated. AUTO-POPULATION
+              │         IS NOT BUILT and the artifact says so in its payload.
+              │       generalized leakage detector — still the one not begun
+              │   D2  nutrition end-to-end        ✓ DONE (L27 content, L28
+              │       reachability). The 2026-07 note that "NONE OF IT IS
+              │       REACHABLE" was true of L27 and false from L28: an
+              │       upload reaches detectors, two figures and four
+              │       refusals, verified through the API. `GUIDED-058` closed.
               │   D3  metabolomics · clinical+survey · genomics
-              │       mostly content-loading once D2's spine holds
+              │       ✓ LARGELY DONE (L41 clinical+survey, L50 the assays).
+              │       Detectors live per lens: clinical 9 · metabolomics 14 ·
+              │       dietary 7 · genomics 6 · survey 2 = 38, from 22 at L49.
+              │       The abstraction did not bend across two new domains,
+              │       which is what says the next fill-out can go wider.
               │   D4  reference data, verified against primary sources
-              │       every [verify-at-build] number; DRI tables ship as data
-              │   D5  the anti-pattern audit — ~150 checkable behaviors that
-              │       are simultaneously pack content and a conformance suite
-              │       against the engine. Runs AHEAD of the pack it belongs to.
+              │       ← LARGELY UNSTARTED and the long tail. DRI tables must
+              │       ship as data read from NASEM, not prose. Since L52 a
+              │       bare [verify-at-build] FAILS the gate, so the marker
+              │       finally means what three documents said it meant.
+              │   D5  the anti-pattern audit ← THE BIG ONE STILL OPEN.
+              │       COUNTED at L51, not estimated: 131 TABULATED entries in
+              │       three packs. CLINICAL_SURVEY has ~25 more in nine prose
+              │       blocks and no table; INTERACTION has none at all. 20
+              │       AUDIT rows fixed, ~14 open, 77 tabulated entries never
+              │       run. Simultaneously pack content and a conformance
+              │       suite — every pass so far has found real defects in
+              │       shipped code, including in the generated manuscript.
               │
   L10 parity harness + manuscript chain
               │    absorbs D's checklist engine: TRIPOD+AI, STROBE-nut,

@@ -4,10 +4,15 @@ An experimental rebuild of Tabular ML Lab as a single scrolling interview — th
 asks one question at a time, the answers accumulate into a document, and that document
 *is* the manuscript in embryo. TurboTax for tabular research data.
 
-This folder is the design and transition record. **The app is running.** A driver goes upload →
-lens → orientation → target → purpose → grain → eligibility → seal against real fixtures without
-touching code. The interaction spine is real; the back half — figures, the manuscript chain, the
-domain packs — is in progress. See [`ROADMAP.md`](ROADMAP.md) §"The map" for where the line is.
+This folder is the design and transition record. **The app is running, end to end.** A driver goes
+upload → lens → orientation → target → purpose → grain → eligibility → seal → explore → features →
+preprocess → train → explain → report against real fixtures without touching code, and the
+manuscript exports. **The product owner has driven a real 21,849-row NHANES export through it**
+(`DRIVE_LOG_NHANES.md`); 19 of the 24 findings that produced are closed.
+
+What is *not* done is in [`ROADMAP.md`](ROADMAP.md) §"The map": the remaining TRIPOD+AI items and the
+checklist's auto-population, three missing model families (inference, subgroups, **time-to-event**),
+most of the anti-pattern registries, reference data, and L10–L12.
 
 *(This paragraph read "Nothing here has been implemented" for far longer than it was true. A README
 is a claim like any other and decays the same way — silently, while the people who already know the
@@ -31,7 +36,7 @@ Baseline for all analysis: `origin/main` @ `24c3446` (PR #145 merged).
 |---|---|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | What survives the rebuild, what dies, what must be built. The census of the existing codebase and the six-component target architecture. |
 | [`TRANSITION_PLAN.md`](TRANSITION_PLAN.md) | The delicate parts, named. Live bugs, structural facts, landmine classes, and a gated sequence. |
-| [`FINDINGS_LEDGER.md`](FINDINGS_LEDGER.md) | Every finding, tracked to completion (618 at last count — `tools/ledger.py stats` is authoritative). Nothing closes without a regression test named after it. |
+| [`FINDINGS_LEDGER.md`](FINDINGS_LEDGER.md) | Every finding, tracked to completion (861 at L52 — `tools/ledger.py stats` is authoritative and this number decays). Nothing closes without a regression test named after it, and at L52 a guard confirmed for the first time that **no closed row rests on a test that skips** — 0 offenders across 880 named nodes. |
 | [`prototypes/interview-feed.html`](prototypes/interview-feed.html) | Open in a browser. The interaction model, working, with synthetic data. |
 | [`LOOP.md`](LOOP.md) | **The operator's manual.** How a loop is shaped (four parts), the log of what has run, the guardrails, how domain research is cited, and **how to adjudicate a report** — the half of the job that was unwritten longest. |
 | [`FEATURE_PARITY.md`](FEATURE_PARITY.md) | **Do the intelligent features carry over?** Capability vs orchestration vs exposure, and the register that stops a feature going missing quietly. |
@@ -109,15 +114,24 @@ Static HTML, no build step, no network. Open directly in a browser.
 
 **Open, and blocking.**
 
-- **The back half.** Figures beyond the first two, the manuscript chain, and three of four domain
-  packs. `ROADMAP.md` §"The map" is authoritative.
-- **Verification debt in the research.** Every numeric threshold in `research/` is search-surfaced
-  rather than read from primary text; items marked `[verify-at-build]` may not ship as constants.
-  The DRI tables in particular must ship as data read from NASEM, not as prose.
-- **The safety net is thinner than the coverage number**, and the shape of the thinness keeps
-  changing. Six times a guard has turned out to be testing its own description rather than the
-  app — most recently three frontend tests that passed against a page emptied to `<body></body>`.
-  The six axes are in `FEATURE_PARITY.md`; the practical answer is the revert probe.
+- **The back half is no longer the gap — this paragraph said "figures beyond the first two, the
+  manuscript chain, and three of four domain packs" long after all three were built.** Twenty-one
+  figure specs ship, the manuscript chain exports through the same LaTeX exporter Classic uses, and
+  **all five lenses carry detectors** (clinical 9 · metabolomics 14 · dietary 7 · genomics 6 ·
+  survey 2 = 38, up from 22 at L49). What is actually open is in `ROADMAP.md` §"The map".
+- **Verification debt in the research, and it is now uneven rather than uniform.** The four science
+  packs were built under a blocked egress proxy and their numeric thresholds are search-surfaced.
+  **`research/INTERACTION_PACK.md` is not** — egress worked, 100 of its 105 claims were read in
+  primary and every one was adversarially refuted. `[verify-at-build]` numbers may not ship as
+  constants, and since L52 **a bare marker fails the gate**: nine markers, five holding a number out
+  of the code, three declared to carry none, two legends. The DRI tables must still ship as data.
+- **The safety net is thinner than the coverage number**, and the *shape* of the thinness is now
+  catalogued rather than counted. `AGENT_ONBOARD.md` §07 carries the variants: a guard asserting its
+  own description · a fixture manufacturing what production cannot · a name promising what the body
+  does not check · a body pinning the behavior that should change · **a conditional skip, which
+  pytest counts as not-a-failure** · and **a test written in the same pass as its fix**, measured at
+  L52 as four of eight passing with the whole changeset reverted. The practical answer is still the
+  revert probe, and since L52 it must be a **total** revert.
 
 ---
 

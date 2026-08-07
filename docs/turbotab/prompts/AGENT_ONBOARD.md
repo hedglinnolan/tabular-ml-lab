@@ -102,11 +102,22 @@ work around it.** Every count this project reports comes from a hand-rolled invo
 neither half runs too long:
 
 ```bash
-venv/bin/python -m pytest turbotab/ -q                          # ~8 min
+venv/bin/python -m pytest turbotab/ -q                          # ~2 HOURS on a quiet machine
 venv/bin/python -m pytest tests/ --ignore=tests/integration \
-    --ignore=tests/test_nn_modernization.py -q                  # ~8 min
+    --ignore=tests/test_nn_modernization.py \
+    --ignore=tests/test_a_fixed_row_names_a_test_that_actually_runs.py -q   # ~20 min
 venv/bin/python -m pytest tests/integration -q                  # ~40 s
 ```
+
+**The timings above said "~8 min" for eighteen loops after it stopped being true.** `turbotab/` was
+1589 tests at L45 and is **2274+** now; a clean run took **2h02m** at L51. Budget accordingly, and
+**check `ps` first** — §06's rule about the machine is not decoration, it cost L50 its count and an
+hour of a person's evening.
+
+**Two files are excluded above and both are named on purpose.** `test_nn_modernization.py` needs
+`torch`. `test_a_fixed_row_names_a_test_that_actually_runs.py` is `TEST-061` — it is the guard that
+checks every `FIXED` row's named test actually runs, its answer at L52 was **0 offenders across 880
+named nodes**, and it still exceeds its own budget. **Run it deliberately, not incidentally.**
 
 **Four failures are environmental and expected**: three in `tests/test_shap_and_sensitivity.py`
 (`shap` absent) and `tests/test_engine_is_headless.py::test_core_modules_import_for_any_reason`
@@ -243,9 +254,16 @@ recurred after being named. **They are ordered by how often they have actually f
 
 ### 1 · A capability shipped without its consumer
 
-**37 of 672 findings** describe a capability that exists beside a path that never reaches it — four
-critical, many high, spanning inherited Streamlit, early TurboTab, and last week. It is this
-codebase's oldest habit.
+**37 findings** — measured against a ledger of 672, now 861 and still growing — describe a capability
+that exists beside a path that never reaches it: four critical, many high, spanning inherited
+Streamlit, early TurboTab, and last week. It is this codebase's oldest habit, and it has not stopped:
+L52 shipped two finished modules, `ml/sample_size_claim.py` and `ml/candidate_predictors.py`, with no
+importer between them.
+
+**That instance is also the counter-example worth holding.** Their rows read `OPEN`, so the ledger
+was telling the truth — **trap #1 is dangerous when the row reads *closed*.** The cause there was a
+fan-out partitioned by **row** when the fixes landed in files another chunk owned. **Partition a
+fan-out by FIX SITE, not by row.**
 
 The cause is an incentive gradient, and naming it is most of the fix: **a capability is gratifying
 to build and fully verifiable in isolation.** A green test can prove a module correct forever
@@ -310,10 +328,51 @@ chases the failure reverts the correction and records the revert as a success. T
 never *how do I make this pass again* — it is *what is this test claiming, and is that claim
 true?*
 
-The four variants: **#2** the assertion is about the description · **#3** the fixture supplies what
+### 3d · A test that SKIPS when the thing is absent
+
+**`TEST-059`, L51.** A layer-3 test skipped when the teaching section came back empty, reasoning
+that some fixtures might carry no explanatory question. **Removing the fix therefore turned the test
+into a SKIP rather than a failure, and pytest counts a skip as not-a-failure.** The guard was green
+over exactly the defect it was written for.
+
+This is #3's family with the control flow inverted: **not a fixture manufacturing the defect's
+absence, but a test declining to look when the defect is present.**
+
+**Establish the precondition from the DATA and assert it, then assert the consequence
+unconditionally.** L52 swept this: **78 conditional `pytest.skip` calls in test bodies — 55
+environmental and correct, 9 harmless, 14 in this shape.** Two were fixed and *both passed*, meaning
+they had been running all along and would have gone **quiet rather than red**. `AUDIT-039` holds the
+remaining twelve with file, line and guard.
+
+### 3e · A test written in the same pass as its fix
+
+**`TEST-060`, and it is measured rather than suspected.** Reverting an entire fan-out's sixteen
+changed files left **four of eight** returned regression tests **green**, written by four independent
+agents.
+
+**This is not carelessness.** It is what happens when one pass writes both the change and the check,
+because **the cheapest passing assertion is the one describing what the code now does.** The rule it
+produced is §08.1 and it is not optional.
+
+The six variants: **#2** the assertion is about the description · **#3** the fixture supplies what
 production cannot · **#3b** the name promises what the body does not check · **#3c** the body pins a
-behavior that should change. All four are green tests over broken things, and no single detector
-finds them all.
+behavior that should change · **#3d** the test declines to look · **#3e** the check was written by
+the pass it is checking. All six are green tests over broken things, and no single detector finds
+them all.
+
+### 5b · A matcher that fires on prose
+
+**Met three times in one loop, and then by the adjudicator verifying that loop.** `'tests'` matched
+the English word inside *"(seven tests)"*. A leaf-segment node index reported `TestCommaReading`
+missing. A `None`-detector fired on *"**None** of them is a property of the data."* And the
+adjudicator's own `"None" in blob` check hit a payload's prose while confirming the fix.
+
+> **A matcher that fires on prose has silence that means nothing.**
+
+A sweep returning zero is a claim, and **the first thing to doubt is the pattern**. Anchor it, or
+match structure instead of text — the same lesson as trap #5 one layer in, and the reason `grep -E`
+handed `\|` as an alternation reported *"no multiple-testing correction anywhere in shipped code"*
+while `ml/multiplicity.py` had been there the whole time.
 
 ### 4 · Verifying against the fixture that works
 
