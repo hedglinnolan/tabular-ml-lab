@@ -734,8 +734,15 @@ def test_the_gate_is_on_the_chip_before_the_figure_is_opened():
 
     iv = client.get(f"/project/{pid}/interview?step=explore").json()
     chips = {q["key"]: q for q in iv["questions"] if q["mode"] == "pull"}
-    if "look::r8_collinearity" not in chips:
-        pytest.skip("the correlation affordance is not offered on this record")
+    # `TEST-059`, swept at L52-D. THIS SKIPPED WHEN THE CHIP WAS ABSENT, which
+    # is the precise shape the row was filed for: the gate under test lives ON
+    # the chip, so a regression that stopped raising the chip removed the thing
+    # being guarded AND turned this guard into a skip, which pytest counts as
+    # not-a-failure. The chip's presence is the precondition and is asserted.
+    assert "look::r8_collinearity" in chips, (
+        f"the correlation affordance is not offered on this record, so the "
+        f"gate this test checks has nothing to sit on. Chips present: "
+        f"{sorted(chips)}")
     chip = chips["look::r8_collinearity"]
     assert chip.get("gated") is True
     assert chip["gate"]["packs"] == ["dietary"]

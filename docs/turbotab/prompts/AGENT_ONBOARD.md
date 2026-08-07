@@ -376,6 +376,33 @@ In roughly this order, because this is how often each has mattered:
 Plus: counts re-counted, the load-bearing claim driven, a revert probe on each `FIXED` required to
 fail *for the stated reason*, and whether anything outside a test file imports what you built.
 
+### 08.1 · The probe travels with the disposition — two tiers, ruled at L52
+
+**The measurement.** L51 fanned Part C to four subagents. Eight regression tests came back. Reverting
+**all sixteen changed source files** to `HEAD` left **four of the eight still green** — `AUDIT-017`,
+`033`, `034`, `016`/`036` — and turned a fifth red only on a `TypeError`. **Three of eight were
+load-bearing.** Four independent agents, one fan-out.
+
+**It is not carelessness, and that is why a rule is needed rather than a reminder.** *The cheapest
+passing assertion is the one describing what the code now does.* A pass that writes both the change
+and the check will write a check the change does not need — reliably, and without anyone noticing,
+because the check passes.
+
+**Tier 1 — always binding. A subagent returning a `FIXED` disposition returns the probe output with
+it**: the revert, the red, and the sentence it was red for. **A disposition arriving without one is
+`PARTIAL` by default**, not on review. The orchestrator does not go looking for the evidence; its
+absence is itself the finding. A red that quotes a `TypeError`, an `ImportError` or a signature
+mismatch is `RED FOR THE WRONG REASON` and does not discharge this.
+
+**Tier 2 — binding wherever the fan-out has room. The probe for a chunk is run by a *different*
+subagent than the one that wrote it.** `LOOP.md` §05 already says a builder verifying their own work
+reads intent where the job is to read code; that rule existed for whole loops and was never extended
+to subagents. **Tier 1 makes the evidence visible; tier 2 removes the cause.** Tier 2 costs agents,
+so it binds when there are agents to spare — tier 1 binds always.
+
+**The cheap detector, which needs no per-row mapping**: run the loop's new tests with the loop's own
+diff reverted. One command. It found all four in a single run.
+
 ---
 
 ## 09 · Standing dispositions

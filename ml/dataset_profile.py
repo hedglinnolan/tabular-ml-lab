@@ -97,7 +97,22 @@ class TargetProfile:
     skewness: Optional[float] = None
     has_outliers: bool = False
     outlier_rate: float = 0.0
-    
+
+    # `AUDIT-012`: the SECOND tier of the outlier reading. `outlier_rate` above
+    # is an IQR fence count and cannot tell a systolic pressure of 0 (an entry
+    # error) from one of 244 (a hypertensive crisis, and real). These four say
+    # what the physiologic reference could add, and they are `None` — never
+    # `0.0` — when it could add nothing, because `0.0` would assert "no
+    # impossible values here" where the truth is "no band was read" (trap 9).
+    #: "matched" | "unrecognized" | "unread" | "not_regression"
+    physio_read: str = "unread"
+    #: The reference variable this target IS, exact key or declared alias only.
+    physio_variable: Optional[str] = None
+    impossible_count: Optional[int] = None
+    impossible_rate: Optional[float] = None
+    #: (floor, ceiling, unit) in the reference's units, or None.
+    impossibility_band: Optional[Tuple[float, float, str]] = None
+
     # Classification-specific
     n_classes: Optional[int] = None
     class_counts: Optional[Dict[Any, int]] = None
@@ -265,6 +280,63 @@ def compute_feature_profile(df: pd.DataFrame, col: str, n: int, outlier_method: 
     return profile
 
 
+def read_target_impossibility(df: pd.DataFrame, target_col: str) -> Dict[str, Any]:
+    """The impossible tier for one column, or an honest record that there is none.
+
+    `AUDIT-012`. `ml/outliers.py`'s IQR fences answer *"is this value far from
+    the others"*; `ml/physiology_reference.py`'s impossibility band answers
+    *"could a living person produce this"*. Those are different questions with
+    opposite remedies, and the coach had only the first.
+
+    This does not re-derive the second — `ml/card_evidence.py`'s
+    `plausibility_report` is the reader `turbotab/engine.plausibility` already
+    serves to both doors, and it is called here so the coach's number and the
+    plausibility card's number are the same number. Unit conversion, the
+    exact-or-alias name match and the whole-column-suspect exclusion all come
+    with it.
+
+    Returns `impossible_count` / `impossible_rate` as **None** unless a band was
+    actually read. `0` would say "nothing here is impossible" on a column whose
+    name matches nothing in the reference, which is the app asserting a
+    measurement it never took.
+    """
+    out: Dict[str, Any] = {"physio_read": "unread", "physio_variable": None,
+                           "impossible_count": None, "impossible_rate": None,
+                           "impossibility_band": None}
+    try:
+        from ml.card_evidence import plausibility_report
+        from ml.physiology_reference import get_impossibility_band
+
+        reference = load_reference_bundle()["nhanes"]
+        var_key = match_variable_key(str(target_col), reference)
+        if not var_key:
+            out["physio_read"] = "unrecognized"
+            return out
+        band = get_impossibility_band(reference, var_key)
+        if band is None:
+            # Recognized, but no floor/ceiling is published for it. Named
+            # separately from "unrecognized" because the two are different
+            # gaps and the sentence downstream says which one it is.
+            out.update(physio_read="unrecognized", physio_variable=var_key)
+            return out
+
+        report = plausibility_report(df, columns=[target_col],
+                                     reference=reference)
+        present = int(df[target_col].dropna().shape[0])
+        count = int(report.get("n_impossible") or 0)
+        out.update(physio_read="matched", physio_variable=var_key,
+                   impossible_count=count,
+                   impossible_rate=(count / present) if present else None,
+                   impossibility_band=band)
+    except Exception:
+        # Left as "unread". The coach then says the band was not read rather
+        # than reporting a zero it did not measure.
+        return {"physio_read": "unread", "physio_variable": None,
+                "impossible_count": None, "impossible_rate": None,
+                "impossibility_band": None}
+    return out
+
+
 def compute_target_profile(df: pd.DataFrame, target_col: str, task_type: str, outlier_method: str = "iqr") -> TargetProfile:
     """Compute profile for the target variable."""
     series = df[target_col]
@@ -296,8 +368,22 @@ def compute_target_profile(df: pd.DataFrame, target_col: str, task_type: str, ou
             outlier_mask, _ = detect_outliers(valid, method=outlier_method)
             profile.outlier_rate = float(outlier_mask.sum() / len(valid)) if len(valid) > 0 else 0.0
             profile.has_outliers = profile.outlier_rate > 0.05
-    
+
+            # `AUDIT-012`. The rate above is a fence count. Beside it sits a
+            # published impossibility band that nothing on the coaching path
+            # read, so one number carried two situations that want opposite
+            # advice: an impossible entry is REPAIRED, an abnormal-but-real
+            # extreme is MODELED. Read here, reported separately, and left
+            # `None` where the reference has nothing to say.
+            reading = read_target_impossibility(df, target_col)
+            profile.physio_read = reading["physio_read"]
+            profile.physio_variable = reading["physio_variable"]
+            profile.impossible_count = reading["impossible_count"]
+            profile.impossible_rate = reading["impossible_rate"]
+            profile.impossibility_band = reading["impossibility_band"]
+
     else:  # classification
+        profile.physio_read = "not_regression"
         profile.n_classes = n_unique
         profile.class_counts = valid.value_counts().to_dict()
         

@@ -448,7 +448,36 @@ def _auto_generate_insights():
                 id="eda_missing_moderate",
                 source_page="02_EDA", category="data_quality", severity="info",
                 finding=f"{len(moderate_missing)} feature(s) with 5-30% missing: {cols_str}",
-                implication="Standard imputation (median/mode) should be sufficient. Consider adding missingness indicator features.",
+                # `AUDIT-007` · CLINICAL_SURVEY_PACK.md §A2 anti-pattern 2
+                # [SETTLED as bad] and Cross-cutting 11. BEFORE, this read:
+                # "Standard imputation (median/mode) should be sufficient.
+                #  Consider adding missingness indicator features."
+                # That asserted the sufficiency of the one method the registry
+                # settles against — "Mean/median imputation. Understates
+                # variance, destroys the distribution, indefensible in a
+                # manuscript" — and recommended an indicator unconditionally,
+                # where §A2 splits it: legitimate for prediction, biased and
+                # not to be used for an unbiased association estimate.
+                # AFTER says less and is true: it states what the method costs
+                # and names the alternative that is actually on the shelf
+                # ("iterative (MICE)", pages/05_Preprocess.py:600). The method
+                # is not withdrawn and nothing is blurred — the same subject,
+                # a weaker claim, checkable against §A2.
+                #
+                # The route is named because MICE is NOT on the default path:
+                # pages/05_Preprocess.py:580 skips the whole per-model
+                # configuration block while "Smart Defaults" is selected, so
+                # the option exists only under "Advanced (full control)".
+                # "MICE is offered in Preprocessing" would have been the second
+                # false claim in the same sentence that corrected the first.
+                implication=(
+                    "Median/mode imputation understates the variance of the imputed column "
+                    "and distorts its distribution — the filled values carry none of the "
+                    "uncertainty of the values they replace. Multiple imputation (MICE) is "
+                    "available in Preprocessing under Advanced (full control). A missingness "
+                    "indicator is legitimate for a prediction model and is contraindicated "
+                    "for an unbiased association estimate."
+                ),
                 affected_features=[c for c, _ in moderate_missing],
                 recommended_action="Address in Preprocessing",
                 relevant_pages=["05_Preprocess"],
@@ -1607,7 +1636,19 @@ ACTION_NEXT_STEPS = {
     'target_profile': '→ **Next:** Apply target transformation (Log, Yeo-Johnson, Box-Cox) on the Train & Compare page.',
     'feature_scaling_check': '→ **Next:** Configure scaling in Preprocess. StandardScaler for normal features, RobustScaler if outliers are present.',
     'linearity_scatter': '→ **Next:** If non-linear patterns are visible, consider tree-based models or polynomial features in Feature Engineering.',
-    'plausibility_check': '→ **Next:** Review flagged implausible values. Apply target trimming or filter rows in Upload & Audit.',
+    # `sibling-of: AUDIT-025` · found by the §08 check-5 sweep ("what would the
+    # same lens find one surface over?") while AUDIT-025 was blocked on a file
+    # this chunk does not own. Same defect: a page names a capability on a page
+    # that does not have it. BEFORE this read "Apply target trimming or filter
+    # rows in Upload & Audit." — `pages/01_Upload_and_Audit.py` contains zero
+    # occurrences of "trim" and zero of "plausib", so NEITHER control is there.
+    # Target trimming is `pages/06_Train_and_Compare.py:296` ("Enable target
+    # trimming before split") and plausibility filtering is
+    # `pages/05_Preprocess.py:744` — inside the per-model block that :580 skips
+    # while Smart Defaults is selected, hence the mode is named. The app's own
+    # `influence_diagnostics` entry below already said "on the Train page",
+    # which is how the wrong destination here was visible at all.
+    'plausibility_check': '→ **Next:** Review flagged implausible values. Neither control is on Upload & Audit: target trimming is on Train & Compare, applied before the split, and plausibility filtering is on Preprocess under Advanced (full control).',
 }
 
 

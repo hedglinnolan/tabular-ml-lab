@@ -155,15 +155,35 @@ imputer = SimpleImputer(strategy='median')
 X = imputer.fit_transform(X)
 
 # Disclose imputation
+# `AUDIT-007` · CLINICAL_SURVEY_PACK.md §A2 anti-patterns 2 and 3, both
+# [SETTLED]. The fill above is median, and the outcome `y` is not in the
+# imputation model. BEFORE, the two captions here said only "Results may be
+# affected" and "(does not affect modeling data)" — true, and silent about
+# what the fill costs the ranking a user is about to read. AFTER names the
+# cost: §A2.2 "Understates variance, destroys the distribution" and §A2.3
+# "Imputing with the outcome excluded from the imputation model. Biases
+# associations toward the null." Nothing is removed; the scope disclaimer
+# that was already true is kept beside it.
 _high_missing = [f for f in numeric_features if df[f].isna().mean() > 0.2]
+_IMPUTATION_COST = (
+    "Filling with the median shrinks that column's variance and its association "
+    "with the target is biased toward the null, because the outcome is not in "
+    "this fill — so a column with many blanks can rank lower here than it "
+    "deserves."
+)
 if _high_missing:
     st.caption(
         f"⚠️ Missing values temporarily filled with column medians for selection. "
         f"Features with >20% missing: {', '.join(_high_missing[:5])}. "
-        f"Results may be affected — preprocessing handles imputation separately during training."
+        f"{_IMPUTATION_COST} Preprocessing handles imputation separately during "
+        f"training, where multiple imputation (MICE) is available under Advanced "
+        f"(full control)."
     )
 elif df.loc[mask, numeric_features].isna().any().any():
-    st.caption("Missing values temporarily filled with column medians for selection (does not affect modeling data).")
+    st.caption(
+        f"Missing values temporarily filled with column medians for selection "
+        f"(does not affect modeling data). {_IMPUTATION_COST}"
+    )
 
 # ============================================================================
 # Method selection

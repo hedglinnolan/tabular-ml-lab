@@ -568,6 +568,34 @@ class NarrativeEngine:
             if frozen_metrics:
                 self.ctx["metrics_by_model"] = frozen_metrics
                 self.ctx["models_trained"] = list(frozen_metrics.keys())
+            # `AUDIT-026`, the primary export path's second source of the same
+            # fact. `record_training` carries `cv_models_run` only for runs
+            # trained after that field existed; every other run reaches this
+            # composer with the CHECKBOX (`use_cv`, `cv_folds`) and nothing
+            # else, and the Methods section then either asserts a fold loop
+            # that may never have run or declines to say anything about it.
+            #
+            # The frozen export results answer it: `pages/06:1502` writes
+            # `cv_results` for every trained model — the scores when a fold
+            # loop ran, `None` when it did not (`:1455` excludes the neural
+            # network; `:1489` swallows a CV exception) — and `pages/10:484`
+            # hands those same dicts here as `selected_model_results`.
+            #
+            # KEY PRESENCE, not truthiness, is the gate. A payload that never
+            # mentions `cv_results` has said nothing about cross-validation,
+            # and reading "no model was cross-validated" out of that would be
+            # the row's own mistake pointed the other way — an assertion built
+            # from a silence. `None` survives instead, and the composer's
+            # unknown branch states the silence.
+            _spoke_about_cv = [
+                key for key, payload in selected_results.items()
+                if isinstance(payload, dict) and "cv_results" in payload
+            ]
+            if self.ctx.get("cv_models_run") is None and _spoke_about_cv:
+                self.ctx["cv_models_run"] = [
+                    key for key in _spoke_about_cv
+                    if selected_results[key].get("cv_results")
+                ]
 
         manuscript_primary = (
             self.manuscript_context.get("manuscript_primary_model")

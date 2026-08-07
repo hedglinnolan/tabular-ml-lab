@@ -26,9 +26,41 @@ interval"* is arithmetic over quantities the app already holds. *"This study is
 underpowered"* is **post-hoc power in a nicer suit** — listed flatly as an
 anti-pattern in `research/METABOLOMICS_PACK.md` §10 — and writing it would be
 committing a named error while presenting as the tool that catches them. We do
-not hold the claim: at the seal we know the target, the task, the grain, the
-eligibility and the purpose, and we do not know the expected effect size, which
-predictor is the exposure of interest, or what magnitude would be meaningful.
+not hold the claim: at the seal we know the target, the task, the grain and the
+eligibility — `project.seal_lockbox` refuses without the last two and cannot be
+reached without the first two — and we do not know the expected effect size,
+which predictor is the exposure of interest, or what magnitude would be
+meaningful.
+
+**The purpose was in that list and is not any more (`AUDIT-011`).**
+
+    before: "at the seal we know the target, the task, the grain, the
+             eligibility and the purpose"
+    after:  the four the seal actually holds, and the purpose said separately
+             for what it is
+
+Question 2.5 — *what is this model for* — is asked and never required. Nothing
+gates the seal on it, so `project.purpose` is `None` on any project whose user
+walked past it, and this module is handed a frame at a seal that was drawn
+without it. Listing it beside four preconditions asserted a fifth.
+
+**And the two front doors diverge here, which is the finding underneath.** The
+Guided door records the answer on `AnalysisProject.purpose`, and `purpose.py`'s
+`CONSUMER` names the decisions that read it. The Streamlit workflow has no
+purpose field: `model_purpose` is READ at three sites —
+`pages/06_Train_and_Compare.py`, `ml/publication.py`, `ml/narrative_engine.py`
+— and written at none, `_build_manuscript_context` included. So the one
+production caller of `ml.imbalance_advice.advice` is
+`pages/06_Train_and_Compare.py` passing `session_state["model_purpose"]`, and
+it can only ever reach the `UNANSWERED` branch — one of `DOMAIN_SCIENCE.md`
+§01.3's five inversions, unreachable on that door by construction rather than
+by the user's silence.
+
+**`AnalysisProject.purpose` is the authoritative record**, and it is the only
+one. A claim about knowing the purpose is a claim about the Guided door alone,
+and only after the user answered. Recording it where the Streamlit workflow
+records its other answers is `AUDIT-011`'s other half; it lives in
+`utils/session_state.py`, which this module does not own.
 
 **3 · It fires only when stark, and the trigger is DERIVED.** A card on every
 dataset is wallpaper (`PRODUCT_VISION.md` §04, *push the notable*). The trigger

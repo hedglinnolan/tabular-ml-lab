@@ -443,9 +443,19 @@ def test_a_holdout_too_small_to_mean_anything_is_refused(client):
     does not have."""
     frame = _flat_frame(n=24)
     pid, project = _sealed_project(client, frame, "y", fraction=0.15)
-    if len(project.lockbox["labels"]) >= training.MIN_TEST_ROWS:
-        pytest.skip("this split is large enough; the refusal is tested by the "
-                    "unit below")
+    # `TEST-059`, swept at L52-D. THIS WAS A CONDITIONAL SKIP and the condition
+    # is deterministic — `n=24` at `fraction=0.15` fixes the holdout size — so
+    # the skip could never fire for a fixture reason and could only fire if the
+    # split arithmetic changed. Which is the defect: pytest counts a skip as
+    # not-a-failure, so a regression that quietly enlarged the holdout would
+    # have turned this guard green instead of red. The precondition is asserted
+    # from the data now, and the consequence below runs unconditionally.
+    held = len(project.lockbox["labels"])
+    assert held < training.MIN_TEST_ROWS, (
+        f"the held-out split is {held} labels against a floor of "
+        f"{training.MIN_TEST_ROWS}, so the refusal this test exists to drive "
+        f"cannot fire. The split arithmetic moved; that is the finding, not a "
+        f"reason to stand down")
     with pytest.raises(training.TrainingRefusal, match="too few"):
         training.train(project, ["ridge"])
 

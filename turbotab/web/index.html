@@ -569,6 +569,26 @@
      /* §10's second sentence: education never lives in a modal. Stacked below
         the feed, a "right panel" is one. */
      .study{display:none}
+  /* ═════════ L52-C · THE REPORTING CHECKLIST TABLE ═════════
+
+     Added by the build, per the block above. §A6 specifies four columns and
+     journals ask for the completed table as a submission file, so it is laid
+     out as a table rather than as cards — the thing the author will copy.
+     `cl-empty` is the column that is waiting on L53, and it is styled as
+     ABSENT rather than as blank so a reader can tell an unfilled cell from a
+     rendering fault, which is `GUIDED-179` exactly. */
+  .cl{ width:100%; border-collapse:collapse; margin:10px 0 4px; font-size:12.5px; }
+  .cl th{ text-align:left; font-weight:600; font-size:11px; text-transform:uppercase;
+          letter-spacing:.06em; color:var(--faint); padding:6px 10px 6px 0;
+          border-bottom:1px solid var(--line); vertical-align:bottom; }
+  .cl td{ padding:9px 10px 9px 0; border-bottom:1px solid var(--line);
+          vertical-align:top; line-height:1.5; }
+  .cl td:nth-child(1){ width:26%; }
+  .cl td:nth-child(2){ width:14%; }
+  .cl td:nth-child(3){ width:18%; }
+  .cl-fill{ display:block; margin-top:4px; font-size:10.5px; text-transform:uppercase;
+            letter-spacing:.06em; color:var(--faint); }
+  .cl-empty{ color:var(--faint); font-style:italic; }
   /* GUIDED-159 · THE FOURTH STATE, which was specified and never built.
      §04 names four — `done · now · waiting · stale` — and three existed, so a
      step NOBODY HAS REACHED YET wore the bare `--faint` hollow default. The
@@ -3480,6 +3500,15 @@
     api("/project/" + P.id + "/manuscript")
       .then(function(body){ MANU = body; renderReport(); })
       .catch(function(){ MANU = null; });
+    /* L52-C. THE CHECKLIST, and it is a THIRD object for the same reason the
+       second one exists. `/draft` is what your decisions say, `/manuscript` is
+       what a machine found wrong with them, and this is what the INSTRUMENT a
+       reviewer will apply asks for — three claims, three fetches. Journals
+       increasingly require the completed checklist as a submission file
+       (§A6), so it is an artifact rather than a panel. */
+    api("/project/" + P.id + "/checklist")
+      .then(function(body){ CHECK = body; renderReport(); })
+      .catch(function(){ CHECK = null; });
   }
 
   /* GUIDED-107 · WHAT A REVIEWER WILL NOTICE.
@@ -3556,11 +3585,51 @@
     return h + "</div>";
   }
 
+  /* L52-C · THE REPORTING CHECKLIST — `research/CLINICAL_SURVEY_PACK.md` §A6.
+     Four columns, that section's own: item | where addressed | auto-filled
+     text | ⚠ needs your input.
+
+     THE FOURTH COLUMN IS THE ONE THAT DEPENDS ON NOTHING and it is complete
+     here. The other three wait on L53, and they say they are waiting rather
+     than rendering empty — `GUIDED-179` is the row where this surface rendered
+     Python `None` at a user and it is not happening twice. */
+  var CHECK = null;
+
+  function checklistHTML(){
+    if (!CHECK) return "";
+    var cov = CHECK.coverage || {};
+    var h = '<div class="run"><div class="run-head"><span class="run-lab">' +
+            esc(CHECK.instrument || "") + " checklist</span>" +
+            '<span class="run-note">' + num((CHECK.rows || []).length, 0) +
+            " of " + num(cov.instrument_items || 0, 0) + " items</span></div>";
+    /* THE GAP IS STATED BESIDE THE TABLE, not inferred from its length. A
+       twelve-row table under the name of a twenty-seven-item instrument is
+       claiming a completeness it does not have — `GUIDED-195`'s rule, and the
+       server carries the sentence so the page does not compose one. */
+    if (cov.not_yet_enumerated)
+      h += '<p class="run-note">' + esc(cov.why || "") + "</p>";
+    h += '<table class="cl"><thead><tr>' +
+         "<th>Item</th><th>Where addressed</th><th>Auto-filled text</th>" +
+         "<th>\u26a0 Needs your input</th></tr></thead><tbody>";
+    (CHECK.rows || []).forEach(function(r){
+      h += "<tr><td>" + esc(r.item) +
+           '<span class="cl-fill">' + esc(r.fills) + "</span></td>" +
+           '<td class="cl-empty">' + esc(r.where_addressed_text) + "</td>" +
+           "<td" + (r.auto_filled ? ">" : ' class="cl-empty">') +
+           esc(r.auto_filled_text) + "</td>" +
+           "<td>" + esc(r.needs_from_you) + "</td></tr>";
+    });
+    h += "</tbody></table>";
+    if (CHECK.probast && CHECK.probast.note)
+      h += '<p class="run-note">' + esc(CHECK.probast.note) + "</p>";
+    return h + "</div>";
+  }
+
   function renderReport(){
     if (!P || !REPORT) return;
     reveal("report");
     $("reportWhy").innerHTML = esc(REPORT.standfirst || "");
-    $("reportBox").innerHTML = reportHTML() + validationHTML();
+    $("reportBox").innerHTML = reportHTML() + validationHTML() + checklistHTML();
     var written = (REPORT.n_sentences || 0) > 0;
     sectState("report", written ? "recorded" : "live",
               written ? "recorded" : "open");

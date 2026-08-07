@@ -1140,7 +1140,13 @@ def compose(project: Any, model_key: str, frame: pd.DataFrame, *,
             params={"method": spec["method"],
                     "n_features": spec.get("n_features"),
                     "scope_recorded": spec.get("scope"),
-                    "scope_fitted": _sel.TRAIN_ROWS}))
+                    # `AUDIT-027`. The literal `TRAIN_ROWS` here was the same
+                    # fact the evidence panel was stating wrongly three modules
+                    # over, written out twice. `selection.FITTED_SCOPE` is the
+                    # one name for *what this door fits*, and the day
+                    # `GUIDED-103` lands it moves in one place instead of
+                    # leaving a surface behind.
+                    "scope_fitted": _sel.FITTED_SCOPE}))
         if spec.get("scope") == _sel.TRAIN_FOLDS:
             # **NEVER CLAIM THE STRONGER SCOPE.** The selector is inside the
             # estimator, so it is refitted wherever the pipeline is — fold-local

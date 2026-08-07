@@ -2362,6 +2362,9 @@ def forest_payload(coefficients: List[Dict[str, Any]], *,
             "precision": None if not width else round(1.0 / width, 4),
         })
     finite = [r for r in rows if r["estimate"] is not None]
+    # WHETHER THE CALLER ACTUALLY GROUPED, measured rather than assumed. See
+    # the `ordering` key below.
+    grouped = any(r["group"] for r in rows)
     return {
         "figure": "forest",
         # THE LABEL IS THE SPEC. §A4.7 names it, so it is data rather than a
@@ -2375,8 +2378,25 @@ def forest_payload(coefficients: List[Dict[str, Any]], *,
         "reference_line": 1.0 if ratio_measure else 0.0,
         "scale_stated": str(scale),
         # ORDERED BY THE ORDER GIVEN, never re-sorted by estimate or by
-        # significance — the caller groups by domain and this preserves it.
-        "ordering": "as supplied, grouped by domain",
+        # significance. `AUDIT-008`, AND THE BEFORE AND AFTER ARE RECORDED
+        # HERE BECAUSE THE CLAIM MOVED: this key read
+        # `"as supplied, grouped by domain"` unconditionally and the caption
+        # said *Rows are ordered by domain rather than by significance*. The
+        # second half was always true; the first was true only if the caller
+        # filled `group`, and `figure_bundle._forest_payload` — the only
+        # production caller — builds its rows from `get_feature_names_out()`
+        # and fills no group at all. So on the shipped path every row's domain
+        # was empty while the figure said it was grouped by one. The key now
+        # reports which of the two happened, and the caption reads the key.
+        "ordering": ("grouped by domain, in the order the caller supplied them"
+                     if grouped
+                     else "in the order the model supplies its coefficients"),
+        "grouped_by_domain": grouped,
+        "ordering_note": ("" if grouped else (
+            "§A4.7 asks for predictors grouped by domain as well as ordered "
+            "meaningfully. This app has no domain assignment for a predictor, "
+            "so the rows are ungrouped and a reader should not read adjacency "
+            "here as kinship.")),
         "sorted_by_significance": False,
         "numeric_column": [
             {"name": r["name"],
@@ -2451,7 +2471,11 @@ FOREST = register(FigureSpec(
         + (f"{p.get('n_reference_rows', 0):,} categorical reference level(s) "
            f"are shown as rows without an estimate. "
            if p.get("n_reference_rows") else "")
-        + "Rows are ordered by domain rather than by significance. **These are "
+        + (f"Rows are "
+           f"{p.get('ordering', 'in the order they were supplied')}, and are "
+           f"not re-sorted by significance. ")
+        + (f"{p.get('ordering_note')} " if p.get("ordering_note") else "")
+        + "**These are "
           "the model's coefficients, not causal effects**: each reflects an "
           "association with the outcome conditional on the other predictors, "
           "including any mediators, proxies and colliders among them. "
@@ -2980,7 +3004,22 @@ def item_correlations_payload(frame: pd.DataFrame) -> Dict[str, Any]:
         "diagonal": "blank",
         # §B5.4: values printed if k ≤ ~15.
         "print_values": k <= 15,
-        "ordering": "hierarchical clustering",
+        # `AUDIT-008`, AND THE BEFORE AND AFTER ARE RECORDED HERE. This key
+        # read `"hierarchical clustering"` and the caption said *items ordered
+        # by hierarchical clustering*. `_correlations` returns
+        # `frame.corr().columns` — the instrument's own column order — and
+        # nothing in this repository computes a linkage or draws a dendrogram
+        # for it, so both were describing a figure §B5.4 asks for rather than
+        # the one drawn. The pair below mirrors `method` / `method_specified`
+        # above: what was done, beside what the field asks for.
+        "ordering": "in the order the instrument supplies them",
+        "ordering_specified": "hierarchical clustering with a dendrogram",
+        "ordering_note": (
+            "The field's recommendation is to order the items by hierarchical "
+            "clustering and show the dendrogram, which this app does not "
+            "compute; a block of items measuring one thing therefore appears "
+            "wherever the instrument put them rather than gathered into a "
+            "visible square."),
         "smoothing_applied": False,
         "smoothing_note": (
             "" if correlations["positive_definite"] else
@@ -2998,7 +3037,12 @@ ITEM_CORRELATIONS = register(FigureSpec(
     tier=EXPLORATORY,
     when_applicable=lambda s: (bool(s.get("has_survey_lens"))
                                and int(s.get("n_items") or 0) >= 3),
-    layers=("lower_triangle_heatmap", "dendrogram", "value_labels"),
+    # `AUDIT-008`: this declared a `dendrogram` layer, which `layers` puts on
+    # the wire through `FigureSpec.to_dict`. §B5.4 asks for one and nothing
+    # draws one, so it is named in `ordering_note` as the absent thing rather
+    # than listed here as a drawn one — the same correction L44 made to
+    # `calibration`'s `flexible_curve` and `confidence_band`.
+    layers=("lower_triangle_heatmap", "value_labels"),
     annotations=(
         Annotation("n", "n", "turbotab.figure_specs"),
         Annotation("n_items", "items", "turbotab.figure_specs"),
@@ -3040,10 +3084,11 @@ ITEM_CORRELATIONS = register(FigureSpec(
         f"Inter-item correlations among {p.get('n_items', 0):,} items over "
         f"{p.get('n', 0):,} respondents, computed with "
         f"{p.get('method', 'Pearson')} correlations. Lower triangle only, "
-        f"items ordered by hierarchical clustering, palette fixed from −1 to "
-        f"+1 and not scaled to the observed range. "
+        f"items {p.get('ordering', 'in the order they were supplied')}, "
+        f"palette fixed from −1 to +1 and not scaled to the observed range. "
         + (f"Values are printed. " if p.get("print_values") else
            f"Values are not printed at {p.get('n_items', 0):,} items. ")
+        + (f"{p.get('ordering_note')} " if p.get("ordering_note") else "")
         + str(p.get("method_note", "")) + " "
         + str(p.get("smoothing_note", ""))),
     companions=(),

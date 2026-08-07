@@ -12,7 +12,12 @@ conditioned on that choice.
 
 So selection is never performed here. This module produces a **specification** —
 what will be selected, by which method, to what size — and the per-model
-pipeline fits it inside each training fold.
+pipeline fits it as a step inside the estimator, so it is refitted wherever
+that pipeline is refitted. **How many times that is, is a property of the
+door, not of this module** (`AUDIT-027`): the Guided door fits each model once,
+on the training partition, so there is one fold and `FITTED_SCOPE` says so.
+Every sentence here about where selection lands is composed from that constant
+rather than from the stronger claim.
 
 **Two levels, and Classic gets one of them.** `pages/04_Feature_Selection.py`
 masks to training rows with `train_row_mask` and says so on screen, which is the
@@ -37,6 +42,32 @@ import pandas as pd
 
 TRAIN_ROWS = "train_rows"
 TRAIN_FOLDS = "train_folds"
+
+#: The clause each scope contributes to a sentence, and the machine-readable
+#: half beside it. One table rather than a `str.replace` in `declare` and a
+#: hand-written sentence in `evidence` — `AUDIT-027` was those two drifting
+#: apart, and `missingness._SCOPE_PHRASE` is the same table one module over.
+_SCOPE_PHRASE = {
+    TRAIN_ROWS: "once over the training rows (held-out rows excluded)",
+    TRAIN_FOLDS: "within each training fold",
+}
+_FIT_ON = {
+    TRAIN_ROWS: "training rows only",
+    TRAIN_FOLDS: "training folds only",
+}
+
+#: WHAT THIS DOOR ACTUALLY FITS, whatever the record requested (`AUDIT-027`).
+#:
+#: `training.train` fits each model ONCE, on the training partition, and scores
+#: on the sealed rows. There is one fold. `pipeline_plan` has recorded exactly
+#: this as `scope_fitted` since `GUIDED-095` — it reads this name — and states a
+#: `Divergence` when a spec asked for `TRAIN_FOLDS` and got this instead. The
+#: constant is here so a sentence about where selection is fitted cannot be
+#: written from memory in one module while another one records the truth.
+#:
+#: `TRAIN_FOLDS` becomes the value the day `GUIDED-103`'s resampling policy
+#: lands, and then it moves in one place.
+FITTED_SCOPE = TRAIN_ROWS
 
 
 class SelectionRefusal(Exception):
@@ -125,8 +156,9 @@ _method_or_refuse = method
 #                              choose.
 #
 # THE SHELF IS NOT SHORTENED BY THIS. All five methods stay offered and stay
-# fitted inside the fold; the three that cannot be previewed say what was not
-# computed instead of borrowing a number from a different method.
+# fitted inside the model's own pipeline; the three that cannot be previewed
+# say what was not computed instead of borrowing a number from a different
+# method.
 _NO_PER_FEATURE_SCORE: Dict[str, str] = {
     "lasso": ("LASSO ranks nothing column by column: it fits one penalized "
               "model over all the candidates together and keeps the "
@@ -179,9 +211,8 @@ def declare(method_key: str, target: str, candidates: Sequence[str],
 
     sentence = m.sentence.format(n=n_features or len(candidates), target=target)
     if scope == TRAIN_ROWS:
-        sentence = sentence.replace(
-            "within each training fold",
-            "once over the training rows (held-out rows excluded)")
+        sentence = sentence.replace(_SCOPE_PHRASE[TRAIN_FOLDS],
+                                    _SCOPE_PHRASE[TRAIN_ROWS])
     return {
         "method": method_key,
         "label": m.label,
@@ -190,8 +221,7 @@ def declare(method_key: str, target: str, candidates: Sequence[str],
         "n_features": n_features,
         "consensus_min_methods": consensus_min_methods,
         "scope": scope,
-        "fit_on": ("training folds only" if scope == TRAIN_FOLDS
-                   else "training rows only"),
+        "fit_on": _FIT_ON[scope],
         "sentence": sentence,
         "because": m.why_stateful,
         "explainability_cost": m.explainability_cost,
@@ -224,9 +254,10 @@ def _preview_measure(m: Optional[Method],
                     f"{_NO_PER_FEATURE_SCORE[m.key]} So there is no column-by-"
                     f"column number to show you, and the columns below are "
                     f"your candidates in table order rather than a ranking. "
-                    f"{m.label} is still offered and is still fitted inside "
-                    f"each training fold — what is missing is the preview, "
-                    f"not the method.")}
+                    f"{m.label} is still offered and is still fitted "
+                    f"{_SCOPE_PHRASE[FITTED_SCOPE]} inside the model's own "
+                    f"pipeline — what is missing is the preview, not the "
+                    f"method.")}
     if task_type not in ("classification", "regression"):
         return {"kind": "none",
                 "measure": ("not computed — the outcome's task type is not "
@@ -243,14 +274,14 @@ def _preview_measure(m: Optional[Method],
                 "sentence": ("Scored with "
                              + ("mutual_info_classif" if classify
                                 else "mutual_info_regression")
-                             + ", the same estimator the fold will rank by.")}
+                             + ", the same estimator the selector will rank by.")}
     return {"kind": "f_test",
             "measure": ("ANOVA F statistic against the outcome" if classify
                         else "univariate linear F statistic against the "
                              "outcome"),
             "sentence": ("Scored with " + ("f_classif" if classify
                                            else "f_regression")
-                         + ", the same estimator the fold will rank by.")}
+                         + ", the same estimator the selector will rank by.")}
 
 
 def _sklearn_score(kind: str, x: pd.Series, y: pd.Series,
@@ -378,9 +409,28 @@ def evidence(df: pd.DataFrame, target: str, candidates: Sequence[str],
                        "score": None if v is None else round(v, 4),
                        "measure": plan["measure"]})
     scored.sort(key=lambda d: (d["score"] is None, -(d["score"] or 0)))
-    note = ("Ranked on training rows only, and not applied. What is "
-            "actually selected is refitted inside each training fold, so "
-            "this ordering is indicative rather than the answer."
+    # `AUDIT-027`. THE PANEL SAID THE STRONGER THING THAN THE RECORD.
+    #
+    #   before: "Ranked on training rows only, and not applied. What is
+    #            actually selected is refitted inside each training fold, so
+    #            this ordering is indicative rather than the answer."
+    #   after:  "…What is actually selected is fitted once over the training
+    #            rows (held-out rows excluded) — this door fits each model one
+    #            time, so there is a single fold — so this ordering is
+    #            indicative rather than the answer."
+    #
+    # Same subject, weaker claim, true. *Refitted inside each training fold* is
+    # a claim that selection sits inside a resampling loop, which §A5.5 is
+    # precisely about; there is no loop here. `api` records
+    # `scope=TRAIN_ROWS` for this door and `pipeline_plan` fits `FITTED_SCOPE`,
+    # so the panel was the one surface still asserting the fold refit — and it
+    # bypassed `declare`'s own rewrite, three functions up, that exists to stop
+    # exactly this. The phrase now comes from the same table `declare` uses, so
+    # the two cannot drift again.
+    note = (f"Ranked on training rows only, and not applied. What is "
+            f"actually selected is fitted {_SCOPE_PHRASE[FITTED_SCOPE]} — "
+            f"this door fits each model one time, so there is a single fold "
+            f"— so this ordering is indicative rather than the answer."
             if n_held_out else
             "Nothing was withheld from this ranking, so it saw every row "
             "in the table. Treat it as exploratory.")
@@ -395,6 +445,15 @@ def evidence(df: pd.DataFrame, target: str, candidates: Sequence[str],
         "n_rows_seen": n_seen,
         "n_rows_withheld": n_held_out,
         "scope": TRAIN_ROWS if n_held_out else "all rows",
+        # WHERE THE SELECTION ITSELF WILL BE FITTED, machine-readable beside
+        # the prose (trap 7) and named apart from `scope` above, which is about
+        # the rows THIS RANKING saw. `AUDIT-027`: the note asserted one of these
+        # and the recorded spec stored the other, and nothing on the wire let a
+        # reader see that they disagreed. These two are the record's own
+        # vocabulary — `declare` returns the same pair of keys' values — so a
+        # parity check is an equality rather than a substring search.
+        "selection_scope": FITTED_SCOPE,
+        "selection_fit_on": _FIT_ON[FITTED_SCOPE],
         # WHAT THIS IS EVIDENCE FOR, on the wire and not only in the prose
         # (trap 7). The page heads the table from `measure` rather than from
         # whichever row happened to sort first.

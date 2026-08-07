@@ -84,6 +84,13 @@ _PATHS = ("interview?step=data", "interview?step=explore",
           "capabilities", "features", "recipes",
           "preprocess", "figures", "draft", "manuscript", "models", "training",
           "instability", "explain", "sensitivity", "evidence/plausibility",
+          # `checklist` is L52-C's TRIPOD+AI artifact, fetched by the Report
+          # step. It is here because THIS FILE'S OWN GATE caught its absence:
+          # the drive answered every route but that one, the page read an empty
+          # body where it reads a real one, and seven tests went red naming the
+          # route. That is the harness contract working — a new fetch that no
+          # drive answers renders against nothing and would otherwise pass.
+          "checklist",
           "evidence/missingness")
 
 

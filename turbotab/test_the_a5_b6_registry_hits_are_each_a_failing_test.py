@@ -65,18 +65,13 @@ MARKED = [
     # `turbotab/test_the_seal_counts_the_parameters_the_models_are_handed.py`.
     "AUDIT-022",
     "AUDIT-023",
-    "AUDIT-024",
     "AUDIT-025",
-    "AUDIT-026",
-    "AUDIT-027",
-    "AUDIT-029",
     # AUDIT-030 closed at L45-A2. The ruling was made at the L44 adjudication and
     # applied here: the Methods section no longer calls the held-out comparison a
     # validation one, and it states what selecting among N on those rows costs.
     # `tests/test_the_methods_section_names_the_set_it_compared_on.py`.
     "AUDIT-031",
     "AUDIT-032",
-    "AUDIT-033",
     "AUDIT-034",
     "AUDIT-035"
 ]
@@ -133,18 +128,6 @@ def test_audit_023_applying_feature_selection_overwrites_the_candidate_feature_l
     pytest.fail(
         "AUDIT-023 is still open: " + row["item"][:160])
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-024 — filed at L43-B, not fixed this loop")
-def test_audit_024_the_classic_feature_selection_page_offers_univariable_p_value_screenin():
-    """The Classic Feature Selection page offers univariable p-value screening and RFE-CV, both ON BY DEFAULT, and states none of the [SETTLED] objection anywhere in shipped code
-
-    Where: `/Users/nhedglin/tabular-ml-lab/pages/04_Feature_Selection.py:170-178`
-    Registry: §A5.5 Modeling practice: "Avoid univariable pre-screening of predictors by p-value. It is one of PROBAST's explicit high-risk-of-bias signals: it discards variables that matter only in combination, and it invalidates the p-values in the final model." [SETTLED]. And: "Avoid stepwise selection. It pro
-    """
-    row = _ledger()["AUDIT-024"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-024 is still open: " + row["item"][:160])
-
 @pytest.mark.xfail(strict=True, reason="AUDIT-025 — filed at L43-B, not fixed this loop")
 def test_audit_025_the_theory_reference_tells_the_user_the_feature_selection_page_offers():
     """The Theory Reference tells the user the Feature Selection page offers VIF-based filtering as one of its selection methods; no such method exists
@@ -156,42 +139,6 @@ def test_audit_025_the_theory_reference_tells_the_user_the_feature_selection_pag
     assert row["status"] in ("OPEN", "PARTIAL")
     pytest.fail(
         "AUDIT-025 is still open: " + row["item"][:160])
-
-@pytest.mark.xfail(strict=True, reason="AUDIT-026 — filed at L43-B, not fixed this loop")
-def test_audit_026_the_methods_section_asserts_n_fold_cross_validation_was_used_for_inter():
-    """The Methods section asserts N-fold cross-validation was used for internal validation whenever the checkbox was ticked, even when no CV ran at all
-
-    Where: `ml/narrative_engine.py:1040`
-    Registry: §A5.5: 'Internal validation must resample the entire modeling pipeline — imputation, transformation, selection, tuning. Bootstrap optimism correction is the recommended default ...; repeated k-fold CV is acceptable. A single train/test split is the weakest option and is discouraged at typical clinic
-    """
-    row = _ledger()["AUDIT-026"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-026 is still open: " + row["item"][:160])
-
-@pytest.mark.xfail(strict=True, reason="AUDIT-027 — filed at L43-B, not fixed this loop")
-def test_audit_027_the__rank_them_for_me__panel_tells_the_user_that_what_is_actually_sele():
-    """The 'Rank them for me' panel tells the user that what is actually selected is refitted inside each training fold — this door selects once over the training rows
-
-    Where: `turbotab/selection.py:202`
-    Registry: §A5.5 [SETTLED]: 'Internal validation must resample the entire modeling pipeline — imputation, transformation, selection, tuning.' Telling the researcher that selection is refitted inside each training fold is a claim that selection IS inside a resampling loop. It is not; there is one fit on one par
-    """
-    row = _ledger()["AUDIT-027"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-027 is still open: " + row["item"][:160])
-
-@pytest.mark.xfail(strict=True, reason="AUDIT-029 — filed at L43-B, not fixed this loop")
-def test_audit_029_the_generated_methods_section_tells_the_reader_that_cross_validation_w():
-    """The generated Methods section tells the reader that cross-validation was run on already-preprocessed data — the code re-fits preprocessing inside every fold and has since STATE-059
-
-    Where: `ml/publication.py:1378-1381`
-    Registry: §A5.5 [SETTLED]: internal validation must resample the entire pipeline — imputation, transformation, selection, tuning. The manuscript is the artifact a reviewer reads; asserting that the app's CV scored pre-preprocessed data misdescribes the analysis in the one document where the description is the
-    """
-    row = _ledger()["AUDIT-029"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-029 is still open: " + row["item"][:160])
 
 def test_audit_030_is_closed_and_its_regression_test_is_the_one_named_here():
     """`AUDIT-030` — ruled at L44, applied at L45-A2, and no longer an xfail.
@@ -237,18 +184,6 @@ def test_audit_032_running_the_leakage_diagnostic_marks_the_leakage_blocker_reso
     assert row["status"] in ("OPEN", "PARTIAL")
     pytest.fail(
         "AUDIT-032 is still open: " + row["item"][:160])
-
-@pytest.mark.xfail(strict=True, reason="AUDIT-033 — filed at L43-B, not fixed this loop")
-def test_audit_033_the_task_type_detector_tells_the_user__in_both_doors__that_an_ordinal():
-    """The task-type detector tells the user, in both doors, that an ordinal score should be modeled as regression — B6 marks that SETTLED wrong
-
-    Where: `ml/triage.py:83-86`
-    Registry: §B6 Coaching [SETTLED]: "For an ordinal outcome, use a cumulative link (proportional odds) model rather than a LINEAR MODEL ON THE SCORE or a dichotomization into 'responder/non-responder.' The PO model generalizes the Wilcoxon and Kruskal-Wallis tests while allowing covariate adjustment, handles ar
-    """
-    row = _ledger()["AUDIT-033"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-033 is still open: " + row["item"][:160])
 
 @pytest.mark.xfail(strict=True, reason="AUDIT-034 — filed at L43-B, not fixed this loop")
 def test_audit_034_the_recorded_reverse_coding_sentence_promises_a_flip_and_a_scoring_ste():

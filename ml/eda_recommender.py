@@ -55,6 +55,158 @@ class EDARecommendation:
     disabled_reason: Optional[str] = None
 
 
+# ── AUDIT-003: what the values say before a log transform is advised ────────
+#
+# `research/METABOLOMICS_PACK.md`, "Value-state diagnostics":
+#
+#   "Already-transformed detection. Any negative values, or a max below ~40
+#    with a positive min and low dynamic range, or column means ~ 0 ->
+#    probably already log-transformed and/or scaled. Warn hard; a second log
+#    transform is a silent catastrophe."
+#   "Dynamic range: raw untargeted intensities span 10^2-10^9. A ratio below
+#    10^2 means something has already been done to the data."
+#
+# The two clauses do NOT carry the same weight on a single arbitrary column,
+# and collapsing them is the very defect this row is about.
+#
+#   * Non-positive values are ARITHMETIC. `log(x <= 0)` is undefined, on any
+#     table in any field. Read once, certain, and it withdraws the advice.
+#   * A compressed range is a DOMAIN reading calibrated to untargeted assay
+#     intensity blocks. `clinical_risk.csv::creatinine_mg_dl` runs 0.3-3.85
+#     mg/dL and trips it while being perfectly raw. Asserting "already
+#     transformed" there would be the same class of false claim one surface
+#     over, so this is REPORTED and never asserted - the same
+#     derived/offered split `turbotab/packs.py::_already_transformed` makes.
+#
+# `_block(df)` in `turbotab/packs.py` needs 30+ numeric columns, so the pack's
+# own detector cannot answer for one target column. The THRESHOLDS are still
+# imported from it rather than restated: no threshold moves in this loop
+# (AGENT_ONBOARD.md section 08, check 2), and a second copy is the defect
+# `ml/eda_recommender.py:130` already corrected once for HIGH_MISSING_SHARE.
+
+#: The reading the card cannot make when nothing measured the target's values.
+LOG_STATE_NOT_READ = "not_read"
+
+
+def read_log_transform_state(series: pd.Series) -> Dict:
+    """Whether a log transform is defined on these values, and what they look like.
+
+    Returns the measurements whether or not anything fired, so a caller that
+    wants the numbers is not forced through the sentence. `reading` is one of:
+
+    ``log_undefined``   at least one value is <= 0
+    ``compressed_scale``  strictly positive, but sitting in the range an
+                          already-log-transformed column sits in
+    ``no_signature``    strictly positive and spread like raw measurements
+
+    Never ``None`` for a numeric series: "we did not look" is the absence of
+    the key in `target_stats`, not a value inside this dict.
+    """
+    from turbotab.packs import _RAW_DYNAMIC_RANGE, _TRANSFORMED_MAX
+
+    values = pd.to_numeric(series, errors="coerce").dropna().to_numpy(dtype=float)
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return {"reading": LOG_STATE_NOT_READ, "n": 0,
+                "sentence": "the target has no finite values to read"}
+
+    n_nonpositive = int((values <= 0).sum())
+    lo, hi = float(values.min()), float(values.max())
+    ratio = (hi / lo) if lo > 0 else None
+    compressed = (lo > 0 and hi < _TRANSFORMED_MAX
+                  and ratio is not None and ratio < _RAW_DYNAMIC_RANGE)
+
+    if n_nonpositive:
+        reading = "log_undefined"
+        sentence = (f"{n_nonpositive:,} of {values.size:,} target values are "
+                    f"zero or negative (the smallest is {lo:,.4g})")
+    elif compressed:
+        reading = "compressed_scale"
+        sentence = (f"the target runs {lo:,.4g} to {hi:,.4g}, a span of only "
+                    f"{ratio:,.1f}x")
+    else:
+        reading = "no_signature"
+        sentence = (f"the target is strictly positive ({lo:,.4g} to {hi:,.4g}"
+                    + (f", a span of {ratio:,.0f}x" if ratio is not None else "")
+                    + ")")
+
+    return {"reading": reading, "n": int(values.size),
+            "n_nonpositive": n_nonpositive, "min": lo, "max": hi,
+            "dynamic_range": ratio, "sentence": sentence,
+            "raw_range_floor": _RAW_DYNAMIC_RANGE,
+            "transformed_max_ceiling": _TRANSFORMED_MAX}
+
+
+def log_transform_advice(state: Optional[Dict]) -> Dict[str, str]:
+    """The R5 card's three log-transform sentences, from one reading.
+
+    `AUDIT-003` — BEFORE, unconditional and identical for all four cases below:
+
+        what_you_learn:      "Need for log transformation or robust loss"
+        model_implications:  "High skew -> consider log transform or robust
+                              loss (Huber)"
+
+    AFTER: the same subject, a weaker claim, and true in each case. The advice
+    is corrected rather than deleted - `no_signature` still recommends the
+    transform, which is why this cannot be satisfied by dropping the word.
+    Every branch names what was NOT checked, because none of them can see
+    provenance: a log applied by the upstream tool and recorded nowhere in the
+    table reads exactly like raw data here.
+    """
+    unchecked = ("Provenance is not checked: a transform applied before this "
+                 "file was written is recorded nowhere the app can read.")
+
+    if not state or state.get("reading") == LOG_STATE_NOT_READ:
+        return {
+            "why": "Log transform: the target's values were not read",
+            "learn": ("Whether a log transform is defined on this target — "
+                      "not read here"),
+            "implication": (
+                "High skew → robust loss (Huber) needs no transform. A log "
+                "transform is NOT recommended from the skew alone: nothing "
+                "read this target's values, so whether a log is even defined "
+                "on them is unknown."),
+        }
+
+    reading, said = state["reading"], state["sentence"]
+
+    if reading == "log_undefined":
+        return {
+            "why": f"Log transform: not defined — {said}",
+            "learn": "Why a log transform is unavailable on this target",
+            "implication": (
+                f"High skew → a log transform is NOT available here: {said}, "
+                f"and the log of a non-positive number is undefined. "
+                f"Yeo-Johnson accepts them; robust loss (Huber) needs no "
+                f"transform at all. {unchecked}"),
+        }
+
+    if reading == "compressed_scale":
+        return {
+            "why": f"Log transform: compressed scale — {said}",
+            "learn": ("Whether this target is already on a transformed scale, "
+                      "and what the app can and cannot tell from the values"),
+            "implication": (
+                f"High skew → before any log transform, check what scale this "
+                f"target is already on: {said}, where a raw untargeted assay "
+                f"run spans 10² to 10⁹. On an assay column that reads as "
+                f"already log-transformed, and a second log is silent — it "
+                f"produces numbers and every plot still renders. On a clinical "
+                f"measurement in its own units (creatinine in mg/dL) the same "
+                f"span is ordinary. The app cannot tell those two apart from "
+                f"the numbers. {unchecked}"),
+        }
+
+    return {
+        "why": f"Log transform: available — {said}",
+        "learn": "Need for log transformation or robust loss",
+        "implication": (
+            f"High skew → consider log transform or robust loss (Huber). A log "
+            f"is defined here: {said}, carrying none of the signatures of an "
+            f"already-transformed column. {unchecked}"),
+    }
+
+
 def compute_dataset_signals(
     df: pd.DataFrame,
     target: Optional[str],
@@ -165,6 +317,13 @@ def compute_dataset_signals(
                 
                 outlier_mask, _ = detect_outliers(target_series, method=outlier_method)
                 signals.target_stats['outlier_rate'] = float(outlier_mask.sum() / len(target_series)) if len(target_series) > 0 else 0.0
+
+                # `AUDIT-003`. R5 used to advise a log transform from the skew
+                # alone. The reading that decides whether a log is even legal is
+                # taken HERE, because `recommend_eda` gets a `DatasetSignals`
+                # and never sees the frame. Absent from `target_stats` means
+                # NOT READ — the card says so rather than assuming raw.
+                signals.target_stats['log_transform_state'] = read_log_transform_state(target_series)
             elif task_type_final == 'classification':
                 value_counts = target_series.value_counts()
                 signals.target_stats['class_counts'] = value_counts.to_dict()
@@ -394,6 +553,14 @@ def recommend_eda(signals: DatasetSignals) -> List[EDARecommendation]:
         if signals.task_type_final == "regression":
             outlier_rate = signals.target_stats.get('outlier_rate', 0)
             skew = signals.target_stats.get('skew', 0)
+            # `AUDIT-003`. The log clause is composed from a reading of the
+            # target's values instead of from the skew alone, and the reading
+            # goes into `why` as well — `ml/router.py:397` renders `why` on the
+            # Guided pull chip and renders neither of the other two lists, so a
+            # correction that landed only in `model_implications` would be true
+            # on the wire and invisible to a person (trap 6).
+            log_advice = log_transform_advice(
+                signals.target_stats.get('log_transform_state'))
             recommendations.append(EDARecommendation(
                 id="r5_target_regression",
                 title="Target Distribution & Outliers",
@@ -402,15 +569,16 @@ def recommend_eda(signals: DatasetSignals) -> List[EDARecommendation]:
                 why=[
                     f"Target: {signals.target_name}",
                     f"Skewness: {skew:.2f}",
-                    f"Outlier rate: {outlier_rate:.1%}"
+                    f"Outlier rate: {outlier_rate:.1%}",
+                    log_advice["why"],
                 ],
                 what_you_learn=[
                     "Target distribution shape (normal, skewed, multimodal)",
                     "Outlier locations and impact",
-                    "Need for log transformation or robust loss"
+                    log_advice["learn"],
                 ],
                 model_implications=[
-                    "High skew → consider log transform or robust loss (Huber)",
+                    log_advice["implication"],
                     "High outlier rate → use Huber loss or winsorization",
                     "Multimodal → may benefit from tree-based models"
                 ],

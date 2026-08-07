@@ -8,7 +8,7 @@ Provides data-aware recommendations that:
 - Integrate throughout the ML workflow
 """
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Sequence, Tuple
 from enum import Enum
 
 # `AUDIT-020` / `AUDIT-021` — one design, one module, `CLINICAL_SURVEY_PACK.md`
@@ -369,6 +369,153 @@ class TopPick:
     handles_missing: bool
 
 
+def _skew_split(profile: Any, skewed: Sequence[str]) -> Dict[str, List[str]]:
+    """Which of the skewed features a LOG could actually be applied to.
+
+    `ml/dataset_profile.py:641` selects on `abs(skewness) > 1.0`, so `skewed`
+    holds two populations a log treats oppositely and one it cannot touch:
+
+    * ``log_ok``       strictly positive and skewed RIGHT — the log's own case
+    * ``left_skewed``  skewed LEFT; a log lengthens the left tail further
+    * ``not_positive`` a value at or below zero; `log` is undefined there
+
+    Read off `FeatureProfile.min_val` and `.skewness`, which the profile already
+    carries. A feature whose profile is missing either field lands in
+    ``unread`` rather than being assumed positive.
+    """
+    fps = getattr(profile, "feature_profiles", None) or {}
+    out: Dict[str, List[str]] = {"log_ok": [], "left_skewed": [],
+                                 "not_positive": [], "unread": []}
+    for col in skewed:
+        fp = fps.get(col)
+        lo = getattr(fp, "min_val", None) if fp is not None else None
+        sk = getattr(fp, "skewness", None) if fp is not None else None
+        if lo is None or sk is None:
+            out["unread"].append(col)
+        elif lo <= 0:
+            out["not_positive"].append(col)
+        elif sk < 0:
+            out["left_skewed"].append(col)
+        else:
+            out["log_ok"].append(col)
+    return out
+
+
+def _skew_transform_clause(profile: Any, skewed: Sequence[str]) -> str:
+    """`AUDIT-003` on the preprocessing card. BEFORE:
+
+        "apply Yeo-Johnson or log transform to stabilize the feature
+         distributions."
+
+    One sentence for every skewed feature, and `log` was offered for all of
+    them. `ml/dataset_profile.py:641` selects on `abs(skewness) > 1.0`, so the
+    same sentence covered a LEFT-skewed feature, where a log makes the skew
+    worse, and a feature holding zeros or negatives, where a log is undefined.
+
+    AFTER: Yeo-Johnson is still recommended for all of them — it is defined on
+    the whole real line and on either tail — and the LOG is named only for the
+    features it is defined and useful on, with the excluded ones counted. The
+    same subject, a weaker claim, true. And the clause the reading cannot
+    supply is stated: nothing here can see whether a column arrived already
+    transformed, and a second log is silent.
+    """
+    split = _skew_split(profile, skewed)
+    n = len(list(skewed))
+    parts = [f"apply Yeo-Johnson to all {n} — it is defined on zero, on "
+             f"negatives and on either tail"]
+
+    ok = split["log_ok"]
+    if ok:
+        shown = ", ".join(ok[:3]) + ("…" if len(ok) > 3 else "")
+        parts.append(f"A LOG transform is an option for {len(ok)} of them "
+                     f"({shown}), strictly positive and skewed right")
+    else:
+        parts.append("A LOG transform is an option for none of them")
+
+    def _they(names, singular, plural):
+        return f"{len(names)} of them {singular if len(names) == 1 else plural}"
+
+    excluded = []
+    if split["not_positive"]:
+        excluded.append(_they(split["not_positive"], "reaches", "reach")
+                        + " zero or below, where the log is undefined")
+    if split["left_skewed"]:
+        excluded.append(_they(split["left_skewed"], "is", "are")
+                        + " skewed LEFT, where a log lengthens the tail it is "
+                          "meant to shorten")
+    if split["unread"]:
+        excluded.append(_they(split["unread"], "carries", "carry")
+                        + " no min/skew reading, so nothing here can say")
+    if excluded:
+        parts.append("; and ".join(excluded))
+
+    return (". ".join(parts) + ". Whether any of these arrived already "
+            "transformed is not checked here, and a second log is silent.")
+
+
+def _huber_why(tp: Any) -> str:
+    """Why Huber, in the tier the app can actually distinguish.
+
+    `AUDIT-012`. BEFORE — one sentence for every regression target alike:
+
+        "The outcome itself contains outliers (12% of values) — Huber
+         downweights extreme residuals so they don't steer the fit. Feature
+         outliers are handled in preprocessing instead."
+
+    `tp.outlier_rate` is an IQR fence count (`ml/outliers.py:44`). On
+    `clinical_labs.csv::sbp` it counts a systolic pressure of **0 mmHg** and one
+    of **244 mmHg** as the same kind of thing. They are not: the first is an
+    entry error and wants REPAIR, the second is a hypertensive crisis and wants
+    MODELING — and Huber downweights both, which for the entry error is the
+    wrong remedy and for the real extreme discards signal the study is about.
+    `research/CLINICAL_SURVEY_PACK.md` Cross-cutting 7 is the source; the
+    impossibility band that separates them was already computed one module over
+    (`turbotab/engine.plausibility`) and nothing on this path read it.
+
+    AFTER — the same recommendation, the same subject, a weaker claim: the two
+    tiers are reported separately, and where the reference has nothing to say
+    about this column the sentence says THAT rather than implying a check it
+    did not make. Huber is still the pick in all three branches; the shelf is
+    not shortened.
+    """
+    rate = tp.outlier_rate or 0.0
+    tail = ("Feature outliers are handled in preprocessing instead.")
+    read = getattr(tp, "physio_read", "unread")
+    count = getattr(tp, "impossible_count", None)
+    band = getattr(tp, "impossibility_band", None)
+
+    if read == "matched" and band is not None and count:
+        floor, ceiling, unit = band
+        return (f"{rate:.0%} of the outcome's values fall outside the IQR "
+                f"fences, and {count:,} of them are outside the published "
+                f"impossible range for {tp.physio_variable} "
+                f"({floor:g}–{ceiling:g} {unit}). Those are entry errors rather "
+                f"than extreme measurements, and Huber DOWNWEIGHTS them instead "
+                f"of removing them — repair them on the plausibility card "
+                f"first, then Huber is the right model for the real extremes "
+                f"that remain. {tail}")
+
+    if read == "matched" and band is not None:
+        floor, ceiling, unit = band
+        return (f"The outcome itself contains outliers ({rate:.0%} of values by "
+                f"the IQR fences) — Huber downweights extreme residuals so they "
+                f"don't steer the fit. None of them is outside the published "
+                f"impossible range for {tp.physio_variable} "
+                f"({floor:g}–{ceiling:g} {unit}), so they read as real extremes "
+                f"rather than entry errors, which is exactly the case Huber is "
+                f"for. {tail}")
+
+    unnamed = (f"'{tp.name}' matches no variable in the physiologic reference"
+               if read == "unrecognized" else
+               "no impossibility band was read for this outcome")
+    return (f"The outcome itself contains outliers ({rate:.0%} of values) — "
+            f"Huber downweights extreme residuals so they don't steer the fit. "
+            f"That rate is an IQR fence count and nothing more: {unnamed}, so "
+            f"the app cannot tell a physiologically impossible entry from an "
+            f"abnormal-but-real measurement here, and Huber treats the two the "
+            f"same way. {tail}")
+
+
 def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], List[Tuple[str, str]], str]:
     """Select 2-3 models from the dataset's SHAPE, dominant constraint first.
 
@@ -475,10 +622,7 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
                           f"feature shortlist for the manuscript.")
         elif target_outliers:
             linear_key, linear_name = "huber", "Huber Regression"
-            linear_why = (f"The outcome itself contains outliers "
-                          f"({tp.outlier_rate:.0%} of values) — Huber downweights extreme "
-                          f"residuals so they don't steer the fit. Feature outliers are "
-                          f"handled in preprocessing instead.")
+            linear_why = _huber_why(tp)
         elif is_high_dim:
             linear_key, linear_name = "ridge", "Ridge Regression"
             linear_why = (f"At {p} predictors for {n:,} rows, the L2 penalty stabilizes "
@@ -711,13 +855,14 @@ def generate_preprocessing_insights(
                     "producing suboptimal coefficients or gradient updates."
                 ),
                 "recommended_action": (
-                    f"For your {_family_list(affected)}, apply Yeo-Johnson or log transform "
-                    f"to stabilize the feature distributions.{immune_msg}"
+                    f"For your {_family_list(affected)}, {_skew_transform_clause(profile, skewed)}"
+                    f"{immune_msg}"
                 ),
                 "model_scope": affected,
                 "relevant_pages": ["05_Preprocess"],
                 "theory_anchor": "skewness",
-                "metadata": {"skewed_features": skewed[:10]},
+                "metadata": {"skewed_features": skewed[:10],
+                             **_skew_split(profile, skewed)},
             })
 
     # 2. Outliers → robust scaling or clipping (affects linear, neural, distance)

@@ -2700,6 +2700,26 @@ def _drawable(project) -> Optional[set]:
     return {row["id"] for row in bundle["admitted"] + bundle["held"]}
 
 
+@app.get("/project/{project_id}/checklist")
+async def get_checklist(project_id: str) -> Dict[str, Any]:
+    """L52-C. The TRIPOD+AI checklist, in `§A6`'s four columns.
+
+    Served beside the manuscript rather than inside it, for the same reason
+    `GUIDED-107` serves the validation report beside the document: the author
+    gets the artifact journals ask for as its own file, and the document stays
+    the document.
+
+    **The project is fetched and passed but nothing is populated from it yet.**
+    Auto-population is L53 and depends on Part B landing — so the route exists,
+    the shape is fixed, and the `needs your input` column is complete. Fetching
+    the project here is not decoration: it is what makes this a 404 for an
+    unknown id rather than a table served for a study that does not exist.
+    """
+    from turbotab import reporting_checklist as _cl
+
+    return _cl.render(_project(project_id))
+
+
 @app.get("/project/{project_id}/instability")
 async def get_instability(project_id: str) -> Dict[str, Any]:
     """The resampling results held for this project, and what they say.

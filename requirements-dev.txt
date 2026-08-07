@@ -23,6 +23,12 @@ kaleido>=0.2.1
 # ── the test harness ─────────────────────────────────────────────────────────
 pytest>=8.0
 pytest-timeout>=2.1
+# L52-A. `tests/test_a_fixed_row_names_a_test_that_actually_runs.py` runs the
+# guard every FIXED row names — 671 nodes — and at 25:10 serial it exceeded its
+# own budget and reported nothing, which is what `TEST-061` was. The guard
+# falls back to serial when this is absent, so it is a speed dependency and
+# not a correctness one.
+pytest-xdist>=3.8
 
 # ── optional analysis extras the suite covers ────────────────────────────────
 # Not installed here by default: shap pulls numba/llvmlite and is slow to build.
