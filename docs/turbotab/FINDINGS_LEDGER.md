@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**369 of 889 closed.**
+**370 of 889 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 449 |
+| `OPEN` | 448 |
 | `PARTIAL` | 71 |
-| `FIXED` | 363 |
+| `FIXED` | 364 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 449
+## OPEN — 448
 
 
 ### Guided-door drive feedback — 70
@@ -299,7 +299,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-264` | low | HUNT stack-blank-file-blocks-with-wrong-advice: one zero-column file blocks the entire stack and the message tells the researcher to consider joining instead | `utils/combine.py plan_stack - the no-shared-columns blocker and its message; measured at HEAD` | REPRODUCES AT HEAD. Two well-formed cycles sharing SEQN and age, plus one zero-column frame, give blocking: 'These files have no column names in common, so stacking them would… |
 | `IMPORT-265` | low | HUNT stack-duplicate-column-label-crash: does not reproduce on this pandas, and there is no guard - recorded as environment-dependent rather than fixed | `utils/combine.py execute_stack - the copy, rename and pd.concat path, which contains no duplicate-label…` | DOES NOT REPRODUCE AT HEAD, AND IS NOT CLOSED - the distinction is the point. Two frames with columns [1, '1'] give plan_stack no blocking and no warnings (so the recorded… |
 
-### Migration safety net — 45
+### Migration safety net — 44
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -330,7 +330,6 @@ Nothing is closed without a regression test named after it.
 | `TEST-052` | high | A mandatory FIELD standing in for a mandatory RENDERING - a raising constructor made the datum unskippable and the obligation it served was about the reader | `L50-F2, and it is sharper than trap #6. Evidence.__post_init__ REFUSES to construct a DISPUTED claim with no…` | Filed as the CLASS behind GUIDED-211, per AGENT_ONBOARD 08 check 1. sibling-of: GUIDED-211. |
 | `TEST-060` | high | Half of a fan-out's regression tests passed with the entire fan-out's code reverted - the agent that writes the fix and the test in one pass will write a test the fix does not need | `L51-C. Eight tests came back from four subagents. Reverting all 16 changed source files to HEAD left four of…` | Cheap detector available now and worth having before the rule: run the loop's new tests with the loop's own diff reverted. It is one command, it needs no per-row mapping, and it… |
 | `TEST-062` | high | All seven xfail guards in the A5/B6 registry are unconditional pytest.fail and none reads shipped code, so each is green over the defect CONDITION even though the file's ledger-drift check is sound | `Found by an L52-B verifier while checking a neighbouring row, and confirmed by the adjudicator.…` | AND L53 TRIPPED LINE 45 DELIBERATELY. Closing AUDIT-022 and 023 in Part A and AUDIT-032 in Part C put three rows in the state line 45 exists to catch - marked xfail here and… |
-| `TEST-071` | high | The FIXED-row resolver's partition is not exhaustive: 28 of 362 FIXED rows land in none of its three buckets, and 24 of them do so because the named test function equals its file stem, which is this… | `tests/fixed_row_guard.py, resolve(): the `if f not in stems` filter, and the `elif funcs:` that has no else` | FOUND BY THE ADJUDICATOR AT THE L56 HANDOVER, WHILE CHECKING TWO ROWS IT HAD JUST WRITTEN ITSELF - which is how it was visible at all. THE MECHANISM, MEASURED NOT ARGUED.… |
 | `TEST-027` | medium | utils/persistence.py is dead code — zero importers — yet contains the reproducibility manifest the new Project layer needs | `utils/persistence.py:1-158; zero import sites repo-wide` | Unchanged at HEAD - verified unreachable, not merely uncovered. The trap the row names is the one to record: it is tempting to adopt this wholesale as the Project serializer, and… |
 | `TEST-028` | medium | visualizations.py returns figures nobody inspects — the safest module to move and the easiest to break unnoticed | `visualizations.py:12,53,91,129,170; consumers pages/06_Train_and_Compare.py:69…` | Unchanged at HEAD: the module is genuinely pure and genuinely untested - the two tests that name it check that it imports, not what it draws. That combination is the row's point… |
 | `TEST-029` | medium | ml.feature_steps and ml.baseline_models are uncovered and produce the numbers the manuscript compares against | `ml/feature_steps.py:11,39; ml/baseline_models.py:21,150` | Unchanged at HEAD: both still uncovered, and both still produce published numbers. The seed sensitivity is the specific hazard - PCA's sign convention and KMeans' init are… |
@@ -702,7 +701,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 363
+## FIXED — 364
 
 
 ### Guided-door drive feedback — 144
@@ -964,7 +963,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Migration safety net — 21
+### Migration safety net — 22
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -982,6 +981,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-066` | high | The page harness's DOM lacks insertBefore, replaceChildren and the hidden property, and its appendChild COPIES rather than moves - so node-owning interface code is unverifiable in the one place this… | `L54-B, found by building the deck and measured directly rather than inferred. In turbotab/pageharness.py's…` | **test:** `turbotab/test_the_harness_moves_a_node_rather_than_copying_it.py::test_appending_an_attached_node_moves_it_rather_than_copying_it AND… |
 | `TEST-067` | high | A cheap guard sharing a file with an expensive one inherits the expensive one's exclusions and goes dark, because --ignore takes a FILE and cannot tell two checks apart - so the check the ledger's… | `L55-A1, and the instance is TEST-063. tests/test_a_fixed_row_names_a_test_that_actually_runs.py held two…` | **test:** `tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py::test_the_documented_invocation_still_collects_this_check` — THE GUARD'S SUBJECT IS THE DOCUMENTED… |
 | `TEST-069` | high | The page harness orphaned an entire subtree when a node was removed - a card taken out of the deck left every row inside it with no parent - so the fix for appendChild's copying did not stop the… | `L55-D, found by fixing TEST-066 and then MEASURING rather than by reading. turbotab/pageharness.py's…` | **test:** `turbotab/test_the_harness_moves_a_node_rather_than_copying_it.py::test_removing_a_node_does_not_orphan_the_nodes_inside_it` — THE CLASS, AND IT IS WHY THE ROW IS FILED… |
+| `TEST-071` | high | The FIXED-row resolver's partition is not exhaustive: 28 of 362 FIXED rows land in none of its three buckets, and 24 of them do so because the named test function equals its file stem, which is this… | `tests/fixed_row_guard.py, resolve(): the `if f not in stems` filter, and the `elif funcs:` that has no else` | **test:** `tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py::test_every_fixed_row_lands_in_exactly_one_bucket AND ::test_every_fixed_rows_named_test_exists`… |
 | `TOOL-001` | high | A loop cannot afford its own regression evidence: the turbotab/ sweep is 2h01m and occasionally times out, so a loop either runs it once at the end or verifies nothing in between | `PRODUCT OWNER, VERBATIM: 'These full suite tests are simply taking too long for the workflow we are currently…` | **test:** `tests/test_the_scoped_selection_says_what_it_cannot_see.py::test_an_empty_direct_selection_refuses_instead_of_reporting_zero AND… |
 | `GUIDED-100` | medium | The propagation probe itself: for each recorded decision kind, two projects identical except for that answer, and something downstream must differ | `turbotab/test_a_recorded_decision_changes_something.py; 41 kinds recorded, 23 probed (24 flips), 6 asserted…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_a_decision_about_the_analysis_reaches_the_fitted_pipeline` — BUILT AT L35-E as the instrument that would… |
 | `TEST-041` | medium | Four turbotab test files read figures.REGISTRY, which is populated only as an import side effect of figure_specs, and one of them asserted a count over it before anything had imported the populator… | `turbotab/figures.py:REGISTRY is an empty dict filled by turbotab/figure_specs.py's module body…` | **test:** `turbotab/test_the_registry_cannot_be_observed_empty.py::test_a_cold_import_of_figures_alone_sees_the_specs` — FOUND WHILE FIXING TEST-040 AND IT IS THE SAME PROPERTY… |

@@ -48,7 +48,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from tests.fixed_row_guard import resolve                          # noqa: E402
+from tests.fixed_row_guard import (partition_is_exhaustive,        # noqa: E402
+                                   fixed_rows, resolve)
 
 #: The document that states how this project's suites are actually invoked.
 #: Every count this project reports comes from the commands in §03 of this file,
@@ -76,6 +77,37 @@ def test_every_fixed_rows_named_test_exists():
         "\n\nThe row's guard cannot be run by anyone reading the ledger. "
         "Rename the row's `test` to the guard that replaced it, or set the row "
         "PARTIAL — a name that resolves to nothing is not a named test.")
+
+
+def test_every_fixed_row_lands_in_exactly_one_bucket():
+    """`TEST-071`'s durable half, and the reason the instance was invisible.
+
+    The defect was not that a row resolved wrongly — it was that a row landed
+    **nowhere**. `resolve()` returns three lists and the guard above reads one
+    of them; three lists that are never summed cannot report a row that is in
+    none of them, so **26 of 362 `FIXED` rows sat in a fourth outcome** through
+    the loop that wrote the resolver and the adjudication that accepted it.
+
+    For every row in this project's dominant `file.py::same_stem` convention,
+    the function name IS the file stem, the stem-subtraction discarded it,
+    `funcs` emptied, and `if hits: … elif funcs: …` appended to nothing. So a
+    named test that does not exist produced **exactly the same silence** as one
+    that does. `TEST-063` was caught at L55 only because its function name
+    happened to differ from its file name.
+
+    An assertion that the partition sums is the one check that can see a
+    missing fourth branch, and it costs nothing.
+    """
+    ok, counts = partition_is_exhaustive()
+    assert counts["rows"], "no FIXED row carries a test field; the check is vacuous"
+    assert ok, (
+        f"the resolver's three buckets hold "
+        f"{counts['resolved']} + {counts['missing']} + {counts['not_pytest']} = "
+        f"{counts['resolved'] + counts['missing'] + counts['not_pytest']} of "
+        f"{counts['rows']} FIXED rows. The remainder is in no bucket at all, "
+        f"which is TEST-071 exactly: a row that lands nowhere is a row whose "
+        f"named test is never checked, and it reads identically to a row whose "
+        f"test resolves.")
 
 
 def test_the_rows_with_no_pytest_target_are_named_rather_than_ignored():

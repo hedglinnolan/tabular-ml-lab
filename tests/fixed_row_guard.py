@@ -91,8 +91,75 @@ def collected() -> List[str]:
     return _COLLECT_CACHE
 
 
+def _is_pytest_target(test: str, paths: List[str]) -> bool:
+    """Is this `test` field naming something pytest can run at all?
+
+    `_PATH` matches any `.py`, so a row whose guard is a **tool invocation**
+    — `T0-TOOL-001` names `docs/turbotab/tools/ledger.py check`, `T0-PROC-001`
+    names `tools/register.py check` — used to arrive as a row naming a test
+    file. Before `L56-B1` they landed in the resolver's blind spot and were
+    reported as nothing; naively fixed, they land in `missing` and read as
+    **two closed rows resting on tests that do not exist**, which is a
+    different false statement in the other direction.
+
+    They are neither. `not_pytest`'s own docstring already names the category:
+    *"a document, a tool invocation, a data file."* So the classification is by
+    SHAPE, not by relaxing anything: a pytest target names a `test_*.py` file,
+    or carries a `::` node id. A bare `.py` that is neither is a tool.
+    """
+    if "::" in test:
+        return True
+    return any(os.path.basename(p).startswith("test_") for p in paths)
+
+
+def _named_functions(test: str, paths: List[str]) -> List[str]:
+    """The function names a `test` field NAMES, read from the node ids.
+
+    `TEST-071`, and it is the whole of `L56-B1`. This used to read the function
+    out of the WHOLE string and then subtract the file stems:
+
+        stems = {p.split("/")[-1][:-3] for p in paths}
+        funcs = [f for f in _FUNC.findall(test) if f not in stems]
+
+    The subtraction is there because `turbotab/test_foo.py` contains the token
+    `test_foo`, which is a path fragment and not a named function. But **this
+    project's dominant convention is `turbotab/test_foo.py::test_foo`** — the
+    function name IS the file stem — so the filter discarded the real name too,
+    `funcs` emptied, and `resolve`'s `if hits: … elif funcs: …` appended the row
+    to **nothing at all.** Twenty-six of 362 `FIXED` rows landed there.
+
+    **The consequence is why the row is `high`.** `missing` can only fill when
+    `funcs` is non-empty, so for every row using the dominant convention, *a
+    named test that does not exist produced exactly the same silence as one that
+    does.* `TEST-063` was caught at L55 only because its function name happened
+    to differ from its file name.
+
+    **The fix is to stop subtracting and start splitting.** A node id is
+    structured — `path::segment::segment` — so the names are read from the
+    segments after the first `::` and the path is never scanned for them. A
+    fragment with no `::` names a **file**, which is what those rows mean, and
+    it is returned as such rather than discarded.
+    """
+    names: List[str] = []
+    for fragment in re.split(r"[,\s]+AND[,\s]+|;", test):
+        for part in fragment.split("::")[1:]:
+            names.extend(_FUNC.findall(part))
+    if names:
+        return sorted(set(names))
+    # No `::` anywhere: the row names a FILE. That is a real and common way to
+    # write this field — `MISC-014` names a file and says "(21 tests, two
+    # target shapes)" beside it — and it is not a row naming nothing.
+    return []
+
+
 def resolve() -> Tuple[Dict[str, List[str]], List[Tuple[str, List[str]]], List[str]]:
-    """(row id -> its node ids, rows naming a missing function, rows with no .py)."""
+    """(row id -> its node ids, rows naming a missing function, rows with no .py).
+
+    **The partition is asserted to sum**, and that assertion is the durable half
+    of `TEST-071`. A three-way split that returns three lists and checks nothing
+    is exhaustive is exactly how a silent fourth outcome survived the loop that
+    wrote it and the adjudication that accepted it.
+    """
     # EVERY SEGMENT, not just the leaf. A row may name the CLASS
     # (`TestCommaReading`) rather than the method, and an index keyed on leaves
     # only reports every such row as naming something that does not exist —
@@ -102,20 +169,47 @@ def resolve() -> Tuple[Dict[str, List[str]], List[Tuple[str, List[str]]], List[s
         for segment in nid.split("::")[1:]:
             by_func.setdefault(segment.split("[")[0], []).append(nid)
 
+    by_file: Dict[str, List[str]] = {}
+    for nid in collected():
+        by_file.setdefault(nid.split("::")[0], []).append(nid)
+
     resolved: Dict[str, List[str]] = {}
     missing: List[Tuple[str, List[str]]] = []
     not_pytest: List[str] = []
     for r in fixed_rows():
         paths = _PATH.findall(r["test"])
-        if not paths:
+        if not paths or not _is_pytest_target(r["test"], paths):
             not_pytest.append(r["id"])
             continue
-        stems = {p.split("/")[-1][:-3] for p in paths}
-        funcs = [f for f in _FUNC.findall(r["test"]) if f not in stems]
-        hits = sorted({n for f in funcs for n in by_func.get(f, [])
-                       if n.split("::")[0] in paths})
+        funcs = _named_functions(r["test"], paths)
+        if funcs:
+            hits = sorted({n for f in funcs for n in by_func.get(f, [])
+                           if n.split("::")[0] in paths})
+            if hits:
+                resolved[r["id"]] = hits
+            else:
+                missing.append((r["id"], sorted(set(funcs) - set(by_func))))
+            continue
+        # A row naming a FILE and no function. It resolves to every node in
+        # that file, and it is `missing` when the file collects nothing —
+        # which is the same claim one level up and was previously unasked.
+        hits = sorted({n for p in paths for n in by_file.get(p, [])})
         if hits:
             resolved[r["id"]] = hits
-        elif funcs:
-            missing.append((r["id"], sorted(set(funcs) - set(by_func))))
+        else:
+            missing.append((r["id"], sorted(paths)))
     return resolved, missing, not_pytest
+
+
+def partition_is_exhaustive() -> Tuple[bool, Dict[str, int]]:
+    """Does every `FIXED` row land in exactly one bucket?
+
+    `TEST-071`'s durable half. The defect was not that a row resolved wrongly —
+    it was that a row landed **nowhere**, and three lists that are never summed
+    cannot report that.
+    """
+    resolved, missing, not_pytest = resolve()
+    counts = {"resolved": len(resolved), "missing": len(missing),
+              "not_pytest": len(not_pytest), "rows": len(fixed_rows())}
+    total = counts["resolved"] + counts["missing"] + counts["not_pytest"]
+    return total == counts["rows"], counts
