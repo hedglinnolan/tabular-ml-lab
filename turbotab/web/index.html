@@ -591,6 +591,32 @@
   .cl-empty{ color:var(--faint); font-style:italic; }
   .cl-why{ display:block; margin-top:5px; font-style:normal; font-size:11.5px;
            color:var(--muted); line-height:1.45; }
+  /* ═════════ L54-B · THE DECK ═════════ Added by the build.
+
+     Cards are a STACK you page through rather than a list, because the
+     product owner's specification is stacked cards and because a list
+     invites reading across where the point is reading one model at a time.
+     `deck-card` carries no transition yet: face 3's reorder is where motion
+     belongs and it is unbuilt, so a transition here would animate nothing
+     and §05's rule 5 forbids ambient movement. The nodes are retained so
+     that motion CAN be added without rewriting the renderer, which is the
+     whole of B0. */
+  .deck{ display:flex; flex-direction:column; gap:10px; }
+  .deck-gap.is-hidden, .study-empty.is-hidden{ display:none; }
+  .deck-card{ border:1px solid var(--line); border-radius:10px; padding:11px 12px;
+              background:var(--paper); }
+  .deck-head{ display:flex; align-items:baseline; justify-content:space-between; gap:8px;
+              margin:0 0 8px; }
+  .deck-name{ margin:0; font-size:13.5px; font-weight:600; }
+  .deck-face{ font-size:10.5px; text-transform:uppercase; letter-spacing:.07em;
+              color:var(--faint); }
+  .deck-row{ padding:6px 0; border-top:1px solid var(--line); }
+  .deck-row:first-child{ border-top:0; }
+  .deck-op{ font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+            color:var(--faint); margin-right:8px; }
+  .deck-var{ font-size:12.5px; font-weight:600; }
+  .deck-why{ margin:3px 0 0; font-size:12px; line-height:1.5; color:var(--muted); }
+  .deck-gap{ margin:0; font-size:12px; line-height:1.5; color:var(--faint); font-style:italic; }
   /* GUIDED-159 · THE FOURTH STATE, which was specified and never built.
      §04 names four — `done · now · waiting · stale` — and three existed, so a
      step NOBODY HAS REACHED YET wore the bare `--faint` hollow default. The
@@ -3249,38 +3275,202 @@
     return h;
   }
 
-  /* `GUIDED-178`, AND IT IS A PLACEHOLDER ON PURPOSE.
-     `project.resolved_recipes()` short-circuits on `if not self.selected_models:
-     return out`, and `selected_models` is gated on `barrier_raised` — so
-     `/recipes.models` is `{}` for the ENTIRE pre-seal journey. There is no
-     per-model data at Preprocess to render, and a deck with content here would
-     be fabricated. This says what is missing and which step fills it, which is
-     the shape `/recipes` already uses.
+  /* ═════════ THE DECK ═════════ `GUIDED-178`, L54-B.
 
-     And the row's own ruling on what the card may show once it CAN: a
-     training-row preview labeled *preview, not applied* — never *"what will be
-     fed into the model"*, because clause §06 fits every stateful transform
-     inside the fold and those numbers do not exist until the fold does. */
-  function studyModelsHTML(){
+     The product owner's own specification: stacked cards you page through,
+     one per model, showing what that model's pipeline does to your data.
+     **One component spanning three steps**, which is his standing thesis —
+     *the steps are not the product, the connective tissue between them is* —
+     as a single object.
+
+     ── B0 · WHY THIS IS WRITTEN WITH NODES AND NOT WITH `innerHTML` ──
+
+     `DESIGN_LANGUAGE.md` §05.2: *"Motion's job is to preserve identity across a
+     state change, so the user never loses track of what became what,"* and
+     *"an object that is destroyed and replaced teaches nothing, however
+     smoothly it fades."*
+
+     A deck rebuilt by `innerHTML` on every render is destroy-and-replace. The
+     card for `logreg` after a re-render is a DIFFERENT ELEMENT that happens to
+     look the same, so when face 3 reorders the deck by score there is nothing
+     for the user — or for FLIP, or for a view transition — to follow. The
+     pedagogical claim of the whole design is that you can see what became
+     what, and `innerHTML` forecloses it before any animation is written.
+
+     So the deck OWNS ITS NODES: every card is created once in
+     `deckCard`, cached in `DECK.cards` under the model key, MUTATED in place
+     on every subsequent render, and REORDERED by `appendChild`, which moves an
+     existing element rather than making a new one. `deckRow` does the same for
+     each transform line. Nothing in this region is ever reprinted.
+
+     Measured at L47 and still true of the rest of the file: 106 `innerHTML =`
+     assignments and zero `startViewTransition`, zero FLIP measurement, zero
+     `.animate()`. The other 105 are NOT touched here — that is `MISC-021`,
+     filed this loop, because the door keeps acquiring surfaces and none of
+     them acquires a mechanism.
+
+     ── WHAT FACE ONE SAYS, AND WHERE EVERY WORD OF IT COMES FROM ──
+
+     Preprocessing is **not one pipeline**. A gradient-boosted tree does not
+     need scaling; KNN needs it badly; a linear model needs it for coefficient
+     comparability. Most tools hide that by applying one pipeline to
+     everything, and the deck's reason for existing is that it does not.
+
+     So each row carries the reason FROM THE RECORD — `/recipes.models[key][]`
+     already holds `operation`, `variant`, `reason` and `selector` per model,
+     and the card QUOTES the `reason` string. It composes none of its own.
+     L36 ruled that the methods section quotes the record rather than
+     re-deriving it, and L53-B ruled the same for the checklist; this is the
+     third surface under one rule. `selector` is shown when it is a capability
+     match, because that is the record's own account of WHY this model differs
+     from its neighbour — `caps:requires_scaled_numeric` is the difference
+     between the KNN card and the tree card, in the engine's words. */
+
+  var DECK = {cards: Object.create(null), rows: Object.create(null)};
+
+  function deckClear(node){
+    /* `replaceChildren` is not in the harness's DOM; removing the last child
+       repeatedly is, and it is the same operation. */
+    while (node.lastChild) node.removeChild(node.lastChild);
+  }
+
+  function deckRow(card, key){
+    /* One transform line, created once and retained. */
+    var row = DECK.rows[key];
+    if (row) return row;
+    row = document.createElement("div");
+    row.className = "deck-row";
+    row.appendChild(document.createElement("span")).className = "deck-op";
+    row.appendChild(document.createElement("span")).className = "deck-var";
+    row.appendChild(document.createElement("p")).className = "deck-why";
+    DECK.rows[key] = row;
+    return row;
+  }
+
+  function deckCard(model){
+    /* THE CARD IS CREATED ONCE. Every later render mutates this element. */
+    var card = DECK.cards[model];
+    if (card) return card;
+    card = document.createElement("article");
+    card.className = "deck-card";
+    card.setAttribute("data-model", model);
+    var head = card.appendChild(document.createElement("header"));
+    head.className = "deck-head";
+    head.appendChild(document.createElement("h4")).className = "deck-name";
+    head.appendChild(document.createElement("span")).className = "deck-face";
+    card.appendChild(document.createElement("div")).className = "deck-body";
+    card.appendChild(document.createElement("p")).className = "deck-gap";
+    DECK.cards[model] = card;
+    return card;
+  }
+
+  function deckFill(card, model, rows){
+    /* Mutate in place. No `innerHTML`, no re-creation, no reprint. */
+    card.querySelector(".deck-name").textContent = modelName(model);
+    card.querySelector(".deck-face").textContent = "Preprocess";
+    var body = card.querySelector(".deck-body");
+    var gap = card.querySelector(".deck-gap");
+
+    /* A model whose pipeline could not be resolved SAYS WHAT IS MISSING, in
+       L52's vocabulary — never a blank card and never an empty body. */
+    if (!rows || !rows.length){
+      deckClear(body);
+      gap.textContent =
+        "The recipe for this model has not resolved, so what it would do to " +
+        "your columns is not known here. It resolves once the models are " +
+        "chosen and the split is drawn.";
+      gap.className = "deck-gap";
+      return;
+    }
+    gap.className = "deck-gap is-hidden";
+    gap.textContent = "";
+
+    var seen = [];
+    rows.forEach(function(r){
+      var key = model + "::" + r.operation;
+      var row = deckRow(card, key);
+      row.querySelector(".deck-op").textContent = r.operation;
+      row.querySelector(".deck-var").textContent = r.variant;
+      /* QUOTED. `r.reason` is the record's string and the page does not
+         rewrite it. Where the record says the row was chosen by a capability
+         match, that is the engine's own account of why THIS model differs
+         from the one beside it, so it is shown rather than summarized. */
+      var why = r.reason || "";
+      if (r.selector && r.selector.indexOf("caps:") === 0){
+        why += "  [" + r.selector + "]";
+      }
+      row.querySelector(".deck-why").textContent = why;
+      seen.push(row);
+    });
+    /* REORDER BY MOVING. `appendChild` on an element already in the document
+       MOVES it; it does not clone it. That is what keeps identity across a
+       reorder, and it is the mechanism face 3 needs. */
+    seen.forEach(function(row){ body.appendChild(row); });
+  }
+
+  function modelName(key){
+    var shelf = (SHELF && SHELF.groups) || [];
+    for (var i = 0; i < shelf.length; i++){
+      var ms = shelf[i].models || [];
+      for (var j = 0; j < ms.length; j++){
+        if (ms[j].key === key) return ms[j].name || key;
+      }
+    }
+    return key;
+  }
+
+  function renderDeck(){
+    var host = $("studyModels");
+    if (!host) return;
     var models = (LAT && LAT.models) || {};
     var keys = Object.keys(models);
-    if (!keys.length){
-      return "<h3>What the models get</h3>" +
-             '<p class="study-empty">Nothing yet, and the step that fills it ' +
-             "has not happened. Each model's recipe is resolved once models are " +
-             "chosen, which is after the split is drawn — before that there is " +
-             "no per-model table to show, and a preview here would be invented." +
-             "</p>";
+
+    var head = DECK.head;
+    if (!head){
+      /* APPENDED IN ORDER rather than inserted, and that is not a style
+         preference: `turbotab/pageharness.py`'s DOM implements neither
+         `insertBefore` nor `replaceChildren` nor the `hidden` property, so a
+         deck written with them renders correctly in a browser and throws in
+         the one place this project can VERIFY a UI claim. Filed as
+         `TEST-066`. Building in order needs none of them. */
+      head = DECK.head = document.createElement("h3");
+      host.appendChild(head);
+      DECK.empty = host.appendChild(document.createElement("p"));
+      DECK.empty.className = "study-empty";
+      DECK.host = host.appendChild(document.createElement("div"));
+      DECK.host.className = "deck";
     }
-    var shown = keys.slice(0, 4);
-    var h = "<h3>What the models get</h3>";
-    shown.forEach(function(k){
-      h += '<p class="study-note"><em>' + esc(k) + "</em> — " +
-           num((models[k].operations || []).length, 0) + " step(s).</p>";
+    head.textContent = "What the models get";
+
+    if (!keys.length){
+      /* Unchanged from the placeholder this replaces, and still true before
+         the seal: there is no per-model table yet and a preview here would be
+         invented. */
+      DECK.empty.textContent =
+        "Nothing yet, and the step that fills it has not happened. Each " +
+        "model's recipe is resolved once models are chosen, which is after " +
+        "the split is drawn — before that there is no per-model table to " +
+        "show, and a preview here would be invented.";
+      DECK.empty.className = "study-empty";
+      deckClear(DECK.host);
+      return;
+    }
+    DECK.empty.className = "study-empty is-hidden";
+
+    /* THE ORDER IS SET EXPLICITLY AND THE CARDS ARE THE SAME OBJECTS.
+       In a browser `appendChild` on an attached element MOVES it, so a bare
+       re-append would be enough. The harness's DOM appends a COPY instead
+       (`TEST-066`), which would silently double the deck on every render — so
+       the container is detached-and-refilled with the RETAINED cards. That is
+       still node-owning: `deckCard` returns the element it built the first
+       time, the card's identity survives, and only the parent's child list is
+       rewritten. It is what face 3's reorder will use. */
+    deckClear(DECK.host);
+    keys.forEach(function(k){
+      var card = deckCard(k);
+      deckFill(card, k, models[k]);
+      DECK.host.appendChild(card);
     });
-    h += '<p class="study-note">' + capSaid("study-models", shown.length,
-                                            keys.length, "models") + "</p>";
-    return h;
   }
 
   function renderStudy(){
@@ -3295,7 +3485,7 @@
     if (!STUDY_OPEN) return;
     $("studyTable").innerHTML = studyTableHTML();
     $("studyTeach").innerHTML = studyTeachHTML();
-    $("studyModels").innerHTML = studyModelsHTML();
+    renderDeck();      /* NODE-OWNING — see the deck block above */
   }
 
   function renderAll(){
@@ -5605,6 +5795,14 @@
       LAT = all[2];
       renderFeatures();
       renderLattice();
+      /* L54-B. `GUIDED-156`'s ordering shape, and this is the FOURTH time it
+         has appeared: the deck reads `LAT.models`, `LAT` lands here, and
+         `renderStudy` has usually already run — so the deck rendered against
+         an empty payload on the pass the user actually sees and filled in on
+         some later one, if any. The panel is re-rendered where the data
+         arrives. Retention is what makes this cheap: the cards it already
+         built are mutated, not rebuilt. */
+      renderStudy();
     }).catch(function(){ /* the step is a surface, not a gate on Explore */ });
   }
 
