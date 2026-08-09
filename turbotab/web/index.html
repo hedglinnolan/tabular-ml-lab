@@ -765,6 +765,15 @@
      borrow the color of a problem. It also gets no `.disc-mark` badge and no
      icon — a badge would read as a verdict at a glance, which is precisely the
      reading `turbotab/resolution.py` is written to prevent. */
+  /* L55-C. The figure's two faces. `.fig-canvas` and `.fig-canvas.journal`
+     are the PROTOTYPE's rules, carried since the start and styling an element
+     nothing produced; these are the sizing rules the build adds around them,
+     and they live here because the prototype block above is carried verbatim
+     and a rule that belongs in the design language belongs in the prototype
+     first. */
+  .fig-svg{ display:block; max-width:100%; height:auto; }
+  .fig-canvas{ overflow-x:auto; }
+  .fig-canvas.journal{ border-radius:7px; }
   /* GUIDED-119. The promotion control, at the figure. */
   .fig-promote{ display:flex; align-items:center; gap:9px; margin:8px 0 2px;
                 flex-wrap:wrap; }
@@ -4075,6 +4084,203 @@
   var FIG_STATE = {};        /* figure id -> the html last rendered, for diffing */
   var FIG_NODES = {};        /* figure id -> the node that IS that figure */
 
+  /* ═════════ THE TWO FACES OF A FIGURE ═════════  (`DRIVE-014`)
+
+     `DESIGN_LANGUAGE.md` §07 specifies a duality: in-app the figure is
+     interactive and colored; in Journal view it re-renders **as it will be
+     published** — serif, greyscale, series distinguished by DASH PATTERN
+     RATHER THAN COLOR ALONE, printed *r* values in correlation matrices,
+     numbered caption.
+
+     WHAT WAS ACTUALLY HERE BEFORE THIS BLOCK, MEASURED RATHER THAN ASSUMED:
+     `.fig-canvas.journal` is fully styled at the top of this file — white
+     ground, Georgia captions — and the literal `journal` appeared ZERO times
+     in this script region. But the deeper fact is that **no figure was drawn
+     at all.** The figure surface rendered a figure's TITLE, TIER, ANNOTATIONS,
+     CHECKLIST and CAPTION and never its geometry; total `<svg` in this file
+     was two, one spark histogram and one static glyph. So the journal CSS was
+     not a toggle missing its handler — it was styling for an element with no
+     producer, which is why no test and no import graph would ever have flagged
+     it.
+
+     THE REFERENCE IMPLEMENTATION IS THE PROTOTYPE and it is imitated rather
+     than reinvented: `prototypes/interview-feed.html` carries `JC`, `JFONT`,
+     the dash ramp and the greyscale heatmap with printed values. The numbers
+     below are its numbers.
+
+     TWO FIGURE KINDS, DELIBERATELY, AND THEY ARE THE TWO §07 NAMES. `roc` is
+     multi-series, which is what the dash rule is about; `item_correlations` is
+     a matrix, which is what the printed-*r* rule is about. Two of different
+     shape expose the seam; a third of a shape already seen would only cast it
+     again. Every other figure keeps the surface it already had — metadata with
+     no canvas — and says nothing false, because a figure with no `figCanvas`
+     emits no canvas rather than an empty one. */
+
+  var FIG_JOURNAL = {};      /* figure id -> showing the journal face */
+  var FIG_BODY = null;       /* the last /figures body, so a toggle can repaint */
+
+  /* Literal hex, never a CSS variable, and §07 says why: the journal face is
+     what gets exported, so it has to be self-contained and rasterise the same
+     everywhere. It is also the reason Journal view does not follow the dark
+     theme — a printed figure has one ground. */
+  var JC = {ink: "#111111", grey: "#666666", light: "#AAAAAA", bg: "#FFFFFF"};
+  var JFONT = "Georgia,'Times New Roman',serif";
+  var JDASH = ["", "6 3", "2 3", "8 3 2 3"];
+  var WEBC = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)"];
+
+  function figSVG(w, h, journal, inner){
+    return '<svg class="fig-svg" viewBox="0 0 ' + w + " " + h + '" ' +
+           'width="100%" height="' + h + '" role="img" ' +
+           'preserveAspectRatio="xMidYMid meet"' +
+           (journal ? ' font-family="' + JFONT + '"' : "") + ">" +
+           inner + "</svg>";
+  }
+
+  /* ── ROC · the multi-series case ─────────────────────────────────────── */
+
+  function figROC(p, journal){
+    var curves = (p && p.curves) || {};
+    var names = Object.keys(curves);
+    if (!names.length) return "";
+    var S = 250, pad = 38, plot = S - pad - 12;
+    var rows = names.length;
+    var H = S + 10 + rows * 15;
+    function X(v){ return (pad + v * plot).toFixed(1); }
+    function Y(v){ return (pad + (1 - v) * plot).toFixed(1); }
+    var axis = journal ? JC.ink : "var(--muted)";
+    var faint = journal ? JC.light : "var(--line)";
+    var label = journal ? JC.ink : "var(--muted)";
+
+    var s = "";
+    s += '<rect x="' + pad + '" y="' + pad + '" width="' + plot + '" height="' +
+         plot + '" fill="none" stroke="' + faint + '" stroke-width="1"/>';
+    /* The chance line is a checklist item on this spec, so it is drawn and
+       labeled rather than implied by the frame. */
+    s += '<line x1="' + X(0) + '" y1="' + Y(0) + '" x2="' + X(1) + '" y2="' +
+         Y(1) + '" stroke="' + faint + '" stroke-width="1" ' +
+         'stroke-dasharray="3 3"/>';
+    s += '<text x="' + X(0.62) + '" y="' + Y(0.55) + '" font-size="9" fill="' +
+         faint + '">' + esc((p.chance_line && p.chance_line.label) || "chance") +
+         "</text>";
+
+    names.forEach(function(name, idx){
+      var c = curves[name] || {};
+      var xs = c.one_minus_specificity || [], ys = c.sensitivity || [];
+      if (!xs.length || xs.length !== ys.length) return;
+      var d = "";
+      for (var i = 0; i < xs.length; i++){
+        d += (i ? "L" : "M") + X(xs[i]) + " " + Y(ys[i]) + " ";
+      }
+      /* THE RULE, IN ONE LINE. In-app the series are told apart by hue; in
+         Journal view every curve is the same ink and they are told apart by
+         DASH PATTERN, so the figure survives greyscale printing and a reader
+         who cannot distinguish the hues. */
+      s += '<path d="' + d.trim() + '" fill="none" stroke="' +
+           (journal ? JC.ink : WEBC[idx % WEBC.length]) + '" stroke-width="' +
+           (journal ? "1.3" : "2.4") + '" stroke-linejoin="round"' +
+           (journal && JDASH[idx % JDASH.length]
+              ? ' stroke-dasharray="' + JDASH[idx % JDASH.length] + '"' : "") +
+           "/>";
+      var ly = S + 4 + idx * 15;
+      s += '<line x1="' + pad + '" y1="' + ly + '" x2="' + (pad + 22) +
+           '" y2="' + ly + '" stroke="' +
+           (journal ? JC.ink : WEBC[idx % WEBC.length]) + '" stroke-width="' +
+           (journal ? "1.3" : "2.4") + '"' +
+           (journal && JDASH[idx % JDASH.length]
+              ? ' stroke-dasharray="' + JDASH[idx % JDASH.length] + '"' : "") +
+           "/>";
+      s += '<text x="' + (pad + 28) + '" y="' + (ly + 3.5) +
+           '" font-size="10" fill="' + label + '">' + esc(name) +
+           (c.c_statistic === undefined || c.c_statistic === null ? "" :
+            "  C = " + Number(c.c_statistic).toFixed(3)) + "</text>";
+    });
+
+    var ax = (p.axis_labels || {});
+    s += '<text x="' + X(0.5) + '" y="' + (S - 2) +
+         '" font-size="10" text-anchor="middle" fill="' + axis + '">' +
+         esc(ax.x || "1 - Specificity") + "</text>";
+    s += '<text transform="rotate(-90 12 ' + (pad + plot / 2) + ')" x="12" y="' +
+         (pad + plot / 2) + '" font-size="10" text-anchor="middle" fill="' +
+         axis + '">' + esc(ax.y || "Sensitivity") + "</text>";
+    return figSVG(S, H, journal, s);
+  }
+
+  /* ── the correlation matrix · the printed-r case ─────────────────────── */
+
+  function figCorr(p, journal){
+    var m = (p && p.matrix) || [], cols = (p && p.columns) || [];
+    if (!m.length || m.length !== cols.length) return "";
+    var k = cols.length;
+    var left = 96, top = 14, cell = Math.max(14, Math.min(26, 260 / k));
+    var W = left + k * cell + 8, H = top + k * cell + 10;
+    var s = "";
+    for (var r = 0; r < k; r++){
+      for (var c = 0; c < k; c++){
+        var v = m[r][c];
+        if (v === null || v === undefined) continue;
+        var x = left + c * cell, y = top + r * cell, fill, ink;
+        if (journal){
+          /* GREYSCALE, and the sign is carried by the printed number rather
+             than by a hue nobody can see in print. */
+          var g = Math.round(255 - Math.abs(v) * 205);
+          fill = "rgb(" + g + "," + g + "," + g + ")";
+          ink = Math.abs(v) > 0.55 ? JC.bg : JC.ink;
+        } else {
+          fill = v >= 0 ? "var(--c1)" : "var(--del)";
+          ink = "var(--ink)";
+        }
+        s += '<rect x="' + x + '" y="' + y + '" width="' + cell.toFixed(1) +
+             '" height="' + cell.toFixed(1) + '" fill="' + fill + '"' +
+             (journal ? "" : ' fill-opacity="' + Math.abs(v).toFixed(2) + '"') +
+             ' stroke="' + (journal ? JC.bg : "var(--surface)") +
+             '" stroke-width=".6"/>';
+        /* §07: PRINTED r VALUES. The server already decides when the matrix is
+           small enough for them to be legible — `print_values` — and that
+           decision is read rather than re-made here. */
+        if (p.print_values){
+          s += '<text x="' + (x + cell / 2).toFixed(1) + '" y="' +
+               (y + cell / 2 + 3.2).toFixed(1) + '" font-size="' +
+               Math.min(9, cell * 0.42).toFixed(1) +
+               '" text-anchor="middle" fill="' + ink + '">' +
+               Number(v).toFixed(2) + "</text>";
+        }
+      }
+      s += '<text x="' + (left - 5) + '" y="' + (top + r * cell + cell / 2 + 3) +
+           '" font-size="9" text-anchor="end" fill="' +
+           (journal ? JC.grey : "var(--muted)") + '">' + esc(cols[r]) + "</text>";
+    }
+    return figSVG(W, H, journal, s);
+  }
+
+  var FIG_DRAW = {roc: figROC, item_correlations: figCorr};
+
+  /* The canvas, or NOTHING AT ALL. A figure this build cannot draw gets no
+     empty box: an empty canvas is a claim that there was nothing to plot. */
+  function figCanvasHTML(row){
+    var draw = FIG_DRAW[row.id];
+    if (!draw || !row.payload) return "";
+    var journal = !!FIG_JOURNAL[row.id];
+    var svg = draw(row.payload, journal);
+    if (!svg) return "";
+    return '<div class="fig-canvas' + (journal ? " journal" : "") +
+           '" data-face="' + (journal ? "journal" : "app") + '">' + svg +
+           "</div>";
+  }
+
+  /* The toggle. `.fig-tool` and its `aria-pressed` styling were already in the
+     stylesheet and had no producer either; this is their first one. The label
+     names the state it moves TO, and `aria-pressed` names the state it is IN —
+     §08 requires a toggle's label and its state to stay in sync. */
+  function figToggleHTML(row){
+    if (!FIG_DRAW[row.id] || !row.payload) return "";
+    var journal = !!FIG_JOURNAL[row.id];
+    return '<button class="fig-tool" type="button" data-journal="' +
+           esc(row.id) + '" data-journal-on="' + (journal ? "0" : "1") +
+           '" aria-pressed="' + (journal ? "true" : "false") +
+           '">' + (journal ? "Back to the app view" : "Journal view") +
+           "</button>";
+  }
+
   function figAnnoHTML(a){
     var absent = a.value === "not estimable";
     return '<div class="anno' + (absent ? " absent" : "") + '">' +
@@ -4108,6 +4314,7 @@
            (promoted ? "In the results" : "Put in the results") + "</button>" +
            (promoted ? '<span class="fig-promoted">This figure appears in ' +
                        "your manuscript.</span>" : "") +
+           figToggleHTML(row) +
            atControlSlot("promote-" + row.id) + "</div>";
       var annos = row.annotations || [];
       if (annos.length){
@@ -4125,6 +4332,13 @@
         }).join("") + "</div>";
       }
       if (row.why_held) h += '<p class="fig-why">' + esc(row.why_held) + "</p>";
+      /* THE CANVAS IMMEDIATELY BEFORE THE CAPTION, which is not a
+         layout preference: `.fig-canvas.journal + .fig-cap` is an
+         ADJACENT-SIBLING rule that has been in the stylesheet since the
+         prototype, and it is what puts the caption on white ground in
+         Georgia when the journal face is showing. A canvas anywhere else
+         leaves that rule dead exactly as it was. */
+      h += figCanvasHTML(row);
       if (row.caption) h += '<p class="fig-cap">' + esc(row.caption) + "</p>";
     } else {
       /* Not drawn, or drawn-and-unavailable. The reason IS the content. */
@@ -4142,6 +4356,10 @@
   }
 
   function renderFigures(body){
+    /* KEPT, so the journal toggle repaints from what the server already
+       said rather than refetching. Which face a reader is looking at is
+       not a fact about the study, so it must not cost a round trip. */
+    FIG_BODY = body;
     var box = $("figuresBox");
     if (!box) return;
 
@@ -7415,7 +7633,7 @@
       "[data-look],[data-unskip],[data-exit-for],[data-att-send],[data-refusal-i],[data-prev-ask]," +
       "[data-feat-preview],[data-feat-add],[data-feat-remove],[data-feat-settle]," +
       "[data-lat-cell],[data-prep-mech],[data-prep-route],[data-prep-settle]," +
-      "[data-pick-model],[data-train-start],[data-train-cancel],[data-instab],[data-keep-id],[data-promote]," +
+      "[data-pick-model],[data-train-start],[data-train-cancel],[data-instab],[data-keep-id],[data-promote],[data-journal]," +
       "[data-sel-rank],[data-sel-set]," +
       "[data-study-toggle]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose]," +
@@ -7609,6 +7827,16 @@
           setErr(err.message);
           if (err.detail) showRefusal(err.detail, { models: chosen });
         });
+      return;
+    }
+    if (t.hasAttribute("data-journal")){
+      /* A VIEW, NOT A DECISION, and the difference is why this posts nothing.
+         The record is what the app knows about the study; which face a reader
+         is looking at is not that, so Journal view sends no decision, marks
+         nothing stale and appears nowhere in the transcript. */
+      FIG_JOURNAL[t.getAttribute("data-journal")] =
+        t.getAttribute("data-journal-on") === "1";
+      if (FIG_BODY) renderFigures(FIG_BODY);
       return;
     }
     if (t.hasAttribute("data-promote")){

@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**365 of 882 closed.**
+**366 of 883 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 446 |
 | `PARTIAL` | 71 |
-| `FIXED` | 359 |
+| `FIXED` | 360 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
@@ -35,7 +35,7 @@ Nothing is closed without a regression test named after it.
 ## OPEN — 446
 
 
-### Guided-door drive feedback — 69
+### Guided-door drive feedback — 70
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -56,6 +56,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-213` | high | The metabolomics sub-domain fork is never asked, so all thirteen hedges are asserted for tables they are wrong for | `L50-F2, and this is section 08 check 5's answer - what the same lens finds one surface over.…` | Named in SHAPES_NOT_COVERED in turbotab/test_the_metabolomics_hedges_reach_a_person.py rather than only in a report. This is a capability gap, not a fixture gap - a second… |
 | `GUIDED-232` | high | Guided's Explain step cannot answer the question the product owner built it for: permutation importance reports a metric drop per feature and cannot show how two model families carve the same signal… | `turbotab/explain.py:141 uses sklearn.inspection.permutation_importance; import shap appears only in…` | THE DESIGN IS SETTLED AND RECORDED: PRODUCT_VISION.md 06c, three rulings made by the product owner on 2026-08-09. (1) A disagreement between an attribution and the pack's… |
 | `GUIDED-233` | high | There is no EXPLAINABILITY pack, so every threshold the explanation suite needs would ship unsourced into the one subsystem whose whole job is calibrated honesty | `grep over the five research packs returns 0 for shap/shapley, 0 for attribution, 0 for feature importance and…` | THE PRODUCT OWNER SUPPLIED A DOMAIN-AGNOSTIC EXPLAINABILITY PLAYBOOK ON 2026-08-09 AND NAMED ITS ROLE EXACTLY: 'I see it as a useful mould for what we actually want to form into… |
+| `GUIDED-236` | high | The ROC figure can never overlay more than one model: the spec takes a dict of models, its caption counts them and its checklist asserts they are overlaid with a legend, and figure_bundle hands it… | `L55-C, found while building a renderer for it and needing two series. turbotab/figure_bundle.py…` | TRAP 3b WITH THE CHECKLIST ITEM RATHER THAN THE TEST NAME: the item's TEXT carries a consequence - models are overlaid - that its PREDICATE never checks, and the predicate reads a… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
@@ -538,18 +539,17 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-038` | medium | 77 of the 131 registry entries are still unchecked against the engine, and the reason is a budget rather than a finding - recording it so the next loop does not read silence as coverage | `L51-E, and it is the honest half of this part. E ran last by the prompt's own sequencing, after Part C's four…` | AND A METHOD WARNING WORTH MORE THAN THE ROW: two of this part's capability checks returned a false absence because grep -E was given \\| alternation, which is a literal pipe in… |
 | `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
 
-### Page-layer extraction — 2
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
-| `DRIVE-014` | high | The journal view is fully styled and nothing anywhere applies the class, so the in-app/journal duality the design doc specifies has a look and no way to reach it | `L54-D, found by the adjudicator and re-verified here by counting rather than reading.…` | NOT WIRED THIS LOOP and the reason is scope rather than difficulty: L54's Part B is the per-model deck and it took the loop. Filed with the measurement so the next loop starts… |
-
 ### DRIVE — 1
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `DRIVE-010` | high | After the target is chosen the app does not ask which features to use, or whether to slice by subgroup | `The drive` | From the product owner's second NHANES drive. Their words are the specification. |
+
+### Page-layer extraction — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
 
 ---
 
@@ -699,7 +699,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 359
+## FIXED — 360
 
 
 ### Guided-door drive feedback — 143
@@ -1109,6 +1109,17 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-016` | high | Active cohort run and completed runs are not persisted at all | `utils/cohorts.py:334-344 (CohortRun), :389-407 (_ACTIVE_KEY/_DONE_KEY); utils/session_manager.py:73-162 (key…` | **test:** `tests/test_session_carries_the_run.py::test_the_active_run_comes_back` — Closed for both keys. The failure this row describes - a save taken mid-cohort-run restoring… |
 | `CONTRACT-050` | medium | Boundary FeatureSel: feature_selection_results and consensus_features | `pages/04_Feature_Selection.py:277-282, :447-448, :493-494; utils/session_state.py:283-298, :355-357` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_keeping_a_stage_does_not_keep_its_descendants` — The subtlety survived the port, and in the form the action… |
 
+### Page-layer extraction — 6
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-024` | high | The Classic Feature Selection page offers univariable p-value screening and RFE-CV, both ON BY DEFAULT, and states none of the [SETTLED] objection anywhere in shipped code | `/Users/nhedglin/tabular-ml-lab/pages/04_Feature_Selection.py:170-178 (controls); :61-73 (the only…` | **test:** `tests/integration/test_classic_offers_univariable_screening_with_its_objection.py::test_univariable_screening_is_not_pre_ticked… |
+| `AUDIT-030` | high | The primary model is chosen by comparing HELD-OUT TEST metrics, and the record and manuscript state the criterion was "validation" | `pages/06_Train_and_Compare.py:1541-1557 and :1574-1580; pages/10_Report_Export.py:281-305…` | **test:** `tests/test_the_methods_section_names_the_set_it_compared_on.py (seven tests) and tests/test_narrative_engine.py::TestNarrativeEngineGeneration::test_model_development_do… |
+| `AUDIT-032` | high | Running the leakage diagnostic marks the leakage BLOCKER resolved; the report then calls it "addressed" and the manuscript drops the caveat, while the column is still a model feature | `pages/02_EDA.py:1575-1589 (_resolve_insights_from_eda_result) called at :1639…` | **test:** `tests/integration/test_a_diagnostic_run_is_not_an_action_taken.py::test_running_the_leakage_card_leaves_the_blocker_open` — L53-C, fanned out to four chunks PARTITIONED… |
+| `DRIVE-014` | high | The journal view is fully styled and nothing anywhere applies the class, so the in-app/journal duality the design doc specifies has a look and no way to reach it | `L54-D, found by the adjudicator and re-verified here by counting rather than reading.…` | **test:** `turbotab/test_the_journal_view_is_the_published_figure.py::test_the_journal_face_tells_series_apart_by_dash_rather_than_color AND… |
+| `AUDIT-022` | medium | The generated manuscript lists the sample size as a Strength for every N, with no criterion — and can print it as a strength and a limitation in the same section | `pages/10_Report_Export.py:1722 — generate_report builds the Discussion's 'Strengths and Limitations' block at…` | **test:** `tests/integration/test_the_sample_size_bullet_is_a_claim_about_this_study.py::test_the_same_count_is_not_a_strength_at_every_size AND… |
+| `AUDIT-023` | medium | Applying feature selection overwrites the candidate feature list, so the sufficiency prose reports the KEPT count while calling them 'candidate predictors' | `pages/04_Feature_Selection.py:440 (consumed at pages/02_EDA.py:115 and asserted at pages/02_EDA.py:319-323)…` | **test:** `tests/integration/test_the_sample_size_bullet_is_a_claim_about_this_study.py::test_the_denominator_is_what_was_screened_not_what_survived AND… |
+
 ### Silent-failure landmines — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -1118,16 +1129,6 @@ Nothing is closed without a regression test named after it.
 | `MINE-016` | high | EDA's _data_fingerprint is schema-only — it cannot see value changes | `pages/02_EDA.py:122-125, 146-169, 809, 920, 957, 988, 1082; ml/import_doctor.py:876-895` | **test:** `tests/test_eda_caches_follow_the_data.py::test_the_page_has_one_fingerprint_and_it_follows_the_values` — Closed, and closed against a stronger requirement than this row… |
 | `MINE-021` | high | apply_plausibility_filter resets the index, destroying lockbox and cohort label correspondence | `ml/pipeline.py:109-124; pages/05_Preprocess.py:860; utils/test_lockbox.py:16-17, 248` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Duplicate of STATE-001 from the landmine pass, and closed. The filter returns… |
 | `MINE-039` | medium | GroupShuffleSplit failure silently degrades the lockbox to a non-grouped split | `utils/test_lockbox.py:176-210, 282-294` | **test:** `tests/test_grouping_picks_the_person.py::test_too_few_groups_to_split_by_is_said_out_loud` — Closed, and the test's own assertion message is the invariant: 'the… |
-
-### Page-layer extraction — 5
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `AUDIT-024` | high | The Classic Feature Selection page offers univariable p-value screening and RFE-CV, both ON BY DEFAULT, and states none of the [SETTLED] objection anywhere in shipped code | `/Users/nhedglin/tabular-ml-lab/pages/04_Feature_Selection.py:170-178 (controls); :61-73 (the only…` | **test:** `tests/integration/test_classic_offers_univariable_screening_with_its_objection.py::test_univariable_screening_is_not_pre_ticked… |
-| `AUDIT-030` | high | The primary model is chosen by comparing HELD-OUT TEST metrics, and the record and manuscript state the criterion was "validation" | `pages/06_Train_and_Compare.py:1541-1557 and :1574-1580; pages/10_Report_Export.py:281-305…` | **test:** `tests/test_the_methods_section_names_the_set_it_compared_on.py (seven tests) and tests/test_narrative_engine.py::TestNarrativeEngineGeneration::test_model_development_do… |
-| `AUDIT-032` | high | Running the leakage diagnostic marks the leakage BLOCKER resolved; the report then calls it "addressed" and the manuscript drops the caveat, while the column is still a model feature | `pages/02_EDA.py:1575-1589 (_resolve_insights_from_eda_result) called at :1639…` | **test:** `tests/integration/test_a_diagnostic_run_is_not_an_action_taken.py::test_running_the_leakage_card_leaves_the_blocker_open` — L53-C, fanned out to four chunks PARTITIONED… |
-| `AUDIT-022` | medium | The generated manuscript lists the sample size as a Strength for every N, with no criterion — and can print it as a strength and a limitation in the same section | `pages/10_Report_Export.py:1722 — generate_report builds the Discussion's 'Strengths and Limitations' block at…` | **test:** `tests/integration/test_the_sample_size_bullet_is_a_claim_about_this_study.py::test_the_same_count_is_not_a_strength_at_every_size AND… |
-| `AUDIT-023` | medium | Applying feature selection overwrites the candidate feature list, so the sufficiency prose reports the KEPT count while calling them 'candidate predictors' | `pages/04_Feature_Selection.py:440 (consumed at pages/02_EDA.py:115 and asserted at pages/02_EDA.py:319-323)…` | **test:** `tests/integration/test_the_sample_size_bullet_is_a_claim_about_this_study.py::test_the_denominator_is_what_was_screened_not_what_survived AND… |
 
 ### Features / preprocessing — 2
 
