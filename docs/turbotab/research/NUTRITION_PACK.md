@@ -406,8 +406,14 @@ al. (2022, *AJCN*, "Adjustment for energy intake in nutritional research: a caus
 perspective") formalize this and show:
 
 - Standard and residual models estimate the **average relative causal effect** (a substitution) but
-  are **biased even absent confounding**, because the "substituted" mixture is the population-average
-  mixture of all other energy sources.
+  are **biased even absent confounding**. The mechanism is **composite variable bias** — information
+  lost when two or more components with distinct effects are collapsed into a single total. That the
+  "substituted" mixture is the population-average mixture of all other energy sources is the paper's
+  **definition of the estimand**, stated in an adjacent sentence, not the source of the bias.
+  *(This bullet read "…, because the substituted mixture is the population-average mixture" until
+  2026-08-09. The quoted phrase is near-verbatim from Tomova and is correct; the causal connective
+  was not, and it made `PRODUCT_VISION.md` §06c's substitution curve read as a remedy for a bias it
+  does not remedy — the total is in the model either way.)*
 - The **energy partition model** estimates the **total causal effect**, unbiased only when there is no
   confounding *or* all other nutrients have equal effects.
 - The **nutrient density model** has an obscure interpretation.

@@ -451,6 +451,16 @@ domain work is succeeding, and `GUIDED-149` is the row.
 
 ## 06c · Explainability under the lens — the product owner's rulings, 2026-08-09
 
+> **Revised 2026-08-09 after adversarial review.** Two reviewers with live literature search returned
+> SERIOUS PROBLEMS on this section and **the rulings survived while several of the claims under them
+> did not.** Corrected in place: the instrument's **name** (it is a multivariate forward marginal
+> effect, not an ALE), its **support claim** (measurably false — a mask is mandatory), the assertion
+> that the field cannot state an estimand for a black-box learner (`NUTRITION_PACK.md` §05 already
+> could), **ruling 3** (fixed and variable totals are not one kind of thing), and **ruling 7** (all
+> three named checks are broken as specified). One new gate was added that the review produced rather
+> than refuted: **held-out performance gates the explainability surface.** Nothing here is left
+> asserting what was refuted — that state persisted for one day and is recorded in `LOOP.md` §03.
+
 **The reframe that produced these.** A generic tool's explainability answers *"which features
 matter."* Under a domain lens the question is **"is this model's reasoning consistent with what is
 known about this domain, and where does it disagree?"** The product owner's framing, and it is the
@@ -479,25 +489,116 @@ linear model found a slope, which is the disagreement the modeler needs to see.
 
 ### The instrument — the substitution curve, and what it actually is
 
+**This subsection was refuted by two adversarial reviewers with live literature search on
+2026-08-09 and is rewritten from their findings.** Both returned SERIOUS PROBLEMS. What follows keeps
+the design and corrects the claims, because **the product owner's reframe outranks the review**:
+
+> *"Just because a CRAN package exists in the world with a specific plot doesn't mean that would not
+> still be a useful feature to ship in our app."*
+
+**Read the review as a specification, not a verdict.** Nearly every objection converts to a build
+requirement with a citation attached — and the existence of three reference implementations gives
+every element of the figure a resolving `source`, which is what the evidence gate demands anyway.
+
 **The problem §04 creates for attribution, stated once.** If the *specification* determines the
 estimand, then an attribution computed on a fitted model **inherits that model's estimand** — and
 SHAP neither knows nor says which one. A SHAP value on a nutrition model is a substitution effect
 against an unnamed population-average mixture, using an estimand §04 calls *biased even absent
 confounding*, and it renders as `fiber_g: +0.31`. **That is the governing rule broken in the step
-this product cares most about.** Worse: all five of §04's models are regression specifications, so
-for a tree ensemble the field has **no established way to state the estimand at all.**
+this product cares most about.**
 
-**The answer is to make the substitution explicit and chosen rather than implicit and averaged.**
-Move *k* units of the conserved total from donor A to recipient B, hold the total fixed, and plot the
-model's predicted outcome against *k*. The slope at zero is a substitution effect **that names its
-own donor and recipient.**
+**What this section previously added to that, and it was false.** It said that because all five of
+§04's models are regression specifications, *"for a tree ensemble the field has no established way to
+state the estimand at all."* **`NUTRITION_PACK.md` §05 already contradicts it** — line 516 names
+compositional data analysis with **isometric log-ratio (ilr) coordinates as covariates**. ilr is a
+basis change; any learner fits on it, tree ensembles included. Two further routes were named:
+the **leave-one-out parameterization**, and **g-computation with TMLE or double/debiased ML**. The
+claim was an assertion of absence made without reading the pack section that answers it, which is the
+failure `LOOP.md` §06 now carries a check for.
 
-**Formally it is a 1-D ALE along a constrained direction** — the simplex direction that trades A
-against B at fixed total. That is the honest description and it is better than calling it new: it
-runs on ordinary accumulated-local-effects machinery, it stays inside the data's support where a
-partial-dependence plot would evaluate the model at combinations that do not exist, and **the pack
-supplies the constraint direction while the core computes the curve.** What has no precedent as a
-shipped tool is using it as *the axis on which model families are compared*.
+**The design, unchanged.** Make the substitution explicit and chosen rather than implicit and
+averaged: move *k* units of the conserved total from donor A to recipient B, hold the total fixed,
+and plot the model's predicted outcome against *k*. It is a substitution effect **that names its own
+donor and recipient**, and that is why it is worth building.
+
+#### What it is actually called, because the wrong name was shipped
+
+**It is a multivariate forward marginal effect along the direction *d* = *e*_B − *e*_A, aggregated
+over rows as an Average Marginal Effect.** Scholbeck et al. 2024, *Data Mining and Knowledge
+Discovery* 38:2997–3042, which ships as the R package **`fmeffects`**.
+
+**It is *not* "a 1-D ALE along a constrained direction," which is what this section said.** That
+describes a different object: ALE accumulates *local* differences over the **conditional**
+distribution, whereas shifting **every** row by the same *k* and averaging is **marginal**
+averaging. The two coincide only when the shifted coordinates are independent of the rest, which
+under a closed composition is exactly what they are not.
+
+**Prior art this must position against, not claim novelty over:**
+
+| Work | What it already does |
+|---|---|
+| Dumuid et al. 2019, *Stat Methods Med Res* 28(3):846–857 | The compositional isotemporal substitution model |
+| CRAN `codaredistlm` (2022), `multilevelcoda` | Pairwise one-for-one reallocations **with confidence intervals** |
+| Ho et al. 2021, *Lancet* | Non-linear isocaloric substitution |
+| Mekary et al. 2009, *AJE* 170(4):519–527 | The substitution framing in nutritional epidemiology |
+| Lundborg & Pfister 2025, arXiv:2311.18501 — **preprint only** | Defines the estimand, and **explicitly excludes random forests and boosted trees** |
+| Fisher, Rudin & Dominici 2019, *JMLR* 20:177 | **Model Class Reliance** — the correct framing for what this section calls "inductive bias" |
+
+**What has no precedent as a shipped tool is using it as the axis on which model families are
+compared.** That claim survives the review intact, and it is the only novelty claim this section may
+make.
+
+#### The support claim was false, and it was measured false
+
+This section said the curve *"stays inside the data's support where a partial-dependence plot would
+evaluate the model at combinations that do not exist."* **On a synthetic conserved-energy composition,
+a 300 kcal shift puts 22% of rows off-support; 500 kcal puts 64% off, with 1% of intakes going
+negative.** Shifting every row by a fixed *k* walks off the simplex exactly like a PDP does.
+
+**A support mask is therefore mandatory, not an enhancement.** The curve **stops** where the shifted
+composition leaves the observed support, and it says why it stopped.
+
+#### "The slope at zero" does not exist for a tree ensemble
+
+A piecewise-constant model has derivative zero almost everywhere and undefined on its splits.
+**Report a finite difference at a stated *k*, with *k* in the label** — *"+0.082 per 100 kcal"*, never
+*"the slope."*
+
+#### What the curve does not remedy, and the two-word error that hid it
+
+**`NUTRITION_PACK.md` §04 carried a two-word error and it was load-bearing on this whole section.**
+It said the standard and residual models are biased even absent confounding **"because"** the
+substituted mixture is the population-average mixture. The phrase *"biased even absent confounding"*
+is near-verbatim from Tomova et al. 2022 (*AJCN* 115(1):189–198, PMC8755101) and **is correct.** The
+word **"because"** was not: the paper's mechanism is **composite variable bias** — information lost
+when two or more components with distinct effects are collapsed into a total — and the
+population-average mixture is the paper's *definition of the estimand*, in an adjacent sentence.
+Corrected in the pack the same day.
+
+**Why it mattered here.** With "because" in place, the substitution curve read as **a remedy for that
+bias.** It is not. **The total is still in the model either way** — naming the donor and the recipient
+makes the estimand *explicit and chosen*, which is a real and sufficient gain, but it does not undo
+composite variable bias. This section must not claim it does, and the caption must not imply it.
+
+*(The first reviewer said §04 had drifted from Tomova. It had not. A second reviewer, reading the
+primary source, produced the narrower and sharper truth above — which is why a design proposal now
+ships with a prior-art check the way a closure ships with a revert probe.)*
+
+#### The five marks, recorded here because the drawn spec must not live only in a URL
+
+A figure specification that points at ephemeral storage will eventually lie (`AGENT_ONBOARD.md` §07
+trap 8), so the marks are enumerated in the repository:
+
+| Mark | Exists because |
+|---|---|
+| Support mask and density strip | 300 kcal → 22% of rows off-support; 500 kcal → 64% off, 1% negative |
+| Bootstrap uncertainty band | Every reference implementation ships intervals; shading between bare point estimates reads as significance |
+| Linear-ilr null overlay, dashed | A linear model already produces curved, asymmetric substitution curves — without the null we sell coordinate geometry as learned structure |
+| Stated *k*, not "the slope" | The ensemble is piecewise constant; the derivative is zero a.e. and undefined on splits |
+| Dash pattern per series | Four categorical hues cannot pass CVD separation while teal, green, gold and red are semantically reserved — see `DESIGN_LANGUAGE.md` §05.2 |
+
+**The pack supplies the constraint direction and the plausibility bounds; the core computes the
+curve.** That division is unchanged and it is what makes one mechanism serve many domains.
 
 ### The rulings — the product owner's, 2026-08-09
 
@@ -511,9 +612,22 @@ a chosen model with comparison as an extra step — **the comparison is the defa
 inductive-bias question is a question about difference. `GUIDED-178` and `GUIDED-232` are **one
 mechanism**, and face 3's *"the reorder is the comparison"* becomes literal.
 
-**3 · The curve is core, with a pack-supplied budget.** Any lens that declares a conserved total gets
-it — nutrition's kcal, metabolomics' total ion current, genomics' library size. A lens with no budget
-is not offered it. **One mechanism, many domains**, which is the whole architecture of the packs.
+**3 · The curve is core, with a pack-supplied budget — and the budget must declare whether it is
+FIXED or VARIABLE.** Any lens that declares a conserved total gets the curve; a lens with no budget is
+not offered it. **One mechanism, many domains**, which is the whole architecture of the packs.
+
+**The original form of this ruling was unsafe, and the omission is the interesting part.** It listed
+nutrition's kcal, metabolomics' total ion current and genomics' library size as though they were one
+kind of thing. **All three are *variable* totals** — a person can eat more, a sample can carry more
+ions, a library can be sequenced deeper. **24-hour time-use is a *fixed* total**, and the two behave
+differently under substitution (Tomova et al. 2025, *BMC Med Res Methodol* 25:100). A fixed total
+makes the reallocation exhaustive and the constraint hard; a variable total means "hold the total
+fixed" is a *modeling choice the user is making*, not a property of the data, and the app must say so.
+
+**And the case the method was built for is the one case the list omitted.** Isotemporal substitution
+comes from time-use epidemiology — Dumuid 2019 is a 24-hour composition. So the budget declaration
+carries a kind, the curve states which kind it is drawing under, and a variable total gets the
+sentence that the total was held fixed by assumption.
 
 **4 · Where the estimand cannot be determined, refuse the number and offer the curve.** No scalar
 attribution is printed when the app cannot say what it is an effect *relative to*. The substitution
@@ -533,9 +647,24 @@ refit runs on demand rather than automatically changes only **how long the user 
 a measured budget with the measurement recorded beside it, which is `LOOP.md` §06.2's distinction
 applied one level out.
 
-**7 · The faithfulness harness runs automatically where it is cheap.** Explanation QA — the
-label-permutation null, fold-stability rank correlation, and deletion curve against a random-deletion
-baseline — runs silently on small tables so most users see it without asking, and degrades to an
+**7 · The faithfulness harness runs automatically where it is cheap** — and **all three of the checks
+this ruling originally named are broken as specified.** Each failure below was demonstrated by
+simulation on 2026-08-09, not argued.
+
+| Check as ruled | What the simulation showed | What replaces it |
+|---|---|---|
+| Label-permutation null | **Vacuous for normalized measures** — permuted-label impurity importances still sum to 1, so the null is satisfied by construction | **PIMP** — Altmann et al. 2010: fit the null distribution per feature and report a calibrated *p* |
+| Fold-stability rank correlation | **Passes a stable-but-wrong explanation.** With *y* independent of *X*: held-out **R² = −0.136**, Kendall **τ = 0.867** — a model that learned nothing, agreeing with itself | Keep as a *diagnostic*, never as a gate; a gate on agreement rewards consistent nonsense |
+| Deletion curve vs random-deletion baseline | **Nearly fails a correct explanation.** Deleting the only causal driver cost **0.027 R²**, because a 0.995-correlated copy substitutes for it | **ROAD** — Rong et al. 2022, ICML: retrain after removal so the substitute cannot stand in |
+
+**The one genuinely new thing the review produced, and it is a gate.** This ruling gated on
+calibration and gated nothing on generalization. **Held-out performance should gate the entire
+explainability surface**: explaining a model that does not generalize is explaining noise with a
+citation attached, and the fold-stability result above is exactly what that looks like from inside.
+An explanation is offered only above a stated held-out floor, and below it the app says what it will
+not explain and why — which is the governing rule's silent branch, not its refusing one.
+
+Cheap checks run silently on small tables so most users see them without asking, and degrade to an
 explicit action above the measured row count. **Stability of a single attribution stays on demand
 everywhere**, because its cost is N× training rather than a bounded refit set.
 
@@ -582,6 +711,16 @@ requirement rather than a build.
 **What an inference-mode explainability suite owes** beyond the estimand choice — DoubleML,
 knockoffs, E-values and marginal effects are named in the mould and none is ruled on here. They wait
 on the inference path itself (`GUIDED-231`).
+
+**Where the held-out floor sits.** Ruling 7's new gate says generalization gates the surface; it does
+not say at what value, and that number is `GUIDED-233`'s to establish with a source rather than the
+adjudicator's to pick. Until it exists the gate is **specified and unbuilt**, which is the honest
+state and is not the same as absent.
+
+**Whether the substitution curve ships before `GUIDED-233`.** It now has a complete visual
+specification — five marks, each traced above to a measurement — and **no pack section behind its
+thresholds.** Ruling 6 forbids shipping the thresholds unsourced, so the figure is buildable and not
+yet shippable, and that ordering is deliberate rather than an oversight.
 
 ## 07 · Design principles
 
