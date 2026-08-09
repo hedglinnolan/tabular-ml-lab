@@ -4,8 +4,11 @@ The previous PM was cleared. Everything durable is committed; this is the contex
 is not. **It replaces the L52-era version of this file** — a stale transition sitting beside a
 current one is the decay this project has already paid for five times.
 
-**Read §06 of this file first.** It lists work that exists only in a cleared conversation, and some of
-it contradicts what is currently committed.
+**Nothing in the repository currently contradicts anything else in it.** The previous handover carried
+a §06 of work that existed only in a cleared conversation, including refutations of claims that were
+still committed; **all of it landed on 2026-08-09** and §06 is now the index of where. You can read
+`PRODUCT_VISION.md` cold. **Read §07 before you write that something does not exist** — that is the one
+section whose warning is still live rather than historical.
 
 ---
 
@@ -73,8 +76,8 @@ list out of it, so the document and the check cannot drift. Ruled 2026-08-09: ke
 **Do not skip these; each is a ruling made in conversation and recorded because it decides work:**
 
 - `PRODUCT_VISION.md` **§06b — correct, surfaced, beautiful**; **§06c — explainability under the
-  lens** (but see §06 of this file: parts of §06c are refuted and not yet corrected); "The shelf is
-  never shortened" and its three-rung ladder.
+  lens**, corrected against the adversarial review at `bea4878` and safe to read cold now; "The shelf
+  is never shortened" and its three-rung ladder.
 - `ROADMAP.md` **condition 7**; "What comes after the journey"; "Why the front of the journey is
   where the depth belongs" **and the standing risk it names** — all three of its unfalsifiable
   front-half designs are now discharged, which is worth knowing before you re-read it as a live worry.
@@ -89,18 +92,22 @@ primary source disagree, see §06's note on `NUTRITION_PACK.md` §04.
 
 ## 04 · State right now
 
-Branch `TurboTab`, HEAD `52a8ff0` (L55-C). Ledger **883 findings, 366 closed**, register **182 rows**,
-six gates green. **L55 is accepted, four of four parts — but its `turbotab/` sweep was still running
-when the PM was cleared, so the loop is verified except for that number.** The agent said it would
-update its report page in place when it lands.
-
-Independently verified by the PM in an **isolated worktree**:
+Branch `TurboTab`, HEAD `62ae78c`. Ledger **886 findings, 368 closed**, register **182 rows**, six
+gates green. **L55 is accepted, four of four parts, and fully verified** — its `turbotab/` sweep
+landed at 06:19 on 2026-08-09 and the §03 row is written.
 
 | Suite | Result |
 |---|---|
 | `tests/` fast tier | 1,730 passed, 1 failed — the failure is `TEST-038`'s `torch` |
 | `tests/integration` | 262 passed, ~51s |
-| `turbotab/` | **outstanding** — L55's own sweep, unfinished at handover |
+| `turbotab/` | **2,449 passed · 21 skipped · 9 xfailed · 0 failed**, 7264.63s (2:01:04) |
+
+**The `turbotab/` number is quotable and the reason is checked rather than assumed.** A docs-only
+commit (`57d542f`) landed **22 minutes into** that two-hour run, so the tree *did* move under it —
+§08's rule says who moved it does not matter. It stays quotable because nothing in `turbotab/` reads
+the file it touched: the only test that reads anything under `prompts/` is the five-second `FIXED`-row
+guard, and that lives in `tests/`. **If you land a docs-only commit during a sweep, check that
+specifically and write down what you checked.**
 
 ```bash
 venv/bin/python -m pytest tests/ --ignore=tests/integration \
@@ -111,8 +118,9 @@ venv/bin/python -m pytest turbotab/ -q                  # ~2 HOURS. Check ps fir
 
 **`shap` is now installed** (0.52.0), which it was not for many loops despite being declared in
 `requirements.txt:21`. It downgraded `numpy` 2.5.1 → 2.4.6 for `numba`; the fast tier was re-run and
-is unaffected. **`turbotab/` has not been run under the new numpy** — that is the first thing L55's
-sweep tells you.
+is unaffected, and **L55's sweep is the first full `turbotab/` run under the new numpy — 0 failures.**
+`tests/test_shap_and_sensitivity.py` now passes **10 of 10**, so the expected-failure set is **one**
+item and not four; `AGENT_ONBOARD.md` §03 said four until `d10346f` corrected it.
 
 **`make test` still aborts at collection on `TEST-038`'s unguarded `torch` import. Do not work around
 it.** `torch` is deliberately not installed: it is 1.1 GB and mandatory for a user who never trains a
@@ -163,91 +171,43 @@ move available.** That is an argument, not a ruling; the product owner has not d
 
 ---
 
-## 06 · WHAT IS OWED AND IS NOT IN THE REPOSITORY
+## 06 · WHAT WAS OWED, AND WHERE IT LANDED
 
-**This is the section I would most want a successor to read.** The following exists only in a cleared
-conversation. Where it contradicts a committed file, **the committed file is wrong.**
+**This section existed because the work was not in the repository. It is now.** Discharged at the L56
+handover on 2026-08-09; kept as an index rather than a second copy, because a restated claim drifts
+from the canonical one — the mistake `LOOP.md` §05 records about the freeze.
 
-### 06.1 · An adversarial review refuted much of `PRODUCT_VISION.md` §06c
+| Was owed | Landed as | Canonical location |
+|---|---|---|
+| The adversarial review of §06c | **`GUIDED-237`** (`FIXED`) | `PRODUCT_VISION.md` §06c, rewritten in place at `bea4878` |
+| `NUTRITION_PACK.md` §04's two-word error | **`AUDIT-045`** (`FIXED`) | `research/NUTRITION_PACK.md:408`, corrected with the superseded wording quoted and dated |
+| The categorical chart ramp | **`DRIVE-015`** (`OPEN`) | the row carries the validator output and the corrected blast radius |
+| `TEST-063`'s wrong note | corrected, stays **`PARTIAL`** | the note retracts the premise and dates both fixture halves |
+| The L55 §03 row | written | `LOOP.md` §03 |
+| The claims-of-absence check | written | `LOOP.md` §06, as its own subsection ahead of the numbered list |
 
-Two adversarial reviewers with live literature search were run on §06c's explainability design on
-2026-08-09. Both returned **SERIOUS PROBLEMS**. §06c has **not** been corrected. What they found:
+**Three things about the discharge are worth carrying forward, and they are not in the rows.**
 
-- **The "substitution curve" is not novel and is misnamed.** It is a **multivariate forward marginal
-  effect along d = e_B − e_A, aggregated as an Average Marginal Effect** (Scholbeck et al. 2024,
-  *DMKD* 38:2997–3042), shipping as R package `fmeffects`. §06c calls it "a 1-D ALE along a
-  constrained direction," which describes a different object — ALE accumulates local differences over
-  the **conditional** distribution; shifting every row by *k* is marginal averaging.
-- **§06c's claim that it "stays inside the data's support" is false, and measured false.** On a
-  synthetic conserved-energy composition a 300 kcal shift puts **22%** of rows off-support; 500 kcal
-  puts **64%** off with 1% negative intakes. **A support mask is mandatory.**
-- **"The slope at k=0" does not exist for a tree ensemble** — piecewise constant, derivative zero
-  almost everywhere. Report a finite difference at a **stated** *k*, with *k* in the label.
-- **§06c's claim that the field has no way to state an estimand for a black-box learner is false**,
-  and `NUTRITION_PACK.md` **§05 already contradicts it** by naming CoDA/ilr as a route. ilr is a basis
-  change; any learner fits on it. Also available: the leave-one-out parametrisation, and
-  g-computation with TMLE/DML.
-- **Prior art §06c must position against**: Dumuid et al. 2019 (*Stat Methods Med Res* 28(3):846–857)
-  — the compositional isotemporal substitution model; CRAN `codaredistlm` (pairwise one-v-one
-  reallocations with CIs, 2022) and `multilevelcoda`; Ho et al. 2021 (*Lancet*) non-linear isocaloric
-  substitution; Lundborg & Pfister 2025 (arXiv:2311.18501, **preprint only**), who define the estimand
-  and **explicitly exclude random forests and boosted trees**; Mekary et al. 2009 (*AJE*
-  170(4):519–527); Fisher, Rudin & Dominici 2019 (*JMLR* 20:177) — **Model Class Reliance**, which is
-  the correct framing for what §06c calls "inductive bias."
-- **Ruling 3 is unsafe as written.** kcal, total ion current and library size are all **variable**
-  totals; 24-hour time is a **fixed** total, and they behave differently (Tomova et al. 2025, *BMC
-  Med Res Methodol* 25:100). The case the method was built for is the one case §06c's list omits.
-- **Ruling 7's three checks are broken as specified, each demonstrated by simulation.** The
-  label-permutation null is vacuous for normalized measures (permuted-label impurity importances still
-  sum to 1). Fold stability passes a stable-but-wrong explanation (y independent of X, held-out
-  **R² = −0.136**, Kendall τ **0.867**). The deletion curve nearly fails a *correct* explanation
-  (deleting the only causal driver cost 0.027 R² because a 0.995-correlated copy substitutes). Replace
-  with Altmann et al. 2010 (PIMP) and ROAD (Rong et al. 2022, ICML).
-- **The one genuinely new thing, and it is a gate:** ruling 7 gates on calibration and gates nothing
-  on generalization. **Held-out performance should gate the entire explainability surface.**
-- **`NUTRITION_PACK.md` §04 has a two-word error that is load-bearing.** It says the standard/residual
-  models are biased even absent confounding *"because the substituted mixture is the population-average
-  mixture."* The phrase "biased even absent confounding" is near-verbatim from Tomova et al. 2022
-  (*AJCN* 115(1):189–198, PMC8755101) and is correct. **The word "because" is wrong** — the paper's
-  mechanism is **composite variable bias**, information lost when ≥2 distinct-effect components are
-  collapsed into a total; the population-average mixture is the paper's *definition of the estimand*,
-  in an adjacent sentence. **This matters because it made the substitution curve read as a remedy for a
-  bias it does not remedy** — the total is still in the model either way.
+**The review is a specification, not a verdict, and that is the product owner's ruling** — *"Just
+because a CRAN package exists in the world with a specific plot doesn't mean that would not still be a
+useful feature to ship in our app."* It sits at the top of the rewritten §06c because a successor
+reading a page of refutations will otherwise conclude the feature was killed. It was not. Nearly every
+objection became a build requirement with a citation attached, and the three reference implementations
+mean every mark of the figure now has a resolving `source` — which is what the evidence gate wanted.
 
-**And the product owner's reframe, which outranks all of the above:** *"Just because a CRAN package
-exists in the world with a specific plot doesn't mean that would not still be a useful feature to ship
-in our app."* **Read the review as a specification, not a verdict.** Nearly every objection converts
-to a build requirement with a citation attached, and the existence of `codaredistlm`, `fmeffects` and
-Dumuid 2019 gives every element of the figure a resolving source — which is what the evidence gate
-requires anyway.
+**The one new thing the review produced rather than refuted is a gate**, and it is the most valuable
+line in it: ruling 7 gated on calibration and gated **nothing on generalization**. Held-out
+performance now gates the entire explainability surface. Its **value** is `GUIDED-233`'s to source,
+not the adjudicator's to pick, so it is *specified and unbuilt* — which is not the same as absent.
 
-### 06.2 · The categorical chart ramp fails validation, and is not filed
-
-Run on 2026-08-09 with a six-check validator, on both surfaces:
-
-- **`--c1` is byte-identical to `--accent` (`#0E7368`)**, while `DESIGN_LANGUAGE.md` line 55 asserts
-  *"charts use a separate categorical ramp so semantic color stays semantic."* The separation is
-  asserted and not implemented.
-- The shipped ramp **FAILS** chroma floor (`c1`, `c4` read gray) and **FAILS** the normal-vision floor
-  (`c1`↔`c2` ΔE 13.8, below 15 — hard to tell apart with full color vision; tritan ΔE 3.3). Dark mode
-  adds a contrast WARN at 2.63:1.
-- A **three**-series ramp passes all six checks in both modes: light `#3B5BA9` / `#B15A33` / `#6E3FA3`,
-  dark `#5B7BC9` / `#D0743F` / `#9A6BC4`, worst CVD ΔE 20.0. **Four cannot pass** — teal, green, gold
-  and red are semantically reserved and the remaining hue space collapses under deuteranopia. The
-  fourth series folds into "Other," a small multiple, or **dash pattern — which §07 already requires
-  for journal view.** Promote that rule in-app.
-- **21 built figure specs use the failing ramp.** File it; it is the same class as the journal CSS.
-
-### 06.3 · Ledger and doc writes owed
-
-- **`TEST-063`'s note is wrong and it is mine.** I set it `PARTIAL` saying *"the underlying repair
-  looks real and only its record was wrong."* L55 measured both halves false — a total revert of the
-  fix returns `GREEN — NOT LOAD-BEARING`, and the `table` fixture has restored `_OPERATIONS` since
-  **L18**, so the recorded cause cannot have produced the recorded symptom. **Correct the note.**
-  `TEST-068` holds the unexplained symptom as a question, correctly.
-- **The L55 `§03` row is unwritten.** Adding it is part of adjudicating.
-- **§06.1 and §06.2 above need to become rows and a §06c rewrite.**
-- **`LOOP.md` §06 needs the claims-of-absence check** — see §07 below.
+**The ramp's blast radius was overstated and correcting it changed the sequencing, not the severity.**
+The write-up said 21 built specs used the failing ramp. It is 17 built plus 4 declared-pending, and
+after L55-C only `roc` and `item_correlations` have a renderer at all — `WEBC` is consumed at two
+lines inside the multi-series path, and per `GUIDED-236` the ROC can never draw more than one curve.
+**So the ramp's distinguishing function is reached by nothing in production today.** That makes it the
+same class as the journal CSS rather than merely comparable to it, and it is the argument for fixing it
+**now**, while it costs one figure instead of twenty-one. It is also the fifth entry in §07's list, and
+the only one that is an asserted **presence** rather than an asserted absence.
 
 ---
 
@@ -267,12 +227,17 @@ it first, every time. When the agent says it is unsure, it has usually already c
 4. *"The journal CSS is a rule missing its handler"* — written into L55's Part C. The agent measured
    it: **no figure was drawn at all**, two `<svg>` occurrences in 8,479 lines. The correction was
    bigger than the row.
+5. **And a fifth, added by my successor, because it is the same failure inverted.** *"21 built figure
+   specs use the failing ramp"* — an asserted **presence**, counted from a write-up rather than the
+   registry. It is 17 built plus 4 declared-pending, and only **two** figure kinds have a renderer at
+   all, so the ramp reaches **one**. The rule generalizes past absences: **a count is a claim, and the
+   first thing to doubt is the thing you counted.**
 
-**The generalization, and it belongs in `LOOP.md` §06: a claim that something does not exist requires
-reading, not searching.** An absence cannot be established by the evidence that suggests it. My greps
-came back empty and I read empty as proof, four times, in a project whose §02 already says *"a matcher
-that fires on prose has silence that means nothing"* — that is the tool-side version of the same rule
-and I never applied it to myself.
+**The generalization is now in `LOOP.md` §06 as its own subsection: a claim that something does not
+exist requires reading, not searching.** An absence cannot be established by the evidence that suggests
+it. My greps came back empty and I read empty as proof, four times, in a project whose §02 already says
+*"a matcher that fires on prose has silence that means nothing"* — that is the tool-side version of the
+same rule and I never applied it to myself.
 
 **Two more of mine, both the habit this file warns about:**
 
@@ -351,17 +316,36 @@ Ruled during L47–L55. Do not re-derive them.
 
 ## 10 · The next loop
 
-**L56 is unwritten.** The two candidates, and the sequencing argument between them:
+**The product owner ruled the sequencing on 2026-08-09, and he ruled against both build candidates:
+neither the explainability audit layer nor the substitution figure goes first.** L56 does the
+prerequisites the two of them share. His words for the option chosen: *"Ramp + §06c rewrite as its own
+loop first."*
 
-- **The explainability audit layer.** ~1,000 papers compute SHAP on dietary data (~400 on NHANES,
-  190 in 2024–25), with documented cases publishing an r ≥ 0.7 correlation map and then ranking those
-  same nutrients by split-frequency importance. **The audit layer needs no new estimator**, addresses a
-  documented failure at scale, and the packs already hold the domain directions to audit against.
-- **The substitution figure.** Needs the support mask, the uncertainty band, the linear-ilr null
-  overlay, a stated *k*, and a pack section before it can ship honestly — see §06.1.
+**Half of that ruling was PM work and is already done** — the §06c rewrite (`bea4878`), the three rows,
+and `TEST-063`'s note all landed the same day it was made, so L56 has room. What remains for the loop:
 
-**I would sequence the audit layer first and it is a product call, not mine.** Either way
-`GUIDED-233`'s pack is the prerequisite for the thresholds, and **§06c must be rewritten before either
-is built** — it currently contains claims that are refuted and committed.
+- **The categorical ramp** (`DRIVE-015`), while it costs one figure instead of twenty-one.
+- **`GUIDED-233`'s explainability pack**, which gates the thresholds for *both* deferred builds and is
+  pack authoring rather than code.
+- **Suite cost, and it is now a stated constraint rather than an annoyance.** The product owner:
+  *"These full suite tests are simply taking too long for the workflow we are currently in. They run
+  over two hours and occasionally time out."* **The measured answer already exists in L55's own
+  report** — Part D declined a 55-file sweep and ran *"the 11 files that actually reach an `appendChild`
+  call site — 217 passed in 6m08s."* That is the pattern: a loop's regression evidence is the
+  `turbotab/` files reaching the changed code, **quoted honestly as scoped**, with the full sweep moved
+  out of the loop's critical path. `pytest-xdist` 3.8.0 is installed and L53 ruled it kept, but it is
+  **not** the first move: `AUDIT-040`'s floor says no width beats ~1,175s, `GUIDED-099`'s registry is
+  process-global, `TEST-063`'s guard **requires two nodes in one interpreter** and `--dist load` would
+  let it go green while checking nothing, and `TEST-030` says outright that xdist-for-speed breaks
+  `tests/workflow/*` silently. **Price it by comparing verdicts, not durations, and pin what must share
+  an interpreter with `xdist_group` before adopting any of it.**
 
-**Owed to L55 regardless**: its `turbotab/` number, the `§03` row, and `TEST-063`'s corrected note.
+**The two deferred builds, unchanged and still ordered behind the pack.** The **audit layer** needs no
+new estimator, addresses a documented failure at scale (~1,000 papers compute SHAP on dietary data,
+~400 on NHANES, 190 in 2024–25, with published cases showing an r ≥ 0.7 correlation map and then
+ranking those same nutrients by split-frequency importance), and the packs already hold the directions
+to audit against. The **substitution figure** now has a complete visual specification — its five marks
+are enumerated in `PRODUCT_VISION.md` §06c — and **no pack section behind its thresholds**, which
+ruling 6 forbids shipping unsourced. Buildable, not yet shippable.
+
+**Owed to L55: nothing.** The `turbotab/` number, the §03 row and `TEST-063`'s note all landed.
