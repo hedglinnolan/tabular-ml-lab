@@ -115,7 +115,16 @@ on `TEST-038`; **do not work around it.** Phases L1–L8 done, all three decisio
 
 **The journey is complete.** Upload → target → explore → features → preprocess → train → explain →
 report, drivable end to end, manuscript exports. **The product owner drove a real 21,849 × 29 NHANES
-export through it and 19 of the 24 findings that produced are closed** — both criticals among them.
+export through it. Re-derived at the L53 handover: 42 findings trace to his drives and 34 are
+closed.**
+
+**The previous version of this sentence said "19 of the 24 … both criticals among them" and both
+halves were wrong** — the count was narrower than the record, and **`DRIVE-009` is `critical` and
+still open**: *the domain-specific EDA plot vision, which the row itself calls the product's stated
+centerpiece.* It was quoted forward across several loops without being re-derived, which is the
+failure this file's calibration section names. **Re-derive it before you quote it**; the query is
+every ID appearing in `DRIVE_LOG_NHANES.md` and `DRIVE_PREREG_NHANES.md`, unioned with every
+`DRIVE-` row.
 
 **What is left, measured rather than estimated:**
 

@@ -88,6 +88,22 @@ which is why the parts are ordered by what would hurt most to lose.
   built easiest-first are five castings of a shape nobody stress-tested; built hardest-first, the
   seam shows while four are still unwritten. Judge "hardest" by what is most likely to break the
   abstraction, not by effort.
+- **A mechanism the codebase has zero instances of is unpriced until the INSTRUMENT is checked.**
+  `L54-B0` asked for identity-preserving DOM writes, and the prompt quoted `DESIGN_LANGUAGE.md`
+  §05.2's measurement — **0** `startViewTransition`, **0** FLIP, **0** `.animate()`, **0**
+  `transitionend` — as the argument for building it. Nobody drew the second inference: the harness
+  is a shim built to run the page, so **an API the page never used is an API the harness never
+  implemented.** `TEST-066` is the bill — `insertBefore`, `replaceChildren` and `hidden` absent, and
+  `appendChild` **copying rather than moving**, which would have silently invalidated the identity
+  proof itself. The same table was both the motivation and the warning, and the adjudicator read
+  only the half that fit the argument. **First act of such a part is to verify the test instrument
+  supports it**, and that reconnaissance belongs in the prompt as its own numbered step.
+- **Do not sequence certain plumbing behind unpriced discovery.** `L54` ordered the big build (B)
+  ahead of a purely mechanical part (C: carry three recorded fields into one function signature).
+  B's discovery overran, and **C — which had no unknowns at all — was the part that died.** Order by
+  what would hurt most to lose, but when one part is pure plumbing and another contains a genuine
+  unknown, the plumbing is cheap insurance and goes first. A loop that ships three certain parts and
+  one honest overrun beats a loop that ships one part and a scope note.
 - **Say what not to build.** Every loop since `L25` has carried an explicit *deliberately unbuilt*
   clause. Agents finish things; the instruction to stop is load-bearing.
 - **Scope note at the end.** When one part is allowed to run long, say which and what may be traded
@@ -251,8 +267,13 @@ hand* — failed to generalize because it named the **generated** file rather th
 reads intent where the job is to read code — the same reason a review pattern never lets the finder
 be the judge. And both write the same data files.
 
-**The three gates are a hook, not an instruction.** `.githooks/pre-commit` runs `ledger.py check`,
-`register.py check` and `tests/test_american_spelling.py`, and refuses the commit on any failure.
+**The six gates are a hook, not an instruction.** `.githooks/pre-commit` runs `parsecheck.py`,
+`ledger.py check`, `register.py check`, `tests/test_american_spelling.py`, `copydeck.py check` and
+`evidence.py check`, and refuses the commit on any failure. **This paragraph said "three" for nine
+loops after the hook grew to six** — found while verifying the count at the L53 handover, against a
+hook whose own first line reads *"The six gates."* A stale number in the file that explains the
+gates is the decay this project pays for most often, and it is why the count is now written beside
+the list rather than in front of it.
 This replaced a line in the guardrails that enforced nothing: commit `8127101` went out with the
 spelling test red because the gates were chained with a newline instead of `&&`, so a non-zero exit
 did not stop the sequence. **An instruction a tired agent can skip by punctuation is not a gate.**
