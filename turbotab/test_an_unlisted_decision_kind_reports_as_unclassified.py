@@ -128,8 +128,14 @@ def test_apply_bulk_matches_the_contract_it_was_just_given(group):
 
     client, pid = _client_and_project("clinic_visits.csv", "outcome")
     got = client.get(f"/project/{pid}/repair_group/{group}")
-    if got.status_code != 200 or not got.json().get("members"):
-        pytest.skip(f"the fixture no longer offers a {group} group")
+    # `AUDIT-039`. THE FIXTURE IS SHIPPED AND THE PRECONDITION IS A FACT
+    # ABOUT IT, so a skip here stands down over exactly the regression the
+    # test exists to catch — and pytest counts a skip as not-a-failure.
+    assert got.status_code == 200 and got.json().get("members"), (
+        f"clinic_visits.csv no longer offers a {group} repair group "
+        f"(status {got.status_code}). The contract this test checks is about "
+        f"what `apply_bulk` writes for that group; no group means the contract "
+        f"is unchecked, which is a finding rather than a reason to stop")
     ids = [m["id"] for m in got.json()["members"]]
 
     before = _snapshot(client, pid)

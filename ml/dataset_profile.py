@@ -170,6 +170,14 @@ class DatasetProfile:
     # Numeric issues
     features_with_outliers: List[str] = field(default_factory=list)
     highly_skewed_features: List[str] = field(default_factory=list)
+
+    #: `AUDIT-012`. Which of `features_with_outliers` carry entries outside the
+    #: published plausibility bounds, which are recognized and clean, and which
+    #: the reference has never heard of. `None` means the read never ran — it
+    #: is not the same claim as "no column here is impossible", and
+    #: `read_outlier_tiers` keeps the two apart.
+    outlier_tiers: Optional[Dict[str, Any]] = None
+
     physio_plausibility_flags: List[str] = field(default_factory=list)
     physio_reference_version: Optional[str] = None
     
@@ -254,12 +262,21 @@ def compute_feature_profile(df: pd.DataFrame, col: str, n: int, outlier_method: 
             profile.median = float(valid.median())
             
             # Skewness
+            #
+            # `AUDIT-003`. BEFORE: `except: profile.skewness = 0.0` — a failed
+            # computation reported PERFECT SYMMETRY, which is trap 9 in its
+            # exact form: a value returned from ignorance, and the one value
+            # every downstream reader treats as "nothing to see". AFTER:
+            # `skewness` stays `None`, which is what "not measured" already
+            # means on this field — `highly_skewed_features` below is gated on
+            # `is not None`, so an unmeasurable column is left out of the
+            # transform advice instead of being asserted symmetric into it.
             if len(valid) > 2:
                 try:
                     profile.skewness = float(valid.skew())
-                except:
-                    profile.skewness = 0.0
-            
+                except Exception:
+                    profile.skewness = None
+
             # Outlier detection (skip boolean columns - quantile fails on bool)
             if valid.dtype != bool and not (hasattr(valid.dtype, 'kind') and valid.dtype.kind == 'b'):
                 outlier_mask, _ = detect_outliers(valid, method=outlier_method)
@@ -337,6 +354,160 @@ def read_target_impossibility(df: pd.DataFrame, target_col: str) -> Dict[str, An
     return out
 
 
+#: The reading `read_outlier_tiers` returns when nothing could be read. Every
+#: tier list is `None` rather than `[]`: an empty list would say "no column
+#: here carries an impossible value", which is a measurement, and this is its
+#: absence (trap 9).
+OUTLIER_TIERS_UNREAD: Dict[str, Any] = {
+    "read": False, "reason": None, "impossible": None,
+    "within_band": None, "unrecognized": None, "reference_version": None,
+}
+
+
+def read_outlier_tiers(df: pd.DataFrame,
+                       columns: Optional[List[str]]) -> Dict[str, Any]:
+    """Split fence-flagged COLUMNS into the tiers an IQR fence cannot see.
+
+    `AUDIT-012`, the feature half. `read_target_impossibility` above does this
+    for the one target column; the profile's `features_with_outliers` list is
+    the same undifferentiated fence count spread over every numeric column, and
+    the warning composed from it offered winsorizing and capping to all of them
+    alike.
+
+    `research/CLINICAL_SURVEY_PACK.md` §A1.2 keeps **two separate,
+    differently-purposed bound sets** and says what each is for:
+
+    > **Physiological plausibility bounds** — values incompatible with a living
+    > patient. Use for flagging as suspected data error.
+    > **Reference interval** — the central 95% of a healthy reference
+    > population. *By construction ~5% of healthy people fall outside.*
+    > **Use only for annotation. Never for exclusion.**
+
+    and Cross-cutting 7 ranks the collapse seventh by damage: *"Excluding
+    abnormal-but-possible clinical values as 'outliers'. Removes the sickest
+    patients. Physiologically impossible ≠ abnormal, and generic outlier rules
+    (±3 SD, IQR fences) are wrong here."*
+
+    Returns three disjoint groups over `columns`:
+
+    ``impossible``    {column: {"n", "band"}} — at least one entry outside the
+                      published floor/ceiling. Repaired, not downweighted.
+    ``within_band``   recognized, and every fence hit is inside what a living
+                      person can produce — abnormal but real.
+    ``unrecognized``  matched no reference variable, or no band is published
+                      for it. **The app cannot tell the two apart here** and
+                      the sentence says so rather than keeping wording that
+                      implies it checked.
+
+    The read is not re-derived: `ml/card_evidence.plausibility_report` is the
+    same reader `turbotab/engine.plausibility` serves to both doors, so this
+    warning and the plausibility card cannot report different numbers for one
+    frame. `whole_column_suspect` blocks are excluded exactly as that reader
+    excludes them — a mis-united column is a units finding, not an entry error.
+    """
+    cols = [c for c in (columns or []) if c in df.columns]
+    if not cols:
+        return {**OUTLIER_TIERS_UNREAD,
+                "reason": "no column tripped the fence, so there was nothing to read"}
+    try:
+        from ml.card_evidence import plausibility_report
+        from ml.physiology_reference import get_impossibility_band
+
+        reference = load_reference_bundle()["nhanes"]
+        report = plausibility_report(df, columns=cols, reference=reference)
+
+        impossible: Dict[str, Dict[str, Any]] = {}
+        for block in report.get("impossible") or []:
+            if block.get("whole_column_suspect"):
+                continue
+            col, n = block.get("column"), int(block.get("n_flagged") or 0)
+            if col in cols and n > 0:
+                impossible[col] = {
+                    "n": n,
+                    "band": (block.get("low"), block.get("high"),
+                             block.get("unit")),
+                    "variable": block.get("variable"),
+                }
+
+        within_band, unrecognized = [], []
+        for col in cols:
+            if col in impossible:
+                continue
+            var_key = match_variable_key(str(col), reference)
+            band = get_impossibility_band(reference, var_key) if var_key else None
+            (within_band if band is not None else unrecognized).append(col)
+
+        return {"read": True, "reason": None, "impossible": impossible,
+                "within_band": within_band, "unrecognized": unrecognized,
+                "reference_version": reference.get("version")}
+    except Exception as exc:                                  # pragma: no cover
+        return {**OUTLIER_TIERS_UNREAD,
+                "reason": f"the physiologic reference could not be read ({exc.__class__.__name__})"}
+
+
+def outlier_tier_sentence(n_flagged: int, tiers: Optional[Dict[str, Any]]) -> str:
+    """What the profile may say about `n_flagged` fence-flagged columns.
+
+    `AUDIT-012`. BEFORE — one sentence for every column alike, and it named a
+    consequence for the model without ever naming what the values were:
+
+        "{n} numeric features have significant outliers. This can affect model
+         performance, especially for distance-based and linear models."
+
+    AFTER — the same subject, split by what was actually read, and where
+    nothing was read the sentence says so. The IQR count is still reported: the
+    correction is to what the app CLAIMS the count means, not to the count.
+    """
+    head = (f"{n_flagged} numeric feature{'' if n_flagged == 1 else 's'} "
+            f"{'has' if n_flagged == 1 else 'have'} "
+            f"values outside the 1.5×IQR fence. That fence answers *is this "
+            f"value far from the others*; it cannot answer *could a living "
+            f"person produce it*, and the two have opposite remedies — an "
+            f"impossible entry is a data error and is repaired, an extreme but "
+            f"attainable measurement is the phenomenon under study and is kept "
+            f"(CLINICAL_SURVEY_PACK §A1.2).")
+
+    if not tiers or not tiers.get("read"):
+        why = tiers.get("reason") if tiers else None
+        return (f"{head} The physiologic reference was not read for these "
+                f"columns"
+                + (f" ({why})" if why else "")
+                + ", so the app cannot tell those two apart here and this "
+                  "count is the fence count and nothing more.")
+
+    impossible = tiers.get("impossible") or {}
+    within = tiers.get("within_band") or []
+    unknown = tiers.get("unrecognized") or []
+    parts = [head]
+
+    if impossible:
+        named = ", ".join(
+            f"{col} ({d['n']} outside {d['band'][0]:g}–{d['band'][1]:g} "
+            f"{d['band'][2]})" for col, d in sorted(impossible.items()))
+        parts.append(f"{len(impossible)} of them "
+                     f"{'carries' if len(impossible) == 1 else 'carry'} "
+                     f"entries outside the "
+                     f"published plausibility bounds — {named}. Those are "
+                     f"suspected entry errors: repair them on the plausibility "
+                     f"card rather than winsorizing them, which hides them at "
+                     f"the fence instead of correcting them.")
+    if within:
+        parts.append(f"{len(within)} of them ({', '.join(sorted(within))}) "
+                     f"{'matches' if len(within) == 1 else 'match'} "
+                     f"a reference variable and every fence hit is "
+                     f"inside what a living person can produce — those read as "
+                     f"real extremes, and excluding them removes the sickest "
+                     f"rows in the table.")
+    if unknown:
+        parts.append(f"For {len(unknown)} of them "
+                     f"({', '.join(sorted(unknown))}) the app cannot tell an "
+                     f"impossible entry from an abnormal-but-real one: the "
+                     f"column matches no variable in the physiologic "
+                     f"reference, so there is no floor or ceiling to check "
+                     f"against and the fence count is all that was measured.")
+    return " ".join(parts)
+
+
 def compute_target_profile(df: pd.DataFrame, target_col: str, task_type: str, outlier_method: str = "iqr") -> TargetProfile:
     """Compute profile for the target variable."""
     series = df[target_col]
@@ -358,12 +529,19 @@ def compute_target_profile(df: pd.DataFrame, target_col: str, task_type: str, ou
             profile.max_val = float(valid.max())
             profile.median = float(valid.median())
             
+            # `AUDIT-003`, the target's copy of the same fabrication. It is the
+            # one that reaches a person: `pages/06_Train_and_Compare.py:866`
+            # renders `f", target skew {abs(_target_prof.skewness):.2f}"`, so a
+            # failed computation printed "target skew 0.00" — a measurement
+            # asserted, not taken. `None` is already the field's "not measured"
+            # and both readers (that page and `ml/nn_recommender.py:146`) guard
+            # on it, so the app goes quiet here instead of confident.
             if len(valid) > 2:
                 try:
                     profile.skewness = float(valid.skew())
-                except:
-                    profile.skewness = 0.0
-            
+                except Exception:
+                    profile.skewness = None
+
             # Outlier detection (configurable method)
             outlier_mask, _ = detect_outliers(valid, method=outlier_method)
             profile.outlier_rate = float(outlier_mask.sum() / len(valid)) if len(valid) > 0 else 0.0
@@ -631,9 +809,19 @@ def generate_warnings(profile: DatasetProfile) -> List[DataWarning]:
             category="outliers",
             level=WarningLevel.CAUTION,
             short_message=f"{len(profile.features_with_outliers)} features with outliers",
-            detailed_message=f"{len(profile.features_with_outliers)} numeric features have significant outliers. "
-                           "This can affect model performance, especially for distance-based and linear models.",
+            # `AUDIT-012`. This sentence is `detail` on the Guided finding
+            # (`turbotab/engine.py:312`), so it is the rendered instance of the
+            # row. It used to name a consequence for the model and never the
+            # values, which let one fence count stand for two findings with
+            # opposite remedies.
+            detailed_message=outlier_tier_sentence(
+                len(profile.features_with_outliers), profile.outlier_tiers),
             affected_models=["Linear Regression (OLS)", "k-NN", "Neural Networks"],
+            # The shelf is not shortened: all four options survive, and
+            # `detailed_message` says which columns each one is right for.
+            # "Investigate if outliers are errors or genuine" is kept and is
+            # now answerable — the sentence above says which columns the app
+            # could answer it for and which it could not.
             suggested_actions=[
                 "Investigate if outliers are errors or genuine",
                 "Consider robust models (Huber loss)",
@@ -815,6 +1003,10 @@ def compute_dataset_profile(
         id_like_features=id_like_features,
         features_with_outliers=features_with_outliers,
         highly_skewed_features=highly_skewed,
+        # `AUDIT-012`. Read HERE, because `generate_warnings` is given a
+        # profile and never the frame — a correction that lived in the warning
+        # would have had nothing to read.
+        outlier_tiers=read_outlier_tiers(df, features_with_outliers),
         physio_plausibility_flags=physio_flags,
         physio_reference_version=nhanes_ref.get("version"),
         data_sufficiency=data_sufficiency,

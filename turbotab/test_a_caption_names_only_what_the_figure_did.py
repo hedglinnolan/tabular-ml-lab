@@ -231,42 +231,113 @@ def test_the_correlation_figure_does_not_declare_a_layer_nobody_draws():
 
 # ═══════════ THE FOREST ORDERING ═══════════
 
+#: The ASSERTIVE forms of §A4.7's grouping claim — phrases rather than words,
+#: for the reason `_CLAIMS_ORDERING` is: the shipped caption KEEPS §A4.7's
+#: sentence and states that the app does not satisfy it, so a detector over the
+#: word *domain* would fire on the disclosure and the next loop would delete the
+#: disclosure to make the suite pass.
+#: `test_the_grouping_detector_separates_the_claim_from_the_disclosure` below is
+#: the control that proves the difference is real rather than intended.
+_ASSERTS_THE_GROUPING = (
+    "rows are ordered by domain",
+    "ordered by domain rather than",
+    "grouped by domain, in the order",
+)
+
+
 @pytest.mark.parametrize("shape", sorted(FOREST_SHAPES))
 def test_the_forest_caption_claims_a_domain_grouping_only_where_one_exists(shape):
     """`AUDIT-008`. §A4.7 asks for predictors *grouped by domain and ordered
     meaningfully, not by significance*. The second half has always been true.
     The first is true only where the caller filled `group`, and the shipped
     caller does not — so the caption must read the payload rather than assert
-    the better of the two."""
+    the better of the two.
+
+    ── WHY THE CAPTION IS READ FIRST, AND WHY NOTHING HERE SUBSCRIPTS ──
+    This test was written with `payload["grouped_by_domain"]` as its first
+    assertion, and `grouped_by_domain` is a key **the fix itself added**. Under
+    a revert of that fix all four parametrizations died on `KeyError` at that
+    line — the `TypeError`/`AttributeError` family, red for the wrong reason —
+    before ever reaching the claim they exist to check, so `AUDIT-008` could
+    not be closed on them (`L52`, §08.1). The claim is now driven through the
+    CAPTION, a surface whose SHAPE did not change: a reverted app still returns
+    a string and only its CONTENT differs. The payload key is still checked,
+    last, and through `.get`. The failure messages use `.get` and locals for
+    the same reason — an f-string is evaluated only when the assert fails, so a
+    bare subscript in one destroys the probe at the moment it is needed.
+    """
     payload, caption = _forest(shape)
     lowered = caption.lower()
 
-    grouped = any(row["group"] for row in payload["rows"])
+    # `GUIDED-045`: the fixture produced something before any absence is read
+    # off it.
     assert payload["rows"], "the fixture produced no rows and proves nothing"
-    assert payload["grouped_by_domain"] is grouped, (
-        f"{shape}: the payload records grouped_by_domain="
-        f"{payload['grouped_by_domain']} and the rows say {grouped}")
+    with_a_domain = [row for row in payload["rows"] if row.get("group")]
+    grouped = bool(with_a_domain)
 
-    if grouped:
-        assert "grouped by domain" in lowered, (
-            f"{shape}: the rows carry domains and the caption does not say so")
-    else:
-        assert "rows are ordered by domain" not in lowered, (
-            f"{shape}: the caption says the rows are ordered by domain; every "
-            f"row's domain is empty")
+    # THE CLAIM, and it is one assertion carrying both directions: the caption
+    # asserts the grouping exactly where the rows have one.
+    asserted = [phrase for phrase in _ASSERTS_THE_GROUPING if phrase in lowered]
+    assert bool(asserted) is grouped, (
+        f"{shape}: the caption "
+        f"{'asserts' if asserted else 'never asserts'} that the rows are "
+        f"grouped by domain {asserted} while {len(with_a_domain)} of "
+        f"{len(payload['rows'])} rows carry one — §A4.7's grouping is a claim "
+        f"about the payload, not a house sentence")
+
+    if not grouped:
+        # `AUDIT-028`'s third clause: where nothing true can be said, the
+        # silence is STATED. And the shelf is never shortened — the caption
+        # still names the grouping §A4.7 asks for, as the absent thing.
         assert "the rows are ungrouped" in lowered, (
             f"{shape}: the caption neither claims the grouping nor states its "
             f"absence, which is the blank the house form forbids")
+        assert "grouped by domain" in lowered, (
+            f"{shape}: the caption dropped §A4.7's grouping altogether — the "
+            f"row was about a FALSE claim, not about the words")
 
     assert "not re-sorted by significance" in lowered, (
         f"{shape}: the true half of §A4.7's sentence was dropped along with "
         f"the false half — that is deletion, not correction")
 
+    # LAST, AND THROUGH `.get`. The caption above is the claim; this is the
+    # record behind it, and a payload that stopped recording which of the two
+    # happened is the caption asserting again rather than reporting.
+    assert payload.get("grouped_by_domain") is grouped, (
+        f"{shape}: the payload records grouped_by_domain="
+        f"{payload.get('grouped_by_domain')!r} and the rows say {grouped}")
+
+
+def test_the_grouping_detector_separates_the_claim_from_the_disclosure():
+    """`GUIDED-045`'s control for the four parametrizations above, run on the
+    sentence `AUDIT-008` was filed for and on the one that replaced it.
+
+    A detector reporting *no assertive claim* reports the same nothing for an
+    honest caption, a mistyped phrase, and a phrase the caption was rewritten
+    around.
+    """
+    before = ("Rows are ordered by domain rather than by significance. "
+              "**These are the model's coefficients, not causal effects**.")
+    assert [p for p in _ASSERTS_THE_GROUPING if p in before.lower()], (
+        "the detector does not fire on the sentence `AUDIT-008` was filed "
+        "for, so its silence on the shipped caption means nothing")
+
+    shipped = figures.REGISTRY["forest"].caption(
+        F.forest_payload(_AS_THE_BUNDLE_BUILDS_THEM)).lower()
+    assert "grouped by domain" in shipped, (
+        "the shipped caption no longer names §A4.7's grouping at all, so this "
+        "control is checking nothing")
+    assert not [p for p in _ASSERTS_THE_GROUPING if p in shipped], (
+        f"the detector fires on the shipped disclosure — it is banning the "
+        f"words rather than the claim, and the next loop will delete the "
+        f"disclosure to satisfy it: {shipped}")
+
 
 def test_the_forest_payload_records_the_ordering_the_caption_reads():
-    """THE POSITIVE CONTROL for the pair above.
+    """THE POSITIVE CONTROL for
+    `test_the_forest_caption_claims_a_domain_grouping_only_where_one_exists`.
 
-    Both assertions above are about a caption reading `ordering`. If the
+    Both of its branches are about a caption reading `ordering`. If the
     caption stopped reading it and hard-coded the sentence again, they would
     keep passing while the payload and the caption drifted apart. This changes
     the payload and requires the caption to move with it.

@@ -703,10 +703,21 @@ def plan(
             # wants and a fabricated number would answer a different question.
             seq="pack",
             title="Are any of these items reverse-coded?",
+            # `AUDIT-034`: this used to end "they have to be flipped before the
+            # scale means anything" — an obligation in the passive voice, on
+            # the card that collects the declaration, with no agent named. The
+            # `consumer` below was corrected to say this app computes no scale
+            # score; the `why` above it still let a user read *declare them and
+            # they will be flipped*, which is the same promise one line earlier.
+            # Corrected to name who flips: the domain fact is kept, and the
+            # app's own non-participation in it is stated rather than left as
+            # an implication.
             why=(f"{len(lens_block['columns']):,} columns share one "
                  f"{len(lens_block['scale'])}-point response scale. If some of "
                  f"them are worded so that agreeing means the opposite, they "
-                 f"have to be flipped before the scale means anything."),
+                 f"have to be flipped before that scale is scored — and this "
+                 f"app does not score it, so that flip stays yours to make "
+                 f"wherever you do."),
             consumer=(
                 "The reverse-coding audit reads this: it recomputes each item's "
                 "correlation with the rest of its scale with your declared "

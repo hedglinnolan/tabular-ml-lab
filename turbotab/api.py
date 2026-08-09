@@ -2715,9 +2715,14 @@ async def get_checklist(project_id: str) -> Dict[str, Any]:
     the project here is not decoration: it is what makes this a 404 for an
     unknown id rather than a table served for a study that does not exist.
     """
+    from turbotab import draft as _draft
     from turbotab import reporting_checklist as _cl
 
-    return _cl.render(_project(project_id))
+    project = _project(project_id)
+    # L53-B. THE DRAFT IS THE SOURCE, and it is passed rather than re-derived:
+    # the checklist QUOTES the sentences `/draft` already composed, so the two
+    # surfaces cannot say the same fact two ways.
+    return _cl.render(project, _draft.draft(project.to_dict()))
 
 
 @app.get("/project/{project_id}/instability")

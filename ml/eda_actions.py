@@ -1453,3 +1453,139 @@ def quick_probe_baselines(
         'figures': figures,
         'split_basis': split_basis,
     }
+
+
+# =============================================================================
+# Recommendation panel → InsightLedger  (`AUDIT-032`)
+# =============================================================================
+#
+# `AUDIT-032`, corrected in the shape `AUDIT-021` uses — the claim narrowed to
+# the one the surface can keep, not deleted and not blurred.
+#
+# BEFORE: `pages/02_EDA.py::_resolve_insights_from_eda_result` called
+#   `ledger.resolve(...)` for every insight matching the action, with
+#   `resolution_details={"action_type": "diagnostic_analysis", ...}`. A resolved
+#   insight is counted by `InsightLedger.narrative_for_report` under *"N were
+#   addressed during the modeling workflow"* and printed under *"Addressed
+#   observations:"*, and `discussion_points_for_manuscript` skips it outright
+#   (`utils/insight_ledger.py:1233` — `if i.resolved: continue`). So pressing
+#   **Run Leakage Detection** made the report assert the leakage blocker had
+#   been addressed and dropped the caveat the app itself had authored
+#   (*"…raising the possibility of information leakage; results including this
+#   predictor should be interpreted with caution"*) — while the column was
+#   still a model feature.
+#
+# AFTER: the run is recorded as what it was. The findings are attached to the
+#   insight, the insight stays open, and the page says so out loud. Nothing is
+#   removed: the diagnostic still reaches the ledger, it just no longer claims
+#   an action it did not take.
+#
+# THE CLASS, not only the instance (`AGENT_ONBOARD.md` §08 check 1): **a
+# read-only diagnostic recorded as a resolution.** All five actions below are
+# read-only — `leakage_scan` re-reads `signals.leakage_candidate_cols` and
+# returns a string, `multicollinearity_vif` computes VIFs, `missingness_scan`
+# tabulates rates, `target_profile` describes a distribution,
+# `data_sufficiency_check` divides n by p. Not one of them drops a column,
+# fills a value or transforms a variable, so not one of them can resolve
+# anything. The row named leakage; the same lens over the same function found
+# the other four, which is why the whole map moved rather than one key.
+#
+# The map lives here rather than in `pages/02_EDA.py` because
+# `tests/test_eda_ledger_bridge.py` had to keep a hand-copy of both the map and
+# the function — a Streamlit page is not importable — and that copy is now the
+# only place the old behavior is asserted. One importable definition is the
+# fix for that class as well. `ml/` is inside `SCAN_DIRS` in
+# `tests/test_insight_id_integrity.py`, and the name is unchanged, so the id
+# scanner still sees these prefixes as referenced.
+
+_ACTION_TO_INSIGHT_MAP = {
+    "multicollinearity_vif": {"prefix": "eda_corr_cluster_", "category": "collinearity"},
+    "leakage_scan": {"prefix": "eda_leakage_", "category": "leakage"},
+    "missingness_scan": {"prefix": "eda_missing_", "category": "missing_data"},
+    "target_profile": {"exact": ["eda_target_skew"], "category": "target"},
+    "data_sufficiency_check": {"exact": ["eda_sufficiency_insufficient", "eda_sufficiency_borderline"], "category": "sufficiency"},
+}
+
+# Every key above. Kept as its own name so that adding an action which DOES
+# change the data is a deliberate act: it must be added to the map and left out
+# of this set, and `record_diagnostic_on_insights` will then refuse it rather
+# than silently record it as read-only.
+DIAGNOSTIC_ONLY_ACTIONS = frozenset(_ACTION_TO_INSIGHT_MAP)
+
+
+def diagnostic_disclosure(title: str, n_open: int) -> str:
+    """The sentence the EDA page shows after a recommended analysis has run.
+
+    States the silence rather than leaving it (`AUDIT-028`): a person who has
+    just watched a scan report a leakage column would otherwise reasonably read
+    the green result as the problem having been handled.
+    """
+    if n_open <= 0:
+        return (
+            f"{title} reads the data and reports; it changes nothing. "
+            f"No open observation is waiting on it."
+        )
+    noun, verb, them = (
+        ("observation", "stays", "it") if n_open == 1
+        else ("observations", "stay", "them")
+    )
+    return (
+        f"{title} reads the data and reports — it removed, filled and "
+        f"transformed nothing. The {n_open} {noun} it speaks to {verb} "
+        f"**open** in the report until an action on a later page addresses "
+        f"{them}."
+    )
+
+
+def record_diagnostic_on_insights(ledger, action_id: str, result: dict,
+                                  title: str) -> List[str]:
+    """Attach a completed diagnostic to the ledger insights it speaks to.
+
+    Returns the ids of the insights that were annotated and left OPEN. The
+    return value is the count the page discloses, so a caller cannot render the
+    sentence without having done the recording.
+
+    Does not resolve, does not acknowledge and does not touch severity: running
+    a diagnostic is evidence about an observation, never an action on it.
+    """
+    mapping = _ACTION_TO_INSIGHT_MAP.get(action_id)
+    if not mapping:
+        return []
+    if action_id not in DIAGNOSTIC_ONLY_ACTIONS:
+        raise ValueError(
+            f"{action_id!r} is mapped to insights but is not declared "
+            f"read-only; route it through whatever actually performs the "
+            f"action rather than through this recorder."
+        )
+
+    findings = result.get("findings", []) or []
+    warnings = result.get("warnings", []) or []
+    stats_ = result.get("stats", {}) or {}
+
+    record = {
+        "action_type": "diagnostic_analysis",
+        "method": action_id,
+        "title": title,
+        "findings": list(findings),
+        "warnings": list(warnings),
+        "changed_the_data": False,
+    }
+    if stats_:
+        record["stats"] = stats_
+
+    exact_ids = mapping.get("exact", [])
+    prefix = mapping.get("prefix", "")
+
+    touched: List[str] = []
+    for insight in ledger.insights:
+        if insight.resolved:
+            continue
+        if not (insight.id in exact_ids or (prefix and insight.id.startswith(prefix))):
+            continue
+        # `metadata` is carried by `to_dict`/`from_dict` and by `upsert`, so the
+        # record survives a session round-trip and a later re-scan.
+        history = insight.metadata.setdefault("diagnostics_run", [])
+        if not any(h.get("method") == action_id for h in history):
+            history.append(record)
+        touched.append(insight.id)
+    return touched

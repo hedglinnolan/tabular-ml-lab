@@ -122,8 +122,15 @@ def test_the_estimated_counts_and_fpkm_separator_is_measured():
 
     declared_est = getattr(packs, "_ESTIMATED_COUNTS_CV", None)
     declared_fpkm = getattr(packs, "_FPKM_CV", None)
-    if declared_est is None or declared_fpkm is None:
-        pytest.skip("the classifier no longer holds these constants by name")
+    # `AUDIT-039`, swept from `TEST-059`'s class. THIS WAS A CONDITIONAL SKIP
+    # over the exact condition the test exists to detect: pytest counts a skip
+    # as not-a-failure, so the regression would have silenced the guard
+    # instead of turning it red.
+    assert declared_est is not None and declared_fpkm is not None, (
+        "`packs._ESTIMATED_COUNTS_CV` / `packs._FPKM_CV` are gone. The whole "
+        "of this test is that the classifier's constants and the fixtures they "
+        "were measured from agree; a classifier that no longer holds them by "
+        "name has not made the check unnecessary, it has made it unanswerable")
 
     # A tolerance rather than equality, and the reason is in the docstring: an
     # honest re-measurement should not fail this, and a regenerated fixture

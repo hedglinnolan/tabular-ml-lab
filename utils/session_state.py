@@ -103,7 +103,33 @@ class ModelConfig:
 
 
 def init_session_state():
-    """Initialize all session state variables with defaults."""
+    """Initialize the session state variables **this module declares**.
+
+    `AUDIT-011`: this used to say *"Initialize all session state variables with
+    defaults."* It does not and cannot. The dict below declares 50 keys; a sweep
+    of `pages/`, `utils/` and `ml/` finds 128 more that are read from
+    `st.session_state` and initialized nowhere — page-local widget state, cached
+    results, and one that matters.
+
+    **The one that matters is the purpose, and its absence is recorded here
+    rather than left to be discovered.** `DOMAIN_SCIENCE.md` §01.3 names five
+    decisions whose correct handling *inverts* on whether the model is for
+    prediction or for estimating an association. This workflow has no field for
+    that answer: `pages/06_Train_and_Compare.py` reads a `model_purpose` key
+    when it composes the class-weighting advisory, and nothing in this
+    repository ever writes one, so that advisory can only ever say the purpose
+    is unrecorded. The Guided door asks the question and records it on
+    `AnalysisProject.purpose`, which is the authoritative record for it.
+
+    **`task_mode` is not that answer and must not be read as one.** It gates
+    which pages are reachable, and `pages/06` refuses to run unless it is
+    already `'prediction'` — so mapping it onto the purpose would hand every
+    trained model a prediction objective nobody chose. `turbotab/purpose.py` is
+    explicit that the purpose is always asked, never inferred and never
+    defaulted; a slot filled from a gate would be the app deciding what the
+    user's paper is about. The field stays absent until the question is asked
+    on this door.
+    """
     defaults = {
         # Data
         'raw_data': None,

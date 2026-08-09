@@ -42,12 +42,29 @@ which is a real one — *the app detects it and you confirm* is neither "we know
 it" nor "you tell us", and a checklist that collapses it either claims a fact
 the user never agreed to or asks for one the app already has.
 
-## What this file does NOT do
+## L53-B — the column fills itself, by QUOTING
 
-**Auto-population.** That is L53 and it depends on Part B landing. Every item's
-`auto_filled` is `None` here, and `render()` turns that into a stated absence
-with the reason — never a blank cell and never `None` on a screen, which is
-`GUIDED-179`'s finding and `turbotab/figures.NOT_ESTIMABLE`'s house form.
+The manuscript has stopped moving: `AUDIT-026` and `029`'s cross-validation
+claims are `FIXED`, `AUDIT-016`'s caption is `FIXED`, and `AUDIT-022`/`023`
+closed this loop. So `auto_filled` and `where_addressed` are populated — **from
+the draft's own sentences, quoted verbatim.**
+
+**A cell that paraphrased would be a second copy of the claim.** L36 settled
+this for the methods section: it quotes the record's own string, and that is
+only safe because L35-B made the string true of the fit. The same reasoning
+applies one surface up — the checklist is read beside the manuscript, and two
+wordings of one fact is how they drift apart. `fill()` therefore does exactly
+one thing: it selects sentences the draft already composed.
+
+**`where_addressed` names a section the draft actually contains**, checked
+against the draft it was handed rather than a constant. A pointer to a section
+the document does not have is `AUDIT-001`'s shape inside the artifact built to
+catch it.
+
+**An item the draft cannot fill keeps its sentence.** Auto-population never
+overwrites a `not_filled_because` with a blank — and where the draft says WHY a
+section is empty, that reason replaces the generic one, because the draft's is
+specific to this study.
 """
 from __future__ import annotations
 
@@ -286,33 +303,129 @@ def missing_items() -> Dict[str, Any]:
     }
 
 
-def render(project: Any = None) -> Dict[str, Any]:
-    """The artifact, in §A6's four columns.
+#: Which draft section answers which checklist item. The values are the titles
+#: `turbotab/draft.py` composes; `fill()` resolves each against the draft it is
+#: handed and refuses to point at one that is not there, so a renamed section
+#: shows up as an unfilled item rather than as a dangling pointer.
+SECTION_FOR = {
+    "data_source": "Data preparation",
+    "outcome": "Outcome and analysis population",
+    "predictors": "Feature handling",
+    "missing_data": "Missing data and preprocessing",
+    "limitations": "Limitations",
+}
+# TWO ITEMS WERE MAPPED HERE IN A FIRST DRAFT AND BOTH WERE WRONG, in the way
+# this whole project is about. A section is only this item's answer if its
+# sentences ANSWER THE ITEM — being nearby is not enough.
+#
+#   `sample_size` -> "Data preparation" quoted *"clinical_labs.csv was loaded:
+#   288 rows, 19 columns."* under an item that asks for a sample-size
+#   JUSTIFICATION. A row count is not a justification, and putting it in that
+#   cell would have the app assert that the study's size had been justified
+#   when nothing had justified it. §A5.4 is [SETTLED] that the criteria-based
+#   calculation is what is owed and that EPV>=10 is superseded (`AUDIT-021`).
+#
+#   `identification` -> the same section quoted *"modeled as a classification
+#   problem"* under an item asking whether this is a DEVELOPMENT or a
+#   VALIDATION study. That is the task type, which is a different fact.
+#
+# Both are in `_FILLED_BY_STEP` now, naming what would fill them. An unfilled
+# cell with a reason costs a reader nothing; a filled cell with the wrong
+# sentence costs them the thing they were checking.
+
+#: Items §A6 lists that no draft section carries yet, each with the step that
+#: would fill it. They are NOT in `SECTION_FOR` because inventing a pointer is
+#: worse than an honest absence, and `fill()` gives each of these its own
+#: reason rather than the generic one.
+_FILLED_BY_STEP = {
+    "sample_size": (
+        "a sample-size check has run over the candidate predictor PARAMETERS. "
+        "`ml/sample_size.py` holds that arithmetic and `turbotab/resolution.py` "
+        "the criteria-based calculation; neither reaches the draft yet, and the "
+        "row count in Data preparation is a count rather than a justification"),
+    "identification": (
+        "the app can tell a development study from a validation one. It can see "
+        "that a model was fitted and whether a held-out set was scored; the "
+        "draft records the TASK, which is a different fact"),
+    "model_building": "the models are chosen and the split is drawn",
+    "performance": "a run has scored the held-out rows",
+    "model_presentation": "a model has been fitted",
+    "fairness": "you name the subgroups this population is held to",
+    "open_science": "you supply them; none is a property of the data",
+}
+
+
+def _sections(draft: Any) -> Dict[str, Dict[str, Any]]:
+    return {str(s.get("title")): s
+            for s in (draft or {}).get("sections", []) or []
+            if s.get("title")}
+
+
+def fill(item: ChecklistItem, draft: Any) -> Dict[str, Any]:
+    """What the draft says about this item, QUOTED — never re-composed.
+
+    Returns `where_addressed`, `auto_filled` and, when either is absent, the
+    reason. The only string this function creates is the join between sentences
+    the draft already wrote; every claim in the cell is the draft's.
+    """
+    sections = _sections(draft)
+    title = SECTION_FOR.get(item.key)
+
+    if title is None:
+        step = _FILLED_BY_STEP.get(item.key)
+        return {"where_addressed": None, "auto_filled": None,
+                "not_filled_because": (
+                    f"No section of the draft carries this yet. It is filled "
+                    f"when {step}." if step else _WHY_NOT_FILLED)}
+
+    if title not in sections:
+        # `AUDIT-001`'s shape: a pointer at a section the document lacks. The
+        # honest form is to say the pointer did not resolve, not to print it.
+        return {"where_addressed": None, "auto_filled": None,
+                "not_filled_because": (
+                    f"This item is addressed in the draft's "
+                    f"'{title}' section, and this draft has no such section "
+                    f"({', '.join(sorted(sections)) or 'the draft is empty'}).")}
+
+    section = sections[title]
+    said = [str(x.get("text", "")).strip()
+            for x in (section.get("sentences") or []) if x.get("text")]
+    if not said:
+        # The draft's OWN reason beats the generic one: it is about this study.
+        return {"where_addressed": None, "auto_filled": None,
+                "not_filled_because": (
+                    str(section.get("waiting_for") or "").strip()
+                    or f"The draft's '{title}' section is empty.")}
+
+    return {"where_addressed": title,
+            "auto_filled": " ".join(said),
+            "not_filled_because": None}
+
+
+def render(project: Any = None, draft: Any = None) -> Dict[str, Any]:
+    """The artifact, in §A6's four columns, populated from the draft.
 
     §A6's presentation, verbatim: **item | where addressed | auto-filled text |
     ⚠ needs your input.**
 
-    `project` is accepted and unused. It is the seam L53 fills, and it is here
-    so that wiring population does not change this function's signature — a
-    consumer written against a signature that then moves is how the L51 study
-    panel's ordering bug happened three times.
+    `draft` is `turbotab/draft.py`'s document. Absent, every cell renders as an
+    honest absence — which is the L52 behavior, kept rather than replaced, so
+    a caller that cannot produce a draft still gets the asking column.
     """
     rows = []
+    n_filled = 0
     for item in ITEMS:
+        got = fill(item, draft)
+        if got["auto_filled"]:
+            n_filled += 1
         rows.append({
             "key": item.key,
-            # column 1
             "item": item.item,
-            # column 2 — where in the document this is addressed. Unknown until
-            # the manuscript is read, and named as unknown rather than blank.
-            "where_addressed": None,
-            "where_addressed_text": NOT_YET_FILLED,
-            # column 3 — the auto-filled text. L53.
-            "auto_filled": item.auto_filled,
-            "auto_filled_text": (item.auto_filled if item.auto_filled
-                                 else NOT_YET_FILLED),
-            "not_filled_because": (None if item.auto_filled else _WHY_NOT_FILLED),
-            # column 4 — the one that depends on nothing, and is always here.
+            "where_addressed": got["where_addressed"],
+            "where_addressed_text": got["where_addressed"] or NOT_YET_FILLED,
+            "auto_filled": got["auto_filled"],
+            "auto_filled_text": got["auto_filled"] or NOT_YET_FILLED,
+            "not_filled_because": got["not_filled_because"],
             "needs_from_you": item.needs_from_you,
             "fills": item.fills,
             "source": item.source,
@@ -328,5 +441,6 @@ def render(project: Any = None) -> Dict[str, Any]:
         "rows": rows,
         "coverage": missing_items(),
         "probast": {"note": PROBAST_NOTE, "source": PROBAST_SOURCE},
-        "auto_population_built": False,
+        "n_auto_filled": n_filled,
+        "auto_population_built": True,
     }

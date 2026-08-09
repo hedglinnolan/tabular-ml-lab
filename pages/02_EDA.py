@@ -306,20 +306,40 @@ def _auto_generate_insights():
     # matched nothing, so these insights never fired even on p >> n data.
     # Insight ids are kept for downstream resolution mappings.
     sufficiency = getattr(getattr(profile, "data_sufficiency", None), "value", "adequate")
-    _suff_ratio = regime.n_rows / max(regime.n_features, 1)
+    # `AUDIT-023`. THE DENOMINATOR IS THE SCREENED SET, NOT THE KEPT ONE.
+    # `regime.n_features` counts the columns currently in `feature_cols`, which
+    # after a selection on page 04 is what SURVIVED — and the sentences below
+    # call them *candidate predictors*. §A5.4's ⚠ clause is explicit that a
+    # predictor counts toward sample size even when it is later dropped,
+    # because it was looked at. So a 40-candidate study that kept 8 was
+    # reporting a 5x better ratio than it earned, under the word "candidate".
+    #
+    # `ml.candidate_predictors` is the one place that arithmetic lives; the
+    # phrase it returns is quoted rather than re-composed here, and where no
+    # selection was recorded it is the plain count so a reader is not sent
+    # looking for a screening step that did not happen.
+    from ml.candidate_predictors import candidate_count as _cand_count
+    from ml.candidate_predictors import candidate_phrase as _cand_phrase
+    from utils.workflow_provenance import get_provenance as _get_prov
+    try:
+        _prov = _get_prov()
+    except Exception:
+        _prov = None
+    _cands = _cand_count(feature_cols, _prov)
+    _cand_text = _cand_phrase(_cands)
+    _suff_ratio = regime.n_rows / max(_cands.screened, 1)
     _suff_ratio_str = f"{_suff_ratio:.2f}:1" if _suff_ratio < 10 else f"{_suff_ratio:.0f}:1"
     if sufficiency == "critical":
         ledger.upsert(Insight(
             id="eda_sufficiency_insufficient",
             source_page="02_EDA", category="sufficiency", severity="blocker",
-            finding=f"Sample size may be insufficient ({regime.n_rows:,} rows, {regime.n_features} features, {_suff_ratio_str} samples per feature)",
+            finding=f"Sample size may be insufficient ({regime.n_rows:,} rows, {_cands.screened} candidate predictors, {_suff_ratio_str} observations per candidate)",
             implication="Complex models will likely overfit. Prefer simple baselines.",
             recommended_action="Reduce features or gather more data",
             manuscript_text=(
                 f"the sample size was small relative to the number of candidate "
-                f"predictors ({regime.n_rows:,} observations, {regime.n_features} "
-                f"predictors), which limits statistical power and increases "
-                f"overfitting risk"
+                f"predictors ({regime.n_rows:,} observations, {_cand_text}), "
+                f"which limits statistical power and increases overfitting risk"
             ),
             relevant_pages=["04_Feature_Selection", "06_Train_and_Compare", "10_Report_Export"],
             model_scope=[MODEL_FAMILY_NEURAL],  # most affected by low sample size
@@ -328,13 +348,13 @@ def _auto_generate_insights():
         ledger.upsert(Insight(
             id="eda_sufficiency_borderline",
             source_page="02_EDA", category="sufficiency", severity="warning",
-            finding=f"Data sufficiency is {sufficiency} ({regime.n_rows:,} rows, {regime.n_features} features)",
+            finding=f"Data sufficiency is {sufficiency} ({regime.n_rows:,} rows, {_cands.screened} candidate predictors)",
             implication="Prefer simpler models and tighter regularization.",
             recommended_action="Consider feature reduction before complex modeling",
             manuscript_text=(
                 f"the modest ratio of observations to candidate predictors "
-                f"({regime.n_rows:,} observations, {regime.n_features} predictors) "
-                f"constrained the model complexity that could be reliably supported"
+                f"({regime.n_rows:,} observations, {_cand_text}) constrained the "
+                f"model complexity that could be reliably supported"
             ),
             relevant_pages=["04_Feature_Selection", "06_Train_and_Compare"],
             model_scope=[MODEL_FAMILY_NEURAL],  # most affected by low sample size
@@ -1565,66 +1585,38 @@ if "eda_results" not in st.session_state:
     st.session_state.eda_results = {}
 
 
-# Map recommendation panel action IDs to the ledger insight IDs they address.
-# When a user runs a recommended analysis, the corresponding insight should be
-# updated with the structured findings — closing the observation → analysis → action chain.
-_ACTION_TO_INSIGHT_MAP = {
-    "multicollinearity_vif": {"prefix": "eda_corr_cluster_", "category": "collinearity"},
-    "leakage_scan": {"prefix": "eda_leakage_", "category": "leakage"},
-    "missingness_scan": {"prefix": "eda_missing_", "category": "missing_data"},
-    "target_profile": {"exact": ["eda_target_skew"], "category": "target"},
-    "data_sufficiency_check": {"exact": ["eda_sufficiency_insufficient", "eda_sufficiency_borderline"], "category": "sufficiency"},
-}
+# Map recommendation panel action IDs to the ledger insight IDs they speak to.
+# `AUDIT-032`: the map and the recorder both live in `ml/eda_actions.py` now —
+# a Streamlit page is not importable, so the only test of this wiring had to
+# keep a hand-copy of both, and the copy is where the pre-fix behavior was
+# still asserted. The comment there carries the before/after.
+from ml.eda_actions import (
+    _ACTION_TO_INSIGHT_MAP,
+    diagnostic_disclosure,
+    record_diagnostic_on_insights,
+)
 
 
-def _resolve_insights_from_eda_result(action_id: str, result: dict, title: str) -> None:
-    """Resolve or enrich ledger insights based on recommendation panel analysis results.
+def _resolve_insights_from_eda_result(action_id: str, result: dict, title: str) -> str:
+    """Record a completed recommended analysis against the insights it speaks to.
 
-    This bridges the gap where EDA analyses stored results in eda_results
-    but never fed structured findings back into the InsightLedger.
+    `AUDIT-032`. BEFORE this resolved every matching insight, so pressing **Run
+    Leakage Detection** — which re-reads `signals.leakage_candidate_cols` and
+    removes nothing — moved a `blocker` into the report's *"N were addressed
+    during the modeling workflow"* count and dropped its manuscript caveat.
+    AFTER it attaches the findings and leaves the observation open, and returns
+    the sentence the page shows so the user is told which of the two happened.
+
+    Returns "" when nothing was recorded. Never raises: the workflow must not
+    break on a bookkeeping step.
     """
     try:
-        mapping = _ACTION_TO_INSIGHT_MAP.get(action_id)
-        if not mapping:
-            return
-
-        findings = result.get("findings", [])
-        warnings = result.get("warnings", [])
-        stats = result.get("stats", {})
-
-        resolution_details = {
-            "action_type": "diagnostic_analysis",
-            "method": action_id,
-            "findings": findings,
-            "warnings": warnings,
-        }
-        if stats:
-            resolution_details["stats"] = stats
-
-        resolved_msg = f"Diagnostic analysis performed: {title}"
-        if findings:
-            resolved_msg = f"{title}: {findings[0]}"
-
-        # Find matching insights by exact ID or prefix
-        exact_ids = mapping.get("exact", [])
-        prefix = mapping.get("prefix", "")
-
-        for insight in ledger.insights:
-            if insight.resolved:
-                continue
-            match = (
-                insight.id in exact_ids
-                or (prefix and insight.id.startswith(prefix))
-            )
-            if match:
-                ledger.resolve(
-                    insight.id,
-                    resolved_by=resolved_msg,
-                    resolved_on_page="02_EDA",
-                    resolution_details=resolution_details,
-                )
+        touched = record_diagnostic_on_insights(ledger, action_id, result, title)
+        if not _ACTION_TO_INSIGHT_MAP.get(action_id):
+            return ""
+        return diagnostic_disclosure(title, len(touched))
     except Exception:
-        pass  # Never break the workflow
+        return ""  # Never break the workflow
 
 
 ACTION_NEXT_STEPS = {
@@ -1671,7 +1663,13 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
                     result = action_func(_action_df, target_col, feature_cols, signals, st.session_state)
                     st.session_state.eda_results[action_id] = result
                     log_methodology(step="EDA", action=f"Ran {title}", details={"analysis": run_action})
-                    _resolve_insights_from_eda_result(action_id, result, title)
+                    # Stored rather than written straight out: `st.rerun()` two
+                    # lines down discards everything this block renders, which
+                    # is `AGENT_ONBOARD.md` §07 trap 6 in its purest form — the
+                    # server composes the sentence and nobody ever sees it.
+                    _disclosure = _resolve_insights_from_eda_result(action_id, result, title)
+                    if _disclosure:
+                        st.session_state.setdefault("eda_diagnostic_disclosure", {})[action_id] = _disclosure
                     try:
                         from utils.workflow_provenance import get_provenance
                         get_provenance().record_eda_analysis(title)
@@ -1685,6 +1683,9 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
 
     if action_id in st.session_state.eda_results:
         result = st.session_state.eda_results[action_id]
+        _disclosure = (st.session_state.get("eda_diagnostic_disclosure") or {}).get(action_id)
+        if _disclosure:
+            st.info(_disclosure, icon="🔎")
         for w in result.get("warnings", []):
             st.warning(w)
 
@@ -1760,7 +1761,11 @@ if _recommendations:
                                              feature_cols, signals, st.session_state)
                         st.session_state.eda_results[aid] = result
                         log_methodology(step='EDA', action=f'Ran {title}', details={'analysis': aid})
-                        _resolve_insights_from_eda_result(aid, result, title)
+                        # Same store-then-render as `_run_and_show`: the rerun
+                        # below would discard anything written here.
+                        _rec_disclosure = _resolve_insights_from_eda_result(aid, result, title)
+                        if _rec_disclosure:
+                            st.session_state.setdefault("eda_diagnostic_disclosure", {})[aid] = _rec_disclosure
                         try:
                             from utils.workflow_provenance import get_provenance
                             get_provenance().record_eda_analysis(title)

@@ -63,15 +63,12 @@ MARKED = [
     # columns the app refuses to encode are out of it — 45 rather than 344 on
     # `survey_instrument.csv`, with what left the count named and priced.
     # `turbotab/test_the_seal_counts_the_parameters_the_models_are_handed.py`.
-    "AUDIT-022",
-    "AUDIT-023",
     "AUDIT-025",
     # AUDIT-030 closed at L45-A2. The ruling was made at the L44 adjudication and
     # applied here: the Methods section no longer calls the held-out comparison a
     # validation one, and it states what selecting among N on those rows costs.
     # `tests/test_the_methods_section_names_the_set_it_compared_on.py`.
     "AUDIT-031",
-    "AUDIT-032",
     "AUDIT-034",
     "AUDIT-035"
 ]
@@ -103,30 +100,6 @@ def test_audit_019_is_closed_and_its_regression_test_is_the_one_named_here():
         row.get("test") or ""), (
         "AUDIT-019 is closed against a test this file cannot name")
 
-
-@pytest.mark.xfail(strict=True, reason="AUDIT-022 — filed at L43-B, not fixed this loop")
-def test_audit_022_the_generated_manuscript_lists_the_sample_size_as_a_strength_for_every():
-    """The generated manuscript lists the sample size as a Strength for every N, with no criterion — and can print it as a strength and a limitation in the same section
-
-    Where: `pages/10_Report_Export.py:1722`
-    Registry: §A5.4 requires that sample-size adequacy come from Riley's criteria-based calculation for the candidate parameter count, prevalence and anticipated R². Placing an uncomputed N under a heading that asserts it is a methodological strength is an adequacy claim the app never evaluated. This is the AUDIT
-    """
-    row = _ledger()["AUDIT-022"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-022 is still open: " + row["item"][:160])
-
-@pytest.mark.xfail(strict=True, reason="AUDIT-023 — filed at L43-B, not fixed this loop")
-def test_audit_023_applying_feature_selection_overwrites_the_candidate_feature_list__so_t():
-    """Applying feature selection overwrites the candidate feature list, so the sufficiency prose reports the KEPT count while calling them 'candidate predictors'
-
-    Where: `pages/04_Feature_Selection.py:440`
-    Registry: §A5.4, flagged ⚠: 'CANDIDATE PREDICTORS COUNT TOWARD SAMPLE SIZE EVEN IF THEY ARE LATER DROPPED. If you screen 40 variables and keep 8, you must size for 40 — data-driven selection consumes degrees of freedom whether or not it appears in the final model. This is the sample-size mistake PROBAST most 
-    """
-    row = _ledger()["AUDIT-023"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-023 is still open: " + row["item"][:160])
 
 @pytest.mark.xfail(strict=True, reason="AUDIT-025 — filed at L43-B, not fixed this loop")
 def test_audit_025_the_theory_reference_tells_the_user_the_feature_selection_page_offers():
@@ -172,18 +145,6 @@ def test_audit_031_the_manuscript_s_auto_generated_strengths_list_asserts_the_da
     assert row["status"] in ("OPEN", "PARTIAL")
     pytest.fail(
         "AUDIT-031 is still open: " + row["item"][:160])
-
-@pytest.mark.xfail(strict=True, reason="AUDIT-032 — filed at L43-B, not fixed this loop")
-def test_audit_032_running_the_leakage_diagnostic_marks_the_leakage_blocker_resolved__the():
-    """Running the leakage diagnostic marks the leakage BLOCKER resolved; the report then calls it "addressed" and the manuscript drops the caveat, while the column is still a model feature
-
-    Where: `pages/02_EDA.py:1575-1589`
-    Registry: §A5.5 Anti-patterns names leakage predictors as a thing that must not be silently carried into a model. The governing rule is that the app may be silent and may refuse but must never assert something false: reporting a still-present leakage predictor under "Addressed observations" and in an "N were 
-    """
-    row = _ledger()["AUDIT-032"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-032 is still open: " + row["item"][:160])
 
 @pytest.mark.xfail(strict=True, reason="AUDIT-034 — filed at L43-B, not fixed this loop")
 def test_audit_034_the_recorded_reverse_coding_sentence_promises_a_flip_and_a_scoring_ste():

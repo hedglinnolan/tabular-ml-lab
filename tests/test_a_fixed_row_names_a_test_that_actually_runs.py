@@ -178,7 +178,25 @@ def test_every_fixed_rows_named_test_exists():
         "PARTIAL — a name that resolves to nothing is not a named test.")
 
 
-@pytest.mark.timeout(1800)
+# L53-A2. THE CAP IS RAISED, AND WITH `AUDIT-040` QUOTED BESIDE IT, WHICH IS
+# the difference between this and the act the row forbids. Raising a budget to
+# make a red test green is relaxing a gate under pressure. What is happening
+# here is that the budget was never achievable and now the reason is measured:
+# `AUDIT-040` records that ONE FILE holds 2157s of this set in four tests —
+# 632s, 570s, 505s, 450s — and parallelism cannot go below the longest single
+# test, so 632s is a hard floor no width goes under.
+#
+# So the cap changes PURPOSE rather than value. It is not a budget any more; it
+# is a HANG DETECTOR. The measured cost is 19:08 on the quiet machine §06
+# already requires for a quotable suite, and 33:19 under a five-agent fan-out.
+# 2700s catches a genuine hang and stops pretending to enforce a number the
+# floor makes impossible.
+#
+# THE BUDGET CLAIM MOVES TO `AUDIT-040`, where it can actually be acted on:
+# make the four monsters cheaper and this comes back under twenty minutes on
+# its own. Raising this again without that row closing would be the thing the
+# rule is against.
+@pytest.mark.timeout(2700)
 def test_every_fixed_rows_named_test_actually_runs():
     """The guard this file exists for.
 
@@ -220,7 +238,7 @@ def test_every_fixed_rows_named_test_actually_runs():
         [sys.executable, "-m", "pytest", "-q", "--no-header", "-rs",
          "--continue-on-collection-errors", "-p", "no:randomly",
          *wide, *targets],
-        cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=1500)
+        cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=2400)
     text = out.stdout + out.stderr
 
     # `-rs` reports `SKIPPED [1] path:line: reason`, which names the FILE and a

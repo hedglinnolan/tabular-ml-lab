@@ -656,8 +656,14 @@ def test_table_one_carries_smds_and_no_p_values(shape):
     name, target, task, _ = TARGET_SHAPES[shape]
     p, _ = _project(name, target, task, fit=False)
     built = MS.table_one(p)
-    if built is None:
-        pytest.skip("no describable frame")
+    # `AUDIT-039`, swept from `TEST-059`'s class. THIS WAS A CONDITIONAL SKIP
+    # over the exact condition the test exists to detect: pytest counts a skip
+    # as not-a-failure, so the regression would have silenced the guard
+    # instead of turning it red.
+    assert built is not None, (
+        f"`table_one` returned nothing for {name}/{target}, a shipped fixture "
+        f"chosen because it IS describable. A Table 1 that stopped being built "
+        f"is the finding this test would then be standing down over")
     table, meta = built
 
     columns = " ".join(str(c) for c in table.columns).lower()

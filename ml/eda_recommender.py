@@ -207,6 +207,109 @@ def log_transform_advice(state: Optional[Dict]) -> Dict[str, str]:
     }
 
 
+# ── AUDIT-012: which tier the outlier rate is, before a remedy is named ─────
+#
+# `research/CLINICAL_SURVEY_PACK.md` §A1.2 keeps two bound sets apart and says
+# what each is for — plausibility bounds are "values incompatible with a living
+# patient. Use for flagging as suspected data error"; a reference interval is
+# the central 95% of a healthy population and is for "annotation. Never for
+# exclusion." Cross-cutting 7 ranks the collapse seventh by damage: "Excluding
+# abnormal-but-possible clinical values as 'outliers'. Removes the sickest
+# patients. Physiologically impossible ≠ abnormal, and generic outlier rules
+# (±3 SD, IQR fences) are wrong here."
+#
+# `ml/outliers.py:39` is an IQR fence and nothing else. R5 and R9 turned its
+# rate straight into "use Huber loss or winsorization" and "Consider
+# winsorization or outlier removal" — the last of which is the sentence the
+# pack names as the damage, offered without anything having checked which tier
+# the values are in.
+
+def outlier_tier_advice(rate: float,
+                        reading: Optional[Dict]) -> Dict[str, str]:
+    """The R5/R9 outlier sentences, from the reading rather than the rate alone.
+
+    `AUDIT-012` — BEFORE, one wording for all three situations below:
+
+        R5 model_implications: "High outlier rate -> use Huber loss or
+                                winsorization"
+        R9 model_implications: "High outlier rate -> use Huber loss or robust
+                                regression" / "Consider winsorization or
+                                outlier removal"
+
+    AFTER: Huber is still recommended in every branch — the shelf is not
+    shortened and `rate` is still reported — but what the app claims to have
+    distinguished shrinks to what it read, and where it read nothing it says
+    so and names why.
+
+    `reading` is `ml.dataset_profile.read_target_impossibility`'s dict, or
+    `None` where the frame was never read for it.
+    """
+    pct = f"{rate:.1%}"
+    state = (reading or {}).get("physio_read", "unread")
+    band = (reading or {}).get("impossibility_band")
+    n_imp = (reading or {}).get("impossible_count")
+    var = (reading or {}).get("physio_variable")
+
+    if state == "matched" and band and n_imp:
+        lo, hi, unit = band
+        return {
+            "why": (f"Outlier rate: {pct} — {n_imp} of them are outside "
+                    f"{lo:g}–{hi:g} {unit}, the published plausibility band "
+                    f"for {var}"),
+            "learn": ("Which fence hits are entries a living person could not "
+                      "produce, and which are extreme but attainable"),
+            "implication": (
+                f"Outlier rate {pct} is an IQR fence count and it is carrying "
+                f"two findings: {n_imp} value(s) fall outside {lo:g}–{hi:g} "
+                f"{unit}, which is the published plausibility band for {var}. "
+                f"Those are suspected entry errors — repair them on the "
+                f"plausibility card. Huber and winsorization DOWNWEIGHT rather "
+                f"than repair, and outlier REMOVAL applied to the rest would "
+                f"drop abnormal-but-real measurements, which removes the "
+                f"sickest rows in the table. Robust loss (Huber) is still the "
+                f"right handling for what is left once the impossible entries "
+                f"are dealt with."),
+        }
+
+    if state == "matched" and band:
+        lo, hi, unit = band
+        return {
+            "why": (f"Outlier rate: {pct} — none outside {lo:g}–{hi:g} {unit}, "
+                    f"the published plausibility band for {var}"),
+            "learn": ("That the fence hits are inside what a living person "
+                      "can produce, so they are extremes rather than errors"),
+            "implication": (
+                f"Outlier rate {pct}, and every one of those values is inside "
+                f"{lo:g}–{hi:g} {unit} — the published plausibility band for "
+                f"{var} — so they read as real extremes and not as entry "
+                f"errors. Robust loss (Huber) MODELS them at reduced weight; "
+                f"winsorization or removal would discard the phenomenon under "
+                f"study, and excluding abnormal-but-possible values removes "
+                f"the sickest rows in the table."),
+        }
+
+    why_unknown = (f"'{var}' has no published plausibility band"
+                   if var else
+                   f"the target matches no variable in the physiologic "
+                   f"reference")
+    if state == "unread":
+        why_unknown = "the physiologic reference was not read for this target"
+    return {
+        "why": f"Outlier rate: {pct} — IQR fence only, no plausibility band read",
+        "learn": ("How far the extreme values sit from the rest — and NOT "
+                  "whether they are possible, which is not checked here"),
+        "implication": (
+            f"Outlier rate {pct} is an IQR fence count and nothing more: the "
+            f"app cannot tell a physiologically impossible entry from an "
+            f"abnormal-but-real one here, because {why_unknown}. Robust loss "
+            f"(Huber) is a defensible handling under that uncertainty because "
+            f"it downweights rather than deletes. Winsorization and outlier "
+            f"REMOVAL are not offered on this reading: an impossible entry "
+            f"wants repair and an extreme-but-real one wants keeping, and "
+            f"nothing here distinguished them."),
+    }
+
+
 def compute_dataset_signals(
     df: pd.DataFrame,
     target: Optional[str],
@@ -324,6 +427,20 @@ def compute_dataset_signals(
                 # and never sees the frame. Absent from `target_stats` means
                 # NOT READ — the card says so rather than assuming raw.
                 signals.target_stats['log_transform_state'] = read_log_transform_state(target_series)
+
+                # `AUDIT-012`, the same shape one tier over. The fence rate
+                # above answers "is this value far from the others"; the
+                # published plausibility band answers "could a living person
+                # produce it". R5 and R9 recommended Huber, winsorization and
+                # outlier REMOVAL from the first number alone. Read here for
+                # the same reason as the line above — `recommend_eda` never
+                # sees the frame. Absent means NOT READ.
+                try:
+                    from ml.dataset_profile import read_target_impossibility
+                    signals.target_stats['impossibility'] = \
+                        read_target_impossibility(df, target)
+                except Exception:
+                    pass
             elif task_type_final == 'classification':
                 value_counts = target_series.value_counts()
                 signals.target_stats['class_counts'] = value_counts.to_dict()
@@ -561,6 +678,11 @@ def recommend_eda(signals: DatasetSignals) -> List[EDARecommendation]:
             # on the wire and invisible to a person (trap 6).
             log_advice = log_transform_advice(
                 signals.target_stats.get('log_transform_state'))
+            # `AUDIT-012`. The bare `Outlier rate: x%` line stood in `why`, the
+            # one field `ml/router.py:397` carries onto the Guided pull chip,
+            # and the remedy beside it was chosen from that number alone.
+            outlier_advice = outlier_tier_advice(
+                outlier_rate, signals.target_stats.get('impossibility'))
             recommendations.append(EDARecommendation(
                 id="r5_target_regression",
                 title="Target Distribution & Outliers",
@@ -569,17 +691,17 @@ def recommend_eda(signals: DatasetSignals) -> List[EDARecommendation]:
                 why=[
                     f"Target: {signals.target_name}",
                     f"Skewness: {skew:.2f}",
-                    f"Outlier rate: {outlier_rate:.1%}",
+                    outlier_advice["why"],
                     log_advice["why"],
                 ],
                 what_you_learn=[
                     "Target distribution shape (normal, skewed, multimodal)",
-                    "Outlier locations and impact",
+                    outlier_advice["learn"],
                     log_advice["learn"],
                 ],
                 model_implications=[
                     log_advice["implication"],
-                    "High outlier rate → use Huber loss or winsorization",
+                    outlier_advice["implication"],
                     "Multimodal → may benefit from tree-based models"
                 ],
                 run_action="target_profile"
@@ -709,23 +831,29 @@ def recommend_eda(signals: DatasetSignals) -> List[EDARecommendation]:
     if signals.task_type_final == "regression":
         outlier_rate = signals.target_stats.get('outlier_rate', 0)
         if outlier_rate > 0.05:
+            # `AUDIT-012`. This card carried the sharpest form of the row:
+            # "Consider winsorization or outlier removal", composed from the
+            # fence rate alone. CLINICAL_SURVEY_PACK Cross-cutting 7 names
+            # exactly that offer as the damage — it is how the sickest patients
+            # leave the table.
+            outlier_advice = outlier_tier_advice(
+                outlier_rate, signals.target_stats.get('impossibility'))
             recommendations.append(EDARecommendation(
                 id="r9_outlier_influence",
                 title="Outlier Influence Analysis",
                 priority=5,
                 cost="medium",
                 why=[
-                    f"Outlier rate: {outlier_rate:.1%}",
+                    outlier_advice["why"],
                     "Outliers can heavily influence regression models"
                 ],
                 what_you_learn=[
                     "Location and magnitude of outliers",
                     "Impact on model predictions",
-                    "Effect of robust loss or winsorization"
+                    outlier_advice["learn"],
                 ],
                 model_implications=[
-                    "High outlier rate → use Huber loss or robust regression",
-                    "Consider winsorization or outlier removal",
+                    outlier_advice["implication"],
                     "NN with robust loss may outperform GLM"
                 ],
                 run_action="outlier_influence"

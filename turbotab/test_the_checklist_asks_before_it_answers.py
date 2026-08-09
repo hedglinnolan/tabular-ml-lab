@@ -21,14 +21,21 @@ checkable rather than asserted.
    `GUIDED-195`'s rule, arriving at a table instead of a list.
 5. **It reaches the Report step.** A capability ships with its consumer.
 
-## What is NOT covered, and it is the loop's own boundary
+## L53-B — and the flag test did its job
 
-**Auto-population.** Every `auto_filled` is `None` by design, so the tests below
-assert the ABSENCE is honest rather than that any text is right. When L53 fills
-the column, `test_nothing_renders_as_a_blank_or_a_none` keeps working and
-`test_the_artifact_says_auto_population_is_not_built` is the one that must go
-red — it is written to fail loudly the day the premise changes, rather than
-passing quietly over a column that started working.
+`test_the_artifact_says_auto_population_is_not_built` was written to go **red**
+the day the premise changed. It did, and it is gone. **Its replacements assert
+the consequence rather than the flag**: that a named item carries a named
+section's own sentence, character for character, and that no cell points at a
+section the draft does not contain.
+
+**Two items were mapped and then unmapped, and that is the correction worth
+keeping.** `sample_size` pointed at *Data preparation*, whose sentence is
+*"…was loaded: 288 rows, 19 columns."* — a row COUNT under an item asking for a
+sample-size JUSTIFICATION. `identification` pointed at the same section's task
+sentence under an item asking development-vs-validation. **A section being
+nearby is not its sentences answering the item**, and a filled cell with the
+wrong sentence costs a reader the thing they were checking.
 """
 from __future__ import annotations
 
@@ -174,7 +181,7 @@ def test_nothing_renders_as_a_blank_or_a_none():
     """
     from turbotab import reporting_checklist as CL
 
-    out = CL.render()
+    out = CL.render()            # no draft: every cell an honest absence
     assert out["rows"], "the artifact rendered no rows at all"
     for row in out["rows"]:
         for column in ("item", "where_addressed_text", "auto_filled_text",
@@ -207,20 +214,136 @@ def test_the_artifact_says_how_many_items_it_is_not_showing():
     assert cov["how_to_close"], "a stated gap with no way to close it is a shrug"
 
 
-def test_the_artifact_says_auto_population_is_not_built():
-    """Written to go RED the day L53 lands, which is the point.
+def test_a_named_item_is_filled_from_the_record_and_points_at_a_real_section():
+    """L53-B's replacement for `test_the_artifact_says_auto_population_is_not_built`.
 
-    A test that passes quietly over a column that started working is how a
-    deliberate absence becomes an accidental one.
+    **That test asserted a FLAG and this one asserts the CONSEQUENCE**, which is
+    the difference the prompt asked for: `auto_population_built: True` is
+    satisfiable by flipping a boolean, and *this named item carries this
+    section's own sentence* is not.
     """
+    from turbotab import draft as D
     from turbotab import reporting_checklist as CL
 
-    out = CL.render()
-    assert out["auto_population_built"] is False, (
-        "auto-population reports itself as built. If L53 has landed, this "
-        "test is the one that says so — fill the `where addressed` and "
-        "`auto-filled text` columns and delete this")
-    assert all(r["auto_filled"] is None for r in out["rows"])
+    client, pid = _project()
+    doc = D.draft(_project_obj(client, pid))
+    out = _served(client, pid)
+
+    # `.get` IN THE MESSAGE TOO, and that is not fussiness. The first draft
+    # read `out['n_auto_filled']` in the f-string, which only evaluates when
+    # the assert FAILS — so under a total revert this raised `KeyError` instead
+    # of reporting the claim, and a KeyError is RED FOR THE WRONG REASON. That
+    # is `AUDIT-008`'s exact defect, met again inside the test written after
+    # reading about it.
+    assert out.get("n_auto_filled", 0) >= 2, (
+        f"only {out.get('n_auto_filled', 0)} items filled from a draft with "
+        f"{len(doc['sections'])} sections; auto-population is not reaching the "
+        f"artifact")
+    by_key = {r["key"]: r for r in out["rows"]}
+
+    outcome = by_key["outcome"]
+    assert outcome["where_addressed"] == "Outcome and analysis population"
+    assert outcome["auto_filled"], "the outcome item did not fill"
+    # THE CELL IS THE DRAFT'S OWN STRING, character for character. A paraphrase
+    # would be a second copy of the claim (L36's ruling, one surface up).
+    said = [x["text"].strip()
+            for x in _section(doc, "Outcome and analysis population")["sentences"]]
+    assert outcome["auto_filled"] == " ".join(said), (
+        f"the cell is not the draft's sentences verbatim:\n  cell : "
+        f"{outcome['auto_filled']!r}\n  draft: {' '.join(said)!r}")
+
+
+def test_every_where_addressed_names_a_section_the_draft_contains():
+    """`AUDIT-001`'s shape, inside the artifact built to catch it."""
+    from turbotab import draft as D
+    from turbotab import reporting_checklist as CL
+
+    client, pid = _project()
+    doc = D.draft(_project_obj(client, pid))
+    titles = {s["title"] for s in doc["sections"]}
+    assert titles, "the draft has no sections, so this asserts nothing"
+
+    out = _served(client, pid)
+    pointed = [r["where_addressed"] for r in out["rows"] if r["where_addressed"]]
+    assert pointed, "no item points at a section, so the check is vacuous"
+    dangling = [w for w in pointed if w not in titles]
+    assert not dangling, (
+        f"these cells point at sections this draft does not contain: "
+        f"{dangling}. A pointer to a section the document lacks is the defect "
+        f"this artifact exists to find, arriving inside it")
+
+
+def test_a_renamed_section_unfills_the_item_rather_than_dangling():
+    """The load-bearing half, planted rather than argued."""
+    from turbotab import draft as D
+    from turbotab import reporting_checklist as CL
+
+    client, pid = _project()
+    doc = D.draft(_project_obj(client, pid))
+    for section in doc["sections"]:
+        if section["title"] == "Outcome and analysis population":
+            section["title"] = "Outcome and analysis populations"   # one letter
+    out = CL.render(None, doc)
+    row = {r["key"]: r for r in out["rows"]}["outcome"]
+    assert row["where_addressed"] is None, (
+        "the cell still points at 'Outcome and analysis population' after the "
+        "draft renamed it, which is a dangling pointer printed as an answer")
+    assert "has no such section" in (row["not_filled_because"] or ""), (
+        f"the item unfilled without saying why: {row['not_filled_because']!r}")
+
+
+def test_auto_population_did_not_overwrite_the_not_filled_sentences():
+    """L52 built that vocabulary; L53 must not blank it.
+
+    An item that cannot be filled keeps a REASON, and where the draft itself
+    says why a section is empty, that reason is the draft's rather than the
+    generic one — it is about this study.
+    """
+    from turbotab import draft as D
+    from turbotab import reporting_checklist as CL
+
+    client, pid = _project()
+    out = _served(client, pid)
+    unfilled = [r for r in out["rows"] if not r["auto_filled"]]
+    assert unfilled, "every item filled, so this test asserts nothing"
+    for row in unfilled:
+        why = row["not_filled_because"]
+        assert why and len(why.split()) >= 5, (
+            f"{row['key']} is unfilled with no reason a reader can use: "
+            f"{why!r}")
+        assert not _leaks_a_none(why)
+    # AND AT LEAST ONE REASON IS THE DRAFT'S OWN, not the module's boilerplate.
+    drafts_own = [r for r in unfilled
+                  if r["not_filled_because"].startswith(("No ", "Nothing "))]
+    assert drafts_own, (
+        "no unfilled item carries the draft's own `waiting_for` sentence, so "
+        "the generic reason overwrote the specific one")
+
+
+def test_the_two_items_whose_sections_do_not_answer_them_stay_unfilled():
+    """The correction that mattered most in L53-B, pinned so it cannot regress.
+
+    A first draft mapped `sample_size` to *Data preparation*, whose sentence is
+    *"…was loaded: 288 rows, 19 columns."* — a row COUNT presented under an item
+    that asks for a sample-size JUSTIFICATION. And `identification` to the same
+    section's task-type sentence, under an item asking development-vs-validation.
+    Both would have been the app asserting something it had not established.
+    """
+    from turbotab import draft as D
+    from turbotab import reporting_checklist as CL
+
+    client, pid = _project()
+    out = _served(client, pid)
+    by_key = {r["key"]: r for r in out["rows"]}
+    for key, must_say in (("sample_size", "justification"),
+                          ("identification", "different fact")):
+        row = by_key[key]
+        assert row["auto_filled"] is None, (
+            f"{key} is filled with {row['auto_filled']!r}. A section being "
+            f"NEARBY is not the same as its sentences answering the item")
+        assert must_say in (row["not_filled_because"] or ""), (
+            f"{key}'s reason does not say why the nearby section is not the "
+            f"answer: {row['not_filled_because']!r}")
 
 
 def test_probast_is_a_sentence_and_not_a_second_checklist():
@@ -242,6 +365,35 @@ def test_probast_is_a_sentence_and_not_a_second_checklist():
 
 
 # ── 4 · it reaches the Report step ───────────────────────────────────────────
+
+def _served(client, pid):
+    """The checklist AS THE APP SERVES IT.
+
+    Driven through `/checklist` rather than by calling `render()`, and that is
+    not stylistic. A probe that reverts this loop's change and then calls
+    `render(project, draft)` dies on `TypeError: render() takes from 0 to 1
+    positional arguments` — a signature mismatch, which is RED FOR THE WRONG
+    REASON and proves only that an argument was added. The route's shape did
+    not change, so a reverted app still answers it and still returns twelve
+    rows; what changes is whether the cells carry anything. That is the claim,
+    so that is what the probe has to be able to reach.
+    """
+    got = client.get(f"/project/{pid}/checklist")
+    assert got.status_code == 200, got.text[:200]
+    return got.json()
+
+
+def _section(doc, title):
+    """One draft section by title, so a test can compare against its own source."""
+    return next(s for s in doc["sections"] if s["title"] == title)
+
+
+def _project_obj(client, pid):
+    """The project dict `draft.draft()` takes."""
+    from turbotab import api
+
+    return api._project(pid).to_dict()
+
 
 def _project(fixture="clinical_labs.csv", target="readmitted"):
     from fastapi.testclient import TestClient
@@ -311,3 +463,20 @@ def test_the_checklist_reaches_the_report_step():
     assert CL.ITEMS[0].needs_from_you[:40] in report, (
         "the header rendered and the asking column did not, which is the "
         "table shape without the content")
+    # L53-B. THE REASON REACHES THE SCREEN, and it did not before: the payload
+    # carried `not_filled_because` and the page rendered only the short text,
+    # so the machine-readable form was RICHER than the human one — trap #7 with
+    # the sides swapped, found by the adjudicator rather than by me.
+    served = _served(client, pid)
+    unfilled = [r for r in served["rows"] if not r["auto_filled"]]
+    assert unfilled, "every item filled, so the reason cannot be checked here"
+    reason = unfilled[0]["not_filled_because"]
+    assert reason[:50] in report, (
+        f"the page says an item is not filled and drops the WHY. The payload "
+        f"carries {reason[:80]!r} and the screen does not")
+    # AND A FILLED CELL CARRIES THE DRAFT'S SENTENCE, on screen rather than
+    # only in the payload — the other half of the same claim.
+    filled = [r for r in served["rows"] if r["auto_filled"]]
+    assert filled, "nothing filled on this fixture, so the drive proves half"
+    assert filled[0]["auto_filled"][:40] in report, (
+        "an auto-filled cell is composed by the server and never rendered")

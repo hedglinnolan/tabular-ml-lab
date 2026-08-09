@@ -31,6 +31,146 @@ from ml.clinical_units import infer_unit, CLINICAL_VARIABLES
 from ml.physiology_reference import load_reference_bundle, match_variable_key, get_improbability_band
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# What the numeric imputation defaults cost  (`AUDIT-007`)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# `AUDIT-007`, corrected in the shape `AUDIT-021` uses.
+#
+# BEFORE: the `median` branch below was applied on the default path with
+#   nothing anywhere stating what it costs, and `pages/05_Preprocess.py`'s help
+#   text for it read *"Robust to skewed distributions. Most common default."* —
+#   an endorsement. `CLINICAL_SURVEY_PACK.md` §A2 anti-pattern 2 is
+#   **[SETTLED as bad]**: *"Mean/median imputation. Understates variance,
+#   destroys the distribution, indefensible in a manuscript."* Cross-cutting
+#   item 11 is blunter for the mean: *"Mean-imputing anything, ever, without a
+#   loud warning."*
+#
+# AFTER: the cost is stated where the default is applied, once. Nothing is
+#   removed — median remains the default, and the sentence keeps the true part
+#   of the old one (it IS the robust point estimate under skew) while adding
+#   what that buys and what it costs.
+#
+# Kept here rather than in the page because this module is where the choice
+# becomes an estimator; `pages/05_Preprocess.py` renders these strings, so the
+# sentence and the code that makes it true cannot drift apart. §A2 anti-pattern
+# 3 (**[SETTLED]**) is folded in for every strategy that fills from `X` alone:
+# the outcome is not in any of these fills, so associations are biased toward
+# the null. `iterative` (MICE) is the one entry that is not an anti-pattern,
+# and it says what it still assumes rather than claiming to be free.
+NUMERIC_IMPUTATION_COST = {
+    "median": (
+        "Robust to skew as a point estimate — and that is all it is. Filling "
+        "with one number understates that column's variance and distorts its "
+        "distribution, and the outcome is not in the fill, so associations are "
+        "biased toward the null. §A2 settles this as bad practice in a "
+        "manuscript."
+    ),
+    "mean": (
+        "⚠️ Mean imputation assumes symmetry and is pulled by outliers, and "
+        "like the median it understates variance, distorts the distribution "
+        "and biases associations toward the null because the outcome is not in "
+        "the fill. §A2 settles this as bad practice in a manuscript."
+    ),
+    "constant": (
+        "Fills with a fixed value, so it is a claim that the blank MEANS that "
+        "value. Defensible only where missing is structural or has a domain "
+        "meaning; otherwise it distorts the distribution more than the median "
+        "does, and the outcome is not in the fill."
+    ),
+    "iterative": (
+        "Models each column from the others (MICE), so it preserves variance "
+        "in a way single-value fills cannot. It still assumes the missingness "
+        "is MAR — where a value is absent because of what it would have been, "
+        "no imputation recovers it."
+    ),
+}
+
+# Every scaler this builder can actually construct, read off the branches in
+# `build_preprocessing_pipeline` below. It exists so a caller can ask whether a
+# variant it was handed is buildable instead of naming one this module would
+# silently ignore — the `else` in that branch chain is a no-op, so an unknown
+# variant applies NO scaling while the interface says it applied one.
+SUPPORTED_NUMERIC_SCALINGS = ("standard", "robust", "minmax", "none")
+
+
+def scaling_from_recipe(
+    model_key: str,
+    registry: Optional[Dict[str, Any]] = None,
+    fallback: str = "standard",
+    origins: Optional[frozenset] = None,
+) -> Dict[str, Any]:
+    """What `turbotab.recipes` says this model's scaling is, and what gets built.
+
+    `AUDIT-013`, corrected in the shape `AUDIT-021` uses.
+
+    BEFORE: `pages/05_Preprocess.py` read
+      `spec.capabilities.requires_scaled_numeric` directly at four sites and
+      hard-coded `"standard"` from it, then told the user *"scaling enabled
+      (standard); appropriate for this model"* and *"Enabled standard scaling
+      (model requires scaling)"*. Both sentences attribute the choice to the
+      model's declared requirement, which is the `caps:requires_scaled_numeric`
+      row in `turbotab/recipes.py`. A pack may override that row —
+      `turbotab/packs.py:5182` registers `scale → pareto` against exactly that
+      selector — and the page could not see it, so the sentence named a source
+      whose answer it had not read.
+
+    AFTER: the table is asked. `resolve()`'s precedence lattice decides, a pack
+      row reaches the Classic door, and where this builder cannot construct the
+      table's answer that is STATED rather than silently substituted.
+
+    The last clause is the point. `build_preprocessing_pipeline`'s scaler branch
+    has no `else`: a variant it does not know applies NO scaling at all. So
+    routing the table straight through would have turned a display defect into
+    a fit defect the first time a metabolomics project asked for `pareto`. The
+    honest form is the fallback plus `departure` — the app refusing, out loud.
+
+    Returns a dict. `consulted` is False and every table field is `None`/`""`
+    when the table cannot answer (an unregistered key such as the synthetic
+    `"default"` pipeline) — ignorance reported as ignorance rather than as a
+    default (`AGENT_ONBOARD.md` §07 trap 9). Callers keep their own
+    data-determined choice in that case, exactly as before.
+
+    Invariant, asserted by
+    `tests/test_the_preprocess_page_asks_the_recipe_table.py`: `departure` is
+    non-empty if and only if `applied != table_variant`.
+    """
+    out: Dict[str, Any] = {
+        "model": model_key, "consulted": False, "table_variant": None,
+        "reason": "", "origin": "", "selector": "", "required": None,
+        "applied": None, "buildable": None, "departure": "",
+    }
+    try:
+        from turbotab import recipes as _recipes
+        res = _recipes.resolve(model_key, "scale", registry, origins)
+    except Exception:
+        return out
+
+    out.update(consulted=True, table_variant=res.variant, reason=res.reason,
+               origin=res.origin, selector=res.selector)
+    out["required"] = res.variant != "none"
+    if not out["required"]:
+        # The table's answer is "no scaling is required for this model". WHICH
+        # scaling to use anyway is a judgment about the data, and the caller
+        # owns it; saying nothing here is the correct amount to say.
+        return out
+
+    out["buildable"] = res.variant in SUPPORTED_NUMERIC_SCALINGS
+    if out["buildable"]:
+        out["applied"] = res.variant
+    else:
+        out["applied"] = fallback
+        out["departure"] = (
+            f"The recipe table asks for **{res.variant}** scaling here "
+            f"(contributed by `{res.origin}`, matching `{res.selector}`), and "
+            f"this pipeline builder cannot construct it — it builds "
+            f"{', '.join(SUPPORTED_NUMERIC_SCALINGS)}. **{fallback}** is "
+            f"applied instead, which is a departure from the table, not the "
+            f"table's answer."
+        )
+    return out
+
+
 def build_unit_harmonization_config(
     df: pd.DataFrame,
     numeric_features: List[str],

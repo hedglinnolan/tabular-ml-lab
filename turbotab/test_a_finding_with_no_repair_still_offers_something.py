@@ -251,8 +251,14 @@ def test_an_option_with_no_columns_refuses_rather_than_previewing_nothing(client
     body = client.get(f"/project/{pid}").json()
     small = next((f for f in body["findings"]
                   if (f.get("params") or {}).get("category") == "sample_size"), None)
-    if small is None:
-        pytest.skip("no sample-size warning on this fixture")
+    # `AUDIT-039`. THE FIXTURE IS SHIPPED AND THE PRECONDITION IS A FACT
+    # ABOUT IT, so a skip here stands down over exactly the regression the
+    # test exists to catch — and pytest counts a skip as not-a-failure.
+    assert small is not None, (
+        "clinic_visits.csv raises no sample-size warning, and this test's whole "
+        "claim is that a DATASET-level warning offers no column operation. "
+        "Without one there is nothing to be right about, and a fixture that "
+        "stopped raising it is the thing worth knowing")
     offers = client.get(f"/project/{pid}/finding/{small['id']}/offers").json()
     assert offers["columns"] == []
     assert offers["options"] == [], (

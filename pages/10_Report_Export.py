@@ -1714,21 +1714,37 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     # Auto-fill methodological strengths
     strength_items = []
     analysis_total = manuscript_context.get('population_counts', {}).get('analysis_total') or len(df)
-    if analysis_total > 0:
-        from utils.workflow_provenance import get_provenance as _gp
-        try:
-            _up = getattr(_gp(), "upload", None)
-        except Exception:
-            _up = None
-        if _up is not None and getattr(_up, "cohort_column", ""):
-            # Listing a restricted sample as a plain strength invites the reader
-            # to treat it as the study's size. Name the group it is a sample of.
-            strength_items.append(
-                f"Sample size of {analysis_total:,} observations within "
-                f"{_up.cohort_column} = {_up.cohort_value} "
-                f"(the analysis was restricted to this group)")
-        else:
-            strength_items.append(f"Sample size of {analysis_total:,} observations")
+    # `AUDIT-022`. THE GATE WAS `analysis_total > 0`, so forty rows and forty
+    # thousand earned the same bullet under a heading that asserts the item is a
+    # methodological STRENGTH — and the limitations half, drawn from the EDA
+    # ledger, could print "Sample size may be insufficient (40 rows...)" in the
+    # same document. A list that says the same thing regardless of the number is
+    # not a claim about this study.
+    #
+    # `ml.sample_size_claim` decides where the sentence may be printed. It does
+    # not produce a better verdict — it states WHICH CHECK RAN, and the count is
+    # reported either way, so the shelf is not shortened: a study that fails the
+    # sufficiency check still has its N in the document, just not under
+    # "Strengths".
+    from utils.workflow_provenance import get_provenance as _gp
+    try:
+        _prov10 = _gp()
+    except Exception:
+        _prov10 = None
+    _up = getattr(_prov10, "upload", None)
+    from ml.candidate_predictors import candidate_count as _cand_count10
+    from ml.sample_size_claim import sample_size_claim as _size_claim
+    _scope10 = _profile_scope_fields()
+    _claim = _size_claim(
+        analysis_total,
+        sufficiency=getattr(getattr(profile, "data_sufficiency", None), "value", None),
+        n_candidate_predictors=_cand_count10(
+            (data_config.feature_cols if data_config else None) or [], _prov10).screened,
+        cohort_column=getattr(_up, "cohort_column", "") or "",
+        cohort_value=getattr(_up, "cohort_value", "") or "",
+        verdict_scope_note=_scope10.get("row_scope_note", "") or "")
+    if _claim is not None and _claim.is_strength:
+        strength_items.append(_claim.text)
     if export_ctx.get('bootstrap_results'):
         strength_items.append("Bootstrap confidence intervals for uncertainty quantification")
     if export_ctx.get('shap_results'):
@@ -1757,6 +1773,15 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     # Auto-fill limitations from unresolved ledger insights
     _unresolved_for_limitations = _report_ledger.get_unresolved()
     limitation_items = []
+    # `AUDIT-022`, THE OTHER HALF, AND IT IS WHY THIS IS A CORRECTION RATHER
+    # THAN A DELETION. When the sufficiency check did not rate the data
+    # favorably — or never ran — the count does not disappear from the
+    # document; it moves to where it belongs and says which check it rests on.
+    # §08 check 6: the shelf is never shortened. `sample_size_claim` composed
+    # this sentence and it is QUOTED, not re-composed, so there is one copy of
+    # the claim in the codebase and this page is not a second author of it.
+    if _claim is not None and not _claim.is_strength:
+        limitation_items.append(_claim.text)
     for _ui in _unresolved_for_limitations:
         if _ui.severity in ("blocker", "warning"):
             limitation_items.append(f"{_ui.finding}: {_ui.implication}")

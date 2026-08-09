@@ -589,6 +589,8 @@
   .cl-fill{ display:block; margin-top:4px; font-size:10.5px; text-transform:uppercase;
             letter-spacing:.06em; color:var(--faint); }
   .cl-empty{ color:var(--faint); font-style:italic; }
+  .cl-why{ display:block; margin-top:5px; font-style:normal; font-size:11.5px;
+           color:var(--muted); line-height:1.45; }
   /* GUIDED-159 · THE FOURTH STATE, which was specified and never built.
      §04 names four — `done · now · waiting · stale` — and three existed, so a
      step NOBODY HAS REACHED YET wore the bare `--faint` hollow default. The
@@ -3615,8 +3617,18 @@
       h += "<tr><td>" + esc(r.item) +
            '<span class="cl-fill">' + esc(r.fills) + "</span></td>" +
            '<td class="cl-empty">' + esc(r.where_addressed_text) + "</td>" +
+           /* L53-B. THE REASON IS RENDERED, and it was not before: the
+              payload carried `not_filled_because` and the page showed only the
+              short text, so the machine-readable form was RICHER than what a
+              human saw — trap #7 with the sides swapped. The adjudicator
+              caught it; §01.7's whole point is that the asking column is the
+              one that helps, and "not filled" without "because" is half of
+              it. */
            "<td" + (r.auto_filled ? ">" : ' class="cl-empty">') +
-           esc(r.auto_filled_text) + "</td>" +
+           esc(r.auto_filled_text) +
+           (!r.auto_filled && r.not_filled_because
+              ? '<span class="cl-why">' + esc(r.not_filled_because) + "</span>"
+              : "") + "</td>" +
            "<td>" + esc(r.needs_from_you) + "</td></tr>";
     });
     h += "</tbody></table>";

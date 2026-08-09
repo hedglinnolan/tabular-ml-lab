@@ -197,6 +197,119 @@ def test_feature_selection_states_what_the_median_fill_costs_the_ranking(
     )
 
 
+# ── pages/05_Preprocess.py ───────────────────────────────────────────
+#
+# The half the row was filed against and the half that stayed OPEN through the
+# previous pass, which owned neither `pages/05_Preprocess.py` nor
+# `ml/pipeline.py`. `ml/pipeline.py:213` is where `median` becomes a
+# `SimpleImputer`, and `pages/05_Preprocess.py:580` skips the whole per-model
+# configuration block while **Smart Defaults** is selected — so on the DEFAULT
+# path a person is given median imputation, is never shown the imputation
+# control, and cannot reach MICE without first switching mode.
+
+
+@pytest.mark.parametrize("builder,target,task", TARGET_SHAPES)
+def test_the_smart_defaults_path_states_what_its_median_fill_costs(
+    builder, target, task
+):
+    """The path that hides the control is the path that must state the cost."""
+    df = _with_missing(builder(), {"cholesterol": _MODERATE_RATE})
+    at = AppTest.from_file("pages/05_Preprocess.py", default_timeout=120)
+    inject_data_state(at, df, target_col=target, task_type=task)
+    at.run()
+    assert not at.exception, [str(e.value)[:300] for e in at.exception]
+
+    # GUIDED-045 positive control, in two steps: the page rendered, and it
+    # rendered on the default Smart Defaults path — which is the only path
+    # these assertions are about.
+    text = _rendered_text(at)
+    assert text.strip(), "Preprocess rendered no text at all — nothing was swept"
+    modes = [r for r in at.radio if r.label == "Configuration mode"]
+    assert modes, "no configuration-mode radio rendered"
+    assert "Smart" in str(modes[0].value), (
+        f"the default mode is no longer Smart Defaults ({modes[0].value!r}), so "
+        f"this test is sweeping a path the user does not land on"
+    )
+    assert "median imputation" in text, (
+        "the Smart Defaults summary no longer says it applies median "
+        "imputation, so the cost assertions below have nothing to attach to"
+    )
+
+    lowered = text.lower()
+    assert "understates that column's variance" in lowered, (
+        "pages/05_Preprocess.py applies median imputation on the default path "
+        "without stating CLINICAL_SURVEY_PACK.md §A2 anti-pattern 2's cost "
+        "[SETTLED as bad]: 'Understates variance, destroys the distribution, "
+        "indefensible in a manuscript.'"
+    )
+    assert "distorts its distribution" in lowered, (
+        "the second half of §A2 anti-pattern 2 — the distorted distribution — "
+        "is not stated on the default Preprocess path"
+    )
+    assert "biased toward the null" in lowered, (
+        "§A2 anti-pattern 3 [SETTLED] — 'Imputing with the outcome excluded "
+        "from the imputation model. Biases associations toward the null.' — is "
+        "not stated, and the outcome is excluded from this fill"
+    )
+    # AUDIT-028: a weaker TRUE claim, not silence and not a blur. The sentence
+    # has to keep pointing at the alternative, and has to be honest that the
+    # alternative is not on this path.
+    assert "mice" in lowered, (
+        "the cost is stated and the remedy is not — §A2's alternative must be "
+        "named where the default is applied"
+    )
+    assert "advanced (full control)" in lowered, (
+        "the page tells the user MICE exists without saying that the control "
+        "is not on this path; pages/05_Preprocess.py:580 skips the per-model "
+        "block entirely while Smart Defaults is selected, so an unqualified "
+        "'MICE is available in Preprocessing' is a second false claim"
+    )
+
+
+@pytest.mark.parametrize("builder,target,task", TARGET_SHAPES)
+def test_the_imputation_control_does_not_endorse_the_settled_anti_pattern(
+    builder, target, task
+):
+    """Advanced mode: the help text under each option carries §A2's cost."""
+    df = _with_missing(builder(), {"cholesterol": _MODERATE_RATE})
+    at = AppTest.from_file("pages/05_Preprocess.py", default_timeout=120)
+    inject_data_state(at, df, target_col=target, task_type=task)
+    at.run()
+    assert not at.exception, [str(e.value)[:300] for e in at.exception]
+
+    modes = [r for r in at.radio if r.label == "Configuration mode"]
+    assert modes, "no configuration-mode radio rendered"
+    modes[0].set_value("🔧 Advanced (full control)").run()
+    assert not at.exception, [str(e.value)[:300] for e in at.exception]
+
+    # GUIDED-045 positive control: the control under test rendered, and the
+    # option whose caption is being read is the one selected.
+    imps = [sb for sb in at.selectbox if sb.label == "Numeric imputation"]
+    assert imps, (
+        f"no numeric-imputation selectbox in Advanced mode; selectboxes: "
+        f"{[sb.label for sb in at.selectbox]}"
+    )
+    assert str(imps[0].value) == "median", (
+        f"the pre-selected imputation is {imps[0].value!r}, so the caption "
+        f"rendered beneath it is not median's"
+    )
+
+    lowered = _rendered_text(at).lower()
+    assert "most common default." not in lowered, (
+        "pages/05_Preprocess.py still describes median imputation as 'Robust "
+        "to skewed distributions. Most common default.' — an endorsement of "
+        "the method CLINICAL_SURVEY_PACK.md §A2 anti-pattern 2 settles as bad"
+    )
+    assert "robust to skew as a point estimate" in lowered, (
+        "the true half of the old sentence was deleted rather than narrowed; "
+        "AUDIT-028's model is a claim that says LESS but stays true"
+    )
+    assert "understates that column's variance" in lowered, (
+        "the imputation control offers median with no statement of what §A2 "
+        "settles it costs"
+    )
+
+
 def test_the_route_to_mice_is_the_route_the_corrected_sentences_name():
     """`AGENT_ONBOARD.md` §07 trap 1: a named capability must have a real consumer.
 

@@ -63,7 +63,15 @@ MENTIONS = re.compile(r"reference\s+intervals?\b", re.I)
 DENIES_IT = re.compile(
     r"(?:is\s+)?not\s+an?\s+reference\s+interval"
     r"|NOT\s+A\s+REFERENCE\s+INTERVAL"
-    r"|reference\s+interval\s+is\s+(?:a\s+defined|the\s+central)", re.I)
+    r"|reference\s+interval\s+is\s+(?:a\s+defined|the\s+central)"
+    # L53. THE PACK'S OWN TYPOGRAPHY. §A1.2 line 59 defines the term with an em
+    # dash rather than a copula — "**Reference interval (RI)** — the central 95%
+    # of a healthy reference population" — and a file QUOTING that definition to
+    # explain why the p01/p99 band is NOT one was reported as calling the band a
+    # reference interval. The exemption already covers the definitional form;
+    # this is the same form in the source's own punctuation, not a new licence.
+    # A line still has to be DEFINING the other concept to be exempt.
+    r"|reference\s+interval[^\n]{0,12}[-\u2013\u2014][^\n]{0,12}the\s+central", re.I)
 
 
 def _lines(path: pathlib.Path):

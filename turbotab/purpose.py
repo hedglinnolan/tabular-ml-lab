@@ -63,19 +63,35 @@ TITLE = "What is this model for?"
 WHY = ("Both are legitimate and they are optimized for different things, so "
        "several later answers change depending on which you say. Nothing in "
        "the file reveals it — only you know what the paper claims.")
+# `AUDIT-011`: the second sentence used to read "Three more places read it:
+# whether a value below the limit of detection may be substituted, whether the
+# outcome may sit inside the imputation model, and whether class weighting is
+# contraindicated. Those four are the whole list today." Two of the four read
+# nothing. `clinical.blocks_substitution` is written and has no production
+# caller (`GUIDED-138`), and `ml.imbalance_advice.advice` is called from one
+# place in the repository — `pages/06_Train_and_Compare.py`, on the other
+# workflow — which passes `session_state["model_purpose"]`, a key three sites
+# read and none writes. Nothing on this door hands either of them this answer.
+# Corrected to the two that do read it, with the two that do not STATED rather
+# than dropped: a card that quietly shortened its list from four to two would
+# have told the user less and still not told them their answer stops here.
 CONSUMER = (
     "The missing-data route reads it first: a was-it-missing indicator carries "
     "the clinician's judgment and is observable at deployment, which makes it "
     "useful for prediction and a known source of bias for an association "
-    "estimate. Three more places read it: whether a value below the limit of "
-    "detection may be substituted, whether the outcome may sit inside the "
-    "imputation model, and whether class weighting is contraindicated. Those "
-    "four are the whole list today. The research names further forks this "
-    "answer would decide — which repeated measurements may be averaged, and "
-    "whether a survey instrument enters as a scale score or item by item — "
-    "and this app implements neither, so those calls stay yours. Answering "
-    "wrongly does not raise an error, it produces a complete set of numbers "
-    "optimized for a claim you are not making."
+    "estimate. One more place reads it: whether the outcome may sit inside the "
+    "imputation model. Those two are the whole list today, and both of them "
+    "are on this door. Two decisions that ought to read it do not, and that is "
+    "said here rather than left for you to find out: whether a value below the "
+    "limit of detection may be substituted is written and nothing calls it "
+    "yet, and nothing on this door passes your answer to the class-weighting "
+    "advisory, so that advisory says the purpose is unrecorded whatever you "
+    "answer. The research names further forks this answer would decide — which "
+    "repeated measurements may be averaged, and whether a survey instrument "
+    "enters as a scale score or item by item — and this app implements "
+    "neither, so those calls stay yours. Answering wrongly does not raise an "
+    "error, it produces a complete set of numbers optimized for a claim you "
+    "are not making."
 )
 
 OPTIONS: List[Dict[str, str]] = [

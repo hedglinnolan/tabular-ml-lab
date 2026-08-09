@@ -25,6 +25,16 @@ from utils.workflow_provenance import WorkflowProvenance
 from utils.insight_ledger import InsightLedger, MODEL_DISPLAY_NAMES
 
 
+#: How many ledger strengths / limitations the Discussion prints inline.
+#:
+#: These were bare `[:3]` and `[:5]` slices inside `_gen_discussion`. They are
+#: named here because they are the app's own editorial caps and not a property
+#: of the ledger — and because whatever is cut off is now COUNTED and disclosed
+#: in the manuscript rather than dropped (`AUDIT-032`'s sibling).
+_MAX_LEDGER_STRENGTHS = 3
+_MAX_LEDGER_LIMITATIONS = 5
+
+
 # ---------------------------------------------------------------------------
 # Manuscript draft
 # ---------------------------------------------------------------------------
@@ -1672,25 +1682,58 @@ class NarrativeEngine:
             strengths = discussion_points.get("strengths", [])
             limitations = discussion_points.get("limitations", [])
 
+            # `AUDIT-032`'s sibling, found one surface over and living here.
+            #
+            # These two lists used to be printed as `strengths[:3]` and
+            # `limitations[:5]` with no mark of any kind, under headings that
+            # say the list came from the analysis ledger. On a busy ledger the
+            # manuscript therefore asserted a COMPLETE set of limitations and
+            # printed five of them, and the reader had no way to know. A caveat
+            # the app authored and then dropped in the export is the same
+            # failure `AUDIT-032` names, one module downstream.
+            #
+            # The cap stays — a Discussion is not a log — and the omission is
+            # STATED instead, with the count, as an author gap rather than as a
+            # note the app writes in the researcher's name.
             if strengths:
                 parts.append("**Strengths (auto-generated from analysis ledger):** ")
-                strength_strs = strengths[:3]
+                strength_strs = strengths[:_MAX_LEDGER_STRENGTHS]
                 parts.append("; ".join(strength_strs) + ". ")
-            
+                if len(strengths) > len(strength_strs):
+                    parts.append(
+                        f"[AUTHOR REQUIRED — {len(strengths) - len(strength_strs)} "
+                        f"further ledger strength(s) are not printed here; the "
+                        f"analysis ledger records {len(strengths)} in total.] "
+                    )
+
+            # THE EXPLORATORY CAVEAT GOES FIRST, and that is the load-bearing
+            # half of this correction. Appended last, it was the first thing
+            # `[:5]` removed — so the one limitation that is about the whole
+            # study rather than about a single column disappeared from exactly
+            # the manuscripts that had the most to disclose.
             if self.ctx.get("exploratory_mode"):
-                limitations = list(limitations) + [
+                limitations = [
                     "the analysis was run in exploratory mode: the held-out test "
                     "set was not quarantined from feature engineering and "
                     "selection, so reported performance may be optimistically "
                     "biased and should not be presented as validated held-out "
                     "performance"
-                ]
+                ] + list(limitations)
 
             if limitations:
                 parts.append("**Limitations (auto-generated from analysis ledger):** ")
-                limitation_strs = limitations[:5]
+                limitation_strs = limitations[:_MAX_LEDGER_LIMITATIONS]
                 parts.append("; ".join(limitation_strs) + ". ")
-            
+                if len(limitations) > len(limitation_strs):
+                    parts.append(
+                        f"[AUTHOR REQUIRED — "
+                        f"{len(limitations) - len(limitation_strs)} further "
+                        f"limitation(s) recorded in the analysis ledger are not "
+                        f"printed here; the ledger records {len(limitations)} in "
+                        f"total. Review them and state the ones that bear on the "
+                        f"interpretation.] "
+                    )
+
             if not strengths and not limitations:
                 parts.append(
                     "[AUTHOR REQUIRED — No acknowledged strengths or limitations "

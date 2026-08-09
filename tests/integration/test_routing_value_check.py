@@ -312,9 +312,16 @@ def test_the_literal_count_is_still_reported_everywhere():
     means it appears in every row of the result file — not that it survives in
     a docstring.
     """
-    if not RESULT.exists():
-        pytest.skip("no recorded result yet")
+    # `AUDIT-039`. THE FILE IS COMMITTED — `git ls-files` resolves it — so the
+    # skip could never fire for a fixture reason and could only fire if the
+    # recorded result were DELETED, which is the drift this file exists to
+    # catch. A skip counts as not-a-failure, so the guard would have gone quiet
+    # exactly when the record went missing.
+    assert RESULT.exists(), (
+        f"{RESULT} is gone. It is a tracked file and it is the whole subject "
+        f"of this test; its absence is the finding, not a reason to stand down")
     recorded = json.loads(RESULT.read_text(encoding="utf-8"))
+    assert recorded.get("rows"), "the recorded result has no rows to check"
     for row in recorded["rows"]:
         guided = row["guided"]
         assert "irrelevant_questions" in guided, row["dataset"]

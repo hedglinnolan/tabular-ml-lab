@@ -200,8 +200,30 @@ def test_a_pack_cannot_shadow_a_core_operation_silently(table):
         origin="fake_metabolomics_pack")
     with pytest.raises(R.RecipeError):
         R.register_operation(clash)
-    R.register_operation(clash, replace_existing=True)
-    assert R.operation("scale").variants == ("pareto", "none")
+    # L53. THE ORIGINAL IS RESTORED, and it was not before. `_OPERATIONS` is a
+    # module-level dict, so `replace_existing=True` here rewrote `scale` for the
+    # REST OF THE PROCESS: every later test in the same run resolved `scale` to
+    # ("pareto", "none") instead of the core's ("standard", "robust", "minmax",
+    # "none"). It went unnoticed for as long as nothing downstream asked, and
+    # L53-C added a test that does — `test_the_table_agrees_with_the_registry`
+    # went red with `assert 'pareto' == 'standard'` in the full suite while
+    # passing alone and passing within `tests/integration`, which is the
+    # signature of exactly this.
+    #
+    # THE APP IS NOT AFFECTED and that was checked rather than assumed: driving
+    # a metabolomics lens on one project and then reading `/recipes` on another
+    # leaves the variants at the core's four, so no pack rewrites `scale` at
+    # request time and there is no cross-project bleed in the server. This is a
+    # test-isolation defect and it is stated as one.
+    original = R.operation("scale")
+    try:
+        R.register_operation(clash, replace_existing=True)
+        assert R.operation("scale").variants == ("pareto", "none")
+    finally:
+        R.register_operation(original, replace_existing=True)
+    assert R.operation("scale").variants == original.variants, (
+        "the core `scale` operation was not restored, so every test after this "
+        "one in the same process resolves a fake pack's variants")
 
 
 def test_an_operation_must_answer_the_litmus_and_a_default_must_state_a_reason():

@@ -22,6 +22,8 @@ from ml.pipeline import (
     build_unit_harmonization_config,
     build_plausibility_bounds,
     apply_plausibility_filter,
+    NUMERIC_IMPUTATION_COST,
+    scaling_from_recipe,
 )
 from ml.model_registry import get_registry
 from data_processor import get_numeric_columns
@@ -462,6 +464,15 @@ config_mode = st.radio(
 use_smart_defaults = "Smart" in config_mode
 
 if use_smart_defaults:
+    # `AUDIT-007`. BEFORE this sentence listed "missing values → median
+    # imputation + missing indicators" and stopped, on the path where the
+    # per-model configuration block below is skipped entirely — so a user on
+    # the default path is given median imputation, is never shown the
+    # imputation control, and cannot reach MICE without first switching mode.
+    # AFTER it still lists the same defaults, and states what the one the user
+    # cannot see costs. `CLINICAL_SURVEY_PACK.md` §A2 anti-pattern 2 is
+    # **[SETTLED as bad]**; the cost string is `ml.pipeline`'s, beside the
+    # branch that constructs the imputer.
     render_guidance(
         "<strong>Smart Defaults</strong> will automatically configure preprocessing based on your data profile: "
         "missing values → median imputation + missing indicators; "
@@ -469,6 +480,14 @@ if use_smart_defaults:
         "linear models → standard scaling; "
         "tree models → minimal preprocessing. "
         "You can switch to Advanced mode anytime to fine-tune."
+    )
+    st.warning(
+        f"**What the median default costs.** {NUMERIC_IMPUTATION_COST['median']} "
+        f"Multiple imputation (MICE) preserves what a single fill cannot, and it "
+        f"is **not on this path** — the per-model controls, including the "
+        f"imputation choice, are only rendered under **🔧 Advanced (full "
+        f"control)**.",
+        icon="⚠️",
     )
 
     # Auto-detect best settings from EDA
@@ -504,13 +523,35 @@ interpretability_mode = st.selectbox(
     help="Controls whether advanced transforms (PCA, KMeans, log) are allowed. High keeps pipelines simple and explainable.",
 )
 
+# `AUDIT-013`. Every scaling decision on this page now comes from
+# `ml.pipeline.scaling_from_recipe`, which asks `turbotab.recipes.resolve` —
+# the precedence lattice, including any pack row registered against
+# `caps:requires_scaled_numeric`. BEFORE, all four sites read
+# `spec.capabilities.requires_scaled_numeric` off the registry and hard-coded
+# `"standard"` from it, so a pack override could not reach the Classic door
+# while the page's sentences went on attributing the choice to the model's
+# declared requirement. The docstring on `scaling_from_recipe` carries the rest,
+# including why the table's answer is not routed straight into the builder.
+_recipe_scale_departures: Dict[str, str] = {}
+
+
+def _scale_decision(model_key: str, data_choice: str) -> Dict[str, Any]:
+    """The table's answer for one model, with this page's fallback folded in."""
+    d = scaling_from_recipe(model_key, registry_prep, fallback="standard")
+    if d["departure"]:
+        _recipe_scale_departures[model_key] = d["departure"]
+    # `applied` is None exactly when the table did not require scaling (or could
+    # not be asked), and WHICH scaling to use then is a judgment about this
+    # data, which is what `data_choice` carries.
+    d["effective"] = d["applied"] or data_choice
+    return d
+
+
 # When using smart defaults, set session state values automatically
 if use_smart_defaults:
-    # Smart defaults: auto-upgrade scaling for models that need it
+    # Smart defaults: auto-upgrade scaling for models the recipe table requires it for
     for _mk in (selected_models if selected_models else ["default"]):
-        _spec = registry_prep.get(_mk)
-        _needs_scale = _spec and _spec.capabilities and getattr(_spec.capabilities, "requires_scaled_numeric", False)
-        st.session_state[f"preprocess_{_mk}_numeric_scaling"] = "standard" if _needs_scale else _auto_scaling
+        st.session_state[f"preprocess_{_mk}_numeric_scaling"] = _scale_decision(_mk, _auto_scaling)["effective"]
         st.session_state[f"preprocess_{_mk}_numeric_imputation"] = _auto_imputation
         st.session_state[f"preprocess_{_mk}_numeric_missing_indicators"] = _auto_missing_indicators
         st.session_state[f"preprocess_{_mk}_numeric_outlier_treatment"] = _auto_outlier
@@ -531,6 +572,9 @@ if use_smart_defaults:
         st.session_state[f"preprocess_{_mk}_use_kmeans"] = False
         st.session_state[f"preprocess_{_mk}_plausibility_gating"] = False
         st.session_state[f"preprocess_{_mk}_unit_harmonization"] = False
+
+    for _dep_mk, _dep in sorted(_recipe_scale_departures.items()):
+        st.warning(f"**{_dep_mk.upper()}** — {_dep}", icon="⚠️")
 
 def _interpretability_guidance(
     profile: Optional[Any],
@@ -598,11 +642,24 @@ else:
             _c_miss1, _c_miss2 = st.columns(2)
             with _c_miss1:
                 _imp_options = ["median", "mean", "iterative (MICE)", "constant"]
+                # `AUDIT-007`. BEFORE, "median" read *"Robust to skewed
+                # distributions. Most common default."* and "mean" read
+                # *"Assumes symmetry. Sensitive to outliers…"* — an endorsement
+                # and a caveat about the wrong thing, on the two options
+                # `CLINICAL_SURVEY_PACK.md` §A2 anti-pattern 2 settles as bad
+                # and cross-cutting item 11 says must never appear without a
+                # loud warning. AFTER, each option carries §A2's cost, from
+                # `ml.pipeline` so the sentence sits beside the branch that
+                # builds the imputer. The true half of each old sentence is
+                # kept; nothing is removed and no option is taken away.
                 _imp_help = {
-                    "median": "Robust to skewed distributions. Most common default.",
-                    "mean": "Assumes symmetry. Sensitive to outliers — use only if features are roughly Gaussian.",
-                    "iterative (MICE)": "Gold standard for clinical research. Models each feature conditioned on others. Recommended when >5% data is missing (Rubin, 1987).",
-                    "constant": "Fills with a fixed value (e.g., 0). Use when missingness has domain meaning.",
+                    "median": NUMERIC_IMPUTATION_COST["median"],
+                    "mean": NUMERIC_IMPUTATION_COST["mean"],
+                    "iterative (MICE)": (
+                        "Recommended when >5% of data is missing (Rubin, 1987). "
+                        + NUMERIC_IMPUTATION_COST["iterative"]
+                    ),
+                    "constant": NUMERIC_IMPUTATION_COST["constant"],
                 }
                 _stored_imp = _cfg(_mk, "numeric_imputation", "median")
                 if _stored_imp == "iterative":
@@ -845,9 +902,9 @@ if use_smart_defaults and selected_models:
     _summary_cols = st.columns(min(len(selected_models), 4))
     for _si, _sm in enumerate(selected_models):
         with _summary_cols[_si % len(_summary_cols)]:
-            _spec = registry_prep.get(_sm)
-            _needs_scale = _spec and _spec.capabilities and getattr(_spec.capabilities, "requires_scaled_numeric", False)
-            _effective_scaling = "standard" if _needs_scale else _auto_scaling
+            _sd = _scale_decision(_sm, _auto_scaling)
+            _needs_scale = bool(_sd["required"])
+            _effective_scaling = _sd["effective"]
             st.markdown(f"""
             <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.6rem; margin-bottom: 0.4rem; font-size: 0.85rem;">
                 <strong>{_sm.upper()}</strong><br/>
@@ -890,11 +947,24 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     notes.append("Disabled KMeans features for interpretability.")
                 return notes
 
-            def apply_model_requirements(c: Dict[str, Any], caps: Any) -> List[str]:
+            def apply_model_requirements(c: Dict[str, Any], model_key: str) -> List[str]:
+                """`AUDIT-013`: the recipe table decides, and the note says so.
+
+                BEFORE this read `caps.requires_scaled_numeric` and appended
+                "Enabled standard scaling (model requires scaling)" — a
+                sentence attributing the choice to a table it had not read.
+                """
                 notes = []
-                if caps and getattr(caps, "requires_scaled_numeric", False) and c.get("numeric_scaling") == "none":
-                    c["numeric_scaling"] = "standard"
-                    notes.append("Enabled standard scaling (model requires scaling).")
+                d = _scale_decision(model_key, c.get("numeric_scaling") or "none")
+                if d["required"] and c.get("numeric_scaling") == "none":
+                    c["numeric_scaling"] = d["applied"]
+                    notes.append(
+                        f"Enabled {d['applied']} scaling — the recipe table's "
+                        f"row for this model (`{d['selector']}`, from "
+                        f"`{d['origin']}`) requires scaling."
+                    )
+                    if d["departure"]:
+                        notes.append(d["departure"])
                 return notes
 
             pipelines_by_model = {}
@@ -992,10 +1062,8 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     model_config["plausibility_bounds"] = plausibility_bounds
 
                 override_notes = []
-                spec = registry.get(model_key)
-                caps = spec.capabilities if spec else None
                 override_notes.extend(apply_interpretability_overrides(model_config, imode))
-                override_notes.extend(apply_model_requirements(model_config, caps))
+                override_notes.extend(apply_model_requirements(model_config, model_key))
 
                 uf = unit_config["conversion_factors"] if unit_config and use_unit else None
                 pb = plausibility_bounds if use_plaus and plausibility_bounds else None
@@ -1132,21 +1200,42 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             high_card = bool(profile and getattr(profile, "high_cardinality_features", None))
             model_check_bullets = []
             for mk, cfg in configs_by_model.items():
-                spec = registry.get(mk)
-                caps = spec.capabilities if spec else None
                 scaling = cfg.get("numeric_scaling", "standard")
                 ov = cfg.get("overrides", [])
                 parts = [f"{mk.upper()}:"]
-                if caps and getattr(caps, "requires_scaled_numeric", False):
+                # `AUDIT-013`. BEFORE: "scaling enabled ({scaling}); appropriate
+                # for this model." and, on the other branch, "no scaling; fine
+                # for tree models." The first asserts the applied scaler is the
+                # right one — which is exactly the question a pack row can
+                # answer differently — and the second asserts the model is a
+                # tree, which `caps.requires_scaled_numeric == False` does not
+                # say (Probabilistic models are on that branch too). AFTER: the
+                # page reports what the recipe table required and what was
+                # built, and calls a difference between them a difference.
+                _sd = _scale_decision(mk, scaling)
+                if not _sd["consulted"]:
+                    parts.append(
+                        f"scaling {scaling}; this pipeline is not tied to a "
+                        f"registered model, so the recipe table has no row for it."
+                    )
+                elif _sd["required"]:
                     if scaling == "none":
-                        parts.append("model requires scaling but you used none — consider enabling scaling.")
+                        parts.append(
+                            f"the recipe table requires {_sd['table_variant']} "
+                            f"scaling for this model and none was applied."
+                        )
+                    elif scaling == _sd["table_variant"]:
+                        parts.append(f"scaling {scaling}, as the recipe table requires.")
                     else:
-                        parts.append(f"scaling enabled ({scaling}); appropriate for this model.")
+                        parts.append(
+                            f"scaling {scaling} applied; the recipe table's row "
+                            f"for this model asks for {_sd['table_variant']}."
+                        )
                 else:
                     if scaling != "none":
-                        parts.append(f"scaling {scaling} (optional for tree models).")
+                        parts.append(f"scaling {scaling}; the recipe table does not require scaling here.")
                     else:
-                        parts.append("no scaling; fine for tree models.")
+                        parts.append("no scaling; the recipe table does not require it here.")
                 if any("interpretability" in str(o).lower() for o in ov):
                     parts.append("Interpretability overrides applied (e.g. PCA/KMeans disabled).")
                 if high_card and cfg.get("categorical_encoding") == "onehot":
