@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**366 of 883 closed.**
+**368 of 886 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 446 |
+| `OPEN` | 447 |
 | `PARTIAL` | 71 |
-| `FIXED` | 360 |
+| `FIXED` | 362 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 446
+## OPEN — 447
 
 
 ### Guided-door drive feedback — 70
@@ -539,17 +539,18 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-038` | medium | 77 of the 131 registry entries are still unchecked against the engine, and the reason is a budget rather than a finding - recording it so the next loop does not read silence as coverage | `L51-E, and it is the honest half of this part. E ran last by the prompt's own sequencing, after Part C's four…` | AND A METHOD WARNING WORTH MORE THAN THE ROW: two of this part's capability checks returned a false absence because grep -E was given \\| alternation, which is a literal pipe in… |
 | `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
 
+### Page-layer extraction — 2
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
+| `DRIVE-015` | high | The categorical chart ramp is not separate from semantic color and fails colorblind validation in both themes: --c1 is byte-identical to --accent, against a design document that asserts the two are… | `turbotab/web/index.html:13 and :31 and :45 and :58; docs/turbotab/DESIGN_LANGUAGE.md:55` | VERIFIED BY THE ADJUDICATOR AT 57d542f BEFORE FILING, AND THE BLAST-RADIUS NUMBER IN THE ORIGINAL WRITE-UP WAS WRONG - the correction is what makes this actionable now rather than… |
+
 ### DRIVE — 1
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `DRIVE-010` | high | After the target is chosen the app does not ask which features to use, or whether to slice by subgroup | `The drive` | From the product owner's second NHANES drive. Their words are the specification. |
-
-### Page-layer extraction — 1
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
 
 ---
 
@@ -699,10 +700,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 360
+## FIXED — 362
 
 
-### Guided-door drive feedback — 143
+### Guided-door drive feedback — 144
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -808,6 +809,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-217` | high | Single-cell is required by the research to be detected and REFUSED, nothing detects it, and the new data-type reader confidently calls it raw counts | `L50-B. GENOMICS_PACK.md's scope paragraph is explicit and quantified: single-cell is out of scope and must be…` | **test:** `turbotab/test_a_single_cell_matrix_is_refused_before_it_is_classified.py::test_it_is_refused_and_not_classified AND ::test_the_bulk_fixtures_are_not_refused` — L51-A2.… |
 | `GUIDED-224` | high | A precondition written to exclude one degenerate shape excluded the shape a detector exists for | `L50-D. metabolite_columns drops columns with two or fewer distinct values - written to exclude a 0/1 outcome…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_the_degenerate_columns_survive_the_block_filter` — Filed as a CLASS instance. The shape is a true… |
 | `GUIDED-226` | high | A finding asserting a column's IDENTITY on evidence that establishes only its SHAPE - and the upstream component it borrowed from was correct | `L50-D, and it is the sharpest of the four because the mistake is downstream of a correct component.…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_the_subject_claim_needs_a_name_and_not_only_a_shape` — THE GRAIN ROUTING IS THE PART TO KEEP: the… |
+| `GUIDED-237` | high | PRODUCT_VISION.md 06c shipped an explainability design whose instrument was misnamed, whose support claim was measurably false, and which asserted an absence the project's own pack already… | `docs/turbotab/PRODUCT_VISION.md#06c` | **test:** `docs/turbotab/tools/evidence.py check` — TWO ADVERSARIAL REVIEWERS WITH LIVE LITERATURE SEARCH, 2026-08-09, BOTH RETURNING SERIOUS PROBLEMS. Filed and corrected… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
@@ -1010,7 +1012,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-055` | medium | A closed-set assertion on a pack that is being filled out asserts that no further detector may ever exist | `L50. test_the_four_diagnostics_reach_a_person_and_carry_their_badges asserted equality against a five-element…` | **test:** `turbotab/test_the_gene_id_diagnostics_reach_an_upload.py::test_the_four_diagnostics_reach_a_person_and_carry_their_badges` — Found by merging two worktrees rather than… |
 | `TEST-056` | medium | Inserting a seeded draw in the middle of a fixture generator changes every draw after it, and the L50 brief quoted pre-insertion numbers to a subagent | `L50. make_genomics_siblings.py draws from ONE seeded generator in file order. The estimated-counts block was…` | **test:** `turbotab/test_the_fixture_constants_match_the_fixtures.py::test_the_estimated_counts_and_fpkm_separator_is_measured` — Filed because the near-miss is instructive rather… |
 
-### Other — 15
+### Other — 16
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1024,6 +1026,7 @@ Nothing is closed without a regression test named after it.
 | `MISC-015` | high | Four of DOMAIN_SCIENCE's seven primitives have zero ledger rows: hard stops, the sensitivity fork, the checklist engine and the generalized leakage detector are tracked only in a prose line inside an… | `ROADMAP.md D1 line reads 'hard stops, sensitivity fork, checklist engine, generalized leakage detector…` | **test:** `tests/test_a_specification_is_a_claim.py::test_every_specified_primitive_has_a_ledger_row (7 parametrizations) and ::test_the_primitive_inventory_is_not_stale`… |
 | `MISC-018` | high | ml/physiology_reference.get_reference_interval returns a p01/p99 pair, and a reference interval is a defined quantity that is not that - the central 95 percent per CLSI EP28-A3c - so the core's… | `ml/physiology_reference.py:176 get_reference_interval returns (p01, p99, unit); the table comment at line 44…` | **test:** `turbotab/test_the_improbability_band_is_never_called_a_reference_interval.py::test_no_shipped_surface_calls_the_band_a_reference_interval` — CLOSED AT L42-A2 BY… |
 | `MISC-019` | high | DEFECT CLASS - a row is marked FIXED and its fix reached a fraction of the surfaces its own item describes, and ledger.py check cannot see it because it verifies that a test is NAMED rather than that… | `the instance is GUIDED-049, critical, FIXED, whose fix reached three call sites out of ten shipped surfaces…` | **test:** `turbotab/test_the_improbability_band_is_never_called_a_reference_interval.py::test_no_shipped_surface_calls_the_band_a_reference_interval` — FILED BY THE ADJUDICATOR AT… |
+| `AUDIT-045` | high | NUTRITION_PACK.md 04 asserted the mechanism of a bias with a causal connective the primary source does not support, and it made the substitution curve read as a remedy for a bias it does not remedy | `docs/turbotab/research/NUTRITION_PACK.md:408` | **test:** `docs/turbotab/tools/evidence.py check` — A TWO-WORD ERROR THAT WAS LOAD-BEARING ON A WHOLE DESIGN SECTION. The bullet read 'are biased even absent confounding, BECAUSE… |
 | `AUDIT-004` | medium | The quick baseline drops every row with any missing feature and reports no N cascade, so the number the user reads is about a subset nobody named | `ml/eda_actions.py:1209-1211; research/NUTRITION_PACK.md section 06 anti-patterns` | **test:** `tests/test_the_manuscript_does_not_assert_an_uncorrected_count.py::test_the_quick_baseline_reports_what_it_dropped` — FIXED at L30-B, alongside AUDIT-001 because a… |
 | `AUDIT-006` | medium | The PCA biplot sets no aspect constraint, so PC2 is stretched to fill the panel and separation is visually exaggerated | `ml/macro_shape.py plot_pca_biplot; research/GENOMICS_PACK.md section 11; research/METABOLOMICS_PACK.md…` | **test:** `tests/test_the_biplot_does_not_stretch_the_second_component.py::test_the_biplot_constrains_pc2_to_the_scale_of_pc1` — L53-C, fanned out to four chunks PARTITIONED BY… |
 | `AUDIT-007` | medium | Median imputation is the silent default and nothing states what it costs, which the clinical pack marks SETTLED as bad | `ml/pipeline.py:213; pages/05_Preprocess.py:1082; research/CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2…` | **test:** `tests/integration/test_classic_states_the_cost_of_median_imputation.py::test_the_smart_defaults_path_states_what_its_median_fill_costs` — L53-C, fanned out to four… |
