@@ -20,26 +20,26 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**361 of 875 closed.**
+**361 of 876 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 443 |
+| `OPEN` | 444 |
 | `PARTIAL` | 71 |
 | `FIXED` | 355 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 443
+## OPEN — 444
 
 
-### Guided-door drive feedback — 68
+### Guided-door drive feedback — 69
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `GUIDED-231` | critical | The INFERENCE half of the product was never ported: Guided cannot declare a hypothesis-testing goal, offers no statistical test, and holds no inference-family model, so the door that is the product… | `register.json state=classic-only: target-goal-selection (Prediction vs Hypothesis Testing)…` | FOUND IN CONVERSATION WITH THE PRODUCT OWNER, 2026-08-09, WHO SUSPECTED IT BEFORE IT WAS MEASURED: 'I have a sneaking suspicion that we did not actually bring over all of the… |
+| `GUIDED-231` | critical | The INFERENCE half of the product was never ported: Guided cannot declare a hypothesis-testing goal, offers no statistical test, and holds no inference-family model, so the door that is the product… | `register.json state=classic-only: target-goal-selection (Prediction vs Hypothesis Testing)…` | CORRECTED BY THE PRODUCT OWNER, 2026-08-09, AND THE CORRECTED FORM IS STRONGER THAN WHAT WAS FILED. The original row said Guided CANNOT DECLARE a hypothesis-testing goal. THAT IS… |
 | `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
 | `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
 | `GUIDED-067` | high | No Dietary Reference Intake table ships anywhere in the repository, so every figure and every prevalence claim that needs an EAR, an RDA, an AI or a UL is unbuildable | `docs/turbotab/research/NUTRITION_PACK.md section 07 figure E; docs/turbotab/DOMAIN_SCIENCE.md section 04…` | Filed at L28-D as the blocker the two pending figures name. research/NUTRITION_PACK.md section 07 figure E specifies vertical lines at the EAR, RDA or AI and the UL for the… |
@@ -55,6 +55,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-208` | high | A reopened missingness_settled:: block can never be answered - no fold produces that key and the answer delegate returns early on it, so it stays asked on every render whatever the user does | `L49-D, found while building GUIDED-192's consumer and filed rather than fixed. api.py's answered fold has no…` | This is why GUIDED-192's fix renders no option buttons on the new surface: a rendered option would be a solid button that silently does nothing, which is GUIDED-006 and… |
 | `GUIDED-213` | high | The metabolomics sub-domain fork is never asked, so all thirteen hedges are asserted for tables they are wrong for | `L50-F2, and this is section 08 check 5's answer - what the same lens finds one surface over.…` | Named in SHAPES_NOT_COVERED in turbotab/test_the_metabolomics_hedges_reach_a_person.py rather than only in a report. This is a capability gap, not a fixture gap - a second… |
 | `GUIDED-232` | high | Guided's Explain step cannot answer the question the product owner built it for: permutation importance reports a metric drop per feature and cannot show how two model families carve the same signal… | `turbotab/explain.py:141 uses sklearn.inspection.permutation_importance; import shap appears only in…` | THE DESIGN IS SETTLED AND RECORDED: PRODUCT_VISION.md 06c, three rulings made by the product owner on 2026-08-09. (1) A disagreement between an attribution and the pack's… |
+| `GUIDED-233` | high | There is no EXPLAINABILITY pack, so every threshold the explanation suite needs would ship unsourced into the one subsystem whose whole job is calibrated honesty | `grep over the five research packs returns 0 for shap/shapley, 0 for attribution, 0 for feature importance and…` | THE PRODUCT OWNER SUPPLIED A DOMAIN-AGNOSTIC EXPLAINABILITY PLAYBOOK ON 2026-08-09 AND NAMED ITS ROLE EXACTLY: 'I see it as a useful mould for what we actually want to form into… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |

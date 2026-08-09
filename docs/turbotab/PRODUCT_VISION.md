@@ -477,30 +477,111 @@ linear model found a slope, which is the disagreement the modeler needs to see.
 4. **Stability.** The three `sens-*` capabilities. **An attribution whose sign flips under reseeding
    is not an explanation**, and layer 3 is dishonest without it.
 
-### The three rulings
+### The instrument — the substitution curve, and what it actually is
+
+**The problem §04 creates for attribution, stated once.** If the *specification* determines the
+estimand, then an attribution computed on a fitted model **inherits that model's estimand** — and
+SHAP neither knows nor says which one. A SHAP value on a nutrition model is a substitution effect
+against an unnamed population-average mixture, using an estimand §04 calls *biased even absent
+confounding*, and it renders as `fiber_g: +0.31`. **That is the governing rule broken in the step
+this product cares most about.** Worse: all five of §04's models are regression specifications, so
+for a tree ensemble the field has **no established way to state the estimand at all.**
+
+**The answer is to make the substitution explicit and chosen rather than implicit and averaged.**
+Move *k* units of the conserved total from donor A to recipient B, hold the total fixed, and plot the
+model's predicted outcome against *k*. The slope at zero is a substitution effect **that names its
+own donor and recipient.**
+
+**Formally it is a 1-D ALE along a constrained direction** — the simplex direction that trades A
+against B at fixed total. That is the honest description and it is better than calling it new: it
+runs on ordinary accumulated-local-effects machinery, it stays inside the data's support where a
+partial-dependence plot would evaluate the model at combinations that do not exist, and **the pack
+supplies the constraint direction while the core computes the curve.** What has no precedent as a
+shipped tool is using it as *the axis on which model families are compared*.
+
+### The rulings — the product owner's, 2026-08-09
 
 **1 · A disagreement with the pack is a badged finding, never a verdict.** Show both directions,
-label the disagreement, and carry the pack's own `SETTLED` / `CONVENTION` / `DISPUTED` badge onto it.
+label the disagreement, carry the pack's own `SETTLED` / `CONVENTION` / `DISPUTED` badge onto it.
 **The app does not decide who is right** — a disagreement may be confounding, a coding error, or the
-result. This is the governing rule applied to explanation: the app may be silent and it may refuse,
-but it must never assert something false, and *"the model is wrong"* and *"the literature is wrong"*
-are both assertions it cannot support.
+result. *"The model is wrong"* and *"the literature is wrong"* are both assertions it cannot support.
 
 **2 · The unit of explanation is the model, rendered as the deck's face 3.** Not one explanation for
-a chosen model with comparison as an extra step — **the comparison is the default view**, because
-the inductive-bias question is a question about difference. This makes `GUIDED-178`'s deck and the
-explainability suite **one mechanism rather than two**, and face 3's *"the reorder is the
-comparison"* becomes literal: the cards carry the attribution curves being compared.
+a chosen model with comparison as an extra step — **the comparison is the default view**, because the
+inductive-bias question is a question about difference. `GUIDED-178` and `GUIDED-232` are **one
+mechanism**, and face 3's *"the reorder is the comparison"* becomes literal.
 
-**3 · Stability is computed on demand, not by default.** Sensitivity refits cost N× training, and
-Explain must stay fast. An explicit action, with the cost named before it is spent. **This does not
-weaken ruling 1** — a disagreement surfaced in layer 3 before stability has been computed says so,
-because an uncomputed stability is not a stable one.
+**3 · The curve is core, with a pack-supplied budget.** Any lens that declares a conserved total gets
+it — nutrition's kcal, metabolomics' total ion current, genomics' library size. A lens with no budget
+is not offered it. **One mechanism, many domains**, which is the whole architecture of the packs.
+
+**4 · Where the estimand cannot be determined, refuse the number and offer the curve.** No scalar
+attribution is printed when the app cannot say what it is an effect *relative to*. The substitution
+curve is still drawn, because **it carries its estimand explicitly in its own axes.** This is the
+governing rule's strongest available reading and it costs the user nothing.
+
+**5 · The app performs energy adjustment, inside the training fold.** §04's five specifications
+become a preprocessing choice rather than an advisory. The in-fold requirement is §04's own and the
+lockbox already enforces that class of constraint. **This is what unblocks the inference path**, and
+it is the largest single piece of scope in this section.
+
+**6 · Methodological thresholds are researched before they ship; performance budgets are measured.**
+The two are different and conflating them is how an unsourced number enters. A correlation cut, a
+rank-stability warning level, an FDR *q* — these change what a result **means** and each needs a
+primary source or a `CONVENTION` badge naming it as practitioner default. A row count above which a
+refit runs on demand rather than automatically changes only **how long the user waits**; it ships as
+a measured budget with the measurement recorded beside it, which is `LOOP.md` §06.2's distinction
+applied one level out.
+
+**7 · The faithfulness harness runs automatically where it is cheap.** Explanation QA — the
+label-permutation null, fold-stability rank correlation, and deletion curve against a random-deletion
+baseline — runs silently on small tables so most users see it without asking, and degrades to an
+explicit action above the measured row count. **Stability of a single attribution stays on demand
+everywhere**, because its cost is N× training rather than a bounded refit set.
+
+**8 · The comparison is drawn as overlaid curves with the disagreement shaded** — adjudicator's call,
+deferred by the product owner. A difference curve is the purer quantity and discards absolute scale,
+so a reader cannot tell whether a divergence matters; a donor × recipient matrix cannot show whether
+a line is straight or terraced at sparkline size, which is the entire point. Overlaying carries
+shape, magnitude and divergence at once, and **shading the region between the curves renders the
+difference curve inside the same frame** at no cost in views. **The matrix survives as the
+navigator** — it is how a reader chooses which pair to open, and the shelf is never shortened.
+
+### The domain-agnostic playbook is the mould, not the product
+
+**The product owner's framing, 2026-08-09**, supplying a full agnostic explainability playbook:
+*"I see it as a useful mould for what we actually want to form into our domain-aware playbook."*
+That is the correct relationship and it decides the build. **The agnostic sequence is the substrate
+— calibration before explaining, grouped permutation, ALE over PDP under correlation, centered ICE
+with a heterogeneity badge, interaction ranking, then attribution. The packs are the layer on top**,
+and an ALE plot becomes domain-aware when the pack marks the DRI and the tolerable upper limit on
+its axis and flags a direction the literature already settled.
+
+**Three things from it bind and are recorded here so they are not re-derived.** *Build the
+faithfulness harness first, not last* — it is cheap, it is what makes every later attribution
+credible, and it is the governing rule turned on the explanation methods themselves. *Refuse
+probability-scale attribution until calibration is checked*, because explaining an uncalibrated model
+explains a distorted probability. *Force the estimand choice before anything renders* — reached
+independently from §04, which is why it is ruling 4 rather than an import.
+
+**And one thing from it is rejected on the constitution.** A rule that **recommends** a model when it
+lands within one standard deviation of the best black box shortens the shelf. Ranking it first and
+saying why is the same information as an ordering rather than an absence, and §04b already settled
+that judgment is rendered as order. The one-standard-deviation figure is also exactly the kind of
+unsourced constant ruling 6 governs.
 
 ### What this does not settle
 
-Whether an unstable attribution may reach the **manuscript**. Ruling 3 governs the in-app default;
+**Whether an unstable attribution may reach the manuscript.** Ruling 7 governs the in-app default;
 the export is a durable claim and the export gate is a separate decision, unmade.
+
+**Which primary sources establish the thresholds.** Ruling 6 says they are researched before they
+ship; it does not say by whom or from where, and that is a pack-authoring loop with a source
+requirement rather than a build.
+
+**What an inference-mode explainability suite owes** beyond the estimand choice — DoubleML,
+knockoffs, E-values and marginal effects are named in the mould and none is ruled on here. They wait
+on the inference path itself (`GUIDED-231`).
 
 ## 07 · Design principles
 
