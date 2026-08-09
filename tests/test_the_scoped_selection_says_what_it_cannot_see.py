@@ -77,22 +77,36 @@ def test_the_graph_walks_the_repository_and_not_a_virtualenv():
 
 # ═══════════ 2 · the refusals, which are the point ══════════════════════════
 
+#: A module with **no direct importer among the test files** and a large
+#: closure — the shape the refusal is about.
+#:
+#: **This was `models/glm.py` and it had to be repointed within the hour.**
+#: `L56-C3` added `test_a_wrapped_estimator_forwards_its_coefficients.py`, which
+#: imports `GLMWrapper` directly, so the wrapper stopped having the shape and
+#: the positive control below went red — telling this file its subject had moved
+#: rather than letting it pass while asserting nothing. That is the control
+#: doing its job, and the reason it is a control and not a comment.
+UNSCOPABLE = "ml/bootstrap.py"
+
+
 def test_an_empty_direct_selection_refuses_instead_of_reporting_zero():
     """**The sharpest thing the tool does.**
 
-    `models/glm.py` has zero direct importers among the test files and 134
-    under closure — no test imports the wrapper, and every test that drives the
-    API reaches it through `ml.model_registry`. Printing "0 selected" here
-    would be the tool's own headline failure, so it escalates instead.
+    `ml/bootstrap.py` has zero direct importers among the 147 turbotab test
+    files and 135 under closure — no test imports it, and every test that
+    drives the API reaches it through the aggregator. Printing "0 selected"
+    here would be the tool's own headline failure, so it escalates instead.
     """
-    code, body = _json("--files", "models/glm.py")
+    code, body = _json("--files", UNSCOPABLE)
 
     # POSITIVE CONTROL — the shape this test is about really is present. If
-    # some future change gives the wrapper a direct importer, this test is
-    # asserting nothing and should be repointed rather than deleted.
+    # some future change gives the module a direct importer, this test is
+    # asserting nothing and should be REPOINTED rather than deleted. It has
+    # already fired once, for exactly that reason.
     assert body["counts"]["direct"] == 0 and body["counts"]["closure"] > 0, (
-        f"`models/glm.py` no longer has the zero-direct/non-zero-closure "
-        f"shape this test is about: {body['counts']}")
+        f"`{UNSCOPABLE}` no longer has the zero-direct/non-zero-closure shape "
+        f"this test is about: {body['counts']}. Repoint it at a module that "
+        f"does — the tool's refusal is still the claim under test.")
 
     assert body["escalations"], (
         "the tool reported an empty selection for a change 134 test files can "
@@ -107,7 +121,7 @@ def test_pytest_args_emits_nothing_when_it_could_not_scope():
     confident wrong one — running zero tests is visibly wrong, and running a
     plausible-looking subset that omits the affected ones is not.
     """
-    code, text = _run("--files", "models/glm.py", "--pytest-args")
+    code, text = _run("--files", UNSCOPABLE, "--pytest-args")
     assert code == 2, f"escalation must exit 2 in --pytest-args mode; got {code}"
     assert not text.strip(), (
         f"the tool printed a selection it had just refused to make: {text!r}")
