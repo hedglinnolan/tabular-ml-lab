@@ -84,9 +84,17 @@ SHAPES = {
 }
 
 #: The clause the row was filed against, verbatim enough to survive a revert.
+#:
+#: `L55-B` ADDED THE THIRD READER AND THE SECOND ENTRY MOVED WITH IT. The card
+#: said *"Those two are the whole list today"* while the model shelf had just
+#: become a third — a green test pinning a sentence that had stopped being true,
+#: which is §07 trap 3c and is the one variant that has to be rewritten rather
+#: than strengthened. The old count is kept HERE, as a false clause, so the
+#: sentence cannot drift back.
 FALSE_CLAUSES = (
     "Three more places read it",
     "Those four are the whole list today",
+    "Those two are the whole list today",
     "and whether class weighting is contraindicated",
 )
 
@@ -260,10 +268,20 @@ def test_the_card_says_two_read_it_and_names_the_two_that_do_not(client, shape):
 
     # The shelf is not shortened — the corrected sentence still says what the
     # answer decides, and now also says where it stops.
-    assert "Those two are the whole list today" in consumer, (
+    assert "Those three are the whole list today" in consumer, (
         f"{shape}: the card no longer states how many decisions read the "
         f"answer. AUDIT-028's model is a claim corrected, not deleted. The "
         f"card read: {consumer!r}")
+    # `L55-B`'s reader, named on the card because it now exists. This is the
+    # detector for the class the whole file is about, pointed at the new one:
+    # a decision that reads the answer and is not on the list is the same
+    # defect as a decision on the list that reads nothing, with the sign
+    # flipped — and the flipped version is the one nobody notices, because the
+    # card understates rather than overstates.
+    assert "model shelf" in consumer, (
+        f"{shape}: `turbotab.models.shelf` reads the recorded purpose and "
+        f"reorders on it (L55-B), and the card does not say so. The card read: "
+        f"{consumer!r}")
     assert "limit of detection" in consumer and "nothing calls it" in consumer, (
         f"{shape}: the card dropped the limit-of-detection fork instead of "
         f"saying nothing calls it yet. The card read: {consumer!r}")

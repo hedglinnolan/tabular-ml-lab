@@ -895,6 +895,21 @@
   .shelf-row{ display:flex; align-items:baseline; gap:9px; flex-wrap:wrap;
               padding:3px 0; }
   .shelf-why{ font-size:12px; color:var(--muted); }
+  /* L55-B. The recorded design's account of this order. Serif, because §03's
+     three voices put the app's own explanation in the serif plane — the
+     quoted sentence inside it is the user's, and it wears quotation marks
+     rather than a second typeface, because a decision the app is quoting back
+     is still the app speaking. Full width of the row, so a clause that names
+     which answer moved a model is not competing with the concern beside it. */
+  .shelf-design{ flex-basis:100%; margin:2px 0 0; font-size:12px;
+                 line-height:1.45; color:var(--muted);
+                 font-family:var(--serif); }
+  .shelf-design-q{ font-family:var(--sans);
+                   font-size:11px; text-transform:uppercase;
+                   letter-spacing:.05em; color:var(--faint);
+                   margin-right:6px; }
+  .shelf-design-box{ border-left:2px solid var(--line); padding-left:11px;
+                     margin:0 0 13px; display:grid; gap:7px; }
   .job{ border:1px solid var(--line); border-radius:9px; padding:11px 13px;
         margin-top:14px; background:var(--surface); }
   .job-head{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
@@ -5494,11 +5509,44 @@
              'data-pick-model="' + esc(m.key) + '" aria-pressed="' +
              (PICKED[m.key] ? "true" : "false") + '">' + esc(m.name) +
              "</button>" +
-             '<span class="shelf-why">' + esc(m.concern || "") + "</span></div>";
+             '<span class="shelf-why">' + esc(m.concern || "") + "</span>" +
+             designNoteHTML(m) + "</div>";
       });
       h += "</div>";
     });
     return h;
+  }
+
+  /* L55-B. WHICH RECORDED ANSWER MOVED THIS MODEL, QUOTING THE ANSWER.
+     Emitted only for entries the recorded design ranked lower — an entry that
+     stayed put is accounted for by the shelf-level statement above the list,
+     and the same sentence repeated down a column makes a real concern and a
+     routine one read identically. The user's own recorded sentence is rendered
+     in quotation marks and the app's account of it is not: the server composed
+     one of them and the record holds the other. */
+  function designNoteHTML(m){
+    var notes = m.design_notes || [];
+    if (!notes.length) return "";
+    var h = "";
+    notes.forEach(function(n){
+      h += '<p class="shelf-design"><span class="shelf-design-q">' +
+           esc(n.question || "") + '</span> You answered: &ldquo;' +
+           esc(n.quote || "") + '&rdquo; ' + esc(n.clause || "") + "</p>";
+    });
+    return h;
+  }
+
+  /* The statements that are about the LIST rather than about a row. */
+  function shelfDesignHTML(){
+    var rows = (SHELF && SHELF.design) || [];
+    if (!rows.length) return "";
+    var h = '<div class="shelf-design-box">';
+    rows.forEach(function(d){
+      h += '<p class="shelf-design"><span class="shelf-design-q">' +
+           esc(d.question || "") + '</span> You answered: &ldquo;' +
+           esc(d.quote || "") + '&rdquo; ' + esc(d.effect || "") + "</p>";
+    });
+    return h + "</div>";
   }
 
   function trainRunHTML(){
@@ -5699,6 +5747,11 @@
     reveal("train");
     $("shelfWhy").innerHTML = esc(SHELF.disclosure || "");
     var box = $("shelfBox");
+    /* L55-B. ABOVE THE LIST, because it is about the order of the list and a
+       reader who meets it afterwards has already read the order. */
+    var design = ownChild(box, "shelfDesign", "");
+    var designHTML = shelfDesignHTML();
+    if (design.innerHTML !== designHTML) design.innerHTML = designHTML;
     var list = ownChild(box, "shelfList", "");
     var html = shelfHTML();
     if (list.innerHTML !== html) list.innerHTML = html;

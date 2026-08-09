@@ -1851,6 +1851,53 @@ class AnalysisProject:
 
     PREPARATION_MODES = ("per_model", "uniform")
 
+    def recorded_design(self) -> Any:
+        """The three recorded answers the shelf reads, each with its SENTENCE.
+
+        `L55-B`. The answer lives on the project; **the sentence lives only on
+        the `Decision`** — `set_purpose`, `set_repeat_kind` and
+        `set_unit_of_analysis` each compose one and hand it to `record`, and
+        nothing copies it back onto the field. So the sentence is fetched from
+        the record here rather than recomposed, which is the same rule `L36`
+        applied to the methods section, `L53-B` to the checklist and `L54-B` to
+        the deck card: **the surface quotes the record's own string.**
+
+        THE LAST DECISION OF EACH KIND, not the first. Every one of these
+        questions may be answered twice — `set_purpose` says so in as many
+        words, and appends rather than replacing — so the earliest matching
+        decision is the answer the user changed their mind about.
+
+        A field set with no decision beside it yields the answer and **no**
+        sentence, and `RecordedDesign.answered` then treats it as unanswered.
+        That is deliberate: the shelf will not reorder on something it cannot
+        quote.
+        """
+        from turbotab import models as _models
+
+        said: Dict[str, Optional[str]] = {
+            "set_purpose": None, "set_repeat_kind": None,
+            "set_unit_of_analysis": None}
+        for decision in self.decisions:
+            if decision.kind in said:
+                said[decision.kind] = decision.text
+
+        rows = self.training_rows
+        group_col = (self.grain or {}).get("group_col")
+        n_people = None
+        if group_col and group_col in rows.columns:
+            n_people = int(rows[group_col].nunique(dropna=True))
+
+        return _models.RecordedDesign(
+            purpose=(self.purpose or {}).get("answer"),
+            purpose_said=said["set_purpose"],
+            repeat_kind=(self.repeat_kind or {}).get("kind"),
+            repeat_said=said["set_repeat_kind"],
+            unit_of_analysis=self.unit_of_analysis,
+            unit_said=said["set_unit_of_analysis"],
+            n_rows=int(len(rows)),
+            n_people=n_people,
+            group_column=group_col)
+
     def model_shelf_ranked(self) -> Tuple[List[Any], Any]:
         """The shelf AND the profile it was ranked on.
 
@@ -1863,7 +1910,9 @@ class AnalysisProject:
         """
         from turbotab import engine, models as _models
         prof = engine.profile(self.training_rows, self.target, self.task_type)
-        return _models.shelf(prof, self.task_type or "regression"), prof
+        return (_models.shelf(prof, self.task_type or "regression",
+                              design=self.recorded_design()),
+                prof)
 
     def model_shelf(self) -> List[Any]:
         """Every model this task can use, ordered by fit and never filtered.

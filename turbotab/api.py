@@ -2123,6 +2123,12 @@ async def get_models(project_id: str) -> Dict[str, Any]:
         # reason for a tree ensemble at p >> n.
         "priors": _packs.priors(project.lens or [], "model_ranking", project.df),
         "groups": _models.grouped(entries),
+        # `L55-B`. What the RECORDED DESIGN did to the whole shelf, quoting the
+        # record's own sentences. Separate from `groups` because an answer that
+        # bears on every model equally is a statement about the list rather than
+        # a clause on a row — and separate from `priors`, which is the pack's
+        # lens-level voice and a different source.
+        "design": _models.design_statement(project.recorded_design()),
         "selected": project.selected_models,
         "n_available": len(entries),
         # `GUIDED-088`/`GUIDED-092`: the rows the ORDER was computed on, taken

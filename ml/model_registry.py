@@ -33,6 +33,27 @@ class ModelCapabilities:
     notes: list[str] = field(default_factory=list)
     supports_class_weight: bool = False
     supports_sample_weight_balancing: bool = False
+    # `L55-B`. Does the FITTED estimator expose `coef_` — one number per
+    # predictor that an association estimate can be read off?
+    #
+    # THIS IS ABOUT THIS APP'S ESTIMATOR, NOT ABOUT THE METHOD. `turbotab
+    # .figure_bundle._coefficients_for` draws the coefficient forest plot
+    # (§A4.7) by asking `hasattr(estimator, "coef_")` on the model step of the
+    # fitted pipeline, and that is the only place in this codebase a
+    # per-predictor estimate comes from. So the field means what that check
+    # means, and it is verified against a real fit rather than declared by
+    # hand — `turbotab/test_the_shelf_reads_the_recorded_design.py`.
+    #
+    # `interpretability_tier` is NOT this question and must not be used for it:
+    # `lda` is tier `medium` and has coefficients, `glm` is tier `high` and its
+    # wrapper does not forward them. A tier is about how legible an explanation
+    # is; this is about whether there is an estimate at all.
+    #
+    # `None` MEANS UNDECLARED AND IS NOT A NO. A model added without an answer
+    # here takes no part in the purpose-ordering and the shelf says nothing
+    # about its coefficients, because returning a value from ignorance is the
+    # habit this project keeps rather than a default that reads as a claim.
+    exposes_coefficients: Optional[bool] = None
 
 
 @dataclass
@@ -198,6 +219,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=True,
             recommended_for_high_dim=True,
             interpretability_tier="high",
+            exposes_coefficients=True,
             notes=['L2 regularization prevents overfitting', 'Good for multicollinearity']
         )
     )
@@ -220,6 +242,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=True,
             recommended_for_high_dim=True,
             interpretability_tier="high",
+            exposes_coefficients=True,
             notes=['L1 regularization performs feature selection', 'Can zero out coefficients']
         )
     )
@@ -243,6 +266,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=True,
             recommended_for_high_dim=True,
             interpretability_tier="high",
+            exposes_coefficients=True,
             notes=['Combines L1 and L2 regularization', 'Balances feature selection and stability']
         )
     )
@@ -268,6 +292,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=True,
             recommended_for_high_dim=True,
             interpretability_tier="high",
+            exposes_coefficients=True,
             notes=['Interpretable coefficients', 'Good baseline for classification'],
             supports_class_weight=True
         )
@@ -292,6 +317,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             supports_shap='kernel',
             requires_scaled_numeric=True,
             recommended_for_high_dim=False,
+            exposes_coefficients=False,
             notes=['Non-parametric, instance-based', 'Sensitive to feature scaling', 'n_neighbors must be ≤ training samples', 'Slow for large datasets']
         )
     )
@@ -314,6 +340,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             supports_shap='kernel',
             requires_scaled_numeric=True,
             recommended_for_high_dim=False,
+            exposes_coefficients=False,
             notes=['Non-parametric, instance-based', 'Sensitive to feature scaling', 'n_neighbors must be ≤ training samples', 'Slow for large datasets']
         )
     )
@@ -338,6 +365,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             supports_shap='tree',
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
+            exposes_coefficients=False,
             notes=['More random splits than RF', 'Robust to outliers', 'Handles missing values']
         )
     )
@@ -361,6 +389,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             supports_shap='tree',
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
+            exposes_coefficients=False,
             notes=['More random splits than RF', 'Robust to outliers', 'Handles missing values'],
             supports_class_weight=True
         )
@@ -386,6 +415,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             supports_shap='tree',
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
+            exposes_coefficients=False,
             notes=['Fast gradient boosting', 'Handles missing values', 'Good for large datasets']
         )
     )
@@ -409,6 +439,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             supports_shap='tree',
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
+            exposes_coefficients=False,
             notes=['Fast gradient boosting', 'Handles missing values', 'Good for large datasets'],
             supports_class_weight=True
         )
@@ -434,6 +465,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             supports_shap='kernel',
             requires_scaled_numeric=True,
             recommended_for_high_dim=False,
+            exposes_coefficients=False,
             notes=['Advanced model', 'Slow for large datasets', 'Requires careful tuning']
         )
     )
@@ -457,6 +489,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             supports_shap='kernel',
             requires_scaled_numeric=True,
             recommended_for_high_dim=False,
+            exposes_coefficients=False,
             notes=['Advanced model', 'Slow for large datasets', 'Requires careful tuning'],
             supports_class_weight=True
         )
@@ -478,6 +511,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             supports_shap='none',
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
+            exposes_coefficients=False,
             notes=['Fast and simple', 'Assumes feature independence', 'Good baseline']
         )
     )
@@ -497,6 +531,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             supports_shap='linear',
             requires_scaled_numeric=True,
             recommended_for_high_dim=False,
+            exposes_coefficients=True,
             notes=['Linear dimensionality reduction', 'Assumes Gaussian distributions', 'Interpretable']
         )
     )
@@ -539,6 +574,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=True,
             recommended_for_high_dim=True,
             interpretability_tier="low",
+            exposes_coefficients=False,
             notes=['Deep learning', 'Can capture complex patterns', 'Requires more data']
         )
     )
@@ -559,6 +595,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
             interpretability_tier="high",
+            exposes_coefficients=False,
             notes=['Simple baseline', 'Interpretable', 'Sensitive to outliers']
         )
     )
@@ -582,6 +619,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
             interpretability_tier="high",
+            exposes_coefficients=False,
             notes=['Robust to outliers', 'Regression only', 'Less sensitive than OLS']
         )
     )
@@ -606,6 +644,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
             interpretability_tier="medium",
+            exposes_coefficients=False,
             notes=['Robust ensemble', 'Handles missing values', 'Feature importance available'],
             supports_class_weight=True
         )
@@ -637,6 +676,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
             interpretability_tier="low",
+            exposes_coefficients=False,
             notes=['Industry-standard gradient boosting', 'Regularization built-in', 'Handles missing values natively']
         )
     )
@@ -666,6 +706,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
             interpretability_tier="low",
+            exposes_coefficients=False,
             notes=['Industry-standard gradient boosting', 'Regularization built-in', 'Handles missing values natively'],
             supports_sample_weight_balancing=True
         )
@@ -699,6 +740,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
             interpretability_tier="low",
+            exposes_coefficients=False,
             notes=['Leaf-wise tree growth (faster)', 'Handles categoricals natively', 'Lower memory usage than XGBoost']
         )
     )
@@ -730,6 +772,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
             interpretability_tier="low",
+            exposes_coefficients=False,
             notes=['Leaf-wise tree growth (faster)', 'Handles categoricals natively', 'Lower memory usage than XGBoost'],
             supports_class_weight=True
         )
