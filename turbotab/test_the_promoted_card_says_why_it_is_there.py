@@ -52,12 +52,23 @@ DATA = Path(__file__).resolve().parent / "sample_data"
 #: tail, which is the case where clearing a card can promote nothing because
 #: there is nothing behind the affordance.
 #: `(fixture, lens, target, bound)`. The bound is stated per lens because
-#: `MIN_COLLAPSE` left exactly ONE fixture in this repository with a remainder at
-#: the shipping bound — `clinical_labs.csv`. Metabolomics is driven at 2, which
-#: is a bound the module supports and the prototype compares, so the second lens
-#: exercises the rule rather than skipping past it. A probe that ran only where
-#: the default happens to bite is `GUIDED-097`'s one-fixture failure with the
-#: parameter moved.
+#: `MIN_COLLAPSE` leaves `metabolomics_untargeted.csv` with no remainder at the
+#: shipping bound, so metabolomics is driven at 2 here — a bound the module
+#: supports and the prototype compares — and the second lens exercises the rule
+#: rather than skipping past it. A probe that ran only where the default happens
+#: to bite is `GUIDED-097`'s one-fixture failure with the parameter moved.
+#:
+#: **THIS COMMENT USED TO SAY `MIN_COLLAPSE` LEFT *EXACTLY ONE* FIXTURE IN THIS
+#: REPOSITORY WITH A REMAINDER AT THE SHIPPING BOUND, AND THAT WAS FALSE.**
+#: Swept through the API at `A.BOUND = 5`, `metabolomics_merged_modes.csv` has a
+#: four-card remainder under the metabolomics lens (`live=8, collapsed=4`). The
+#: claim was never checked by anything, which is how it survived — and it is why
+#: `PAGE_LENSES` below can drive the page-level claim on two lenses at the
+#: shipping bound instead of skipping one of them (`AUDIT-039`).
+#:
+#: These two are kept as they are: the tests that read `LENSES` are about the
+#: PARTITION rather than about the page, and they call `A.stack(..., bound=…)`
+#: directly, where a bound of 2 is a real and supported case.
 LENSES = {
     "clinical": ("clinical_labs.csv", "clinical", "readmitted", None),
     "metabolomics": ("metabolomics_untargeted.csv", "metabolomics", "responder", 2),
@@ -296,34 +307,77 @@ def _routes(client, pid, project):
     }
 
 
-@pytest.mark.parametrize("label", sorted(LENSES))
+#: `AUDIT-039`, `L56-B2`. **The page-level claim gets its own two lenses, and
+#: they are both at the SHIPPING bound**, because that is the only bound the
+#: page can ever see: `project.py` builds `explore_stack` as
+#: `_att.stack(findings, spent=…)` with **no bound argument**, so the API serves
+#: `A.BOUND` and nothing else. Driving this claim at `bound=2` was never
+#: possible; the old code parametrized over `LENSES` and then skipped the
+#: metabolomics arm, which is `GUIDED-097`'s two-lens rule silently reduced to
+#: one and reported green.
+#:
+#: **The docstring above was wrong and this is the correction.** It claimed
+#: `MIN_COLLAPSE` left *exactly ONE* fixture in this repository with a remainder
+#: at the shipping bound. Swept through the API at `A.BOUND = 5`,
+#: `metabolomics_merged_modes.csv` has a **four-card** remainder under the
+#: metabolomics lens — `live=8, collapsed=4` — against
+#: `metabolomics_untargeted.csv`'s `live=10, collapsed=0`. So the second lens
+#: does not need a different bound; it needs a different fixture.
+PAGE_LENSES = {
+    "clinical": ("clinical_labs.csv", "clinical", "readmitted"),
+    "metabolomics": ("metabolomics_merged_modes.csv", "metabolomics", "responder"),
+}
+
+
+@pytest.mark.parametrize("label", sorted(PAGE_LENSES))
 @pytest.mark.parametrize("n_dismissals", [1, 2])
-def test_the_promoted_card_says_why_it_is_there(projects, label, n_dismissals):
+def test_the_promoted_card_says_why_it_is_there(label, n_dismissals):
     """The marker is on the promoted card and on nothing else.
 
     Two dismissals as well as one, because the second is where a marker that was
     never cleared would show: a card marked *"moved up"* on a render where it did
     not move is the interface asserting something false about its own history.
+
+    **`AUDIT-039`. Both skips are gone and the precondition is asserted from the
+    data instead.** The second one was the dangerous one: it stood down exactly
+    when `explore_stack["collapsed"]` was empty — which is the state a stack
+    regression produces. A change to `BOUND`, to `MIN_COLLAPSE`, to
+    `gates_a_decision` or to a fixture's finding count would have turned the
+    test that carries this file's name **quiet** rather than red, and pytest
+    counts a skip as not-a-failure.
     """
     from turbotab import pageharness as PH
 
     if not PH.available():
         pytest.skip("no JS engine on this machine")
 
-    fixture, lens, target, bound = LENSES[label]
-    if bound is not None:
-        pytest.skip(f"{label} has no remainder at the shipping bound; the page "
-                    f"renders what the API serves and the API serves BOUND")
+    fixture, lens, target = PAGE_LENSES[label]
     client, pid = _driven(fixture, lens, target)
     project = client.get(f"/project/{pid}").json()
-    for _ in range(n_dismissals):
+
+    # THE PRECONDITION, ESTABLISHED FROM THE DATA AND ASSERTED. Both fixtures
+    # are shipped and their stack shape at the shipping bound is a deterministic
+    # fact about them, so "there is a remainder to promote from" is something
+    # this test may require rather than something it may decline over.
+    assert project["explore_stack"]["collapsed"], (
+        f"{label}: {fixture} has no collapsed remainder at the shipping bound "
+        f"A.BOUND={A.BOUND}, so nothing can be promoted and this test's subject "
+        f"does not exist. That is a change in the stack, not a reason to stand "
+        f"down — AUDIT-039.")
+
+    for i in range(n_dismissals):
         st = project["explore_stack"]
         victim = next((i for i in st["live"]
                        if not A.gates_a_decision(
                            next(f for f in project["findings"] if f["id"] == i))),
                       None)
-        if victim is None or not st["collapsed"]:
-            pytest.skip(f"{label} has no remainder to promote from")
+        assert victim is not None, (
+            f"{label}: every live card gates a decision after {i} dismissal(s), "
+            f"so there is nothing this test is allowed to clear")
+        assert st["collapsed"], (
+            f"{label}: the remainder emptied after {i} dismissal(s), so the "
+            f"{i + 1}th promotion has nothing to promote FROM. This is the "
+            f"state a stack regression produces and it used to be a skip.")
         project = client.post(f"/project/{pid}/decision",
                               json={"kind": "dismiss", "subject": victim}).json()
 

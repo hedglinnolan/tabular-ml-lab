@@ -98,15 +98,57 @@ def _dietary(client, fixture):
     return pid
 
 
-@pytest.mark.parametrize("fixture", NHANES)
-@pytest.mark.parametrize("column", NOT_NUTRIENTS)
+def _pairs_that_exist():
+    """`(fixture, column)` for every pair the fixtures actually carry.
+
+    `AUDIT-039`, `L56-B2`. This was a cross product of 3 fixtures × 5 columns
+    with a `pytest.skip` inside for the pairs that do not exist —
+    `nhanes_partial_design.csv` is *named* for lacking two of the design
+    columns, so two of the fifteen could never run. A skip there is the shape
+    the row is about: pytest counts it as not-a-failure, so a fixture quietly
+    losing a column it is supposed to have reads exactly like a fixture that
+    never had one.
+
+    **The parametrization is narrowed to the pairs that exist and the dropped
+    ones are named** — `GUIDED-097`'s rule applied to a skip — so the count is
+    asserted below rather than discovered at run time.
+    """
+    out, dropped = [], []
+    for fixture in NHANES:
+        columns = set(pd.read_csv(DATA / fixture).columns)
+        for column in NOT_NUTRIENTS:
+            (out if column in columns else dropped).append((fixture, column))
+    return out, dropped
+
+
+PAIRS, PAIRS_DROPPED = _pairs_that_exist()
+
+
+def test_the_pairs_this_file_drops_are_the_two_the_fixture_is_named_for():
+    """The narrowing is a claim, so it is checked rather than trusted.
+
+    Without this, narrowing the parametrization would hide the same thing the
+    skip hid: a fixture losing a design column would silently shrink the
+    matrix and every remaining case would still pass.
+    """
+    assert len(PAIRS) + len(PAIRS_DROPPED) == len(NHANES) * len(NOT_NUTRIENTS)
+    assert sorted(PAIRS_DROPPED) == [
+        ("nhanes_partial_design.csv", "SDMVPSU"),
+        ("nhanes_partial_design.csv", "SDMVSTRA"),
+    ], (
+        f"the set of fixture/column pairs that do not exist has changed: "
+        f"{sorted(PAIRS_DROPPED)}. `nhanes_partial_design.csv` is named for "
+        f"carrying only part of the design; any other absence is a fixture "
+        f"that lost a column, which is what this file's subject is about.")
+
+
+@pytest.mark.parametrize("fixture,column", PAIRS,
+                         ids=[f"{f.split('.')[0]}-{c}" for f, c in PAIRS])
 def test_the_app_refuses_to_call_a_design_column_a_nutrient(fixture, column):
     """The defect, on every fixture that reproduces it and every column it
     offered — not only the one in the screenshot."""
     client = _client()
     pid = _dietary(client, fixture)
-    if column not in pd.read_csv(DATA / fixture).columns:
-        pytest.skip(f"{fixture} does not carry {column}")
 
     body = client.get(f"/project/{pid}/nutrition/prevalence"
                       f"?nutrient={column}&basis=usual_intake"

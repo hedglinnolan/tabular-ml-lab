@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**370 of 890 closed.**
+**371 of 890 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 448 |
-| `PARTIAL` | 72 |
-| `FIXED` | 364 |
+| `PARTIAL` | 71 |
+| `FIXED` | 365 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
@@ -555,7 +555,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 72
+## PARTIAL — 71
 
 
 ### Guided-door drive feedback — 16
@@ -579,23 +579,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-178` | medium | The right panel becomes a deck of per-model before/after tables at Preprocess - one card per model, paged like a deck, updating when that model's pipeline changes - and the thing it can honestly show… | `PRODUCT OWNER'S PROPOSAL, VERBATIM: `Pre-processing is also the moment where we can make that right hand viz…` | **test:** `turbotab/test_the_deck_keeps_its_cards.py::test_a_card_survives_a_re_render_as_the_same_element AND ::test_the_card_quotes_the_recipe_records_reason` — L54-B. FACE ONE… |
 | `GUIDED-209` | medium | A server-side list cut to a literal bound before it is served, with nothing saying so - 43 payload keys, and the sharpest is in the exported manuscript | `L49-D, answering 08 check 5 by looking one surface over from GUIDED-195. An AST walk over every non-test…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_every_list_a_new_finding_serves_states_its_bound` — L50-D discharges it FOR THIS LOOP'S PAYLOADS and… |
 
-### Migration safety net — 12
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `TEST-006` | critical | 21 of 65 keys that reset_downstream_results actually clears are asserted by no test in any suite | `utils/session_state.py:301-415 (65 keys) vs tests/test_review_fixes.py:141-152…` | All 21 named keys are now asserted; the drift guard the action asked for is one-sided. Every key this row listed as unasserted is now covered - 19 directly by FULL_RESET_KEYS in… |
-| `TEST-009` | critical | ml.triage.detect_task_type is the Router's foundation and has zero coverage | `ml/triage.py:10, :102; consumed via pages/01 task_type_detection and DataConfig.task_type` | Half the row is closed. detect_task_type is no longer uncovered - turbotab/test_skeleton.py pins the text/object, string-dtype, category and boolean branches, asserts the… |
-| `TEST-012` | high | 95 of 98 integration tests are AppTest-bound and cannot survive; the 3 non-AppTest ones can | `grep AppTest over tests/integration; Makefile:27 `test-apptest` target; .github/workflows/ci.yml Tier 2 step` | The ratio moved and the conclusion did not. tests/integration/ has grown by seven files since this was written and three of them are NOT AppTest-bound… |
-| `TEST-014` | high | ALL of models/* is uncovered, and models/rf.py carries literal duplicate method definitions proving nothing exercises it | `models/rf.py:75-97 (duplicated block); models/base.py:10-76` | The coverage half is closed and the artifact it pointed at is still there. models/ is no longer untested - tests/test_characterization_wrappers.py parameterizes the base contract… |
-| `TEST-022` | high | perform_cross_validation's leakage semantics are documented in prose but only partially tested — and CV strategy is a cleared-but-unasserted key | `ml/eval.py:97-171; silent downgrade at :143-149; cv_strategy/cv_groups_train absent from all three test…` | The staleness half is closed; the fold-membership half is not. cv_strategy and cv_groups_train are no longer unasserted-on-clear - they are registered in the cascade and pinned by… |
-| `GUIDED-097` | high | The fixture rule: a claim verified against the one fixture that works is a claim about the fixture. Every claim about a journey step must run against at least two fixtures of different target shape… | `GUIDED-093 survived two loops because every Train and calibration claim used leaky_sepsis.csv, whose target…` | FILED AT L35-C AS THE RULE BEHIND THE DEFECT, because a class that lives only in a report gets rediscovered. THE OBSERVATION: GUIDED-093 was a one-line coercion on the app's own… |
-| `TEST-061` | high | The guard that checks every FIXED row's named test actually runs now exceeds its own 1800s timeout, so it reports neither pass nor offenders - a check that has outgrown its budget is a check that has… | `L51. tests/test_a_fixed_row_names_a_test_that_actually_runs.py::test_every_fixed_rows_named_test_actually_runs…` | **test:** `tests/test_a_fixed_row_names_a_test_that_actually_runs.py::test_every_fixed_rows_named_test_actually_runs AND… |
-| `TEST-026` | medium | scripts/integration_test_apptest.py and scripts/integration_test.py are unreachable from CI and duplicate tests/integration/ | `.github/workflows/ci.yml (only `pytest tests/` and `pytest tests/integration`); Makefile:22-40…` | Half the row's premise is wrong at HEAD and the correction changes the disposition. scripts/integration_test.py is NOT unreachable from CI - ci.yml:90-94 runs it as the E2E smoke… |
-| `TEST-032` | medium | tests/test_page_imports.py and tests/test_insight_id_integrity.py are AST-based over pages/ — they die with pages/ but encode rules worth keeping | `tests/test_page_imports.py:123; tests/test_insight_id_integrity.py:52` | Half the row is closed. test_insight_id_integrity can no longer pass vacuously over an empty or renamed directory - that is SWEEP-014, and it was fixed in exactly the way this row… |
-| `AUDIT-039` | medium | Twelve tests still skip on a condition their own fix was supposed to establish, so a regression would silence them rather than turn them red | `L52-D, the tail of TEST-059's sweep. 78 conditional skips found, 55 environmental and correct, 9 in tests…` | **test:** `turbotab/test_the_fixture_constants_match_the_fixtures.py::test_the_estimated_counts_and_fpkm_separator_is_measured AND… |
-| `AUDIT-040` | medium | One test file holds 2157 seconds of the suite in four tests, and it sets the floor for every check that has to run the guards a FIXED row names | `L52-A, measured with --durations while fixing TEST-061. turbotab/test_ask_me_anyway_reopens_the_question.py…` | Filed rather than fixed because the file is not in this loop's scope and rewriting fixtures under four long-running page drives is its own loop with its own probe. The measurement… |
-| `TEST-063` | medium | A test rewrote the process-global operation registry and never restored it, so every later test in the same run resolved a fake pack's scale variants | `L53, found by the full suite and NOT by the test that caused it. turbotab/recipes._OPERATIONS is a…` | **test:** `turbotab/test_a_test_that_rewrites_the_registry_puts_it_back.py::test_the_registry_survives_the_files_that_rewrite_it` — THE CLASS IS WORTH MORE THAN THE INSTANCE: a… |
-
 ### Application state / lockbox — 12
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -612,6 +595,22 @@ Nothing is closed without a regression test named after it.
 | `STATE-086` | invariant | A cohort switch throws away every model, split, pipeline and figure — decisions replay, fits do not. | `utils/cohorts.py docstring invariant #2; utils/cohort_ui.py:_switch_to and :_advance_to both call…` | **test:** `tests/test_cohort_runs.py` — REOPENED AS PARTIAL AT L44-D BY THE MISC-019 SWEEP. THE SITE: utils/cohort_ui.py:250-252. The sidebar repair button - rendered on every… |
 | `STATE-087` | invariant | reset_downstream_results is the SINGLE source of truth for downstream invalidation; any page that introduces a new result key must add it there. | `utils/session_state.py:288-291 docstring; tests/test_review_fixes.py::TestDownstreamReset::test_reset_clears_e…` | Duplicate of STATE-066 / STATE-074 from the invariant pass. The first of the row's two breakages is closed - pages/03's competing 21-key cascade is gone and an AST guard fails if… |
 | `STATE-095` | invariant | set_data distinguishes three cases: schema change (full reset), same-schema content change (results cleared, config kept), identical content (no-op) — because page 01 re-sets the same working table… | `utils/session_state.set_data:266-280 with the _raw_data_fingerprint comparison. Tests…` | The three cases are implemented and well tested - including the subtle one, that re-setting the SAME frame on every page-01 visit must not end a cohort run - and four tests cover… |
+
+### Migration safety net — 11
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `TEST-006` | critical | 21 of 65 keys that reset_downstream_results actually clears are asserted by no test in any suite | `utils/session_state.py:301-415 (65 keys) vs tests/test_review_fixes.py:141-152…` | All 21 named keys are now asserted; the drift guard the action asked for is one-sided. Every key this row listed as unasserted is now covered - 19 directly by FULL_RESET_KEYS in… |
+| `TEST-009` | critical | ml.triage.detect_task_type is the Router's foundation and has zero coverage | `ml/triage.py:10, :102; consumed via pages/01 task_type_detection and DataConfig.task_type` | Half the row is closed. detect_task_type is no longer uncovered - turbotab/test_skeleton.py pins the text/object, string-dtype, category and boolean branches, asserts the… |
+| `TEST-012` | high | 95 of 98 integration tests are AppTest-bound and cannot survive; the 3 non-AppTest ones can | `grep AppTest over tests/integration; Makefile:27 `test-apptest` target; .github/workflows/ci.yml Tier 2 step` | The ratio moved and the conclusion did not. tests/integration/ has grown by seven files since this was written and three of them are NOT AppTest-bound… |
+| `TEST-014` | high | ALL of models/* is uncovered, and models/rf.py carries literal duplicate method definitions proving nothing exercises it | `models/rf.py:75-97 (duplicated block); models/base.py:10-76` | The coverage half is closed and the artifact it pointed at is still there. models/ is no longer untested - tests/test_characterization_wrappers.py parameterizes the base contract… |
+| `TEST-022` | high | perform_cross_validation's leakage semantics are documented in prose but only partially tested — and CV strategy is a cleared-but-unasserted key | `ml/eval.py:97-171; silent downgrade at :143-149; cv_strategy/cv_groups_train absent from all three test…` | The staleness half is closed; the fold-membership half is not. cv_strategy and cv_groups_train are no longer unasserted-on-clear - they are registered in the cascade and pinned by… |
+| `GUIDED-097` | high | The fixture rule: a claim verified against the one fixture that works is a claim about the fixture. Every claim about a journey step must run against at least two fixtures of different target shape… | `GUIDED-093 survived two loops because every Train and calibration claim used leaky_sepsis.csv, whose target…` | FILED AT L35-C AS THE RULE BEHIND THE DEFECT, because a class that lives only in a report gets rediscovered. THE OBSERVATION: GUIDED-093 was a one-line coercion on the app's own… |
+| `TEST-061` | high | The guard that checks every FIXED row's named test actually runs now exceeds its own 1800s timeout, so it reports neither pass nor offenders - a check that has outgrown its budget is a check that has… | `L51. tests/test_a_fixed_row_names_a_test_that_actually_runs.py::test_every_fixed_rows_named_test_actually_runs…` | **test:** `tests/test_a_fixed_row_names_a_test_that_actually_runs.py::test_every_fixed_rows_named_test_actually_runs AND… |
+| `TEST-026` | medium | scripts/integration_test_apptest.py and scripts/integration_test.py are unreachable from CI and duplicate tests/integration/ | `.github/workflows/ci.yml (only `pytest tests/` and `pytest tests/integration`); Makefile:22-40…` | Half the row's premise is wrong at HEAD and the correction changes the disposition. scripts/integration_test.py is NOT unreachable from CI - ci.yml:90-94 runs it as the E2E smoke… |
+| `TEST-032` | medium | tests/test_page_imports.py and tests/test_insight_id_integrity.py are AST-based over pages/ — they die with pages/ but encode rules worth keeping | `tests/test_page_imports.py:123; tests/test_insight_id_integrity.py:52` | Half the row is closed. test_insight_id_integrity can no longer pass vacuously over an empty or renamed directory - that is SWEEP-014, and it was fixed in exactly the way this row… |
+| `AUDIT-040` | medium | One test file holds 2157 seconds of the suite in four tests, and it sets the floor for every check that has to run the guards a FIXED row names | `L52-A, measured with --durations while fixing TEST-061. turbotab/test_ask_me_anyway_reopens_the_question.py…` | Filed rather than fixed because the file is not in this loop's scope and rewriting fixtures under four long-running page drives is its own loop with its own probe. The measurement… |
+| `TEST-063` | medium | A test rewrote the process-global operation registry and never restored it, so every later test in the same run resolved a fake pack's scale variants | `L53, found by the full suite and NOT by the test that caused it. turbotab/recipes._OPERATIONS is a…` | **test:** `turbotab/test_a_test_that_rewrites_the_registry_puts_it_back.py::test_the_registry_survives_the_files_that_rewrite_it` — THE CLASS IS WORTH MORE THAN THE INSTANCE: a… |
 
 ### Stage-boundary contracts — 8
 
@@ -702,7 +701,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 364
+## FIXED — 365
 
 
 ### Guided-door drive feedback — 144
@@ -964,7 +963,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Migration safety net — 22
+### Migration safety net — 23
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -990,6 +989,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-053` | medium | The American-spelling gate walked a nested checkout of the repository and failed on exempt prose at a path where its exemption no longer matched | `L50. docs/turbotab/tools/worktree.py (built this loop for A1) puts subagent worktrees under .worktrees/, and…` | **test:** `tests/test_american_spelling.py::test_no_british_spellings` — No revert probe: the gate IS the probe - it went red on the real condition and green on the fix, which is… |
 | `TEST-055` | medium | A closed-set assertion on a pack that is being filled out asserts that no further detector may ever exist | `L50. test_the_four_diagnostics_reach_a_person_and_carry_their_badges asserted equality against a five-element…` | **test:** `turbotab/test_the_gene_id_diagnostics_reach_an_upload.py::test_the_four_diagnostics_reach_a_person_and_carry_their_badges` — Found by merging two worktrees rather than… |
 | `TEST-056` | medium | Inserting a seeded draw in the middle of a fixture generator changes every draw after it, and the L50 brief quoted pre-insertion numbers to a subagent | `L50. make_genomics_siblings.py draws from ONE seeded generator in file order. The estimated-counts block was…` | **test:** `turbotab/test_the_fixture_constants_match_the_fixtures.py::test_the_estimated_counts_and_fpkm_separator_is_measured` — Filed because the near-miss is instructive rather… |
+| `AUDIT-039` | medium | Twelve tests still skip on a condition their own fix was supposed to establish, so a regression would silence them rather than turn them red | `L52-D, the tail of TEST-059's sweep. 78 conditional skips found, 55 environmental and correct, 9 in tests…` | **test:** `turbotab/test_the_promoted_card_says_why_it_is_there.py::test_the_promoted_card_says_why_it_is_there AND… |
 
 ### Verified against main — 20
 

@@ -105,9 +105,17 @@ def test_the_grain_contradiction_opens_the_same_way(client):
                "payload": {"answer": "one_row_per_person",
                            "group_col": None}}
     refused = client.post(f"/project/{pid}/decision", json=request)
-    if refused.status_code == 200:
-        pytest.skip("this fixture no longer contradicts that answer")
-    assert refused.status_code == 409
+    # `AUDIT-039`, `L56-B2`. This stood down when the answer was ACCEPTED —
+    # which is the regression, not a reason to stop looking. `dietary_recalls.csv`
+    # carries repeated recalls per person, so `one_row_per_person` contradicts
+    # the data, and that is a deterministic property of a shipped fixture rather
+    # than something this test may decline over. If the app stops refusing, the
+    # test that checks the refusal opens the same way must go RED.
+    assert refused.status_code == 409, (
+        f"`one_row_per_person` was answered {refused.status_code} on "
+        f"dietary_recalls.csv, which carries more than one recall per person. "
+        f"Either the grain check stopped contradicting it or the fixture "
+        f"changed; both are findings, and neither is a skip. AUDIT-039.")
     attest = next(e for e in refused.json()["detail"]["exits"]
                   if e["kind"] == exits.ATTEST)
     request["payload"].update(attest["retry"]["payload"])

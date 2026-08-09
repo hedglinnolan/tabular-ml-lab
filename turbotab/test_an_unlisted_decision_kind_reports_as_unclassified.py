@@ -183,8 +183,16 @@ def test_route_missingness_bulk_matches_the_contract_it_was_just_given(
     client, pid = _client_and_project(fixture, target)
     cards = client.get(f"/project/{pid}/evidence/missingness").json()["cards"]
     columns = [c["column"] for c in cards if c["dtype_route"] == branch][:3]
-    if not columns:
-        pytest.skip(f"{fixture} has no {branch} column with missing values")
+    # `AUDIT-039`, `L56-B2`. The parametrize list names three (fixture, branch)
+    # pairs CHOSEN because each has missing values on that route — the ids say
+    # so: "row-local numeric", "row-local categorical", "deferred numeric". So
+    # the precondition is a deterministic fact about shipped fixtures, and
+    # standing down over it means a fixture that lost its blanks turns the
+    # contract check green-by-absence instead of red.
+    assert columns, (
+        f"{fixture} offers no {branch} column with missing values, so there is "
+        f"nothing to route and the contract under test is never exercised. "
+        f"This parametrization exists because that fixture HAS them. AUDIT-039.")
 
     before = _snapshot(client, pid)
     posted = client.post(f"/project/{pid}/decision", json={

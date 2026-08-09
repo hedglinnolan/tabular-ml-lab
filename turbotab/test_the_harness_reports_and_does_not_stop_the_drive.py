@@ -367,8 +367,37 @@ def test_a_swallow_in_a_watched_file_is_reported_without_editing_that_file(on):
     being considered as an identifier. Nothing in `grain.py` was touched to
     make this visible.
     """
+    # `AUDIT-039`, `L56-B2`. `start_listening()` returns `False` for FOUR
+    # different reasons — devchecks disabled, `sys.monitoring` absent, the
+    # listener already on, and another tool holding `DEBUGGER_ID` — and the old
+    # skip asserted the fourth without checking. Three of the four are states
+    # this test can establish rather than stand down over, and only the last is
+    # environmental in the way a missing JS engine is.
+    #
+    # So each is separated, the three are ASSERTED, and the environmental one
+    # skips with the holder's real name instead of a guess: `get_tool()` reports
+    # who has the id, which turns "another tool holds it" from a hypothesis into
+    # a measurement. An exemption is an argument, not a keyword.
+    assert devchecks.enabled(), (
+        "devchecks is disabled in this run, so layer 2 reports nothing at all "
+        "and every swallow claim in this file is vacuous. That is a "
+        "configuration regression, not an environment.")
+    monitoring = getattr(sys, "monitoring", None)
+    assert monitoring is not None, (
+        "`sys.monitoring` is absent; this repository requires 3.12+ and the "
+        "monitoring layer is not optional on it")
+    assert not devchecks._monitoring_on, (
+        "the listener was already running when this test started, so a "
+        "previous test left it on and the swallows below would include theirs")
+
     if not devchecks.start_listening():
-        pytest.skip("another tool holds the monitoring id")
+        holder = monitoring.get_tool(monitoring.DEBUGGER_ID)
+        assert holder is not None, (
+            "`start_listening()` refused and no tool holds DEBUGGER_ID, so the "
+            "refusal has none of the four causes it is allowed to have")
+        pytest.skip(f"the monitoring DEBUGGER_ID is held by {holder!r} — "
+                    f"environmental, like a missing JS engine, and named "
+                    f"rather than assumed")
     try:
         from turbotab import grain as G
         assert G.repetition_evidence(pd.DataFrame({"a": [[1], [2], [3]] * 10})) == []
