@@ -396,12 +396,19 @@ class Sweep:
     #: Fields that were `null` or an empty container on the swept project.
     #: **Held out of `unread` deliberately** — see the note in `sweep`.
     empty: List[Field] = field(default_factory=list)
+    #: Fields whose value IS the project id this drive is addressed by, each
+    #: measured individually and confirmed read. Held out of the BATCH pass,
+    #: because one unaddressable id costs every other field its measurement —
+    #: `AUDIT-040`'s floor. Reported rather than dropped: they are read, and a
+    #: count that omitted them would be a smaller denominator wearing the same
+    #: name.
+    address: List[Field] = field(default_factory=list)
     dom_truncated: bool = False
     n_renders: int = 0
 
     @property
     def reaching(self) -> List[Field]:
-        return [f for f in self.fields if f.reaches]
+        return [f for f in self.fields if f.reaches] + list(self.address)
 
     @property
     def unread(self) -> List[Field]:
@@ -480,6 +487,50 @@ def sweep(routes: Dict[str, Any], project_id: str, ids: Sequence[str],
     for fld in result.empty:
         fld.how = "empty on this project"
     result.fields = [f for f in result.fields if f.kind not in ("none", "empty")]
+
+    # **THE DRIVE'S OWN ADDRESS CANNOT BE TAGGED, AND THIS IS `AUDIT-040`'S FLOOR.**
+    #
+    # The page composes every fetch it makes from the project id —
+    # `api("/project/" + P.id + "/models")` — so a sentinel written over that
+    # value does not ask *"is this field rendered?"*. It re-points the entire
+    # route table at an address the harness has no answer for, `plan` comes back
+    # undefined, and `paintPalette` dies on `plan.questions.filter`.
+    #
+    # THE COST OF NOT DOING THIS WAS THE SINGLE LARGEST ITEM IN THE SUITE.
+    # Because pass 1 tags every field in ONE render, one unaddressable id killed
+    # the batch for all of them: `seen is None`, zero fields marked, and all
+    # 2,867 fell through to pass 2, where each read field must be bisected down
+    # to a singleton — about 5,700 `node` renders, measured at **1,175.39s of
+    # SETUP** in `test_the_three_unswept_payloads_are_swept.py`. Held back, pass
+    # 1 completes in **4.11s** and finds **129 hits in one render**.
+    #
+    # MATCHED BY VALUE, NOT BY NAME. `id` and `project_id` are two spellings on
+    # three routes here and a third spelling is one payload away; the thing that
+    # makes a field unaddressable is that it *equals the address being driven*,
+    # which is a fact this function already holds. A name list would be a fourth
+    # thing to keep in sync — this module's own docstring is about a value
+    # composed at one end and dropped at the boundary.
+    #
+    # THEY ARE NOT EXEMPTED, THEY ARE MEASURED. Each is tagged alone and the
+    # render is watched: a mutation the page cannot survive is a mutation the
+    # page read, which is `probe`'s own rule and the strongest hit this module
+    # has. What is skipped is only their participation in the BATCH, where one
+    # of them silently costs every other field its measurement.
+    address = [f for f in result.fields
+               if isinstance(f.sample, str) and f.sample == project_id]
+    for fld in address:
+        tagged = json.loads(json.dumps(routes))
+        poke(tagged[fld.route], fld.path, _tagged_value(fld, 0))
+        result.n_renders += 1
+        if probe(tagged, project_id, ids, [(0, (_sentinel(0),))]) is None:
+            fld.reaches, fld.how = True, "render broke — the drive's address"
+        else:
+            # It carried the address and the page survived losing it, so it is
+            # an ordinary field after all and goes back into the batch.
+            fld.reaches, fld.how = None, None
+    address = [f for f in address if f.reaches]
+    result.fields = [f for f in result.fields if f not in address]
+    result.address = list(address)
 
     index = {id(fld): i for i, fld in enumerate(result.fields)}
 
