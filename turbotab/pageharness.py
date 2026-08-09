@@ -373,18 +373,100 @@ function __declareMarkupNodes(parent, html){
   return out;
 }
 
+// REMOVING A NODE ORPHANS THAT NODE, NOT ITS DESCENDANTS. `TEST-069`, and it was
+// found by fixing `TEST-066` and then measuring rather than by reading.
+//
+// This used to set `_parent = null` down the whole subtree, which no DOM does: a
+// card taken out of the deck still contains its rows, and those rows are still
+// children of the card. Nothing could see the difference while `appendChild`
+// copied — nothing read `_parent` at all. The moment `appendChild` started
+// MOVING, it did: the deck detaches its cards to reorder them, every row inside
+// them lost its parent, and the next `body.appendChild(row)` had nothing to
+// detach from and appended a SECOND copy. So the fix for the copying bug did not
+// stop the deck's rows doubling — measured at 4 rows per card becoming 8 on a
+// re-render, identical before and after — and the reason was one line down here.
+//
+// The ids of the whole subtree DO go, because none of it is findable any more.
+// That half was right and is kept.
 function __unregister(el){
   el._parent = null;
+  __forgetIds(el);
+}
+function __forgetIds(el){
   if (el.id && __byId[el.id] === el) delete __byId[el.id];
-  for (var i = 0; i < el._children.length; i++) __unregister(el._children[i]);
+  for (var i = 0; i < el._children.length; i++) __forgetIds(el._children[i]);
 }
 function __register(el){
   if (el.id && !__byId[el.id]) __byId[el.id] = el;
   for (var i = 0; i < el._children.length; i++) __register(el._children[i]);
 }
+// `appendChild` MOVES AN ATTACHED NODE. It used to copy, and that is `TEST-066`.
+//
+// This is worse than a missing method and the reason is the whole of `L54-B`'s
+// bill: MOVE SEMANTICS ARE THE MECHANISM BEHIND IDENTITY-PRESERVING REORDER, so
+// while `appendChild` duplicated, the harness could verify that cards SURVIVE a
+// re-render and could not verify that a card MOVED rather than being rebuilt —
+// the distinction did not exist in its DOM. Re-appending three cards in reverse
+// produced six. A test tool that is too PERMISSIVE lets a defect through; this
+// one was too POOR, which pushes production code toward the subset the tool
+// implements. A tool dictating the product.
+//
+// DETACHED FROM ITS CURRENT PARENT FIRST, which is precisely what a reorder
+// depends on. Spliced out rather than routed through `removeChild`, because
+// `removeChild` unregisters the id and a move would then re-register it — the
+// same end state by way of a moment where the node is findable by nobody, and
+// `__register` only restores an id that is still free. A move is not a removal
+// followed by an insertion; it is one operation and it stays one here.
 El.prototype.appendChild = function(c){
+  __detach(c);
   this._children.push(c); c._parent = this; __register(c); return c;
 };
+// `insertBefore`, `TEST-066`'s second half. Absent entirely, so the deck's first
+// draft threw a `TypeError` that `L51-D`'s error boundary caught — which is the
+// boundary earning its keep and also the only reason the gap was found at all
+// rather than shipping as a browser-only feature nobody could test.
+//
+// A null reference node appends, as it does in a browser.
+El.prototype.insertBefore = function(c, ref){
+  if (!ref) return this.appendChild(c);
+  __detach(c);
+  var at = this._children.indexOf(ref);
+  if (at === -1) at = this._children.length;
+  this._children.splice(at, 0, c);
+  c._parent = this; __register(c); return c;
+};
+// `replaceChildren`, the third. Replaces, so the old children are GONE and are
+// gone from `getElementById` with them — the same contract as assigning
+// `innerHTML`, because it is the same act. The ASSIGNED markup is cleared too:
+// in a browser this method leaves no previous content of any kind, and a shim
+// that kept `_html` would report a container as still holding what was wiped.
+El.prototype.replaceChildren = function(){
+  for (var i = 0; i < this._children.length; i++) __unregister(this._children[i]);
+  this._children = [];
+  this.innerHTML = "";
+  for (var j = 0; j < arguments.length; j++) this.appendChild(arguments[j]);
+};
+// Removing a node from whatever holds it, WITHOUT unregistering it, because the
+// node is on its way somewhere else. The distinction matters: `removeChild`
+// answers "did this leave the tree?" and a move must not make that true in
+// between.
+function __detach(c){
+  if (!c || !c._parent || !c._parent._children) return;
+  var at = c._parent._children.indexOf(c);
+  if (at !== -1) c._parent._children.splice(at, 1);
+}
+// `hidden` IS A REFLECTED ATTRIBUTE, in both directions, for the same reason
+// `className` is `_classes` (`GUIDED-081`): as a plain field it would accept a
+// write that no other reader here could see, so every assertion about a hidden
+// surface would come back vacuously true. `'hidden' in element` was False, so
+// `DESIGN_LANGUAGE.md` §08's rule about interaction locks had no instrument.
+Object.defineProperty(El.prototype, "hidden", {
+  get: function(){ return "hidden" in this._attr; },
+  set: function(v){
+    if (v) this._attr.hidden = "";
+    else delete this._attr.hidden;
+  }
+});
 // A RENDERER THAT MUTATES IN PLACE APPENDS NODES, and `innerHTML` here is what
 // was ASSIGNED rather than a serialization of children — so a surface built by
 // `appendChild` was invisible to `__harness.html()` and probed as an empty

@@ -3344,9 +3344,11 @@
   var DECK = {cards: Object.create(null), rows: Object.create(null)};
 
   function deckClear(node){
-    /* `replaceChildren` is not in the harness's DOM; removing the last child
-       repeatedly is, and it is the same operation. */
-    while (node.lastChild) node.removeChild(node.lastChild);
+    /* L55-D. This read `while (node.lastChild) node.removeChild(node.lastChild)`
+       under a comment naming its reason: `replaceChildren` was not in the
+       harness's DOM. That is `TEST-066` in its own words — the instrument
+       dictating the product — and the instrument has the method now. */
+    node.replaceChildren();
   }
 
   function deckRow(card, key){
@@ -3419,7 +3421,12 @@
     });
     /* REORDER BY MOVING. `appendChild` on an element already in the document
        MOVES it; it does not clone it. That is what keeps identity across a
-       reorder, and it is the mechanism face 3 needs. */
+       reorder, and it is the mechanism face 3 needs.
+
+       TRUE OF A BROWSER SINCE THIS WAS WRITTEN AND TRUE OF THE HARNESS SINCE
+       `L55-D`. It duplicated before, so these rows really did accumulate on
+       every re-render under test — 4 per card becoming 8 — and nothing
+       asserted a child count inside a card, so nothing went red. */
     seen.forEach(function(row){ body.appendChild(row); });
   }
 
@@ -3474,12 +3481,12 @@
 
     /* THE ORDER IS SET EXPLICITLY AND THE CARDS ARE THE SAME OBJECTS.
        In a browser `appendChild` on an attached element MOVES it, so a bare
-       re-append would be enough. The harness's DOM appends a COPY instead
-       (`TEST-066`), which would silently double the deck on every render — so
-       the container is detached-and-refilled with the RETAINED cards. That is
-       still node-owning: `deckCard` returns the element it built the first
-       time, the card's identity survives, and only the parent's child list is
-       rewritten. It is what face 3's reorder will use. */
+       re-append would be enough — and since `L55-D` that is true of the harness
+       too (`TEST-066`). The container is still detached-and-refilled with the
+       RETAINED cards, because that is correct in both and says what it does:
+       `deckCard` returns the element it built the first time, the card's
+       identity survives, and only the parent's child list is rewritten. It is
+       what face 3's reorder will use. */
     deckClear(DECK.host);
     keys.forEach(function(k){
       var card = deckCard(k);

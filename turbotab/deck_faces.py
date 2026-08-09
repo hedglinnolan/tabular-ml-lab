@@ -87,11 +87,13 @@ COMPARE = Face(
         "identity through the move, which is exactly what FLIP is for."),
     blocked_by=(
         "not the mechanism — L54-B0 built that, and the cards are retained "
-        "and moved rather than reprinted. What is missing is a completed "
-        "training run to rank BY, and the motion itself. `TEST-066` is the "
-        "second obstacle: the harness's DOM appends a copy instead of moving "
-        "an attached node, so a reorder written the browser-native way is "
-        "unverifiable here."),
+        "and moved rather than reprinted. **And no longer the instrument**: "
+        "`TEST-066` was the second obstacle — the harness's DOM appended a copy "
+        "instead of moving an attached node, so a reorder written the "
+        "browser-native way was unverifiable — and `L55-D` closed it, along "
+        "with `TEST-069`, which was the same defect one level down and was only "
+        "visible once the first was fixed. What is left is a completed training "
+        "run to rank BY, and the motion itself."),
 )
 
 FACES: Tuple[Face, ...] = (PREPROCESS, TRAIN, COMPARE)

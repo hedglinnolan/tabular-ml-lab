@@ -188,12 +188,21 @@ def test_a_card_is_moved_rather_than_rebuilt_when_the_deck_reorders():
     element stays the one it was — which is precisely what a FLIP or a view
     transition needs and what `innerHTML` cannot give.
 
-    **The move is performed as detach-then-append rather than as a bare
-    re-append, and that is the harness's constraint rather than the design's.**
-    In a browser `appendChild` on an attached node moves it; the harness's DOM
-    appends a copy (`TEST-066`), so a bare re-append doubles the deck. The
-    renderer does the same detach-and-refill for the same reason, and the
-    cards are the same objects either way — which is the claim.
+    **A BARE RE-APPEND, WHICH IS THE BROWSER-NATIVE FORM, and `L55-D` is why it
+    can be.** This used to detach the whole deck first and say so in its own
+    docstring — *"that is the harness's constraint rather than the design's"* —
+    because the harness's `appendChild` appended a COPY and a bare re-append
+    doubled the deck (`TEST-066`). So the test performed the move explicitly
+    instead of exercising the mechanism, and the mechanism was the claim. The
+    shim moves now, so the reorder is written the way a browser does it and the
+    count not growing is part of the assertion rather than a workaround.
+
+    **AND THE ABSENCE OF THE DECK IS AN ASSERTION, NOT A CRASH.** Under a total
+    revert this reached into `__harness.el('studyModels').querySelector` on a
+    null and the drive died with a `HarnessError` — which §08.1 does not accept
+    as discharge, because a probe that dies on a lookup has not observed
+    anything about the reorder. The absence is emitted and asserted here, so the
+    red says what is missing.
     """
     from turbotab import pageharness as PH
 
@@ -205,23 +214,38 @@ def test_a_card_is_moved_rather_than_rebuilt_when_the_deck_reorders():
     out = PH.run(
         "for (var i = 0; i < 12; i++) "
         "  await new Promise(function(r){ setTimeout(r, 0); });\n"
-        "var deck = __harness.el('studyModels').querySelector('.deck');\n"
+        "var host = __harness.el('studyModels');\n"
+        "var deck = host ? host.querySelector('.deck') : null;\n"
+        "if (!deck){ __emit({deck: false}); } else {\n"
         "var cards = Array.prototype.slice.call("
         "  deck.querySelectorAll('.deck-card'));\n"
         "for (var j = 0; j < cards.length; j++) cards[j].dataset.stamp = 'j' + j;\n"
         "var before = cards.map(function(c){ return c.getAttribute('data-model'); });\n"
-        "while (deck.lastChild) deck.removeChild(deck.lastChild);\n"
+        "/* NO DETACH. `appendChild` on an attached node moves it. */\n"
         "cards.slice().reverse().forEach(function(c){ deck.appendChild(c); });\n"
         "var now = Array.prototype.slice.call(deck.querySelectorAll('.deck-card'));\n"
-        "__emit({before: before,"
+        "__emit({deck: true, before: before,"
         "        after: now.map(function(c){ return c.getAttribute('data-model'); }),"
         "        stamps: now.map(function(c){ return c.dataset.stamp || ''; }),"
-        "        count: now.length});",
+        "        same: cards.every(function(c, i){"
+        "                return deck.children[cards.length - 1 - i] === c; }),"
+        "        count: now.length}); }",
         routes=_routes(client, pid), search=f"?project={pid}")
 
+    assert out["deck"], (
+        "there is no `.deck` inside the study panel at all, so nothing here "
+        "reordered anything. The deck region is gone or never rendered.")
     assert out["count"] >= 2, "fewer than two cards; a reorder means nothing"
+    assert out["count"] == len(out["before"]), (
+        f"a bare re-append changed the number of cards from "
+        f"{len(out['before'])} to {out['count']}. `appendChild` on an attached "
+        f"node must MOVE it — TEST-066, and this assertion is the guard on the "
+        f"instrument as much as on the deck.")
     assert out["after"] == list(reversed(out["before"])), (
         f"the deck did not reorder: {out['before']} -> {out['after']}")
+    assert out["same"], (
+        "the reordered children are not the same objects the deck started "
+        "with, so they were rebuilt rather than moved")
     assert all(out["stamps"]), (
         f"a card lost its stamp during the reorder, so it was rebuilt rather "
         f"than moved: {out['stamps']}")
