@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**361 of 876 closed.**
+**362 of 878 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 444 |
+| `OPEN` | 445 |
 | `PARTIAL` | 71 |
-| `FIXED` | 355 |
+| `FIXED` | 356 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 444
+## OPEN — 445
 
 
 ### Guided-door drive feedback — 69
@@ -298,7 +298,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-264` | low | HUNT stack-blank-file-blocks-with-wrong-advice: one zero-column file blocks the entire stack and the message tells the researcher to consider joining instead | `utils/combine.py plan_stack - the no-shared-columns blocker and its message; measured at HEAD` | REPRODUCES AT HEAD. Two well-formed cycles sharing SEQN and age, plus one zero-column frame, give blocking: 'These files have no column names in common, so stacking them would… |
 | `IMPORT-265` | low | HUNT stack-duplicate-column-label-crash: does not reproduce on this pandas, and there is no guard - recorded as environment-dependent rather than fixed | `utils/combine.py execute_stack - the copy, rename and pd.concat path, which contains no duplicate-label…` | DOES NOT REPRODUCE AT HEAD, AND IS NOT CLOSED - the distinction is the point. Two frames with columns [1, '1'] give plan_stack no blocking and no warnings (so the recorded… |
 
-### Migration safety net — 42
+### Migration safety net — 43
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -341,6 +341,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-040` | medium | One test file holds 2157 seconds of the suite in four tests, and it sets the floor for every check that has to run the guards a FIXED row names | `L52-A, measured with --durations while fixing TEST-061. turbotab/test_ask_me_anyway_reopens_the_question.py…` | Filed rather than fixed because the file is not in this loop's scope and rewriting fixtures under four long-running page drives is its own loop with its own probe. The measurement… |
 | `AUDIT-044` | medium | A guard whose match list is written from one surface's wording certifies only that surface, and the other surfaces keep the claim | `L53-C, and AUDIT-034 is the worked example. The reverse-coding promise was corrected at L51 and L52 in three…` | Related to trap #5 (a grep answering the wrong question) and to AUDIT-043 (an enumeration going stale). The common shape is a check whose SCOPE was set by where the author… |
 | `TEST-064` | medium | A test's assertion MESSAGE can raise, so the test dies reporting the wrong error and the thing it was actually checking is never seen | `L54-A1, filed from L53's divergence section where it was named and NOT filed - which is section 08's first…` | WHY IT MATTERS MORE THAN ITS SEVERITY SUGGESTS: this class is invisible from inside the test that has it. The test passes, so nobody looks at its message; the message is only ever… |
+| `TEST-068` | medium | The L53 full-suite red that TEST-063 was filed for is unexplained: the diagnosis on record does not reproduce, and the obvious alternative - the real metabolomics pack loading process-globally by… | `L55-A2. TEST-063 records that test_a_pack_cannot_shadow_a_core_operation_silently left recipes…` | FILED RATHER THAN ANSWERED, and the reason is the rule this project runs on. Replacing one unverified diagnosis with a second unverified diagnosis is not an improvement in the… |
 | `TEST-033` | low | _NOT_STAGE_RESULTS in tests/integration/test_cascade_dag_equivalence.py:31 is defined and never referenced - a dead exclusion set that reads as if it were enforcing something | `tests/integration/test_cascade_dag_equivalence.py:31` | Filed post-Loop-1; not part of the 370 Tier-1 rows. |
 | `TEST-043` | low | A guard that searches the tree for a pattern has its own source inside the search space, so it flags the text in which it names what it is looking for - three instances in one loop | `reported by the L43 agent as its fourth divergence: the pragma check flagged the comment recording the…` | THE AGENT'S OWN SENTENCE IS THE ROW: `three times in one loop is a pattern I should have seen after the first - a guard whose own text is inside its search space has to say so.`… |
 | `TEST-045` | low | A parametrized test whose id contains a non-ASCII character cannot be addressed by revertprobe.py, so the one class of test this project requires a probe for is the one class that can silently have… | `Found at L46-C. turbotab/test_a_deferred_noticing_comes_back_where_it_said.py originally keyed its cases…` | FILED AT L46 AND FIXED IN THE INSTANCE ONLY - the test's own ids are now ASCII. THE CLASS IS WHY IT IS A ROW: LOOP.md section 09 requires a named regression test verified to fail… |
@@ -602,11 +603,11 @@ Nothing is closed without a regression test named after it.
 | `TEST-014` | high | ALL of models/* is uncovered, and models/rf.py carries literal duplicate method definitions proving nothing exercises it | `models/rf.py:75-97 (duplicated block); models/base.py:10-76` | The coverage half is closed and the artifact it pointed at is still there. models/ is no longer untested - tests/test_characterization_wrappers.py parameterizes the base contract… |
 | `TEST-022` | high | perform_cross_validation's leakage semantics are documented in prose but only partially tested — and CV strategy is a cleared-but-unasserted key | `ml/eval.py:97-171; silent downgrade at :143-149; cv_strategy/cv_groups_train absent from all three test…` | The staleness half is closed; the fold-membership half is not. cv_strategy and cv_groups_train are no longer unasserted-on-clear - they are registered in the cascade and pinned by… |
 | `GUIDED-097` | high | The fixture rule: a claim verified against the one fixture that works is a claim about the fixture. Every claim about a journey step must run against at least two fixtures of different target shape… | `GUIDED-093 survived two loops because every Train and calibration claim used leaky_sepsis.csv, whose target…` | FILED AT L35-C AS THE RULE BEHIND THE DEFECT, because a class that lives only in a report gets rediscovered. THE OBSERVATION: GUIDED-093 was a one-line coercion on the app's own… |
-| `TEST-061` | high | The guard that checks every FIXED row's named test actually runs now exceeds its own 1800s timeout, so it reports neither pass nor offenders - a check that has outgrown its budget is a check that has… | `L51. tests/test_a_fixed_row_names_a_test_that_actually_runs.py::test_every_fixed_rows_named_test_actually_runs…` | **test:** `tests/test_a_fixed_row_names_a_test_that_actually_runs.py::test_every_fixed_rows_named_test_actually_runs AND ::test_every_fixed_rows_named_test_exists` — L53-A2. THE… |
+| `TEST-061` | high | The guard that checks every FIXED row's named test actually runs now exceeds its own 1800s timeout, so it reports neither pass nor offenders - a check that has outgrown its budget is a check that has… | `L51. tests/test_a_fixed_row_names_a_test_that_actually_runs.py::test_every_fixed_rows_named_test_actually_runs…` | **test:** `tests/test_a_fixed_row_names_a_test_that_actually_runs.py::test_every_fixed_rows_named_test_actually_runs AND… |
 | `TEST-026` | medium | scripts/integration_test_apptest.py and scripts/integration_test.py are unreachable from CI and duplicate tests/integration/ | `.github/workflows/ci.yml (only `pytest tests/` and `pytest tests/integration`); Makefile:22-40…` | Half the row's premise is wrong at HEAD and the correction changes the disposition. scripts/integration_test.py is NOT unreachable from CI - ci.yml:90-94 runs it as the E2E smoke… |
 | `TEST-032` | medium | tests/test_page_imports.py and tests/test_insight_id_integrity.py are AST-based over pages/ — they die with pages/ but encode rules worth keeping | `tests/test_page_imports.py:123; tests/test_insight_id_integrity.py:52` | Half the row is closed. test_insight_id_integrity can no longer pass vacuously over an empty or renamed directory - that is SWEEP-014, and it was fixed in exactly the way this row… |
 | `AUDIT-039` | medium | Twelve tests still skip on a condition their own fix was supposed to establish, so a regression would silence them rather than turn them red | `L52-D, the tail of TEST-059's sweep. 78 conditional skips found, 55 environmental and correct, 9 in tests…` | **test:** `turbotab/test_the_fixture_constants_match_the_fixtures.py::test_the_estimated_counts_and_fpkm_separator_is_measured AND… |
-| `TEST-063` | medium | A test rewrote the process-global operation registry and never restored it, so every later test in the same run resolved a fake pack's scale variants | `L53, found by the full suite and NOT by the test that caused it. turbotab/recipes._OPERATIONS is a…` | **test:** `turbotab/test_the_recipe_table_is_a_table.py::test_the_pack_is_gone_when_the_test_is` — THE CLASS IS WORTH MORE THAN THE INSTANCE: a test that mutates module-level… |
+| `TEST-063` | medium | A test rewrote the process-global operation registry and never restored it, so every later test in the same run resolved a fake pack's scale variants | `L53, found by the full suite and NOT by the test that caused it. turbotab/recipes._OPERATIONS is a…` | **test:** `turbotab/test_a_test_that_rewrites_the_registry_puts_it_back.py::test_the_registry_survives_the_files_that_rewrite_it` — THE CLASS IS WORTH MORE THAN THE INSTANCE: a… |
 
 ### Stage-boundary contracts — 8
 
@@ -693,11 +694,11 @@ Nothing is closed without a regression test named after it.
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `GUIDED-099` | high | The pack recipe table is process-global and never unloads, so a project with no assay lens is fitted with another project's field conventions — and feature selection is declared and executed by… | `turbotab/packs.py load() adds to _LOADED and never removes; recipes._DEFAULTS is module state…` | TWO FINDINGS FROM ONE PROBE, filed together because the probe is the story. FOUND AT L35-E BY test_a_recorded_decision_changes_something, on its first run, which is what that file… |
+| `GUIDED-099` | high | The pack recipe table is process-global and never unloads, so a project with no assay lens is fitted with another project's field conventions — and feature selection is declared and executed by… | `turbotab/packs.py load() adds to _LOADED and never removes; recipes._DEFAULTS is module state…` | **test:** `turbotab/test_a_test_that_rewrites_the_registry_puts_it_back.py::test_the_registry_survives_the_files_that_rewrite_it` — TWO FINDINGS FROM ONE PROBE. THE FIRST, the… |
 
 ---
 
-## FIXED — 355
+## FIXED — 356
 
 
 ### Guided-door drive feedback — 143
@@ -983,7 +984,7 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 
-### Migration safety net — 17
+### Migration safety net — 18
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -998,6 +999,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-051` | high | pageharness.__emit wrote through process.stdout.write in an exit handler, so no answer above the 64 KB pipe buffer could be reported at all - and it surfaced as a JSON decode error, blaming the page… | `L49-B, found because a render grew. stdout on a pipe is asynchronous and process.exit discards what has not…` | **test:** `turbotab/test_the_harness_does_not_truncate_what_it_emits.py::test_a_long_list_arrives_with_every_entry` — sibling-of: TEST-048. THE PROBE CORRECTED THE AGENT AND IT IS… |
 | `TEST-058` | high | The evidence gate read prose as code three different ways, and every one was invisible until a second number was held out | `L51-A1, and the sequence is the finding. Gate 6's literal scan stripped strings and comments with three…` | **test:** `turbotab/test_a_bare_verify_at_build_marker_fails_the_gate.py::test_the_reader_does_not_read_prose_as_code` — sibling-of: GUIDED-212. The general form is worth keeping… |
 | `TEST-059` | high | A test that SKIPS when the thing is absent cannot detect the thing being absent - a conditional skip is a green test over a regression | `L51-B, found by a revert probe returning GREEN - NOT LOAD-BEARING. The layer-3 test skipped when the teaching…` | **test:** `turbotab/test_the_seal_holds.py::test_a_holdout_too_small_to_mean_anything_is_refused AND turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_the_gate_is_on_th… |
+| `TEST-067` | high | A cheap guard sharing a file with an expensive one inherits the expensive one's exclusions and goes dark, because --ignore takes a FILE and cannot tell two checks apart - so the check the ledger's… | `L55-A1, and the instance is TEST-063. tests/test_a_fixed_row_names_a_test_that_actually_runs.py held two…` | **test:** `tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py::test_the_documented_invocation_still_collects_this_check` — THE GUARD'S SUBJECT IS THE DOCUMENTED… |
 | `GUIDED-100` | medium | The propagation probe itself: for each recorded decision kind, two projects identical except for that answer, and something downstream must differ | `turbotab/test_a_recorded_decision_changes_something.py; 41 kinds recorded, 23 probed (24 flips), 6 asserted…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_a_decision_about_the_analysis_reaches_the_fitted_pipeline` — BUILT AT L35-E as the instrument that would… |
 | `TEST-041` | medium | Four turbotab test files read figures.REGISTRY, which is populated only as an import side effect of figure_specs, and one of them asserted a count over it before anything had imported the populator… | `turbotab/figures.py:REGISTRY is an empty dict filled by turbotab/figure_specs.py's module body…` | **test:** `turbotab/test_the_registry_cannot_be_observed_empty.py::test_a_cold_import_of_figures_alone_sees_the_specs` — FOUND WHILE FIXING TEST-040 AND IT IS THE SAME PROPERTY… |
 | `TEST-046` | medium | A test docstring that names a page control its body never presses is trap #3b in its page-control form, and nothing detected it - the standing answer was to read docstrings against bodies by hand | `L48-A2. AGENT_ONBOARD.md 07 names trap #3b and the standing answer found GUIDED-145 once and nothing for five…` | **test:** `turbotab/test_a_test_that_names_a_control_presses_it.py::test_no_test_names_a_control_its_body_never_touches` — Both instances fixed rather than declared. NOT COVERED… |

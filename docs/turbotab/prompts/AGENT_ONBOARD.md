@@ -119,6 +119,17 @@ hour of a person's evening.
 checks every `FIXED` row's named test actually runs, its answer at L52 was **0 offenders across 880
 named nodes**, and it still exceeds its own budget. **Run it deliberately, not incidentally.**
 
+**And that exclusion used to hide a second check, which is `TEST-067`.** `--ignore` takes a **file**,
+so excluding the 2,473-second check silently excluded the **5-second** one beside it — the check that
+every `FIXED` row's named test *resolves* — and it therefore had not run since the loop that wrote
+it. The first time it ran it found a live violation (`TEST-063`, `FIXED` naming a function collected
+nowhere). L55-A1 split the file: the cheap half is
+**`tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py`**, it is **not** in any `--ignore`
+above, and it must stay that way. Both halves read one resolver, `tests/fixed_row_guard.py`, rather
+than a copy. **The list of `--ignore` paths in the block above is now read by a test** — a cheap guard
+sharing a file with an expensive one is the class, and the only place it can be caught is the command
+itself.
+
 **Four failures are environmental and expected**: three in `tests/test_shap_and_sensitivity.py`
 (`shap` absent) and `tests/test_engine_is_headless.py::test_core_modules_import_for_any_reason`
 (`torch` absent). Anything else red is yours.
