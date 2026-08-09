@@ -130,9 +130,16 @@ than a copy. **The list of `--ignore` paths in the block above is now read by a 
 sharing a file with an expensive one is the class, and the only place it can be caught is the command
 itself.
 
-**Four failures are environmental and expected**: three in `tests/test_shap_and_sensitivity.py`
-(`shap` absent) and `tests/test_engine_is_headless.py::test_core_modules_import_for_any_reason`
-(`torch` absent). Anything else red is yours.
+**One failure is environmental and expected**:
+`tests/test_engine_is_headless.py::test_core_modules_import_for_any_reason` (`torch` absent).
+Anything else red is yours.
+
+**This said "four" until 2026-08-09**, counting three in `tests/test_shap_and_sensitivity.py` against
+a `shap` that is now installed — 0.52.0, and that file passes **10 of 10**. **The direction of this
+decay is the dangerous one**: an onboard that tells you to expect three reds in a file that now passes
+is an onboard that makes you ignore a real regression. **Re-derive the expected-failure set whenever
+the environment moves, and name what moved it.** `numpy` is now 2.4.6, held there by `numba`, and
+`turbotab/` had never run under it before L55's sweep.
 
 ---
 
@@ -159,11 +166,18 @@ loops**, each time in the same shape: the tool succeeded, the gate stayed green,
 quietly wrong about itself. Write the note in a `.py` file and run that file. It costs one extra
 file and it cannot fail this way.
 
-**The five gates run in `.githooks/pre-commit` and refuse the commit**: ledger schema, register
-schema, American spelling, copy deck, evidence badges. They are a hook rather than an instruction
-because a commit once went out with the spelling test red — the gates were chained with a newline
-instead of `&&`, so a non-zero exit did not stop the sequence. **An instruction a tired agent can
-skip by punctuation is not a gate.**
+**The six gates run in `.githooks/pre-commit` and refuse the commit**: **python parses**, ledger
+schema, register schema, American spelling, copy deck, evidence badges. They are a hook rather than
+an instruction because a commit once went out with the spelling test red — the gates were chained
+with a newline instead of `&&`, so a non-zero exit did not stop the sequence. **An instruction a
+tired agent can skip by punctuation is not a gate.**
+
+**This paragraph said "five" and enumerated exactly the five that existed before `TEST-042` closed**,
+so the one it left out was `parsecheck.py` — the only gate that reads Python as Python, which is the
+whole reason `TEST-042` was filed. **An enumeration that was complete as of a past state reads as
+complete now**, and that is worse than a bare stale number: a count invites checking and a list does
+not. `LOOP.md` §05 carries the same decay on the same subject — it said "three" for nine loops — and
+its fix was to write the count *beside* the list rather than in front of it.
 
 ---
 
