@@ -449,6 +449,59 @@ force that rebuilds it.
 **So condition three is not a later polish phase.** It binds now, it binds hardest exactly where the
 domain work is succeeding, and `GUIDED-149` is the row.
 
+## 06c · Explainability under the lens — the product owner's rulings, 2026-08-09
+
+**The reframe that produced these.** A generic tool's explainability answers *"which features
+matter."* Under a domain lens the question is **"is this model's reasoning consistent with what is
+known about this domain, and where does it disagree?"** The product owner's framing, and it is the
+specification: *"SHAP in particular I have high hopes for being the vehicle by which a nutrition
+modeler can understand the inductive bias each model brings to the table in solving their problem."*
+
+**What made this conversation necessary.** The parity register says **four explain capabilities are
+`classic-only`** — `explain-shap`, `sens-seed`, `sens-feature-dropout`, `sens-robustness-verdict` —
+so the entire explainability and sensitivity suite is in the door being left. Guided has
+`sklearn.inspection.permutation_importance` and nothing else, and **permutation importance cannot
+answer the inductive-bias question**: it reports how much a fitted model's *metric* degrades when a
+feature is destroyed, one number per feature. It cannot show that a tree found a threshold where a
+linear model found a slope, which is the disagreement the modeler needs to see.
+
+**Four layers, and layers 2 and 3 are the differentiated part:**
+
+1. **Attribution.** SHAP as raw material — beeswarm, per-observation force plots.
+2. **Inductive bias.** Each feature's SHAP value plotted against its raw value, **per model family,
+   on shared axes.** A linear model draws a straight line by construction; a tree draws a step
+   function. **The divergence between those curves IS the inductive bias**, and it only means
+   anything when families are compared on one dataset — which is why no generic tool draws it.
+3. **Domain consistency.** The packs hold established directions and plausibility bounds. Where the
+   attribution disagrees with them, that is a finding.
+4. **Stability.** The three `sens-*` capabilities. **An attribution whose sign flips under reseeding
+   is not an explanation**, and layer 3 is dishonest without it.
+
+### The three rulings
+
+**1 · A disagreement with the pack is a badged finding, never a verdict.** Show both directions,
+label the disagreement, and carry the pack's own `SETTLED` / `CONVENTION` / `DISPUTED` badge onto it.
+**The app does not decide who is right** — a disagreement may be confounding, a coding error, or the
+result. This is the governing rule applied to explanation: the app may be silent and it may refuse,
+but it must never assert something false, and *"the model is wrong"* and *"the literature is wrong"*
+are both assertions it cannot support.
+
+**2 · The unit of explanation is the model, rendered as the deck's face 3.** Not one explanation for
+a chosen model with comparison as an extra step — **the comparison is the default view**, because
+the inductive-bias question is a question about difference. This makes `GUIDED-178`'s deck and the
+explainability suite **one mechanism rather than two**, and face 3's *"the reorder is the
+comparison"* becomes literal: the cards carry the attribution curves being compared.
+
+**3 · Stability is computed on demand, not by default.** Sensitivity refits cost N× training, and
+Explain must stay fast. An explicit action, with the cost named before it is spent. **This does not
+weaken ruling 1** — a disagreement surfaced in layer 3 before stability has been computed says so,
+because an uncomputed stability is not a stable one.
+
+### What this does not settle
+
+Whether an unstable attribution may reach the **manuscript**. Ruling 3 governs the in-app default;
+the export is a durable claim and the export gate is a separate decision, unmade.
+
 ## 07 · Design principles
 
 Five commitments, ordered. When two collide, the earlier wins.
