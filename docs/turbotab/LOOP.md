@@ -303,6 +303,37 @@ only form of this rule that can actually fire.
 not restate them; this file once said "never modify" while §05 said "engine-move-only", and a reader
 following the stricter one could not do the work §05 permits.
 
+### A scoped run is never reported as a full run
+
+**`L56-A1`, and it exists because the two-hour sweep stopped being runnable inside a loop.** The
+product owner's words: *"These full suite tests are simply taking too long for the workflow we are
+currently in. They run over two hours and occasionally time out."*
+
+> **A loop's regression evidence may be the scoped selection, quoted as scoped, with the full sweep
+> run once at the end.** The selection is produced by `docs/turbotab/tools/affected.py`, and the
+> word *scoped* travels with the number wherever it is written down.
+
+**The tool is allowed to refuse, and that is the half that matters.** Three refusals are built in:
+a `conftest.py` change cannot be scoped at all; a change whose direct-import selection is **empty
+while its closure is not** is reached only through an aggregator and is reported as unscopable
+rather than as *no tests affected*; and `--pytest-args` prints nothing and exits `2` in both cases,
+so a caller that ignores the exit status runs zero tests rather than a plausible subset that omits
+the affected ones.
+
+**Why there are two modes and not one, measured on this tree.** `turbotab/api.py` is an aggregator —
+**104** modules import it and it imports most of the package — so full transitive reachability
+answers *could this reach the change* with **yes** for nearly everything: a one-line change to
+`turbotab/models.py` selects **131 of 147** files, `models/glm.py` selects **134**. The default is
+direct importers plus named triggers; `--closure` is the over-approximation; **both counts print
+either way**, because the gap between them is what tells a reader whether the scoping can be
+trusted.
+
+**Neither mode is exact and the tool says so on every run.** An import edge is the only thing an AST
+walk sees, and a test that imports `turbotab.api` and drives `/project/{id}/models` really does
+exercise `turbotab/models.py` without importing it. The exact answer is a coverage map keyed by
+test — `TEST-072` — and until that exists, `--closure` is the safe side and the default is the
+useful one.
+
 ### A capability ships with its consumer, or with a failing test that names the one it lacks
 
 **The measurement that produced this rule.** Searching the ledger for findings whose text describes
