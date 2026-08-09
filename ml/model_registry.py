@@ -595,7 +595,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
             interpretability_tier="high",
-            exposes_coefficients=False,
+            exposes_coefficients=True,
             notes=['Simple baseline', 'Interpretable', 'Sensitive to outliers']
         )
     )
@@ -619,7 +619,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
             interpretability_tier="high",
-            exposes_coefficients=False,
+            exposes_coefficients=True,
             notes=['Robust to outliers', 'Regression only', 'Less sensitive than OLS']
         )
     )

@@ -20,13 +20,13 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**371 of 890 closed.**
+**371 of 891 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 448 |
-| `PARTIAL` | 71 |
+| `PARTIAL` | 72 |
 | `FIXED` | 365 |
 | `NOT-A-DEFECT` | 6 |
 
@@ -493,6 +493,7 @@ Nothing is closed without a regression test named after it.
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `MODELS-025` | critical | Four of the twenty-two registry models cannot complete a training run at all - every BaseModelWrapper subclass fails under scikit-learn 1.9 - and the suite is green over it because no test trains one | `L56-C3, found while trying to demonstrate GUIDED-234's consequence and measured on both sides of that change…` | FILED, NOT FIXED, AND THE SCOPE NOTE IS THE REASON. L56-C3 was ruled the cheapest and most independent part of C; this is a shared-engine repair with three consumers and a… |
 | `MODELS-002` | landmine | Three disagreeing sources of truth for Random Forest and Neural Network defaults. RF: RFWrapper.__init__ says n_estimators=500/min_samples_leaf=10; ModelConfig says 500/10… | `models/rf.py:12-13; utils/session_state.py:96-98 (ModelConfig); ml/model_registry.py:142 (_create_rf) and 594…` | Unchanged at HEAD, all three sources still disagree. RFWrapper.__init__ still defaults to 500 trees / min_samples_leaf 10 while ml/model_registry.py:142 constructs it with 100 /… |
 | `MODELS-003` | landmine | Each wrapper returns a differently-shaped training result, and the regression-named keys hold classification values. NN: {'history': {'train_loss','val_loss','val_rmse','val_accuracy'}… | `models/nn_whuber.py:432-437 and 551-555; models/glm.py:44-47; models/huber_glm.py:39-42; models/rf.py:64-67…` | Unchanged at HEAD - three incompatible shapes, and the mislabeling is verbatim. models/glm.py:42 computes accuracy and models/glm.py:46 stores it under 'best_val_rmse'; huber_glm… |
 | `MODELS-006` | landmine | NNWeightedHuberWrapper.fit mutates PROCESS-GLOBAL RNG state, and RandomForest / cross_val_score hardcode n_jobs=-1. | `models/nn_whuber.py:313-317 — `torch.manual_seed(random_seed)`, `np.random.seed(random_seed)`…` | Unchanged at HEAD in every particular. The NN wrapper still reseeds process-global numpy and torch RNG inside fit, torch.cuda.manual_seed is still the single-device call so… |
@@ -503,7 +504,6 @@ Nothing is closed without a regression test named after it.
 | `MODELS-012` | landmine | BCa acceleration is computed from a jackknife that is capped at 200 leave-one-out replicates and then PADDED to length n with the mean of those 200. | `ml/bootstrap.py:152-166 — `n_jack = min(n, 200)`, `jack_stats = np.full(n, np.nan)`, the loop runs only `for…` | Unchanged at HEAD, byte for byte. For n > 200 the BCa acceleration is still computed over an array whose tail is a constant, damping the third and second moments by an amount that… |
 | `MODELS-013` | landmine | The weighted_huber emphasis window is derived during fit and stored only on the instance as _whuber_t0 / _whuber_s, with legacy glucose constants (t0=180.0, s=20.0) as the getattr fallback. | `models/nn_whuber.py:376-378 sets them only in the `elif self.loss_function == 'weighted_huber'` branch; lines…` | Unchanged at HEAD. The emphasis window is still derived during fit, stored only on the instance, and read back through getattr with the legacy glucose constants 180.0 and 20.0 as… |
 | `T0-BUILD-006` | landmine | Classic decides which class is the event by alphabetical order, silently and with no way to see or change it | `ml/splits.py:294-301 (LabelEncoder on a categorical target); no Classic page renders or offers the class…` | Found at L9c while writing the register row for target-positive-class, and worth recording how: the row was first written asserting the opposite mapping from memory, then checked… |
-| `GUIDED-234` | high | GLM (OLS/Logistic) and GLM (Huber) wrap an estimator that has coefficients and do not forward them, so the two models the registry names for interpretable coefficients are two the coefficient figure… | `L55-B, found while measuring ModelCapabilities.exposes_coefficients against a real fit rather than declaring…` | THE SHELF NOW SAYS THE TRUE THING ABOUT THIS AND IT READS ODDLY, WHICH IS THE POINT. Under a recorded inference objective GLM ranks below Logistic Regression with the clause… |
 | `MODELS-015` | invariant | Preprocessing is fit on training rows only, and cross-validation re-fits it inside every fold — a pre-transformed matrix must never be scored directly. | `ml/eval.py:182 make_cv_pipeline() composes Pipeline([('prep', clone(preprocessing)), ('densify', ...)…` | The invariant is implemented where it cannot be bypassed by accident, and NOTHING TESTS IT - so it stays OPEN. ml/eval.py:182-190 make_cv_pipeline composes Pipeline([('prep'… |
 | `MODELS-016` | invariant | Metrics are reported on the ORIGINAL target scale: when target_transformer is active, predictions are inverse-transformed and compared against y_*_original. | `pages/06:1486-1497 (test) and 1508-1517 (train), plus the CV branch wrapping the estimator in…` | The invariant is real, currently honored, and unguarded - so it stays OPEN. Every consumer inverse-transforms before scoring and prefers y_*_original, which is correct. What makes… |
 | `MODELS-018` | invariant | Every model factory has the signature (task_type: str, random_state: int) -> estimator, and every model object satisfies fit/predict, with predict_proba only reachable through the runtime… | `ml/model_registry.py:44 declares factory: Callable[[str, int], Any]; all 22 factories honor it.…` | The invariant holds today and nothing enforces either half, so it stays OPEN. The factory signature is declared in a type annotation that Python does not check and no test… |
@@ -555,7 +555,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 71
+## PARTIAL — 72
 
 
 ### Guided-door drive feedback — 16
@@ -625,6 +625,15 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-061` | medium | Import cycle ml.publication ↔ utils.insight_ledger is a genuine layering inversion | `ml/publication.py:128,182,453,460; utils/insight_ledger.py (imports at module top)` | The inversion narrowed from four formatting helpers to one pure-data constant. The presentation helpers this row says belong to neither module are no longer imported from… |
 | `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | The row's blocking condition is satisfied and its recommendation still stands. 'Entirely untested, which is the reason to do it first WITH TESTS ATTACHED' - the tests are attached… |
 
+### Models / training / eval — 4
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `MODELS-004` | landmine | task_type_final and data_config.task_type can diverge (the user's task-type override), and the training loop mixes them. y_test_proba is assigned only in the classification branch but read… | `pages/06_Train_and_Compare.py:161 (`task_type_final = task_type_detection.final if task_type_detection.final…` | The divergence is reconciled; the guard against its return is not. pages/06:174-175 now assigns data_config.task_type = task_type_final immediately after resolving the override… |
+| `MODELS-011` | landmine | RegistryModelWrapper re-derives the task type from the data with a fragile heuristic instead of being told, and it is the only wrapper honoring sample_weight. | `models/registry_wrappers.py:44 — `if len(np.unique(y_train)) < 20 and y_train.dtype in [np.int64, np.int32…` | The dtype half was repaired; the cardinality half was not. The test is no longer dtype-identity against ['int64','int32'] - it now asks through pd.api.types.is_integer_dtype with… |
+| `MODELS-014` | landmine | NN classification silently remaps unseen validation classes to index 0, and models/base, glm, huber_glm, rf and registry_wrappers have literally zero test coverage. | `models/nn_whuber.py:337 — `y_val_mapped = np.array([class_to_idx.get(cls, 0) for cls in y_val])` (note: the…` | The coverage half is closed; the silent remap is not. models/base, glm, huber_glm, rf and registry_wrappers are no longer untested - tests/test_characterization_wrappers.py… |
+| `GUIDED-234` | high | GLM (OLS/Logistic) and GLM (Huber) wrap an estimator that has coefficients and do not forward them, so the two models the registry names for interpretable coefficients are two the coefficient figure… | `L55-B, found while measuring ModelCapabilities.exposes_coefficients against a real fit rather than declaring…` | **test:** `turbotab/test_a_wrapped_estimator_forwards_its_coefficients.py::test_a_linear_wrapper_forwards_the_estimators_own_coefficients AND… |
+
 ### Verified against main — 3
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -640,14 +649,6 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-009` | critical | INVARIANT — reset_downstream_results supports PARTIAL resets; a naive 'invalidate everything downstream of node N' DAG cannot express them | `CODE_REVIEW.md '2026-07 · Feature-engineering state drift' (04:440, 04:483); ARCHITECTURE.md:278` | Per-edge suppression is done and tested; the restore-previous-value path is not in the graph. turbotab/cascade.py:189-210 expresses partial invalidation as keys_to_clear(changed… |
 | `SWEEP-013` | critical | INVARIANT — 'Absent is better than false': the invalidation cascade must visibly clear ALL FOUR planes, not just the data plane | `docs/ARCHITECTURE_SCROLLYTELLING_BRIEF.md §4B, §9; CODE_REVIEW.md C5; brief §0 table (InsightLedger…` | Two of the planes the row names are in the graph; the Record plane is not. Data and provenance are modeled - Stage carries provenance_sections, provenance_sections_to_clear walks… |
 | `SWEEP-015` | critical | Known test-fidelity hole exactly at the model-object boundary — the transition's safety net does not cover models/ | `CODE_REVIEW.md 'Dynamic testing summary' note; tests/integration/conftest.py:67…` | The named instance is fixed and models/ now has coverage; the fixture-fidelity hole itself is not. FIXED half: pages/08:419 now does _est_for_dropout = model_obj.get_model() if… |
-
-### Models / training / eval — 3
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `MODELS-004` | landmine | task_type_final and data_config.task_type can diverge (the user's task-type override), and the training loop mixes them. y_test_proba is assigned only in the classification branch but read… | `pages/06_Train_and_Compare.py:161 (`task_type_final = task_type_detection.final if task_type_detection.final…` | The divergence is reconciled; the guard against its return is not. pages/06:174-175 now assigns data_config.task_type = task_type_final immediately after resolving the override… |
-| `MODELS-011` | landmine | RegistryModelWrapper re-derives the task type from the data with a fragile heuristic instead of being told, and it is the only wrapper honoring sample_weight. | `models/registry_wrappers.py:44 — `if len(np.unique(y_train)) < 20 and y_train.dtype in [np.int64, np.int32…` | The dtype half was repaired; the cardinality half was not. The test is no longer dtype-identity against ['int64','int32'] - it now asks through pd.api.types.is_integer_dtype with… |
-| `MODELS-014` | landmine | NN classification silently remaps unseen validation classes to index 0, and models/base, glm, huber_glm, rf and registry_wrappers have literally zero test coverage. | `models/nn_whuber.py:337 — `y_val_mapped = np.array([class_to_idx.get(cls, 0) for cls in y_val])` (note: the…` | The coverage half is closed; the silent remap is not. models/base, glm, huber_glm, rf and registry_wrappers are no longer untested - tests/test_characterization_wrappers.py… |
 
 ### Multi-file / JSON import — 3
 
