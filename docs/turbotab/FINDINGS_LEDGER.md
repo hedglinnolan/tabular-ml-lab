@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**362 of 873 closed.**
+**361 of 873 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 441 |
-| `PARTIAL` | 70 |
-| `FIXED` | 356 |
+| `PARTIAL` | 71 |
+| `FIXED` | 355 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
@@ -548,7 +548,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 70
+## PARTIAL — 71
 
 
 ### Guided-door drive feedback — 16
@@ -589,7 +589,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-087` | invariant | reset_downstream_results is the SINGLE source of truth for downstream invalidation; any page that introduces a new result key must add it there. | `utils/session_state.py:288-291 docstring; tests/test_review_fixes.py::TestDownstreamReset::test_reset_clears_e…` | Duplicate of STATE-066 / STATE-074 from the invariant pass. The first of the row's two breakages is closed - pages/03's competing 21-key cascade is gone and an AST guard fails if… |
 | `STATE-095` | invariant | set_data distinguishes three cases: schema change (full reset), same-schema content change (results cleared, config kept), identical content (no-op) — because page 01 re-sets the same working table… | `utils/session_state.set_data:266-280 with the _raw_data_fingerprint comparison. Tests…` | The three cases are implemented and well tested - including the subtle one, that re-setting the SAME frame on every page-01 visit must not end a cohort run - and four tests cover… |
 
-### Migration safety net — 10
+### Migration safety net — 11
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -603,6 +603,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-026` | medium | scripts/integration_test_apptest.py and scripts/integration_test.py are unreachable from CI and duplicate tests/integration/ | `.github/workflows/ci.yml (only `pytest tests/` and `pytest tests/integration`); Makefile:22-40…` | Half the row's premise is wrong at HEAD and the correction changes the disposition. scripts/integration_test.py is NOT unreachable from CI - ci.yml:90-94 runs it as the E2E smoke… |
 | `TEST-032` | medium | tests/test_page_imports.py and tests/test_insight_id_integrity.py are AST-based over pages/ — they die with pages/ but encode rules worth keeping | `tests/test_page_imports.py:123; tests/test_insight_id_integrity.py:52` | Half the row is closed. test_insight_id_integrity can no longer pass vacuously over an empty or renamed directory - that is SWEEP-014, and it was fixed in exactly the way this row… |
 | `AUDIT-039` | medium | Twelve tests still skip on a condition their own fix was supposed to establish, so a regression would silence them rather than turn them red | `L52-D, the tail of TEST-059's sweep. 78 conditional skips found, 55 environmental and correct, 9 in tests…` | **test:** `turbotab/test_the_fixture_constants_match_the_fixtures.py::test_the_estimated_counts_and_fpkm_separator_is_measured AND… |
+| `TEST-063` | medium | A test rewrote the process-global operation registry and never restored it, so every later test in the same run resolved a fake pack's scale variants | `L53, found by the full suite and NOT by the test that caused it. turbotab/recipes._OPERATIONS is a…` | **test:** `turbotab/test_the_recipe_table_is_a_table.py::test_the_pack_is_gone_when_the_test_is` — THE CLASS IS WORTH MORE THAN THE INSTANCE: a test that mutates module-level… |
 
 ### Stage-boundary contracts — 8
 
@@ -693,7 +694,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 356
+## FIXED — 355
 
 
 ### Guided-door drive feedback — 143
@@ -979,7 +980,7 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 
-### Migration safety net — 18
+### Migration safety net — 17
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1000,7 +1001,6 @@ Nothing is closed without a regression test named after it.
 | `TEST-053` | medium | The American-spelling gate walked a nested checkout of the repository and failed on exempt prose at a path where its exemption no longer matched | `L50. docs/turbotab/tools/worktree.py (built this loop for A1) puts subagent worktrees under .worktrees/, and…` | **test:** `tests/test_american_spelling.py::test_no_british_spellings` — No revert probe: the gate IS the probe - it went red on the real condition and green on the fix, which is… |
 | `TEST-055` | medium | A closed-set assertion on a pack that is being filled out asserts that no further detector may ever exist | `L50. test_the_four_diagnostics_reach_a_person_and_carry_their_badges asserted equality against a five-element…` | **test:** `turbotab/test_the_gene_id_diagnostics_reach_an_upload.py::test_the_four_diagnostics_reach_a_person_and_carry_their_badges` — Found by merging two worktrees rather than… |
 | `TEST-056` | medium | Inserting a seeded draw in the middle of a fixture generator changes every draw after it, and the L50 brief quoted pre-insertion numbers to a subagent | `L50. make_genomics_siblings.py draws from ONE seeded generator in file order. The estimated-counts block was…` | **test:** `turbotab/test_the_fixture_constants_match_the_fixtures.py::test_the_estimated_counts_and_fpkm_separator_is_measured` — Filed because the near-miss is instructive rather… |
-| `TEST-063` | medium | A test rewrote the process-global operation registry and never restored it, so every later test in the same run resolved a fake pack's scale variants | `L53, found by the full suite and NOT by the test that caused it. turbotab/recipes._OPERATIONS is a…` | **test:** `turbotab/test_the_recipe_table_is_a_table.py::test_a_pack_may_replace_a_core_operation_only_by_saying_so` — THE CLASS IS WORTH MORE THAN THE INSTANCE: a test that… |
 
 ### Other — 15
 
