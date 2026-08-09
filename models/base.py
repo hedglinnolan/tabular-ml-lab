@@ -5,11 +5,47 @@ All model wrappers should inherit from BaseModelWrapper.
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 import numpy as np
+from sklearn.base import BaseEstimator
 
 
-class BaseModelWrapper(ABC):
-    """Base class for all model wrappers."""
-    
+class BaseModelWrapper(BaseEstimator, ABC):
+    """Base class for all model wrappers.
+
+    `MODELS-025`, `L56`. **Every subclass of this class failed to complete a
+    training run**, and had done since `scikit-learn` 1.6 made the tags API
+    required for an estimator used inside a `Pipeline`. The four affected
+    registry keys are the wrapper-based ones — `glm`, `huber`, `rf` and `nn` —
+    so four of twenty-two models sat on a shelf `PRODUCT_VISION.md` says is
+    never shortened, were selectable, were ranked with an evidence-bearing
+    concern, and **errored the moment a user fitted them.**
+
+    The suite was green over it because **nothing trained one**: no test in
+    `turbotab/` or `tests/` fitted `glm`, `huber` or `rf`, and none asserted
+    that a run came back with no errored results. 2,449 passing tests said
+    nothing about four unusable models. That absence is the defect's cause of
+    survival, so the repair ships with the test that was missing.
+
+    **Two additions, and the second is the one a naive fix forgets.**
+    `BaseEstimator` supplies `__sklearn_tags__`, `get_params` and `set_params`
+    — checked: all twenty-two registry models `clone()` cleanly. But sklearn
+    decides *fitted* by looking for trailing-underscore attributes, and these
+    wrappers record it as `self.is_fitted`, so inheritance alone moved the
+    failure from `__sklearn_tags__` to `NotFittedError`. `__sklearn_is_fitted__`
+    is the protocol's own way to say it, and it reads the flag the wrappers
+    already keep rather than renaming anything.
+    """
+
+    def __sklearn_is_fitted__(self) -> bool:
+        """Fitted-ness, in the protocol's vocabulary and the wrapper's state.
+
+        Read from `is_fitted` rather than from a trailing-underscore attribute,
+        because that flag is what every `fit` here already sets and what every
+        `predict` here already checks. Renaming it would be a second source of
+        truth for one fact.
+        """
+        return bool(getattr(self, "is_fitted", False))
+
+
     def __init__(self, name: str):
         """
         Initialize model wrapper.

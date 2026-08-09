@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**371 of 891 closed.**
+**373 of 891 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 448 |
-| `PARTIAL` | 72 |
-| `FIXED` | 365 |
+| `OPEN` | 447 |
+| `PARTIAL` | 71 |
+| `FIXED` | 367 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 448
+## OPEN — 447
 
 
 ### Guided-door drive feedback — 70
@@ -489,11 +489,10 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Models / training / eval — 21
+### Models / training / eval — 20
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `MODELS-025` | critical | Four of the twenty-two registry models cannot complete a training run at all - every BaseModelWrapper subclass fails under scikit-learn 1.9 - and the suite is green over it because no test trains one | `L56-C3, found while trying to demonstrate GUIDED-234's consequence and measured on both sides of that change…` | FILED, NOT FIXED, AND THE SCOPE NOTE IS THE REASON. L56-C3 was ruled the cheapest and most independent part of C; this is a shared-engine repair with three consumers and a… |
 | `MODELS-002` | landmine | Three disagreeing sources of truth for Random Forest and Neural Network defaults. RF: RFWrapper.__init__ says n_estimators=500/min_samples_leaf=10; ModelConfig says 500/10… | `models/rf.py:12-13; utils/session_state.py:96-98 (ModelConfig); ml/model_registry.py:142 (_create_rf) and 594…` | Unchanged at HEAD, all three sources still disagree. RFWrapper.__init__ still defaults to 500 trees / min_samples_leaf 10 while ml/model_registry.py:142 constructs it with 100 /… |
 | `MODELS-003` | landmine | Each wrapper returns a differently-shaped training result, and the regression-named keys hold classification values. NN: {'history': {'train_loss','val_loss','val_rmse','val_accuracy'}… | `models/nn_whuber.py:432-437 and 551-555; models/glm.py:44-47; models/huber_glm.py:39-42; models/rf.py:64-67…` | Unchanged at HEAD - three incompatible shapes, and the mislabeling is verbatim. models/glm.py:42 computes accuracy and models/glm.py:46 stores it under 'best_val_rmse'; huber_glm… |
 | `MODELS-006` | landmine | NNWeightedHuberWrapper.fit mutates PROCESS-GLOBAL RNG state, and RandomForest / cross_val_score hardcode n_jobs=-1. | `models/nn_whuber.py:313-317 — `torch.manual_seed(random_seed)`, `np.random.seed(random_seed)`…` | Unchanged at HEAD in every particular. The NN wrapper still reseeds process-global numpy and torch RNG inside fit, torch.cuda.manual_seed is still the single-device call so… |
@@ -555,7 +554,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 72
+## PARTIAL — 71
 
 
 ### Guided-door drive feedback — 16
@@ -625,15 +624,6 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-061` | medium | Import cycle ml.publication ↔ utils.insight_ledger is a genuine layering inversion | `ml/publication.py:128,182,453,460; utils/insight_ledger.py (imports at module top)` | The inversion narrowed from four formatting helpers to one pure-data constant. The presentation helpers this row says belong to neither module are no longer imported from… |
 | `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | The row's blocking condition is satisfied and its recommendation still stands. 'Entirely untested, which is the reason to do it first WITH TESTS ATTACHED' - the tests are attached… |
 
-### Models / training / eval — 4
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `MODELS-004` | landmine | task_type_final and data_config.task_type can diverge (the user's task-type override), and the training loop mixes them. y_test_proba is assigned only in the classification branch but read… | `pages/06_Train_and_Compare.py:161 (`task_type_final = task_type_detection.final if task_type_detection.final…` | The divergence is reconciled; the guard against its return is not. pages/06:174-175 now assigns data_config.task_type = task_type_final immediately after resolving the override… |
-| `MODELS-011` | landmine | RegistryModelWrapper re-derives the task type from the data with a fragile heuristic instead of being told, and it is the only wrapper honoring sample_weight. | `models/registry_wrappers.py:44 — `if len(np.unique(y_train)) < 20 and y_train.dtype in [np.int64, np.int32…` | The dtype half was repaired; the cardinality half was not. The test is no longer dtype-identity against ['int64','int32'] - it now asks through pd.api.types.is_integer_dtype with… |
-| `MODELS-014` | landmine | NN classification silently remaps unseen validation classes to index 0, and models/base, glm, huber_glm, rf and registry_wrappers have literally zero test coverage. | `models/nn_whuber.py:337 — `y_val_mapped = np.array([class_to_idx.get(cls, 0) for cls in y_val])` (note: the…` | The coverage half is closed; the silent remap is not. models/base, glm, huber_glm, rf and registry_wrappers are no longer untested - tests/test_characterization_wrappers.py… |
-| `GUIDED-234` | high | GLM (OLS/Logistic) and GLM (Huber) wrap an estimator that has coefficients and do not forward them, so the two models the registry names for interpretable coefficients are two the coefficient figure… | `L55-B, found while measuring ModelCapabilities.exposes_coefficients against a real fit rather than declaring…` | **test:** `turbotab/test_a_wrapped_estimator_forwards_its_coefficients.py::test_a_linear_wrapper_forwards_the_estimators_own_coefficients AND… |
-
 ### Verified against main — 3
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -649,6 +639,14 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-009` | critical | INVARIANT — reset_downstream_results supports PARTIAL resets; a naive 'invalidate everything downstream of node N' DAG cannot express them | `CODE_REVIEW.md '2026-07 · Feature-engineering state drift' (04:440, 04:483); ARCHITECTURE.md:278` | Per-edge suppression is done and tested; the restore-previous-value path is not in the graph. turbotab/cascade.py:189-210 expresses partial invalidation as keys_to_clear(changed… |
 | `SWEEP-013` | critical | INVARIANT — 'Absent is better than false': the invalidation cascade must visibly clear ALL FOUR planes, not just the data plane | `docs/ARCHITECTURE_SCROLLYTELLING_BRIEF.md §4B, §9; CODE_REVIEW.md C5; brief §0 table (InsightLedger…` | Two of the planes the row names are in the graph; the Record plane is not. Data and provenance are modeled - Stage carries provenance_sections, provenance_sections_to_clear walks… |
 | `SWEEP-015` | critical | Known test-fidelity hole exactly at the model-object boundary — the transition's safety net does not cover models/ | `CODE_REVIEW.md 'Dynamic testing summary' note; tests/integration/conftest.py:67…` | The named instance is fixed and models/ now has coverage; the fixture-fidelity hole itself is not. FIXED half: pages/08:419 now does _est_for_dropout = model_obj.get_model() if… |
+
+### Models / training / eval — 3
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `MODELS-004` | landmine | task_type_final and data_config.task_type can diverge (the user's task-type override), and the training loop mixes them. y_test_proba is assigned only in the classification branch but read… | `pages/06_Train_and_Compare.py:161 (`task_type_final = task_type_detection.final if task_type_detection.final…` | The divergence is reconciled; the guard against its return is not. pages/06:174-175 now assigns data_config.task_type = task_type_final immediately after resolving the override… |
+| `MODELS-011` | landmine | RegistryModelWrapper re-derives the task type from the data with a fragile heuristic instead of being told, and it is the only wrapper honoring sample_weight. | `models/registry_wrappers.py:44 — `if len(np.unique(y_train)) < 20 and y_train.dtype in [np.int64, np.int32…` | The dtype half was repaired; the cardinality half was not. The test is no longer dtype-identity against ['int64','int32'] - it now asks through pd.api.types.is_integer_dtype with… |
+| `MODELS-014` | landmine | NN classification silently remaps unseen validation classes to index 0, and models/base, glm, huber_glm, rf and registry_wrappers have literally zero test coverage. | `models/nn_whuber.py:337 — `y_val_mapped = np.array([class_to_idx.get(cls, 0) for cls in y_val])` (note: the…` | The coverage half is closed; the silent remap is not. models/base, glm, huber_glm, rf and registry_wrappers are no longer untested - tests/test_characterization_wrappers.py… |
 
 ### Multi-file / JSON import — 3
 
@@ -702,7 +700,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 365
+## FIXED — 367
 
 
 ### Guided-door drive feedback — 144
@@ -1038,17 +1036,19 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-013` | medium | The Preprocess page reads capabilities.requires_scaled_numeric directly instead of resolving through the recipe table, so a pack's override cannot reach it | `pages/05_Preprocess.py:498,835; turbotab/recipes.py resolve() and the caps:requires_scaled_numeric selector` | **test:** `tests/integration/test_the_preprocess_page_asks_the_recipe_table.py::test_a_pack_row_reaches_the_preprocess_page` — L53-C, fanned out to four chunks PARTITIONED BY FIX… |
 | `MISC-016` | medium | The feature register has no rows for two shipped Classic pages and nothing gates its coverage, so a capability can be absent from the register without any check noticing | `docs/turbotab/FEATURE_REGISTER.md: 132 rows, zero matching pages/08_Sensitivity_Analysis (568 lines) and zero…` | **test:** `tests/test_a_specification_is_a_claim.py::test_every_classic_page_has_a_register_row_or_a_written_exemption (11 parametrizations) and… |
 
-### Models / training / eval — 10
+### Models / training / eval — 12
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `AUDIT-014` | critical | GUIDED-049 is marked FIXED and its fix reached three call sites; seven other shipped surfaces went on recommending class-imbalance correction, including the exact endorsing manuscript sentence it… | `ml/publication.py:1034 shipped "To address class imbalance, class_weight='balanced' was applied to supported…` | **test:** `turbotab/test_the_imbalance_position_reaches_every_surface.py::test_no_shipped_surface_recommends_rebalancing` — FOUND AT L43-B BY RUNNING… |
+| `MODELS-025` | critical | Four of the twenty-two registry models cannot complete a training run at all - every BaseModelWrapper subclass fails under scikit-learn 1.9 - and the suite is green over it because no test trains one | `L56-C3, found while trying to demonstrate GUIDED-234's consequence and measured on both sides of that change…` | **test:** `turbotab/test_every_model_on_the_shelf_can_actually_be_fitted.py::test_every_model_the_task_can_use_completes_a_training_run AND… |
 | `MODELS-001` | landmine | SklearnCompatibleNNRegressor.fit() and SklearnCompatibleNNClassifier.fit() do not train. They set is_fitted_=True, record n_features_in_ (and classes_), and return self. Any sklearn utility that… | `models/nn_whuber.py:115-128 (regressor) and 174-188 (classifier); reachable through…` | **test:** `tests/test_the_pretrained_mark_does_not_survive_a_clone.py::test_the_pretrained_mark_does_not_survive_a_clone` — Closed at L19 against a guard that RUNS in this… |
 | `MODELS-005` | landmine | The 'Cancel Training' button is decorative — st.session_state.cancel_training is written and NEVER read anywhere in the codebase. | `pages/06_Train_and_Compare.py:1252-1253 (init), 1263-1264 (set to True). grep for 'cancel_training' across…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Closed by removal plus an honest replacement, which is the right shape. The decorative… |
 | `GUIDED-114` | high | The bootstrap draws ROWS, so on a grouped or repeated-measures table it breaks the person-level independence the seal was drawn to respect - the correct draw is a cluster bootstrap over the grain's… | `turbotab/instability.py run() draws rng.integers(0, len(rows)) with no reference to grain group_col, while…` | **test:** `turbotab/test_the_whole_pipeline_is_refitted.py::test_a_grouped_table_draws_whole_groups, ::test_the_draw_takes_every_row_of_each_chosen_group… |
 | `AUDIT-020` | high | Events-per-variable is computed over raw COLUMNS, so a 5-level factor counts as 1 parameter instead of 4 — and the resulting 'adequate signal' sentence is exported into the report | `ml/dataset_profile.py:367 (and ml/dataset_profile.py:651) — compute_dataset_profile sets p =…` | **test:** `tests/test_the_sample_size_claim_counts_parameters_and_names_its_criterion.py` — L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly… |
 | `AUDIT-033` | high | The task-type detector tells the user, in both doors, that an ordinal score should be modeled as regression — B6 marks that SETTLED wrong | `ml/triage.py:83-86 — detect_task_type reaches this branch for an integer target with 2 < n_unique <= 10…` | **test:** `turbotab/test_an_ordinal_target_is_not_sent_to_a_linear_model_on_the_score.py::test_the_detector_does_not_send_an_ordered_score_to_a_linear_model` — L52-B, fanned out… |
 | `GUIDED-230` | high | The domain lens reaches thirteen modules and stops at the model shelf, so every recorded answer about the study's design is invisible to the one decision it should shape most | `L54-C, SCOPED AND NOT BUILT - the loop spent its budget on Part B and this is a whole part not done, recorded…` | **test:** `turbotab/test_the_shelf_reads_the_recorded_design.py::test_recording_inference_ranks_the_coefficientless_models_lower AND… |
+| `GUIDED-234` | high | GLM (OLS/Logistic) and GLM (Huber) wrap an estimator that has coefficients and do not forward them, so the two models the registry names for interpretable coefficients are two the coefficient figure… | `L55-B, found while measuring ModelCapabilities.exposes_coefficients against a real fit rather than declaring…` | **test:** `turbotab/test_a_wrapped_estimator_forwards_its_coefficients.py::test_a_linear_wrapper_forwards_the_estimators_own_coefficients AND… |
 | `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
 | `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
 | `GUIDED-103` | medium | Genuinely fold-local selection needs the training step to resample: this door fits each model once, so scope=train_folds is recorded and train_rows is what happens | `turbotab/training.py train() fits each pipeline once on the training partition; turbotab/pipeline_plan.py…` | **test:** `turbotab/test_the_whole_pipeline_is_refitted.py (17 tests, two target shapes, the page surface driven), especially… |

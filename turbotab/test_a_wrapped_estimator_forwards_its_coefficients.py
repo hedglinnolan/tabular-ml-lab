@@ -26,17 +26,21 @@ not because an opinion did — `turbotab/test_the_shelf_reads_the_recorded_desig
 .py::test_the_declared_capability_matches_a_real_fit` is the check that forces
 that order, and it fails if a declaration is edited ahead of the behavior.
 
-## What this file CANNOT show, and the reason is a different defect
+## What this file found on the way, and then unblocked
 
-**The forest plot still does not draw for these two models**, and not because of
-anything here: `MODELS-025` — every `BaseModelWrapper` subclass fails to
-complete a training run under `scikit-learn` 1.9, so `glm`, `huber`, `rf` and
-`nn` come back with `result.error` set and `_coefficients_for` skips any errored
-result before it ever asks about coefficients. So the consequence is
-demonstrated **at the pipeline**, which is exactly where `_coefficients_for`
-looks, and the end-to-end figure is named as blocked rather than claimed.
-`GUIDED-234` stays `PARTIAL` for that reason: its `item` says these are two
-models *the coefficient figure cannot draw*, and that sentence is still true.
+**The forest plot could not draw for these two models even once they had
+coefficients**, and not because of anything here: `MODELS-025` — every
+`BaseModelWrapper` subclass failed to complete a training run under
+`scikit-learn` 1.9, so `glm`, `huber`, `rf` and `nn` came back with
+`result.error` set and `_coefficients_for` skipped any errored result before it
+ever asked about coefficients.
+
+That was filed as a separate row and then **fixed in the same loop**, because it
+is the plumbing the whole feature rests on. The last test in this file asserted
+the blocker rather than describing it, so replacing it with the end-to-end claim
+was obligatory once the block was gone — which is what happened, and is why the
+final test now drives a real `glm` run and asserts the `forest` figure is
+admitted.
 """
 from __future__ import annotations
 
@@ -154,13 +158,11 @@ def test_the_two_flipped_declarations_match_a_real_fit():
 def test_the_fitted_pipeline_step_is_what_the_figure_asks_about():
     """`_coefficients_for` reads `pipe.named_steps["model"]` — so does this.
 
-    **This is the furthest the consequence can be driven today**, and the
-    reason is `MODELS-025`: every `BaseModelWrapper` subclass fails to complete
-    a training run under scikit-learn 1.9, so a real project's `glm` result
-    carries an error and `_coefficients_for` skips it before asking about
-    coefficients at all. Asserting the figure draws would be asserting
-    something false; asserting the predicate it turns on is asserting what
-    changed.
+    Two claims in one place, deliberately: the predicate `_coefficients_for`
+    turns on, and then the figure it produces. The second half was blocked by
+    `MODELS-025` when this file was written and is asserted now that the block
+    is gone — the test named the blocker rather than describing it, which is
+    what made replacing it obligatory rather than optional.
     """
     from turbotab import figure_bundle as FB
     from turbotab import pipeline_plan as PP
@@ -196,21 +198,36 @@ def test_the_fitted_pipeline_step_is_what_the_figure_asks_about():
     assert hasattr(estimator, "coef_"), (
         "the fitted pipeline's model step exposes no coefficients, which is "
         "the exact predicate `figure_bundle._coefficients_for` turns on")
-    coefficients = np.ravel(np.asarray(estimator.coef_, dtype=float))
-    assert coefficients.size, "the estimator exposes an empty coefficient vector"
+    coefficients_from_pipeline = np.ravel(np.asarray(estimator.coef_, dtype=float))
+    assert coefficients_from_pipeline.size, (
+        "the estimator exposes an empty coefficient vector")
 
-    # AND THE BLOCKER IS ASSERTED RATHER THAN DESCRIBED, so this test goes red
-    # the day `MODELS-025` is fixed and the end-to-end claim becomes available.
-    # A file that says "blocked" in prose and checks nothing goes on saying it
-    # after the block is gone.
-    run = T.train(project, ["glm"])
-    errored = [r for r in run.results if r.error]
-    assert errored, (
-        "a `glm` training run now completes without error, so MODELS-025 is "
-        "fixed and this test should be replaced by the end-to-end claim: "
-        "`figure_bundle._coefficients_for(project)` returning a non-empty list "
-        "for a project whose only fitted model is `glm`.")
-    assert FB._coefficients_for(project) == [], (
-        "the coefficient figure now draws for a project whose only fitted "
-        "model errored, which means `_coefficients_for` stopped skipping "
-        "errored results")
+    # THE END-TO-END CLAIM, WHICH THIS TEST ASKED FOR AND NOW MAKES.
+    #
+    # It used to assert that `MODELS-025` still blocked it — *"a glm run now
+    # completes without error, so this test should be replaced by the
+    # end-to-end claim"* — and that instruction was followed in the same loop
+    # rather than left for a later one. The blocker being asserted rather than
+    # described is what made the replacement obligatory instead of optional.
+    project.training_run = T.train(project, ["glm"])
+    errored = [r.error for r in project.training_run.results if r.error]
+    assert not errored, (
+        f"a `glm` training run errored: {errored}. MODELS-025 has regressed — "
+        f"every BaseModelWrapper subclass fails under scikit-learn 1.9 without "
+        f"`__sklearn_tags__` and `__sklearn_is_fitted__`.")
+
+    coefficients = FB._coefficients_for(project)
+    assert coefficients, (
+        "no coefficients reached the figure layer for a project whose only "
+        "fitted model is `glm` — §A4.7's forest plot cannot be drawn for the "
+        "model the registry calls interpretable. GUIDED-234.")
+    assert len(coefficients) == coefficients_from_pipeline.size, (
+        f"the figure layer reports {len(coefficients)} coefficients and the "
+        f"fitted pipeline has {coefficients_from_pipeline.size}")
+    for row in coefficients:
+        assert row["name"], "a coefficient reached the figure with no predictor name"
+
+    drawn = {row["id"] for row in FB.render(project).get("admitted") or []}
+    assert "forest" in drawn, (
+        f"the coefficient figure is still not admitted for a GLM-only project; "
+        f"admitted: {sorted(drawn)}")
