@@ -11930,5 +11930,47 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "turbotab/test_a_press_can_answer_where_it_was_pressed.py:427"
+ },
+ {
+  "id": "DRIVE-027",
+  "area": "PAGES",
+  "sev": "medium",
+  "item": "A control rendered a state it had not been told: an unanswered /seal body of {} made can_draw undefined, so the seal card drew 'Draw it now — not yet' with an empty reason beside it",
+  "detail": "FOUND BY THE FULL SWEEP, NOT BY REASONING, and the sweep is the only reason it was found. renderSealState fetches /seal on every render. A pageharness drive whose routes are HAND-LISTED answers an unknown path with {}, so SEAL.can_draw was undefined, blocked was !undefined = true, and the card rendered a disabled control with esc(undefined) = '' where its reason belongs. That asserts the seal is unreachable when what is true is that the page has not been told -- GUIDED-006's shape, and section 09's rule that green means a human recorded something. EIGHT TESTS WENT RED in test_the_analysis_map_says_which_step_is_now.py, whose stray-route check is exactly this contract: 'the render asked for routes this drive did not answer, so it read empty bodies where the app reads real ones'. That file's own comment records checklist arriving the same way at L52, so the contract has now worked twice. TWO FIXES, because they are two different things: the drive answers /seal, AND renderSeal requires typeof SEAL.can_draw === 'boolean' so an unanswered payload draws silence rather than a guess.",
+  "ev": "turbotab/web/index.html renderSeal",
+  "act": "Both landed at L58-C.",
+  "status": "FIXED",
+  "note": "Revert probe: the typeof guard removed -> RED for 'an unanswered /seal drew a control anyway'. The test establishes its own positive control first -- the card DOES render with the route answered -- so an empty box cannot pass for the wrong reason. VERIFIED ACROSS THE CLASS: all 60 turbotab test files that import pageharness, 894 passed / 4 xfailed / 0 failed in 1:18:41.",
+  "verified_against": "",
+  "test": "turbotab/test_the_seal_can_be_drawn_from_the_page.py::test_a_seal_payload_that_did_not_arrive_draws_nothing",
+  "verified_ev": "turbotab/web/index.html renderSeal"
+ },
+ {
+  "id": "DRIVE-028",
+  "area": "PAGES",
+  "sev": "medium",
+  "item": "The same lens one surface over: three entries in HANDLED_QUESTION_PREFIXES have no textual occurrence in the page other than the list entry itself, and nothing drives them",
+  "detail": "L58-B built a guard that drives every key in HANDLED_QUESTION_KEYS into an asked state and requires a control in the DOM. It stops at the exact-key list. handledElsewhere reads a SECOND list, eight prefixes long, and makes exactly the same claim for every key with that prefix -- so the question section 08 check 5 asks is what the same lens finds there. COUNTED: repair:: 2 occurrences, repair_bulk:: 4, blocker:: 2, look:: 1, missingness:: 5, missingness_bulk:: 1, missingness_settled:: 4, missingness_exceptions:: 1. Three appear ONCE, which is the list entry and nothing else: look::, missingness_bulk::, missingness_exceptions::. THIS IS A SIGNAL AND NOT A VERDICT, and saying so is the point -- trap 5, a grep answers whether text appears and the question is whether something runs. look:: is already a demonstrated false positive: paintPalette filters on q.mode === 'pull' rather than on the key, so the palette draws it without ever naming the prefix. The other two are unmeasured in both directions. AND THE PREFIX LIST HAS A SAFETY NET THE EXACT-KEY LIST DOES NOT: renderPreprocessPlan draws an open row with openReasonHTML's sentence for an asked question no surface holds, and it has branches for missingness_settled:: and missingness:: specifically. drawnElsewhere silences that net for every key in HANDLED_QUESTION_KEYS and does not silence it for a prefix, which is why DRIVE-026 reached zero surfaces and a prefix miss would at least reach one.",
+  "ev": "turbotab/web/index.html HANDLED_QUESTION_PREFIXES",
+  "act": "Extend test_every_handled_key_reaches_the_dom to the prefixes: drive a project where the Router serves a key with each prefix and require a control. Do NOT close this on the grep above.",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/web/index.html HANDLED_QUESTION_PREFIXES"
+ },
+ {
+  "id": "DRIVE-029",
+  "area": "PAGES",
+  "sev": "medium",
+  "item": "Answering 'Yes, people repeat' cannot name the column that identifies the person from the Guided door, so the answer routes to an undetermined basis and a by-row split",
+  "detail": "L58-A's A4, not built, and reported rather than dropped. GET /project/{id}/grain already serves a suggestion with candidate columns and per-column evidence -- on clinical_longitudinal.csv it returns ['subject_id', 'visit_date', 'age'] with n_distinct, n_rows, rows_per, modal_rows_per and regular_share for each -- and the generic channel has no follow-up control, so the answer posts {answer: people_repeat} with no group_col. set_grain accepts that by design, and seal_basis correctly returns 'undetermined', so nothing is asserted falsely as of DRIVE-024. WHAT IT COSTS: the held-out rows are then drawn BY ROW on a table where people repeat, the numbers are labeled exploratory, and the user's own answer -- that people repeat -- cannot be acted on. The engine side is complete; this is a control. NOT A BLOCKER on the door, which is why L58 shipped without it: the sentence now tells the truth about the split, so the honest bad outcome is a conservative one rather than a false promise.",
+  "ev": "ml/router.py state_grain; turbotab/web/index.html askedCard",
+  "act": "Offer the suggestion's columns on the people_repeat branch, with the per-column evidence the route already serves. The suggestion is never the answer -- constitution 02 demotes the heuristic to exactly that role.",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "ml/router.py state_grain; turbotab/web/index.html askedCard"
  }
 ]

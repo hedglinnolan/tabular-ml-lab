@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**380 of 907 closed.**
+**381 of 910 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 456 |
+| `OPEN` | 458 |
 | `PARTIAL` | 71 |
-| `FIXED` | 374 |
+| `FIXED` | 375 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 456
+## OPEN — 458
 
 
 ### Guided-door drive feedback — 71
@@ -534,6 +534,18 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
+### Page-layer extraction — 7
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
+| `DRIVE-016` | high | The three-series maximum is asserted in the test and not in the renderer: WEBC still offers four categorical colors and assigns --c4 to a fourth series, which is 12.3 from --c3 in dark mode against a… | `turbotab/web/index.html:4129 (WEBC) and :4179/:4187 (WEBC[idx % WEBC.length])…` | FILED BY THE ADJUDICATOR VERIFYING L57-A, AND IT IS THE CLASS THIS PROJECT KEEPS FINDING RATHER THAN A NEW ONE: a constraint declared in one place with a consumer that does not… |
+| `DRIVE-026` | high | choose_preparation_mode is the THIRD key in HANDLED_QUESTION_KEYS with no section behind it -- the preparation-mode row does not exist anywhere in the page | `turbotab/web/index.html:6455; ml/router.py:821` | Build the preparation-mode row, or move the key to ANSWERABLE. The engine side is complete: project.set_preparation_mode accepts per_model and uniform and api.py:688 routes it. |
+| `DRIVE-020` | medium | The lens is asked after the structural diagnosis has already run and is placed inside the Target step below the target picker, and both cards render as step 01, against OPENING_SEQUENCE.md's… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2, 3.3 and 6 (F3); docs/turbotab/OPENING_SEQUENCE.md` | OPENING_SEQUENCE.md puts the lens FIRST, BEFORE the structural diagnosis, and gives the reason: diagnosis is FIELD-SENSITIVE. On the drive the diagnosis ran on upload with no lens… |
+| `DRIVE-028` | medium | The same lens one surface over: three entries in HANDLED_QUESTION_PREFIXES have no textual occurrence in the page other than the list entry itself, and nothing drives them | `turbotab/web/index.html HANDLED_QUESTION_PREFIXES` | Extend test_every_handled_key_reaches_the_dom to the prefixes: drive a project where the Router serves a key with each prefix and require a control. Do NOT close this on the grep… |
+| `DRIVE-029` | medium | Answering 'Yes, people repeat' cannot name the column that identifies the person from the Guided door, so the answer routes to an undetermined basis and a by-row split | `ml/router.py state_grain; turbotab/web/index.html askedCard` | Offer the suggestion's columns on the people_repeat branch, with the per-column evidence the route already serves. The suggestion is never the answer -- constitution 02 demotes… |
+| `DRIVE-021` | low | The bulk binary-repair card says the columns were 'written as text' for six imputed_* columns that are bool dtype, so the repair's stated reason is wrong about the data it is offering to repair | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2 and 4 (F7)` | The card groups nine columns as 'need the same repair: read as binary' and its prose says they were written as text. THREE of the nine are text - gender, meds_hbp, meds_chol - and… |
+
 ### Other — 6
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -544,16 +556,6 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-038` | medium | 77 of the 131 registry entries are still unchecked against the engine, and the reason is a budget rather than a finding - recording it so the next loop does not read silence as coverage | `L51-E, and it is the honest half of this part. E ran last by the prompt's own sequencing, after Part C's four…` | AND A METHOD WARNING WORTH MORE THAN THE ROW: two of this part's capability checks returned a false absence because grep -E was given \\| alternation, which is a literal pipe in… |
 | `AUDIT-046` | medium | A loop commit swallowed the adjudicator's uncommitted docs edit, so its subject asserts something false about its own contents - the git add -A rule broken a third time, in the opposite direction… | `0c9cce3 contains docs/turbotab/prompts/PM_TRANSITION.md, 74 changed lines, under the subject 'L57-A: the…` | NOTHING WAS LOST AND THAT IS NOT THE POINT. The content is byte-identical to the adjudicator's own backup, verified by diff, and it is in HEAD. THE POINT IS THE RECORD LAYER… |
 | `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
-
-### Page-layer extraction — 5
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
-| `DRIVE-016` | high | The three-series maximum is asserted in the test and not in the renderer: WEBC still offers four categorical colors and assigns --c4 to a fourth series, which is 12.3 from --c3 in dark mode against a… | `turbotab/web/index.html:4129 (WEBC) and :4179/:4187 (WEBC[idx % WEBC.length])…` | FILED BY THE ADJUDICATOR VERIFYING L57-A, AND IT IS THE CLASS THIS PROJECT KEEPS FINDING RATHER THAN A NEW ONE: a constraint declared in one place with a consumer that does not… |
-| `DRIVE-026` | high | choose_preparation_mode is the THIRD key in HANDLED_QUESTION_KEYS with no section behind it -- the preparation-mode row does not exist anywhere in the page | `turbotab/web/index.html:6455; ml/router.py:821` | Build the preparation-mode row, or move the key to ANSWERABLE. The engine side is complete: project.set_preparation_mode accepts per_model and uniform and api.py:688 routes it. |
-| `DRIVE-020` | medium | The lens is asked after the structural diagnosis has already run and is placed inside the Target step below the target picker, and both cards render as step 01, against OPENING_SEQUENCE.md's… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2, 3.3 and 6 (F3); docs/turbotab/OPENING_SEQUENCE.md` | OPENING_SEQUENCE.md puts the lens FIRST, BEFORE the structural diagnosis, and gives the reason: diagnosis is FIELD-SENSITIVE. On the drive the diagnosis ran on upload with no lens… |
-| `DRIVE-021` | low | The bulk binary-repair card says the columns were 'written as text' for six imputed_* columns that are bool dtype, so the repair's stated reason is wrong about the data it is offering to repair | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2 and 4 (F7)` | The card groups nine columns as 'need the same repair: read as binary' and its prose says they were written as text. THREE of the nine are text - gender, meds_hbp, meds_chol - and… |
 
 ### DRIVE — 1
 
@@ -709,7 +711,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 374
+## FIXED — 375
 
 
 ### Guided-door drive feedback — 144
@@ -1046,6 +1048,24 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-013` | medium | The Preprocess page reads capabilities.requires_scaled_numeric directly instead of resolving through the recipe table, so a pack's override cannot reach it | `pages/05_Preprocess.py:498,835; turbotab/recipes.py resolve() and the caps:requires_scaled_numeric selector` | **test:** `tests/integration/test_the_preprocess_page_asks_the_recipe_table.py::test_a_pack_row_reaches_the_preprocess_page` — L53-C, fanned out to four chunks PARTITIONED BY FIX… |
 | `MISC-016` | medium | The feature register has no rows for two shipped Classic pages and nothing gates its coverage, so a capability can be absent from the register without any check noticing | `docs/turbotab/FEATURE_REGISTER.md: 132 rows, zero matching pages/08_Sensitivity_Analysis (568 lines) and zero…` | **test:** `tests/test_a_specification_is_a_claim.py::test_every_classic_page_has_a_register_row_or_a_written_exemption (11 parametrizations) and… |
 
+### Page-layer extraction — 13
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `DRIVE-017` | critical | A human driving the Guided door on NHANES cannot fit a model at all: grain, eligibility and the seal never render as answerable cards, the model shelf is gated on the seal, and Train shows a heading… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.4, 3.8, 4 (F1, F2); confirmed by DOM read during the…` | **test:** `turbotab/test_the_grain_and_eligibility_cards_can_be_answered.py::test_a_human_can_answer_the_grain_question_and_reach_eligibility AND… |
+| `AUDIT-024` | high | The Classic Feature Selection page offers univariable p-value screening and RFE-CV, both ON BY DEFAULT, and states none of the [SETTLED] objection anywhere in shipped code | `/Users/nhedglin/tabular-ml-lab/pages/04_Feature_Selection.py:170-178 (controls); :61-73 (the only…` | **test:** `tests/integration/test_classic_offers_univariable_screening_with_its_objection.py::test_univariable_screening_is_not_pre_ticked… |
+| `AUDIT-030` | high | The primary model is chosen by comparing HELD-OUT TEST metrics, and the record and manuscript state the criterion was "validation" | `pages/06_Train_and_Compare.py:1541-1557 and :1574-1580; pages/10_Report_Export.py:281-305…` | **test:** `tests/test_the_methods_section_names_the_set_it_compared_on.py (seven tests) and tests/test_narrative_engine.py::TestNarrativeEngineGeneration::test_model_development_do… |
+| `AUDIT-032` | high | Running the leakage diagnostic marks the leakage BLOCKER resolved; the report then calls it "addressed" and the manuscript drops the caveat, while the column is still a model feature | `pages/02_EDA.py:1575-1589 (_resolve_insights_from_eda_result) called at :1639…` | **test:** `tests/integration/test_a_diagnostic_run_is_not_an_action_taken.py::test_running_the_leakage_card_leaves_the_blocker_open` — L53-C, fanned out to four chunks PARTITIONED… |
+| `DRIVE-014` | high | The journal view is fully styled and nothing anywhere applies the class, so the in-app/journal duality the design doc specifies has a look and no way to reach it | `L54-D, found by the adjudicator and re-verified here by counting rather than reading.…` | **test:** `turbotab/test_the_journal_view_is_the_published_figure.py::test_the_journal_face_tells_series_apart_by_dash_rather_than_color AND… |
+| `DRIVE-015` | high | The categorical chart ramp is not separate from semantic color and fails colorblind validation in both themes: --c1 is byte-identical to --accent, against a design document that asserts the two are… | `turbotab/web/index.html:13 and :31 and :45 and :58; docs/turbotab/DESIGN_LANGUAGE.md:55` | **test:** `turbotab/test_the_categorical_ramp_is_separable_and_legible.py::test_the_first_series_is_not_the_accent AND ::test_no_series_is_mistakable_for_a_semantic_hue AND… |
+| `DRIVE-019` | high | The Explore impossible-value cards offer 'Exclude those rows from the study' with a reason box and an operable-looking button, gated on two preconditions the app itself prints and that no card in the… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.5 and 6 (F4)` | **test:** `turbotab/test_the_grain_and_eligibility_cards_can_be_answered.py::test_the_explore_exclusion_route_goes_through_once_the_grain_is_answered` — CHECKED AFTER L58-A, NOT… |
+| `DRIVE-022` | high | A list membership stands in for a renderer's existence, and the guard checks the membership. HANDLED_QUESTION_KEYS declares 'this key has a dedicated section above'; nothing verifies the section… | `turbotab/web/index.html:6430-6438 (HANDLED_QUESTION_KEYS), :6607 (renderAsked filters via handledElsewhere)…` | **test:** `turbotab/test_every_handled_key_reaches_the_dom.py::test_a_handled_key_reaches_a_control_in_the_dom` — A LIST MEMBERSHIP STOOD IN FOR A RENDERER AND THE GUARD CHECKED… |
+| `DRIVE-023` | high | state_eligibility is served with option_values that are its PROSE LABELS, so the moment the generic channel renders it every option posts a label the record refuses with a 400 | `ml/router.py:672; ml/router.py:220` | **test:** `turbotab/test_the_grain_and_eligibility_cards_can_be_answered.py::test_the_eligibility_option_the_app_cannot_perform_says_so` — The pairing between a label and the… |
+| `DRIVE-025` | high | The generic question channel is not in the at-control delegate's selector, so every answer button in it emits a slot nothing ever writes to and a refusal with no exits reaches a person nowhere | `turbotab/web/index.html:7651` | **test:** `turbotab/test_the_grain_and_eligibility_cards_can_be_answered.py::test_a_refusal_to_a_generic_answer_reaches_the_control` — [data-answer-key] and [data-answer-commit]… |
+| `AUDIT-022` | medium | The generated manuscript lists the sample size as a Strength for every N, with no criterion — and can print it as a strength and a limitation in the same section | `pages/10_Report_Export.py:1722 — generate_report builds the Discussion's 'Strengths and Limitations' block at…` | **test:** `tests/integration/test_the_sample_size_bullet_is_a_claim_about_this_study.py::test_the_same_count_is_not_a_strength_at_every_size AND… |
+| `AUDIT-023` | medium | Applying feature selection overwrites the candidate feature list, so the sufficiency prose reports the KEPT count while calling them 'candidate predictors' | `pages/04_Feature_Selection.py:440 (consumed at pages/02_EDA.py:115 and asserted at pages/02_EDA.py:319-323)…` | **test:** `tests/integration/test_the_sample_size_bullet_is_a_claim_about_this_study.py::test_the_denominator_is_what_was_screened_not_what_survived AND… |
+| `DRIVE-027` | medium | A control rendered a state it had not been told: an unanswered /seal body of {} made can_draw undefined, so the seal card drew 'Draw it now — not yet' with an empty reason beside it | `turbotab/web/index.html renderSeal` | **test:** `turbotab/test_the_seal_can_be_drawn_from_the_page.py::test_a_seal_payload_that_did_not_arrive_draws_nothing` — Revert probe: the typeof guard removed -> RED for 'an… |
+
 ### Models / training / eval — 12
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -1062,23 +1082,6 @@ Nothing is closed without a regression test named after it.
 | `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
 | `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
 | `GUIDED-103` | medium | Genuinely fold-local selection needs the training step to resample: this door fits each model once, so scope=train_folds is recorded and train_rows is what happens | `turbotab/training.py train() fits each pipeline once on the training partition; turbotab/pipeline_plan.py…` | **test:** `turbotab/test_the_whole_pipeline_is_refitted.py (17 tests, two target shapes, the page surface driven), especially… |
-
-### Page-layer extraction — 12
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `DRIVE-017` | critical | A human driving the Guided door on NHANES cannot fit a model at all: grain, eligibility and the seal never render as answerable cards, the model shelf is gated on the seal, and Train shows a heading… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.4, 3.8, 4 (F1, F2); confirmed by DOM read during the…` | **test:** `turbotab/test_the_grain_and_eligibility_cards_can_be_answered.py::test_a_human_can_answer_the_grain_question_and_reach_eligibility AND… |
-| `AUDIT-024` | high | The Classic Feature Selection page offers univariable p-value screening and RFE-CV, both ON BY DEFAULT, and states none of the [SETTLED] objection anywhere in shipped code | `/Users/nhedglin/tabular-ml-lab/pages/04_Feature_Selection.py:170-178 (controls); :61-73 (the only…` | **test:** `tests/integration/test_classic_offers_univariable_screening_with_its_objection.py::test_univariable_screening_is_not_pre_ticked… |
-| `AUDIT-030` | high | The primary model is chosen by comparing HELD-OUT TEST metrics, and the record and manuscript state the criterion was "validation" | `pages/06_Train_and_Compare.py:1541-1557 and :1574-1580; pages/10_Report_Export.py:281-305…` | **test:** `tests/test_the_methods_section_names_the_set_it_compared_on.py (seven tests) and tests/test_narrative_engine.py::TestNarrativeEngineGeneration::test_model_development_do… |
-| `AUDIT-032` | high | Running the leakage diagnostic marks the leakage BLOCKER resolved; the report then calls it "addressed" and the manuscript drops the caveat, while the column is still a model feature | `pages/02_EDA.py:1575-1589 (_resolve_insights_from_eda_result) called at :1639…` | **test:** `tests/integration/test_a_diagnostic_run_is_not_an_action_taken.py::test_running_the_leakage_card_leaves_the_blocker_open` — L53-C, fanned out to four chunks PARTITIONED… |
-| `DRIVE-014` | high | The journal view is fully styled and nothing anywhere applies the class, so the in-app/journal duality the design doc specifies has a look and no way to reach it | `L54-D, found by the adjudicator and re-verified here by counting rather than reading.…` | **test:** `turbotab/test_the_journal_view_is_the_published_figure.py::test_the_journal_face_tells_series_apart_by_dash_rather_than_color AND… |
-| `DRIVE-015` | high | The categorical chart ramp is not separate from semantic color and fails colorblind validation in both themes: --c1 is byte-identical to --accent, against a design document that asserts the two are… | `turbotab/web/index.html:13 and :31 and :45 and :58; docs/turbotab/DESIGN_LANGUAGE.md:55` | **test:** `turbotab/test_the_categorical_ramp_is_separable_and_legible.py::test_the_first_series_is_not_the_accent AND ::test_no_series_is_mistakable_for_a_semantic_hue AND… |
-| `DRIVE-019` | high | The Explore impossible-value cards offer 'Exclude those rows from the study' with a reason box and an operable-looking button, gated on two preconditions the app itself prints and that no card in the… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.5 and 6 (F4)` | **test:** `turbotab/test_the_grain_and_eligibility_cards_can_be_answered.py::test_the_explore_exclusion_route_goes_through_once_the_grain_is_answered` — CHECKED AFTER L58-A, NOT… |
-| `DRIVE-022` | high | A list membership stands in for a renderer's existence, and the guard checks the membership. HANDLED_QUESTION_KEYS declares 'this key has a dedicated section above'; nothing verifies the section… | `turbotab/web/index.html:6430-6438 (HANDLED_QUESTION_KEYS), :6607 (renderAsked filters via handledElsewhere)…` | **test:** `turbotab/test_every_handled_key_reaches_the_dom.py::test_a_handled_key_reaches_a_control_in_the_dom` — A LIST MEMBERSHIP STOOD IN FOR A RENDERER AND THE GUARD CHECKED… |
-| `DRIVE-023` | high | state_eligibility is served with option_values that are its PROSE LABELS, so the moment the generic channel renders it every option posts a label the record refuses with a 400 | `ml/router.py:672; ml/router.py:220` | **test:** `turbotab/test_the_grain_and_eligibility_cards_can_be_answered.py::test_the_eligibility_option_the_app_cannot_perform_says_so` — The pairing between a label and the… |
-| `DRIVE-025` | high | The generic question channel is not in the at-control delegate's selector, so every answer button in it emits a slot nothing ever writes to and a refusal with no exits reaches a person nowhere | `turbotab/web/index.html:7651` | **test:** `turbotab/test_the_grain_and_eligibility_cards_can_be_answered.py::test_a_refusal_to_a_generic_answer_reaches_the_control` — [data-answer-key] and [data-answer-commit]… |
-| `AUDIT-022` | medium | The generated manuscript lists the sample size as a Strength for every N, with no criterion — and can print it as a strength and a limitation in the same section | `pages/10_Report_Export.py:1722 — generate_report builds the Discussion's 'Strengths and Limitations' block at…` | **test:** `tests/integration/test_the_sample_size_bullet_is_a_claim_about_this_study.py::test_the_same_count_is_not_a_strength_at_every_size AND… |
-| `AUDIT-023` | medium | Applying feature selection overwrites the candidate feature list, so the sufficiency prose reports the KEPT count while calling them 'candidate predictors' | `pages/04_Feature_Selection.py:440 (consumed at pages/02_EDA.py:115 and asserted at pages/02_EDA.py:319-323)…` | **test:** `tests/integration/test_the_sample_size_bullet_is_a_claim_about_this_study.py::test_the_denominator_is_what_was_screened_not_what_survived AND… |
 
 ### Completeness sweep — 9
 

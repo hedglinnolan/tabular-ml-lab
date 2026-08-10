@@ -91,11 +91,24 @@ _PATHS = ("interview?step=data", "interview?step=explore",
           # route. That is the harness contract working — a new fetch that no
           # drive answers renders against nothing and would otherwise pass.
           "checklist",
+          # `seal` is L58-C's readiness route, fetched by `renderSealState` on
+          # every render — and it arrived here the same way `checklist` did.
+          # This file's own gate caught it: the page asked for a route no drive
+          # answered, and eight tests went red naming it. The contract works
+          # twice now, which is the argument for keeping the stray check strict.
+          "seal",
           "evidence/missingness")
 
 
 def _routes(client, pid):
-    """The eighteen answers one render asks for, captured from the real API."""
+    """Every answer one render asks for, captured from the real API.
+
+    This said "the eighteen answers" and `_PATHS` held nineteen entries even
+    before L58 — `checklist` was added and the number beside it was not. The
+    count is the list's own `len` now, printed nowhere and asserted nowhere,
+    because a number in prose beside a list is the decay this codebase keeps
+    paying for: a count invites checking and a list does not.
+    """
     out = {f"/project/{pid}": client.get(f"/project/{pid}").json()}
     for path in _PATHS:
         resp = client.get(f"/project/{pid}/{path}")

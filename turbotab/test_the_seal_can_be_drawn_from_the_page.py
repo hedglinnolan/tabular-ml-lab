@@ -313,6 +313,44 @@ def test_the_blocker_is_the_repeat_chain_where_the_repeat_chain_is_open(capsys):
         print(f"\n  fourth gate named: {served['blocked_by'][:66]}…")
 
 
+def test_a_seal_payload_that_did_not_arrive_draws_nothing(capsys):
+    """A state the page does not know is silence, not a disabled control.
+
+    Found by the full sweep rather than by reasoning. `renderSealState` fetches
+    `/seal` on every render, and a harness whose routes are hand-listed answers
+    an unknown path with `{}` — so `SEAL.can_draw` was `undefined`, `blocked`
+    was `true`, and the card drew *"Draw it now — not yet"* with an EMPTY
+    reason beside it. That asserts the seal is unreachable when what is true is
+    that the page has not been told, which is `GUIDED-006`'s shape and §09's
+    rule that green means a human recorded something.
+
+    Eight tests in `test_the_analysis_map_says_which_step_is_now.py` went red
+    on the new fetch — its stray-route check is exactly this contract — and
+    that file now answers `/seal`. This is the other half: the page must be
+    honest even where a route is not answered.
+    """
+    from turbotab import pageharness
+
+    client = _client()
+    pid = _project(client, "clinical_risk.csv")
+    _decide(client, pid, "set_target", {"column": "age"})
+    _decide(client, pid, "set_grain", {"answer": "one_row_per_person"})
+    _decide(client, pid, "set_eligibility", {"answer": "everyone"})
+
+    # The control IS drawable in this state — established first, so an empty
+    # box below means the guard fired rather than that nothing was ever there.
+    assert client.get(f"/project/{pid}/seal").json()["can_draw"] is True
+    assert (_render(client, pid)["seal"] or "").strip(), (
+        "the control does not render even with the route answered; this claim "
+        "would then be green for the wrong reason")
+
+    empty = _render(client, pid, extra={f"/project/{pid}/seal": {}})
+    assert not (empty["seal"] or "").strip(), (
+        f"an unanswered /seal drew a control anyway: {empty['seal']!r}")
+    with capsys.disabled():
+        print("\n  unanswered /seal: silence, not a reasonless disabled control")
+
+
 def test_the_gate_the_control_reads_is_the_gate_the_handler_enforces(capsys):
     """One rule, two readers — swept over every prefix of the pre-seal sequence
     on both fixtures, and the counts are reported including the passes.

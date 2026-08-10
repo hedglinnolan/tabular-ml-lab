@@ -510,11 +510,22 @@ def test_a_refusal_to_a_generic_answer_reaches_the_control(capsys):
                 json={"kind": "set_target", "payload": {"column": "age"}})
 
     sentence = "The grain question comes before the seal."
+    # `_press` dispatches on a `data-answer-key` control — the attribute this
+    # docstring names — so the press under test really is the generic channel's
+    # and not some other posting surface that happens to be on the page.
+    assert 'data-answer-key="%s"' in _PRESS, (
+        "the press helper no longer targets a data-answer-key control, so this "
+        "claim is about a different surface from the one it names")
     out = _press(client, pid, "state_grain", "one_row_per_person",
                  extra={f"POST /project/{pid}/decision":
                         {"__status": 400, "body": {"detail": sentence}}})
     # The band is correctly empty — this refusal carries no way out.
     assert not (out["refusal"] or "")
+    # AND THE SLOT IS THE PRESSED CONTROL'S OWN, derived from the key rather
+    # than hard-coded, so a control whose `data-ac` stopped matching its
+    # `data-answer-key` would fail here instead of writing into a stranger's
+    # slot.
+    assert out["at_grain"] is not None, "the at-control slot ac-ans-state_grain does not exist"
     # THE PRECONDITION, ESTABLISHED FROM THE RENDER rather than asserted from
     # the comment that describes it. If `#sub-upload` were visible this test
     # would not be measuring the case the at-control mechanism exists for, and

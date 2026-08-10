@@ -4864,7 +4864,16 @@
        state and carries the basis, the exploratory marker and the resolution.
        A second element restating it would be two objects for one claim, which
        is the disagreement §05.1's quotation rule exists to prevent. */
-    if (!SEAL || SEAL.drawn){ box.innerHTML = ""; return; }
+    /* AND A PAYLOAD THAT DID NOT ARRIVE IS NOT A STATE. `can_draw` is the one
+       field this control cannot render without, so its absence is silence
+       rather than a guess. Without this, a body of `{}` — an unanswered route
+       — draws a disabled "Draw it now" with no reason beside it, which asserts
+       the seal is unreachable when what is true is that the page does not
+       know. `GUIDED-006` is the row for controls that assert a state they do
+       not have, and §09's rule is that green means a human recorded something. */
+    if (!SEAL || SEAL.drawn || typeof SEAL.can_draw !== "boolean"){
+      box.innerHTML = ""; return;
+    }
 
     var effect = effectOf("seal", null);
     var blocked = !SEAL.can_draw;
