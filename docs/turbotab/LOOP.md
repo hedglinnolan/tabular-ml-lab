@@ -106,6 +106,20 @@ which is why the parts are ordered by what would hurt most to lose.
   one honest overrun beats a loop that ships one part and a scope note.
 - **Say what not to build.** Every loop since `L25` has carried an explicit *deliberately unbuilt*
   clause. Agents finish things; the instruction to stop is load-bearing.
+- **A part may be REFUSED when carrying it out would violate the criterion the row itself states, and
+  the refusal is a result rather than a failure.** `L56-C2` is the model and it is a standing
+  permission, not an exception. The prompt instructed a palette swap and supplied the replacement as
+  measured-and-passing at worst CVD ΔE **20.0**; the agent measured **2.0** under deuteranopia, and
+  building it would have shipped a chart asserting CVD-safety while being unreadable for roughly 1 in
+  12 men — **the row's own defect committed by its repair.** Two halves make the refusal correct and
+  both are required: it **measured** rather than argued, validating its simulator on controls first;
+  and it **declined to substitute its own palette**, because choosing one is a product decision and a
+  unilateral substitution is the same act in the other direction. **Refuse, measure, file, and hand
+  the decision back — do not quietly build a weaker version, and do not quietly build your own.**
+- **Every number a prompt states carries how it was derived.** Four of `L56`'s premises were false and
+  all four were the adjudicator's, including one where the existence of two data files was checked and
+  their *contents* inferred. A number with no provenance is a claim the loop will spend rounds
+  discovering is wrong, and it spends them in the parts labeled *certain*.
 - **Scope note at the end.** When one part is allowed to run long, say which and what may be traded
   against it. *"If C runs long, ship the figure with fewer annotations rather than dropping the
   refusal."*
