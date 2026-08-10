@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**374 of 899 closed.**
+**374 of 900 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 454 |
+| `OPEN` | 455 |
 | `PARTIAL` | 71 |
 | `FIXED` | 368 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 454
+## OPEN — 455
 
 
 ### Guided-door drive feedback — 71
@@ -531,6 +531,18 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
+### Page-layer extraction — 7
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `DRIVE-017` | critical | A human driving the Guided door on NHANES cannot fit a model at all: grain, eligibility and the seal never render as answerable cards, the model shelf is gated on the seal, and Train shows a heading… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.4, 3.8, 4 (F1, F2); confirmed by DOM read during the…` | THE FIRST FINDING OF ITS KIND IN THIS PROJECT AND THE MOST CONSEQUENTIAL: it comes from a HUMAN DRIVING THE APP rather than from a suite, and PRODUCT_VISION 06b says a human at… |
+| `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
+| `DRIVE-016` | high | The three-series maximum is asserted in the test and not in the renderer: WEBC still offers four categorical colors and assigns --c4 to a fourth series, which is 12.3 from --c3 in dark mode against a… | `turbotab/web/index.html:4129 (WEBC) and :4179/:4187 (WEBC[idx % WEBC.length])…` | FILED BY THE ADJUDICATOR VERIFYING L57-A, AND IT IS THE CLASS THIS PROJECT KEEPS FINDING RATHER THAN A NEW ONE: a constraint declared in one place with a consumer that does not… |
+| `DRIVE-019` | high | The Explore impossible-value cards offer 'Exclude those rows from the study' with a reason box and an operable-looking button, gated on two preconditions the app itself prints and that no card in the… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.5 and 6 (F4)` | OBSERVED ON SCREEN: the control renders a reason text-box and an enabled-looking button, and prints its own preconditions - 'Needs the grain question answered' and 'Needs the… |
+| `DRIVE-022` | high | A list membership stands in for a renderer's existence, and the guard checks the membership. HANDLED_QUESTION_KEYS declares 'this key has a dedicated section above'; nothing verifies the section… | `turbotab/web/index.html:6430-6438 (HANDLED_QUESTION_KEYS), :6607 (renderAsked filters via handledElsewhere)…` | THE CLASS BEHIND DRIVE-017, filed the moment it was named. The guard at test_the_page_asks_what_the_router_serves.py:147 was written for DRIVE-001 — 'a key in neither list is a… |
+| `DRIVE-020` | medium | The lens is asked after the structural diagnosis has already run and is placed inside the Target step below the target picker, and both cards render as step 01, against OPENING_SEQUENCE.md's… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2, 3.3 and 6 (F3); docs/turbotab/OPENING_SEQUENCE.md` | OPENING_SEQUENCE.md puts the lens FIRST, BEFORE the structural diagnosis, and gives the reason: diagnosis is FIELD-SENSITIVE. On the drive the diagnosis ran on upload with no lens… |
+| `DRIVE-021` | low | The bulk binary-repair card says the columns were 'written as text' for six imputed_* columns that are bool dtype, so the repair's stated reason is wrong about the data it is offering to repair | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2 and 4 (F7)` | The card groups nine columns as 'need the same repair: read as binary' and its prose says they were written as text. THREE of the nine are text - gender, meds_hbp, meds_chol - and… |
+
 ### Other — 6
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -541,17 +553,6 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-038` | medium | 77 of the 131 registry entries are still unchecked against the engine, and the reason is a budget rather than a finding - recording it so the next loop does not read silence as coverage | `L51-E, and it is the honest half of this part. E ran last by the prompt's own sequencing, after Part C's four…` | AND A METHOD WARNING WORTH MORE THAN THE ROW: two of this part's capability checks returned a false absence because grep -E was given \\| alternation, which is a literal pipe in… |
 | `AUDIT-046` | medium | A loop commit swallowed the adjudicator's uncommitted docs edit, so its subject asserts something false about its own contents - the git add -A rule broken a third time, in the opposite direction… | `0c9cce3 contains docs/turbotab/prompts/PM_TRANSITION.md, 74 changed lines, under the subject 'L57-A: the…` | NOTHING WAS LOST AND THAT IS NOT THE POINT. The content is byte-identical to the adjudicator's own backup, verified by diff, and it is in HEAD. THE POINT IS THE RECORD LAYER… |
 | `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
-
-### Page-layer extraction — 6
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `DRIVE-017` | critical | A human driving the Guided door on NHANES cannot fit a model at all: grain, eligibility and the seal never render as answerable cards, the model shelf is gated on the seal, and Train shows a heading… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.4, 3.8, 4 (F1, F2); confirmed by DOM read during the…` | THE FIRST FINDING OF ITS KIND IN THIS PROJECT AND THE MOST CONSEQUENTIAL: it comes from a HUMAN DRIVING THE APP rather than from a suite, and PRODUCT_VISION 06b says a human at… |
-| `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
-| `DRIVE-016` | high | The three-series maximum is asserted in the test and not in the renderer: WEBC still offers four categorical colors and assigns --c4 to a fourth series, which is 12.3 from --c3 in dark mode against a… | `turbotab/web/index.html:4129 (WEBC) and :4179/:4187 (WEBC[idx % WEBC.length])…` | FILED BY THE ADJUDICATOR VERIFYING L57-A, AND IT IS THE CLASS THIS PROJECT KEEPS FINDING RATHER THAN A NEW ONE: a constraint declared in one place with a consumer that does not… |
-| `DRIVE-019` | high | The Explore impossible-value cards offer 'Exclude those rows from the study' with a reason box and an operable-looking button, gated on two preconditions the app itself prints and that no card in the… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.5 and 6 (F4)` | OBSERVED ON SCREEN: the control renders a reason text-box and an enabled-looking button, and prints its own preconditions - 'Needs the grain question answered' and 'Needs the… |
-| `DRIVE-020` | medium | The lens is asked after the structural diagnosis has already run and is placed inside the Target step below the target picker, and both cards render as step 01, against OPENING_SEQUENCE.md's… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2, 3.3 and 6 (F3); docs/turbotab/OPENING_SEQUENCE.md` | OPENING_SEQUENCE.md puts the lens FIRST, BEFORE the structural diagnosis, and gives the reason: diagnosis is FIELD-SENSITIVE. On the drive the diagnosis ran on upload with no lens… |
-| `DRIVE-021` | low | The bulk binary-repair card says the columns were 'written as text' for six imputed_* columns that are bool dtype, so the repair's stated reason is wrong about the data it is offering to repair | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2 and 4 (F7)` | The card groups nine columns as 'need the same repair: read as binary' and its prose says they were written as text. THREE of the nine are text - gender, meds_hbp, meds_chol - and… |
 
 ### DRIVE — 1
 
