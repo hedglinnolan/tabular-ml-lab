@@ -92,15 +92,14 @@ primary source disagree, see §06's note on `NUTRITION_PACK.md` §04.
 
 ## 04 · State right now
 
-> **⚠ L57 IS RUNNING RIGHT NOW. Read §04b before you touch anything.** If you are reading this
-> because the PM was cleared mid-loop, that has happened before — it is what §06 of the previous
-> version of this file existed to repair — and the rule that matters is the one in §08: **the loop
-> owns `findings.json` and `register.json` until it reports.** Docs-only commits may land meanwhile
-> if they touch neither and say so.
+> **⚠ L57 IS ONE PART IN AND THE EXECUTOR WAS HANDED BACK AND CLEARED. Read §04b before you touch
+> anything.** Part A is committed and accepted; **B, C, D and E are unstarted**, and the reconnaissance
+> for B and C is written into `prompts/L57.md` §00b rather than left in the cleared session. **The
+> `turbotab/` sweep is owed and unpaid** — the last full one is L56's.
 
-Branch `TurboTab`, HEAD `e69af3d`. Ledger **891 findings, 373 closed** (`FIXED` **367**), register
-**182 rows**, six gates green. **L55 and L56 are both accepted and adjudicated**, with their §03 rows
-written.
+Branch `TurboTab`, HEAD `0c9cce3` **plus the adjudication commit that follows it**. Ledger **894
+findings, 374 closed**, register **182 rows**, six gates green. **L55 and L56 are accepted and
+adjudicated with their §03 rows written; L57 has no §03 row yet, because it is not finished.**
 
 | Suite | Result | Taken at |
 |---|---|---|
@@ -112,24 +111,41 @@ written.
 **`not_pytest` sits at 9 against a cap of 10** — the next tool-invocation row breaches it, and it is
 raised on a *passing* run with the reason recorded, never in the loop that trips it.
 
-### 04b · What L57 is doing, because it is in flight
+### 04b · Where L57 stopped, and what a fresh executor inherits
 
-**Five parts** (`prompts/L57.md`, published with a copy button). **A** the categorical-ramp validator
-then the palette · **B** the ROC overlay at `_risks_or_refuse` · **C** `GUIDED-233`'s explainability
-pack · **D** the anti-pattern audit widened · **E** suite cost round two, xdist priced not adopted.
+**Five parts** (`prompts/L57.md`, published with a copy button). **A — done and accepted** (`0c9cce3`):
+the categorical-ramp validator then the palette. **Unstarted: B** the ROC overlay at `_risks_or_refuse`
+· **C** `GUIDED-233`'s explainability pack · **D** the anti-pattern audit widened · **E** suite cost
+round two, xdist priced not adopted.
 
-**As of this writing the tree is dirty with Part A**: `prototypes/interview-feed.html` and
-`turbotab/web/index.html` both modified, plus a new
-`turbotab/test_the_categorical_ramp_is_separable_and_legible.py` — which is the prototype-first carry
-the part specifies. **That is the loop working, not a problem.** Do not clean, stash, checkout or
-reset anything.
+**The executor handed back rather than starting Part B**, on the argument that a real build at the tail
+of a very long session invites the half-built part the scope note forbids. **Accepted.** It is the
+second time that agent has declined work for a stated reason instead of shipping a weak version.
 
-**The two rulings L57 carries that a successor must not re-derive** are in §00 of that prompt: the
-palette is ruled as a **method with two gates and a validator that ships first**, not as a set of
-hexes; and C1's site is **`_risks_or_refuse` at `figure_bundle.py:443`**, not `predictions_for` —
-`scored` already exists at `:426` and `best = scored[0]` at `:430` is the single line that discards it.
-**`positive_label` is per result and must be asserted to agree**, or the overlay draws different
-outcomes on one axis.
+**Everything it handed back is now in `prompts/L57.md` §00b and §01b** — the confirmed site map, the
+checklist partition (**85 items, 43 constant-reading, 16 falsifiable**, filed as `GUIDED-238`), the exact
+assertion that inverts (`_overlaid:152`), Part C's `Evidence` regex, and two corrections it volunteered.
+**It was written down before the session was cleared, which is the one thing the previous version of
+this file existed to repair.**
+
+**Three rulings a successor must not re-derive**, in `prompts/L57.md` §00:
+
+1. **The palette is a method with two gates and a validator that ships first**, not a set of hexes —
+   and **the contrast reference is `--surface`, not `--ground`**, because a figure sits on a card
+   (`.fig` at `index.html:671`). That correction is the executor's and it invalidated my own numbers.
+2. **C1's site is `_risks_or_refuse` at `figure_bundle.py:443`**, not `predictions_for`. `scored` exists
+   at `:426`; `best = scored[0]` at `:430` is the single line that discards it. **`positive_label` is
+   per result and must be asserted to agree**, or the overlay puts different outcomes on one axis.
+3. **`DRIVE-016` must land with Part B or before it ships** — `WEBC` still offers a fourth categorical
+   hue that is 12.3 from `--c3` in dark mode, dead only because `GUIDED-236` caps the ROC at one curve,
+   which is precisely what Part B removes.
+
+**And one process defect worth knowing on arrival: `AUDIT-046`.** `0c9cce3` swallowed the adjudicator's
+uncommitted `PM_TRANSITION.md` edit, so a commit about a color validator contains a PM handover
+document. Nothing was lost — verified byte-identical against a backup — but **the `git add -A` rule has
+now been broken in both directions by both parties**, and the contributing cause was an adjudicator
+leaving a docs edit uncommitted in a live tree because the spelling gate was red on the loop's own
+in-progress file. **Hold pending docs edits outside the worktree.**
 
 **The `turbotab/` number is quotable and the reason is checked rather than assumed.** A docs-only
 commit (`57d542f`) landed **22 minutes into** that two-hour run, so the tree *did* move under it —
