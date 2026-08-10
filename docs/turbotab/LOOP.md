@@ -288,6 +288,30 @@ hand* — failed to generalize because it named the **generated** file rather th
 reads intent where the job is to read code — the same reason a review pattern never lets the finder
 be the judge. And both write the same data files.
 
+### A ruling is not a ruling until it is in a commit or a ledger note
+
+**Written on 2026-08-09, after three separate pieces of load-bearing work spent part of a day existing
+only in a message.** An adversarial review that refuted committed claims in `PRODUCT_VISION.md` §06c
+lived only in a cleared PM conversation and had to be reconstructed from a successor's transition note.
+L57's Part B reconnaissance — a confirmed site map, a checklist partition of **85 items / 43 constant-
+reading / 16 falsifiable**, and the exact assertion that inverts — arrived in a handback message minutes
+before that session was cleared. And this rule itself was raised twice in conversation before anyone
+wrote it down.
+
+**The pattern is not forgetfulness. It is that a decision feels finished when it is understood**, and
+understanding lives in whoever is holding the conversation. `§03` of this file already says the loop log
+*"decayed once because it lived only in chat"*; that was one instance of a habit, not an accident.
+
+**So: the record is written in the same turn the decision is made, and by whoever made it.** Not at the
+end of the loop, not when convenient. If a session might be cleared before the next commit — and it
+always might — the ruling is not safe.
+
+**This binds hardest if the adjudicator and the execution agent are ever given a direct channel to each
+other.** Today every ruling passes through the product owner, and that indirection is what has been
+forcing things into commits. **A direct channel removes that forcing function and nothing replaces it.**
+Before using one, the rule above stops being good practice and becomes the only thing standing between
+this project and the failure it has now paid for in five separate places.
+
 **The six gates are a hook, not an instruction.** `.githooks/pre-commit` runs `parsecheck.py`,
 `ledger.py check`, `register.py check`, `tests/test_american_spelling.py`, `copydeck.py check` and
 `evidence.py check`, and refuses the commit on any failure. **This paragraph said "three" for nine
