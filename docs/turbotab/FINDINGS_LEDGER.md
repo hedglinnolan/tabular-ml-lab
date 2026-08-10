@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**380 of 906 closed.**
+**380 of 907 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 455 |
+| `OPEN` | 456 |
 | `PARTIAL` | 71 |
 | `FIXED` | 374 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 455
+## OPEN — 456
 
 
 ### Guided-door drive feedback — 71
@@ -300,7 +300,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-264` | low | HUNT stack-blank-file-blocks-with-wrong-advice: one zero-column file blocks the entire stack and the message tells the researcher to consider joining instead | `utils/combine.py plan_stack - the no-shared-columns blocker and its message; measured at HEAD` | REPRODUCES AT HEAD. Two well-formed cycles sharing SEQN and age, plus one zero-column frame, give blocking: 'These files have no column names in common, so stacking them would… |
 | `IMPORT-265` | low | HUNT stack-duplicate-column-label-crash: does not reproduce on this pandas, and there is no guard - recorded as environment-dependent rather than fixed | `utils/combine.py execute_stack - the copy, rename and pd.concat path, which contains no duplicate-label…` | DOES NOT REPRODUCE AT HEAD, AND IS NOT CLOSED - the distinction is the point. Two frames with columns [1, '1'] give plan_stack no blocking and no warnings (so the recorded… |
 
-### Migration safety net — 46
+### Migration safety net — 47
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -350,6 +350,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-033` | low | _NOT_STAGE_RESULTS in tests/integration/test_cascade_dag_equivalence.py:31 is defined and never referenced - a dead exclusion set that reads as if it were enforcing something | `tests/integration/test_cascade_dag_equivalence.py:31` | Filed post-Loop-1; not part of the 370 Tier-1 rows. |
 | `TEST-043` | low | A guard that searches the tree for a pattern has its own source inside the search space, so it flags the text in which it names what it is looking for - three instances in one loop | `reported by the L43 agent as its fourth divergence: the pragma check flagged the comment recording the…` | THE AGENT'S OWN SENTENCE IS THE ROW: `three times in one loop is a pattern I should have seen after the first - a guard whose own text is inside its search space has to say so.`… |
 | `TEST-045` | low | A parametrized test whose id contains a non-ASCII character cannot be addressed by revertprobe.py, so the one class of test this project requires a probe for is the one class that can silently have… | `Found at L46-C. turbotab/test_a_deferred_noticing_comes_back_where_it_said.py originally keyed its cases…` | FILED AT L46 AND FIXED IN THE INSTANCE ONLY - the test's own ids are now ASCII. THE CLASS IS WHY IT IS A ROW: LOOP.md section 09 requires a named regression test verified to fail… |
+| `TEST-076` | low | The EFFECTS sweep's own regex requires exactly one space after the colon, so it misses every aligned entry and reports 29 decision kinds with no effect sentence when the true number is 19 | `turbotab/test_a_press_can_answer_where_it_was_pressed.py:427` | Use \s+ after the colon, then re-derive GUIDED-181's partition on a passing run before anything rests on it. |
 
 ### Silent-failure landmines — 37
 

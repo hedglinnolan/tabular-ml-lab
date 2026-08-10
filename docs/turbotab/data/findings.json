@@ -11916,5 +11916,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "turbotab/test_every_control_the_page_delegates_survives_being_pressed.py:79"
+ },
+ {
+  "id": "TEST-076",
+  "area": "TEST",
+  "sev": "low",
+  "item": "The EFFECTS sweep's own regex requires exactly one space after the colon, so it misses every aligned entry and reports 29 decision kinds with no effect sentence when the true number is 19",
+  "detail": "The line is effects = set(re.findall(r'^\\s{4}([a-z_]+): function\\(', script, re.M)). index.html's EFFECTS table aligns its colons, so `set_grain: function(p){` and nine others do not match. Measured on this tree and at 07c25c6, unchanged by L58: the tight pattern finds 22 entries, allowing padding finds 32, and the ten it misses are apply, dismiss, flag, revert, seal, set_grain, set_lens, set_selection, unflag and unskip. So test_the_same_lens_one_surface_over prints 'with no EFFECTS sentence 29' and ten of those twenty-nine have one. THE GATE IS NOT AFFECTED -- test_a_generic_question_states_its_effect_before_it_is_taken reads _js_object_keys, whose pattern is ^\\s{4}([A-Za-z_]...)\\s*: and tolerates the padding. What is wrong is the REPORTING half, and that file's own docstring names the standard it fails: 'A counting instrument that miscounts is worse than none, and this one is printing its own numbers.' GUIDED-181's count is inflated by ten and should be re-derived before it is acted on. NOT FIXED IN L58: changing a measurement changes numbers other rows quote, and doing that in the loop that noticed it is the shape section 08 check 2 warns about.",
+  "ev": "turbotab/test_a_press_can_answer_where_it_was_pressed.py:427",
+  "act": "Use \\s+ after the colon, then re-derive GUIDED-181's partition on a passing run before anything rests on it.",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/test_a_press_can_answer_where_it_was_pressed.py:427"
  }
 ]
