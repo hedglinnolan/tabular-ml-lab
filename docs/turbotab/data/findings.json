@@ -11972,5 +11972,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "ml/router.py state_grain; turbotab/web/index.html askedCard"
+ },
+ {
+  "id": "TEST-077",
+  "area": "TEST",
+  "sev": "high",
+  "item": "DRIVE-026's pin was an imperative `pytest.xfail()` inside the test body, which can never XPASS, while the comment beside it promised 'Strict, so the day the row is built this file goes red'. The pin could not flip and the entry would have quietly outlived the defect.",
+  "detail": "",
+  "ev": "turbotab/test_every_handled_key_reaches_the_dom.py:365 (the imperative call, now removed) against :147-151 (the comment promising strictness)",
+  "act": "Carry the xfail as a MARKER on the parametrize case — pytest.param(key, marks=pytest.mark.xfail(strict=True, reason=...)) — so an unexpected pass is a failure. Done in _cases().",
+  "status": "FIXED",
+  "note": "FOUND BY THE ADJUDICATOR VERIFYING L58-B, AND IT IS THE CLASS THAT LOOP WAS WRITTEN TO END. The L58 report described DRIVE-026 as 'carried as a strict xfail'. The comment at :147-151 said it too, in the file's own words: 'Strict, so the day the row is built this file goes red and the entry has to be removed rather than quietly outliving the defect.' THE CODE WAS `pytest.xfail(NOT_BUILT[key])` CALLED INSIDE THE BODY. That is the imperative form: it raises immediately, the drive below it never runs, and the outcome is `xfailed` whatever the page does. There is no body left to pass, so XPASS is unreachable BY CONSTRUCTION and no pytest configuration can make it strict — `xfail_strict` governs markers and is not set in this repo anyway (checked: pyproject.toml, pytest.ini, setup.cfg, tox.ini all silent). So the day someone builds the preparation-mode row, the test would have kept reporting `xfailed` and the pin would have outlived the defect — the exact outcome its comment said it prevented. MEASURED RATHER THAN REASONED, side by side on a two-test throwaway file: an imperative `pytest.xfail()` over a passing body reports `xfailed`; `@pytest.mark.xfail(strict=True)` over the SAME passing body reports `FAILED [XPASS(strict)]`. AND THE FIX WAS VERIFIED THE SAME WAY rather than by reading: with the marker in place I repointed `choose_preparation_mode`'s needle at `data-pick-model`, a control that DOES render at that step — simulating the row being built — and the case went `FAILED [XPASS(strict)]`. The needle was then restored and the file is 8 passed / 1 xfailed, unchanged in outcome and changed in what the outcome can become. WHY IT MATTERS BEYOND ONE MARKER: this is a claim in a comment standing in for a mechanism, which is DRIVE-022's class exactly, occurring inside the file written to end DRIVE-022's class. It is also trap 3b — a name, or here a comment, carrying a consequence verb that nothing in the body observes — and trap 3d, since an imperative xfail is functionally a skip. The generalization worth keeping: A PIN THAT CANNOT FLIP IS A COMMENT. `pytest.xfail()` in a body and `mark.xfail(strict=True)` on a case read alike in a report and differ in the only property a pin has. NOTHING ELSE IN L58 DEPENDS ON THIS. The guard's substantive check was independently confirmed by the adjudicator: re-listing `state_grain` with a DRIVES entry attached drove the page over 84,642 chars and 22 routes, found 0 controls, and failed for that stated reason.",
+  "verified_against": "",
+  "test": "turbotab/test_every_handled_key_reaches_the_dom.py::test_a_handled_key_reaches_a_control_in_the_dom[choose_preparation_mode]",
+  "verified_ev": "turbotab/test_every_handled_key_reaches_the_dom.py:365 (the imperative call, now removed) against :147-151 (the comment promising strictness)"
  }
 ]

@@ -148,7 +148,9 @@ def _needle(declaration: str) -> str:
 #: its first run and left as a failing test rather than a green suite over an
 #: unreachable question — trap #1's rule, and `GUIDED-119`'s `xfail(strict=True)`
 #: is the model. Strict, so the day the row is built this file goes red and the
-#: entry has to be removed rather than quietly outliving the defect.
+#: entry has to be removed rather than quietly outliving the defect. **That is
+#: true of the MARKER in `_cases()` and was not true of the imperative
+#: `pytest.xfail()` this shipped with — see `TEST-077`.**
 #:
 #: Measured: driven to `asked` on `clinical_risk.csv` with the seal drawn and
 #: two models selected, `GET /interview?step=preprocess` serves it `asked`, and
@@ -348,7 +350,32 @@ def test_the_positive_control_renders():
 
 # ── the check `DRIVE-022` says was missing ───────────────────────────────────
 
-@pytest.mark.parametrize("key", sorted(DRIVES))
+def _cases():
+    """The parameters, with the unbuilt ones carrying a STRICT xfail MARKER.
+
+    `TEST-077`. This was `pytest.xfail(NOT_BUILT[key])` called inside the body,
+    and the comment above `NOT_BUILT` promised *"Strict, so the day the row is
+    built this file goes red and the entry has to be removed rather than
+    quietly outliving the defect."* **The imperative form cannot do that.** It
+    raises immediately, so the drive below never runs and the outcome is
+    `xfailed` whatever the page does — there is no body left to pass, so
+    `XPASS` is unreachable and the day the row is built this test stays quiet.
+    Measured side by side before changing it: an imperative `xfail` over a
+    passing body reports `xfailed`; `mark.xfail(strict=True)` over the same
+    body reports `FAILED [XPASS(strict)]`.
+
+    That is a claim in a comment standing in for a mechanism — `DRIVE-022`'s own
+    class, inside the file written to end it.
+    """
+    out = []
+    for key in sorted(DRIVES):
+        marks = ([pytest.mark.xfail(strict=True, reason=NOT_BUILT[key])]
+                 if key in NOT_BUILT else [])
+        out.append(pytest.param(key, marks=marks))
+    return out
+
+
+@pytest.mark.parametrize("key", _cases())
 def test_a_handled_key_reaches_a_control_in_the_dom(key, capsys):
     """The assertion the old guard's name was promising.
 
@@ -361,9 +388,6 @@ def test_a_handled_key_reaches_a_control_in_the_dom(key, capsys):
     if not pageharness.available():
         pytest.skip("no JS engine on this machine")
     from fastapi.testclient import TestClient
-
-    if key in NOT_BUILT:
-        pytest.xfail(NOT_BUILT[key])
 
     client = TestClient(api.app)
     pid, question = _drive(client, key)

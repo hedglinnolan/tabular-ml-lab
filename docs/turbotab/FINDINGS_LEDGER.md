@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**381 of 910 closed.**
+**382 of 911 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 458 |
 | `PARTIAL` | 71 |
-| `FIXED` | 375 |
+| `FIXED` | 376 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
@@ -711,7 +711,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 375
+## FIXED — 376
 
 
 ### Guided-door drive feedback — 144
@@ -974,7 +974,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Migration safety net — 23
+### Migration safety net — 24
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -994,6 +994,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-069` | high | The page harness orphaned an entire subtree when a node was removed - a card taken out of the deck left every row inside it with no parent - so the fix for appendChild's copying did not stop the… | `L55-D, found by fixing TEST-066 and then MEASURING rather than by reading. turbotab/pageharness.py's…` | **test:** `turbotab/test_the_harness_moves_a_node_rather_than_copying_it.py::test_removing_a_node_does_not_orphan_the_nodes_inside_it` — THE CLASS, AND IT IS WHY THE ROW IS FILED… |
 | `TEST-071` | high | The FIXED-row resolver's partition is not exhaustive: 28 of 362 FIXED rows land in none of its three buckets, and 24 of them do so because the named test function equals its file stem, which is this… | `tests/fixed_row_guard.py, resolve(): the `if f not in stems` filter, and the `elif funcs:` that has no else` | **test:** `tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py::test_every_fixed_row_lands_in_exactly_one_bucket AND ::test_every_fixed_rows_named_test_exists`… |
 | `TOOL-001` | high | A loop cannot afford its own regression evidence: the turbotab/ sweep is 2h01m and occasionally times out, so a loop either runs it once at the end or verifies nothing in between | `PRODUCT OWNER, VERBATIM: 'These full suite tests are simply taking too long for the workflow we are currently…` | **test:** `tests/test_the_scoped_selection_says_what_it_cannot_see.py::test_an_empty_direct_selection_refuses_instead_of_reporting_zero AND… |
+| `TEST-077` | high | DRIVE-026's pin was an imperative `pytest.xfail()` inside the test body, which can never XPASS, while the comment beside it promised 'Strict, so the day the row is built this file goes red'. The pin… | `turbotab/test_every_handled_key_reaches_the_dom.py:365 (the imperative call, now removed) against :147-151…` | **test:** `turbotab/test_every_handled_key_reaches_the_dom.py::test_a_handled_key_reaches_a_control_in_the_dom[choose_preparation_mode]` — FOUND BY THE ADJUDICATOR VERIFYING… |
 | `GUIDED-100` | medium | The propagation probe itself: for each recorded decision kind, two projects identical except for that answer, and something downstream must differ | `turbotab/test_a_recorded_decision_changes_something.py; 41 kinds recorded, 23 probed (24 flips), 6 asserted…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_a_decision_about_the_analysis_reaches_the_fitted_pipeline` — BUILT AT L35-E as the instrument that would… |
 | `TEST-041` | medium | Four turbotab test files read figures.REGISTRY, which is populated only as an import side effect of figure_specs, and one of them asserted a count over it before anything had imported the populator… | `turbotab/figures.py:REGISTRY is an empty dict filled by turbotab/figure_specs.py's module body…` | **test:** `turbotab/test_the_registry_cannot_be_observed_empty.py::test_a_cold_import_of_figures_alone_sees_the_specs` — FOUND WHILE FIXING TEST-040 AND IT IS THE SAME PROPERTY… |
 | `TEST-046` | medium | A test docstring that names a page control its body never presses is trap #3b in its page-control form, and nothing detected it - the standing answer was to read docstrings against bodies by hand | `L48-A2. AGENT_ONBOARD.md 07 names trap #3b and the standing answer found GUIDED-145 once and nothing for five…` | **test:** `turbotab/test_a_test_that_names_a_control_presses_it.py::test_no_test_names_a_control_its_body_never_touches` — Both instances fixed rather than declared. NOT COVERED… |
