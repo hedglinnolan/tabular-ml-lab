@@ -1081,7 +1081,18 @@ class AnalysisProject:
         }
         said = {
             _grain.ONE_ROW_PER_PERSON: "one row per person",
-            _grain.PEOPLE_REPEAT: f"people repeat, identified by '{group_col}'",
+            # `DRIVE-024`. This read `f"...identified by '{group_col}'"`
+            # unconditionally, so answering "people repeat" without naming a
+            # column recorded the sentence "identified by 'None'" — a transcript
+            # asserting a column that does not exist, and one that travels into
+            # the methods section. The `design_not_described` branch below has
+            # always guarded its own clause; this one did not, and the
+            # difference was invisible while nothing on the page could reach
+            # either answer.
+            _grain.PEOPLE_REPEAT: (
+                f"people repeat, identified by '{group_col}'" if group_col else
+                "people repeat, and no column identifying the person was named "
+                "— so the held-out rows cannot be drawn by person"),
             _grain.NOT_SURE: "unknown — the shape could not be stated",
             _grain.DESIGN_NOT_DESCRIBED: (
                 "none of the offered shapes describes this study"

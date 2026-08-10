@@ -314,6 +314,21 @@ def contradiction(df: pd.DataFrame, answer: str,
 # because a flag is a thing somebody has to remember to check and a sentence is
 # not.
 
+#: A DISCLOSURE KEY, never a recorded answer — deliberately not in `ANSWERS`,
+#: and named with a leading underscore so it cannot be mistaken for one. The
+#: answer space stays four (constitution §02); what varies here is whether the
+#: user has yet named the column that answer needs, which is the same fact
+#: `seal_basis` branches on. `DRIVE-024`.
+_PEOPLE_REPEAT_UNGROUPED = "_people_repeat_no_column"
+_DESIGN_NOT_DESCRIBED_UNGROUPED = "_design_not_described_no_column"
+
+#: The two answers whose sentence depends on whether a column was named. Read by
+#: `answer_disclosure`, and it is the same pair `set_grain` calls
+#: `_GROUPING_ANSWERS` and `seal_basis` branches on — one fact, and this is the
+#: third place it is consulted rather than a fourth rule about it.
+_UNGROUPED_VARIANT = {PEOPLE_REPEAT: _PEOPLE_REPEAT_UNGROUPED,
+                      DESIGN_NOT_DESCRIBED: _DESIGN_NOT_DESCRIBED_UNGROUPED}
+
 _ANSWERED: Dict[str, str] = {
     ONE_ROW_PER_PERSON:
         "Recorded: one row per person. The held-out rows will be drawn at "
@@ -323,12 +338,46 @@ _ANSWERED: Dict[str, str] = {
         "Recorded: people repeat, identified by `{group_col}`. Whole people "
         "will be held out rather than individual rows, so nobody appears on "
         "both sides of the split.",
+    # `DRIVE-024`. THE SAME ANSWER WITH NO COLUMN NAMED IS A DIFFERENT SENTENCE,
+    # because it is a different split. `seal_basis` already knows this and
+    # returns `undetermined` rather than `grouped`; the sentence above did not,
+    # and formatting it with an empty `group_col` produced *"identified by ``.
+    # Whole people will be held out rather than individual rows, so nobody
+    # appears on both sides of the split."* — a promise the seal then breaks in
+    # writing. Driven on `clinical_longitudinal.csv`: the seal draws 90 rows and
+    # `_SEALED[SEAL_UNDETERMINED]` says, on the same page, *"drawn BY ROW …
+    # the same person is on both sides."*
+    #
+    # Keyed on the same fact `seal_basis` keys on, so the two cannot disagree.
+    # This is `project.set_grain`'s own comment about the escape hatch applied
+    # one answer over: *a promise the split did not keep is worse than the wrong
+    # confident answer the option exists to avoid.*
+    _PEOPLE_REPEAT_UNGROUPED:
+        "Recorded: people repeat, and no column identifying the person has been "
+        "named. Held-out rows are drawn BY ROW until one is, so the same person "
+        "can sit on both sides and held-out performance would read better than "
+        "the model is. Your numbers are labeled exploratory until a person "
+        "column is named, and you can name it at any point before the seal.",
+    # THE SAME BRANCH, and it was the same defect one degree milder. This read
+    # "held-out rows are chosen by `{group_col}` where a grouping column was
+    # named and by row otherwise", which with no column formats to an empty
+    # mono span — hedged rather than false, and still a name rendered where
+    # there is no name. Two sentences, because the escape hatch produces two
+    # different splits exactly as `people_repeat` does. `DRIVE-024`.
     DESIGN_NOT_DESCRIBED:
         "Recorded: the study design is not one of the shapes offered. The "
         "analysis continues on the most conservative treatment available — "
-        "held-out rows are chosen by `{group_col}` where a grouping column was "
-        "named and by row otherwise, and no rows are combined. Your numbers are "
+        "held-out rows are chosen by `{group_col}`, so whole groups stay "
+        "together, and no rows are combined. Your numbers are "
         "labeled exploratory, and the methods section carries an "
+        "[AUTHOR REQUIRED] gap at the point where the design would be "
+        "described, because the app cannot describe a design it was not told.",
+    _DESIGN_NOT_DESCRIBED_UNGROUPED:
+        "Recorded: the study design is not one of the shapes offered, and no "
+        "grouping column has been named. The most conservative treatment "
+        "available is then a split BY ROW, and no rows are combined — so if "
+        "your rows are related, the related ones can land on both sides. Your "
+        "numbers are labeled exploratory, and the methods section carries an "
         "[AUTHOR REQUIRED] gap at the point where the design would be "
         "described, because the app cannot describe a design it was not told.",
     NOT_SURE:
@@ -364,8 +413,16 @@ _SEALED: Dict[str, str] = {
 
 
 def answer_disclosure(answer: str, group_col: Optional[str] = None) -> str:
-    """What the user reads immediately after answering the grain question."""
-    return _ANSWERED.get(answer, "").format(group_col=group_col or "")
+    """What the user reads immediately after answering the grain question.
+
+    Keyed on the answer AND on whether the column that answer needs was named,
+    because those are two different splits and `seal_basis` already treats them
+    as two. `DRIVE-024`: keyed on the answer alone, this promised a grouped
+    split for an answer that produces `undetermined`, and the seal said the
+    opposite of it in writing on the same page.
+    """
+    key = answer if group_col else _UNGROUPED_VARIANT.get(answer, answer)
+    return _ANSWERED.get(key, "").format(group_col=group_col or "")
 
 
 def seal_disclosure(lockbox: Dict[str, Any]) -> str:

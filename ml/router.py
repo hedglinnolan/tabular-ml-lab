@@ -678,7 +678,25 @@ def plan(
             title=spec["title"],
             why=spec["why"] + " " + spec["withheld"],
             consumer=spec["consumer"],
-            options=list(spec["options"])))
+            options=list(spec["options"]),
+            # `DRIVE-023`. This question carried NO `option_values`, and
+            # `to_dict` falls back to `list(self.option_values or self.options)`
+            # — so the wire said the values were the PROSE, and
+            # `set_eligibility` accepts only the two keys. The fallback is right
+            # for a question whose labels ARE its values; it is silently wrong
+            # here, and the page cannot tell the two cases apart because both
+            # arrive as two arrays of equal length.
+            #
+            # That is `GUIDED-037` on a second question: the lens shipped the
+            # same way and the interview could not start. It was invisible until
+            # L58 because the key sat in `HANDLED_QUESTION_KEYS` claiming a
+            # dedicated card that was never built, so nothing ever pressed it.
+            #
+            # READ FROM `eligibility.question()` rather than restated. The module
+            # that validates the answer is the module that pairs it with its
+            # label; two lists would be two things to drift, which is the
+            # failure this comment is about.
+            option_values=list(spec["option_values"])))
 
     # ── reverse-coding: the ONE question a pack is allowed to add ───────────
     #

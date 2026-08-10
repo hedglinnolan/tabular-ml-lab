@@ -6427,12 +6427,29 @@
      Every other pushed question the Router serves is rendered by renderAsked
      below. This list is the seam, and it is exported to the coverage test —
      a key that is in neither place is a question nobody can answer, which is
-     DRIVE-001 and is how the lens stayed invisible through five loops. */
+     DRIVE-001 and is how the lens stayed invisible through five loops.
+
+     ═════════ AND MEMBERSHIP HERE IS A CLAIM, NOT A PLACEMENT ═════════
+     `DRIVE-017` / `DRIVE-022`. This list said `state_grain` and
+     `state_eligibility` had cards. They did not — no such section had ever been
+     written. `renderAsked` believes this list unconditionally, so both
+     questions were served `asked` by the Router and rendered NOWHERE, and a
+     human driving the Guided door could not answer question 03 and therefore
+     could not reach the seal or a model at all.
+
+     The list was the whole defect: the coverage guard checks that a served key
+     is IN one of two lists, so adding a key HERE was the documented way to make
+     that guard green without building anything. Both keys now ride the generic
+     channel, which draws from what the Router says about a question rather than
+     from a copy of it in here.
+
+     `test_every_handled_key_reaches_the_dom.py` is what stops this recurring:
+     it drives the page under `pageharness` for every key in this list and
+     requires the question to reach the DOM. A claim in a comment is not a
+     renderer, and this comment is not what makes the sentence above true. */
   var HANDLED_QUESTION_KEYS = [
     "choose_target",            /* the target card, section 02 */
     "confirm_task_type",        /* the task-type row inside it */
-    "state_grain",              /* the grain card */
-    "state_eligibility",        /* the eligibility card */
     "choose_features",          /* the Features step */
     "choose_models",            /* the Preprocess shelf */
     "choose_preparation_mode"   /* the preparation-mode row */
@@ -6638,7 +6655,13 @@
     set_unit_of_analysis:      "One row is",
     set_aggregation:           "Combined by",
     set_temporal_prediction:   "Task",
-    set_selection:             "Selection"
+    set_selection:             "Selection",
+    /* Both arrive with L58's door. An answered question leaves the Router's
+       plan entirely, so without a row here the grain card would simply vanish
+       when pressed — which is `DRIVE-004`, and it would land on the two
+       questions the whole pre-seal sequence turns on. */
+    set_grain:                 "Rows per person",
+    set_eligibility:           "Study population"
   };
   window.__TURBOTAB_ACK_LABEL = ACK_LABEL;
 
@@ -7625,12 +7648,40 @@
       .catch(function(err){ box.innerHTML = notBuiltPanel(err.message); });
   }
 
+  /* ═════════ `DRIVE-025` · THE GENERIC CHANNEL WAS NOT IN THIS SELECTOR ═════
+     `askedCard` and `commitRow` both emit `data-ac="ans-<key>"` and an
+     `atControlSlot` beside it — so the slot was in the markup and the mechanism
+     that fills it never ran, because the two lines under this selector are the
+     only place `AT_CONTROL` is ever assigned. A refusal to a generic answer
+     therefore reached `#upErr`, which `renderData` has already put inside
+     `display:none`, and nowhere else.
+
+     The band saved the 409: it carries `exits` and `showRefusal` draws them. A
+     plain 400 carries a string `detail`, `showRefusal` returns early on the
+     empty exits list, and the press produced NO VISIBLE RESPONSE AT ALL.
+     Driven under `pageharness`: 0 characters in `#refusal`, "" in
+     `ac-ans-state_grain`, and the sentence sitting in a hidden node. That is
+     `GUIDED-167`'s own failure on the channel that now carries questions 03
+     and 08.
+
+     `[data-answer-key]` and `[data-answer-commit]` fall through every branch in
+     this delegate and match none of them; its only job for them is the two
+     lines that set `AT_CONTROL` and blank the slot.
+
+     THE COMMENT IS HERE RATHER THAN INSIDE THE SELECTOR, and that is not
+     style. `delegated_attributes` matches an unbroken run of string literals —
+     `((?:"[^"]*"\s*\+?\s*)+)` — so a comment between two of them ends the match,
+     and this file's first draft dropped the derived attribute count from 55 to
+     5 with every downstream sweep still passing except the one that asserts a
+     floor. A comment that silently shrinks an enumeration is the enumeration
+     failure this codebase keeps meeting, arriving through punctuation. */
   document.addEventListener("click", function(e){
     var t = e.target.closest ? e.target.closest(
       "[data-target-col],[data-panel],[data-pv-close],[data-defer],[data-dismiss]," +
       "[data-undismiss],[data-flag],[data-apply],[data-revert],[data-task]," +
       "[data-event-for]," +
       "[data-look],[data-unskip],[data-exit-for],[data-att-send],[data-refusal-i],[data-prev-ask]," +
+      "[data-answer-key],[data-answer-commit]," +
       "[data-feat-preview],[data-feat-add],[data-feat-remove],[data-feat-settle]," +
       "[data-lat-cell],[data-prep-mech],[data-prep-route],[data-prep-settle]," +
       "[data-pick-model],[data-train-start],[data-train-cancel],[data-instab],[data-keep-id],[data-promote],[data-journal]," +
@@ -8585,6 +8636,55 @@
     state_unit_of_analysis:    { kind: "set_unit_of_analysis",    field: "unit" },
     state_aggregation:         { kind: "set_aggregation",         field: "method" },
     state_temporal_prediction: { kind: "set_temporal_prediction", field: "temporal", bool: true },
+    /* ═════════ QUESTION 03, WHICH NOTHING COULD ANSWER ═════════ `DRIVE-017`.
+       The hardest question in the pre-seal sequence and the one the seal cannot
+       be drawn without. It sat in `HANDLED_QUESTION_KEYS` for the whole life of
+       this page claiming a dedicated card, and no such card was ever written —
+       so `renderAsked` filtered it out, no other surface drew it, and a human
+       could not get past it.
+
+       All four options post in one press with no group column, checked against
+       the API one at a time, so there is nothing here to render unbuilt.
+       `state_grain` is also in `TAUGHT`, so `askedCard` gives it the layer-3
+       panel `GET /teaching/state_grain` already serves — the generic channel
+       does not drop layer 3 (`DESIGN_LANGUAGE.md` §10). */
+    state_grain:               { kind: "set_grain",               field: "answer" },
+    /* ═════════ QUESTION 08, THE SAME DEFECT ═════════
+       Answerable in one press for "everyone". "restricted" needs a column and a
+       range, and that control is NOT BUILT — so it is rendered visibly unbuilt
+       with its reason, which is `choose_selection`'s existing mechanism below
+       rather than a second one. A solid-bordered button that silently no-ops
+       asserts a capability that does not exist (`GUIDED-006`), and one that
+       posts and gets a 400 is worse still.
+
+       The values here are the Router's — `DRIVE-023` — and until L58 they were
+       the prose labels, so this card would have posted a sentence
+       `set_eligibility` refuses. That was fixed at the server, where the pairing
+       between a label and the answer it records belongs. */
+    state_eligibility: {
+      kind: "set_eligibility", field: "answer",
+      /* AND THE SENTENCE SAYS THE NARROW TRUE THING, not the wide one. A
+         first draft read "the Guided door has no control for naming the column
+         and the range", which is FALSE: the Explore impossibility card offers
+         *"Exclude those rows from the study"* with a typed reason box, and it
+         posts this same `set_eligibility` with the column and the detector's
+         own bounds. What does not exist is a control on THIS card, where the
+         column and the range would have to come from the user rather than
+         from a detector. Saying the wide thing would be the app asserting
+         something false about itself, which is the one rule that outranks
+         everything (`DRIVE-019` is the row for that route's own gating). */
+      unbuilt: {
+        restricted: "Naming the column and the range here is not built in this " +
+                    "build. What the app can do today is record a restriction " +
+                    "an Explore card proposed — the impossibility card offers " +
+                    "“Exclude those rows from the study” with the " +
+                    "column and the bounds already filled in and a box for your " +
+                    "reason, because participant flow reports how many rows and " +
+                    "why. A blank column-and-range control is what is missing, " +
+                    "and a button that silently did nothing would be worse than " +
+                    "one that says so."
+      }
+    },
     /* Found by the coverage check on its FIRST run — a second instance of
        DRIVE-001's class. `choose_selection` is served at the Features step and
        `grep set_selection index.html` returned nothing: the entire selection

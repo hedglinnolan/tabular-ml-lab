@@ -74,6 +74,22 @@ WHY = (
 OPTIONS = ("No, the study is about everyone here",
            "Yes → which column, and what range?")
 
+#: The label at index `i` records the answer at index `i`. Stated here because
+#: this module owns both halves — `ANSWERS` is what `set_eligibility` validates
+#: against and `OPTIONS` is what a person reads — and a pairing composed
+#: anywhere else is a second copy of it.
+#:
+#: `DRIVE-023`. The Router served this question with `options` and no
+#: `option_values`, and `Question.to_dict` falls back to `option_values or
+#: options`. That fallback is correct for a question whose labels *are* its
+#: values and silently wrong here, so the wire said the value of the first
+#: option was the sentence "No, the study is about everyone here" — which
+#: `set_eligibility` refuses with a 400. It is `GUIDED-037` on a second
+#: question, and it stayed invisible only because `state_eligibility` sat in the
+#: page's `HANDLED_QUESTION_KEYS` claiming a card that was never built, so
+#: nothing ever pressed it.
+assert len(OPTIONS) == len(ANSWERS), "an option with no answer cannot be pressed"
+
 # The consumer disclosure the Router's `audit()` demands of every pushed FACT.
 CONSUMER = (
     "The exclusion runs before the lockbox draws anything, so the held-out set "
@@ -101,6 +117,7 @@ def question() -> Dict[str, Any]:
     """The question as data, so the deck and the page read the same source."""
     return {"key": "state_eligibility", "title": QUESTION, "why": WHY,
             "consumer": CONSUMER, "options": list(OPTIONS),
+            "option_values": list(ANSWERS),
             "withheld": WITHHELD_DISCLOSURE, "clause": "lockbox-04"}
 
 

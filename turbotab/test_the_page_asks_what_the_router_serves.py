@@ -313,6 +313,11 @@ def test_the_quoted_record_is_never_empty(tmp_path):
     decide(pid, "set_purpose", {"answer": "prediction"})
     decide(pid, "set_lens", {"lens": ["clinical"]})
     decide(pid, "set_grain", {"answer": "people_repeat", "group_col": "subject_id"})
+    # L58. Both of the pre-seal questions the page could not render until this
+    # loop now ride the generic channel, so both are labeled and both owe this
+    # test a sentence a drive actually produced. Eligibility comes after the
+    # grain by the constitution's order, and `set_eligibility` enforces it.
+    decide(pid, "set_eligibility", {"answer": "everyone"})
     decide(pid, "set_repeat_kind", {"kind": "repeats"})
     decide(pid, "set_unit_of_analysis", {"unit": "person"})
     decide(pid, "set_aggregation", {"method": "mean"})
