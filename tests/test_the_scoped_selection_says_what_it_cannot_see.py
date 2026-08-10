@@ -191,6 +191,21 @@ def test_a_page_change_selects_the_harness_tests_it_is_invisible_to():
     assert harness_tests <= picked, (
         f"{len(harness_tests - picked)} tests drive the page harness and were "
         f"not selected for a page change: {sorted(harness_tests - picked)[:4]}")
+
+    # AND A TEST THAT READS THE PAGE WITHOUT DRIVING IT, which is the hole this
+    # trigger had. `L57-A1`'s stylesheet validator opens `index.html` directly
+    # and imports no harness, so the harness-keyed trigger missed the one test
+    # whose entire subject is the file that changed. A trigger keyed on HOW a
+    # test reaches a file, rather than on which file it names, has a hole
+    # exactly where a new kind of test lands.
+    by_name = "turbotab/test_the_categorical_ramp_is_separable_and_legible.py"
+    assert os.path.exists(os.path.join(PROJECT_ROOT, by_name)), (
+        f"{by_name} is gone; repoint this at another test that READS a "
+        f"non-Python file rather than importing its way to it")
+    assert by_name in picked, (
+        f"{by_name} reads index.html by name and was not selected for a change "
+        f"to it. A changed non-Python file must select every test that names "
+        f"it, not only those that import the harness.")
     for row in body["selected"]:
         assert row["reason"], f"{row['file']} was selected with no reason given"
 

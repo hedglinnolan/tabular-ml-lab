@@ -92,15 +92,44 @@ primary source disagree, see §06's note on `NUTRITION_PACK.md` §04.
 
 ## 04 · State right now
 
-Branch `TurboTab`, HEAD `62ae78c`. Ledger **886 findings, 368 closed**, register **182 rows**, six
-gates green. **L55 is accepted, four of four parts, and fully verified** — its `turbotab/` sweep
-landed at 06:19 on 2026-08-09 and the §03 row is written.
+> **⚠ L57 IS RUNNING RIGHT NOW. Read §04b before you touch anything.** If you are reading this
+> because the PM was cleared mid-loop, that has happened before — it is what §06 of the previous
+> version of this file existed to repair — and the rule that matters is the one in §08: **the loop
+> owns `findings.json` and `register.json` until it reports.** Docs-only commits may land meanwhile
+> if they touch neither and say so.
 
-| Suite | Result |
-|---|---|
-| `tests/` fast tier | 1,730 passed, 1 failed — the failure is `TEST-038`'s `torch` |
-| `tests/integration` | 262 passed, ~51s |
-| `turbotab/` | **2,449 passed · 21 skipped · 9 xfailed · 0 failed**, 7264.63s (2:01:04) |
+Branch `TurboTab`, HEAD `e69af3d`. Ledger **891 findings, 373 closed** (`FIXED` **367**), register
+**182 rows**, six gates green. **L55 and L56 are both accepted and adjudicated**, with their §03 rows
+written.
+
+| Suite | Result | Taken at |
+|---|---|---|
+| `tests/` fast tier | 1,738 passed, 1 failed — the failure is `TEST-038`'s `torch` | L56 |
+| `tests/integration` | 262 passed, ~50s | L56 |
+| `turbotab/` | **2,464 passed · 17 skipped · 9 xfailed · 0 failed**, 7194.87s (**1:59:54**) | `07c25c6` — the current baseline |
+
+`partition_is_exhaustive()` returns **358 / 0 / 9 = 367**, matching `status==FIXED` exactly.
+**`not_pytest` sits at 9 against a cap of 10** — the next tool-invocation row breaches it, and it is
+raised on a *passing* run with the reason recorded, never in the loop that trips it.
+
+### 04b · What L57 is doing, because it is in flight
+
+**Five parts** (`prompts/L57.md`, published with a copy button). **A** the categorical-ramp validator
+then the palette · **B** the ROC overlay at `_risks_or_refuse` · **C** `GUIDED-233`'s explainability
+pack · **D** the anti-pattern audit widened · **E** suite cost round two, xdist priced not adopted.
+
+**As of this writing the tree is dirty with Part A**: `prototypes/interview-feed.html` and
+`turbotab/web/index.html` both modified, plus a new
+`turbotab/test_the_categorical_ramp_is_separable_and_legible.py` — which is the prototype-first carry
+the part specifies. **That is the loop working, not a problem.** Do not clean, stash, checkout or
+reset anything.
+
+**The two rulings L57 carries that a successor must not re-derive** are in §00 of that prompt: the
+palette is ruled as a **method with two gates and a validator that ships first**, not as a set of
+hexes; and C1's site is **`_risks_or_refuse` at `figure_bundle.py:443`**, not `predictions_for` —
+`scored` already exists at `:426` and `best = scored[0]` at `:430` is the single line that discards it.
+**`positive_label` is per result and must be asserted to agree**, or the overlay draws different
+outcomes on one axis.
 
 **The `turbotab/` number is quotable and the reason is checked rather than assumed.** A docs-only
 commit (`57d542f`) landed **22 minutes into** that two-hour run, so the tree *did* move under it —
@@ -348,4 +377,31 @@ to audit against. The **substitution figure** now has a complete visual specific
 are enumerated in `PRODUCT_VISION.md` §06c — and **no pack section behind its thresholds**, which
 ruling 6 forbids shipping unsourced. Buildable, not yet shippable.
 
-**Owed to L55: nothing.** The `turbotab/` number, the §03 row and `TEST-063`'s note all landed.
+**Owed to L55 and L56: nothing.** Both are adjudicated, both §03 rows are written, and every ruling is
+in a commit or a ledger note rather than in a conversation.
+
+### What adjudicating L57 will require
+
+**Read `prompts/L57.md` §00 first** — it holds the two rulings above and the three answers the L56
+report asked for. Then, in the order these have mattered:
+
+- **Part A's validator must be able to fail.** Check its controls (red/green must collapse under
+  deuteranopia, blue/orange must survive) and check that it **rejects the ramp shipped today**. A CVD
+  check that cannot fail is the thing under test.
+- **Whether the palette landed in BOTH files via the prototype.** The two `<style>` blocks are 30,968
+  characters and byte-identical, and `test_skeleton.py:698` reads the prototype. The carry is what stops
+  the surfaces diverging.
+- **Whether `positive_label` agreement is asserted** in Part B, and whether **calibration's payload is
+  byte-identical before and after, by test** rather than by review.
+- **Whether L55-C's one-curve assertion was replaced rather than deleted** — it was written to go red
+  the day `GUIDED-236` is fixed.
+- **Whether `TEST-063`'s guard was pinned with `xdist_group` before any `-n` ran.** If it was not, the
+  reconnaissance destroyed the instrument it was measuring and the result means nothing.
+- **Whether E2 re-measured `AUDIT-040`'s floor** rather than quoting the stale 1,175s, which L56's own
+  fix invalidated.
+
+**The habit that earned its place twice in two loops**: the agent's divergence section corrected the
+adjudicator on three premises at L56 and then **refused a part** on a measurement that overturned a
+number the adjudicator had put in the row. `LOOP.md` §02 now carries both the refusal permission and
+the rule that **every number a prompt states carries how it was derived.** Honor both — mark your own
+figures *(re-derived at `<sha>`)* or *(from the row)*, and doubt the second kind first.

@@ -293,9 +293,26 @@ def select(changed: Sequence[str], closure: bool = False
             if "pageharness" in graph[mod] or "turbotab.pageharness" in graph[mod]:
                 picked.setdefault(path, f"{why}; this test drives it")
 
-    fixtures = [c for c in changed if "/sample_data/" in c]
-    for fixture in fixtures:
-        base = os.path.basename(fixture)
+    # ANY CHANGED NON-PYTHON FILE, NOT ONLY A FIXTURE.
+    #
+    # `L57-A1` found the gap by falling into it. The page trigger above selects
+    # every test that IMPORTS `pageharness`, which is 56 files — and the
+    # stylesheet validator added that same hour reads `index.html` directly and
+    # imports no harness, so a palette change did not select the one test whose
+    # entire subject is the palette. A trigger keyed on how a test reaches a
+    # file rather than on WHICH file it names is a trigger with a hole exactly
+    # where a new kind of test lands.
+    #
+    # So: a changed non-Python file selects every test whose source mentions its
+    # basename. That covers fixtures, the page, the prototype and anything else
+    # read by name — and it is deliberately a NAME match rather than a path
+    # match, because tests build these paths from `Path(__file__).parent` and no
+    # literal full path appears in them.
+    named = [c for c in changed if not c.endswith(".py")]
+    for changed_file in named:
+        base = os.path.basename(changed_file)
+        if not base:
+            continue
         for mod in tests:
             path = by_module[mod]
             try:
@@ -304,7 +321,8 @@ def select(changed: Sequence[str], closure: bool = False
             except OSError:
                 continue
             if base in src:
-                picked.setdefault(path, f"names the changed fixture {base}")
+                picked.setdefault(path, f"names the changed file {base}")
+    fixtures = [c for c in named if "/sample_data/" in c]
 
     record = [c for c in changed if c in RECORD_FILES]
     if record:
