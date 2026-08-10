@@ -1486,6 +1486,22 @@
              derived from `disclosures.exploratory`, which the server computes,
              and the page never decides it. -->
         <div class="disc" id="disclosuresBox"></div>
+
+        <!-- ═══ THE SEAL, AS A CONTROL ═══ `L58-C`, and the second half of
+             `DRIVE-017`.
+
+             The seal is not a Router question — no key, no plan entry — so
+             nothing in the interview's generic channel could ever draw it, and
+             `renderDisclosures` above renders its SENTENCE only once it exists.
+             A human could therefore answer every question in the pre-seal
+             sequence and still not reach a model, which is what the product
+             owner's drive found.
+
+             The band above is the record; this is the act. They are separate
+             elements because they are separate claims: one says what was
+             decided, and this one asks for a decision that cannot be taken
+             back. -->
+        <div id="sealBox"></div>
       </div>
     </section>
 
@@ -3532,6 +3548,13 @@
     renderPrevalence();
     renderGenomicsCard();
     renderDisclosures();
+    /* `L58-C`. Two calls, and the split is the same one every other step makes:
+       `renderSeal` paints from what is already held, `renderSealState` goes and
+       asks. Painting from `SEAL` on every render keeps the control alive across
+       renders that change something else, and the fetch keeps it truthful after
+       a decision that moves one of clause §01's four gates. */
+    renderSeal();
+    renderSealState();
     renderFeatureStep();
     renderPreprocessStep();
     renderTrainStep();
@@ -4810,6 +4833,73 @@
       delete DISC_NODES[key];
       if (gone && gone.parentNode) gone.parentNode.removeChild(gone);
     });
+  }
+
+  /* ═════════ THE SEAL, AS A CONTROL ═════════ `L58-C`.
+
+     `DRIVE-017`'s second half. The seal is a DECISION with no Router question
+     behind it — no key, no plan entry — so the generic channel could never draw
+     it and no dedicated section existed. Answering every question in the
+     pre-seal sequence still did not reach a model.
+
+     THE PRESSABILITY IS THE SERVER'S ANSWER, NOT A RULE IN HERE. Clause §01
+     fixes four gates — target, grain, the repeat chain, eligibility — and the
+     `seal` handler enforces them. `GET /seal` serves what that handler would
+     raise, from `api.seal_blocker`, which both call. A page that re-derived
+     "can I press this" from `P.target && P.grain && P.eligibility` would hold a
+     second copy of clause §01 AND would silently omit the repeat chain, which
+     fires only where people repeat and is exactly the gate an interface
+     forgets. Two copies disagreeing is how `state_grain` rendered nowhere.
+
+     AND IT SAYS WHAT IT COSTS BEFORE IT IS PAID. `EFFECTS.seal` — *"Sealed
+     once — this cannot be redrawn"* — is rendered on the control rather than
+     only in the record afterwards. Sealed once is the whole design of the
+     lockbox, and a consequence disclosed after the act is not a disclosure. */
+  var SEAL = null;
+
+  function renderSeal(){
+    var box = $("sealBox");
+    if (!box) return;
+    /* Once drawn, this surface is silent: `renderDisclosures` owns the sealed
+       state and carries the basis, the exploratory marker and the resolution.
+       A second element restating it would be two objects for one claim, which
+       is the disagreement §05.1's quotation rule exists to prevent. */
+    if (!SEAL || SEAL.drawn){ box.innerHTML = ""; return; }
+
+    var effect = effectOf("seal", null);
+    var blocked = !SEAL.can_draw;
+    box.innerHTML =
+      '<div class="stepcard" data-seal-card="1"><div class="sub">' +
+      '<div class="subhead"><span class="sub-num">09</span></div>' +
+      "<h2>Draw the held-out set</h2>" +
+      '<p class="why">' + esc(effect) + "</p>" +
+      '<details class="wa"><summary>Why we ask</summary><p>' +
+      esc(SEAL.once) + "</p></details>" +
+      /* THE REASON IT IS NOT PRESSABLE, IN THE ENGINE'S OWN WORDS. A disabled
+         control with no sentence is `GUIDED-006` — it asserts the capability
+         is absent when what is true is that a question comes first. */
+      (blocked
+        ? '<p class="feat-note">' + esc(SEAL.blocked_by || "") + "</p>"
+        : "") +
+      '<div class="answers"><button class="answer' +
+      (blocked ? " notbuilt" : " primary") + '" type="button" data-seal="1" ' +
+      'data-ac="seal"' + (blocked ? ' disabled aria-disabled="true"' : "") +
+      ' data-tip="' + esc(blocked ? (SEAL.blocked_by || "") : effect) + '" ' +
+      'aria-label="' + esc("Draw the held-out set — " +
+                           (blocked ? (SEAL.blocked_by || "") : effect)) + '">' +
+      "Draw it now" +
+      (blocked ? '<span class="nb">not yet</span>' : "") + "</button>" +
+      atControlSlot("seal") + "</div></div></div>";
+  }
+
+  function renderSealState(){
+    if (!P || !P.id) return;
+    api("/project/" + P.id + "/seal")
+      .then(function(body){ SEAL = body; renderSeal(); })
+      /* A surface, not a gate: the rest of the Data step renders without it,
+         and a seal control that could not be described is better absent than
+         guessed at. */
+      .catch(function(){ SEAL = null; renderSeal(); });
   }
 
   /* ═════════ GUIDED-079 / DRIVE-010 · THE FEATURES STEP ═════════
@@ -7681,7 +7771,7 @@
       "[data-undismiss],[data-flag],[data-apply],[data-revert],[data-task]," +
       "[data-event-for]," +
       "[data-look],[data-unskip],[data-exit-for],[data-att-send],[data-refusal-i],[data-prev-ask]," +
-      "[data-answer-key],[data-answer-commit]," +
+      "[data-answer-key],[data-answer-commit],[data-seal]," +
       "[data-feat-preview],[data-feat-add],[data-feat-remove],[data-feat-settle]," +
       "[data-lat-cell],[data-prep-mech],[data-prep-route],[data-prep-settle]," +
       "[data-pick-model],[data-train-start],[data-train-cancel],[data-instab],[data-keep-id],[data-promote],[data-journal]," +
@@ -8188,6 +8278,15 @@
         prPay[pr.typed.field] = prBox ? String(prBox.value || "").trim() : "";
       }
       decide(pr.decision.kind, pr.decision.subject, prPay, "Recording that…");
+      return;
+    }
+    /* `L58-C`. The one press in the app that cannot be taken back, and it goes
+       through the same `decide` every other decision does — so its refusal
+       lands at its own slot and its retry path is the shared one. The payload
+       is empty: `fraction` and `seed` have engine defaults, and a page that
+       sent its own would be choosing the split. */
+    if (t.hasAttribute("data-seal")){
+      decide("seal", "", {}, "Drawing the held-out set…");
       return;
     }
     if (t.hasAttribute("data-keep-impossible")){

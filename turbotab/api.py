@@ -294,6 +294,44 @@ def _recompute(project: AnalysisProject) -> None:
     )
 
 
+def seal_blocker(project: AnalysisProject) -> Optional[str]:
+    """The first thing standing between this project and a drawn holdout, in
+    the sentence the user will read — or `None` when nothing does.
+
+    **One place, because an interface needs the same answer the handler gives.**
+    `L58-C` builds the seal control, and a control that decided for itself when
+    it was pressable would hold a second copy of clause §01's order. Two copies
+    disagreeing is exactly how `state_grain` rendered nowhere: `renderAsked`
+    trusted a list and the surface that list named applied a different
+    condition. `askedInPlan` is the same remedy one question over — *there is
+    one true answer to "is this being asked", and it is the Router's*.
+
+    So the `seal` handler raises what this returns, and `GET /seal` serves it.
+    A sentence is composed once and read twice, rather than composed twice.
+
+    **Four gates, not three.** The repeat chain sits BETWEEN the grain and
+    eligibility — clause §01's bracketed steps — and it is the one an interface
+    is most likely to omit, because it fires only on a table where people
+    repeat. `project.repeat_chain_gap()` owns it; this does not restate it.
+    """
+    if project.target is None:
+        return ("The held-out set is drawn against the outcome, so the target "
+                "comes first.")
+    if project.grain is None:
+        return ("The grain question comes before the seal: whether one person "
+                "can appear in more than one row decides how the held-out rows "
+                "are chosen.")
+    gap = project.repeat_chain_gap()
+    if gap:
+        return gap
+    if project.eligibility is None:
+        return ("The eligibility question comes before the seal: whether your "
+                "study is restricted to part of this data decides which rows "
+                "the held-out set is drawn from. Answering 'the study is about "
+                "everyone here' settles it.")
+    return None
+
+
 def _disclosures(project: AnalysisProject) -> Dict[str, Any]:
     """The sentences the user reads about the grain answer and the seal.
 
@@ -879,27 +917,9 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         return _payload(project)
 
     if decision.kind == "seal":
-        if project.target is None:
-            raise HTTPException(400, "The held-out set is drawn against the "
-                                     "outcome, so the target comes first.")
-        if project.grain is None:
-            raise HTTPException(
-                400, "The grain question comes before the seal: whether one "
-                     "person can appear in more than one row decides how the "
-                     "held-out rows are chosen.")
-        # Clause §01's bracketed steps, read from the project rather than
-        # restated here. They sit BETWEEN the grain and eligibility, so this
-        # check does too — the first version put it after and told a driver who
-        # had not said what one row means to answer a question two steps on.
-        gap = project.repeat_chain_gap()
-        if gap:
-            raise HTTPException(400, gap)
-        if project.eligibility is None:
-            raise HTTPException(
-                400, "The eligibility question comes before the seal: whether "
-                     "your study is restricted to part of this data decides "
-                     "which rows the held-out set is drawn from. Answering "
-                     "'the study is about everyone here' settles it.")
+        blocker = seal_blocker(project)
+        if blocker:
+            raise HTTPException(400, blocker)
         try:
             # `GUIDED-143`, Part C. The recorded temporal objective reaches
             # the draw. It did not before — that gap is the whole of this row,
@@ -1883,6 +1903,50 @@ async def get_grain(project_id: str) -> Dict[str, Any]:
         ],
         "suggestion": grain_mod.suggestion(project.df),
         "answered": project.grain,
+    }
+
+
+@app.get("/project/{project_id}/seal")
+async def get_seal(project_id: str) -> Dict[str, Any]:
+    """Whether the held-out set can be drawn yet, and what stands in the way.
+
+    **`L58-C`, and the reason it is a route rather than a rule in the page.**
+    The seal is not a Router question — it has no key and no plan entry — so
+    there was nothing for the interview's generic channel to render, and the
+    page had no control for it at all. A human could answer every question in
+    the pre-seal sequence and still not reach a model, which is the second half
+    of `DRIVE-017`.
+
+    A control has to know when it is pressable. Deriving that in the page would
+    put a second copy of clause §01's order there, and this codebase has paid
+    for that twice: `renderAsked` trusting a list whose named surface applied a
+    different condition, and `confirm_task_type`'s tier test re-deriving
+    Decision B. So the answer comes from `seal_blocker`, which is what the
+    `seal` handler itself raises.
+
+    `blocked_by` is the sentence, not a code: the four gates are already legible
+    English in the engine — *"The grain question comes before the seal…"* — and
+    turning them into an enum for a client to re-render would be trap #7, the
+    machine-readable form lossier than the sentence.
+
+    `drawn` reports the seal that exists rather than repeating its disclosure;
+    `/project/{id}` already serves `disclosures.seal`, and a second composition
+    of the same claim is a second thing to drift.
+    """
+    project = _project(project_id)
+    blocker = seal_blocker(project)
+    return {
+        "drawn": bool(project.barrier_raised),
+        "can_draw": blocker is None and not project.barrier_raised,
+        "blocked_by": blocker,
+        # WHAT IT COSTS, BEFORE IT IS PAID. `ROADMAP`'s lockbox constitution
+        # makes the seal irreversible by design, and `project.seal_lockbox`
+        # refuses a second draw. A control that only says so afterwards has
+        # told the user nothing they could have acted on.
+        "once": ("The held-out rows are chosen once and closed. This cannot be "
+                 "redrawn, and every question before it is fixed the moment it "
+                 "is: the split is drawn against the answers on the record now."),
+        "fraction": 0.15,
     }
 
 
