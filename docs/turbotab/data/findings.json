@@ -11986,5 +11986,19 @@
   "verified_against": "",
   "test": "turbotab/test_every_handled_key_reaches_the_dom.py::test_a_handled_key_reaches_a_control_in_the_dom[choose_preparation_mode]",
   "verified_ev": "turbotab/test_every_handled_key_reaches_the_dom.py:365 (the imperative call, now removed) against :147-151 (the comment promising strictness)"
+ },
+ {
+  "id": "TEST-078",
+  "area": "TEST",
+  "sev": "medium",
+  "item": "Both documented durations for the tests/ tier were wrong in opposite directions: AGENT_ONBOARD.md said ~20 min for a command that takes 35.25s, and PM_TRANSITION.md attached the correct ~22s to a command missing the third --ignore, which makes it take 35:31.",
+  "detail": "",
+  "ev": "docs/turbotab/prompts/AGENT_ONBOARD.md:108 ('# ~20 min'); docs/turbotab/prompts/PM_TRANSITION.md:264-265 (two --ignore paths, '~22s'); tests/test_a_fixed_row_names_a_test_that_actually_runs.py docstring ('~2,473 seconds. This file is the one every documented invocation excludes.')",
+  "act": "Correct both. The onboard's list is the authority and is parsed by tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py; the transition document now carries all three paths and a dated figure.",
+  "status": "FIXED",
+  "note": "FOUND BY THE ADJUDICATOR RUNNING THE FAST TIER AFTER L58, using the command in PM_TRANSITION.md. It took 35 MINUTES 31 SECONDS instead of the ~22s that document promised, and --durations=8 says why: 2,099.57s of it -- 98.5% -- is ONE test, test_every_fixed_rows_named_test_actually_runs. That file's own docstring says 'This file is the one every documented invocation excludes'; PM_TRANSITION.md's invocation did not exclude it, carrying two --ignore paths where AGENT_ONBOARD.md carries three. AND THE ONBOARD IS WRONG THE OTHER WAY: its three-path command is right and its comment says '~20 min'. MEASURED at 7abf21c on a quiet machine (ps checked, one pytest process): 1,738 passed, 1 failed, 4 skipped in 35.25s. The ~20 min figure appears to predate the exclusion and was never re-taken. So an agent budgeting from the onboard over-reserves by 34x, and an agent following the transition document under-reserves by 96x and silently runs a 35-minute guard it was told costs 22 seconds. THE ONE FAILURE IS THE EXPECTED ENVIRONMENTAL ONE and the onboard says so in the same section: test_engine_is_headless.py::test_core_modules_import_for_any_reason, models.nn_whuber importing torch. Not an L58 regression -- checked before assuming, because L58 touched api.py, grain.py, project.py, eligibility.py and router.py and a headless import failure is exactly what that could have looked like. A USEFUL BY-PRODUCT: because the run included the expensive guard, TEST-061's check RAN, and it PASSED -- 0 offenders, 2,099.57s, against 382 closed rows, comfortably under its 2,700s cap. It is 'run it deliberately, not incidentally' work that had not been done in several loops, and the answer is green. THE GENERALIZATION, which is this project's own rule applied to a unit it had exempted: A DURATION IS A MEASUREMENT AND CARRIES A DATE. The onboard already says the turbotab/ timing 'said ~8 min for eighteen loops after it stopped being true' -- the same decay, on the line directly above, unnoticed because a duration reads as scene-setting rather than as a claim. Counts in this project are stamped with a commit; durations were not.",
+  "verified_against": "",
+  "test": "tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py::test_the_documented_invocation_still_collects_this_check",
+  "verified_ev": "docs/turbotab/prompts/AGENT_ONBOARD.md:108 ('# ~20 min'); docs/turbotab/prompts/PM_TRANSITION.md:264-265 (two --ignore paths, '~22s'); tests/test_a_fixed_row_names_a_test_that_actually_runs.py docstring ('~2,473 seconds. This file is the one every documented invocation excludes.')"
  }
 ]

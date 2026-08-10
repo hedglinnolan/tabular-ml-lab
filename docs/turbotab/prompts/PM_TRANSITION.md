@@ -261,8 +261,12 @@ guard, and that lives in `tests/`. **If you land a docs-only commit during a swe
 specifically and write down what you checked.**
 
 ```bash
+# THREE --ignore paths, not two. AGENT_ONBOARD.md §03 is the authority and a
+# guard parses its list; this block had only two and cost 35 minutes to find out.
 venv/bin/python -m pytest tests/ --ignore=tests/integration \
-    --ignore=tests/test_nn_modernization.py -q          # ~22s, the fast tier
+    --ignore=tests/test_nn_modernization.py \
+    --ignore=tests/test_a_fixed_row_names_a_test_that_actually_runs.py -q
+                                                        # 35.25s (measured 2026-08-10)
 venv/bin/python -m pytest tests/integration -q          # ~51s
 venv/bin/python -m pytest turbotab/ -q                  # ~2 HOURS. Check ps first.
 ```

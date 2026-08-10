@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**382 of 911 closed.**
+**383 of 912 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 458 |
 | `PARTIAL` | 71 |
-| `FIXED` | 376 |
+| `FIXED` | 377 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
@@ -711,7 +711,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 376
+## FIXED — 377
 
 
 ### Guided-door drive feedback — 144
@@ -974,7 +974,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Migration safety net — 24
+### Migration safety net — 25
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1002,6 +1002,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-055` | medium | A closed-set assertion on a pack that is being filled out asserts that no further detector may ever exist | `L50. test_the_four_diagnostics_reach_a_person_and_carry_their_badges asserted equality against a five-element…` | **test:** `turbotab/test_the_gene_id_diagnostics_reach_an_upload.py::test_the_four_diagnostics_reach_a_person_and_carry_their_badges` — Found by merging two worktrees rather than… |
 | `TEST-056` | medium | Inserting a seeded draw in the middle of a fixture generator changes every draw after it, and the L50 brief quoted pre-insertion numbers to a subagent | `L50. make_genomics_siblings.py draws from ONE seeded generator in file order. The estimated-counts block was…` | **test:** `turbotab/test_the_fixture_constants_match_the_fixtures.py::test_the_estimated_counts_and_fpkm_separator_is_measured` — Filed because the near-miss is instructive rather… |
 | `AUDIT-039` | medium | Twelve tests still skip on a condition their own fix was supposed to establish, so a regression would silence them rather than turn them red | `L52-D, the tail of TEST-059's sweep. 78 conditional skips found, 55 environmental and correct, 9 in tests…` | **test:** `turbotab/test_the_promoted_card_says_why_it_is_there.py::test_the_promoted_card_says_why_it_is_there AND… |
+| `TEST-078` | medium | Both documented durations for the tests/ tier were wrong in opposite directions: AGENT_ONBOARD.md said ~20 min for a command that takes 35.25s, and PM_TRANSITION.md attached the correct ~22s to a… | `docs/turbotab/prompts/AGENT_ONBOARD.md:108 ('# ~20 min'); docs/turbotab/prompts/PM_TRANSITION.md:264-265 (two…` | **test:** `tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py::test_the_documented_invocation_still_collects_this_check` — FOUND BY THE ADJUDICATOR RUNNING THE FAST… |
 
 ### Verified against main — 20
 

@@ -105,9 +105,16 @@ neither half runs too long:
 venv/bin/python -m pytest turbotab/ -q                          # ~2 HOURS on a quiet machine
 venv/bin/python -m pytest tests/ --ignore=tests/integration \
     --ignore=tests/test_nn_modernization.py \
-    --ignore=tests/test_a_fixed_row_names_a_test_that_actually_runs.py -q   # ~20 min
+    --ignore=tests/test_a_fixed_row_names_a_test_that_actually_runs.py -q   # ~35 s
 venv/bin/python -m pytest tests/integration -q                  # ~40 s
 ```
+
+**Both timings on the `tests/` line have been wrong, in opposite directions.** It read `~20 min` for
+a command that takes **35.25 s** *(measured 2026-08-10 at `7abf21c`: 1,738 passed · 1 failed · 4
+skipped)* — a figure that came from a run before the expensive guard was excluded and was never
+re-taken. `PM_TRANSITION.md` had the complementary error: the right **~22 s** attached to a command
+missing the third `--ignore`, so following it ran the 2,099 s guard incidentally and took **35:31**.
+**A duration is a measurement and carries a date here for the same reason a count does.**
 
 **The timings above said "~8 min" for eighteen loops after it stopped being true.** `turbotab/` was
 1589 tests at L45 and is **2274+** now; a clean run took **2h02m** at L51. Budget accordingly, and
