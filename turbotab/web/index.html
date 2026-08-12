@@ -1435,7 +1435,19 @@
       <div class="sect-body">
         <div class="stepcard" id="card-target">
           <div class="sub" id="sub-target">
-            <div class="subhead"><span class="sub-num">01</span></div>
+            <!-- DRIVE-020, the numbering half. This read `01` and the Router
+                 serves `choose_target` at `02` — so the lens card, drawn by the
+                 generic channel from `q.seq`, and this one both rendered "01"
+                 and a human read it twice in two drives. A surface was
+                 numbering itself instead of rendering what it was served.
+
+                 EMPTY IN THE MARKUP, ON PURPOSE. The page does not know the
+                 position until the Data plan lands, and a hard-coded number is
+                 how it came to be wrong. `renderTarget` fills it from
+                 `LAST_DATA_PLAN`, and `renderInterview` re-runs `renderTarget`
+                 once that plan resolves — the same seam `confirm_task_type`
+                 already relies on, documented there. -->
+            <div class="subhead"><span class="sub-num" id="targetNum"></span></div>
             <h2><span class="fact-mark" id="targetMark" aria-hidden="true"></span>What are you predicting?</h2>
             <p class="why">Pick the column your paper is about. The task type is read off that column by
               the engine. Nothing is pre-selected here: below <em>high</em> confidence the app is not
@@ -3996,8 +4008,28 @@
     return false;
   }
 
+  /* THE POSITION THE ROUTER SERVED, for a card that draws its own heading.
+     `DRIVE-020`. `ml/router.py`'s `SEQUENCE` is the constitution's table in the
+     one place a renderer can read it, and the generic channel already renders
+     `q.seq`. A dedicated card that writes its own number is a second copy of
+     that table — and it drifted, which is how the lens and the target both came
+     to say "01" in two consecutive human drives.
+
+     Empty until the plan lands. The honest unknown is nothing rather than a
+     guess, and `renderInterview` re-runs the target render the moment it
+     resolves. */
+  function seqInPlan(key){
+    var qs = (LAST_DATA_PLAN || {}).questions || [];
+    for (var i = 0; i < qs.length; i++)
+      if (qs[i].key === key) return qs[i].seq || "";
+    return "";
+  }
+
   function renderTarget(){
     reveal("target");
+    /* `DRIVE-020`. The Router's own position, never this page's idea of it. */
+    var num = $("targetNum");
+    if (num) num.textContent = seqInPlan("choose_target");
     var box = $("targetCols");
     box.innerHTML = P.columns.map(function(c){
       var chosen = P.target === c.name;

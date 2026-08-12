@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**386 of 920 closed.**
+**387 of 922 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 463 |
-| `PARTIAL` | 71 |
-| `FIXED` | 380 |
+| `PARTIAL` | 72 |
+| `FIXED` | 381 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
@@ -58,7 +58,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-233` | high | There is no EXPLAINABILITY pack, so every threshold the explanation suite needs would ship unsourced into the one subsystem whose whole job is calibrated honesty | `grep over the five research packs returns 0 for shap/shapley, 0 for attribution, 0 for feature importance and…` | THE PRODUCT OWNER SUPPLIED A DOMAIN-AGNOSTIC EXPLAINABILITY PLAYBOOK ON 2026-08-09 AND NAMED ITS ROLE EXACTLY: 'I see it as a useful mould for what we actually want to form into… |
 | `GUIDED-236` | high | The ROC figure can never overlay more than one model: the spec takes a dict of models, its caption counts them and its checklist asserts they are overlaid with a legend, and figure_bundle hands it… | `L55-C, found while building a renderer for it and needing two series. turbotab/figure_bundle.py…` | TRAP 3b WITH THE CHECKLIST ITEM RATHER THAN THE TEST NAME: the item's TEXT carries a consequence - models are overlaid - that its PREDICATE never checks, and the predicate reads a… |
 | `GUIDED-238` | high | Half the figure checklist cannot fail: of 85 items, 43 read a constant and only 16 are genuinely falsifiable, so a scored checklist reports a compliance it never checked | `reported by the L57 execution agent's Part B reconnaissance, 2026-08-09; the named instance is…` | FILED BY THE ADJUDICATOR FROM THE EXECUTION AGENT'S HANDBACK, BECAUSE IT EXISTED ONLY IN A MESSAGE AND THE AGENT WAS ABOUT TO BE CLEARED. It stopped before Part B and therefore… |
-| `DRIVE-032` | high | The positive-class question is never asked for a numeric 0/1 target. The register says target-positive-class is always asked and never pre-selected at any confidence; on a binary Int64 target no such… | `verified at b4b8246: interview plans for step data/explore/features/preprocess on a 0/1 Int64 target serve no…` | SECOND HUMAN DRIVE, 2026-08-12, and the tester read the register correctly. CONFIRMED BY THE ADJUDICATOR rather than accepted: driven at b4b8246 on a binary Int64 target with… |
+| `DRIVE-032` | high | The positive-class question is never asked for a numeric 0/1 target. The register says target-positive-class is always asked and never pre-selected at any confidence; on a binary Int64 target no such… | `verified at b4b8246: interview plans for step data/explore/features/preprocess on a 0/1 Int64 target serve no…` | C1 DRIVEN TO A FITTED METRIC RATHER THAN ARGUED FROM THE CODE, and it landed on the bad branch the row named: the app IS choosing the event without asking. RE-FILED FROM 'the… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
@@ -302,7 +302,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-264` | low | HUNT stack-blank-file-blocks-with-wrong-advice: one zero-column file blocks the entire stack and the message tells the researcher to consider joining instead | `utils/combine.py plan_stack - the no-shared-columns blocker and its message; measured at HEAD` | REPRODUCES AT HEAD. Two well-formed cycles sharing SEQN and age, plus one zero-column frame, give blocking: 'These files have no column names in common, so stacking them would… |
 | `IMPORT-265` | low | HUNT stack-duplicate-column-label-crash: does not reproduce on this pandas, and there is no guard - recorded as environment-dependent rather than fixed | `utils/combine.py execute_stack - the copy, rename and pd.concat path, which contains no duplicate-label…` | DOES NOT REPRODUCE AT HEAD, AND IS NOT CLOSED - the distinction is the point. Two frames with columns [1, '1'] give plan_stack no blocking and no warnings (so the recorded… |
 
-### Migration safety net — 48
+### Migration safety net — 50
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -354,6 +354,8 @@ Nothing is closed without a regression test named after it.
 | `TEST-045` | low | A parametrized test whose id contains a non-ASCII character cannot be addressed by revertprobe.py, so the one class of test this project requires a probe for is the one class that can silently have… | `Found at L46-C. turbotab/test_a_deferred_noticing_comes_back_where_it_said.py originally keyed its cases…` | FILED AT L46 AND FIXED IN THE INSTANCE ONLY - the test's own ids are now ASCII. THE CLASS IS WHY IT IS A ROW: LOOP.md section 09 requires a named regression test verified to fail… |
 | `TEST-076` | low | The EFFECTS sweep's own regex requires exactly one space after the colon, so it misses every aligned entry and reports 29 decision kinds with no effect sentence when the true number is 19 | `turbotab/test_a_press_can_answer_where_it_was_pressed.py:427` | Use \s+ after the colon, then re-derive GUIDED-181's partition on a passing run before anything rests on it. |
 | `TEST-079` | low | The spelling gate reads the GENERATED ledger markdown, and that markdown does not render the `act` field, so British spellings in `act` are exempt by construction. `ledger.py set` also has no… | `tests/test_american_spelling.py (governs generated markdown); docs/turbotab/tools/ledger.py `set` accepts…` | FOUND BY THE GATE FIRING ON SOMETHING ELSE. Writing the L59 prompt I used a British spelling and the pre-commit gate caught it in the prompt and REFUSED THE COMMIT, correctly. The… |
+| `TEST-081` | low | ml/router.py names a guard, test_the_marker_is_the_constitutional_position, that does not exist anywhere in the tree | `ml/router.py:237` | Either write the guard the comment names -- SEQUENCE against OPENING_SEQUENCE.md -- or correct the comment to name the test that does exist. |
+| `TEST-082` | low | ledger.py `set` cannot change a finding's `item`, so a row that is re-characterized keeps a headline describing the old reading and the correction lives only in the note | `docs/turbotab/tools/ledger.py set` | Add --item to `set`, with the old text preserved in the note. |
 
 ### Silent-failure landmines — 37
 
@@ -537,16 +539,14 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Page-layer extraction — 9
+### Page-layer extraction — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
 | `DRIVE-016` | high | The three-series maximum is asserted in the test and not in the renderer: WEBC still offers four categorical colors and assigns --c4 to a fourth series, which is 12.3 from --c3 in dark mode against a… | `turbotab/web/index.html:4129 (WEBC) and :4179/:4187 (WEBC[idx % WEBC.length])…` | FILED BY THE ADJUDICATOR VERIFYING L57-A, AND IT IS THE CLASS THIS PROJECT KEEPS FINDING RATHER THAN A NEW ONE: a constraint declared in one place with a consumer that does not… |
 | `DRIVE-026` | high | choose_preparation_mode is the THIRD key in HANDLED_QUESTION_KEYS with no section behind it -- the preparation-mode row does not exist anywhere in the page | `turbotab/web/index.html:6455; ml/router.py:821` | Build the preparation-mode row, or move the key to ANSWERABLE. The engine side is complete: project.set_preparation_mode accepts per_model and uniform and api.py:688 routes it. |
-| `DRIVE-033` | high | Undo of a bulk repair reverts one column of nine. After applying 'read as binary' to a 9-column group, 'Undo the last change' restored only `gender`; the other eight stayed Int64, while the apply… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md §4c-1 and F3; dtypes re-read in the target picker after the…` | SECOND HUMAN DRIVE, 2026-08-12. NOT REPRODUCED BY THE ADJUDICATOR — filed on the tester's observation, which is primary evidence for what happens on screen and is not waiting on a… |
 | `DRIVE-035` | high | What made GET /models fail on the tester's 21,849-row NHANES file is unknown, and the app could not say -- DRIVE-030 is the silence, this is the fault behind it | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md 4b-1` | Wait for the next drive. With DRIVE-030 landed, a failing /models now prints the server's own reason on screen, which is the trigger. |
-| `DRIVE-020` | medium | The lens is asked after the structural diagnosis has already run and is placed inside the Target step below the target picker, and both cards render as step 01, against OPENING_SEQUENCE.md's… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2, 3.3 and 6 (F3); docs/turbotab/OPENING_SEQUENCE.md` | OPENING_SEQUENCE.md puts the lens FIRST, BEFORE the structural diagnosis, and gives the reason: diagnosis is FIELD-SENSITIVE. On the drive the diagnosis ran on upload with no lens… |
 | `DRIVE-028` | medium | The same lens one surface over: three entries in HANDLED_QUESTION_PREFIXES have no textual occurrence in the page other than the list entry itself, and nothing drives them | `turbotab/web/index.html HANDLED_QUESTION_PREFIXES` | Extend test_every_handled_key_reaches_the_dom to the prefixes: drive a project where the Router serves a key with each prefix and require a control. Do NOT close this on the grep… |
 | `DRIVE-029` | medium | Answering 'Yes, people repeat' cannot name the column that identifies the person from the Guided door, so the answer routes to an undetermined basis and a by-row split | `ml/router.py state_grain; turbotab/web/index.html askedCard` | Offer the suggestion's columns on the people_repeat branch, with the per-column evidence the route already serves. The suggestion is never the answer -- constitution 02 demotes… |
 | `DRIVE-021` | low | The bulk binary-repair card says the columns were 'written as text' for six imputed_* columns that are bool dtype, so the repair's stated reason is wrong about the data it is offering to repair | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2 and 4 (F7)` | The card groups nine columns as 'need the same repair: read as binary' and its prose says they were written as text. THREE of the nine are text - gender, meds_hbp, meds_chol - and… |
@@ -570,7 +570,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 71
+## PARTIAL — 72
 
 
 ### Guided-door drive feedback — 16
@@ -680,6 +680,14 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | **test:** `turbotab/test_a_skew_that_could_not_be_computed_is_not_reported_as_zero.py::test_an_unmeasurable_target_skew_is_not_reported_as_zero and… |
 | `AUDIT-012` | medium | Outlier advice is driven by a generic IQR rate that cannot tell physiologically impossible from abnormal-but-real, while the impossibility bands sit beside it unused | `ml/outliers.py:44 IQR fences; ml/eda_actions.py:412-420; ml/dataset_profile.py:214…` | **test:** `turbotab/test_the_outlier_remedy_is_not_offered_from_the_fence_alone.py::test_the_corrected_sentence_reaches_the_guided_finding_card and… |
 
+### Page-layer extraction — 3
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-018` | medium | The Classic landing page lists decision curve analysis as a shipped evaluation metric; no Classic page computes net benefit at all | `app.py:253 — app.py's 'Full Capabilities & Technical Details' expander lists, under **Evaluation Metrics**…` | **test:** `tests/test_the_landing_page_says_where_the_decision_curve_lives.py::test_the_landing_page_does_not_list_decision_curves_as_shipped` — L53-C, fanned out to four chunks… |
+| `AUDIT-025` | medium | The Theory Reference tells the user the Feature Selection page offers VIF-based filtering as one of its selection methods; no such method exists | `/Users/nhedglin/tabular-ml-lab/pages/11_Theory_Reference.py:1222-1223 — Inside the…` | **test:** `tests/integration/test_the_theory_page_names_only_selectors_that_exist.py::test_no_theory_callout_credits_feature_selection_with_vif` — L53-C, fanned out to four chunks… |
+| `DRIVE-020` | medium | The lens is asked after the structural diagnosis has already run and is placed inside the Target step below the target picker, and both cards render as step 01, against OPENING_SEQUENCE.md's… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2, 3.3 and 6 (F3); docs/turbotab/OPENING_SEQUENCE.md` | **test:** `turbotab/test_one_decision_is_one_undo.py::test_the_target_card_renders_the_position_the_router_served` — THE NUMBERING HALF ONLY. The ordering half of this row is… |
+
 ### Coach to Router — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -701,13 +709,6 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-009` | critical | The domain-specific EDA plot vision is unbuilt, and it is the product's stated centerpiece | `The drive; DESIGN_LANGUAGE.md 07; DOMAIN_PACKS.md 08` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py` — L54-D. MOVED FROM OPEN TO PARTIAL, and the reason is that a third of it is built and the row said… |
 | `DRIVE-007` | high | Impossible values cannot be taken out of the app, and there is no way to mark a feature as unclean | `The drive; the impossibility pass on NHANES bp_di` | **test:** `turbotab/test_the_flagged_rows_can_leave_the_app.py::test_every_flagged_row_travels_with_the_block_not_only_the_twelve_shown` — THE COPYABLE ROW LIST IS DONE; THE… |
 
-### Page-layer extraction — 2
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `AUDIT-018` | medium | The Classic landing page lists decision curve analysis as a shipped evaluation metric; no Classic page computes net benefit at all | `app.py:253 — app.py's 'Full Capabilities & Technical Details' expander lists, under **Evaluation Metrics**…` | **test:** `tests/test_the_landing_page_says_where_the_decision_curve_lives.py::test_the_landing_page_does_not_list_decision_curves_as_shipped` — L53-C, fanned out to four chunks… |
-| `AUDIT-025` | medium | The Theory Reference tells the user the Feature Selection page offers VIF-based filtering as one of its selection methods; no such method exists | `/Users/nhedglin/tabular-ml-lab/pages/11_Theory_Reference.py:1222-1223 — Inside the…` | **test:** `tests/integration/test_the_theory_page_names_only_selectors_that_exist.py::test_no_theory_callout_credits_feature_selection_with_vif` — L53-C, fanned out to four chunks… |
-
 ### Features / preprocessing — 1
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -716,7 +717,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 380
+## FIXED — 381
 
 
 ### Guided-door drive feedback — 145
@@ -1057,7 +1058,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-013` | medium | The Preprocess page reads capabilities.requires_scaled_numeric directly instead of resolving through the recipe table, so a pack's override cannot reach it | `pages/05_Preprocess.py:498,835; turbotab/recipes.py resolve() and the caps:requires_scaled_numeric selector` | **test:** `tests/integration/test_the_preprocess_page_asks_the_recipe_table.py::test_a_pack_row_reaches_the_preprocess_page` — L53-C, fanned out to four chunks PARTITIONED BY FIX… |
 | `MISC-016` | medium | The feature register has no rows for two shipped Classic pages and nothing gates its coverage, so a capability can be absent from the register without any check noticing | `docs/turbotab/FEATURE_REGISTER.md: 132 rows, zero matching pages/08_Sensitivity_Analysis (568 lines) and zero…` | **test:** `tests/test_a_specification_is_a_claim.py::test_every_classic_page_has_a_register_row_or_a_written_exemption (11 parametrizations) and… |
 
-### Page-layer extraction — 14
+### Page-layer extraction — 15
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1072,6 +1073,7 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-022` | high | A list membership stands in for a renderer's existence, and the guard checks the membership. HANDLED_QUESTION_KEYS declares 'this key has a dedicated section above'; nothing verifies the section… | `turbotab/web/index.html:6430-6438 (HANDLED_QUESTION_KEYS), :6607 (renderAsked filters via handledElsewhere)…` | **test:** `turbotab/test_every_handled_key_reaches_the_dom.py::test_a_handled_key_reaches_a_control_in_the_dom` — A LIST MEMBERSHIP STOOD IN FOR A RENDERER AND THE GUARD CHECKED… |
 | `DRIVE-023` | high | state_eligibility is served with option_values that are its PROSE LABELS, so the moment the generic channel renders it every option posts a label the record refuses with a 400 | `ml/router.py:672; ml/router.py:220` | **test:** `turbotab/test_the_grain_and_eligibility_cards_can_be_answered.py::test_the_eligibility_option_the_app_cannot_perform_says_so` — The pairing between a label and the… |
 | `DRIVE-025` | high | The generic question channel is not in the at-control delegate's selector, so every answer button in it emits a slot nothing ever writes to and a refusal with no exits reaches a person nowhere | `turbotab/web/index.html:7651` | **test:** `turbotab/test_the_grain_and_eligibility_cards_can_be_answered.py::test_a_refusal_to_a_generic_answer_reaches_the_control` — [data-answer-key] and [data-answer-commit]… |
+| `DRIVE-033` | high | Undo of a bulk repair reverts one column of nine. After applying 'read as binary' to a 9-column group, 'Undo the last change' restored only `gender`; the other eight stayed Int64, while the apply… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md §4c-1 and F3; dtypes re-read in the target picker after the…` | **test:** `turbotab/test_one_decision_is_one_undo.py::test_undoing_a_bulk_repair_restores_every_column_it_changed` — ESTABLISHED BEFORE IT WAS FIXED, which the row asked for… |
 | `AUDIT-022` | medium | The generated manuscript lists the sample size as a Strength for every N, with no criterion — and can print it as a strength and a limitation in the same section | `pages/10_Report_Export.py:1722 — generate_report builds the Discussion's 'Strengths and Limitations' block at…` | **test:** `tests/integration/test_the_sample_size_bullet_is_a_claim_about_this_study.py::test_the_same_count_is_not_a_strength_at_every_size AND… |
 | `AUDIT-023` | medium | Applying feature selection overwrites the candidate feature list, so the sufficiency prose reports the KEPT count while calling them 'candidate predictors' | `pages/04_Feature_Selection.py:440 (consumed at pages/02_EDA.py:115 and asserted at pages/02_EDA.py:319-323)…` | **test:** `tests/integration/test_the_sample_size_bullet_is_a_claim_about_this_study.py::test_the_denominator_is_what_was_screened_not_what_survived AND… |
 | `DRIVE-027` | medium | A control rendered a state it had not been told: an unanswered /seal body of {} made can_draw undefined, so the seal card drew 'Draw it now — not yet' with an empty reason beside it | `turbotab/web/index.html renderSeal` | **test:** `turbotab/test_the_seal_can_be_drawn_from_the_page.py::test_a_seal_payload_that_did_not_arrive_draws_nothing` — Revert probe: the typeof guard removed -> RED for 'an… |

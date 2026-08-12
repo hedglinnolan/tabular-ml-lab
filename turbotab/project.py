@@ -2545,12 +2545,29 @@ class AnalysisProject:
 
     def apply_fix_quietly(self, new_df: pd.DataFrame, finding_id: str,
                           row_identity_preserved: bool,
-                          fix_kind: str = "") -> Dict[str, Any]:
+                          fix_kind: str = "",
+                          remember: bool = True) -> Dict[str, Any]:
         """Install a repaired frame and record NOTHING. `DRIVE-002`.
 
-        The undo stack still gets its entry, because reversibility is per frame
-        and a bulk repair that could not be stepped back would be nine changes
-        the user has to accept together or not at all.
+        **`remember=False` for every member of a bulk after the first**, which
+        is `DRIVE-033` and it is the whole of it. This used to take an undo
+        entry per member, reasoning that *reversibility is per frame and a bulk
+        repair that could not be stepped back would be nine changes the user has
+        to accept together or not at all.* The reasoning was sound and the
+        arithmetic was not: `revert_last_fix` pops ONE entry, the page offers
+        *"Undo the last change"* ONCE, and there is no control anywhere that
+        steps back a second time. So applying to nine columns and undoing
+        restored exactly one — reproduced here, 9 changed and 1 restored — while
+        the apply's own tooltip promised *"records one decision covering the
+        whole group. It can be undone."*
+
+        The transcript said one decision and the undo stack held nine. **A
+        partial undo leaves the table in a state no decision describes**, which
+        is the record disagreeing with the frame.
+
+        One decision, one entry. The first member's install is the one that
+        remembers, so its snapshot is the frame from before the whole group —
+        which is what a single undo has to restore.
 
         What it does not do is write a decision. A bulk repair is **one**
         decision covering N features — that is the whole finding — and N
@@ -2570,7 +2587,8 @@ class AnalysisProject:
         recording a cell.
         """
         blanks = self._install(new_df, tag=finding_id,
-                               pass_name=str(fix_kind or "apply_bulk"))
+                               pass_name=str(fix_kind or "apply_bulk"),
+                               remember=remember)
         self.findings_stale = True
         return blanks
 

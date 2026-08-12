@@ -1145,7 +1145,13 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         bulk_blanks: List[Dict[str, Any]] = []
         bulk_opaque: List[Dict[str, Any]] = []
         try:
-            for finding_id in wanted:
+            # `DRIVE-033`. ONE DECISION, ONE UNDO ENTRY. Only the first member
+            # pushes onto the undo stack, so its snapshot is the frame from
+            # before the whole group — which is what the single "Undo the last
+            # change" the page offers has to restore. Per-member entries made
+            # `revert` restore one column of nine while the transcript recorded
+            # one decision covering all nine.
+            for index, finding_id in enumerate(wanted):
                 # RE-DIAGNOSED PER COLUMN, because each apply replaces the
                 # frame and the next finding must be located in the table that
                 # now exists rather than in the one that did.
@@ -1167,7 +1173,7 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
                 new_df, _description = engine.apply_fix(project.df, live)
                 made = project.apply_fix_quietly(
                     new_df, live.id, prev["row_identity_preserved"],
-                    fix_kind=live.fix_kind)
+                    fix_kind=live.fix_kind, remember=(index == 0))
                 bulk_blanks.extend(made.get(_miss.BLANKS_MADE) or [])
                 bulk_opaque.extend(made.get(_miss.BLANKS_UNATTRIBUTABLE) or [])
                 applied_columns.extend(str(c) for c in (live.affected_columns or []))
