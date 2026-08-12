@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**383 of 918 closed.**
+**384 of 919 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 464 |
 | `PARTIAL` | 71 |
-| `FIXED` | 377 |
+| `FIXED` | 378 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
@@ -542,11 +542,11 @@ Nothing is closed without a regression test named after it.
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `DRIVE-030` | critical | The Train step renders its heading and nothing else whenever GET /models fails, and says nothing about why. renderTrain early-returns on !SHELF and renderTrainStep's fetch ends in a bare… | `turbotab/web/index.html:6070 (`if (!P || !SHELF) return;`), :6127-6137 (renderTrainStep, the gate on…` | SECOND HUMAN DRIVE, 2026-08-12, at b4b8246 — the tester DOM-verified controlCount:0 rather than reading a screenshot, and the run-1 blocker survives with a different proximate… |
 | `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
 | `DRIVE-016` | high | The three-series maximum is asserted in the test and not in the renderer: WEBC still offers four categorical colors and assigns --c4 to a fourth series, which is 12.3 from --c3 in dark mode against a… | `turbotab/web/index.html:4129 (WEBC) and :4179/:4187 (WEBC[idx % WEBC.length])…` | FILED BY THE ADJUDICATOR VERIFYING L57-A, AND IT IS THE CLASS THIS PROJECT KEEPS FINDING RATHER THAN A NEW ONE: a constraint declared in one place with a consumer that does not… |
 | `DRIVE-026` | high | choose_preparation_mode is the THIRD key in HANDLED_QUESTION_KEYS with no section behind it -- the preparation-mode row does not exist anywhere in the page | `turbotab/web/index.html:6455; ml/router.py:821` | Build the preparation-mode row, or move the key to ANSWERABLE. The engine side is complete: project.set_preparation_mode accepts per_model and uniform and api.py:688 routes it. |
 | `DRIVE-033` | high | Undo of a bulk repair reverts one column of nine. After applying 'read as binary' to a 9-column group, 'Undo the last change' restored only `gender`; the other eight stayed Int64, while the apply… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md §4c-1 and F3; dtypes re-read in the target picker after the…` | SECOND HUMAN DRIVE, 2026-08-12. NOT REPRODUCED BY THE ADJUDICATOR — filed on the tester's observation, which is primary evidence for what happens on screen and is not waiting on a… |
+| `DRIVE-035` | high | What made GET /models fail on the tester's 21,849-row NHANES file is unknown, and the app could not say -- DRIVE-030 is the silence, this is the fault behind it | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md 4b-1` | Wait for the next drive. With DRIVE-030 landed, a failing /models now prints the server's own reason on screen, which is the trigger. |
 | `DRIVE-020` | medium | The lens is asked after the structural diagnosis has already run and is placed inside the Target step below the target picker, and both cards render as step 01, against OPENING_SEQUENCE.md's… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2, 3.3 and 6 (F3); docs/turbotab/OPENING_SEQUENCE.md` | OPENING_SEQUENCE.md puts the lens FIRST, BEFORE the structural diagnosis, and gives the reason: diagnosis is FIELD-SENSITIVE. On the drive the diagnosis ran on upload with no lens… |
 | `DRIVE-028` | medium | The same lens one surface over: three entries in HANDLED_QUESTION_PREFIXES have no textual occurrence in the page other than the list entry itself, and nothing drives them | `turbotab/web/index.html HANDLED_QUESTION_PREFIXES` | Extend test_every_handled_key_reaches_the_dom to the prefixes: drive a project where the Router serves a key with each prefix and require a control. Do NOT close this on the grep… |
 | `DRIVE-029` | medium | Answering 'Yes, people repeat' cannot name the column that identifies the person from the Guided door, so the answer routes to an undetermined basis and a by-row split | `ml/router.py state_grain; turbotab/web/index.html askedCard` | Offer the suggestion's columns on the people_repeat branch, with the per-column evidence the route already serves. The suggestion is never the answer -- constitution 02 demotes… |
@@ -717,7 +717,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 377
+## FIXED — 378
 
 
 ### Guided-door drive feedback — 144
@@ -1056,11 +1056,12 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-013` | medium | The Preprocess page reads capabilities.requires_scaled_numeric directly instead of resolving through the recipe table, so a pack's override cannot reach it | `pages/05_Preprocess.py:498,835; turbotab/recipes.py resolve() and the caps:requires_scaled_numeric selector` | **test:** `tests/integration/test_the_preprocess_page_asks_the_recipe_table.py::test_a_pack_row_reaches_the_preprocess_page` — L53-C, fanned out to four chunks PARTITIONED BY FIX… |
 | `MISC-016` | medium | The feature register has no rows for two shipped Classic pages and nothing gates its coverage, so a capability can be absent from the register without any check noticing | `docs/turbotab/FEATURE_REGISTER.md: 132 rows, zero matching pages/08_Sensitivity_Analysis (568 lines) and zero…` | **test:** `tests/test_a_specification_is_a_claim.py::test_every_classic_page_has_a_register_row_or_a_written_exemption (11 parametrizations) and… |
 
-### Page-layer extraction — 13
+### Page-layer extraction — 14
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `DRIVE-017` | critical | A human driving the Guided door on NHANES cannot fit a model at all: grain, eligibility and the seal never render as answerable cards, the model shelf is gated on the seal, and Train shows a heading… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.4, 3.8, 4 (F1, F2); confirmed by DOM read during the…` | **test:** `turbotab/test_the_grain_and_eligibility_cards_can_be_answered.py::test_a_human_can_answer_the_grain_question_and_reach_eligibility AND… |
+| `DRIVE-030` | critical | The Train step renders its heading and nothing else whenever GET /models fails, and says nothing about why. renderTrain early-returns on !SHELF and renderTrainStep's fetch ends in a bare… | `turbotab/web/index.html:6070 (`if (!P || !SHELF) return;`), :6127-6137 (renderTrainStep, the gate on…` | **test:** `turbotab/test_every_handled_key_reaches_the_dom.py::test_a_failing_model_shelf_says_so_and_offers_a_way_back` — THE STEP NOW SAYS WHY IT IS EMPTY, AND CAN TRY AGAIN.… |
 | `AUDIT-024` | high | The Classic Feature Selection page offers univariable p-value screening and RFE-CV, both ON BY DEFAULT, and states none of the [SETTLED] objection anywhere in shipped code | `/Users/nhedglin/tabular-ml-lab/pages/04_Feature_Selection.py:170-178 (controls); :61-73 (the only…` | **test:** `tests/integration/test_classic_offers_univariable_screening_with_its_objection.py::test_univariable_screening_is_not_pre_ticked… |
 | `AUDIT-030` | high | The primary model is chosen by comparing HELD-OUT TEST metrics, and the record and manuscript state the criterion was "validation" | `pages/06_Train_and_Compare.py:1541-1557 and :1574-1580; pages/10_Report_Export.py:281-305…` | **test:** `tests/test_the_methods_section_names_the_set_it_compared_on.py (seven tests) and tests/test_narrative_engine.py::TestNarrativeEngineGeneration::test_model_development_do… |
 | `AUDIT-032` | high | Running the leakage diagnostic marks the leakage BLOCKER resolved; the report then calls it "addressed" and the manuscript drops the caveat, while the column is still a model feature | `pages/02_EDA.py:1575-1589 (_resolve_insights_from_eda_result) called at :1639…` | **test:** `tests/integration/test_a_diagnostic_run_is_not_an_action_taken.py::test_running_the_leakage_card_leaves_the_blocker_open` — L53-C, fanned out to four chunks PARTITIONED… |

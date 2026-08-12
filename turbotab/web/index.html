@@ -5813,6 +5813,10 @@
 
   /* ═════════ TRAIN · THE FIRST COMPUTED NUMBER ═════════ */
   var SHELF = null, TRAIN = null, TRAIN_JOB = null, TRAIN_POLL = null;
+  /* `DRIVE-030`. Held beside `SHELF` rather than written at the catch, because
+     `renderTrain` runs from four call sites and every one of them must draw the
+     same answer about why this step is empty. */
+  var SHELF_ERROR = null;
   var PICKED = {};                       /* model key -> selected */
 
   function shelfHTML(){
@@ -6066,8 +6070,66 @@
     return h + "</div>";
   }
 
+  /* ═════════ THE STEP THAT COULD NOT SAY WHY IT WAS EMPTY ═════════
+     `DRIVE-030`, and it is `GUIDED-176`'s class one degree worse.
+
+     A human drove this build to a drawn seal and met a Train card that was a
+     heading and nothing else — DOM-verified `controlCount: 0`. `/models` is
+     fetched exactly once, from `renderTrainStep`, and its `.catch` was
+     `function(){}`. So a failed fetch left `SHELF` null, `renderTrain` returned
+     at its first line, and the card rendered its static heading over an empty
+     box. Reproduced here by serving `/models` as a 500: **0 controls, 0
+     characters in `#shelfBox`, nothing in the refusal band, nothing in the
+     error sink.**
+
+     THAT IS A THIRD THING, and the app is allowed two. `PRODUCT_VISION.md`
+     §04b: it may be silent, and it may refuse. A step that renders *"Which
+     models should be fitted?"* over nothing is neither — it asserts it has
+     nothing to offer while holding thirteen models it could not reach.
+
+     `GUIDED-176` was the milder version: a GET's `.catch` was
+     `setErr(err.message)` and the sentence landed in `#upErr`, inside a hidden
+     subtree. An error nobody saw. Here there was no error at all.
+
+     THE FAILURE IS A STATE, not a `setErr`. It is held beside `SHELF` because
+     `renderTrain` is called from four places and each must draw the same
+     answer; a message written once at the catch would be erased by the next
+     render that ran for another reason. */
+  function shelfFailureHTML(){
+    return '<p class="feat-note" data-shelf-error="1">' +
+           "The model shelf could not be loaded, so there is nothing here to " +
+           "choose from — this step is not empty, it is broken. Nothing about " +
+           "your data or your answers is lost, and the held-out set is still " +
+           "sealed." + "</p>" +
+           '<p class="feat-note"><span class="v">' + esc(SHELF_ERROR) +
+           "</span></p>" +
+           '<div class="feat-ctl"><button class="answer primary" type="button" ' +
+           'data-train-retry="1" data-ac="train-retry" ' +
+           'data-tip="Asks the server for the model shelf again. Nothing is ' +
+           'recorded and nothing about your data changes.">' +
+           "Try loading the models again</button>" +
+           atControlSlot("train-retry") + "</div>";
+  }
+
   function renderTrain(){
-    if (!P || !SHELF) return;
+    if (!P) return;
+    /* NO SHELF AND NO FAILURE is the step not being reached yet, and silence is
+       correct there — the seal has not been drawn, so there is nothing to say.
+       NO SHELF AND A FAILURE is the case above, and it gets a sentence. */
+    if (!SHELF){
+      if (!SHELF_ERROR) return;
+      reveal("train");
+      $("shelfWhy").innerHTML = "";
+      var failBox = $("shelfBox");
+      if (failBox) failBox.innerHTML = shelfFailureHTML();
+      /* `live`, because a step that failed to load is open work rather than a
+         recorded outcome. The stale veil is left exactly as it was: whether an
+         earlier answer changed is a different fact from whether this fetch
+         failed, and overwriting one with the other is trap 7's shape. */
+      sectState("train", "live", "open");
+      return;
+    }
+    SHELF_ERROR = null;
     reveal("train");
     $("shelfWhy").innerHTML = esc(SHELF.disclosure || "");
     var box = $("shelfBox");
@@ -6129,11 +6191,29 @@
     api("/project/" + P.id + "/models")
       .then(function(body){
         SHELF = body;
+        SHELF_ERROR = null;
         (P.selected_models || []).forEach(function(k){ PICKED[k] = true; });
         renderTrain();
         renderTrainState();
       })
-      .catch(function(){});
+      /* `DRIVE-030`. THIS WAS `function(){}` AND IT IS THE ONE THAT MATTERS.
+         There are 48 `.catch(function` sites in this file and most are
+         correctly benign — a lost palette, an absent overlay, a surface that is
+         not a gate on anything. The difference here is that NOTHING ELSE CAN
+         LOAD THE SHELF: this is the only fetch of `/models`, `renderTrain`
+         returns on a null `SHELF`, and the Train step has no other control a
+         user could press to cause another render. So the silence is not a
+         degraded surface, it is the end of the session's ability to train.
+
+         Scoped to this fetch deliberately. Sweeping all 48 would be a change to
+         47 behaviors nobody measured, which is how a fix becomes a loop. */
+      .catch(function(err){
+        SHELF = null;
+        SHELF_ERROR = (err && err.message)
+          ? err.message
+          : "The server did not say why.";
+        renderTrain();
+      });
     /* GUIDED-103 / A4.8. The resampling results, if any have been produced.
        This does NOT start one: B refits of the whole pipeline is the longest
        thing the app does and it is a job the user chooses, not something that
@@ -7783,7 +7863,7 @@
       "[data-answer-key],[data-answer-commit],[data-seal]," +
       "[data-feat-preview],[data-feat-add],[data-feat-remove],[data-feat-settle]," +
       "[data-lat-cell],[data-prep-mech],[data-prep-route],[data-prep-settle]," +
-      "[data-pick-model],[data-train-start],[data-train-cancel],[data-instab],[data-keep-id],[data-promote],[data-journal]," +
+      "[data-pick-model],[data-train-start],[data-train-cancel],[data-train-retry],[data-instab],[data-keep-id],[data-promote],[data-journal]," +
       "[data-sel-rank],[data-sel-set]," +
       "[data-study-toggle]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose]," +
@@ -7957,6 +8037,23 @@
       var mk = t.getAttribute("data-pick-model");
       PICKED[mk] = !PICKED[mk];
       renderTrain();
+      return;
+    }
+    /* `DRIVE-030`. ONE FAILED FETCH MUST NOT END THE SESSION.
+       `renderTrainStep` is the only caller of `/models`, and at the Train step
+       there is nothing else to press — so no later render happens on its own
+       and the failure holds until the page is reloaded. This is the press that
+       causes another one. It records nothing: the state it clears is the page's
+       own, and `renderTrainStep` re-reads the server. */
+    if (t.hasAttribute("data-train-retry")){
+      SHELF_ERROR = null;
+      var retryBox = $("shelfBox");
+      /* Said before the request, not after it. A control that blanks itself and
+         waits is indistinguishable from one that did nothing (§09). */
+      if (retryBox)
+        retryBox.innerHTML = '<p class="feat-note">Asking the server for the ' +
+                             "model shelf again…</p>";
+      renderTrainStep();
       return;
     }
     if (t.hasAttribute("data-train-start")){

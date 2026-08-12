@@ -196,6 +196,7 @@ IDS.forEach(function(id){
 __emit({blob: blob,
         keys: Array.prototype.slice.call(document.querySelectorAll("[data-answer-key]"))
                 .map(function(b){ return b.getAttribute("data-answer-key"); }),
+        shelfBox: __harness.html("shelfBox"),
         calls: __harness.calls().map(function(c){
           return {method: c.method, path: c.path}; })});
 """
@@ -217,8 +218,15 @@ def _serve(client, calls, routes):
     return routes
 
 
-def _render(client, pid: str) -> Dict[str, Any]:
+def _render(client, pid: str, tail: str = "",
+            override: Dict[str, Any] = None) -> Dict[str, Any]:
     """Every route the page fetches, answered to a FIXPOINT, then the render.
+
+    `override` replaces routes after the fixpoint, which is how a REFUSING route
+    is driven — `{"__status": 500, "body": {...}}`. That capability is the whole
+    reason `pageharness` grew a status field, and `DRIVE-030` is the case it was
+    grown for: a step that renders a heading over nothing when a fetch fails.
+    `tail` is JS that runs after the render and before the read — a press.
 
     Pass zero is seeded with the four interview plans. With no route answered at
     all the controller throws a `TypeError` inside `paintPalette` —
@@ -247,6 +255,13 @@ def _render(client, pid: str) -> Dict[str, Any]:
             break
         seen |= calls
         routes = _serve(client, out["calls"], routes)
+    if override or tail:
+        routes = dict(routes)
+        routes.update(override or {})
+        out = pageharness.run(tail + "\n" + reader, routes=routes, search=search)
+        if isinstance(out, dict) and out.get("error"):
+            raise AssertionError(
+                f"the page could not be driven: {out['error']}")
     out["n_routes"] = len(routes)
     return out
 
@@ -415,6 +430,168 @@ def test_a_handled_key_reaches_a_control_in_the_dom(key, capsys):
         f"dedicated section draws it; nothing does. That is DRIVE-022, and the "
         f"remedy is to build the section or move the key to ANSWERABLE — not "
         f"to adjust this list.")
+
+
+# ── `DRIVE-030` · the same key, with the fetch behind it refusing ────────────
+
+def _sealed(client) -> str:
+    """A project at the state `choose_models` is served in — seal drawn."""
+    fixture, decisions, _ = DRIVES["choose_models"]
+    with (DATA / fixture).open("rb") as handle:
+        pid = client.post("/project", files={
+            "file": (fixture, handle, "text/csv")}).json()["id"]
+    for kind, payload in decisions:
+        resp = client.post(f"/project/{pid}/decision",
+                           json={"kind": kind, "payload": payload})
+        assert resp.status_code == 200, (kind, resp.text[:300])
+    return pid
+
+
+_FIVE_HUNDRED = {"__status": 500,
+                 "body": {"detail": "the model registry could not be read"}}
+
+
+def test_a_failing_model_shelf_says_so_and_offers_a_way_back(capsys):
+    """`DRIVE-030`. The check above proves the shelf renders when `/models`
+    answers. This proves the step SAYS SO when it does not.
+
+    A human drove this build to a drawn seal and met a Train card that was a
+    heading and nothing else — `controlCount: 0`, DOM-verified. `/models` is
+    fetched once, from `renderTrainStep`, and its `.catch` was `function(){}`,
+    so the failure was invisible and the step looked empty rather than broken.
+
+    `PRODUCT_VISION.md` §04b allows two things: the app may be silent, and it
+    may refuse. A heading over nothing is a third — it asserts there is nothing
+    to offer while thirteen models sit behind a fetch that failed.
+    """
+    from turbotab import api, pageharness
+
+    if not pageharness.available():
+        pytest.skip("no JS engine on this machine")
+    from fastapi.testclient import TestClient
+
+    client = TestClient(api.app)
+    pid = _sealed(client)
+
+    # THE POSITIVE CONTROL FIRST. Every assertion below is about a failure
+    # state, and a rig that renders nothing at all would satisfy them for the
+    # wrong reason.
+    healthy = _render(client, pid)
+    n_healthy = healthy["blob"].count('data-pick-model="')
+    assert n_healthy > 0, (
+        "the shelf does not render even with /models answering; this claim "
+        "would then be green over a broken rig")
+
+    broken = _render(client, pid,
+                     override={f"/project/{pid}/models": _FIVE_HUNDRED})
+    shelf = broken["shelfBox"] or ""
+    assert broken["blob"].count('data-pick-model="') == 0, (
+        "the shelf rendered controls from a 500")
+
+    # 1 · IT SAYS SOMETHING. The defect was that it said nothing at all.
+    assert shelf.strip(), (
+        "a failing /models still renders an empty shelf box — the step reads "
+        "as having nothing to offer when it is broken. That is DRIVE-030.")
+    # 2 · AND WHAT IT SAYS IS THE SERVER'S OWN REASON, quoted rather than a
+    #     sentence the page composed about a failure it did not diagnose.
+    assert "the model registry could not be read" in shelf, (
+        f"the step reports a failure without the server's reason: {shelf!r}")
+    # 3 · AND IT OFFERS THE WAY BACK. One failed fetch must not end the session.
+    assert "data-train-retry=" in shelf, (
+        "the failure is named and there is nothing to press; /models is fetched "
+        "once and the Train step has no other control, so the session cannot "
+        "recover")
+
+    with capsys.disabled():
+        print(f"\n  DRIVE-030  healthy {n_healthy} controls · "
+              f"failing {len(shelf)} chars, quoted reason, retry offered")
+
+
+def test_the_retry_asks_again_and_recovers_when_the_server_does(capsys):
+    """The retry is a re-fetch, not a repaint.
+
+    Driven rather than composed. The shim's route map is fixed for a run, so a
+    route that fails once and then succeeds needs the server to change
+    mid-session: the tail wraps `fetch` AFTER the failing first render, which is
+    exactly a user pressing retry after a transient fault. Everything else still
+    goes to the shim's own fetch.
+    """
+    from turbotab import api, pageharness
+
+    if not pageharness.available():
+        pytest.skip("no JS engine on this machine")
+    from fastapi.testclient import TestClient
+
+    client = TestClient(api.app)
+    pid = _sealed(client)
+    models = client.get(f"/project/{pid}/models").json()
+
+    press = '''
+var b = document.querySelectorAll("[data-train-retry]")[0];
+if (!b) { __emit({error: "no retry control rendered"}); }
+__harness.dispatch("click", b);
+for (var i = 0; i < 10; i++) await new Promise(function(r){ setTimeout(r, 0); });
+'''
+    # A · it asks again. Two fetches of /models where there was one.
+    again = _render(client, pid, tail=press,
+                    override={f"/project/{pid}/models": _FIVE_HUNDRED})
+    fetches = [c for c in again["calls"] if c["path"].endswith("/models")]
+    assert len(fetches) >= 2, (
+        f"the retry did not re-fetch /models; calls were {fetches}")
+
+    # B · and it recovers. The server is healthy by the time the press lands.
+    heal = ('''
+var realFetch = globalThis.fetch;
+var HEALTHY = ''' + json.dumps(models) + ''';
+globalThis.fetch = function(path, opts){
+  if (String(path).indexOf("/models") >= 0){
+    var text = JSON.stringify(HEALTHY);
+    return Promise.resolve({ok: true, status: 200, statusText: "OK",
+      text: function(){ return Promise.resolve(text); },
+      json: function(){ return Promise.resolve(HEALTHY); }});
+  }
+  return realFetch(path, opts);
+};
+''') + press
+    healed = _render(client, pid, tail=heal,
+                     override={f"/project/{pid}/models": _FIVE_HUNDRED})
+    n = healed["blob"].count('data-pick-model="')
+    assert n > 0, (
+        "the server recovered and the retry did not bring the shelf back")
+    assert 'data-shelf-error="1"' not in (healed["shelfBox"] or ""), (
+        "the shelf loaded and the failure panel is still on screen")
+    with capsys.disabled():
+        print(f"\n  retry: {len(fetches)} fetches of /models, "
+              f"{n} controls after the server recovered")
+
+
+def test_a_step_that_has_not_been_reached_is_still_silent(capsys):
+    """The other half of §04b, and the reason this is not a blanket message.
+
+    Before the seal the Train step genuinely has nothing to say — the shelf is
+    gated on the seal and that gate is printed at Preprocess. A failure panel
+    there would be the app reporting a fault where there is none, which is the
+    same defect pointed the other way.
+    """
+    from turbotab import api, pageharness
+
+    if not pageharness.available():
+        pytest.skip("no JS engine on this machine")
+    from fastapi.testclient import TestClient
+
+    client = TestClient(api.app)
+    with (DATA / "clinical_risk.csv").open("rb") as handle:
+        pid = client.post("/project", files={
+            "file": ("clinical_risk.csv", handle, "text/csv")}).json()["id"]
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_target", "payload": {"column": "age"}})
+
+    out = _render(client, pid)
+    assert not (out["shelfBox"] or "").strip(), (
+        f"the unsealed Train step reports a failure it does not have: "
+        f"{out['shelfBox']!r}")
+    with capsys.disabled():
+        print("\n  unsealed: silent, which is the correct one of §04b's two")
 
 
 def test_the_two_keys_this_loop_unlisted_are_gone_from_the_list():
