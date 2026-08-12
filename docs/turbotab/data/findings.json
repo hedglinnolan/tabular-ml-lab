@@ -12070,5 +12070,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md F17 and §5; the widget returned 'Prevalence of inadequacy for kcal is computed by the EAR cut-point method [SETTLED]'"
+ },
+ {
+  "id": "TEST-079",
+  "area": "TEST",
+  "sev": "low",
+  "item": "The spelling gate reads the GENERATED ledger markdown, and that markdown does not render the `act` field, so British spellings in `act` are exempt by construction. `ledger.py set` also has no `--act`, so the field cannot be corrected through the only writer the project sanctions.",
+  "detail": "",
+  "ev": "tests/test_american_spelling.py (governs generated markdown); docs/turbotab/tools/ledger.py `set` accepts only --status --note --test --evidence; docs/turbotab/FINDINGS_LEDGER.md renders id, sev, item, evidence and note per row and no `act` column",
+  "act": "Either render `act` into the markdown, or point the gate at data/findings.json directly. And give `set` an `--act` so a row's remedy can be corrected without hand-editing the data file.",
+  "status": "OPEN",
+  "note": "FOUND BY THE GATE FIRING ON SOMETHING ELSE. Writing the L59 prompt I used a British spelling and the pre-commit gate caught it in the prompt and REFUSED THE COMMIT, correctly. The same word was already sitting in DRIVE-031's `act` field, committed one commit earlier, and the gate had passed -- because it reads FINDINGS_LEDGER.md and that file has no `act` column. So the gate is not weak, it is pointed at a rendered VIEW of the data rather than the data, and any field the view drops is unchecked. THE CLASS IS THIS SESSION'S RECURRING ONE, on the tooling side: a check run against a PROXY for the thing rather than the thing. DRIVE-022 was a guard checking list membership instead of a renderer; TEST-077 was a comment promising strictness a pin could not deliver; DRIVE-030 is an adjudicator measuring a resting state where a user experiences a transition. Same shape, fourth surface. AND THE SECOND HALF IS WHAT MAKES IT WORTH FIXING RATHER THAN NOTING: `ledger.py set` exposes --status, --note, --test and --evidence and NOT --act. The project's rule is that the ledger has exactly one writer; for this field there is no way to write through it after the row is created. So the uncheckable field is also the uncorrectable one, and the instance in DRIVE-031 is left in place deliberately as the evidence rather than hand-edited around the rule.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "tests/test_american_spelling.py (governs generated markdown); docs/turbotab/tools/ledger.py `set` accepts only --status --note --test --evidence; docs/turbotab/FINDINGS_LEDGER.md renders id, sev, item, evidence and note per row and no `act` column"
  }
 ]
