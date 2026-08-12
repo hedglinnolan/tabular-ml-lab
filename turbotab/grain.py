@@ -389,27 +389,61 @@ _ANSWERED: Dict[str, str] = {
         "settled, and you can settle it at any point before training.",
 }
 
+# `DRIVE-031`. EVERY BASIS NAMES THE BASE IT DREW FROM, via `{of_base}`.
+#
+# The seal said *"945 rows (15%)"* and never said 15% OF WHAT. Beside it the
+# eligibility receipt said *"all 21,849 rows are in the study population, and
+# the held-out set is drawn from all of them"*, and a reader who put the two
+# together got 945/21,849 = 4.3%, which is not what the app did. The real base
+# is `lockbox["n_total"]` — the rows with a value for the outcome, 6,297 — and
+# the app already knew it: the read-as-draft methods paragraph has printed *"Of
+# 6,297 rows with a value for the outcome, 945 were sealed"* the whole time.
+#
+# So this is trap 6 with the error in the composed string rather than in the
+# render, and it is a claim about THE SPLIT, which is the one thing the lockbox
+# exists to be trustworthy about. `_of_base` is composed once and inserted into
+# all four, rather than four sentences each free to phrase the base differently.
 _SEALED: Dict[str, str] = {
     SEAL_CROSS_SECTIONAL:
-        "{n_test:,} rows ({fraction:.0%}) are held out and will not be looked "
-        "at again until the models are scored.",
+        "{n_test:,} rows ({fraction:.0%}{of_base}) are held out and will not be "
+        "looked at again until the models are scored.",
     SEAL_GROUPED:
-        "{n_test:,} rows ({fraction:.0%}) from {n_test_groups:,} "
+        "{n_test:,} rows ({fraction:.0%}{of_base}) from {n_test_groups:,} "
         "{group_noun} are held out, chosen by {group_one} rather than by row, "
         "so no {group_one} appears in both halves.",
     SEAL_UNDETERMINED:
-        "{n_test:,} rows ({fraction:.0%}) are held out, drawn BY ROW because "
-        "the data's shape is unknown. This is not a verified clean split: if "
-        "rows repeat people, the same person is on both sides and held-out "
-        "performance will read better than the model is. Treat these numbers "
-        "as exploratory, and answer the grain question when you can.",
-    "repetition_found_grouping_abandoned":
-        "{n_test:,} rows ({fraction:.0%}) are held out, drawn BY ROW. Rows do "
-        "repeat per {group_one}, but there are too few {group_noun} to hold "
-        "any out whole — so the same {group_one} can appear on both sides and "
+        "{n_test:,} rows ({fraction:.0%}{of_base}) are held out, drawn BY ROW "
+        "because the data's shape is unknown. This is not a verified clean "
+        "split: if rows repeat people, the same person is on both sides and "
         "held-out performance will read better than the model is. Treat these "
-        "numbers as exploratory.",
+        "numbers as exploratory, and answer the grain question when you can.",
+    "repetition_found_grouping_abandoned":
+        "{n_test:,} rows ({fraction:.0%}{of_base}) are held out, drawn BY ROW. "
+        "Rows do repeat per {group_one}, but there are too few {group_noun} to "
+        "hold any out whole — so the same {group_one} can appear on both sides "
+        "and held-out performance will read better than the model is. Treat "
+        "these numbers as exploratory.",
 }
+
+
+def _of_base(lockbox: Dict[str, Any]) -> str:
+    """*"of the 6,297 rows that have a value for the outcome"*, or nothing.
+
+    SILENT WHERE IT WOULD ADD NOTHING. On a table with no missing outcome the
+    base and the row count are the same number, and printing it would make a
+    reader look for a distinction that is not there — §09's rule that a mark
+    appearing is a claim the user may rely on, read the other way round.
+
+    Read off the lockbox rather than recomputed. `n_total` is what
+    `draw_holdout` actually divided by; a second derivation here could disagree
+    with the split, which is the defect this sentence is being fixed for.
+    """
+    n_total = lockbox.get("n_total")
+    n_rows = lockbox.get("n_rows_before_outcome_drop")
+    if not n_total or not n_rows or n_rows <= n_total:
+        return ""
+    return (f" of the {n_total:,} with a value for the outcome; the other "
+            f"{n_rows - n_total:,} of {n_rows:,} rows have none")
 
 
 def answer_disclosure(answer: str, group_col: Optional[str] = None) -> str:
@@ -441,11 +475,13 @@ def seal_disclosure(lockbox: Dict[str, Any]) -> str:
             n_test=lockbox.get("n_test", 0),
             fraction=float(lockbox.get("fraction", 0.0)),
             n_test_groups=lockbox.get("n_test_groups") or 0,
-            group_noun=noun, group_one=one)
+            group_noun=noun, group_one=one, of_base=_of_base(lockbox))
     except (KeyError, ValueError):            # pragma: no cover - formatting guard
         return _SEALED[SEAL_UNDETERMINED].format(
             n_test=lockbox.get("n_test", 0),
-            fraction=float(lockbox.get("fraction", 0.0)))
+            fraction=float(lockbox.get("fraction", 0.0)),
+            n_test_groups=0, group_noun=noun, group_one=one,
+            of_base=_of_base(lockbox))
 
 
 def is_exploratory_basis(basis: Optional[str]) -> bool:

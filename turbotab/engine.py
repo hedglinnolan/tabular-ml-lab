@@ -982,6 +982,18 @@ def draw_holdout(df: pd.DataFrame, target: str, task_type: str,
             "fraction_requested": float(fraction),
             "seed": int(seed),
             "n_total": int(len(eligible)),
+            # `DRIVE-031`. THE ROW COUNT THIS DRAW DID NOT USE, recorded beside
+            # the one it did. `n_total` has always been `len(eligible)` — the
+            # rows with a value for the outcome — and every sentence downstream
+            # reported a percentage without saying what it was a percentage OF,
+            # while the eligibility receipt beside it claimed the draw came from
+            # every row in the table. A reader could only reconcile the two by
+            # dividing and getting a number the app never computed.
+            #
+            # Recorded rather than re-derived at the sentence: `seal_disclosure`
+            # is handed the lockbox and nothing else, and a second count taken
+            # there could disagree with the split that was actually drawn.
+            "n_rows_before_outcome_drop": int(len(df)),
             "n_test_groups": n_test_groups,
             "exploratory": basis == "undetermined",
             # `GUIDED-143`. What the draw ACTUALLY did, reported by the thing

@@ -744,10 +744,14 @@ def _generated_sections() -> List[str]:
     out.append("### Data & Target · what the user reads after answering eligibility\n")
     out.append("| Answer | Trigger | Copy |")
     out.append("|---|---|---|")
+    # READ FROM THE MODULE, NOT RESTATED. `DRIVE-031`: this line held its own
+    # copy of the sentence, so removing a false clause from `eligibility.py`
+    # left the deck asserting it — and `check` stayed green, because `check`
+    # probes that a hand entry's FRAGMENT is still in its source file and this
+    # row is generated with no probe at all. The seal table two blocks down has
+    # always called `G.seal_disclosure`; this one did not.
     out.append("| No, the study is about everyone here | `set_eligibility` records "
-               "`everyone` | " + _esc(
-                   "No eligibility restriction: all {N} rows are in the study "
-                   "population, and the held-out set is drawn from all of them.") + " |")
+               "`everyone` | " + _esc(EL.EVERYONE_SENTENCE.format(n="{N}")) + " |")
     out.append("| Yes, restricted | `set_eligibility` records `restricted` with a "
                "column, a range and a reason | " + _esc(
                    "{k} of {N} rows were excluded before the held-out set was "
@@ -769,6 +773,22 @@ def _generated_sections() -> List[str]:
               "n_test_groups": 9, "group_noun": "subjects"}
         flag = "**yes**" if G.is_exploratory_basis(basis) else "no"
         out.append(f"| `{basis}` | {flag} | {_esc(G.seal_disclosure(lb))} |")
+    out.append("")
+    # `DRIVE-031`. THE SAME FOUR, ON A TABLE WHERE THE OUTCOME IS MISSING SOMEWHERE.
+    # The base a seal drew from is a different sentence from the base it did not
+    # need to mention, and the deck records both rather than only the tidy one.
+    out.append("*Where rows are dropped for a missing outcome, every basis names "
+               "the base it drew from — the percentage was previously stated with "
+               "no base at all, beside an eligibility receipt that named a "
+               "different one.*\n")
+    out.append("| Basis | Copy, on a table with a missing outcome |")
+    out.append("|---|---|")
+    for basis in ("cross_sectional", "grouped", "undetermined",
+                  "repetition_found_grouping_abandoned"):
+        lb = {"seal_basis": basis, "n_test": 945, "fraction": 0.15,
+              "n_test_groups": 9, "group_noun": "subjects",
+              "n_total": 6297, "n_rows_before_outcome_drop": 21849}
+        out.append(f"| `{basis}` | {_esc(G.seal_disclosure(lb))} |")
     out.append("")
     out.append("**After an attested contradiction**, the seal sentence gains: "
                "*Note: this split rests on your answer, which disagreed with the "

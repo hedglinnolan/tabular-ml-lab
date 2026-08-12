@@ -106,6 +106,17 @@ WITHHELD_DISCLOSURE = (
     "comes from your research question is reportable; one that comes from "
     "looking at the data is a different thing, and it belongs later.")
 
+#: The recorded-answer sentence, as a template, because two things say it: this
+#: module composes it for the record and `copydeck.py` prints it in the deck.
+#:
+#: `DRIVE-031`. The deck RESTATED it as a literal, so when the false clause was
+#: removed here the deck kept asserting it and `copydeck check` stayed green —
+#: the check probes that a fragment still exists in the source file, and the
+#: fragment it probes is not this sentence. Two copies of one string is the
+#: failure this module's own `option_values` comment is about, one field over.
+EVERYONE_SENTENCE = ("No eligibility restriction: all {n} rows are in the study "
+                     "population.")
+
 # What the permitted evidence is FOR, so an interface renders it as the answer
 # to the corruption question rather than as a cut-point aid.
 EVIDENCE_CAPTION = (
@@ -249,9 +260,20 @@ def everyone(df: pd.DataFrame) -> Dict[str, Any]:
         "reason": "", "criterion": None,
         "n_before": int(len(df)), "n_excluded": 0, "n_excluded_missing": 0,
         "n_after": int(len(df)), "labels": list(df.index),
-        "sentence": (
-            f"No eligibility restriction: all {len(df)} rows are in the study "
-            f"population, and the held-out set is drawn from all of them."),
+        # `DRIVE-031`. THE SECOND CLAUSE WAS NOT THIS MODULE'S TO MAKE, and it
+        # was false. It read "and the held-out set is drawn from all of them",
+        # and the held-out set is not: `engine.draw_holdout` opens with
+        # `eligible = df.index[y.notna()]`, so every row with a missing outcome
+        # is dropped before anything is drawn. On the tester's NHANES file that
+        # is 15,552 of 21,849 — the receipt said 21,849, the seal drew 945, and
+        # 945/21,849 is 4.3% while the seal called it 15%.
+        #
+        # The first clause is TRUE and stays: eligibility really did exclude
+        # nobody, and `n_before == n_after == len(df)` records exactly that.
+        # What it must not do is describe a draw it does not perform. The seal
+        # names its own base now, which is where that claim belongs — the
+        # module that drops the rows is the module that reports it.
+        "sentence": EVERYONE_SENTENCE.format(n=len(df)),
     }
 
 

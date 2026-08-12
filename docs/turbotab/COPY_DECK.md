@@ -88,7 +88,7 @@ The second option opens a follow-up: *which column identifies the person?* — p
 
 | Answer | Trigger | Copy |
 |---|---|---|
-| No, the study is about everyone here | `set_eligibility` records `everyone` | No eligibility restriction: all {N} rows are in the study population, and the held-out set is drawn from all of them. |
+| No, the study is about everyone here | `set_eligibility` records `everyone` | No eligibility restriction: all {N} rows are in the study population. |
 | Yes, restricted | `set_eligibility` records `restricted` with a column, a range and a reason | {k} of {N} rows were excluded before the held-out set was drawn: {criterion}. {reason} Those rows are gone before anything is held out, so the held-out set describes the population you studied rather than a wider one. |
 
 ### Data & Target · what the user reads once the seal is drawn
@@ -101,6 +101,15 @@ The second option opens a follow-up: *which column identifies the person?* — p
 | `grouped` | no | 27 rows (15%) from 9 subjects are held out, chosen by subject rather than by row, so no subject appears in both halves. |
 | `undetermined` | **yes** | 27 rows (15%) are held out, drawn BY ROW because the data's shape is unknown. This is not a verified clean split: if rows repeat people, the same person is on both sides and held-out performance will read better than the model is. Treat these numbers as exploratory, and answer the grain question when you can. |
 | `repetition_found_grouping_abandoned` | **yes** | 27 rows (15%) are held out, drawn BY ROW. Rows do repeat per subject, but there are too few subjects to hold any out whole — so the same subject can appear on both sides and held-out performance will read better than the model is. Treat these numbers as exploratory. |
+
+*Where rows are dropped for a missing outcome, every basis names the base it drew from — the percentage was previously stated with no base at all, beside an eligibility receipt that named a different one.*
+
+| Basis | Copy, on a table with a missing outcome |
+|---|---|
+| `cross_sectional` | 945 rows (15% of the 6,297 with a value for the outcome; the other 15,552 of 21,849 rows have none) are held out and will not be looked at again until the models are scored. |
+| `grouped` | 945 rows (15% of the 6,297 with a value for the outcome; the other 15,552 of 21,849 rows have none) from 9 subjects are held out, chosen by subject rather than by row, so no subject appears in both halves. |
+| `undetermined` | 945 rows (15% of the 6,297 with a value for the outcome; the other 15,552 of 21,849 rows have none) are held out, drawn BY ROW because the data's shape is unknown. This is not a verified clean split: if rows repeat people, the same person is on both sides and held-out performance will read better than the model is. Treat these numbers as exploratory, and answer the grain question when you can. |
+| `repetition_found_grouping_abandoned` | 945 rows (15% of the 6,297 with a value for the outcome; the other 15,552 of 21,849 rows have none) are held out, drawn BY ROW. Rows do repeat per subject, but there are too few subjects to hold any out whole — so the same subject can appear on both sides and held-out performance will read better than the model is. Treat these numbers as exploratory. |
 
 **After an attested contradiction**, the seal sentence gains: *Note: this split rests on your answer, which disagreed with the shape of the data. That disagreement is on the record and belongs in the methods section.* — and the seal is marked exploratory.
 
