@@ -12140,5 +12140,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "docs/turbotab/tools/ledger.py set"
+ },
+ {
+  "id": "TEST-083",
+  "area": "TEST",
+  "sev": "medium",
+  "item": "pageharness dispatch(type, el) silently does nothing when its arguments are swapped. dispatch(el, 'click') looks up __docListeners[element], finds undefined, iterates an empty list and returns -- no throw, no effect, no report.",
+  "detail": "",
+  "ev": "turbotab/pageharness.py:764-768",
+  "act": "Throw when `type` is not a string, and throw when a dispatch matches zero registered listeners. The module's own docstring is the standard: 'Dumb is allowed. Lying is not.'",
+  "status": "OPEN",
+  "note": "FOUND BY THE ADJUDICATOR VERIFYING L59, AND IT HAD ALREADY COST A WRONG CONCLUSION. Driving the seal press under the harness I called `__harness.dispatch(btn, 'click')`. The signature is `dispatch(type, el)`. Swapped, it evaluates `__docListeners[<element object>]`, gets undefined, falls through to `[]`, loops zero times and RETURNS NORMALLY. The run reported 'POSTs the page made: none', which I read as the page failing to post -- and I pivoted an analysis onto that. The page was fine; the call was. THIS IS THE MODULE'S OWN STATED PROHIBITION, in the module's own words: 'Dumb is allowed. Lying is not... This module got that wrong three times, in the same shape each time: it accepted a write, or invented a value, and no other method agreed.' Silently accepting a call that cannot do anything is a fourth instance of that shape, and the cost is exactly what the docstring predicts -- an assertion built on the answer, believing the page did nothing when nothing was asked of it. WHY IT IS WORTH FIXING RATHER THAN REMEMBERING: every driven interaction claim in this project routes through this call, and a swapped-argument dispatch produces a rendered-but-unchanged DOM, which reads as 'the control does not work'. That is the same false negative the tester's report and two of my own probes have now produced by different means. A throw on zero matched listeners would have said so in one line. THE CORRECT FORM IS IN THE TREE and was right all along: test_the_seal_can_be_drawn_from_the_page.py:238 calls `__harness.dispatch(\"click\", b)`.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/pageharness.py:764-768"
  }
 ]
