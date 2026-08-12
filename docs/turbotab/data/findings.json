@@ -12023,10 +12023,10 @@
   "detail": "",
   "ev": "turbotab/eligibility.py / api._disclosures eligibility branch; reproduced verbatim at b4b8246 on a 21,849-row frame with 15,552 target-missing rows; docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md §4c-2 and F4",
   "act": "Say the modelled base in the receipt the user reads. The READ AS DRAFT paragraph already computes it correctly — 'Of 6,297 rows with a value for the outcome, 945 were sealed and 5,352 were available for fitting' — so this is one true sentence in two places, not a new computation.",
-  "status": "OPEN",
-  "note": "SECOND HUMAN DRIVE, 2026-08-12. THIS IS THE GOVERNING RULE'S assert-something-false BRANCH, in a sentence that goes into a methods section. REPRODUCED VERBATIM by the adjudicator at b4b8246 rather than quoted from the report: a frame with 21,849 rows of which 6,297 have the outcome yields eligibility disclosure 'No eligibility restriction: all 21849 rows are in the study population, and the held-out set is drawn from all of them' beside seal disclosure '945 rows (15%) are held out'. 945/6297 = 15.0%; 945/21849 = 4.3%. The two sentences cannot both be true and they sit on the same page. THE APP ALREADY KNOWS THE RIGHT NUMBER, which is what makes this cheap and what makes it damning: the read-as-draft manuscript prints the correct accounting. So the engine is right and one user-facing sentence is wrong — trap 6's shape with the error in the composed string rather than in the render. WHY CRITICAL RATHER THAN HIGH: a reader who trusts the receipt mis-states their sample size in a manuscript, and 'the held-out set is drawn from all of them' is a claim about the SPLIT, which is the one thing the lockbox exists to be trustworthy about. It also silently changes what '15%' means. NOTE FOR WHOEVER FIXES IT: check whether the drop happens before or after eligibility, because the sentence is composed in the eligibility branch and the drop is a property of the target. Two rows may need one sentence between them. And check DRIVE-030 against this — 15,552 dropped rows is also a candidate trigger for a /models failure.",
+  "status": "FIXED",
+  "note": "ONE FALSE CLAUSE, TWO SENTENCES, AND THE RECORD SAYS WHICH MOMENT OWNS IT -- the row asked, so it is answered rather than folded. Reproduced on an NHANES-shaped frame, 21,849 rows with 15,552 missing the outcome: the eligibility receipt read 'all 21849 rows are in the study population, and the held-out set is drawn from all of them' and the seal read '945 rows (15%)'. 945/6,297 = 15.0%; 945/21,849 = 4.3%. WHO OWNS IT: eligibility.n_before == n_after == 21,849, so that module is CORRECT about its own operation -- it excluded nobody, and its first clause says exactly that. lockbox.n_total == 6,297, and the drop happens inside engine.draw_holdout, whose first act is `eligible = df.index[y.notna()]`. So the false clause was eligibility describing a draw it does not perform, and the missing base was the seal not naming what its own percentage was of. Each module now claims only what it did. BOTH HAD TO MOVE TOGETHER: deleting the clause alone would have traded a false number for no number, which is worse on the one thing the lockbox exists to be trustworthy about. THE ENGINE RECORDS THE BASE IT DID NOT USE -- n_rows_before_outcome_drop beside n_total -- so seal_disclosure quotes the draw rather than re-deriving it; a second count taken at the sentence could disagree with the split actually drawn, which is the defect being fixed. SILENT WHERE IT WOULD ADD NOTHING: on a table with no missing outcome the base and the row count are the same number and the clause is omitted, asserted on a shipped fixture so the two fixture shapes differ in the property under test. ALL FOUR BASES carry it, because a sentence that could not format would fall through to the undetermined guard and silently report the wrong basis -- constitution 03's own failure arriving through a KeyError. THE APP ALREADY KNEW: the read-as-draft paragraph has printed 'Of 6,297 rows with a value for the outcome, 945 were sealed' the whole time, and the seal and the draft are now asserted to carry the SAME number rather than each being plausible. Five reverts, all RED for the stated reason.",
   "verified_against": "",
-  "test": "",
+  "test": "turbotab/test_the_seal_names_the_base_it_drew_from.py::test_the_seal_states_the_base_its_percentage_is_a_percentage_of",
   "verified_ev": "turbotab/eligibility.py / api._disclosures eligibility branch; reproduced verbatim at b4b8246 on a 21,849-row frame with 15,552 target-missing rows; docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md §4c-2 and F4"
  },
  {
@@ -12098,5 +12098,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md 4b-1"
+ },
+ {
+  "id": "TEST-080",
+  "area": "TEST",
+  "sev": "medium",
+  "item": "The copy deck restated the eligibility receipt as a literal instead of reading it, so the deck kept asserting a false clause after the code dropped it and `copydeck check` stayed green",
+  "detail": "Found while landing DRIVE-031. The deck's seal table two blocks below has always called G.seal_disclosure and picked the fix up for free; the eligibility row held its own copy of the sentence as a string literal in the generator. So removing 'and the held-out set is drawn from all of them' from turbotab/eligibility.py left COPY_DECK.md line 91 asserting it, and the gate did not notice. WHY THE GATE DID NOT NOTICE, which is the part worth keeping: copydeck check verifies that each HAND entry's `probe` fragment is still present in the source file it names, plus that the generated file is byte-current. This row is in the GENERATED half and has no probe at all, so nothing compared it to anything -- the deck was current with respect to a generator that was itself wrong. A generated section that restates its source is a hand entry wearing a generator's clothes.",
+  "ev": "docs/turbotab/tools/copydeck.py:747",
+  "act": "Read it from turbotab.eligibility.EVERYONE_SENTENCE, which `everyone()` now formats too. Done.",
+  "status": "FIXED",
+  "note": "The template constant is the fix and the deck row is generated from it, so the two cannot drift again. NOT SWEPT: whether any other generated block in copydeck.py restates a string its module owns. That is a real question this row does not answer and it is the same lens one surface over -- named here rather than left implicit.",
+  "verified_against": "",
+  "test": "turbotab/test_the_seal_names_the_base_it_drew_from.py::test_the_eligibility_receipt_no_longer_describes_a_draw_it_does_not_make",
+  "verified_ev": "docs/turbotab/tools/copydeck.py:747"
  }
 ]

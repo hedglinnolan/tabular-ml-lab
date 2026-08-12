@@ -20,27 +20,26 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**384 of 919 closed.**
+**386 of 920 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 464 |
+| `OPEN` | 463 |
 | `PARTIAL` | 71 |
-| `FIXED` | 378 |
+| `FIXED` | 380 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 464
+## OPEN — 463
 
 
-### Guided-door drive feedback — 74
+### Guided-door drive feedback — 73
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `GUIDED-231` | critical | The INFERENCE half of the product was never ported: Guided cannot declare a hypothesis-testing goal, offers no statistical test, and holds no inference-family model, so the door that is the product… | `register.json state=classic-only: target-goal-selection (Prediction vs Hypothesis Testing)…` | CORRECTED BY THE PRODUCT OWNER, 2026-08-09, AND THE CORRECTED FORM IS STRONGER THAN WHAT WAS FILED. The original row said Guided CANNOT DECLARE a hypothesis-testing goal. THAT IS… |
-| `DRIVE-031` | critical | The study-population receipt asserts the held-out set is drawn from all rows when rows with a missing target are silently dropped. On the tester's file it read 'all 21849 rows are in the study… | `turbotab/eligibility.py / api._disclosures eligibility branch; reproduced verbatim at b4b8246 on a 21,849-row…` | SECOND HUMAN DRIVE, 2026-08-12. THIS IS THE GOVERNING RULE'S assert-something-false BRANCH, in a sentence that goes into a methods section. REPRODUCED VERBATIM by the adjudicator… |
 | `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
 | `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
 | `GUIDED-067` | high | No Dietary Reference Intake table ships anywhere in the repository, so every figure and every prevalence claim that needs an EAR, an RDA, an AI or a UL is unbuildable | `docs/turbotab/research/NUTRITION_PACK.md section 07 figure E; docs/turbotab/DOMAIN_SCIENCE.md section 04…` | Filed at L28-D as the blocker the two pending figures name. research/NUTRITION_PACK.md section 07 figure E specifies vertical lines at the EAR, RDA or AI and the UL for the… |
@@ -717,10 +716,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 378
+## FIXED — 380
 
 
-### Guided-door drive feedback — 144
+### Guided-door drive feedback — 145
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -738,6 +737,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-142` | critical | No pack finding in any pack has ever been rendered by the Guided page - bySource('profile') and bySource('structure') were the only two callers, so eighteen detectors across five packs were computed… | `driven at L41 through pageharness on nhanes_kilojoules.csv with the dietary lens and on clinical_labs.csv…` | **test:** `turbotab/test_the_clinical_detectors_reach_an_upload.py::test_every_pack_finding_reaches_a_person_and_carries_its_badge` — FOUND AT L41 WHILE VERIFYING PART B'S OWN… |
 | `GUIDED-165` | critical | The impossible-values decision records that entries `were set to missing` and sets nothing to missing - the frame is unchanged and the transcript asserts an operation that did not happen | `REPORTED BY THE PRODUCT OWNER DRIVING A REAL NHANES EXPORT: `clicking 'set these entries to missing' does…` | **test:** `turbotab/test_the_impossible_entries_are_actually_set_to_missing.py (9 tests across two fixtures, including the manuscript layer and the band comparison)` — ACT… |
 | `GUIDED-170` | critical | The prevalence-of-inadequacy surface accepts any column as a nutrient and answered `Prevalence of inadequacy for SEQN is computed by the EAR cut-point method` with a SETTLED badge and a resolving… | `FOUND BY THE PRODUCT OWNER DRIVING A REAL NHANES EXPORT. He selected SEQN in the nutrient dropdown and…` | **test:** `turbotab/test_a_prevalence_needs_a_nutrient_to_be_about.py (27 tests: 3 NHANES fixtures x 5 non-nutrient columns, the dropdown driven through pageharness, and the two… |
+| `DRIVE-031` | critical | The study-population receipt asserts the held-out set is drawn from all rows when rows with a missing target are silently dropped. On the tester's file it read 'all 21849 rows are in the study… | `turbotab/eligibility.py / api._disclosures eligibility branch; reproduced verbatim at b4b8246 on a 21,849-row…` | **test:** `turbotab/test_the_seal_names_the_base_it_drew_from.py::test_the_seal_states_the_base_its_percentage_is_a_percentage_of` — ONE FALSE CLAUSE, TWO SENTENCES, AND THE… |
 | `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | **test:** `turbotab/test_guided_drive.py::test_a_true_false_column_is_read_as_binary_not_coerced_to_numbers` — Fixed, and reproduced first: a True/False column with blanks is read… |
 | `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | **test:** `turbotab/test_guided_drive.py::test_missingness_routes_by_dtype` — Fixed. Cards name their column in the question text and in a mono chip, carry the count, the share… |
 | `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | **test:** `turbotab/test_guided_drive.py::test_a_diastolic_of_zero_is_impossible_and_a_high_one_is_improbable` — Fixed. The bundled NHANES reference now carries floor/ceiling… |
@@ -980,7 +980,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Migration safety net — 25
+### Migration safety net — 26
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1009,6 +1009,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-056` | medium | Inserting a seeded draw in the middle of a fixture generator changes every draw after it, and the L50 brief quoted pre-insertion numbers to a subagent | `L50. make_genomics_siblings.py draws from ONE seeded generator in file order. The estimated-counts block was…` | **test:** `turbotab/test_the_fixture_constants_match_the_fixtures.py::test_the_estimated_counts_and_fpkm_separator_is_measured` — Filed because the near-miss is instructive rather… |
 | `AUDIT-039` | medium | Twelve tests still skip on a condition their own fix was supposed to establish, so a regression would silence them rather than turn them red | `L52-D, the tail of TEST-059's sweep. 78 conditional skips found, 55 environmental and correct, 9 in tests…` | **test:** `turbotab/test_the_promoted_card_says_why_it_is_there.py::test_the_promoted_card_says_why_it_is_there AND… |
 | `TEST-078` | medium | Both documented durations for the tests/ tier were wrong in opposite directions: AGENT_ONBOARD.md said ~20 min for a command that takes 35.25s, and PM_TRANSITION.md attached the correct ~22s to a… | `docs/turbotab/prompts/AGENT_ONBOARD.md:108 ('# ~20 min'); docs/turbotab/prompts/PM_TRANSITION.md:264-265 (two…` | **test:** `tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py::test_the_documented_invocation_still_collects_this_check` — FOUND BY THE ADJUDICATOR RUNNING THE FAST… |
+| `TEST-080` | medium | The copy deck restated the eligibility receipt as a literal instead of reading it, so the deck kept asserting a false clause after the code dropped it and `copydeck check` stayed green | `docs/turbotab/tools/copydeck.py:747` | **test:** `turbotab/test_the_seal_names_the_base_it_drew_from.py::test_the_eligibility_receipt_no_longer_describes_a_draw_it_does_not_make` — The template constant is the fix and… |
 
 ### Verified against main — 20
 
