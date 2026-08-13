@@ -12238,5 +12238,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "ml/splits.py:300; turbotab/training.py; turbotab/headless_train.py"
+ },
+ {
+  "id": "DRIVE-040",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "After the event is chosen, /figures serves event: '1.0' rather than the level the user named. The repair encodes the chosen level as 1, so the figure payload carries the encoded value and the name survives only in the transcript.",
+  "detail": "",
+  "ev": "verified at 5f59a35: answering 'case' on a case/control target then fitting yields ModelResult.positive_label = 1.0 and /figures \"event\": \"1.0\"; the decision text reads \"'status' was encoded with case as the event (1) and control as the comparison (0)\"",
+  "act": "Carry the chosen LEVEL alongside the encoded value so the figure can name it. The transcript already holds the sentence; the figure should not require a reader to go and find it.",
+  "status": "OPEN",
+  "note": "FOUND BY THE ADJUDICATOR RE-RUNNING L60's OWN ACCEPTANCE TEST, and it is a consequence of the fix rather than a flaw in it. All three acceptance cases pass: unanswered case/control refuses with 400 and 'control' never comes back; unanswered numeric 0/1 now RAISES the question and refuses; answered 'case' fits. GUIDED-093's substance is closed -- the curve is drawn against the level the user chose. WHAT MOVED SIDEWAYS: before the fix the figure said event 'control' -- a NAME, and the wrong one. Now it says '1.0' -- correct, and not a name. A reader of the figure cannot tell which level 1 is without opening the transcript, where the sentence is exact and complete. So the app stopped asserting something false and became less legible in the same move. THE REPORT OVERSTATES THIS ONE LINE and it is worth correcting rather than letting stand: L60's report says 'both the label and /figures name the positive level'. The label is 1.0 and the figure serves \"event\": \"1.0\". Everything else in that sentence's paragraph checked out. SAME FAMILY AS DRIVE-031: two true statements, one of them in a place the reader is not, and no bridge between them. Not a false assertion, so not critical -- but the figure is the artifact that leaves the app in a manuscript, and it is the one that should carry the name.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "verified at 5f59a35: answering 'case' on a case/control target then fitting yields ModelResult.positive_label = 1.0 and /figures \"event\": \"1.0\"; the decision text reads \"'status' was encoded with case as the event (1) and control as the comparison (0)\""
  }
 ]

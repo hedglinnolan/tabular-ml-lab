@@ -676,3 +676,59 @@ whose known failure direction is written down, so the loop that finally crosses
 **PASSES.** `routing-value-check.json` re-recorded with `replaced_because`
 naming this section. `routing-baseline.json` untouched. No threshold moved, and
 the prereg is unedited.
+
+---
+
+# L60 — the value check found the capability before the sweep did
+
+## What happened
+
+`L60-A` made the positive-class question fire on a **numeric** two-level target,
+not only a textual one. `wide_assay.csv`'s target `responder` is `int64` with
+values `{0, 1}` — so a fixture no part of the loop touched started raising
+`positive_class__responder`, and the frozen result drifted:
+
+| wide-assay · guided | recorded | now |
+|---|---|---|
+| `questions_asked` | 4 | **5** |
+| `findings_driven` | 0.0 | **0.2** |
+
+**`verdict.passes` did not move**, and neither did any threshold. The pre-push
+gate caught it before the branch left the machine, which is what that gate is
+for — the loop's own sweep was still running and had not reached this file.
+
+## Both movements are the improvement, and they move in opposite directions
+
+**`questions_asked` 4 → 5 is the point of the change, not a cost of it.** The
+fifth question is *which level of `responder` is the event*, on a target where
+the app previously chose `classes_[1]` without asking. `max_questions` is a
+guard against nagging; a question the constitution requires is not nagging, and
+the clean-data ceiling is unbreached.
+
+**`findings_driven` 0.0 → 0.2 is the metric rising for once**, and it is worth
+noting because the recorded property of this metric is the opposite. The section
+above records that `findings_driven` *falls* on any change that makes findings
+cheaper to answer or the constitution more explicit — twice, same mechanism.
+Here a new finding arrives **with a decision attached**, so it lands in the
+numerator rather than only the denominator. **The metric's known failure
+direction has a matching success direction, and this is the first observation of
+it.**
+
+## Why this is recorded rather than re-recorded quietly
+
+`wide-assay` is a genomics-shaped fixture with 60 rows and 47 columns, chosen for
+dimensionality. **Nobody was thinking about it while building L60-A**, and no
+part of the loop names it. The value check registered a behavior change in a
+corner of the fixture set the work never looked at — which is the whole argument
+for a frozen result rather than a recomputed one.
+
+**It also confirms the fix generalizes.** L60-A's own tests drive `case`/`control`
+and a numeric 0/1 built for the purpose. This is an independent target, a
+different shape of table, and the question fires there too.
+
+## The ruling
+
+**PASSES.** `routing-value-check.json` re-recorded with `replaced_because` naming
+this section. `routing-baseline.json` untouched. No threshold moved and the
+prereg is unedited. **The drift is the capability arriving, measured by an
+instrument that was not aimed at it.**
