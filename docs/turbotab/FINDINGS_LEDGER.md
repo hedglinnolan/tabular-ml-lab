@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**393 of 929 closed.**
+**394 of 929 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 463 |
+| `OPEN` | 462 |
 | `PARTIAL` | 73 |
-| `FIXED` | 386 |
+| `FIXED` | 387 |
 | `NOT-A-DEFECT` | 7 |
 
 ---
 
-## OPEN — 463
+## OPEN — 462
 
 
-### Guided-door drive feedback — 73
+### Guided-door drive feedback — 72
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -104,7 +104,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-222` | medium | The genomics expression-block selector is a shape rule the research does not license, and it decides the classification for two of the nine signatures | `L50-B, and its builder named it as the piece it was least sure of. A single covariate sets the maximum of the…` | sibling-of: GUIDED-221. Filed at medium rather than high because the failure is loud - a dropped gene is named on the card - rather than silent. |
 | `GUIDED-228` | medium | The metabolomics regex library lists pool under both the pooled-QC family and the proteomics family, so as written the six role families are not disjoint | `L50-D, a correction to the research file rather than to the code. METABOLOMICS_PACK section 01's sample-role…` | Filed against the RESEARCH FILE. The standing rule is that where the file and the code disagree the file wins - this is the case where the file disagrees with itself, and the… |
 | `GUIDED-229` | medium | packs.py is 3,671 lines and holds two packs, while the other three ship as modules of their own - an asymmetry that has now cost an adjudicator and two subagents time | `L50. turbotab/clinical.py and turbotab/nutrition.py exist as modules; metabolomics and genomics live in…` | Not moved unilaterally: relocating 3,000 lines during a wide fan-out would have made every subagent diff unmergeable, and the asymmetry is a documentation defect rather than a… |
-| `DRIVE-034` | medium | The prevalence-of-inadequacy widget computed an EAR cut-point result for `kcal`. Energy has no EAR in the sense the cut-point method requires, so this is a case where refusing is the correct answer. | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md F17 and §5; the widget returned 'Prevalence of inadequacy for…` | SECOND HUMAN DRIVE, 2026-08-12, and the tester flagged it as 'a domain nuance worth a second look' rather than asserting it — which is the right register for it. NOT ADJUDICATED… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
@@ -718,10 +717,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 386
+## FIXED — 387
 
 
-### Guided-door drive feedback — 146
+### Guided-door drive feedback — 147
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -869,6 +868,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-200` | medium | var PICKED is declared twice in one function scope in index.html - two features sharing one namespace, and neither reader knows about the other | `L48-B. index.html declares var PICKED = {} at two sites, commented 'model key -> selected' and 'fix_kind ->…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py` — L49-E. index.html declared var PICKED twice in one function scope - once for the training shelf (model key ->… |
 | `GUIDED-225` | medium | A magnitude or range threshold applied without first establishing that the block is that KIND of quantity - the app told a survey researcher their Likert responses had been log-transformed | `L50-D. METABOLOMICS_PACK section 01's already-transformed reading uses a max below about 40 with a low…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_a_likert_block_is_not_a_log_transformed_intensity_block` — sibling-of: GUIDED-224. Both are the same… |
 | `GUIDED-227` | medium | Two detectors over one table disagreed about what its columns are, because one saw the CSV reader's renaming and the other did not | `L50-D, found by the two readings contradicting each other rather than by either failing. The polarity census…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_both_polarities_are_reported_as_a_convention_and_not_a_fact` — The polarity finding is CONVENTION… |
+| `DRIVE-034` | medium | The prevalence-of-inadequacy widget computed an EAR cut-point result for `kcal`. Energy has no EAR in the sense the cut-point method requires, so this is a case where refusing is the correct answer. | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md F17 and §5; the widget returned 'Prevalence of inadequacy for…` | **test:** `turbotab/test_energy_has_no_ear.py::test_every_spelling_of_energy_is_refused` — OUTCOME 1 OF THE THREE THE ROW OFFERED: the pack excludes energy, the widget must… |
 | `AUDIT-036` | low | The item-correlation figure's caption tells the reader that loadings and reliability appear 'below'; the app produces neither | `turbotab/figure_specs.py:2786-2788 — The shared `method_note` composed by _correlations reads "…Pearson…` | **test:** `turbotab/test_a_caption_describes_the_figure_that_was_drawn.py::test_no_survey_caption_points_the_reader_at_a_quantity_below and… |
 | `GUIDED-201` | low | Two L48 chunks each added a CSS rule inside the prototype stylesheet that a guard compares byte for byte - the natural place to put a rule is the one place it may not go | `L48. test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim asserts the prototype's whole…` | **test:** `turbotab/test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim` — No revert probe: the guard predates this loop and is itself the probe - it went… |
 

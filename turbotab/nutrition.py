@@ -990,6 +990,40 @@ SKEWED_REQUIREMENT = registry.build({
     "iron": ("DR1TIRON", "DR2TIRON", "fe"),
 })
 
+# ENERGY, WHICH HAS NO EAR AT ALL. `DRIVE-034`.
+#
+# `research/NUTRITION_PACK.md` §07, in the paragraph headed **"Exceptions that
+# must be hard-coded"** and carrying **[SETTLED]**:
+#
+#   > **Energy** has no EAR-style cut-point (use EER).
+#
+# and its §11 conflation list repeats it: *"The EAR cut-point applies to usual
+# intake only, requires an EAR (not an AI), is not the RDA, and fails for iron
+# in menstruating women."*
+#
+# A human drove `kcal` through the prevalence widget and the app answered
+# *"Prevalence of inadequacy for `kcal` is computed by the EAR cut-point
+# method"* **with a SETTLED badge**. Energy passes the subject axis — it IS a
+# nutrient this pack recognizes — and it is not AI-only and not skewed, so all
+# four existing refusals fell through and the settled tail answered. That is
+# `GUIDED-170`'s shape exactly, one axis over: a complete set of refusals, none
+# of which asked this question.
+#
+# **The badge is why this is worse than an unbadged wrong answer.** SETTLED is
+# the apparatus that keeps a settled fact and a disputed one from reading alike;
+# spending it on a method applied outside its domain is what the badge exists to
+# prevent.
+#
+# The requirement standard for energy is the **EER** — an estimated requirement
+# for an individual, not a distribution a population's intakes sit below — so
+# there is no cut-point to compute and no probability approach either. This
+# refusal is therefore terminal for energy rather than a routing rule.
+NO_EAR_USE_EER = registry.build({
+    "energy": ("kcal", "kcals", "calories", "calorie", "kilocalories",
+               "energy_kcal", "total energy", "kj", "kilojoules",
+               "DR1TKCAL", "DR2TKCAL"),
+})
+
 # ── The subject axis: is this a nutrient at all? `GUIDED-170` ───────────────
 #
 # **The product owner selected `SEQN` from the nutrient dropdown and the app
@@ -1173,6 +1207,7 @@ def prevalence_of_inadequacy(nutrient: str, *, basis: str,
     canonical_ai = registry.match(nutrient, AI_ONLY)
     canonical_skewed = registry.match(nutrient, SKEWED_REQUIREMENT)
     if not (canonical_ai or canonical_skewed
+            or registry.match(nutrient, NO_EAR_USE_EER)
             or registry.match(nutrient, NUTRIENT_NAMES)):
         kind = _subject_kind(nutrient)
         raise PrevalenceRefusal(
@@ -1193,6 +1228,37 @@ def prevalence_of_inadequacy(nutrient: str, *, basis: str,
                     "on it and no proportion of it is called a prevalence of "
                     "inadequacy."),
                 "forbidden": "prevalence_for_a_non_nutrient",
+            })
+
+    # ── ENERGY, BEFORE THE REFERENCE AND BASIS QUESTIONS. `DRIVE-034`. ──────
+    # It sits here for the same reason the subject axis sits above it: *energy
+    # has no EAR* dominates *the RDA is the wrong reference for it* and *one day
+    # is the wrong basis*. Answering either of those about `kcal` would still
+    # imply that a correct basis and a correct reference would produce a
+    # prevalence, and none exists.
+    canonical_energy = registry.match(nutrient, NO_EAR_USE_EER)
+    if canonical_energy:
+        raise PrevalenceRefusal(
+            (f"{nutrient} is energy, and energy "
+             if canonical_energy != str(nutrient).strip().lower() else "Energy ")
+            + f"has no Estimated Average Requirement: the requirement standard "
+            f"for energy is the EER — an "
+            f"estimated requirement for an individual, computed from body size "
+            f"and activity — not a distribution that a population's intakes can "
+            f"sit below. So there is no cut-point to apply and no probability "
+            f"approach either: a prevalence of inadequacy for energy is not a "
+            f"quantity, and answering with one would spend a SETTLED badge on a "
+            f"method used outside its domain.",
+            evidence=PREVALENCE_EVIDENCE,
+            offer={
+                "draw": "per_nutrient_distribution",
+                "label": f"The observed distribution of {nutrient}",
+                "caption_note": (
+                    "Plotted as the column it is. No requirement line is drawn "
+                    "on it, because the EER is per person rather than a "
+                    "population cut-point, and no proportion of it is called a "
+                    "prevalence of inadequacy."),
+                "forbidden": "prevalence_of_inadequacy_for_energy",
             })
 
     if canonical_ai:
