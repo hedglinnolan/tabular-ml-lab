@@ -50,7 +50,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from turbotab import api, pageharness as H, pipeline_plan, training  # noqa: E402
+from turbotab import api, eventfixture, pageharness as H, pipeline_plan, training  # noqa: E402
 from turbotab import selection as _sel                              # noqa: E402
 
 DATA = Path(__file__).resolve().parent / "sample_data"
@@ -102,6 +102,9 @@ def _sealed(client, shape, *, fraction=0.25):
     decide("set_grain", answer="one_row_per_person")
     decide("set_eligibility", answer="everyone")
     decide("seal", fraction=fraction)
+    # `DRIVE-041`. Answered over the route, for the shapes that are asked.
+    eventfixture.choose_event_over_http(client, pid, target,
+                                        required=(task == "classification"))
     return pid, api.STORE.get(pid), decide, models
 
 

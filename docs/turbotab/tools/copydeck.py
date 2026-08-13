@@ -497,11 +497,14 @@ HAND: List[Dict[str, Any]] = [
          copy="Setting the event needs the level being predicted. There is no "
               "default: whether the event is (say) death or survival is the research "
               "question, not something the file can say.",
-         source="turbotab/api.py", probe="the research question, not something"),
+         # `DRIVE-041`. Moved from `api.py` to `engine.record_fix`, which the
+         # route now calls — the sentence is unchanged and the file it lives in
+         # is not. The deck noticed, which is the probe doing its job.
+         source="turbotab/engine.py", probe="the research question, not something"),
     dict(step="Data & Target", state="repair · the finding has no automatic fix",
          trigger="`POST /decision {kind: apply}` on a finding whose preview is not applicable",
          copy="That finding has no automatic repair — it needs a human decision.",
-         source="turbotab/api.py", probe="it needs a human decision"),
+         source="turbotab/engine.py", probe="it needs a human decision"),
 
     # ── Features ─────────────────────────────────────────────────────────────
     dict(step="Features", state="transform · a stateful one was applied",

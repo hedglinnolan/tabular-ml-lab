@@ -127,15 +127,6 @@
            background:var(--accent-tint);border-radius:11px;padding:9px 11px;font-size:11.5px;
            color:var(--accent-ink);font-weight:600}
   .jobchip.on{display:flex}
-  /* TEST-084 · the hybrid-build banner. `--warn` because a page newer than its
-     engine is a caution about what you can conclude, not a refusal: the app
-     still works and the ENGINE's behavior is what cannot be trusted. Hidden
-     entirely until the server says the two disagree — an element that is
-     always present would be a mark that asserts nothing (§02). */
-  #devBuild{display:none}
-  #devBuild.devbuild{display:block;border:1px solid var(--warn-line);
-           background:var(--warn-tint);color:var(--warn);border-radius:11px;
-           padding:10px 12px;font-size:12.5px;line-height:1.55;margin-top:9px}
   .spin{flex:0 0 13px;width:13px;height:13px;border-radius:50%;
         border:2px solid color-mix(in srgb,var(--accent) 25%,transparent);
         border-top-color:var(--accent);animation:spin .9s linear infinite}
@@ -512,6 +503,22 @@
      So the prototype block is carried, untouched, and everything the build adds
      lives here where the diff is legible. A rule here that belongs in the
      design language belongs in the PROTOTYPE first. */
+  /* TEST-084 · the hybrid-build banner. `--warn` because a page newer than its
+     engine is a caution about what you can conclude, not a refusal: the app
+     still works and the ENGINE's behavior is what cannot be trusted. Hidden
+     entirely until the server says the two disagree — an element that is
+     always present would be a mark that asserts nothing (§02).
+
+     **AND IT IS HERE BECAUSE THE GUARD CAUGHT IT A THIRD TIME.** `L60-B` put
+     these two rules inside the prototype's `<style>`, beside `.jobchip` — the
+     natural place and the wrong one, exactly as the paragraph above predicts,
+     and the guard has been red ever since. The sweep that found it bucketed it
+     as *downstream of the training refusal*, which it never was: it is a
+     stylesheet edit, and it fails whether or not a model is ever fitted. */
+  #devBuild{display:none}
+  #devBuild.devbuild{display:block;border:1px solid var(--warn-line);
+           background:var(--warn-tint);color:var(--warn);border-radius:11px;
+           padding:10px 12px;font-size:12.5px;line-height:1.55;margin-top:9px}
   /* ═════════ L51-B · THE STUDY COLUMN, added by the build ═════════
 
      AND IT IS HERE BECAUSE THE GUARD ABOVE CAUGHT IT AGAIN. The first

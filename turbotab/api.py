@@ -1040,36 +1040,17 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         # The only endpoint in this service that changes the working table, and
         # it is reached only by asking for it by name. A preview never lands
         # here: it computes on a copy and throws the copy away.
+        # ONE IMPLEMENTATION, AND IT IS `engine.record_fix` (`DRIVE-041`). The
+        # whole sequence — find the live finding, check the identity barrier,
+        # refuse an answer-needing repair with no answer, preview, apply, record
+        # with the `fix_kind` that makes a blanked cell legible — used to live
+        # here and nowhere else, so seventy-four fixtures that need to answer
+        # the event question in process had no way to do it but to write it
+        # again. Moved rather than copied: a fixture's answer now travels the
+        # same code as a person's.
         try:
-            live = engine.find_shape_finding(
-                engine.diagnose(project.df, target=project.target), decision.subject)
-            # The identity barrier (T0-ID-001). Refused here rather than
-            # detected afterwards: once the lockbox is sealed there is no way to
-            # recover which rows its labels meant.
-            project.check_repair_allowed(live.fix_kind)
-            # An answer the finding cannot supply itself. Today that is which
-            # level of the outcome is the event — never defaulted, at any
-            # confidence, because it is the research question rather than a
-            # property of the data.
             choice = decision.payload.get("choice") or decision.payload.get("event")
-            if live.fix_kind == "set_positive_class" and not choice:
-                raise HTTPException(
-                    400, "Setting the event needs the level being predicted. "
-                         "There is no default: whether the event is (say) death "
-                         "or survival is the research question, not something "
-                         "the file can say.")
-            prev = engine.preview_fix(project.df, live, choice=choice)
-            if not prev.get("applicable"):
-                raise HTTPException(
-                    400, "That finding has no automatic repair — it needs a human decision.")
-            new_df, description = engine.apply_fix(project.df, live, choice=choice)
-            # `live.fix_kind` travels so the record can say WHICH repair blanked
-            # a cell. `recode_missing` and `coerce_numeric` both do — measured
-            # across the fixture set at 189 and 55 cells — and both arrive here
-            # as `kind="apply"`, which names nine operations at once.
-            project.apply_fix(new_df, live.id, live.title, description,
-                              prev["row_identity_preserved"],
-                              fix_kind=live.fix_kind)
+            engine.record_fix(project, decision.subject, choice=choice)
         except engine.EngineRefusal as exc:
             raise HTTPException(400, str(exc)) from exc
         except ProjectError as exc:

@@ -2509,7 +2509,8 @@ class AnalysisProject:
 
     def apply_fix(self, new_df: pd.DataFrame, finding_id: str, title: str,
                   description: str, row_identity_preserved: bool,
-                  fix_kind: str = "") -> Decision:
+                  fix_kind: str = "",
+                  extra: Optional[Dict[str, Any]] = None) -> Decision:
         """Install a repaired frame, keeping the one it replaced.
 
         The previous frame is pushed onto a stack rather than dropped, because
@@ -2531,13 +2532,24 @@ class AnalysisProject:
         empty rather than to a guess: a repair whose caller did not say which
         kind it was gets a record with no kind, not a record with the wrong
         one.
+
+        **`extra` is what the ANSWER was, where the repair needed one**
+        (`DRIVE-040`). `set_positive_class` rewrites the outcome so the chosen
+        level is `1`, and after that the encoded value is all anything
+        downstream can see — the calibration figure said `event: "1.0"`, which
+        is correct and is not a name. The level the user actually named lives
+        in `description`'s sentence and nowhere a machine can read it, so it
+        travels here, in the record, beside the sentence that already says it.
+        Merged UNDER the fixed keys rather than over them, because a caller
+        cannot be allowed to overwrite what this method asserts about itself.
         """
         blanks = self._install(new_df, tag=finding_id,
                                pass_name=str(fix_kind or "apply"))
         self.findings_stale = True
         return self.record(
             kind="apply", subject=finding_id, text=description,
-            payload={"title": title, "fix_kind": str(fix_kind or ""),
+            payload={**(extra or {}),
+                     "title": title, "fix_kind": str(fix_kind or ""),
                      "row_identity_preserved": bool(row_identity_preserved),
                      "reverts_to": len(self._history) - 1,
                      **blanks},

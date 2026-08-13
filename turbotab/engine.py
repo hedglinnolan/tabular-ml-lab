@@ -747,6 +747,64 @@ def imputation_preview(df: pd.DataFrame, column: str,
     return _plain(missingness_plan.imputation_preview(df[column], strategy))
 
 
+def record_fix(project: Any, subject: str,
+               choice: Optional[str] = None) -> ShapeFinding:
+    """Apply one structural repair to `project` and record the decision.
+
+    **`DRIVE-041`, and this function exists because a fixture needed it.**
+    `api.py`'s `apply` branch was the only place this sequence lived — find the
+    live finding, check the identity barrier, refuse an answer-needing repair
+    with no answer, preview, apply, record — and the seventy-four tests that
+    `L60-A` turned red need exactly it. Half of them hold a `TestClient` and
+    could post the decision; the other half build an `AnalysisProject` in
+    process and have no route to post to.
+
+    Writing the sequence a second time for those is the shape this codebase has
+    a name for: *a second implementation agreeing with itself*. So there is one
+    implementation and `api.py` calls it too, which means a fixture's answer
+    travels the same code as a person's — the property `A3` is about. If this
+    function stops refusing, or stops recording, the page and the fixtures find
+    out together.
+
+    Raises `EngineRefusal` for a subject this table has no finding for, for a
+    repair with no automatic form, and for `set_positive_class` with no level
+    named. `project.check_repair_allowed` raises its own error type for the
+    identity barrier, unchanged.
+    """
+    live = find_shape_finding(
+        diagnose(project.df, target=project.target), subject)
+    # The identity barrier (`T0-ID-001`). Refused here rather than detected
+    # afterwards: once the lockbox is sealed there is no way to recover which
+    # rows its labels meant.
+    project.check_repair_allowed(live.fix_kind)
+    # An answer the finding cannot supply itself. Today that is which level of
+    # the outcome is the event — never defaulted, at any confidence, because it
+    # is the research question rather than a property of the data.
+    if live.fix_kind == "set_positive_class" and not choice:
+        raise EngineRefusal(
+            "Setting the event needs the level being predicted. There is no "
+            "default: whether the event is (say) death or survival is the "
+            "research question, not something the file can say.")
+    prev = preview_fix(project.df, live, choice=choice)
+    if not prev.get("applicable"):
+        raise EngineRefusal(
+            "That finding has no automatic repair — it needs a human decision.")
+    new_df, description = apply_fix(project.df, live, choice=choice)
+    # `DRIVE-040`. The LEVEL the user named, carried beside the encoded value it
+    # becomes. `chosen_level_text` is the function that already spells it for
+    # the sentence, so the record and the sentence cannot disagree.
+    extra = None
+    if live.fix_kind == "set_positive_class":
+        extra = {"choice": str(choice),
+                 "event_level": binary_text.chosen_level_text(
+                     live.params, choice)}
+    # `live.fix_kind` travels so the record can say WHICH repair blanked a cell.
+    project.apply_fix(new_df, live.id, live.title, description,
+                      prev["row_identity_preserved"], fix_kind=live.fix_kind,
+                      extra=extra)
+    return live
+
+
 def find_shape_finding(structural: List[ShapeFinding], finding_id: str) -> ShapeFinding:
     for f in structural:
         if f.id == finding_id:

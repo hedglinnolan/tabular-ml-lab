@@ -51,7 +51,8 @@ from sklearn.impute import SimpleImputer
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from turbotab import api, missingness as M, pipeline_plan, training  # noqa: E402
+from turbotab import api, eventfixture, missingness as M            # noqa: E402
+from turbotab import pipeline_plan, training                        # noqa: E402
 from turbotab import selection as _sel                               # noqa: E402
 
 DATA = Path(__file__).resolve().parent / "sample_data"
@@ -107,6 +108,10 @@ def _sealed(client, shape):
     decide("set_grain", answer="one_row_per_person")
     decide("set_eligibility", answer="everyone")
     decide("seal", fraction=0.25)
+    # `DRIVE-041`. Over the route, and only where the engine asks.
+    # Not `required`: this file's shapes include a three-level classification,
+    # which is not asked the question at all.
+    eventfixture.choose_event_over_http(client, pid, target)
     return pid, api.STORE.get(pid), decide
 
 

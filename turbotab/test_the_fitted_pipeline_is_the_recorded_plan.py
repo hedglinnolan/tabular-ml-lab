@@ -61,7 +61,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from turbotab import api, pipeline_plan, training                     # noqa: E402
+from turbotab import api, eventfixture, pipeline_plan, training       # noqa: E402
 
 DATA = Path(__file__).resolve().parent / "sample_data"
 
@@ -87,6 +87,8 @@ def _sealed(client, name, target, *, fraction=0.25):
     decide("set_grain", answer="one_row_per_person")
     decide("set_eligibility", answer="everyone")
     decide("seal", fraction=fraction)
+    # `DRIVE-041`. Over the route, and only where the engine asks.
+    eventfixture.choose_event_over_http(client, pid, target)
     return pid, api.STORE.get(pid), decide
 
 

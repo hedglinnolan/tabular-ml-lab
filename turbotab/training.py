@@ -398,10 +398,8 @@ def event_not_chosen(project: Any) -> Optional[str]:
         return None
     if _bt.two_level_plan(table[target]) is None:
         return None            # not two-level: multiclass has no single event
-    for decision in reversed(list(project.decisions)):
-        if (getattr(decision, "kind", "") == "apply"
-                and str(getattr(decision, "subject", "")) == f"positive_class__{target}"):
-            return None
+    if event_decision(project) is not None:
+        return None
     return (
         f"Which level of {target!r} is the event has not been recorded, and it "
         f"decides what every score means — sensitivity and specificity are of "
@@ -410,6 +408,47 @@ def event_not_chosen(project: Any) -> Optional[str]:
         f"question, not something the file can say. Answer "
         f"“Which of these is the event you are predicting?” on the "
         f"outcome, then fit.")
+
+
+def event_decision(project: Any) -> Optional[Any]:
+    """The recorded answer to *which level is the event*, or `None`.
+
+    One lookup, read by the refusal above and by `chosen_event_level` below.
+    They used to be one place because there was one reader; the moment
+    `DRIVE-040` added a second, *is it answered* and *what was the answer* had
+    to come from the same scan or they could disagree about a project — which
+    is how a refusal ends up firing on a run whose figure is already naming the
+    level, or the reverse.
+    """
+    target = str(project.target or "")
+    if not target:
+        return None
+    for decision in reversed(list(project.decisions)):
+        if (getattr(decision, "kind", "") == "apply"
+                and str(getattr(decision, "subject", "")) == f"positive_class__{target}"):
+            return decision
+    return None
+
+
+def chosen_event_level(project: Any) -> Optional[str]:
+    """The LEVEL the user named, as it is spelled in their column.
+
+    **`DRIVE-040`.** The repair encodes the chosen level as `1`, so from the
+    fit onward the only thing visible is the encoded value and the figure said
+    `event: "1.0"` — a value the user never typed, appearing nowhere in their
+    column, decodable only from one sentence in the transcript.
+
+    `None` where nothing was recorded, or where the record predates this field,
+    and the caller then falls back to the encoded value. **Not a guess and not
+    an empty string**: a project whose decision carries no level is one this
+    cannot name, and saying so is the branch that keeps the figure honest.
+    """
+    decision = event_decision(project)
+    if decision is None:
+        return None
+    payload = getattr(decision, "payload", None) or {}
+    level = payload.get("event_level")
+    return str(level) if level not in (None, "") else None
 
 
 def train(project: Any, model_keys: Sequence[str], *,

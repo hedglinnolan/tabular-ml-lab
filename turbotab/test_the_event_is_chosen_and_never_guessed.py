@@ -42,7 +42,6 @@ from __future__ import annotations
 import io
 import json
 import re
-import time
 from typing import Any, Dict
 
 import numpy as np
@@ -102,12 +101,14 @@ def _fit(client, pid) -> Dict[str, Any]:
     if started.status_code != 200:
         return {"status": started.status_code,
                 "detail": str(started.json().get("detail", ""))}
-    jid = started.json()["id"]
-    for _ in range(240):
-        job = client.get(f"/job/{jid}").json()
-        if job.get("terminal"):
-            break
-        time.sleep(0.25)
+    # `TEST-077` / `test_no_test_polls_a_job_by_counting_iterations`. This was
+    # `for _ in range(240): ... time.sleep(0.25)`, which is not a deadline —
+    # a bounded iteration count elapses in milliseconds on a fast machine and
+    # reports the job's mid-flight status as an answer on a slow one. The guard
+    # that says so has been red since this file landed; it is the standing
+    # helper's job, not this file's.
+    from turbotab import jobwait
+    jobwait.settle(client, started.json())
     run = (client.get(f"/project/{pid}/training").json().get("run") or {})
     results = run.get("results") or []
     figures = client.get(f"/project/{pid}/figures")
@@ -217,11 +218,18 @@ def test_the_recorded_event_is_the_one_the_user_named(capsys):
     got = _fit(client, pid)
     assert got["status"] == 200, got
     # The column is re-encoded with the chosen level as 1, so the event IS 1 in
-    # the data — asserted as "the positive level", not as the word the user
-    # typed, because the word is no longer in the frame.
+    # the data, and the RUN's label says so — that is a fact about the fitted
+    # vector, not a name.
     assert str(got["positive_label"]).startswith("1"), got
-    assert got["figure_events"] and all(
-        e.startswith("1") for e in got["figure_events"]), got
+    # **`DRIVE-040`, and this assertion is the one that moved.** It read
+    # `e.startswith("1")`, which is what the figure said — `event: "1.0"`,
+    # correct and not a name, decodable only from the transcript sentence
+    # asserted twelve lines up. The adjudicator called it: *the app stopped
+    # asserting something false and became less legible in the same move.* The
+    # figure names the level now, so the test that pinned the encoded value
+    # asks for the name instead. This test's own title is why: the recorded
+    # event is the one the user named, and `1.0` is not a thing anyone named.
+    assert got["figure_events"] == ["case"], got
     with capsys.disabled():
         print(f"\n  answered 'case' → label {got['positive_label']!r}, "
               f"figures {got['figure_events']}")

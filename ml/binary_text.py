@@ -472,6 +472,30 @@ def diagnose_with_binary(df: pd.DataFrame,
     return supersede_numeric_coercion(findings, detect_binary_text(df, target))
 
 
+def chosen_level_text(params: Optional[Dict[str, Any]],
+                      event: Optional[str]) -> str:
+    """The chosen level **as it is spelled in the user's column**.
+
+    **`DRIVE-040`.** Applying this repair rewrites the outcome so the chosen
+    level is `1`, and after that the encoded value is the only thing downstream
+    can see: the figure said `event: "1.0"` — correct, and not a name. A reader
+    could not tell which level `1` is without opening the transcript, where the
+    sentence *"'meds_hbp' was encoded with True as the event (1) and False as
+    the comparison (0)"* is exact and complete.
+
+    So the name is carried rather than recomputed, and it is computed HERE
+    because this is where the sentence already gets it. A second lookup
+    somewhere downstream would be a second implementation agreeing with itself
+    right up to the first column whose spelling is not its token — `True`,
+    `Yes`, `Case`, all of which normalize to something a reader never typed.
+    """
+    chosen = _normalize(event)
+    spellings = (params or {}).get("spellings") or {}
+    if chosen is not None and chosen in spellings:
+        return str(spellings[chosen])
+    return str(event) if event is not None else ""
+
+
 def apply_positive_class(df: pd.DataFrame,
                          finding: ShapeFinding,
                          event: Optional[str] = None) -> Tuple[pd.DataFrame, str]:
@@ -506,7 +530,7 @@ def apply_positive_class(df: pd.DataFrame,
         lambda t: (1 if t == chosen else 0) if t is not None else None)
     out[column] = pd.to_numeric(out[column], errors="coerce").astype("Int64")
 
-    event_text = spellings.get(chosen, chosen)
+    event_text = chosen_level_text(params, event)
     other_text = spellings.get(other, other)
     description = (f"'{column}' was encoded with {event_text} as the event "
                    f"(1) and {other_text} as the comparison (0).")

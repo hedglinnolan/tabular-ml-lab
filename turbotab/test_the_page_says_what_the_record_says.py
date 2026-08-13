@@ -57,6 +57,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # importing its populator is reading whatever an EARLIER FILE happened
 # to load. Module scope, not inside a fixture: the first test in a file
 # runs before any fixture that imports `api`.
+from turbotab import eventfixture as _EF               # noqa: E402
 from turbotab import figure_specs  # noqa: F401 — populates FIG.REGISTRY
 from turbotab import jobwait as JW                   # noqa: E402
 from turbotab import exits as X                                       # noqa: E402
@@ -412,14 +413,32 @@ def claim_a_refusal_reaches_a_person(client, project):
         assert r.status_code == 200, (what, r.text[:200])
     project = client.get(f"/project/{pid}").json()
 
-    query = "?nutrient=energy_kcal&basis=single_day&reference_kind=EAR"
+    # `protein_g`, AND IT USED TO BE `energy_kcal`. Two L60 parts moved this
+    # claim's subject out from under it and the sweep bucketed both as
+    # *downstream of the training refusal*, which neither is:
+    #
+    # * `L60-D` gave energy its own refusal — *energy has no EAR at all* — and
+    #   that branch fires BEFORE the single-day one, so the ask stopped
+    #   reaching the refusal this claim is about and started offering
+    #   `per_nutrient_distribution`, which is pending and therefore never drawn;
+    # * `L60-E` then removed energy from `nutrient_columns`, so the page drive
+    #   below was picking a value the dropdown no longer offers.
+    #
+    # The claim is about *a single day is not usual intake*, and it needs a
+    # nutrient that HAS an EAR for that to be the reason it is refused. Energy's
+    # own branch is covered on its own terms three asks down, rather than left
+    # to fall out of a case written for something else.
+    query = "?nutrient=protein_g&basis=single_day&reference_kind=EAR"
     asked = client.get(f"/project/{pid}/nutrition/prevalence{query}").json()
     assert asked["refused"] is True and asked.get("figure"), (
         "the endpoint stopped refusing or stopped offering a drawable figure")
+    assert asked["offer"]["draw"] == "shrinkage", (
+        "the single-day refusal stopped offering the shrinkage plot, so this "
+        "claim is no longer about the figure its docstring names")
 
     # The second ask is the PENDING branch: an offer the research specifies and
     # this app cannot draw, because it needs the DRI table (`GUIDED-067`).
-    pending_query = "?nutrient=energy_kcal&basis=usual_intake&reference_kind=RDA"
+    pending_query = "?nutrient=protein_g&basis=usual_intake&reference_kind=RDA"
     pending = client.get(
         f"/project/{pid}/nutrition/prevalence{pending_query}").json()
     assert pending["offer"]["pending"] is True, (
@@ -451,7 +470,7 @@ def claim_a_refusal_reaches_a_person(client, project):
           seen.controls = __harness.render('prevalenceBox');
           // The person makes each choice through a control and only then asks.
           // Seeding the state directly would test the renderer against itself.
-          pick('nutrient', 'energy_kcal');
+          pick('nutrient', 'protein_g');
           pick('basis', 'single_day');
           pick('kind', 'EAR');
           ask();
@@ -500,6 +519,23 @@ def claim_a_refusal_reaches_a_person(client, project):
         "the pending offer did not name the row that blocks it")
     assert "<button" not in out["pending"], (
         "the pending offer rendered a control, and there is nothing behind it")
+
+    # `L60-D`'s branch, on its own terms. Energy is RECOGNIZED and not OFFERED:
+    # it is off the dropdown because a control that can only ever refuse is the
+    # shelf shortened to make the refusal look good, and it is still on the
+    # subject axis so asking directly gets the true reason rather than *"not a
+    # nutrient this pack recognizes"*. Both halves are asserted here because
+    # L60-D shipped them and nothing covered the pair.
+    energy = client.get(f"/project/{pid}/nutrition/prevalence"
+                        "?nutrient=energy_kcal&basis=single_day"
+                        "&reference_kind=EAR").json()
+    assert energy["refused"] is True and "EER" in energy["reason"], (
+        "energy stopped refusing with its own reason, so a user asking for a "
+        "prevalence of inadequacy for energy is being answered with one")
+    offered = client.get(f"/project/{pid}").json()["nutrient_columns"]
+    assert "energy_kcal" not in offered and "protein_g" in offered, (
+        f"the dropdown offers {offered} — energy can only ever refuse and "
+        f"protein is the one this claim just drove")
 
 
 def _sealed(client, rows_per_person: int, n_people: int, answer: str,
@@ -1249,6 +1285,9 @@ def claim_an_upload_reaches_a_held_out_number(client, project):
         r = client.post(f"/project/{pid}/decision",
                         json={"kind": what, "payload": payload})
         assert r.status_code == 200, (what, r.text[:200])
+    # `DRIVE-041`. The event, on the route the page posts it on. Without it
+    # `/train` refuses 400 and the walk below has no job to watch.
+    _EF.choose_event_over_http(client, pid, "sepsis", required=True)
     shelf = client.get(f"/project/{pid}/models").json()
     keys = [m["key"] for g in shelf["groups"] for m in g["models"]][:2]
     assert keys, "the shelf offered nothing, so there is nothing to fit"
@@ -1387,6 +1426,7 @@ def claim_the_calibration_figure_is_drawn_for_the_first_time(client, project):
                           ("seal", {})]:
         client.post(f"/project/{pid}/decision",
                     json={"kind": what, "payload": payload})
+    _EF.choose_event_over_http(client, pid, "sepsis", required=True)  # DRIVE-041
 
     before = client.get(f"/project/{pid}/figures").json()
     absent = [f for f in before["not_drawn"] + before.get("unavailable", [])
@@ -1474,6 +1514,7 @@ def claim_the_run_says_what_it_actually_fitted(client, project):
         r = client.post(f"/project/{pid}/decision",
                         json={"kind": what, "payload": payload})
         assert r.status_code == 200, (what, r.text[:200])
+    _EF.choose_event_over_http(client, pid, "responder", required=True)  # DRIVE-041
 
     shelf = client.get(f"/project/{pid}/models").json()
     keys = [m["key"] for g in shelf["groups"] for m in g["models"]]

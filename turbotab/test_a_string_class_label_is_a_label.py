@@ -59,7 +59,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from turbotab import api, figure_bundle, training                     # noqa: E402
+from turbotab import api, eventfixture, figure_bundle, training       # noqa: E402
 
 DATA = Path(__file__).resolve().parent / "sample_data"
 
@@ -71,21 +71,46 @@ TARGET_SHAPES = {
     "binary_numeric": ("leaky_sepsis.csv", "sepsis", "classification"),
     "binary_string": ("clinic_visits.csv", "outcome", "classification"),
     "continuous": ("clinic_visits.csv", "hba1c", "regression"),
+    # `DRIVE-041`, added at `L61`. **The only shape that still reaches the fit
+    # with class NAMES in the column**, and the reason is below.
+    "multiclass_string": ("multiclass_stage.csv", "disease_stage",
+                          "classification"),
 }
+
+#: **What `L60-A` did to this file, said where it will be read.**
+#:
+#: `DRIVE-032` made the fit refuse while nobody has said which level of a
+#: two-level outcome is the event, and **recording that answer IS the
+#: encoding**: `apply_positive_class` rewrites the column so the chosen level
+#: is `1`. So after `L60-A` there is no path — through the route or in
+#: process — by which a BINARY target arrives at `training.train` still
+#: spelled `responder` / `non-responder`.
+#:
+#: That does not make `_serialize`'s label branch dead code, and checking was
+#: the first thing this loop did rather than the last: a three-level outcome is
+#: not gated (there is no single event to name), so `multiclass_stage.csv`
+#: reaches the fit with `stage_i` / `stage_ii` / `stage_iii` intact. The claim
+#: moved to the shape where it is still true rather than being deleted or
+#: relaxed, and `binary_string` stays in the table because everything else this
+#: file asserts about it — mutual exclusion, the calibration sentence, which
+#: event the curve is about — is still exactly about a string-labeled column.
+STRING_LABELS_REACH_THE_FIT_ONLY_AS = "multiclass_string"
 
 #: Shapes no fixture in this repository has, stated so the coverage claim is
 #: honest. A sweep that reports only what it covered has not reported its
 #: coverage.
 SHAPES_NOT_COVERED = {
-    "multiclass": (
-        "No fixture has a three-or-more-level outcome. `_metrics` routes "
-        "multiclass through `roc_auc_score(multi_class='ovr')` and the "
-        "calibration figure declines it, and neither branch is exercised "
-        "here."),
     "boolean_dtype": (
         "No fixture has a true `bool` outcome column. `_serialize` has a "
         "branch for it — a bool is neither a number nor a label — and nothing "
         "drives it end to end."),
+    "binary_string_unencoded": (
+        "A two-level TEXT outcome that reaches the fit still spelled out. "
+        "After `L60-A` there is none and there cannot be one: the fit refuses "
+        "until the event is recorded and recording it encodes the column to "
+        "0/1. Named here rather than left as a gap, because the shape used to "
+        "be covered and stopped being reachable — which is a different fact "
+        "from never having had a fixture."),
 }
 
 
@@ -94,7 +119,8 @@ def client():
     return TestClient(api.app)
 
 
-def _trained(client, fixture, target, *, models=None, fraction=0.25):
+def _trained(client, fixture, target, *, models=None, fraction=0.25,
+             level=None):
     with open(DATA / fixture, "rb") as fh:
         pid = client.post("/project", files={
             "file": (fixture, fh, "text/csv")}).json()["id"]
@@ -109,6 +135,11 @@ def _trained(client, fixture, target, *, models=None, fraction=0.25):
     decide("set_grain", answer="one_row_per_person")
     decide("set_eligibility", answer="everyone")
     decide("seal", fraction=fraction)
+    # `DRIVE-041`. Posted as a decision on the route the page posts it on, so
+    # this fixture answers the question the app actually asks. `None` back
+    # means the engine raised no event question — a regression target, or a
+    # three-level one — and nothing is recorded for it.
+    eventfixture.choose_event_over_http(client, pid, target, level=level)
     project = api.STORE.get(pid)
     shelf = [e.to_dict()["key"] for e in project.model_shelf()]
     keys = [k for k in (models or shelf[:2]) if k in shelf] or shelf[:1]
@@ -137,22 +168,63 @@ def test_a_result_carries_a_score_or_a_reason_and_never_both(client, shape):
 
 
 def test_a_string_class_label_reaches_the_result_as_a_label(client):
-    """The line itself. `[float(v) for v in y_pred]` on `non-responder`.
+    """The line itself. `[float(v) for v in y_pred]` on a class NAME.
 
     Asserted on what a consumer receives, because that is what broke: the
     predictions were empty and the metric was real.
+
+    **The fixture moved and the claim did not** (`DRIVE-041`). This ran on
+    `clinic_visits.csv`'s `responder` / `non-responder` until `L60-A`, and that
+    column can no longer reach a fit spelled out: the fit refuses until the
+    event is recorded and recording it encodes the column to `0`/`1`. A
+    three-level outcome is not gated — there is no single event to name — so
+    `multiclass_stage.csv` is where a class name still arrives at `_serialize`,
+    and it is the only place left. See `STRING_LABELS_REACH_THE_FIT_ONLY_AS`.
+
+    **This is a move, not a relaxation.** The assertion is the same assertion:
+    the predictions come back as the labels the column holds, not coerced into
+    something they are not. What changed is which column can still hold them.
     """
-    pid, project, run = _trained(client, "clinic_visits.csv", "outcome",
+    fixture, target, _ = TARGET_SHAPES[STRING_LABELS_REACH_THE_FIT_ONLY_AS]
+    levels = set(pd.read_csv(DATA / fixture)[target].dropna().unique())
+    assert len(levels) >= 3, (
+        f"{fixture} no longer has three or more levels, so this claim is back "
+        f"on a shape the event gate encodes and it is asserting nothing")
+
+    pid, project, run = _trained(client, fixture, target,
                                  models=["logreg", "knn_clf"])
+    assert training.chosen_event_level(project) is None, (
+        "an event was recorded on a multiclass target, which would mean the "
+        "gate has started asking a question that has no single answer")
     for result in run.results:
         assert result.error is None, (result.key, result.error)
         assert result.metrics.get("Accuracy") is not None
         assert result.predictions, (
             f"{result.key} scored and serialized no prediction at all")
-        assert set(result.predictions) <= {"responder", "non-responder"}, (
-            "the class labels were coerced into something they are not")
-        assert result.probabilities and len(result.probabilities) == \
-            len(result.predictions)
+        assert set(result.predictions) <= levels, (
+            f"the class labels were coerced into something they are not: "
+            f"{sorted(set(result.predictions) - levels)[:4]}")
+
+
+def test_a_two_level_text_outcome_cannot_reach_the_fit_spelled_out(client):
+    """The other half of the move above, asserted rather than described.
+
+    `SHAPES_NOT_COVERED` claims a two-level TEXT outcome can no longer arrive
+    at the fit with its levels intact. That is a claim about behavior, and an
+    uncovered-shape note nobody checks is how a stale exclusion outlives the
+    thing it excluded. So: answer the question the way a user does, and the
+    column that reaches the fit is `0`/`1`.
+    """
+    pid, project, run = _trained(client, "clinic_visits.csv", "outcome",
+                                 models=["logreg"])
+    fitted = project.working_table["outcome"].dropna()
+    assert set(fitted.unique()) <= {0, 1}, (
+        f"a two-level text outcome reached the fit as {sorted(set(fitted))} — "
+        f"if that is now possible, SHAPES_NOT_COVERED is stale and the claim "
+        f"above belongs back on this fixture")
+    assert training.chosen_event_level(project) == "responder", (
+        "the level the user named is not on the record, so nothing downstream "
+        "can say which level `1` is")
 
 
 def test_a_continuous_prediction_is_still_a_number(client):
@@ -198,15 +270,22 @@ def test_the_curve_names_the_event_it_is_about(client):
     complementary event drawn confidently, and every annotation number would be
     wrong in a way no reader could detect."""
     pid, project, run = _trained(client, "clinic_visits.csv", "outcome",
-                                 models=["logreg"])
+                                 models=["logreg"], level="responder")
     result = run.results[0]
-    assert result.positive_label == "responder", result.positive_label
+    # **`DRIVE-040`, and this is the assertion that changed shape.** It read
+    # `positive_label == "responder"`, which held while a text outcome could
+    # reach the fit unencoded. It cannot any more: answering the question
+    # encodes `responder` to `1`, so the run's `positive_label` IS `1` and
+    # saying otherwise would be asserting something about a column that no
+    # longer exists. What must still be true — and is the whole claim — is that
+    # the FIGURE names the level rather than the number.
+    assert result.positive_label == 1, result.positive_label
 
     y_true, y_proba, name, event = figure_bundle.predictions_for(project)
-    assert event == "responder"
+    assert event == 1
     assert set(y_true) <= {0, 1}
     raw = training.y_true_for(project)
-    assert sum(y_true) == sum(1 for v in raw if v == "responder"), (
+    assert sum(y_true) == sum(1 for v in raw if v == 1), (
         "the binarization does not agree with the label it claims to be about")
 
     figures = client.get(f"/project/{pid}/figures").json()
@@ -215,6 +294,12 @@ def test_the_curve_names_the_event_it_is_about(client):
     assert drawn["payload"]["event"] == "responder", (
         "the curve does not say which event it is about, so a reader cannot "
         "tell it from its mirror image")
+    assert drawn["payload"]["event_value"] == "1.0", (
+        "the encoded value the binarization actually used is not carried, so "
+        "the name on the figure is tied to nothing")
+    assert "responder" in drawn["caption"], (
+        "the event is named in the payload and nowhere a reader is — the "
+        "caption is the artifact that leaves the app in a manuscript")
 
     # THE POSITIVE CONTROL. Binarizing against the other class must give a
     # different curve, or this fixture cannot tell the two apart and the
@@ -276,5 +361,11 @@ def test_every_fixture_this_file_claims_a_target_shape_for_has_it():
             assert numeric and set(values.unique()) <= {0, 1}, values.unique()
         elif shape == "binary_string":
             assert not numeric and len(values.unique()) == 2, values.unique()
+        elif shape == "multiclass_string":
+            # `DRIVE-041`. The shape that carries the label claim now, so its
+            # declaration is checked like the others: text, and three or more
+            # levels. Two levels here would put the claim back under the event
+            # gate without anything saying so.
+            assert not numeric and values.nunique() >= 3, values.unique()
         else:
             assert numeric and values.nunique() > 20, values.nunique()

@@ -50,6 +50,7 @@ import pytest
 # importing its populator is reading whatever an EARLIER FILE happened
 # to load. Module scope, not inside a fixture: the first test in a file
 # runs before any fixture that imports `api`.
+from turbotab import eventfixture as _EF
 from turbotab import figure_specs  # noqa: F401 — populates FIG.REGISTRY
 from turbotab import figures as FIG
 from turbotab import jobwait as JW
@@ -119,6 +120,12 @@ def _driven(shape):
         response = client.post(f"/project/{project_id}/decision",
                                json={"kind": kind, "payload": payload})
         assert response.status_code == 200, (kind, response.text[:400])
+
+    # `DRIVE-041`. The event, answered over the same route the page posts it
+    # on — `turbotab/eventfixture.py`. Without it `/train` refuses 400 and
+    # every claim below is about a project with no run.
+    _EF.choose_event_over_http(client, project_id, target,
+                               required=(task == "classification"))
 
     job = client.post(f"/project/{project_id}/train",
                       json={"models": [model]}).json()

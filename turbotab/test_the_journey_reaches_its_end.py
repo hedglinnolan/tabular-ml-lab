@@ -53,7 +53,8 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from turbotab import api, draft as _draft, explain as _explain    # noqa: E402
+from turbotab import api, draft as _draft, eventfixture           # noqa: E402
+from turbotab import explain as _explain                           # noqa: E402
 from turbotab import pageharness as H, training as _training      # noqa: E402
 
 DATA = Path(__file__).resolve().parent / "sample_data"
@@ -100,6 +101,8 @@ def _journey(client, shape, *, train=True, models=None):
     decide("set_grain", answer="one_row_per_person")
     decide("set_eligibility", answer="everyone")
     decide("seal", fraction=0.25)
+    # `DRIVE-041`. Over the route, and only where the engine asks.
+    eventfixture.choose_event_over_http(client, pid, target)
     project = api.STORE.get(pid)
     if train:
         project.training_run = _training.train(

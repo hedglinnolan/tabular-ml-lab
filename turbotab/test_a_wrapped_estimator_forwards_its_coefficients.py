@@ -167,6 +167,7 @@ def test_the_fitted_pipeline_step_is_what_the_figure_asks_about():
     from turbotab import figure_bundle as FB
     from turbotab import pipeline_plan as PP
     from turbotab.project import AnalysisProject
+    from turbotab import eventfixture
     from turbotab import training as T
 
     df = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -180,6 +181,7 @@ def test_the_fitted_pipeline_step_is_what_the_figure_asks_about():
     idx = list(project.df.index)
     rng.shuffle(idx)
     project.seal_lockbox(idx[:int(round(len(idx) * 0.25))], fraction=0.25)
+    eventfixture.choose_event(project, required=True)     # `DRIVE-041`
 
     rows = project.training_rows
     rows = rows[rows["readmit_30d"].notna()]

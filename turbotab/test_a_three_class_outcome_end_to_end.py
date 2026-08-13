@@ -49,6 +49,7 @@ import pytest
 # importing its populator is reading whatever an EARLIER FILE happened
 # to load. Module scope, not inside a fixture: the first test in a file
 # runs before any fixture that imports `api`.
+from turbotab import eventfixture
 from turbotab import figure_specs  # noqa: F401 — populates FIG.REGISTRY
 from turbotab import identifiers as _ids
 from turbotab import instability as I
@@ -118,6 +119,11 @@ def _sealed(shape):
     rng.shuffle(idx)
     labels = idx[:int(round(len(idx) * 0.25))]
     p.seal_lockbox(labels, fraction=len(labels) / len(p.df))
+    # `DRIVE-041`. The BINARY control answers the event question; the
+    # three-class arm is not asked one, and `required` says which is which
+    # rather than letting a silent `None` cover both.
+    _, _, _, k = _fixture(shape)
+    eventfixture.choose_event(p, required=(k == 2))
     return p
 
 

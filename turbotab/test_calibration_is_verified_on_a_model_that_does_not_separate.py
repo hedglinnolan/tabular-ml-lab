@@ -53,6 +53,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from turbotab import eventfixture
 from turbotab import figure_bundle as FB
 from turbotab import figure_specs as FS
 from turbotab import figures
@@ -129,6 +130,11 @@ def _fitted(spec) -> AnalysisProject:
     rng.shuffle(idx)
     labels = idx[:int(round(len(idx) * 0.25))]
     p.seal_lockbox(labels, fraction=len(labels) / len(p.df))
+    # `DRIVE-041`. The fit refuses while nobody has said which level is the
+    # event, and this fixture never said. Recorded through `engine.record_fix`,
+    # the same function the page's answer travels, rather than written onto the
+    # project — see `turbotab/eventfixture.py`.
+    eventfixture.choose_event(p, required=True)
     p.training_run = T.train(p, ["logreg"])
     return p
 

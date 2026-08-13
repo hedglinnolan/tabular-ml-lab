@@ -397,7 +397,22 @@ def _calibration_payload(project, **_: Any) -> Dict[str, Any]:
     # WHICH EVENT the curve is about, carried rather than assumed. On a 0/1
     # target this reads `1`; on `responder` / `non-responder` it is the
     # difference between a calibration plot and its mirror image.
-    payload["event"] = str(event)
+    #
+    # **`DRIVE-040`. THE LEVEL THE USER NAMED, NOT THE VALUE IT BECAME.** After
+    # `L60-A` no binary classification reaches this line without a recorded
+    # answer, and recording the answer ENCODES it — so `best.positive_label` is
+    # `1` on every such run and the figure said `event: "1.0"`. Correct, and not
+    # a name: a reader could not tell which level `1` is without opening the
+    # transcript. The app stopped asserting something false and became less
+    # legible in the same move; this is the rest of the move.
+    #
+    # Both travel. The encoded value is what the binarization above actually
+    # used, and dropping it would leave the figure naming a level with nothing
+    # tying it to the vector that was drawn.
+    level = _training.chosen_event_level(project)
+    payload["event"] = level if level is not None else str(event)
+    payload["event_value"] = str(event)
+    payload["event_named"] = level is not None
     return payload
 
 

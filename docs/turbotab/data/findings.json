@@ -12247,11 +12247,11 @@
   "detail": "",
   "ev": "verified at 5f59a35: answering 'case' on a case/control target then fitting yields ModelResult.positive_label = 1.0 and /figures \"event\": \"1.0\"; the decision text reads \"'status' was encoded with case as the event (1) and control as the comparison (0)\"",
   "act": "Carry the chosen LEVEL alongside the encoded value so the figure can name it. The transcript already holds the sentence; the figure should not require a reader to go and find it.",
-  "status": "OPEN",
-  "note": "FOUND BY THE ADJUDICATOR RE-RUNNING L60's OWN ACCEPTANCE TEST, and it is a consequence of the fix rather than a flaw in it. All three acceptance cases pass: unanswered case/control refuses with 400 and 'control' never comes back; unanswered numeric 0/1 now RAISES the question and refuses; answered 'case' fits. GUIDED-093's substance is closed -- the curve is drawn against the level the user chose. WHAT MOVED SIDEWAYS: before the fix the figure said event 'control' -- a NAME, and the wrong one. Now it says '1.0' -- correct, and not a name. A reader of the figure cannot tell which level 1 is without opening the transcript, where the sentence is exact and complete. So the app stopped asserting something false and became less legible in the same move. THE REPORT OVERSTATES THIS ONE LINE and it is worth correcting rather than letting stand: L60's report says 'both the label and /figures name the positive level'. The label is 1.0 and the figure serves \"event\": \"1.0\". Everything else in that sentence's paragraph checked out. SAME FAMILY AS DRIVE-031: two true statements, one of them in a place the reader is not, and no bridge between them. Not a false assertion, so not critical -- but the figure is the artifact that leaves the app in a manuscript, and it is the one that should carry the name.",
+  "status": "FIXED",
+  "note": "FIXED AT L61-D1, AND IT IS THE HALF THAT MADE PART A EXPRESSIBLE. The level the user names now travels with the encoded value it becomes: ml.binary_text.chosen_level_text is the one function that spells it — the same one the transcript sentence already used, so the record and the sentence cannot disagree — engine.record_fix puts it on the decision payload as event_level, training.chosen_event_level reads it back beside the lookup the refusal already does, and the calibration payload carries event (the name), event_value (the encoded 1) and event_named. THE CAPTION SAYS IT, which is the part that matters: the payload has carried event since L34 and no surface has ever rendered it, so which event these were the events OF lived on the wire and nowhere a reader is. It reads '... with 40 events of responder.' and is silent where no level was recorded rather than printing the encoded value. WHAT THIS EXPOSED, and it is filed as GUIDED-239: after L60-A a two-level TEXT outcome can no longer reach the fit spelled out at all, because recording the answer IS the encoding. Three revert probes, each RED for its own reason: the lookup, the record, and the caption.",
   "verified_against": "",
-  "test": "",
-  "verified_ev": "verified at 5f59a35: answering 'case' on a case/control target then fitting yields ModelResult.positive_label = 1.0 and /figures \"event\": \"1.0\"; the decision text reads \"'status' was encoded with case as the event (1) and control as the comparison (0)\""
+  "test": "turbotab/test_a_string_class_label_is_a_label.py::test_the_curve_names_the_event_it_is_about",
+  "verified_ev": "ml/binary_text.py chosen_level_text(); turbotab/engine.py record_fix() extra=; turbotab/training.py chosen_event_level(); turbotab/figure_bundle.py:400-415; turbotab/figure_specs.py CALIBRATION caption"
  },
  {
   "id": "TEST-086",
@@ -12275,11 +12275,11 @@
   "detail": "FULL turbotab/ SWEEP AT THE L60 HEAD: 81 failed, 2486 passed, 17 skipped, 9 xfailed in 2:00:18. 73 of the 81 quote the new refusal verbatim; the other 8 are downstream of it -- a KeyError on 'id' in jobwait.py because POST /train returned 400 and there is no job to poll. THE BLAST RADIUS WAS MEASURED WRONG BY THE EXECUTION AGENT AND STATED AS A FACT. Before building, it grepped test files for POST '/train' and found 3, concluding the radius was small. The suite does not reach the fit that way: NINE files call turbotab.training.train() IN PROCESS, and their parametrization fans out to 73 tests. One file uses the HTTP route. The grep answered 'does this text appear' and the question was 'does this run' -- trap 5, in the one measurement the part's scope rested on. THE FIX IS NOT TO WEAKEN THE GATE. These fixtures fit a classification with the event unchosen, which is the behavior DRIVE-032 removed; making them pass by relaxing the refusal is trap 3c exactly -- a loop that chases the failure reverts the correction and records the revert as a success. The tests pin the defect. THE NARROWER ALTERNATIVE WAS MEASURED RATHER THAN ARGUED, on the four worst-hit files: as committed, 35 failed / 37 passed; with the fit gate removed and classes_[1] replaced by the recorded answer -- so the engine still never invents one -- 22 failed / 50 passed. BETTER AND NOT CLEAN: the remaining 22 are figure and calibration tests that expect curves to draw, and with no event recorded figure_bundle correctly refuses. Both options fail for the same reason, which is the point: the suite assumes an event nobody chose. WHAT THE CONSUMER SIDE IS: each classification fixture needs a set_positive_class apply before it fits. Mechanical, broad, and a chunk rather than a patch -- which is why it is handed back rather than rushed at the end of a loop. THE APP ITSELF IS NOT BROKEN: the happy path is driven and green -- answer the event, fit, and both the label and /figures name the level the user chose. What is red is the suite.",
   "ev": "turbotab/training.py check(); full sweep at 5f59a35",
   "act": "Decide between (a) updating the 73 fixtures to choose the event, which is the consumer side of DRIVE-032 and the honest completion, and (b) reverting the fit gate to the narrower 'never invent' form and filing the fit-time refusal separately. The execution agent recommends (a) and did not do it unilaterally because it is a chunk and because relaxing the gate under failure pressure is the shape this codebase has a rule against.",
-  "status": "OPEN",
-  "note": "Reported in the same breath as the sweep rather than after a green one. The execution agent's earlier report said the sweep was incomplete and explicitly declined to report it as passing; this is the number it was waiting for.",
+  "status": "FIXED",
+  "note": "FIXED AT L61-A, AND THE NUMBER WAS RE-DERIVED BY RUNNING RATHER THAN BY GREPPING, which is the row's own lesson. A full turbotab/ sweep under pytest-xdist (-n 8 --dist loadfile, 41:34) returned 78 failed / 2489 passed / 17 skipped / 9 xfailed across 20 files. THE 81 SPLITS DIFFERENTLY FROM HOW IT WAS REPORTED: 74 are the unchosen event, not 73, and only 4 of the remainder are anything else. The 74 are 61 tests quoting TrainingRefusal at training.py:358 directly, 11 dying at jobwait.py:81 with KeyError 'id' because POST /train returned 400 and there is no job to poll, 1 asserting on a 400 body that is the refusal, and 1 subprocess whose only job is to run a file that is 9 of the 61. THE OTHER FOUR WERE NEVER DOWNSTREAM OF ANYTHING and are named in their own rows: the prototype-stylesheet guard (red since L60-B), the bounded-job-poll guard (red since L60-A's own new file), and two nutrition claims (L60-D re-routed the branch, L60-E removed the option). THE FIX LANDED AT A SEAM AND THE SEAM DID NOT EXIST YET. api.py's apply branch was the only place the answering sequence lived, so half the fixtures had no route to post to and would have had to write it again. It is now engine.record_fix, api.py calls it, and turbotab/eventfixture.py calls it — a fixture's answer travels the same code as a person's, which is A3. Twenty files edited, one or two lines each, at each file's own sealing helper rather than at 74 call sites. PROBED FROM BOTH DOORS with one revert: replacing project.apply_fix with apply_fix_quietly inside record_fix turns a route-answering test AND an in-process one RED for 'has not been recorded'.",
   "verified_against": "",
-  "test": "",
-  "verified_ev": "turbotab/training.py check(); full sweep at 5f59a35"
+  "test": "turbotab/test_a_fitting_fixture_answers_the_event_question.py::test_no_fixture_constructs_the_event_record_for_itself",
+  "verified_ev": "turbotab/engine.py record_fix(); turbotab/eventfixture.py; 20 test modules; full xdist sweep 78 failed at 976c881"
  },
  {
   "id": "TEST-087",
@@ -12308,5 +12308,61 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "ml/model_registry.py:6-19; reached via api.py:2186 -> project.py:1924 -> models.py:370 shelf(); the serving interpreter at 1e350ca has none of sklearn, xgboost, lightgbm or shap"
+ },
+ {
+  "id": "GUIDED-239",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "Recording the event ENCODES the column, so a two-level text outcome can no longer reach the fit with its levels intact -- and one claim about string class labels lost its subject silently",
+  "detail": "FOUND AT L61 WHILE FIXING DRIVE-041, and it is a consequence of L60-A rather than a flaw in it. apply_positive_class rewrites the outcome so the chosen level is 1, and training.check refuses until that decision exists, so THERE IS NO PATH -- route or in process -- by which a binary target arrives at training.train still spelled responder/non-responder. ModelResult.positive_label is therefore 1 on every binary run, which is exactly DRIVE-040's subject one layer down. The consequence for the suite: test_a_string_class_label_is_a_label's test_a_string_class_label_reaches_the_result_as_a_label asserted set(predictions) <= {'responder','non-responder'}, a claim about _serialize's label branch, and that branch is now reachable ONLY through a three-or-more-level target. NOT DEAD CODE, checked rather than assumed: multiclass is not gated (there is no single event to name), so multiclass_stage.csv reaches the fit with stage names intact. The claim was MOVED to that fixture rather than deleted or relaxed -- same assertion, different column -- and the shape that stopped being reachable is named in SHAPES_NOT_COVERED as binary_string_unencoded, because a shape that used to be covered and became unreachable is a different fact from one that never had a fixture. RESOLVED-AS-DESIGNED rather than open: the encoding is what makes classes_[1] genuinely correct, which is GUIDED-093's whole point.",
+  "ev": "turbotab/training.py event_not_chosen(); ml/binary_text.py apply_positive_class(); turbotab/test_a_string_class_label_is_a_label.py SHAPES_NOT_COVERED['binary_string_unencoded']",
+  "act": "Nothing to build. Recorded because the shape stopped being reachable rather than never having existed, and because the claim that depended on it moved rather than being deleted.",
+  "status": "NOT-A-DEFECT",
+  "note": "Resolved as designed. The encoding is what makes classes_[1] genuinely correct rather than a guess, which is GUIDED-093's point; the cost is that the label branch of _serialize is now exercised only by a multiclass target, and that is stated in the file rather than left to be discovered by the next loop that widens the gate.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/training.py event_not_chosen(); ml/binary_text.py apply_positive_class(); turbotab/test_a_string_class_label_is_a_label.py SHAPES_NOT_COVERED['binary_string_unencoded']"
+ },
+ {
+  "id": "TEST-088",
+  "area": "TEST",
+  "sev": "medium",
+  "item": "L60-B added the hybrid-build banner's CSS INSIDE the prototype's <style> block, which the byte-for-byte guard forbids -- the third instance, in the file whose own comment predicts it",
+  "detail": "RED SINCE 1b2fc6f AND BUCKETED AS 'DOWNSTREAM OF THE TRAINING REFUSAL' BY THE SWEEP THAT FOUND IT. It is neither: test_skeleton.py's test_the_stylesheet_is_the_prototype_stylesheet_verbatim compares the prototype's whole <style> block against index.html and fails whether or not a model is ever fitted. Dated by content across five commits: OK at 329de1c, BROKEN at 1b2fc6f. THE FILE PREDICTS THIS EXACT MISTAKE. index.html carries a second <style> block whose header reads 'ADDED BY THE BUILD, NEVER BY EDITING THE PROTOTYPE' and explains that the guard 'caught both rules below sitting inside it -- two L48 chunks each added a rule where the rule it sat next to lived, which is the natural place and the wrong one', and then that L51-B's first draft did it again. L60-B is the third. FIXED by moving the two #devBuild rules to the build's block with the third instance recorded beside them; no rule's content changed.",
+  "ev": "turbotab/web/index.html:130-138 at 1b2fc6f; turbotab/test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim",
+  "act": "Fixed at L61-A. The class is the open half: three instances of 'a rule added next to the rule it resembles', and the only thing standing between it and a fourth is a paragraph in the file.",
+  "status": "FIXED",
+  "note": "",
+  "verified_against": "",
+  "test": "turbotab/test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim",
+  "verified_ev": "turbotab/web/index.html:130-138 at 1b2fc6f; turbotab/test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim"
+ },
+ {
+  "id": "TEST-089",
+  "area": "TEST",
+  "sev": "medium",
+  "item": "L60-A's own new test file polls a job by counting iterations, which the standing guard forbids -- so the guard has been red since the loop that wrote the offender",
+  "detail": "test_a_job_is_waited_for_against_a_clock's test_no_test_polls_a_job_by_counting_iterations names offenders by AST scan and named exactly one: test_the_event_is_chosen_and_never_guessed.py:106, `for _ in range(240): ... time.sleep(0.25)`. TEST-077's rule, and the guard's own docstring states it: a bigger N is not the fix, because range(4000) still elapses in milliseconds on a fast machine and still reports a running job's status as a wrong answer on a slow one. FIXED by calling turbotab.jobwait.settle, which is what the helper exists for. Worth keeping: the loop that wrote the offender also ran the guard in its own sweep and read the failure as part of the 81.",
+  "ev": "turbotab/test_the_event_is_chosen_and_never_guessed.py:106 at 329de1c; turbotab/test_a_job_is_waited_for_against_a_clock.py:71",
+  "act": "Fixed at L61-A by calling jobwait.settle.",
+  "status": "FIXED",
+  "note": "",
+  "verified_against": "",
+  "test": "turbotab/test_a_job_is_waited_for_against_a_clock.py::test_no_test_polls_a_job_by_counting_iterations",
+  "verified_ev": "turbotab/test_the_event_is_chosen_and_never_guessed.py:106 at 329de1c; turbotab/test_a_job_is_waited_for_against_a_clock.py:71"
+ },
+ {
+  "id": "DRIVE-042",
+  "area": "PAGES",
+  "sev": "medium",
+  "item": "L60-D re-routed the energy branch and L60-E removed energy from the dropdown, and between them a page claim lost its subject twice while reading as downstream of the training refusal",
+  "detail": "claim_a_refusal_reaches_a_person is about ONE thing: a single day is not usual intake, so the prevalence is refused and the SHRINKAGE plot is drawn instead -- the figure that IS the size of the error the refusal prevented. It asked for energy_kcal. L60-D gave energy its own refusal (no EAR at all) which fires FIRST, so the ask stopped reaching the single-day branch and started offering per_nutrient_distribution, which is pending and never drawn; the assertion `refused and figure` went red. L60-E then removed energy from nutrient_columns, so the page drive below it was picking a dropdown value that no longer exists. BOTH ARE THE CAPABILITY-WITHOUT-ITS-CONSUMER SHAPE with the consumer being a test. FIXED by moving the claim to protein_g, which HAS an EAR and therefore still refuses for the reason the docstring names -- measured, not guessed: protein/sodium/carbohydrate/fat all take the shrinkage branch on single_day, fiber does not (it has an AI). L60-D's own branch is now asserted on its own terms three asks down, both halves: energy refuses with EER in the reason, and energy is off the dropdown while protein is on it.",
+  "ev": "turbotab/test_the_page_says_what_the_record_says.py:415-431; turbotab/nutrition.py:1110-1130 at 7e34743; turbotab/api.py nutrition_prevalence()",
+  "act": "Fixed at L61-A.",
+  "status": "FIXED",
+  "note": "",
+  "verified_against": "",
+  "test": "turbotab/test_the_page_says_what_the_record_says.py::test_claim",
+  "verified_ev": "turbotab/test_the_page_says_what_the_record_says.py:415-431; turbotab/nutrition.py:1110-1130 at 7e34743; turbotab/api.py nutrition_prevalence()"
  }
 ]

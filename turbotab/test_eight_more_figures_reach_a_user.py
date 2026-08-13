@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from turbotab import eventfixture
 from turbotab import figure_bundle as FB
 from turbotab import figure_specs as F
 from turbotab import figures
@@ -107,6 +108,9 @@ def _clinical(shape):
     rng.shuffle(idx)
     labels = idx[:int(round(len(idx) * 0.25))]
     p.seal_lockbox(labels, fraction=len(labels) / len(p.df))
+    # `DRIVE-041`. A classification fixture answers the event question before
+    # it fits; a regression one has no such question and records nothing.
+    eventfixture.choose_event(p, required=shape.startswith("binary"))
     p.training_run = T.train(p, [model])
     return p
 

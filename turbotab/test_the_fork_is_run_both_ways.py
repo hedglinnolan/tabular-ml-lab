@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from turbotab import eventfixture
 from turbotab import missingness as M
 from turbotab import sensitivity as S
 from turbotab.project import AnalysisProject
@@ -73,6 +74,8 @@ def _project(name, target, task, *, strategy=M.IMPUTE_MEDIAN, n_columns=5,
     rng.shuffle(idx)
     labels = idx[:int(round(len(idx) * fraction))]
     p.seal_lockbox(labels, fraction=len(labels) / len(p.df))
+    # `DRIVE-041`. Both fork arms fit, so both refuse without this.
+    eventfixture.choose_event(p, required=(task == "classification"))
     columns = [c["column"] for c in M.survey(p.df, p.target)
                if c["branch"] == branch][:n_columns]
     for column in columns:
@@ -293,6 +296,7 @@ def test_a_categorical_only_project_gets_silence():
     p.set_grain("not_sure")
     p.set_eligibility("everyone")
     p.seal_lockbox(list(df.index)[:16], fraction=0.2)
+    eventfixture.choose_event(p, required=True)          # `DRIVE-041`
     p.route_missingness("cat", M.NOT_SURE, M.IMPUTE_MODE)
 
     assert p.missingness, "nothing was recorded, so this proves nothing"

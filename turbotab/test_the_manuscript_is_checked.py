@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from turbotab import eventfixture
 from turbotab import manuscript as MS
 from turbotab import training as T
 from turbotab.project import AnalysisProject
@@ -68,6 +69,10 @@ def _project(name, target, task, *, fit=True):
     rng.shuffle(idx)
     labels = idx[:int(round(len(idx) * 0.20))]
     p.seal_lockbox(labels, fraction=len(labels) / len(p.df))
+    # `DRIVE-041`. Recorded on every project, fitted or not: the answer is part
+    # of the journey rather than part of the fit, and a `fit=False` project that
+    # skipped it would be a different state from the one a user reaches.
+    eventfixture.choose_event(p, required=(task == "classification"))
     run = None
     if fit:
         run = T.train(p, [TARGET_SHAPES_BY_NAME[(name, target)]]).to_dict()
@@ -712,6 +717,7 @@ def _sepsis():
     rng.shuffle(idx)
     labels = idx[:int(round(len(idx) * 0.25))]
     p.seal_lockbox(labels, fraction=len(labels) / len(p.df))
+    eventfixture.choose_event(p, required=True)          # `DRIVE-041`
     return p, T.train(p, ["logreg"]).to_dict()
 
 

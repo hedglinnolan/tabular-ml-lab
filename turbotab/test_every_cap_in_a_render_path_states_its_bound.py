@@ -487,7 +487,7 @@ def _fitted(fixture, target, model):
     """A real project, sealed and fitted, so `/explain` is the server's own."""
     from fastapi.testclient import TestClient
 
-    from turbotab import api, training as _training
+    from turbotab import api, eventfixture, training as _training
 
     client = TestClient(api.app)
     with (DATA / fixture).open("rb") as handle:
@@ -503,6 +503,8 @@ def _fitted(fixture, target, model):
     decide("set_grain", answer="one_row_per_person")
     decide("set_eligibility", answer="everyone")
     decide("seal", fraction=0.25)
+    # `DRIVE-041`. Over the route, and only where the engine asks.
+    eventfixture.choose_event_over_http(client, pid, target)
     project = api.STORE.get(pid)
     project.training_run = _training.train(project, [model])
     api._RUNS[pid] = {"run": project.training_run}

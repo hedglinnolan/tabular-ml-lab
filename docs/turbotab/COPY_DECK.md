@@ -251,8 +251,8 @@ The second option opens a follow-up: *which column identifies the person?* — p
 | eligibility · the criterion empties the study | the criterion keeps zero rows | That criterion removes every row ({n} of {n}). Either the range is wrong or the column is not what it looks like — nothing downstream can run on an empty study. | `turbotab/eligibility.py` |
 | grain · restated after the seal | `set_grain` when `barrier_raised` is true | The test set is already sealed, and it was drawn against the grain answer recorded at the time. Changing that answer now would describe a split that was not drawn this way. | `turbotab/project.py` |
 | seal · too few rows with an outcome | fewer than 10 rows have a non-null target | Only {n} rows have a value for '{target}', which is too few to hold any out and still have a study left. | `turbotab/engine.py` |
-| target · the event level is not defaulted | applying `set_positive_class` with no chosen level | Setting the event needs the level being predicted. There is no default: whether the event is (say) death or survival is the research question, not something the file can say. | `turbotab/api.py` |
-| repair · the finding has no automatic fix | `POST /decision {kind: apply}` on a finding whose preview is not applicable | That finding has no automatic repair — it needs a human decision. | `turbotab/api.py` |
+| target · the event level is not defaulted | applying `set_positive_class` with no chosen level | Setting the event needs the level being predicted. There is no default: whether the event is (say) death or survival is the research question, not something the file can say. | `turbotab/engine.py` |
+| repair · the finding has no automatic fix | `POST /decision {kind: apply}` on a finding whose preview is not applicable | That finding has no automatic repair — it needs a human decision. | `turbotab/engine.py` |
 
 ### Preprocess · refusals, receipts and transcript lines
 

@@ -81,6 +81,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from turbotab import api                                            # noqa: E402
+from turbotab import eventfixture                                   # noqa: E402
 from turbotab import figures as _figures                            # noqa: E402
 from turbotab import manuscript as MS                               # noqa: E402
 from turbotab import training as T                                  # noqa: E402
@@ -377,6 +378,7 @@ def test_a_fitted_project_still_passes_and_the_counts_agree():
     rng.shuffle(idx)
     labels = idx[:int(round(len(idx) * 0.20))]
     project.seal_lockbox(labels, fraction=len(labels) / len(project.df))
+    eventfixture.choose_event(project, required=True)     # `DRIVE-041`
     run = T.train(project, ["logreg"]).to_dict()
 
     out = MS.validate(project.to_dict(), run=run)

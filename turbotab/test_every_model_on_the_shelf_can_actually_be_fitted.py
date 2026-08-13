@@ -44,6 +44,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ml.model_registry import get_registry                          # noqa: E402
+from turbotab import eventfixture                                   # noqa: E402
 from turbotab import training as T                                  # noqa: E402
 from turbotab.project import AnalysisProject                        # noqa: E402
 
@@ -71,6 +72,9 @@ def _sealed(fixture: str, target: str, task: str) -> AnalysisProject:
     rng.shuffle(idx)
     project.seal_lockbox(idx[:int(round(len(idx) * 0.25))],
                          fraction=len(idx[:int(round(len(idx) * 0.25))]) / len(idx))
+    # `DRIVE-041`. Every model on the shelf has to reach a fit, and after
+    # `L60-A` a classification fit refuses until the event is on the record.
+    eventfixture.choose_event(project, required=(task == "classification"))
     return project
 
 

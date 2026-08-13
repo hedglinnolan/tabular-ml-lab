@@ -244,7 +244,16 @@ CALIBRATION = register(FigureSpec(
     ),
     caption=lambda p: (
         f"Calibration of {p.get('model_name', 'the model')} on "
-        f"{p.get('n', 0):,} observations with {p.get('events', 0):,} events. "
+        f"{p.get('n', 0):,} observations with {p.get('events', 0):,} events"
+        # `DRIVE-040`. THE EVENT IS NAMED IN THE CAPTION OR IT IS NOT NAMED AT
+        # ALL. The payload has carried `event` since `L34` and no surface has
+        # ever rendered it, so *which* event these are the events OF lived on
+        # the wire and nowhere a reader is. The caption is the artifact that
+        # leaves the app in a manuscript; this is where it belongs. Silent when
+        # the run recorded no level rather than printing the encoded value —
+        # `event: 1` in a sentence is worse than a sentence without it.
+        + (f" of {p['event']}" if p.get("event_named") else "")
+        + ". "
         f"The dashed 45° line is ideal calibration; the solid curve joins "
         f"the observed event rate within each of "
         f"{len(p.get('curve', {}).get('predicted') or [])} equal-width bins "

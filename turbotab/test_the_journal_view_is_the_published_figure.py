@@ -47,6 +47,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from turbotab import eventfixture as _EF                             # noqa: E402
 from turbotab import figure_bundle as FB                            # noqa: E402
 from turbotab import packs                                          # noqa: E402
 from turbotab import pageharness as PH                              # noqa: E402
@@ -88,6 +89,9 @@ def _trained(client):
         ("set_grain", {"answer": "one_row_per_person"}),
         ("set_eligibility", {"answer": "everyone"}),
         ("seal", {"fraction": 0.25})])
+    # `DRIVE-041`. Posted as a decision, because this helper's whole point is
+    # that every route below is real.
+    _EF.choose_event_over_http(client, pid, "readmit_30d", required=True)
     project.training_run = T.train(project, ["logreg", "histgb_clf"])
     api._RUNS[pid] = {"run": project.training_run}
     return pid, project
