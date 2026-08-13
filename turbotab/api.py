@@ -3323,12 +3323,86 @@ class ConsoleIn(BaseModel):
     url: str = ""
 
 
+#: The build this PROCESS is running, read once at import.
+#:
+#: `TEST-084`. Python modules are pinned at import; `StaticFiles` re-reads
+#: `index.html` per request. So a long-running instance drifts into a state
+#: where the interface is newer than the engine behind it — silently, with no
+#: symptom except findings that do not reproduce. Run 3 was driven on exactly
+#: that: a page written at 11:38 against a process started 28 hours earlier, and
+#: the whole of L59-B was absent from the API while every page-only change
+#: worked on screen. Three consecutive drives have had a version question
+#: attached to them and this one cost an adjudication.
+#:
+#: `PM_TRANSITION.md` §07 item 8 recorded *"check where the process is serving
+#: from"*, and that is not sufficient: this process was serving from the right
+#: DIRECTORY and still not from the right CODE. So the app answers it instead of
+#: the adjudicator.
+#:
+#: Read at import and never re-read, because that is the whole point — it is
+#: what the running Python IS, not what the checkout says now.
+def _served_build() -> Dict[str, Any]:
+    import subprocess
+
+    root = Path(__file__).resolve().parent.parent
+    rev = None
+    try:
+        done = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                              cwd=str(root), capture_output=True, text=True,
+                              timeout=5)
+        if done.returncode == 0:
+            rev = done.stdout.strip() or None
+    except Exception:
+        rev = None
+    # A checkout with no git still has to answer, so the fallback is the newest
+    # source mtime — coarser, and it still moves when the engine does.
+    newest = 0.0
+    for path in (root / "turbotab").glob("*.py"):
+        try:
+            newest = max(newest, path.stat().st_mtime)
+        except OSError:
+            continue
+    return {"rev": rev, "newest_source_mtime": newest or None}
+
+
+_SERVED_BUILD = _served_build()
+
+
 @app.get("/dev/status")
 async def dev_status() -> Dict[str, Any]:
+    """Whether the dev harness is on, AND which build is answering.
+
+    The build half is `TEST-084` and is served unconditionally — it is not a
+    dev-mode feature. A drive that cannot tell the API's vintage from the
+    page's produces findings nobody can reproduce, and this route is already
+    fetched on every page load, so it costs nothing to answer honestly.
+    """
     s = devchecks.session()
+    page = Path(__file__).resolve().parent / "web" / "index.html"
+    try:
+        page_mtime = page.stat().st_mtime
+    except OSError:
+        page_mtime = None
+    engine_mtime = _SERVED_BUILD["newest_source_mtime"]
+    # STALE MEANS THE PAGE IS NEWER THAN THE PYTHON THAT IS RUNNING, which is
+    # the only direction that can happen: `StaticFiles` re-reads per request and
+    # modules do not. Computed here rather than left to the page, so the rule
+    # lives with the two timestamps it is about.
+    stale = bool(page_mtime and engine_mtime and page_mtime > engine_mtime + 1)
     return {"enabled": devchecks.enabled(),
             "session": str(s.root) if s else None,
-            "flag": devchecks.ENV_FLAG}
+            "flag": devchecks.ENV_FLAG,
+            "build": {
+                "rev": _SERVED_BUILD["rev"],
+                "engine_loaded_at": engine_mtime,
+                "page_mtime": page_mtime,
+                "page_newer_than_engine": stale,
+                "why": ("The page is re-read from disk on every request and the "
+                        "Python behind it was loaded when this process started. "
+                        "They disagree, so what you are driving is a hybrid: "
+                        "restart the server before trusting anything the engine "
+                        "does." if stale else None),
+            }}
 
 
 @app.post("/dev/dom")

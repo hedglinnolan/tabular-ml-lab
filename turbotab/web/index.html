@@ -127,6 +127,15 @@
            background:var(--accent-tint);border-radius:11px;padding:9px 11px;font-size:11.5px;
            color:var(--accent-ink);font-weight:600}
   .jobchip.on{display:flex}
+  /* TEST-084 · the hybrid-build banner. `--warn` because a page newer than its
+     engine is a caution about what you can conclude, not a refusal: the app
+     still works and the ENGINE's behavior is what cannot be trusted. Hidden
+     entirely until the server says the two disagree — an element that is
+     always present would be a mark that asserts nothing (§02). */
+  #devBuild{display:none}
+  #devBuild.devbuild{display:block;border:1px solid var(--warn-line);
+           background:var(--warn-tint);color:var(--warn);border-radius:11px;
+           padding:10px 12px;font-size:12.5px;line-height:1.55;margin-top:9px}
   .spin{flex:0 0 13px;width:13px;height:13px;border-radius:50%;
         border:2px solid color-mix(in srgb,var(--accent) 25%,transparent);
         border-top-color:var(--accent);animation:spin .9s linear infinite}
@@ -1329,6 +1338,13 @@
         </nav>
       </div>
       <div class="jobchip" id="jobChip"><span class="spin" aria-hidden="true"></span><span id="jobText">Working…</span></div>
+      <!-- TEST-084 · WHICH BUILD IS ANSWERING. Empty and unclassed unless
+           `/dev/status` says the page on disk is newer than the Python that is
+           running — which `StaticFiles` makes possible on any long-lived
+           server, and which run 3 was driven on without anyone being able to
+           see it. Not a dev-mode surface: the drift is invisible by
+           construction and a driver has no other way to ask. -->
+      <div id="devBuild"></div>
       <div class="dock dock-ledger">
         <div class="dock-head">
           <button class="dock-toggle" id="ledgerToggle" type="button"
@@ -5872,6 +5888,10 @@
      `renderTrain` runs from four call sites and every one of them must draw the
      same answer about why this step is empty. */
   var SHELF_ERROR = null;
+  /* `DRIVE-037`. WHICH GATE THE STEP IS WAITING BEHIND, or null once it is
+     past them. A step with no shelf is one of three things — waiting, broken,
+     or fitted — and until L60 it drew the same nothing for the first two. */
+  var SHELF_WAITING = null;
   var PICKED = {};                       /* model key -> selected */
 
   function shelfHTML(){
@@ -6172,6 +6192,23 @@
        correct there — the seal has not been drawn, so there is nothing to say.
        NO SHELF AND A FAILURE is the case above, and it gets a sentence. */
     if (!SHELF){
+      /* `DRIVE-037`. THREE STATES, THREE SENTENCES — and the third used to be
+         the same silence as the second. `SHELF_WAITING` names the gate the
+         step has not passed; `SHELF_ERROR` names a fetch that failed; neither
+         set means the shelf is simply not this project's business yet. */
+      if (SHELF_WAITING){
+        reveal("train");
+        $("shelfWhy").innerHTML = "";
+        var waitBox = $("shelfBox");
+        if (waitBox)
+          waitBox.innerHTML =
+            '<p class="feat-note" data-shelf-waiting="' + esc(SHELF_WAITING) +
+            '">This step is waiting for ' + esc(SHELF_WAITING) +
+            ". The model shelf resolves once the held-out set is sealed — " +
+            "nothing is missing here and nothing has failed.</p>";
+        sectState("train", "live", "waiting");
+        return;
+      }
       if (!SHELF_ERROR) return;
       reveal("train");
       $("shelfWhy").innerHTML = "";
@@ -6242,7 +6279,18 @@
   }
 
   function renderTrainStep(){
-    if (!P || !P.target || !P.barrier_raised) return;
+    if (!P) return;
+    /* `DRIVE-037`, and L59-A is what made it visible rather than what broke it.
+       L59-A gave the FAILED shelf a voice and left NOT REACHED YET silent,
+       which held while the only way to have no shelf was a failure. It is not
+       true now: a step that speaks when it breaks and says nothing when it
+       waits teaches a reader that silence means fine, so the two states became
+       confusable in the direction that matters.
+
+       This function already knows which gate it returned on. It says so. */
+    if (!P.target){ SHELF_WAITING = "a target"; renderTrain(); return; }
+    if (!P.barrier_raised){ SHELF_WAITING = "the seal"; renderTrain(); return; }
+    SHELF_WAITING = null;
     api("/project/" + P.id + "/models")
       .then(function(body){
         SHELF = body;
@@ -8595,6 +8643,30 @@
   (function devHarness(){
     fetch("/dev/status").then(function(r){ return r.ok ? r.json() : null; })
       .then(function(st){
+        /* `TEST-084`. THE HYBRID BUILD, SAID ON SCREEN — before the dev-mode
+           gate below, because this is not a dev-mode fact. `StaticFiles`
+           re-reads this file per request and the Python behind it was pinned
+           when the process started, so a long-running instance drifts into
+           serving a NEW page against an OLD engine. Run 3 was driven on exactly
+           that and nobody could see it; the findings that came back could not
+           be reproduced, and working out why cost an adjudication.
+
+           A payload nobody reads is the defect this is fixing, so it renders
+           rather than only being served. `#devBuild` is a banner and not a
+           refusal: the app still works, and what is not trustworthy is any
+           conclusion about the ENGINE drawn from this session. */
+        var build = st && st.build;
+        if (build && build.page_newer_than_engine){
+          var host = document.getElementById("devBuild");
+          if (host){
+            host.className = "devbuild";
+            host.innerHTML =
+              '<strong>This server is serving a newer page than its engine.</strong> ' +
+              esc(build.why || "") +
+              (build.rev ? ' <span class="v">engine build ' + esc(build.rev) +
+                           "</span>" : "");
+          }
+        }
         if (!st || !st.enabled) return;
 
         function post(path, body){

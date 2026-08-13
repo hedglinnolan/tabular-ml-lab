@@ -565,13 +565,19 @@ globalThis.fetch = function(path, opts){
               f"{n} controls after the server recovered")
 
 
-def test_a_step_that_has_not_been_reached_is_still_silent(capsys):
-    """The other half of §04b, and the reason this is not a blanket message.
+def test_a_step_that_has_not_been_reached_says_it_is_waiting(capsys):
+    """`DRIVE-037`, and L59-A is what made this visible rather than what broke it.
 
-    Before the seal the Train step genuinely has nothing to say — the shelf is
-    gated on the seal and that gate is printed at Preprocess. A failure panel
-    there would be the app reporting a fault where there is none, which is the
-    same defect pointed the other way.
+    L59-A gave the FAILED shelf a voice and left NOT REACHED YET silent, which
+    held while the only way to have no shelf was a failure. It stopped being
+    true the moment the broken case spoke: **a step that speaks when it breaks
+    and says nothing when it waits teaches a reader that silence means fine**,
+    so the honest silence and the dishonest one became confusable in the
+    direction that matters.
+
+    Three states, three sentences: waiting names its gate, failed names the
+    server's reason, fitted renders the shelf. The vocabulary already existed —
+    `renderTrainStep` knows which gate it returned on.
     """
     from turbotab import api, pageharness
 
@@ -587,11 +593,17 @@ def test_a_step_that_has_not_been_reached_is_still_silent(capsys):
                 json={"kind": "set_target", "payload": {"column": "age"}})
 
     out = _render(client, pid)
-    assert not (out["shelfBox"] or "").strip(), (
-        f"the unsealed Train step reports a failure it does not have: "
-        f"{out['shelfBox']!r}")
+    shelf = out["shelfBox"] or ""
+    assert 'data-shelf-waiting="the seal"' in shelf, (
+        f"the unsealed Train step does not say what it is waiting for: {shelf!r}")
+    # AND IT IS NOT THE FAILURE SENTENCE. The two states must not read alike in
+    # either direction — reporting a fault where there is none is the same
+    # defect pointed the other way.
+    assert 'data-shelf-error' not in shelf, (
+        "the unsealed step reports a failure it does not have")
+    assert "could not be loaded" not in shelf
     with capsys.disabled():
-        print("\n  unsealed: silent, which is the correct one of §04b's two")
+        print(f"\n  unsealed: names its gate, not a failure")
 
 
 def test_the_two_keys_this_loop_unlisted_are_gone_from_the_list():
