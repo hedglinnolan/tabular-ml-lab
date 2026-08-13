@@ -732,3 +732,52 @@ different shape of table, and the question fires there too.
 this section. `routing-baseline.json` untouched. No threshold moved and the
 prereg is unedited. **The drift is the capability arriving, measured by an
 instrument that was not aimed at it.**
+
+## The denominator moved again — L60, two more datasets, and this one is NOT ruled yet
+
+**Diagnosed by the adjudicator, deliberately left unruled.** After the value
+check above was re-recorded, the pre-push gate surfaced a second and deeper
+drift, in the **Classic** baselines:
+
+| dataset | `required_decisions` | `irrelevant_questions` | `coverage` |
+|---|---|---|---|
+| `wide-assay` | 1 → **2** | 30 → **29** | 1.0 → **0.5** |
+| `leaky-sepsis` | 1 → **2** | 30 → **29** | 1.0 → **0.5** |
+
+**Classic's behavior did not change. The denominator did.** `wide_assay.csv`'s
+`responder` and `leaky_sepsis.csv`'s `sepsis` are both `int64` with levels
+`{0, 1}` *(verified at `1d2206d`)*, so L60-A's dtype-agnostic trigger makes
+choosing the event a **required decision** on both. Classic does not ask it —
+`target-positive-class` is `guided-only` and the register records that Classic
+"encodes a two-level target by whatever sklearn's `LabelEncoder` does with it."
+So Classic covers one of two requirements instead of one of one.
+
+**This is the movement §"The denominator moved" already ruled, reaching two more
+datasets by the same mechanism.** `ADJUDICATED_DELTAS` in
+`test_routing_baseline.py` permits precisely these numbers for `messy-clinic`
+and `longitudinal` — `(1, 2)`, `(31, 30)`, `(1.0, 0.5)` — and
+`ADJUDICATED_KEY_DELTAS` names the added key as
+`repair::positive_class__outcome`. **Same finding, same deltas, two datasets
+further.**
+
+### Why it is written here and not resolved here
+
+**The resolution is not a table edit.** `wide-assay` runs through
+`ADJUDICATED_DELTAS`; `leaky-sepsis` compares against its own
+`routing-baseline-leaky.json` with no deltas table at all. Doing this properly
+means a re-measurement recorded **beside** the old one with the chain kept
+readable — the `routing-baseline-l9` → `l9c` pattern — and that is a build, not
+a five-minute unblock.
+
+**And extending an enumerated allowance in the same loop as the change that
+pressured it is exactly what `LOOP.md` §06.2 is about.** The exception may well
+apply — the entries would encode *the same purpose* rather than a nudged value,
+and the enumeration exists so "a second drift cannot hide inside the first," a
+property that survives extension only if every new entry is enumerated exactly.
+**But invoking that exception is a deliberate act and it should be taken with a
+clear head, in a loop that owns it, not appended to an adjudication at the tail
+of a long session to make a push succeed.**
+
+**The branch stays unpushed until it is ruled.** That is the honest state: the
+gate is red for a real reason, the reason is understood, and committing over it
+is the act that caused the hook to exist.

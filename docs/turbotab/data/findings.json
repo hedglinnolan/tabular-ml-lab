@@ -12252,5 +12252,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "verified at 5f59a35: answering 'case' on a case/control target then fitting yields ModelResult.positive_label = 1.0 and /figures \"event\": \"1.0\"; the decision text reads \"'status' was encoded with case as the event (1) and control as the comparison (0)\""
+ },
+ {
+  "id": "TEST-086",
+  "area": "TEST",
+  "sev": "high",
+  "item": "L60-A moved the required-decision denominator on wide-assay and leaky-sepsis, so Classic's recorded coverage falls 1.0 to 0.5 on both and the frozen baselines are red. Classic did not change; the set of decisions the constitution requires did.",
+  "detail": "",
+  "ev": "tests/integration/test_routing_baseline.py::test_classic_still_measures_what_the_baseline_recorded and ::test_classic_on_the_leaky_dataset_still_matches_its_baseline; wide_assay.csv responder and leaky_sepsis.csv sepsis are both int64 {0,1} (verified at 1d2206d)",
+  "act": "Re-measure both Classic baselines and record the new measurement BESIDE the old one, keeping the chain readable the way routing-baseline-l9 -> l9c does. wide-assay also needs ADJUDICATED_DELTAS and ADJUDICATED_KEY_DELTAS entries; leaky-sepsis has no deltas table and compares against routing-baseline-leaky.json directly, so the two halves are different mechanisms.",
+  "status": "OPEN",
+  "note": "BLOCKING THE PUSH, AND DELIBERATELY NOT RULED. Found by the pre-push gate after the routing VALUE check was adjudicated and re-recorded; this is the deeper of the two and it surfaced only once the first stopped failing. THE CAUSE IS CERTAIN AND THE PRECEDENT IS EXPLICIT. Both datasets carry an int64 two-level target, so L60-A's dtype-agnostic trigger makes the event a required decision on each. Classic does not ask it -- target-positive-class is guided-only and the register says Classic 'encodes a two-level target by whatever sklearn's LabelEncoder does with it' -- so it now covers one of two. VALUE_CHECK_ADJUDICATION.md's section 'The denominator moved' already ruled this exact movement for messy-clinic and longitudinal, with ADJUDICATED_DELTAS carrying (1,2), (31,30) and (1.0,0.5) and ADJUDICATED_KEY_DELTAS naming the added key as repair::positive_class__outcome. Same finding, same numbers, two datasets further. WHY IT IS NOT RULED HERE, and this is the point of the row: the fix is not a table edit. wide-assay runs through ADJUDICATED_DELTAS; leaky-sepsis compares against its own baseline file with no deltas table, so a proper resolution re-measures and records BESIDE the old one, keeping the l9 -> l9c chain readable. AND extending an enumerated allowance in the same loop as the change that pressured it is LOOP.md 06.2 exactly. The exception probably applies -- these entries would encode the same purpose rather than a nudged value -- but invoking it is a deliberate act, and doing it at the tail of a session to make a push succeed is how a frozen baseline stops being frozen. THE BRANCH STAYS UNPUSHED UNTIL THIS IS RULED. Committing over a red gate is the act that caused the hook to exist. The analysis is complete and written down so the loop that owns it starts from a measurement.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "tests/integration/test_routing_baseline.py::test_classic_still_measures_what_the_baseline_recorded and ::test_classic_on_the_leaky_dataset_still_matches_its_baseline; wide_assay.csv responder and leaky_sepsis.csv sepsis are both int64 {0,1} (verified at 1d2206d)"
  }
 ]
