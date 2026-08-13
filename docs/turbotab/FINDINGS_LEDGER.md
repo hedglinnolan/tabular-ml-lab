@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**392 of 929 closed.**
+**393 of 929 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 464 |
+| `OPEN` | 463 |
 | `PARTIAL` | 73 |
-| `FIXED` | 385 |
+| `FIXED` | 386 |
 | `NOT-A-DEFECT` | 7 |
 
 ---
 
-## OPEN — 464
+## OPEN — 463
 
 
 ### Guided-door drive feedback — 73
@@ -539,13 +539,12 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Page-layer extraction — 8
+### Page-layer extraction — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
 | `DRIVE-016` | high | The three-series maximum is asserted in the test and not in the renderer: WEBC still offers four categorical colors and assigns --c4 to a fourth series, which is 12.3 from --c3 in dark mode against a… | `turbotab/web/index.html:4129 (WEBC) and :4179/:4187 (WEBC[idx % WEBC.length])…` | FILED BY THE ADJUDICATOR VERIFYING L57-A, AND IT IS THE CLASS THIS PROJECT KEEPS FINDING RATHER THAN A NEW ONE: a constraint declared in one place with a consumer that does not… |
-| `DRIVE-026` | high | choose_preparation_mode is the THIRD key in HANDLED_QUESTION_KEYS with no section behind it -- the preparation-mode row does not exist anywhere in the page | `turbotab/web/index.html:6455; ml/router.py:821` | Build the preparation-mode row, or move the key to ANSWERABLE. The engine side is complete: project.set_preparation_mode accepts per_model and uniform and api.py:688 routes it. |
 | `DRIVE-035` | high | What made GET /models fail on the tester's 21,849-row NHANES file is unknown, and the app could not say -- DRIVE-030 is the silence, this is the fault behind it | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md 4b-1` | -- RUN 3 MAKES IT REPRODUCIBLE ON DEMAND AND IT IS WORSE THAN A ONE-OFF. GET /models returned 500 on the tester's file for BOTH a regression target (kcal, 0 missing) and a… |
 | `DRIVE-028` | medium | The same lens one surface over: three entries in HANDLED_QUESTION_PREFIXES have no textual occurrence in the page other than the list entry itself, and nothing drives them | `turbotab/web/index.html HANDLED_QUESTION_PREFIXES` | Extend test_every_handled_key_reaches_the_dom to the prefixes: drive a project where the Router serves a key with each prefix and require a control. Do NOT close this on the grep… |
 | `DRIVE-029` | medium | Answering 'Yes, people repeat' cannot name the column that identifies the person from the Guided door, so the answer routes to an undetermined basis and a by-row split | `ml/router.py state_grain; turbotab/web/index.html askedCard` | Offer the suggestion's columns on the people_repeat branch, with the per-column evidence the route already serves. The suggestion is never the answer -- constitution 02 demotes… |
@@ -719,7 +718,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 385
+## FIXED — 386
 
 
 ### Guided-door drive feedback — 146
@@ -1063,7 +1062,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-013` | medium | The Preprocess page reads capabilities.requires_scaled_numeric directly instead of resolving through the recipe table, so a pack's override cannot reach it | `pages/05_Preprocess.py:498,835; turbotab/recipes.py resolve() and the caps:requires_scaled_numeric selector` | **test:** `tests/integration/test_the_preprocess_page_asks_the_recipe_table.py::test_a_pack_row_reaches_the_preprocess_page` — L53-C, fanned out to four chunks PARTITIONED BY FIX… |
 | `MISC-016` | medium | The feature register has no rows for two shipped Classic pages and nothing gates its coverage, so a capability can be absent from the register without any check noticing | `docs/turbotab/FEATURE_REGISTER.md: 132 rows, zero matching pages/08_Sensitivity_Analysis (568 lines) and zero…` | **test:** `tests/test_a_specification_is_a_claim.py::test_every_classic_page_has_a_register_row_or_a_written_exemption (11 parametrizations) and… |
 
-### Page-layer extraction — 16
+### Page-layer extraction — 17
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1078,6 +1077,7 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-022` | high | A list membership stands in for a renderer's existence, and the guard checks the membership. HANDLED_QUESTION_KEYS declares 'this key has a dedicated section above'; nothing verifies the section… | `turbotab/web/index.html:6430-6438 (HANDLED_QUESTION_KEYS), :6607 (renderAsked filters via handledElsewhere)…` | **test:** `turbotab/test_every_handled_key_reaches_the_dom.py::test_a_handled_key_reaches_a_control_in_the_dom` — A LIST MEMBERSHIP STOOD IN FOR A RENDERER AND THE GUARD CHECKED… |
 | `DRIVE-023` | high | state_eligibility is served with option_values that are its PROSE LABELS, so the moment the generic channel renders it every option posts a label the record refuses with a 400 | `ml/router.py:672; ml/router.py:220` | **test:** `turbotab/test_the_grain_and_eligibility_cards_can_be_answered.py::test_the_eligibility_option_the_app_cannot_perform_says_so` — The pairing between a label and the… |
 | `DRIVE-025` | high | The generic question channel is not in the at-control delegate's selector, so every answer button in it emits a slot nothing ever writes to and a refusal with no exits reaches a person nowhere | `turbotab/web/index.html:7651` | **test:** `turbotab/test_the_grain_and_eligibility_cards_can_be_answered.py::test_a_refusal_to_a_generic_answer_reaches_the_control` — [data-answer-key] and [data-answer-commit]… |
+| `DRIVE-026` | high | choose_preparation_mode is the THIRD key in HANDLED_QUESTION_KEYS with no section behind it -- the preparation-mode row does not exist anywhere in the page | `turbotab/web/index.html:6455; ml/router.py:821` | **test:** `turbotab/test_the_generic_channel_carries_the_preparation_mode.py::test_the_card_renders_and_its_press_records_the_mode` — BUILT, AND THE PIN FLIPPED FIRST. DRIVE-026… |
 | `DRIVE-033` | high | Undo of a bulk repair reverts one column of nine. After applying 'read as binary' to a 9-column group, 'Undo the last change' restored only `gender`; the other eight stayed Int64, while the apply… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md §4c-1 and F3; dtypes re-read in the target picker after the…` | **test:** `turbotab/test_one_decision_is_one_undo.py::test_undoing_a_bulk_repair_restores_every_column_it_changed` — ESTABLISHED BEFORE IT WAS FIXED, which the row asked for… |
 | `DRIVE-037` | high | L59-A's self-diagnosing Train card only fires when /models was fetched and failed. When Train is gated by an unsealed seal the original silent state returns: a bare heading tagged 'stale', zero… | `run-3 drive path 3, unsealed project: Train renders heading + stale tag, zero controls, and no /models fetch…` | **test:** `turbotab/test_every_handled_key_reaches_the_dom.py::test_a_step_that_has_not_been_reached_says_it_is_waiting` — L59-A MADE THIS VISIBLE RATHER THAN BREAKING IT, and… |
 | `AUDIT-022` | medium | The generated manuscript lists the sample size as a Strength for every N, with no criterion — and can print it as a strength and a limitation in the same section | `pages/10_Report_Export.py:1722 — generate_report builds the Discussion's 'Strengths and Limitations' block at…` | **test:** `tests/integration/test_the_sample_size_bullet_is_a_claim_about_this_study.py::test_the_same_count_is_not_a_strength_at_every_size AND… |

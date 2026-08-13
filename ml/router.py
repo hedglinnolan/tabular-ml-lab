@@ -241,6 +241,20 @@ class Question:
 # question and a Features-step question are not steps of the pre-seal
 # agreement, and giving them numbers would assert an ordering the constitution
 # does not contain.
+def _prep_modes() -> List[str]:
+    """`AnalysisProject.PREPARATION_MODES`, read rather than restated.
+
+    `DRIVE-026`. The Router is headless and imports no project at module scope,
+    so this is a local import at call time — the same shape the eligibility
+    question uses. Two copies of a value list is the drift `DRIVE-023` cost a
+    loop, and this question is the one that had no card at all, so it gets the
+    values right on the way in rather than later.
+    """
+    from turbotab.project import AnalysisProject
+
+    return list(AnalysisProject.PREPARATION_MODES)
+
+
 SEQUENCE: Dict[str, str] = {
     "state_lens": "01",
     # 1.5 rather than a renumbering, because every other position is cited in
@@ -841,7 +855,13 @@ def plan(
                 "per-model adds it, choosing uniform does not, because under "
                 "uniform there is nothing to caveat."),
             options=["Each model gets the preparation it needs (recommended)",
-                     "All models get the same preparation"]))
+                     "All models get the same preparation"],
+            # `DRIVE-026`. The values are the keys `set_preparation_mode`
+            # validates against, read from the project rather than restated —
+            # `DRIVE-023` was this question's own defect one door over, where
+            # `to_dict`'s `option_values or options` fallback put the PROSE on
+            # the wire and every press took a 400.
+            option_values=list(_prep_modes())))
 
     if step == "preprocess" and target:
         from turbotab import missingness as _miss

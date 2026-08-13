@@ -6733,8 +6733,13 @@
     "choose_target",            /* the target card, section 02 */
     "confirm_task_type",        /* the task-type row inside it */
     "choose_features",          /* the Features step */
-    "choose_models",            /* the Preprocess shelf */
-    "choose_preparation_mode"   /* the preparation-mode row */
+    "choose_models"             /* the Preprocess shelf */
+    /* `choose_preparation_mode` was here and had no section either — the THIRD
+       false claim in this list, found by `test_every_handled_key_reaches_the_dom`
+       on its first run and pinned as a strict xfail rather than left green over
+       an unreachable question. `DRIVE-026`, built at L60-C: it rides the generic
+       channel now, like the two before it. Removing the pin was part of the
+       work, not an afterthought — that is what `mark.xfail(strict=True)` buys. */
   ];
   window.__TURBOTAB_HANDLED_KEYS = HANDLED_QUESTION_KEYS;
 
@@ -6943,7 +6948,10 @@
        when pressed — which is `DRIVE-004`, and it would land on the two
        questions the whole pre-seal sequence turns on. */
     set_grain:                 "Rows per person",
-    set_eligibility:           "Study population"
+    set_eligibility:           "Study population",
+    /* `DRIVE-026`. An answered question leaves the Router's plan, so without a
+       row here the preparation-mode card would vanish when pressed. */
+    set_preparation_mode:      "Preparation"
   };
   window.__TURBOTAB_ACK_LABEL = ACK_LABEL;
 
@@ -7177,8 +7185,20 @@
      where a condition is a second copy of a rule another component applies,
      the two answers drift and the question renders nowhere. */
   function drawnElsewhere(q){
-    /* `renderAsked`'s own predicate. */
-    if (q.status === "asked" && !handledElsewhere(q.key)) return true;
+    /* `renderAsked`'s own predicate — AND THE PLAN IT READS. `DRIVE-026`.
+       This was `q.status === "asked" && !handledElsewhere(q.key)`, which says
+       *`renderAsked` will draw this*. `renderAsked` is only ever called with
+       `LAST_DATA_PLAN`, so that is true of a Data-step question and false of a
+       Preprocess-step one — and the difference is invisible until a
+       Preprocess-step key becomes answerable. `choose_preparation_mode` was
+       the first, and un-listing it rendered it NOWHERE: this clause claimed
+       another surface had it while that surface never sees this plan.
+
+       `askedInPlan` is the same reader the target card uses for exactly this
+       reason, and the point is that there is ONE true answer to *is another
+       surface drawing this*, not a rule re-derived per caller. */
+    if (q.status === "asked" && !handledElsewhere(q.key)
+        && askedInPlan(q.key)) return true;
     /* A dedicated section claims it by exact key — `confirm_task_type` is the
        target card's, and it is in this plan too because the Router serves the
        Data-step questions alongside the Preprocess ones. */
@@ -7237,12 +7257,27 @@
     var open = qs.filter(function(q){
       return q.mode === "push" && q.status === "asked" && !drawnElsewhere(q);
     });
+    /* ═════════ AN ANSWERABLE QUESTION GETS A CARD, NOT A SENTENCE ═════════
+       `DRIVE-026`. `openRowHTML` says *"this build has no control that records
+       an answer to this question"*, and that was TRUE of everything reaching
+       here — which is why it was the right thing to draw. It stops being true
+       the moment a key gains an `ANSWERABLE` entry, and then the sentence is
+       the app asserting an absence that is no longer real.
+
+       The split is the one `renderAsked` already makes on the Data plan, and it
+       is made here because `renderAsked` only ever reads `LAST_DATA_PLAN` —
+       so a PREPROCESS-step question rides the generic channel from this
+       surface. `choose_preparation_mode` is the first one to do it, and
+       un-listing it alone rendered it nowhere: that was measured, not assumed. */
+    var answerable = open.filter(function(q){ return !!ANSWERABLE[q.key]; });
+    var unanswerable = open.filter(function(q){ return !ANSWERABLE[q.key]; });
     if (!skipped.length && !open.length){ host.innerHTML = ""; return; }
     host.innerHTML =
       (skipped.length ? skipsHTML(skipped) : "") +
-      (open.length
+      answerable.map(askedCard).join("") +
+      (unanswerable.length
         ? '<div class="skips"><div class="skips-lab">Asked, because you asked ' +
-          "to be asked</div>" + open.map(openRowHTML).join("") + "</div>"
+          "to be asked</div>" + unanswerable.map(openRowHTML).join("") + "</div>"
         : "");
   }
 
@@ -8935,6 +8970,16 @@
       return (p && p.method)
         ? "Records which selection method runs, fitted inside each training fold. Nothing is selected now."
         : "Records that every column goes to the models. An absence of selection is an answer, and this is it.";
+    },
+    /* `DRIVE-026`. The caveat is half the answer, so the sentence carries it:
+       per-model is the recommended choice AND the one that makes a difference
+       between two models ambiguous between the model and its preparation. The
+       server writes that caveat into the methods section on this answer and
+       not on the other, which is why the two sentences differ. */
+    set_preparation_mode: function(p){
+      return ((p || {}).mode === "uniform")
+        ? "Records that every model gets the same preparation, so a difference between two of them is about the models. Resolved against the first model you selected."
+        : "Records that each model gets the preparation it suits, and writes the comparison caveat into your methods section — a difference then reflects the model and its preparation together.";
     }
   };
 
@@ -8993,6 +9038,17 @@
        the prose labels, so this card would have posted a sentence
        `set_eligibility` refuses. That was fixed at the server, where the pairing
        between a label and the answer it records belongs. */
+    /* ═════════ THE PREPARATION MODE ═════════ `DRIVE-026`.
+       The third key in `HANDLED_QUESTION_KEYS` with no section behind it, and
+       the one L58-B's guard found on its first run. Served at `step=preprocess`
+       once models are chosen; the server side has been complete the whole time
+       — `set_preparation_mode` at `api.py:726`, folded into `answered` at
+       `:3087` — and what was missing was the surface.
+
+       Both options post in one press. The Router serves `per_model` and
+       `uniform` as `option_values`, read off `AnalysisProject.PREPARATION_MODES`
+       rather than restated, so this card cannot repeat `DRIVE-023`. */
+    choose_preparation_mode:   { kind: "set_preparation_mode", field: "mode" },
     state_eligibility: {
       kind: "set_eligibility", field: "answer",
       /* AND THE SENTENCE SAYS THE NARROW TRUE THING, not the wide one. A

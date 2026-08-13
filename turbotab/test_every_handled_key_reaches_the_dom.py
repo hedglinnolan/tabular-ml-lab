@@ -96,17 +96,6 @@ DRIVES: Dict[str, Tuple[str, List[Tuple[str, dict]], str]] = {
          ("set_eligibility", {"answer": "everyone"}),
          ("seal", {})],
         "preprocess"),
-    # Asked once the models are chosen. Driven with the shelf's own first two
-    # keys rather than a hard-coded model name, because the shelf is a function
-    # of the task type and a name would drift with the registry.
-    "choose_preparation_mode": (
-        "clinical_risk.csv",
-        [("set_target", {"column": "age"}),
-         ("set_grain", {"answer": "one_row_per_person"}),
-         ("set_eligibility", {"answer": "everyone"}),
-         ("seal", {}),
-         ("select_models", "__FIRST_TWO_SHELF_MODELS__")],
-        "preprocess"),
 }
 
 #: The `data-*` attribute of a control that ANSWERS the question, per key.
@@ -126,7 +115,6 @@ ANSWERING_CONTROL: Dict[str, str] = {
     "confirm_task_type": "data-task",
     "choose_features": "data-feat-settle",
     "choose_models": "data-pick-model",
-    "choose_preparation_mode": "data-prep-mode",
 }
 
 
@@ -144,28 +132,25 @@ def _needle(declaration: str) -> str:
     """
     return declaration if "=" in declaration else declaration + '="'
 
-#: `DRIVE-026`. The third key in the list with no section, found by this file on
-#: its first run and left as a failing test rather than a green suite over an
-#: unreachable question — trap #1's rule, and `GUIDED-119`'s `xfail(strict=True)`
-#: is the model. Strict, so the day the row is built this file goes red and the
-#: entry has to be removed rather than quietly outliving the defect. **That is
-#: true of the MARKER in `_cases()` and was not true of the imperative
-#: `pytest.xfail()` this shipped with — see `TEST-077`.**
+#: EMPTY, AND IT WAS NOT EMPTY UNTIL L60-C.
 #:
-#: Measured: driven to `asked` on `clinical_risk.csv` with the seal drawn and
-#: two models selected, `GET /interview?step=preprocess` serves it `asked`, and
-#: across 93,880 characters of rendered page the title appears 0 times,
-#: `data-answer-key="choose_preparation_mode"` 0 times, and the strings
-#: `preparation_mode` and `prep-mode` 0 times. `#prepPlan` — the overlay whose
-#: whole job is to draw an asked question no other surface holds — is 0
-#: characters, because `drawnElsewhere` also reads `HANDLED_QUESTION_KEYS`. The
-#: list silences the safety net as well as the renderer.
-NOT_BUILT: Dict[str, str] = {
-    "choose_preparation_mode":
-        "DRIVE-026 — the preparation-mode row does not exist. The page never "
-        "names `set_preparation_mode`, and `drawnElsewhere` reads the same "
-        "list, so `renderPreprocessPlan` will not draw its open row either.",
-}
+#: `DRIVE-026` lived here: the third key in `HANDLED_QUESTION_KEYS` with no
+#: section, found by this file on its first run and pinned as a strict xfail
+#: rather than left green over an unreachable question. Measured then — driven
+#: to `asked` with the seal drawn and two models selected, the title appeared 0
+#: times across 93,880 characters, and `#prepPlan` rendered 0 characters because
+#: `drawnElsewhere` reads the same list and silences the safety net too.
+#:
+#: **The pin flipped when the row was built**, which is what
+#: `mark.xfail(strict=True)` buys and why `TEST-077` mattered: the case went red
+#: as an unexpected pass, and clearing this entry was part of the work rather
+#: than an afterthought. The key now rides the generic channel, so it is not in
+#: `HANDLED_QUESTION_KEYS` at all and this file no longer has an opinion on it —
+#: `test_the_generic_channel_carries_the_preparation_mode` is where it lives.
+#:
+#: Kept as an empty dict rather than deleted: the mechanism is the point, and the
+#: next key found with no section belongs here the same way.
+NOT_BUILT: Dict[str, str] = {}
 
 
 def _page() -> str:

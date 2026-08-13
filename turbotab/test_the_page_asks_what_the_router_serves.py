@@ -339,6 +339,11 @@ def test_the_quoted_record_is_never_empty(tmp_path):
     decide(pid3, "set_target", {"column": "sought_support"})
     decide(pid3, "set_reverse_coding", {"columns": ["item_03"]})
     decide(pid3, "set_selection", {})          # "every column goes to the models"
+    # L60-C. `choose_preparation_mode` rides the generic channel now, so it is
+    # labeled and owes this test a sentence a drive actually produced. It is a
+    # property of the comparison rather than of the table, so any project that
+    # can record it will do — this one is already open.
+    decide(pid3, "set_preparation_mode", {"mode": "per_model"})
 
     # A fourth, for the one kind no upright table can reach: question 1.5 fires
     # only on a feature-major assay export, so the drive that exercises it has
