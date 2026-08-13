@@ -17,7 +17,7 @@ PYTHON := ./venv/bin/python
 PYTEST := $(PYTHON) -m pytest
 PYTEST_OPTS := --timeout=60 -q
 
-.PHONY: test test-integration test-all verify ci lint clean help
+.PHONY: test test-integration test-all verify ci lint clean help turbotab turbotab-check
 
 # ── Tier 1: Unit + Workflow (~10s) ───────────────────────────────────
 test:
@@ -52,8 +52,40 @@ test-integration-v:
 	$(PYTEST) tests/ $(PYTEST_OPTS) -v
 
 # ── Dev utilities ────────────────────────────────────────────────────
+# `serve` is the STREAMLIT app — the parity reference, still. It is not
+# TurboTab and it is deliberately not renamed: `make turbotab` below is the
+# other door, and both need to be startable.
 serve:
 	$(PYTHON) -m streamlit run app.py --server.port 8501
+
+# ── TurboTab ─────────────────────────────────────────────────────────
+#
+# `DRIVE-035`, and this target is the whole of what four human drives cost.
+#
+# There was no launch command. `make serve` starts Streamlit, `README.md` says
+# nothing about TurboTab, and `turbotab/README.md` — written when TurboTab was
+# a walking skeleton with no Train step — tells you to build `turbotab/.venv`
+# from `turbotab/requirements.txt` and run uvicorn from THAT. That environment
+# has no scikit-learn ON PURPOSE, and
+# `tests/test_the_guided_door_installs_without_the_app.py` exists to keep it
+# that way. So the documented way to start the app could not fit a model, and a
+# test guarded the guarantee.
+#
+# `$(PYTHON)` is `./venv/bin/python` — named explicitly rather than left to
+# whatever `python` resolves to, which is the mistake this exists to make
+# impossible. The script checks the engine's stack IN THE INTERPRETER THAT WILL
+# SERVE and refuses before binding the port, so a missing package is a legible
+# refusal in the terminal instead of 21 characters of Internal Server Error at
+# the Train step.
+turbotab:
+	$(PYTHON) scripts/serve_turbotab.py --port $(PORT)
+
+# The environment check on its own, for a machine where the question is only
+# *would this start*. Same code path, no port.
+turbotab-check:
+	$(PYTHON) scripts/serve_turbotab.py --check-only
+
+PORT ?= 8777
 
 lint:
 	$(PYTHON) -m py_compile app.py
@@ -75,6 +107,8 @@ help:
 	@echo "  make test-e2e          Tier 3: Playwright browser tests (needs server)"
 	@echo "  make test-all          All tiers"
 	@echo "  make ci                What GitHub Actions runs"
-	@echo "  make serve             Start Streamlit dev server"
+	@echo "  make serve             Start Streamlit dev server (the parity reference)"
+	@echo "  make turbotab          Start TurboTab on :8777 — refuses if the stack is missing"
+	@echo "  make turbotab-check    Same environment check, without binding a port"
 	@echo "  make lint              Syntax-check all pages"
 	@echo "  make clean             Remove caches"

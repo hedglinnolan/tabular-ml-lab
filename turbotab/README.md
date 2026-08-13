@@ -12,17 +12,25 @@ running code instead of a claim.
 
 ## Run it
 
-From the repository root.
+From the repository root:
 
-**Windows (PowerShell)**
-
-```powershell
-python -m venv turbotab\.venv
-turbotab\.venv\Scripts\python.exe -m pip install -r turbotab\requirements.txt
-turbotab\.venv\Scripts\python.exe -m uvicorn turbotab.api:app --port 8777
+```bash
+make turbotab
 ```
 
-**macOS / Linux**
+Then open **<http://127.0.0.1:8777/>** and drop a CSV on it. `make turbotab
+PORT=8899` for a different port; `make turbotab-check` runs the environment
+check and exits without binding anything.
+
+It prints the interpreter, the environment and the build it is serving before
+it binds, and **refuses to start on a stack it cannot import** — naming the
+package and the fix — because a server that starts and then answers twenty-one
+characters of *Internal Server Error* at the Train step is worse than one that
+does not start.
+
+### ⚠ THIS SECTION USED TO SAY SOMETHING ELSE, AND IT COST FOUR HUMAN DRIVES
+
+Until `L61` it read:
 
 ```bash
 python3 -m venv turbotab/.venv
@@ -30,7 +38,23 @@ turbotab/.venv/bin/python -m pip install -r turbotab/requirements.txt
 turbotab/.venv/bin/python -m uvicorn turbotab.api:app --port 8777
 ```
 
-Then open **<http://127.0.0.1:8777/>** and drop a CSV on it.
+That was correct when this file was written and TurboTab was a walking skeleton
+with **no training step** — the table below is still true, and
+`turbotab/.venv` is still deliberately empty of scikit-learn with a test
+keeping it that way. It stopped being correct the moment Train landed, and
+nothing announced the expiry.
+
+So **the documented way to start the app was guaranteed to lose `GET /models`,
+and a test guarded the guarantee.** `ml/model_registry.py` imports the whole
+estimator stack at module scope, so under that interpreter every model-shelf
+request 500s on every file and every target. Four drives were spent on it,
+three of them looking for a data-dependent cause, and `DRIVE-035` was open for
+two loops with the wrong hypothesis in it (`MODELS-026`, `TEST-087`).
+
+`turbotab/.venv` remains the right environment for the **portability claim** —
+running the diagnose → profile → detect path with pandas and numpy and nothing
+else, which is what `tests/test_the_guided_door_installs_without_the_app.py`
+checks. It is not the environment for running the app.
 
 `turbotab/sample_data/clinic_visits.csv` is there if you want something to try immediately — a
 deliberately messy 140-row table the engine finds fifteen things in. Your own file is the better
@@ -40,8 +64,8 @@ test.
 
 | Environment | What it holds | What it is for |
 |---|---|---|
-| `turbotab/.venv` | `turbotab/requirements.txt` — pandas, numpy, FastAPI, pytest | **running the Guided door**, and being empty of everything else |
-| `./venv` | the app's `requirements.txt` minus shap and torch | **running the whole suite**, which needs scikit-learn and Streamlit |
+| `turbotab/.venv` | `turbotab/requirements.txt` — pandas, numpy, FastAPI, pytest | **the portability claim**: proving the diagnose → profile → detect path needs nothing else. **Not for running the app** — it cannot build the model shelf. |
+| `./venv` | the app's `requirements.txt` minus torch | **running the app and the whole suite**, which need scikit-learn, xgboost and lightgbm. This is what `make turbotab` uses. |
 
 The split is not tidiness. `turbotab/requirements.txt` claims the whole
 diagnose → profile → detect path needs pandas and numpy and nothing else, and
@@ -67,16 +91,22 @@ turbotab/.venv/bin/python -m pytest turbotab/test_skeleton.py -q   # the Guided 
 ./venv/bin/python -m pytest turbotab/ tests/ -q                    # everything
 ```
 
-The whole suite's baseline is **four failures** — three needing `shap`, one
-needing `torch` — plus one collection error for the same reason. Five means
-something broke.
+The suite's baseline is **one** environmental failure —
+`tests/test_engine_is_headless.py::test_core_modules_import_for_any_reason`,
+`torch` absent — plus one collection error for the same reason. **This said
+`four` until `L61` and had been wrong since 2026-08-09**: the three it counted
+need `shap`, which is installed at 0.52.0, and that file passes 10 of 10. An
+onboard that tells you to expect three reds in a file that now passes is an
+onboard that makes you ignore a real regression, so the count carries its date
+here: re-derived 2026-08-13 at `bb76eae`. `AGENT_ONBOARD.md` §03 has the same
+correction and this file did not get it.
 
 ### Driving it with the harness on
 
 **Temporary development instrumentation, not a product feature.** Off by default.
 
 ```bash
-TURBOTAB_DEV_CHECKS=1 turbotab/.venv/bin/python -m uvicorn turbotab.api:app --port 8777
+TURBOTAB_DEV_CHECKS=1 make turbotab
 ```
 
 Then drive normally. Every state transition is checked against the record — that

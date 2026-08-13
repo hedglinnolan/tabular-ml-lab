@@ -8698,16 +8698,40 @@
            refusal: the app still works, and what is not trustworthy is any
            conclusion about the ENGINE drawn from this session. */
         var build = st && st.build;
+        var host = document.getElementById("devBuild");
+        var banner = "";
         if (build && build.page_newer_than_engine){
-          var host = document.getElementById("devBuild");
-          if (host){
-            host.className = "devbuild";
-            host.innerHTML =
-              '<strong>This server is serving a newer page than its engine.</strong> ' +
-              esc(build.why || "") +
-              (build.rev ? ' <span class="v">engine build ' + esc(build.rev) +
-                           "</span>" : "");
-          }
+          banner +=
+            '<strong>This server is serving a newer page than its engine.</strong> ' +
+            esc(build.why || "") +
+            (build.rev ? ' <span class="v">engine build ' + esc(build.rev) +
+                         "</span>" : "");
+        }
+        /* `TEST-087`. THE INTERPRETER, said on screen — the layer under the
+           banner above, and the one that actually cost three drives.
+
+           B3 told a driver which BUILD was answering and was silent about
+           which PYTHON. Run 4 read it, found it clean, wrote "everything on
+           screen is trustworthy", and then could not fit a model: the app was
+           served from a virtualenv with no scikit-learn while every test and
+           every probe ran under one that had it. Honest and insufficient in
+           the same breath.
+
+           It renders only when the stack is broken, for the same reason the
+           build banner does — an element that is always present is a mark that
+           asserts nothing (§02). When it is broken the page says so before the
+           user reaches Train, instead of the Train step 500ing. */
+        var env = st && st.environment;
+        if (env && env.engine_stack_ok === false){
+          banner += (banner ? "<br><br>" : "") +
+            "<strong>This server cannot build the model shelf.</strong> " +
+            esc(env.why || "") +
+            " <span class=\"v\">" + esc(String(env.python || "")) + "</span>" +
+            (env.fix ? "<br>" + esc(env.fix) : "");
+        }
+        if (banner && host){
+          host.className = "devbuild";
+          host.innerHTML = banner;
         }
         if (!st || !st.enabled) return;
 

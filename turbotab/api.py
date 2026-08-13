@@ -3343,7 +3343,41 @@ def _served_build() -> Dict[str, Any]:
             newest = max(newest, path.stat().st_mtime)
         except OSError:
             continue
-    return {"rev": rev, "newest_source_mtime": newest or None}
+    # `TEST-087`. WHICH INTERPRETER, stamped beside which build.
+    #
+    # B3 shipped the build stamp because a page newer than its engine was
+    # invisible, and it worked exactly as designed: run 4 read it, found
+    # `page_newer_than_engine` false and the rev matching HEAD, and wrote
+    # *"everything on screen is trustworthy."* All true — and the app could not
+    # fit a model, because the banner reports the CODE's vintage and the
+    # failure was the ENVIRONMENT. Honest and insufficient in the same breath,
+    # which is worse than absent: it licensed a conclusion it could not
+    # support.
+    #
+    # The same shape three times, one layer further out each time. *ahead 31*
+    # was a fact about the remote; then the right directory and the wrong code;
+    # now the right code and the wrong environment.
+    #
+    # **`ps` cannot answer this and that is why it has to be served.**
+    # `venv/bin/python` is a symlink to the Homebrew interpreter, so `ps` shows
+    # the resolved path and a complete venv is indistinguishable from the bare
+    # system Python. `L60-E` read exactly that and concluded *"every uvicorn on
+    # this host runs SYSTEM Python"* — half right, for two processes that were
+    # running two different virtualenvs. Only `sys.prefix` inside the process
+    # knows, and only `lsof` knows from outside.
+    #
+    # `find_spec`, never an import: this runs at API import, in the server AND
+    # in every one of two thousand test processes, and importing the estimator
+    # stack costs seconds. The failure this is about is ABSENCE, which
+    # `find_spec` sees exactly.
+    from ml import engine_stack
+    stack = engine_stack.report()
+    return {"rev": rev, "newest_source_mtime": newest or None,
+            "python": stack["python"], "environment": stack["prefix"],
+            "engine_stack_ok": stack["stack_ok"],
+            "engine_stack_missing": stack["missing"],
+            "engine_stack_why": stack["why"],
+            "engine_stack_fix": stack["fix"]}
 
 
 _SERVED_BUILD = _served_build()
@@ -3383,6 +3417,19 @@ async def dev_status() -> Dict[str, Any]:
                         "They disagree, so what you are driving is a hybrid: "
                         "restart the server before trusting anything the engine "
                         "does." if stale else None),
+            },
+            # `TEST-087`. The build half answers *which code*; this answers
+            # *which Python*, and the second is what cost three drives. Served
+            # unconditionally for the same reason the build is: a driver who
+            # cannot tell the environment produces findings nobody can
+            # reproduce.
+            "environment": {
+                "python": _SERVED_BUILD["python"],
+                "prefix": _SERVED_BUILD["environment"],
+                "engine_stack_ok": _SERVED_BUILD["engine_stack_ok"],
+                "missing": _SERVED_BUILD["engine_stack_missing"],
+                "why": _SERVED_BUILD["engine_stack_why"],
+                "fix": _SERVED_BUILD["engine_stack_fix"],
             }}
 
 
