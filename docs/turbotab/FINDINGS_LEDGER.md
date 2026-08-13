@@ -25,17 +25,17 @@ Nothing is closed without a regression test named after it.
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 464 |
-| `PARTIAL` | 74 |
+| `OPEN` | 463 |
+| `PARTIAL` | 75 |
 | `FIXED` | 392 |
 | `NOT-A-DEFECT` | 8 |
 
 ---
 
-## OPEN — 464
+## OPEN — 463
 
 
-### Guided-door drive feedback — 72
+### Guided-door drive feedback — 71
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -58,7 +58,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-233` | high | There is no EXPLAINABILITY pack, so every threshold the explanation suite needs would ship unsourced into the one subsystem whose whole job is calibrated honesty | `grep over the five research packs returns 0 for shap/shapley, 0 for attribution, 0 for feature importance and…` | THE PRODUCT OWNER SUPPLIED A DOMAIN-AGNOSTIC EXPLAINABILITY PLAYBOOK ON 2026-08-09 AND NAMED ITS ROLE EXACTLY: 'I see it as a useful mould for what we actually want to form into… |
 | `GUIDED-236` | high | The ROC figure can never overlay more than one model: the spec takes a dict of models, its caption counts them and its checklist asserts they are overlaid with a legend, and figure_bundle hands it… | `L55-C, found while building a renderer for it and needing two series. turbotab/figure_bundle.py…` | TRAP 3b WITH THE CHECKLIST ITEM RATHER THAN THE TEST NAME: the item's TEXT carries a consequence - models are overlaid - that its PREDICATE never checks, and the predicate reads a… |
 | `GUIDED-238` | high | Half the figure checklist cannot fail: of 85 items, 43 read a constant and only 16 are genuinely falsifiable, so a scored checklist reports a compliance it never checked | `reported by the L57 execution agent's Part B reconnaissance, 2026-08-09; the named instance is…` | FILED BY THE ADJUDICATOR FROM THE EXECUTION AGENT'S HANDBACK, BECAUSE IT EXISTED ONLY IN A MESSAGE AND THE AGENT WAS ABOUT TO BE CLEARED. It stopped before Part B and therefore… |
-| `DRIVE-036` | high | The repeat path dead-ends: grain=people repeat, unit=one row per person, then the aggregation menu answers 'there is no identifier column recorded, so there is nothing to combine rows by' -- and no… | `run-3 drive path 3, bp_sys with grain=people_repeat; seal button disabled:true class='answer notbuilt' tagged…` | THIRD HUMAN DRIVE, 2026-08-12, at 0dca497, and it is the first time anyone has walked the repeat chain in a drive -- runs 1 and 2 both answered one-row-per-person, so Q4-Q7 had… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
@@ -571,10 +570,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 74
+## PARTIAL — 75
 
 
-### Guided-door drive feedback — 16
+### Guided-door drive feedback — 17
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -587,6 +586,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-034` | high | The recorded reverse-coding sentence promises a flip and a scoring step the app never performs, and it is exported into the manuscript | `turbotab/api.py:538-543 — On set_reverse_coding the dispatcher records text="{n} item(s) were declared…` | **test:** `turbotab/test_the_reverse_coding_card_does_not_promise_a_flip_either.py::test_the_card_does_not_tell_the_user_a_flip_is_coming` — L53-C, fanned out to four chunks… |
 | `GUIDED-180` | high | 18 live decision kinds have no ACTION_CONTRACT row, and two of them - apply_bulk and route_missingness_bulk - MUTATE THE WORKING TABLE, so the leak guard is inert on the highest-blast-radius paths in… | `turbotab/devchecks.py:596 ACTION_CONTRACT holds 27 rows; the decision handler in turbotab/api.py carries 47…` | **test:** `turbotab/test_an_unlisted_decision_kind_reports_as_unclassified.py::test_every_live_kind_is_declared_or_dated AND… |
 | `GUIDED-223` | high | str.capitalize() on composed prose containing an identifier lower-cases the identifier, so a column name or sample id ships altered inside a true sentence | `L50-D, found by driving a fixture rather than by any assertion. str.capitalize() upper-cases index 0 and…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_the_duplicate_reading_covers_the_renaming_a_reader_performs` — PARTIAL: closed in packs.py, open at… |
+| `DRIVE-036` | high | The repeat path dead-ends: grain=people repeat, unit=one row per person, then the aggregation menu answers 'there is no identifier column recorded, so there is nothing to combine rows by' -- and no… | `run-3 drive path 3, bp_sys with grain=people_repeat; seal button disabled:true class='answer notbuilt' tagged…` | THE FALSE SENTENCE IS PULLED AND THE ROW STAYS OPEN, which is the whole of L61-D2. The receipt's last clause -- 'and you can name it at any point before the seal' -- is a claim… |
 | `GUIDED-030` | medium | Four pack priors still have no consumer - GUIDED-024's defect surviving for a subset, now declared and counted rather than noticed | `turbotab/packs.py PACKS priors; test_every_prior_has_a_consumer_or_is_declared_unconsumed lists the four with…` | Four priors had no consumer at L21 and three still do. THE ONE REAL DEFECT IS FIXED as GUIDED-033: qc_rows_excluded stated at derived confidence that pooled QC rows are not… |
 | `GUIDED-052` | medium | No artifact stated whether its content may become model input, so promotion had no field to read and label-blindness was standing in for the rule | `docs/turbotab/PRODUCT_VISION.md artifact promotion; turbotab/figures.py FigureSpec` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_pca_is_promotable_and_calibration_is_not` — THE RULE IS RE-EXECUTABILITY, NOT LABEL-BLINDNESS… |
 | `GUIDED-101` | medium | The Explain step has no research backing and no parity register row: the four packs contain zero explainability content, so the one journey step left to build is the only one whose method choice… | `grep for SHAP, permutation importance, variable importance and explainab across the 3,602 lines of…` | SCOPING INSTRUCTION HONORED AT L36-B, and the row stays open because the research it asks for is still absent. WHAT WAS BUILT: permutation importance on the held-out rows via… |

@@ -352,12 +352,32 @@ _ANSWERED: Dict[str, str] = {
     # This is `project.set_grain`'s own comment about the escape hatch applied
     # one answer over: *a promise the split did not keep is worse than the wrong
     # confident answer the option exists to avoid.*
+    # `DRIVE-036`, and the last clause is gone. It read *"…and you can name it
+    # at any point before the seal."*
+    #
+    # **THERE IS NO CONTROL THAT NAMES IT.** The identifier follow-up is
+    # declared in the API contract — `GET /grain` carries
+    # `follow_up: "which column identifies the person?"` — and is rendered
+    # nowhere. Two human drives read this receipt, went looking for the control,
+    # and found only the aggregation menu's refusal: *"there is no identifier
+    # column recorded, so there is nothing to combine rows by."*
+    #
+    # So the sentence was the governing rule's **assert something false** branch
+    # wearing an offer. Not a hedge and not an overstatement — a claim about an
+    # action the interface does not provide, which is worse than silence
+    # because a reader spends the session hunting for it.
+    #
+    # The rest of the sentence is unchanged and stays true: the split is by row,
+    # the numbers are labeled exploratory, and the condition that lifts it is
+    # named. What is removed is the promise about HOW. Building the control is
+    # the other half of `DRIVE-036` and it stays open — pulling the false
+    # sentence costs one string and does not wait for it.
     _PEOPLE_REPEAT_UNGROUPED:
         "Recorded: people repeat, and no column identifying the person has been "
         "named. Held-out rows are drawn BY ROW until one is, so the same person "
         "can sit on both sides and held-out performance would read better than "
         "the model is. Your numbers are labeled exploratory until a person "
-        "column is named, and you can name it at any point before the seal.",
+        "column is named.",
     # THE SAME BRANCH, and it was the same defect one degree milder. This read
     # "held-out rows are chosen by `{group_col}` where a grouping column was
     # named and by row otherwise", which with no column formats to an empty
