@@ -230,6 +230,62 @@ def _original_labels(s: pd.Series, token: str) -> List[str]:
     return seen
 
 
+def two_level_plan(s: pd.Series) -> Optional[Dict[str, Any]]:
+    """The same plan as `read_as_binary_plan`, for a column of ANY dtype.
+
+    **`DRIVE-032`, defect one.** `read_as_binary_plan` opens with
+    `if not _is_texty(s): return None`, which is right for a FEATURE — the
+    question there is *how should this column be read*, and a column already
+    stored as numbers has been read. It is wrong for the TARGET, where the
+    question is *which level is the event*, and that question is exactly as open
+    on a `0`/`1` column as on `case`/`control`.
+
+    Measured before changing anything, one fit per shape: `case`/`control`,
+    `died`/`survived` and `Yes`/`No` all raised the question; **numeric `0`/`1`
+    did not.** That is the tester's `meds_hbp` and it is why two human drives
+    saw nothing.
+
+    Text still goes through `read_as_binary_plan` unchanged, so `KNOWN_PAIRS`,
+    the convention suggestion and every feature-side behavior are untouched.
+    This only widens what the TARGET's question can be asked about.
+    """
+    plan = read_as_binary_plan(s)
+    if plan is not None:
+        return plan
+
+    tokens = s.map(_normalize)
+    present = tokens.dropna()
+    if len(present) < MIN_ROWS:
+        return None
+    levels = sorted(present.unique().tolist())
+    if len(levels) != 2:
+        return None
+
+    positive: Optional[str] = None
+    for hi, lo in KNOWN_PAIRS:
+        if {hi, lo} == set(levels):
+            positive = hi
+            break
+    known = positive is not None
+    if positive is None:
+        # Deterministic, and declared. Sorted order is arbitrary; saying so is
+        # the difference between a choice and a guess presented as a fact —
+        # the same sentence `read_as_binary_plan` carries, for the same reason.
+        positive = levels[-1]
+    negative = next(v for v in levels if v != positive)
+    counts = {level: int((present == level).sum()) for level in levels}
+    return {
+        "levels": levels,
+        "positive": positive,
+        "negative": negative,
+        "positive_known": known,
+        "mapping": {positive: 1, negative: 0},
+        "counts": counts,
+        "n_missing": int(len(s) - len(present)),
+        "n_rows": int(len(s)),
+    }
+
+
 def positive_class_finding(column: str, s: pd.Series) -> Optional[ShapeFinding]:
     """The target's question, which is different in kind from a feature's.
 
@@ -251,7 +307,10 @@ def positive_class_finding(column: str, s: pd.Series) -> Optional[ShapeFinding]:
     property of the data, so `auto_suggestable` is False here regardless of how
     familiar the vocabulary looks.
     """
-    plan = read_as_binary_plan(s)
+    # `DRIVE-032`. THE TARGET'S PLAN IS DTYPE-AGNOSTIC and a feature's is not —
+    # see `two_level_plan`. This line read `read_as_binary_plan(s)`, so a target
+    # already stored as `0`/`1` was never asked which level is the event.
+    plan = two_level_plan(s)
     if plan is None:
         return None
 

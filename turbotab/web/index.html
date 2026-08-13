@@ -2434,7 +2434,30 @@
        §09's recorded-absence rule from the other side: an object appearing with
        no explanation is as unexplained as one vanishing without it. The sentence
        is the server's, quoted (§05.1 rule 3). */
-    if (arrived){
+    /* `DRIVE-038`. A CHIP REFUSES A NON-STRING RATHER THAN COERCING ONE.
+       Run 3 saw `<span class="chip arrived">[object Object]</span>` here, one
+       occurrence, persisting across a lens change. `esc()` calls `String(s)` on
+       whatever it is handed, so an object arrives as developer text — the page
+       writing a sentence nobody composed, which is the governing rule's own
+       branch.
+
+       The sentence this chip carries is the SERVER'S, quoted (§05.1 rule 3).
+       A value that is not a string is therefore not a sentence the server
+       composed, and rendering it is asserting something false about where it
+       came from. Silence is the honest fallback and the console carries the
+       fault, because a user cannot act on it and whoever is debugging can.
+
+       NOT REPRODUCED HERE, and that is recorded rather than implied: run 3 drove
+       a current page against a 28-hour-old API, and `attention.stack` returns
+       `promoted_because` as a string on every branch — checked. This is the
+       defensive half, which is owed either way; the trigger stays open on the
+       row. It is `TEST-083`'s shape — a positional argument in the wrong slot,
+       silently stringified — for the second time in two loops. */
+    if (arrived && typeof arrived !== "string"){
+      try {
+        console.error("TurboTab: a finding chip was handed a non-string", arrived);
+      } catch (_){ }
+    } else if (arrived){
       chips += '<span class="chip arrived">' + esc(arrived) + "</span>";
     }
     /* Then the provenance, in a fixed position. A chip that moves with the

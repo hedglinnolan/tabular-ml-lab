@@ -353,6 +353,63 @@ def check(project: Any, model_keys: Sequence[str]) -> None:
         raise TrainingRefusal(
             f"{n_train} training rows have a value for {target!r}, which is "
             f"too few to fit on.")
+    unchosen = event_not_chosen(project)
+    if unchosen:
+        raise TrainingRefusal(unchosen)
+
+
+def event_not_chosen(project: Any) -> Optional[str]:
+    """The refusal owed when the outcome has two levels and nobody said which
+    is the event — or `None` when there is nothing to refuse.
+
+    ## Why the fit and not the seal
+
+    `DRIVE-032`, and `L60` had two defensible places to put this. The seal was
+    the other one, and it is the wrong one: `engine.draw_holdout` does not
+    stratify by class — it draws from `df.index[y.notna()]` and knows nothing
+    about levels — so **the split is byte-identical whichever level is the
+    event.** Gating the seal would refuse a step that cannot use the answer.
+
+    Where the answer IS used is here and downstream: `positive_label` sets what
+    sensitivity and specificity are the sensitivity and specificity *of*, and
+    `figure_bundle.predictions_for` builds its entire binary vector from it. So
+    the refusal lands where the value is consumed, which is also where
+    `api.py`'s repair handler already refuses: *"There is no default: whether
+    the event is (say) death or survival is the research question, not
+    something the file can say."*
+
+    ## What "chosen" means, and why it is read off the record
+
+    Applying the `set_positive_class` repair rewrites the column so the chosen
+    level is `1`. So a target whose event was chosen is `0`/`1` with the event
+    as `1`, and `classes_[1]` is then genuinely correct rather than a guess.
+    **The defect was never the encoding — it was running at all with the
+    question open.** The decision is therefore the thing consulted, not the
+    dtype: a `0`/`1` column can be one a user chose or one that arrived that
+    way, and only the record can tell them apart.
+    """
+    from ml import binary_text as _bt
+
+    target = str(project.target or "")
+    if not target or (project.task_type or "") != "classification":
+        return None
+    table = project.working_table
+    if target not in table.columns:
+        return None
+    if _bt.two_level_plan(table[target]) is None:
+        return None            # not two-level: multiclass has no single event
+    for decision in reversed(list(project.decisions)):
+        if (getattr(decision, "kind", "") == "apply"
+                and str(getattr(decision, "subject", "")) == f"positive_class__{target}"):
+            return None
+    return (
+        f"Which level of {target!r} is the event has not been recorded, and it "
+        f"decides what every score means — sensitivity and specificity are of "
+        f"the event, and the curves are drawn against it. There is no default: "
+        f"whether the event is (say) death or survival is the research "
+        f"question, not something the file can say. Answer "
+        f"“Which of these is the event you are predicting?” on the "
+        f"outcome, then fit.")
 
 
 def train(project: Any, model_keys: Sequence[str], *,

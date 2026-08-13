@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**387 of 928 closed.**
+**389 of 929 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 469 |
-| `PARTIAL` | 72 |
-| `FIXED` | 381 |
-| `NOT-A-DEFECT` | 6 |
+| `OPEN` | 467 |
+| `PARTIAL` | 73 |
+| `FIXED` | 382 |
+| `NOT-A-DEFECT` | 7 |
 
 ---
 
-## OPEN — 469
+## OPEN — 467
 
 
-### Guided-door drive feedback — 74
+### Guided-door drive feedback — 73
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -58,7 +58,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-233` | high | There is no EXPLAINABILITY pack, so every threshold the explanation suite needs would ship unsourced into the one subsystem whose whole job is calibrated honesty | `grep over the five research packs returns 0 for shap/shapley, 0 for attribution, 0 for feature importance and…` | THE PRODUCT OWNER SUPPLIED A DOMAIN-AGNOSTIC EXPLAINABILITY PLAYBOOK ON 2026-08-09 AND NAMED ITS ROLE EXACTLY: 'I see it as a useful mould for what we actually want to form into… |
 | `GUIDED-236` | high | The ROC figure can never overlay more than one model: the spec takes a dict of models, its caption counts them and its checklist asserts they are overlaid with a legend, and figure_bundle hands it… | `L55-C, found while building a renderer for it and needing two series. turbotab/figure_bundle.py…` | TRAP 3b WITH THE CHECKLIST ITEM RATHER THAN THE TEST NAME: the item's TEXT carries a consequence - models are overlaid - that its PREDICATE never checks, and the predicate reads a… |
 | `GUIDED-238` | high | Half the figure checklist cannot fail: of 85 items, 43 read a constant and only 16 are genuinely falsifiable, so a scored checklist reports a compliance it never checked | `reported by the L57 execution agent's Part B reconnaissance, 2026-08-09; the named instance is…` | FILED BY THE ADJUDICATOR FROM THE EXECUTION AGENT'S HANDBACK, BECAUSE IT EXISTED ONLY IN A MESSAGE AND THE AGENT WAS ABOUT TO BE CLEARED. It stopped before Part B and therefore… |
-| `DRIVE-032` | high | The positive-class question is never asked for a numeric 0/1 target. The register says target-positive-class is always asked and never pre-selected at any confidence; on a binary Int64 target no such… | `verified at b4b8246: interview plans for step data/explore/features/preprocess on a 0/1 Int64 target serve no…` | C1 DRIVEN TO A FITTED METRIC RATHER THAN ARGUED FROM THE CODE, and it landed on the bad branch the row named: the app IS choosing the event without asking. RE-FILED FROM 'the… |
 | `DRIVE-036` | high | The repeat path dead-ends: grain=people repeat, unit=one row per person, then the aggregation menu answers 'there is no identifier column recorded, so there is nothing to combine rows by' -- and no… | `run-3 drive path 3, bp_sys with grain=people_repeat; seal button disabled:true class='answer notbuilt' tagged…` | THIRD HUMAN DRIVE, 2026-08-12, at 0dca497, and it is the first time anyone has walked the repeat chain in a drive -- runs 1 and 2 both answered one-row-per-person, so Q4-Q7 had… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
@@ -541,7 +540,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Page-layer extraction — 10
+### Page-layer extraction — 9
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -552,7 +551,6 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-037` | high | L59-A's self-diagnosing Train card only fires when /models was fetched and failed. When Train is gated by an unsealed seal the original silent state returns: a bare heading tagged 'stale', zero… | `run-3 drive path 3, unsealed project: Train renders heading + stale tag, zero controls, and no /models fetch…` | THIRD HUMAN DRIVE, 2026-08-12. THIS IS DRIVE-030 SURVIVING ITS OWN FIX ON A BRANCH THE FIX DID NOT COVER, and the tester found it by walking a path the previous two runs never… |
 | `DRIVE-028` | medium | The same lens one surface over: three entries in HANDLED_QUESTION_PREFIXES have no textual occurrence in the page other than the list entry itself, and nothing drives them | `turbotab/web/index.html HANDLED_QUESTION_PREFIXES` | Extend test_every_handled_key_reaches_the_dom to the prefixes: drive a project where the Router serves a key with each prefix and require a control. Do NOT close this on the grep… |
 | `DRIVE-029` | medium | Answering 'Yes, people repeat' cannot name the column that identifies the person from the Guided door, so the answer routes to an undetermined basis and a by-row split | `ml/router.py state_grain; turbotab/web/index.html askedCard` | Offer the suggestion's columns on the people_repeat branch, with the per-column evidence the route already serves. The suggestion is never the answer -- constitution 02 demotes… |
-| `DRIVE-038` | medium | A finding card's 'arrived' chip rendered the literal string [object Object] on the positive-class finding -- a non-string reaching esc() in the third positional argument of findingCard(f, withSource… | `run-3 drive path 2: <span class='chip arrived'>[object Object]</span>, 1 occurrence, persists across a lens…` | THIRD HUMAN DRIVE, 2026-08-12. NARROWED BY THE ADJUDICATOR AND NOT SOLVED, so the next loop does not repeat the search I just did. The chip is written in exactly one place… |
 | `DRIVE-039` | medium | After the seal is drawn, the Explore impossibility cards still render enabled 'Exclude those rows from the study' buttons with editable reason inputs, while the same card's prose says clause 04… | `run-3 drive path 1, project sealed: data-plaus-route='exclude_the_rows' buttons disabled:false with editable…` | THIRD HUMAN DRIVE, 2026-08-12. THE TESTER DID NOT PRESS IT, and said why: it would attempt an illegal mutation on a sealed project. That is the right call by a tester and it… |
 | `DRIVE-021` | low | The bulk binary-repair card says the columns were 'written as text' for six imputed_* columns that are bool dtype, so the repair's stated reason is wrong about the data it is offering to repair | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2 and 4 (F7)` | The card groups nine columns as 'need the same repair: read as binary' and its prose says they were written as text. THREE of the nine are text - gender, meds_hbp, meds_chol - and… |
 
@@ -576,7 +574,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 72
+## PARTIAL — 73
 
 
 ### Guided-door drive feedback — 16
@@ -646,6 +644,15 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-061` | medium | Import cycle ml.publication ↔ utils.insight_ledger is a genuine layering inversion | `ml/publication.py:128,182,453,460; utils/insight_ledger.py (imports at module top)` | The inversion narrowed from four formatting helpers to one pure-data constant. The presentation helpers this row says belong to neither module are no longer imported from… |
 | `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | The row's blocking condition is satisfied and its recommendation still stands. 'Entirely untested, which is the reason to do it first WITH TESTS ATTACHED' - the tests are attached… |
 
+### Page-layer extraction — 4
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-018` | medium | The Classic landing page lists decision curve analysis as a shipped evaluation metric; no Classic page computes net benefit at all | `app.py:253 — app.py's 'Full Capabilities & Technical Details' expander lists, under **Evaluation Metrics**…` | **test:** `tests/test_the_landing_page_says_where_the_decision_curve_lives.py::test_the_landing_page_does_not_list_decision_curves_as_shipped` — L53-C, fanned out to four chunks… |
+| `AUDIT-025` | medium | The Theory Reference tells the user the Feature Selection page offers VIF-based filtering as one of its selection methods; no such method exists | `/Users/nhedglin/tabular-ml-lab/pages/11_Theory_Reference.py:1222-1223 — Inside the…` | **test:** `tests/integration/test_the_theory_page_names_only_selectors_that_exist.py::test_no_theory_callout_credits_feature_selection_with_vif` — L53-C, fanned out to four chunks… |
+| `DRIVE-020` | medium | The lens is asked after the structural diagnosis has already run and is placed inside the Target step below the target picker, and both cards render as step 01, against OPENING_SEQUENCE.md's… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2, 3.3 and 6 (F3); docs/turbotab/OPENING_SEQUENCE.md` | **test:** `turbotab/test_one_decision_is_one_undo.py::test_the_target_card_renders_the_position_the_router_served` — THE NUMBERING HALF ONLY. The ordering half of this row is… |
+| `DRIVE-038` | medium | A finding card's 'arrived' chip rendered the literal string [object Object] on the positive-class finding -- a non-string reaching esc() in the third positional argument of findingCard(f, withSource… | `run-3 drive path 2: <span class='chip arrived'>[object Object]</span>, 1 occurrence, persists across a lens…` | **test:** `turbotab/test_a_finding_chip_refuses_a_non_string.py::test_an_object_in_that_slot_reaches_no_chip` — THE DEFENSIVE HALF ONLY, AND THE TRIGGER STAYS OPEN. The chip… |
+
 ### Verified against main — 3
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -686,14 +693,6 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | **test:** `turbotab/test_a_skew_that_could_not_be_computed_is_not_reported_as_zero.py::test_an_unmeasurable_target_skew_is_not_reported_as_zero and… |
 | `AUDIT-012` | medium | Outlier advice is driven by a generic IQR rate that cannot tell physiologically impossible from abnormal-but-real, while the impossibility bands sit beside it unused | `ml/outliers.py:44 IQR fences; ml/eda_actions.py:412-420; ml/dataset_profile.py:214…` | **test:** `turbotab/test_the_outlier_remedy_is_not_offered_from_the_fence_alone.py::test_the_corrected_sentence_reaches_the_guided_finding_card and… |
 
-### Page-layer extraction — 3
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `AUDIT-018` | medium | The Classic landing page lists decision curve analysis as a shipped evaluation metric; no Classic page computes net benefit at all | `app.py:253 — app.py's 'Full Capabilities & Technical Details' expander lists, under **Evaluation Metrics**…` | **test:** `tests/test_the_landing_page_says_where_the_decision_curve_lives.py::test_the_landing_page_does_not_list_decision_curves_as_shipped` — L53-C, fanned out to four chunks… |
-| `AUDIT-025` | medium | The Theory Reference tells the user the Feature Selection page offers VIF-based filtering as one of its selection methods; no such method exists | `/Users/nhedglin/tabular-ml-lab/pages/11_Theory_Reference.py:1222-1223 — Inside the…` | **test:** `tests/integration/test_the_theory_page_names_only_selectors_that_exist.py::test_no_theory_callout_credits_feature_selection_with_vif` — L53-C, fanned out to four chunks… |
-| `DRIVE-020` | medium | The lens is asked after the structural diagnosis has already run and is placed inside the Target step below the target picker, and both cards render as step 01, against OPENING_SEQUENCE.md's… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2, 3.3 and 6 (F3); docs/turbotab/OPENING_SEQUENCE.md` | **test:** `turbotab/test_one_decision_is_one_undo.py::test_the_target_card_renders_the_position_the_router_served` — THE NUMBERING HALF ONLY. The ordering half of this row is… |
-
 ### Coach to Router — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -723,10 +722,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 381
+## FIXED — 382
 
 
-### Guided-door drive feedback — 145
+### Guided-door drive feedback — 146
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -738,7 +737,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-048` | critical | The app assumed prediction throughout and never asked, while the same dataset target and lens require opposite handling in at least five places across four domains | `docs/turbotab/DOMAIN_SCIENCE.md section 01.3; turbotab/purpose.py` | **test:** `turbotab/test_the_purpose_changes_the_answer.py::test_the_same_choice_is_accepted_for_prediction_and_blocked_for_inference` — THE DEEPEST OF THE SEVEN CONVERGENCES.… |
 | `GUIDED-057` | critical | The app had no way to refuse a prevalence of inadequacy, so an AI, an RDA, a single day or a naive two-day mean would all have produced a number | `research/NUTRITION_PACK.md section 07 figure E; turbotab/nutrition.py` | **test:** `turbotab/test_a_refusal_offers_a_figure_something_can_resolve.py::test_a_single_days_intake_is_refused_and_the_shrinkage_plot_arrives_drawn` — CLOSED AT L28 against the… |
 | `GUIDED-089` | critical | Training contradicts the preprocessing plan the user recorded: the plan is half-applied, and the half the recorded methods sentence is about is the half the fit overturns | `turbotab/training.py _pipeline builds median impute plus standard scale; turbotab/missingness declarations…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[the run says what it actually fitted]` — FIXED AT L35-B with GUIDED-095, which is the class this row is… |
-| `GUIDED-093` | critical | A classification target with string labels makes every model report 'did not fit' while carrying a real held-out metric, and makes the calibration figure blame the user's models for a serialization… | `turbotab/training.py:294 result.predictions = [float(v) for v in y_pred] raises on string class labels AFTER…` | **test:** `turbotab/test_a_string_class_label_is_a_label.py::test_a_result_carries_a_score_or_a_reason_and_never_both` — FIXED AT L35-C, and the fix is not only float(). THREE… |
+| `GUIDED-093` | critical | A classification target with string labels makes every model report 'did not fit' while carrying a real held-out metric, and makes the calibration figure blame the user's models for a serialization… | `turbotab/training.py:294 result.predictions = [float(v) for v in y_pred] raises on string class labels AFTER…` | **test:** `turbotab/test_the_event_is_chosen_and_never_guessed.py::test_the_figure_layer_refuses_a_run_that_names_no_event` — REACHABLE AND CORRECT, AND THE HONEST FORM OF THAT IS… |
 | `GUIDED-095` | critical | The deferred half of constitution clause 06 has no executor: every decision recorded to be fitted inside the training fold is read by nothing that fits, so only decisions that execute immediately… | `turbotab/training.py touches exactly six project attributes - grain, lockbox, model_shelf, target, task_type…` | **test:** `turbotab/test_selection_reaches_the_fit.py::test_the_selected_set_does_not_move_when_the_held_out_rows_do` — CLOSED AT L36-A. The last member of the class - feature… |
 | `GUIDED-139` | critical | nudge() was deleted at DRIVE-006 and seven call sites outlived it, so every pull affordance in the Guided door threw ReferenceError into the panel that means `we do not have this` | `driven at L41-C through pageharness on clinic_visits.csv: clicking look::r1_plausibility and histogram_pager…` | **test:** `turbotab/test_the_survey_block_is_audited.py::test_every_pull_affordance_survives_being_clicked` — FOUND AT L41-C BY BUILDING A PULL AND DRIVING IT. The reverse-coding… |
 | `GUIDED-142` | critical | No pack finding in any pack has ever been rendered by the Guided page - bySource('profile') and bySource('structure') were the only two callers, so eighteen detectors across five packs were computed… | `driven at L41 through pageharness on nhanes_kilojoules.csv with the dietary lens and on clinical_labs.csv…` | **test:** `turbotab/test_the_clinical_detectors_reach_an_upload.py::test_every_pack_finding_reaches_a_person_and_carries_its_badge` — FOUND AT L41 WHILE VERIFYING PART B'S OWN… |
@@ -834,6 +833,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-224` | high | A precondition written to exclude one degenerate shape excluded the shape a detector exists for | `L50-D. metabolite_columns drops columns with two or fewer distinct values - written to exclude a 0/1 outcome…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_the_degenerate_columns_survive_the_block_filter` — Filed as a CLASS instance. The shape is a true… |
 | `GUIDED-226` | high | A finding asserting a column's IDENTITY on evidence that establishes only its SHAPE - and the upstream component it borrowed from was correct | `L50-D, and it is the sharpest of the four because the mistake is downstream of a correct component.…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_the_subject_claim_needs_a_name_and_not_only_a_shape` — THE GRAIN ROUTING IS THE PART TO KEEP: the… |
 | `GUIDED-237` | high | PRODUCT_VISION.md 06c shipped an explainability design whose instrument was misnamed, whose support claim was measurably false, and which asserted an absence the project's own pack already… | `docs/turbotab/PRODUCT_VISION.md#06c` | **test:** `docs/turbotab/PRODUCT_VISION.md §06c — the rewritten section is the fix; no executable guard exists for a design document, and the honest form of that is this category… |
+| `DRIVE-032` | high | The positive-class question is never asked for a numeric 0/1 target. The register says target-positive-class is always asked and never pre-selected at any confidence; on a binary Int64 target no such… | `verified at b4b8246: interview plans for step data/explore/features/preprocess on a 0/1 Int64 target serve no…` | **test:** `turbotab/test_the_event_is_chosen_and_never_guessed.py::test_an_unanswered_event_cannot_reach_a_fitted_label` — TWO DEFECTS, AND THE ROW NAMED ONE. The adjudicator's… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
@@ -1184,7 +1184,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## NOT-A-DEFECT — 6
+## NOT-A-DEFECT — 7
 
 
 ### Multi-file / JSON import — 3
@@ -1202,3 +1202,9 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-148` | high | The /recipes payload reaches no person at all - 50 fields, 16 path shapes, every one of them unread - and it is the per-model preprocessing table the Preprocess step is built around | `measured at L43-A1 by turbotab/fieldsweep on survey_sentinels.csv sealed, the survey lens, target age.…` | MEASURED AT BOTH LENSES AND BOTH JOURNEY POSITIONS AT L44-C, AND THE ROW IS WRONG. AT THE SEALED STEP, which is where L43-A1 swept: survey 50 fields / 0 reaching / 16 shapes all… |
 | `GUIDED-129` | medium | The calibration plot fails its own annotation_box checklist item: calibration_render does not produce all seven of intercept, slope, C-statistic, E:avg, E:max, n and events | `driven at L40 once GUIDED-128 made the figure admissible for the first time…` | NOT-A-DEFECT — THE PREMISE IS WRONG, AND IT WAS CHECKED BY DRIVING RATHER THAN BY READING. The row says calibration_render does not produce all seven of intercept, slope… |
 | `GUIDED-182` | medium | No shipped fixture produces a previewable offer at all, so the entire offer-preview branch - the one whose caption promised an apply that does not exist - is unreachable from any test in this… | `turbotab/actions.py:404 sets previewable=bool(columns). Driven on clinical_labs.csv (clinical)…` | **test:** `turbotab/test_a_response_renders_at_the_control.py::test_the_offer_preview_branch_is_reachable_and_says_so` — REFUTED, and the row was mine. L48-E. The claim was that… |
+
+### Migration safety net — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `TEST-085` | low | ml/splits.py:300's alphabetical LabelEncoder is NOT a third instance of DRIVE-032's guess: the Guided fit never reaches it | `ml/splits.py:300; turbotab/training.py; turbotab/headless_train.py` | Filed as NOT-A-DEFECT against the SUSPICION, not against ml/splits.py -- the alphabetical encoding there is real and is Classic's, recorded in target-positive-class with a dated… |
