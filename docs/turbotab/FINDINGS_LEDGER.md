@@ -20,13 +20,13 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**394 of 933 closed.**
+**394 of 934 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 466 |
-| `PARTIAL` | 73 |
+| `PARTIAL` | 74 |
 | `FIXED` | 387 |
 | `NOT-A-DEFECT` | 7 |
 
@@ -279,7 +279,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-060` | high | Half of a fan-out's regression tests passed with the entire fan-out's code reverted - the agent that writes the fix and the test in one pass will write a test the fix does not need | `L51-C. Eight tests came back from four subagents. Reverting all 16 changed source files to HEAD left four of…` | Cheap detector available now and worth having before the rule: run the loop's new tests with the loop's own diff reverted. It is one command, it needs no per-row mapping, and it… |
 | `TEST-062` | high | All seven xfail guards in the A5/B6 registry are unconditional pytest.fail and none reads shipped code, so each is green over the defect CONDITION even though the file's ledger-drift check is sound | `Found by an L52-B verifier while checking a neighbouring row, and confirmed by the adjudicator.…` | AND L53 TRIPPED LINE 45 DELIBERATELY. Closing AUDIT-022 and 023 in Part A and AUDIT-032 in Part C put three rows in the state line 45 exists to catch - marked xfail here and… |
 | `TEST-086` | high | L60-A moved the required-decision denominator on wide-assay and leaky-sepsis, so Classic's recorded coverage falls 1.0 to 0.5 on both and the frozen baselines are red. Classic did not change; the set… | `tests/integration/test_routing_baseline.py::test_classic_still_measures_what_the_baseline_recorded and…` | BLOCKING THE PUSH, AND DELIBERATELY NOT RULED. Found by the pre-push gate after the routing VALUE check was adjudicated and re-recorded; this is the deeper of the two and it… |
-| `TEST-087` | high | /dev/status names the build but not the interpreter, and the interpreter is what caused the dataset-wide /models 500 that cost three drives | `turbotab/api.py dev_status; ml/model_registry.py:14-19` | Add sys.executable and an import check for ml.model_registry to /dev/status's build block, and surface a failing registry the way the hybrid build is surfaced. |
+| `TEST-087` | high | /dev/status names the build but not the interpreter, and the interpreter is what caused the dataset-wide /models 500 that cost three drives | `turbotab/api.py dev_status; ml/model_registry.py:14-19` | NOTE ADDED BY THE ADJUDICATOR, who filed the same finding independently within the hour and dropped that row rather than leave the record carrying two. THE EXTENSION TEST-084… |
 | `TEST-027` | medium | utils/persistence.py is dead code — zero importers — yet contains the reproducibility manifest the new Project layer needs | `utils/persistence.py:1-158; zero import sites repo-wide` | Unchanged at HEAD - verified unreachable, not merely uncovered. The trap the row names is the one to record: it is tempting to adopt this wholesale as the Project serializer, and… |
 | `TEST-028` | medium | visualizations.py returns figures nobody inspects — the safest module to move and the easiest to break unnoticed | `visualizations.py:12,53,91,129,170; consumers pages/06_Train_and_Compare.py:69…` | Unchanged at HEAD: the module is genuinely pure and genuinely untested - the two tests that name it check that it imports, not what it draws. That combination is the row's point… |
 | `TEST-029` | medium | ml.feature_steps and ml.baseline_models are uncovered and produce the numbers the manuscript compares against | `ml/feature_steps.py:11,39; ml/baseline_models.py:21,150` | Unchanged at HEAD: both still uncovered, and both still produce published numbers. The seed sensitivity is the specific hazard - PCA's sign convention and KMeans' init are… |
@@ -501,7 +501,7 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Models / training / eval — 20
+### Models / training / eval — 21
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -515,6 +515,7 @@ Nothing is closed without a regression test named after it.
 | `MODELS-012` | landmine | BCa acceleration is computed from a jackknife that is capped at 200 leave-one-out replicates and then PADDED to length n with the mean of those 200. | `ml/bootstrap.py:152-166 — `n_jack = min(n, 200)`, `jack_stats = np.full(n, np.nan)`, the loop runs only `for…` | Unchanged at HEAD, byte for byte. For n > 200 the BCa acceleration is still computed over an array whose tail is a constant, damping the third and second moments by an amount that… |
 | `MODELS-013` | landmine | The weighted_huber emphasis window is derived during fit and stored only on the instance as _whuber_t0 / _whuber_s, with legacy glucose constants (t0=180.0, s=20.0) as the getattr fallback. | `models/nn_whuber.py:376-378 sets them only in the `elif self.loss_function == 'weighted_huber'` branch; lines…` | Unchanged at HEAD. The emphasis window is still derived during fit, stored only on the instance, and read back through getattr with the legacy glucose constants 180.0 and 20.0 as… |
 | `T0-BUILD-006` | landmine | Classic decides which class is the event by alphabetical order, silently and with no way to see or change it | `ml/splits.py:294-301 (LabelEncoder on a categorical target); no Classic page renders or offers the class…` | Found at L9c while writing the register row for target-positive-class, and worth recording how: the row was first written asserting the opposite mapping from memory, then checked… |
+| `MODELS-026` | high | ml/model_registry.py imports the whole estimator stack at module scope -- sklearn at lines 6-14, then xgboost and lightgbm at 18-19 -- so an environment missing ANY of them kills GET /models with an… | `ml/model_registry.py:6-19; reached via api.py:2186 -> project.py:1924 -> models.py:370 shelf(); the serving…` | THE CODE HALF OF DRIVE-035, AND IT OUTLIVES THE ENVIRONMENT FIX. Even with the right interpreter today, any install missing one estimator loses the whole back half to 21… |
 | `MODELS-015` | invariant | Preprocessing is fit on training rows only, and cross-validation re-fits it inside every fold — a pre-transformed matrix must never be scored directly. | `ml/eval.py:182 make_cv_pipeline() composes Pipeline([('prep', clone(preprocessing)), ('densify', ...)…` | The invariant is implemented where it cannot be bypassed by accident, and NOTHING TESTS IT - so it stays OPEN. ml/eval.py:182-190 make_cv_pipeline composes Pipeline([('prep'… |
 | `MODELS-016` | invariant | Metrics are reported on the ORIGINAL target scale: when target_transformer is active, predictions are inverse-transformed and compared against y_*_original. | `pages/06:1486-1497 (test) and 1508-1517 (train), plus the CV branch wrapping the estimator in…` | The invariant is real, currently honored, and unguarded - so it stays OPEN. Every consumer inverse-transforms before scoring and prefers y_*_original, which is correct. What makes… |
 | `MODELS-018` | invariant | Every model factory has the signature (task_type: str, random_state: int) -> estimator, and every model object satisfies fit/predict, with predict_proba only reachable through the runtime… | `ml/model_registry.py:44 declares factory: Callable[[str, int], Any]; all 22 factories honor it.…` | The invariant holds today and nothing enforces either half, so it stays OPEN. The factory signature is declared in a type annotation that Python does not check and no test… |
@@ -542,18 +543,6 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Page-layer extraction — 7
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
-| `DRIVE-016` | high | The three-series maximum is asserted in the test and not in the renderer: WEBC still offers four categorical colors and assigns --c4 to a fourth series, which is 12.3 from --c3 in dark mode against a… | `turbotab/web/index.html:4129 (WEBC) and :4179/:4187 (WEBC[idx % WEBC.length])…` | FILED BY THE ADJUDICATOR VERIFYING L57-A, AND IT IS THE CLASS THIS PROJECT KEEPS FINDING RATHER THAN A NEW ONE: a constraint declared in one place with a consumer that does not… |
-| `DRIVE-035` | high | What made GET /models fail on the tester's 21,849-row NHANES file is unknown, and the app could not say -- DRIVE-030 is the silence, this is the fault behind it | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md 4b-1` | ANSWERED, AND IT IS NOT WHAT RUN 4 CONCLUDED. Run 4 traced the 500 to an unhandled ModuleNotFoundError for xgboost/lightgbm imported at module scope in ml/model_registry.py:18-19… |
-| `DRIVE-028` | medium | The same lens one surface over: three entries in HANDLED_QUESTION_PREFIXES have no textual occurrence in the page other than the list entry itself, and nothing drives them | `turbotab/web/index.html HANDLED_QUESTION_PREFIXES` | Extend test_every_handled_key_reaches_the_dom to the prefixes: drive a project where the Router serves a key with each prefix and require a control. Do NOT close this on the grep… |
-| `DRIVE-029` | medium | Answering 'Yes, people repeat' cannot name the column that identifies the person from the Guided door, so the answer routes to an undetermined basis and a by-row split | `ml/router.py state_grain; turbotab/web/index.html askedCard` | Offer the suggestion's columns on the people_repeat branch, with the per-column evidence the route already serves. The suggestion is never the answer -- constitution 02 demotes… |
-| `DRIVE-039` | medium | After the seal is drawn, the Explore impossibility cards still render enabled 'Exclude those rows from the study' buttons with editable reason inputs, while the same card's prose says clause 04… | `run-3 drive path 1, project sealed: data-plaus-route='exclude_the_rows' buttons disabled:false with editable…` | THIRD HUMAN DRIVE, 2026-08-12. THE TESTER DID NOT PRESS IT, and said why: it would attempt an illegal mutation on a sealed project. That is the right call by a tester and it… |
-| `DRIVE-021` | low | The bulk binary-repair card says the columns were 'written as text' for six imputed_* columns that are bool dtype, so the repair's stated reason is wrong about the data it is offering to repair | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2 and 4 (F7)` | The card groups nine columns as 'need the same repair: read as binary' and its prose says they were written as text. THREE of the nine are text - gender, meds_hbp, meds_chol - and… |
-
 ### Other — 6
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -565,6 +554,17 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-046` | medium | A loop commit swallowed the adjudicator's uncommitted docs edit, so its subject asserts something false about its own contents - the git add -A rule broken a third time, in the opposite direction… | `0c9cce3 contains docs/turbotab/prompts/PM_TRANSITION.md, 74 changed lines, under the subject 'L57-A: the…` | NOTHING WAS LOST AND THAT IS NOT THE POINT. The content is byte-identical to the adjudicator's own backup, verified by diff, and it is in HEAD. THE POINT IS THE RECORD LAYER… |
 | `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
 
+### Page-layer extraction — 6
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
+| `DRIVE-016` | high | The three-series maximum is asserted in the test and not in the renderer: WEBC still offers four categorical colors and assigns --c4 to a fourth series, which is 12.3 from --c3 in dark mode against a… | `turbotab/web/index.html:4129 (WEBC) and :4179/:4187 (WEBC[idx % WEBC.length])…` | FILED BY THE ADJUDICATOR VERIFYING L57-A, AND IT IS THE CLASS THIS PROJECT KEEPS FINDING RATHER THAN A NEW ONE: a constraint declared in one place with a consumer that does not… |
+| `DRIVE-028` | medium | The same lens one surface over: three entries in HANDLED_QUESTION_PREFIXES have no textual occurrence in the page other than the list entry itself, and nothing drives them | `turbotab/web/index.html HANDLED_QUESTION_PREFIXES` | Extend test_every_handled_key_reaches_the_dom to the prefixes: drive a project where the Router serves a key with each prefix and require a control. Do NOT close this on the grep… |
+| `DRIVE-029` | medium | Answering 'Yes, people repeat' cannot name the column that identifies the person from the Guided door, so the answer routes to an undetermined basis and a by-row split | `ml/router.py state_grain; turbotab/web/index.html askedCard` | Offer the suggestion's columns on the people_repeat branch, with the per-column evidence the route already serves. The suggestion is never the answer -- constitution 02 demotes… |
+| `DRIVE-039` | medium | After the seal is drawn, the Explore impossibility cards still render enabled 'Exclude those rows from the study' buttons with editable reason inputs, while the same card's prose says clause 04… | `run-3 drive path 1, project sealed: data-plaus-route='exclude_the_rows' buttons disabled:false with editable…` | THIRD HUMAN DRIVE, 2026-08-12. THE TESTER DID NOT PRESS IT, and said why: it would attempt an illegal mutation on a sealed project. That is the right call by a tester and it… |
+| `DRIVE-021` | low | The bulk binary-repair card says the columns were 'written as text' for six imputed_* columns that are bool dtype, so the repair's stated reason is wrong about the data it is offering to repair | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2 and 4 (F7)` | The card groups nine columns as 'need the same repair: read as binary' and its prose says they were written as text. THREE of the nine are text - gender, meds_hbp, meds_chol - and… |
+
 ### DRIVE — 1
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -573,7 +573,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 73
+## PARTIAL — 74
 
 
 ### Guided-door drive feedback — 16
@@ -643,10 +643,11 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-061` | medium | Import cycle ml.publication ↔ utils.insight_ledger is a genuine layering inversion | `ml/publication.py:128,182,453,460; utils/insight_ledger.py (imports at module top)` | The inversion narrowed from four formatting helpers to one pure-data constant. The presentation helpers this row says belong to neither module are no longer imported from… |
 | `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | The row's blocking condition is satisfied and its recommendation still stands. 'Entirely untested, which is the reason to do it first WITH TESTS ATTACHED' - the tests are attached… |
 
-### Page-layer extraction — 4
+### Page-layer extraction — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `DRIVE-035` | high | What made GET /models fail on the tester's 21,849-row NHANES file is unknown, and the app could not say -- DRIVE-030 is the silence, this is the fault behind it | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md 4b-1` | ANSWERED, AND IT IS NOT WHAT RUN 4 CONCLUDED. Run 4 traced the 500 to an unhandled ModuleNotFoundError for xgboost/lightgbm imported at module scope in ml/model_registry.py:18-19… |
 | `AUDIT-018` | medium | The Classic landing page lists decision curve analysis as a shipped evaluation metric; no Classic page computes net benefit at all | `app.py:253 — app.py's 'Full Capabilities & Technical Details' expander lists, under **Evaluation Metrics**…` | **test:** `tests/test_the_landing_page_says_where_the_decision_curve_lives.py::test_the_landing_page_does_not_list_decision_curves_as_shipped` — L53-C, fanned out to four chunks… |
 | `AUDIT-025` | medium | The Theory Reference tells the user the Feature Selection page offers VIF-based filtering as one of its selection methods; no such method exists | `/Users/nhedglin/tabular-ml-lab/pages/11_Theory_Reference.py:1222-1223 — Inside the…` | **test:** `tests/integration/test_the_theory_page_names_only_selectors_that_exist.py::test_no_theory_callout_credits_feature_selection_with_vif` — L53-C, fanned out to four chunks… |
 | `DRIVE-020` | medium | The lens is asked after the structural diagnosis has already run and is placed inside the Target step below the target picker, and both cards render as step 01, against OPENING_SEQUENCE.md's… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2, 3.3 and 6 (F3); docs/turbotab/OPENING_SEQUENCE.md` | **test:** `turbotab/test_one_decision_is_one_undo.py::test_the_target_card_renders_the_position_the_router_served` — THE NUMBERING HALF ONLY. The ordering half of this row is… |
