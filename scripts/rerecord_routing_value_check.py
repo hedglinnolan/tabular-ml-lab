@@ -15,7 +15,7 @@ the file so the replacement carries its own justification.
 
 Usage
 -----
-    turbotab/.venv/Scripts/python scripts/rerecord_routing_value_check.py \
+    venv/bin/python scripts/rerecord_routing_value_check.py \
         --out docs/turbotab/data/routing-value-check-l9c.json \
         --measured-at <commit>
 

@@ -24,7 +24,7 @@ Two things are pinned:
 `test_the_cascade_guard_would_catch_a_removed_key`, which does exactly that by
 running a mutated copy of the function.
 
-Run:  turbotab/.venv/Scripts/python -m pytest tests/integration/test_characterization_cascade.py -v
+Run:  venv/bin/python -m pytest tests/integration/test_characterization_cascade.py -v
 """
 import pytest
 

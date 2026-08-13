@@ -23,7 +23,7 @@ Four branches, in the page's own priority order:
 3. lockbox          — the frozen labels *are* the test set; only train/val drawn
 4. stratified/plain — `train_test_split`
 
-Run:  turbotab/.venv/Scripts/python -m pytest tests/integration/test_characterization_split.py -v
+Run:  venv/bin/python -m pytest tests/integration/test_characterization_split.py -v
 """
 import numpy as np
 import pandas as pd

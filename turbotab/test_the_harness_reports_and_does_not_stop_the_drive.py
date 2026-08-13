@@ -25,7 +25,7 @@ whether the harness is usable at all:
   first draft raised `KeyError` inside the upload endpoint and took the whole
   drive with it, which is why `safely()` exists.
 
-Run:  TURBOTAB_DEV_CHECKS=1 turbotab/.venv/bin/python -m pytest \\
+Run:  TURBOTAB_DEV_CHECKS=1 venv/bin/python -m pytest \\
           turbotab/test_the_harness_reports_and_does_not_stop_the_drive.py -q
 """
 from __future__ import annotations

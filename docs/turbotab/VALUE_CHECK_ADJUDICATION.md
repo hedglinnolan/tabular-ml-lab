@@ -781,3 +781,162 @@ of a long session to make a push succeed.**
 **The branch stays unpushed until it is ruled.** That is the honest state: the
 gate is red for a real reason, the reason is understood, and committing over it
 is the act that caused the hook to exist.
+
+---
+
+# The denominator moved a third time — and this one is ruled
+
+**Fifth adjudication, `L61`, and it is the resolution the section above deliberately
+declined to write.** `TEST-086` was diagnosed at the tail of `L60` and left OPEN with its analysis
+complete, on the grounds that *"invoking that exception is a deliberate act and it should be taken
+with a clear head, in a loop that owns it."* This loop owns it.
+
+## §06.2 is invoked, in those words, and here is the reasoning
+
+**`LOOP.md` §06 item 2**: *never accept a moved threshold in the same loop as the change that
+pressured it. If a gate is measuring the wrong thing, correct which quantity is gated, on a passing
+run, with the reasoning recorded before it is load-bearing. After a breach the same correction is
+indistinguishable from relaxing a gate under pressure.*
+
+**The exception applies and it is claimed explicitly.** `L53-A2` set the precedent and the test is
+whether the entry changes **purpose or value**:
+
+- **No threshold moved.** `VALUE_CHECK_PREREG.md` is unedited. Every pre-registered bound on
+  Guided's coverage, question count, irrelevant count and findings-driven ratio is the number it
+  was. Nothing was relaxed to let anything pass.
+- **No assertion was weakened.** The two comparison tests assert the same equality against the same
+  metrics. What changed is *which reading they compare against*, which is the arrangement L9
+  established and this extends.
+- **The entries encode the same purpose, not a nudged value.** `ADJUDICATED_DELTAS` is not a
+  tolerance — it is an **enumeration of ruled movements**. Adding `wide-assay`'s three is recording
+  a fourth instance of a cause already ruled twice, not widening a band.
+- **And the enumeration's own property is preserved exactly.** *A second drift cannot hide inside
+  the first* survives extension only if every new entry is written out. Every one is, below, and
+  the inventory keys with them.
+
+**What would have made this a violation**, stated so the line is visible: changing
+`_PREREG_METRICS`, editing a threshold in the prereg, comparing against a tolerance instead of an
+equality, or deriving the permitted keys from the engine rather than writing them down. None of
+those happened.
+
+## What moved, and why only this one dataset
+
+`L60-A` (`DRIVE-032`) made the target's event question **dtype-agnostic**. Before it,
+`positive_class_finding` planned through `read_as_binary_plan`, which opens
+`if not _is_texty(s): return None` — right for a feature, wrong for the outcome, where *which level
+is the event* is exactly as open on a `0`/`1` column as on `case`/`control`.
+
+So the two datasets whose outcome is **text** were already carrying
+`repair::positive_class__outcome` from `L9c`. The two whose outcome is **`int64` `{0,1}`** were
+not, and now are:
+
+| dataset | outcome | dtype | moved at |
+|---|---|---|---|
+| messy-clinic | `outcome` | `responder` / `non-responder` | L9, recomposed at L9c |
+| longitudinal | `outcome` | `improved` / `stable` | L9, recomposed at L9c |
+| **wide-assay** | **`responder`** | **`int64` {0,1}** | **L61** |
+| **leaky-sepsis** | **`sepsis`** | **`int64` {0,1}** | **L61** |
+
+**Classic's behavior did not change.** `target-positive-class` is `guided-only` in the register,
+with the reason recorded there: Classic *"encodes a two-level target by whatever sklearn's
+LabelEncoder does with it"*, which orders classes alphabetically. It does not ask, it never asked,
+and it cannot learn to — `pages/01` renders `import_doctor.diagnose` and `ml/import_doctor.py` is
+frozen engine-move-only. **What moved is the measuring stick.**
+
+## Every new entry, enumerated
+
+`ADJUDICATED_DELTAS` — three added, all `wide-assay`:
+
+| entry | frozen | adjudicated |
+|---|---:|---:|
+| `("wide-assay", "required_decisions")` | 1 | **2** |
+| `("wide-assay", "irrelevant_questions")` | 30 | **29** |
+| `("wide-assay", "coverage")` | 1.0 | **0.5** |
+
+`ADJUDICATED_KEY_DELTAS` — one added key:
+
+| dataset | added | removed |
+|---|---|---|
+| `wide-assay` | `repair::positive_class__responder` | — |
+
+`LEAKY_DELTAS` and `LEAKY_KEY_DELTAS` — **new tables, and the reason they are new is below**:
+
+| entry | frozen | adjudicated |
+|---|---:|---:|
+| `("leaky-sepsis", "required_decisions")` | 1 | **2** |
+| `("leaky-sepsis", "irrelevant_questions")` | 30 | **29** |
+| `("leaky-sepsis", "coverage")` | 1.0 | **0.5** |
+
+| dataset | added | removed |
+|---|---|---|
+| `leaky-sepsis` | `repair::positive_class__sepsis` | — |
+
+**The key is the TARGET COLUMN's name and it is not `__outcome` on either.** `TEST-086`'s own note
+quotes the precedent's key, `repair::positive_class__outcome`, and that is right for messy-clinic
+and longitudinal — both of whose target columns happen to be called `outcome`. wide-assay's is
+`responder` and leaky-sepsis's is `sepsis`. Written out per dataset rather than derived from the
+target, because a table that computed the key would agree with the engine by construction and could
+not notice the subject changing — which is the exact hole `ADJUDICATED_KEY_DELTAS` was created to
+close.
+
+## The two mechanisms, and the one that had no guard at all
+
+**This is why `TEST-086` said the fix is not a table edit, and it was right.**
+
+`wide-assay` runs through the three-dataset machinery: a frozen file, an adjudicated reference
+beside it, and an enumerated allowance between them. Extending that is table work.
+
+`leaky-sepsis` had **none of it**. `T0-ROUTE-001` gave it its own baseline file on purpose — the
+three originals are frozen and every pre-registered threshold is banked against them, so injecting
+a leak into one would have invalidated the lot — and it was then compared against that frozen file
+**directly**. No adjudicated reference, no deltas table, and therefore no way to absorb a ruled
+movement except by editing the frozen artifact or hand-writing a replacement. Both are what
+`test_routing_baseline.py` exists to prevent.
+
+Three things close that, and they are the part of this loop worth keeping:
+
+- **`routing-baseline-leaky-l61.json`**, written beside the frozen one, which the comparison now
+  reads — the same arrangement the pre-registered three have had since L9.
+- **`test_the_leaky_reference_differs_from_the_frozen_one_only_as_ruled`**, which is the
+  three-dataset guard's twin: metrics against `LEAKY_DELTAS`, **and inventory keys** against
+  `LEAKY_KEY_DELTAS`, because a composition change moves no metric and a size-only check cannot see
+  it.
+- **`scripts/remeasure_routing_baseline.py --leaky`**, because until `L61` the leaky dataset could
+  not be re-measured by the one script allowed to write these files at all. A protected artifact
+  with no sanctioned way to supersede it is an artifact that gets edited.
+
+## The chain, and a guard for it
+
+`routing-baseline` → `l9` → `l9c` → **`l61`**, and `routing-baseline-leaky` → **`leaky-l61`**.
+Every superseded reading stays on disk with its `measured_at` stamp.
+`test_the_chain_of_re_measurements_is_readable_rather_than_implied` asserts each file exists,
+carries measurements, names the commit it was taken at, and that no two readings **within a chain**
+claim the same commit — a re-measurement reusing its predecessor's stamp is indistinguishable from
+an edit of the predecessor.
+
+**That test's first draft was wrong and it caught itself.** It checked stamp uniqueness across both
+chains at once and failed on `cd1311e` appearing twice — which is not a collision: the two chains
+are separate artifacts and `L61` re-measured both at the same commit. Corrected to per-chain, with
+the reason in the code.
+
+## Both readings
+
+Guided is unaffected on either dataset — it raises the question, so its numerator rises with its
+denominator. Classic's numerator is structurally frozen (§"Coverage carries its denominator"), so
+its coverage falls.
+
+| dataset | | frozen denominator | adjudicated denominator |
+|---|---|---:|---:|
+| wide-assay | Classic covered | 1 | 1 |
+| wide-assay | **Classic coverage** | **1/1 = 1.000** | **1/2 = 0.500** |
+| wide-assay | Guided coverage | 1/1 = 1.000 | 2/2 = 1.000 |
+| leaky-sepsis | Classic covered | 1 | 1 |
+| leaky-sepsis | **Classic coverage** | **1/1 = 1.000** | **1/2 = 0.500** |
+
+**Measured at `cd1311e`**, `venv/bin/python`, 2026-08-13. `verdict.passes` is unchanged and the
+pre-registration is unedited.
+
+## The ruling
+
+**The new readings are binding.** Both frozen artifacts are untouched. `TEST-086` closes; the
+branch is unblocked.

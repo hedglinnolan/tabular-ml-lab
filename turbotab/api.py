@@ -16,7 +16,7 @@ no job queue here and no training — anything over a second is out of scope for
 the skeleton, and pretending otherwise is exactly the lie the job queue exists
 to stop telling.
 
-Run:  turbotab/.venv/Scripts/python -m uvicorn turbotab.api:app --reload
+Run:  venv/bin/python -m uvicorn turbotab.api:app --reload
 """
 from __future__ import annotations
 

@@ -13,7 +13,7 @@ flattering itself.
 The remedy was already specified from the p ≫ n work: operations apply to sets
 defined by a **rule**, and the user edits the rule rather than the members.
 
-Run:  turbotab/.venv/bin/python -m pytest \\
+Run:  venv/bin/python -m pytest \\
           turbotab/test_one_answer_covers_a_set_defined_by_a_rule.py -q
 """
 from __future__ import annotations

@@ -1175,7 +1175,7 @@ def write_index() -> Optional[Path]:
               "",
               "## Replay", "",
               "```bash",
-              f"turbotab/.venv/bin/python {s.root}/replay.py",
+              f"venv/bin/python {s.root}/replay.py",
               "```", ""]
     _write_replay(s)
     return s.write("index.md", "\n".join(lines))
@@ -1187,7 +1187,7 @@ Reads `actions.jsonl` in this directory and re-issues every request in order,
 rewriting the project id as it goes — the id is minted on upload and every later
 path carries it, so a literal replay would 404 on the second request.
 
-    turbotab/.venv/bin/python {root}/replay.py [--base http://127.0.0.1:8777]
+    venv/bin/python {root}/replay.py [--base http://127.0.0.1:8777]
 """
 import argparse, json, pathlib, sys
 
@@ -1201,7 +1201,7 @@ def main():
     try:
         import httpx
     except ImportError:
-        sys.exit("replay needs httpx: turbotab/.venv/bin/pip install httpx")
+        sys.exit("replay needs httpx: venv/bin/pip install httpx")
 
     rows = [json.loads(l) for l in
             (HERE / "actions.jsonl").read_text().splitlines() if l.strip()]

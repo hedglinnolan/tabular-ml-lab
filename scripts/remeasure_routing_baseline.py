@@ -15,7 +15,7 @@ published.
 
 Usage
 -----
-    turbotab/.venv/Scripts/python scripts/remeasure_routing_baseline.py --out <path>
+    venv/bin/python scripts/remeasure_routing_baseline.py --out <path>
 
 `--out` is required. There is no default, because a default is how a script
 like this one ends up pointed at the file it must not touch.
@@ -45,6 +45,20 @@ def main(argv=None) -> int:
                              "a frozen baseline.")
     parser.add_argument("--measured-at", default=None,
                         help="the commit these numbers were taken at.")
+    # `TEST-086`. THE LEAKY DATASET HAD NO WAY TO BE RE-MEASURED AT ALL.
+    #
+    # `T0-ROUTE-001` gave it its own baseline file, deliberately — the three
+    # original baselines are frozen and every pre-registered threshold is
+    # banked against them, so injecting a leak into one would have invalidated
+    # the lot. What it did not get is a path through this script, so when
+    # `L60-A` moved its denominator the only ways forward were to hand-write
+    # the JSON or to let the frozen file be edited. Both are the thing this
+    # script exists to prevent.
+    parser.add_argument("--leaky", action="store_true",
+                        help="re-measure the leaky-sepsis dataset instead of "
+                             "the three pre-registered ones. It keeps its own "
+                             "baseline file for the reason T0-ROUTE-001 gives, "
+                             "and it needs the same refuse-to-overwrite path.")
     args = parser.parse_args(argv)
 
     out = args.out.resolve()
@@ -57,11 +71,12 @@ def main(argv=None) -> int:
         parser.error(f"{args.out} already exists. Pick a path that does not.")
 
     from turbotab import measure
-    from tests.integration.test_routing_baseline import (DATASETS,
+    from tests.integration.test_routing_baseline import (DATASETS, LEAKY,
                                                          _measure_classic)
 
+    wanted = [LEAKY] if args.leaky else list(DATASETS)
     measurements = []
-    for name, path, target in DATASETS:
+    for name, path, target in wanted:
         if not path.exists():
             parser.error(f"missing dataset {path}")
         measurements.append(_measure_classic(name, path, target))
@@ -70,7 +85,8 @@ def main(argv=None) -> int:
     measure.write_baseline(out, measurements, measured_at=args.measured_at,
                            prereg="VALUE_CHECK_PREREG.md")
 
-    frozen = {m["dataset"]: m for m in measure.read_baseline(FROZEN)}
+    reference = LEAKY_FROZEN if args.leaky else FROZEN
+    frozen = {m["dataset"]: m for m in measure.read_baseline(reference)}
     print(f"wrote {out}")
     print()
     print(f"{'dataset':<15}{'metric':<22}{'frozen':>12}{'now':>12}")

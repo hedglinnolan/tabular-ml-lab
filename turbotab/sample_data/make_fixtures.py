@@ -1,6 +1,6 @@
 """Generate the five domain fixtures. Deterministic; safe to re-run.
 
-    turbotab/.venv/bin/python turbotab/sample_data/make_fixtures.py
+    venv/bin/python turbotab/sample_data/make_fixtures.py
 
 **Why the generator is committed and not just its output.** A fixture whose
 generator is lost is a fixture nobody can adjust: the next person who needs one

@@ -12,7 +12,7 @@ spacing, so if the spacing reading is wrong the app gives confidently opposite
 advice on two files that look alike — which is why the reading is stated with
 its measurement rather than asserted.
 
-Run:  turbotab/.venv/bin/python -m pytest \\
+Run:  venv/bin/python -m pytest \\
           turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py -q
 """
 from __future__ import annotations

@@ -6,7 +6,7 @@ API is built to match something already known to work rather than the other way
 round. API-level tests live at the bottom and assert the *same* findings arrive
 over HTTP.
 
-Run:  turbotab/.venv/Scripts/python -m pytest turbotab/test_skeleton.py -v
+Run:  venv/bin/python -m pytest turbotab/test_skeleton.py -v
 """
 from __future__ import annotations
 

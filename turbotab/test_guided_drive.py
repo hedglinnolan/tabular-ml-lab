@@ -10,7 +10,7 @@ That is a real limit and it is the honest one: it can prove the treatment is
 present and exclusive, and it cannot prove it renders. What can be checked
 end-to-end goes over HTTP against the real engine.
 
-Run:  turbotab/.venv/Scripts/python -m pytest turbotab/test_guided_drive.py -v
+Run:  venv/bin/python -m pytest turbotab/test_guided_drive.py -v
 """
 from __future__ import annotations
 

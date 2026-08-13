@@ -22,7 +22,7 @@ And it is not a test of the packs. Nothing here needs a lens, and every assertio
 below was true before Task 3 existed. What the lens does with these properties is
 tested where the lens lives.
 
-Run:  turbotab/.venv/bin/python -m pytest turbotab/test_the_fixtures_are_what_their_companions_claim.py -q
+Run:  venv/bin/python -m pytest turbotab/test_the_fixtures_are_what_their_companions_claim.py -q
 """
 from __future__ import annotations
 

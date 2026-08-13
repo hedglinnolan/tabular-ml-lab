@@ -30,7 +30,7 @@ interactive decision point the user is actually presented with: a widget that
 changes what happens next. Layout, captions and read-only displays are not
 questions, and neither is a widget the page renders but never acts on.
 
-Run:  turbotab/.venv/Scripts/python -m pytest tests/integration/test_routing_baseline.py -v
+Run:  venv/bin/python -m pytest tests/integration/test_routing_baseline.py -v
 """
 from __future__ import annotations
 
@@ -60,13 +60,29 @@ LEAKY_BASELINE = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-leaky.j
 # is what `VALUE_CHECK_ADJUDICATION.md` §"The denominator moved" rules. Every
 # difference between the two is enumerated there and asserted below, so a
 # second drift cannot hide inside the first.
-ADJUDICATED = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9c.json"
-# The measurement this one superseded. Kept named so the chain of
-# re-measurements is readable rather than implied by filenames.
-ADJUDICATED_PRIOR = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9.json"
+ADJUDICATED = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l61.json"
+# The measurements this one superseded, oldest first. Kept named so the chain of
+# re-measurements is readable rather than implied by filenames — l9 → l9c → l61.
+ADJUDICATED_PRIOR = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9c.json"
+ADJUDICATED_PRIOR_PRIOR = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9.json"
 
 # What the adjudication permits the two references to disagree about, and by
 # how much. Anything else is drift.
+#
+# **`TEST-086`, `L61`. The wide-assay entries are new and they are the third
+# time this denominator has moved for the same reason.** `L60-A` made the
+# target's event question dtype-agnostic, so `wide_assay.csv`'s `responder` —
+# `int64` `{0,1}`, and the one dataset the L9 and L9c movements did NOT touch,
+# because its outcome was already numeric — now requires the decision too.
+# Classic does not ask it (`target-positive-class` is `guided-only` in the
+# register), so Classic covers one of two instead of one of one.
+#
+# Extending this table in the same loop as the change that pressured it is
+# `LOOP.md` §06.2, and the exception is invoked deliberately in
+# `VALUE_CHECK_ADJUDICATION.md` §"The denominator moved a third time". The
+# short form: these entries encode the SAME PURPOSE as the six above rather
+# than a nudged value — same cause, same deltas `(1,2)`, `(30,29)`,
+# `(1.0,0.5)`, and no assertion anywhere is relaxed.
 ADJUDICATED_DELTAS = {
     ("messy-clinic", "required_decisions"): (9, 10),
     ("messy-clinic", "irrelevant_questions"): (25, 24),
@@ -74,6 +90,9 @@ ADJUDICATED_DELTAS = {
     ("longitudinal", "required_decisions"): (1, 2),
     ("longitudinal", "irrelevant_questions"): (31, 30),
     ("longitudinal", "coverage"): (1.0, 0.5),
+    ("wide-assay", "required_decisions"): (1, 2),          # L61
+    ("wide-assay", "irrelevant_questions"): (30, 29),      # L61
+    ("wide-assay", "coverage"): (1.0, 0.5),                # L61
 }
 
 # The inventory keys the adjudication permits to differ from the frozen one.
@@ -81,11 +100,47 @@ ADJUDICATED_DELTAS = {
 # `repair::binary_text__outcome` for `repair::positive_class__outcome` and every
 # number stayed identical — so comparing metrics alone cannot see it. That is
 # the hole this table closes.
+#
+# **The added key is `__responder`, not `__outcome`.** The subject is the
+# TARGET COLUMN's name, and messy-clinic and longitudinal both happen to call
+# theirs `outcome` while wide-assay's is `responder` and leaky-sepsis's is
+# `sepsis`. Written out per dataset rather than derived, because a table that
+# computed the key from the target would agree with the engine by construction
+# and could not notice the subject changing.
 ADJUDICATED_KEY_DELTAS = {
     "messy-clinic": {"added": {"repair::positive_class__outcome"},
                      "removed": set()},
-    "wide-assay": {"added": set(), "removed": set()},
+    "wide-assay": {"added": {"repair::positive_class__responder"},   # L61
+                   "removed": set()},
     "longitudinal": {"added": {"repair::positive_class__outcome"},
+                     "removed": set()},
+}
+
+# ── the leaky dataset's chain, which did not have one ───────────────────────
+#
+# **`TEST-086`'s second half, and the two are different mechanisms.** The three
+# datasets above are compared against `ADJUDICATED` and every permitted
+# difference is enumerated. `leaky-sepsis` was compared against its frozen file
+# DIRECTLY, with no adjudicated reference and no deltas table — so the only
+# ways to absorb a ruled movement were to edit the frozen artifact or to
+# hand-write a replacement, and both are what this file exists to prevent.
+#
+# It gets the same shape now: a new measurement beside the frozen one, the
+# frozen one still guarded, and every difference between them enumerated. The
+# property that matters is the one the three-dataset half already has — *a
+# second drift cannot hide inside the first* — and it is worth saying plainly
+# that the leaky half did not have it before `L61` and nothing said so.
+LEAKY_ADJUDICATED = (ROOT / "docs" / "turbotab" / "data"
+                     / "routing-baseline-leaky-l61.json")
+
+LEAKY_DELTAS = {
+    ("leaky-sepsis", "required_decisions"): (1, 2),
+    ("leaky-sepsis", "irrelevant_questions"): (30, 29),
+    ("leaky-sepsis", "coverage"): (1.0, 0.5),
+}
+
+LEAKY_KEY_DELTAS = {
+    "leaky-sepsis": {"added": {"repair::positive_class__sepsis"},
                      "removed": set()},
 }
 
@@ -538,7 +593,11 @@ def test_classic_on_the_leaky_dataset_still_matches_its_baseline():
     assert m.required_decisions > 0
     assert m.questions_asked > 0
 
-    was = measure.read_baseline(LEAKY_BASELINE)[0]["metrics"]
+    # Compared against the ADJUDICATED reference, not the frozen one — the same
+    # arrangement the three datasets above have had since L9, and the one this
+    # half was missing. The frozen file is still guarded, by
+    # `test_the_leaky_reference_differs_from_the_frozen_one_only_as_ruled`.
+    was = measure.read_baseline(LEAKY_ADJUDICATED)[0]["metrics"]
     now = m.to_dict()["metrics"]
     drift = [f"{name}.{k}: baseline {was[k]!r} → measured now {now[k]!r}"
              for k in _PREREG_METRICS if now[k] != was[k]]
@@ -547,6 +606,87 @@ def test_classic_on_the_leaky_dataset_still_matches_its_baseline():
           f"irrelevant={now['irrelevant_questions']:>3} "
           f"coverage={now['coverage']}")
     assert not drift, DRIFT_MESSAGE + "\n  " + "\n  ".join(drift)
+
+
+def test_the_leaky_reference_differs_from_the_frozen_one_only_as_ruled():
+    """A second drift must not hide inside the first — on this dataset too.
+
+    **The guard the leaky half never had.** `test_the_adjudicated_reference_
+    differs_from_the_frozen_one_only_as_ruled` has protected the three
+    pre-registered datasets since L9; `leaky-sepsis` was compared against its
+    frozen file directly, so when `L60-A` moved its denominator there was no
+    enumerated allowance to extend and nothing that could tell a ruled movement
+    from a new one. This is that, in the same shape, including the inventory
+    keys — because a composition change moves no metric and a size-only check
+    cannot see it.
+    """
+    frozen = {m["dataset"]: m for m in measure.read_baseline(LEAKY_BASELINE)}
+    now = {m["dataset"]: m for m in measure.read_baseline(LEAKY_ADJUDICATED)}
+    assert set(frozen) == set(now)
+
+    unruled = []
+    for name in frozen:
+        for metric in _PREREG_METRICS:
+            was, is_ = frozen[name]["metrics"][metric], now[name]["metrics"][metric]
+            if was == is_:
+                continue
+            ruled = LEAKY_DELTAS.get((name, metric))
+            if ruled != (was, is_):
+                unruled.append(f"{name}.{metric}: {was!r} → {is_!r} "
+                               f"(adjudication says {ruled!r})")
+    assert not unruled, (
+        "the leaky reference has moved beyond what was ruled. "
+        + DRIFT_MESSAGE + "\n  " + "\n  ".join(unruled))
+
+    for name in frozen:
+        was = {r["key"] for r in frozen[name]["required"]}
+        is_ = {r["key"] for r in now[name]["required"]}
+        ruled = LEAKY_KEY_DELTAS[name]
+        assert is_ - was == ruled["added"], (
+            f"{name}: the inventory gained {sorted(is_ - was)}; the "
+            f"adjudication accounts for {sorted(ruled['added'])}. "
+            + DRIFT_MESSAGE)
+        assert was - is_ == ruled["removed"], (
+            f"{name}: the inventory lost {sorted(was - is_)}, which the "
+            "adjudication does not account for. " + DRIFT_MESSAGE)
+
+
+def test_the_chain_of_re_measurements_is_readable_rather_than_implied():
+    """Every superseded reading is still on disk and still named.
+
+    `l9 → l9c → l61`, and the leaky file's own pair beside it. The rule this
+    keeps is the one `VALUE_CHECK_ADJUDICATION.md` sets: *the frozen artifact is
+    not edited, both readings are preserved in data, the ruling is published.*
+    A chain implied by filenames alone is one a later loop can break by writing
+    a fourth file and pointing the constant at it.
+    """
+    import json
+
+    # TWO chains, checked separately. They are separate artifacts with
+    # separate frozen files, and L61 re-measured both AT THE SAME COMMIT — so
+    # a global uniqueness check would report a collision that is not one. The
+    # first draft of this test did exactly that and this comment is why it
+    # does not any more.
+    chains = {
+        "pre-registered": [BASELINE, ADJUDICATED_PRIOR_PRIOR,
+                           ADJUDICATED_PRIOR, ADJUDICATED],
+        "leaky": [LEAKY_BASELINE, LEAKY_ADJUDICATED],
+    }
+    for label, chain in chains.items():
+        for path in chain:
+            assert path.exists(), (
+                f"{path.name} is gone; the {label} chain is not readable")
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            assert payload.get("measurements"), f"{path.name} holds no measurement"
+            assert payload.get("measured_at"), (
+                f"{path.name} does not say which commit it was measured at, so "
+                f"it cannot take its place in the chain")
+
+        stamps = [measure.baseline_provenance(p)["measured_at"] for p in chain]
+        assert len(set(stamps)) == len(stamps), (
+            f"two readings in the {label} chain claim the same commit: "
+            f"{stamps}. A re-measurement that reuses its predecessor's stamp "
+            f"is indistinguishable from an edit of the predecessor.")
 
 
 def test_classic_does_not_ask_about_the_leak():

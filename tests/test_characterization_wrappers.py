@@ -13,7 +13,7 @@ So this file instantiates the real wrappers, fits them on real arrays, and pins
 the `BaseModelWrapper` contract that `pages/06` and everything downstream rely
 on. No bare estimators appear anywhere in it.
 
-Run:  turbotab/.venv/Scripts/python -m pytest tests/test_characterization_wrappers.py -v
+Run:  venv/bin/python -m pytest tests/test_characterization_wrappers.py -v
 """
 import numpy as np
 import pytest

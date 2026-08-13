@@ -3,7 +3,7 @@ CSV in, trained models out, with no Streamlit in the interpreter.
 
 The L6 gate, as a script you can run:
 
-    turbotab/.venv/Scripts/python turbotab/headless_train.py turbotab/sample_data/clinic_visits.csv --target outcome
+    venv/bin/python turbotab/headless_train.py turbotab/sample_data/clinic_visits.csv --target outcome
 
 It blocks `streamlit` on `sys.meta_path` *before importing anything else*, then
 walks the whole path — read, diagnose, split, preprocess, fit, evaluate — using

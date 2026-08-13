@@ -15,7 +15,7 @@ The DAG's own gate — reproducing both existing cascade implementations — liv
 in `tests/integration/test_cascade_dag_equivalence.py`, because it needs a
 Streamlit runtime to call the production function for real.
 
-Run:  turbotab/.venv/Scripts/python -m pytest turbotab/test_project_model.py -v
+Run:  venv/bin/python -m pytest turbotab/test_project_model.py -v
 """
 from __future__ import annotations
 
