@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**387 of 927 closed.**
+**387 of 928 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 468 |
+| `OPEN` | 469 |
 | `PARTIAL` | 72 |
 | `FIXED` | 381 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 468
+## OPEN — 469
 
 
 ### Guided-door drive feedback — 74
@@ -556,13 +556,14 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-039` | medium | After the seal is drawn, the Explore impossibility cards still render enabled 'Exclude those rows from the study' buttons with editable reason inputs, while the same card's prose says clause 04… | `run-3 drive path 1, project sealed: data-plaus-route='exclude_the_rows' buttons disabled:false with editable…` | THIRD HUMAN DRIVE, 2026-08-12. THE TESTER DID NOT PRESS IT, and said why: it would attempt an illegal mutation on a sealed project. That is the right call by a tester and it… |
 | `DRIVE-021` | low | The bulk binary-repair card says the columns were 'written as text' for six imputed_* columns that are bool dtype, so the repair's stated reason is wrong about the data it is offering to repair | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2 and 4 (F7)` | The card groups nine columns as 'need the same repair: read as binary' and its prose says they were written as text. THREE of the nine are text - gender, meds_hbp, meds_chol - and… |
 
-### Other — 6
+### Other — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `AUDIT-037` | high | The anti-pattern registries do not exist in two of the five packs, so 'across the five packs' describes a conformance surface that is missing where the app does the most work | `L51-E, and this is the counted denominator the loop was asked for. DOMAIN_SCIENCE.md 03b's ~150 has never…` | The three registries are in three different formats - a table, dot-separated clauses, and per-section blocks - which is why the number was never counted: no single reader reads… |
 | `MISC-021` | high | The door keeps acquiring surfaces and none of them acquires a mechanism: 105 innerHTML assignments and zero identity-preserving transitions, against a design language that says replacement teaches… | `L54-B, and the L47 table is the evidence rather than a new measurement. turbotab/web/index.html had 106…` | THE CLASS IS 'a design document specifies a mechanism and the implementation acquires only surfaces'. It is trap #1 inverted: not a capability with no consumer, but a REQUIREMENT… |
 | `DRIVE-018` | high | README.md asserts the app runs end to end through grain, eligibility and the seal, which is true of the API and false of the page a user drives | `docs/turbotab/README.md, the 'app is running, end to end' paragraph; refuted by…` | THE CLAIM: 'The app is running, end to end. A driver goes upload -> lens -> orientation -> target -> purpose -> grain -> eligibility -> seal -> explore -> features -> preprocess… |
+| `TEST-084` | high | A long-running server serves a CURRENT page against a STALE API and nothing surfaces the mismatch: Python modules are pinned at import, StaticFiles re-reads index.html per request, so the interface… | `turbotab/api.py:3366 app.mount('/', StaticFiles(directory=WEB_DIR, html=True)); serving process PID 99928…` | FOUND BY THE PRODUCT OWNER ASKING THE RIGHT QUESTION -- 'is it possible the agent was not running on the right version of the app?' -- after run 3's report contradicted the… |
 | `AUDIT-038` | medium | 77 of the 131 registry entries are still unchecked against the engine, and the reason is a budget rather than a finding - recording it so the next loop does not read silence as coverage | `L51-E, and it is the honest half of this part. E ran last by the prompt's own sequencing, after Part C's four…` | AND A METHOD WARNING WORTH MORE THAN THE ROW: two of this part's capability checks returned a false absence because grep -E was given \\| alternation, which is a literal pipe in… |
 | `AUDIT-046` | medium | A loop commit swallowed the adjudicator's uncommitted docs edit, so its subject asserts something false about its own contents - the git add -A rule broken a third time, in the opposite direction… | `0c9cce3 contains docs/turbotab/prompts/PM_TRANSITION.md, 74 changed lines, under the subject 'L57-A: the…` | NOTHING WAS LOST AND THAT IS NOT THE POINT. The content is byte-identical to the adjudicator's own backup, verified by diff, and it is in HEAD. THE POINT IS THE RECORD LAYER… |
 | `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
