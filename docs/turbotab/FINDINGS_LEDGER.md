@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**394 of 931 closed.**
+**394 of 933 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 464 |
+| `OPEN` | 466 |
 | `PARTIAL` | 73 |
 | `FIXED` | 387 |
 | `NOT-A-DEFECT` | 7 |
 
 ---
 
-## OPEN — 464
+## OPEN — 466
 
 
 ### Guided-door drive feedback — 73
@@ -246,7 +246,7 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` | Unchanged at HEAD. Behaviorally harmless because the bodies are identical, and that is exactly why it is worth recording: it is direct evidence the file was edited by paste and… |
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | Accurate at HEAD: structurally portable as-is, and the row's own last clause is the condition - add tests BEFORE the port, not after. Two live defects in this file argue the point… |
 
-### Migration safety net — 51
+### Migration safety net — 53
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -256,6 +256,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-007` | critical | 40 of 58 test modules break the moment Streamlit is removed; only 18 survive untouched | `AST transitive dependency scan over 58 test modules rooted at tests/` | Still OPEN, with the numbers restated against HEAD rather than the fbe422a baseline. The suite grew from 58 modules to 92 and the clean set from 18 to 35, so the ratio improved… |
 | `TEST-008` | critical | No golden-number test exists for calculate_regression_metrics / calculate_classification_metrics — the numbers the whole manuscript rests on | `ml/eval.py:14-52, :55-94 (silent metric drop at :90-92); consumers listed by grep for ml.eval across tests/` | Unchanged where it matters. The four-key regression contract and the conditional classification keys are still unpinned by any test: no golden-number test exists anywhere in the… |
 | `TEST-010` | critical | reset_downstream_results mutates the ledger and provenance as a side effect — an ordering hazard when Record becomes append-mostly | `utils/session_state.py:377-407, esp. hasattr guards at :384, :398, :405` | Unchanged at HEAD, and the guards are the defect. The invalidation path still reaches into the Record: it setattr's six (or seven) provenance sections to None and calls two ledger… |
+| `DRIVE-041` | critical | L60-A's fit gate is correct and its consumer side is unfinished: 73 tests across 21 files fit a classification without ever choosing the event, and now refuse | `turbotab/training.py check(); full sweep at 5f59a35` | Reported in the same breath as the sweep rather than after a green one. The execution agent's earlier report said the sweep was incomplete and explicitly declined to report it as… |
 | `TEST-011` | high | tests/integration/test_state_contracts.py pins no numbers at all — it is 17 render-smoke assertions | `tests/integration/test_state_contracts.py:35-38, and all 17 test bodies terminating in assert_no_exception` | Unchanged at HEAD and the count is now 20. Despite the file's name and its docstring claim to verify that data flows correctly across the multi-page workflow, no metric, no shape… |
 | `TEST-015` | high | WorkflowProvenance.from_dict silently drops renamed/unknown fields — and the round-trip test hand-picks fields so it cannot detect the loss | `utils/workflow_provenance.py:585-655; tests/test_workflow_provenance.py:342-407 (no equality assert; no…` | Substantially unchanged at HEAD, with one correction to the row: record_feature_engineering IS called in the suite - the claim that it is never exercised is wrong. What is not… |
 | `TEST-016` | high | Source-text grep assertions go vacuously green the instant a file moves | `tests/test_review_fixes.py:424-434; tests/test_issues_7_15.py:94,196,220,242; tests/test_distribution.py:17-18` | Unchanged at HEAD. The source-text assertions are still there and still have the asymmetry that makes them dangerous: when pages/ is deleted the NEGATIVE assertions (substring not… |
@@ -278,6 +279,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-060` | high | Half of a fan-out's regression tests passed with the entire fan-out's code reverted - the agent that writes the fix and the test in one pass will write a test the fix does not need | `L51-C. Eight tests came back from four subagents. Reverting all 16 changed source files to HEAD left four of…` | Cheap detector available now and worth having before the rule: run the loop's new tests with the loop's own diff reverted. It is one command, it needs no per-row mapping, and it… |
 | `TEST-062` | high | All seven xfail guards in the A5/B6 registry are unconditional pytest.fail and none reads shipped code, so each is green over the defect CONDITION even though the file's ledger-drift check is sound | `Found by an L52-B verifier while checking a neighbouring row, and confirmed by the adjudicator.…` | AND L53 TRIPPED LINE 45 DELIBERATELY. Closing AUDIT-022 and 023 in Part A and AUDIT-032 in Part C put three rows in the state line 45 exists to catch - marked xfail here and… |
 | `TEST-086` | high | L60-A moved the required-decision denominator on wide-assay and leaky-sepsis, so Classic's recorded coverage falls 1.0 to 0.5 on both and the frozen baselines are red. Classic did not change; the set… | `tests/integration/test_routing_baseline.py::test_classic_still_measures_what_the_baseline_recorded and…` | BLOCKING THE PUSH, AND DELIBERATELY NOT RULED. Found by the pre-push gate after the routing VALUE check was adjudicated and re-recorded; this is the deeper of the two and it… |
+| `TEST-087` | high | /dev/status names the build but not the interpreter, and the interpreter is what caused the dataset-wide /models 500 that cost three drives | `turbotab/api.py dev_status; ml/model_registry.py:14-19` | Add sys.executable and an import check for ml.model_registry to /dev/status's build block, and surface a failing registry the way the hybrid build is surfaced. |
 | `TEST-027` | medium | utils/persistence.py is dead code — zero importers — yet contains the reproducibility manifest the new Project layer needs | `utils/persistence.py:1-158; zero import sites repo-wide` | Unchanged at HEAD - verified unreachable, not merely uncovered. The trap the row names is the one to record: it is tempting to adopt this wholesale as the Project serializer, and… |
 | `TEST-028` | medium | visualizations.py returns figures nobody inspects — the safest module to move and the easiest to break unnoticed | `visualizations.py:12,53,91,129,170; consumers pages/06_Train_and_Compare.py:69…` | Unchanged at HEAD: the module is genuinely pure and genuinely untested - the two tests that name it check that it imports, not what it draws. That combination is the row's point… |
 | `TEST-029` | medium | ml.feature_steps and ml.baseline_models are uncovered and produce the numbers the manuscript compares against | `ml/feature_steps.py:11,39; ml/baseline_models.py:21,150` | Unchanged at HEAD: both still uncovered, and both still produce published numbers. The seed sensitivity is the specific hazard - PCA's sign convention and KMeans' init are… |
@@ -546,7 +548,7 @@ Nothing is closed without a regression test named after it.
 |---|---|---|---|---|
 | `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
 | `DRIVE-016` | high | The three-series maximum is asserted in the test and not in the renderer: WEBC still offers four categorical colors and assigns --c4 to a fourth series, which is 12.3 from --c3 in dark mode against a… | `turbotab/web/index.html:4129 (WEBC) and :4179/:4187 (WEBC[idx % WEBC.length])…` | FILED BY THE ADJUDICATOR VERIFYING L57-A, AND IT IS THE CLASS THIS PROJECT KEEPS FINDING RATHER THAN A NEW ONE: a constraint declared in one place with a consumer that does not… |
-| `DRIVE-035` | high | What made GET /models fail on the tester's 21,849-row NHANES file is unknown, and the app could not say -- DRIVE-030 is the silence, this is the fault behind it | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md 4b-1` | -- RUN 3 MAKES IT REPRODUCIBLE ON DEMAND AND IT IS WORSE THAN A ONE-OFF. GET /models returned 500 on the tester's file for BOTH a regression target (kcal, 0 missing) and a… |
+| `DRIVE-035` | high | What made GET /models fail on the tester's 21,849-row NHANES file is unknown, and the app could not say -- DRIVE-030 is the silence, this is the fault behind it | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md 4b-1` | ANSWERED, AND IT IS NOT WHAT RUN 4 CONCLUDED. Run 4 traced the 500 to an unhandled ModuleNotFoundError for xgboost/lightgbm imported at module scope in ml/model_registry.py:18-19… |
 | `DRIVE-028` | medium | The same lens one surface over: three entries in HANDLED_QUESTION_PREFIXES have no textual occurrence in the page other than the list entry itself, and nothing drives them | `turbotab/web/index.html HANDLED_QUESTION_PREFIXES` | Extend test_every_handled_key_reaches_the_dom to the prefixes: drive a project where the Router serves a key with each prefix and require a control. Do NOT close this on the grep… |
 | `DRIVE-029` | medium | Answering 'Yes, people repeat' cannot name the column that identifies the person from the Guided door, so the answer routes to an undetermined basis and a by-row split | `ml/router.py state_grain; turbotab/web/index.html askedCard` | Offer the suggestion's columns on the people_repeat branch, with the per-column evidence the route already serves. The suggestion is never the answer -- constitution 02 demotes… |
 | `DRIVE-039` | medium | After the seal is drawn, the Explore impossibility cards still render enabled 'Exclude those rows from the study' buttons with editable reason inputs, while the same card's prose says clause 04… | `run-3 drive path 1, project sealed: data-plaus-route='exclude_the_rows' buttons disabled:false with editable…` | THIRD HUMAN DRIVE, 2026-08-12. THE TESTER DID NOT PRESS IT, and said why: it would attempt an illegal mutation on a sealed project. That is the right call by a tester and it… |

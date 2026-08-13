@@ -1110,6 +1110,24 @@ def nutrient_columns(columns) -> list:
     out = []
     for column in (() if columns is None else columns):
         name = str(column)
+        # ENERGY IS RECOGNIZED AND NOT OFFERED. `DRIVE-034`.
+        #
+        # `test_the_dropdown_offers_only_what_the_pack_recognizes` states the
+        # contract this sits under: *what is offered is answerable — a dropdown
+        # of things that all refuse would be the shelf shortened to make the
+        # refusal look good.* Energy has no EAR at all, so there is no basis and
+        # no reference that turns it into an answer; offering it would be a
+        # control that can only ever refuse.
+        #
+        # It stays in `NO_EAR_USE_EER` and on the subject axis, so asking for it
+        # directly still gets the TRUE reason rather than *"not a nutrient this
+        # pack recognizes"*. Recognized, and not on this list.
+        #
+        # `AI_ONLY` and `SKEWED_REQUIREMENT` remain offered: an AI-only nutrient
+        # has a distribution to draw against its AI, and iron routes to another
+        # method rather than refusing.
+        if registry.match(name, NO_EAR_USE_EER):
+            continue
         if (registry.match(name, NUTRIENT_NAMES)
                 or registry.match(name, AI_ONLY)
                 or registry.match(name, SKEWED_REQUIREMENT)):
