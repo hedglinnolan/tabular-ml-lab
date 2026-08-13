@@ -124,8 +124,17 @@ Branch `TurboTab`, HEAD **`976c881`**, tree clean, **9 commits ahead of `origin/
 from pushing.** Ledger **934 findings, 394 closed** (`OPEN` 466 · `PARTIAL` 74 · `FIXED` 387 ·
 `NOT-A-DEFECT` 7). Register **183 rows**. Six pre-commit gates green.
 
-**L58, L59 and L60 are accepted with their `LOOP.md` §03 rows written. L61 is running and has no row
-yet.** Write it when the loop closes, not before.
+**L58, L59 and L60 are accepted. L61 is running and has no row yet** — write it when the loop closes,
+not before.
+
+**This sentence read *"L58, L59 and L60 are accepted with their `LOOP.md` §03 rows written"* and the
+L60 half of it was false.** `grep -c "L60" docs/turbotab/LOOP.md` returned **0** *(re-derived at
+`647a0ca`)*; the log ended at L59. The cause is in the record and is not carelessness: `1d2206d` ruled
+A–D and deferred the row on purpose — *"E is not adjudicated: the sweep is still running… No `LOOP.md`
+row until it lands"* — E landed at `7e34743`, and **a deferral with no holder is how §03 decayed the
+first time.** The row is written now. **A claim that a record exists is not the record**, which is the
+same shape as §06's *a file's existence is not its contents*, one layer out: here the file existed and
+the row inside it did not.
 
 ### The last sweep, and why it is not green
 
