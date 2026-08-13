@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**404 of 940 closed.**
+**405 of 941 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 460 |
 | `PARTIAL` | 76 |
-| `FIXED` | 396 |
+| `FIXED` | 397 |
 | `NOT-A-DEFECT` | 8 |
 
 ---
@@ -718,7 +718,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 396
+## FIXED — 397
 
 
 ### Guided-door drive feedback — 148
@@ -947,7 +947,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Migration safety net — 33
+### Migration safety net — 34
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -971,6 +971,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-077` | high | DRIVE-026's pin was an imperative `pytest.xfail()` inside the test body, which can never XPASS, while the comment beside it promised 'Strict, so the day the row is built this file goes red'. The pin… | `turbotab/test_every_handled_key_reaches_the_dom.py:365 (the imperative call, now removed) against :147-151…` | **test:** `turbotab/test_every_handled_key_reaches_the_dom.py::test_a_handled_key_reaches_a_control_in_the_dom[choose_preparation_mode]` — FOUND BY THE ADJUDICATOR VERIFYING… |
 | `TEST-086` | high | L60-A moved the required-decision denominator on wide-assay and leaky-sepsis, so Classic's recorded coverage falls 1.0 to 0.5 on both and the frozen baselines are red. Classic did not change; the set… | `tests/integration/test_routing_baseline.py::test_classic_still_measures_what_the_baseline_recorded and…` | **test:** `tests/integration/test_routing_baseline.py::test_the_leaky_reference_differs_from_the_frozen_one_only_as_ruled` — RULED AND CLOSED AT L61-C, WITH SECTION 06.2 INVOKED… |
 | `TEST-087` | high | /dev/status names the build but not the interpreter, and the interpreter is what caused the dataset-wide /models 500 that cost three drives | `turbotab/api.py dev_status; ml/model_registry.py:14-19` | **test:** `turbotab/test_the_app_says_which_interpreter_answered.py::test_the_page_renders_a_broken_environment_rather_than_only_serving_it` — FIXED AT L61-B3. _SERVED_BUILD now… |
+| `TEST-092` | high | L59-B added n_rows_before_outcome_drop to the lockbox and not to the archive's explicit whitelist, so every save has dropped it since 60dfcf5 -- and the guard that says so has been red for two loops… | `turbotab/archive.py build_members lockbox.json whitelist; turbotab/engine.py:1054; turbotab/grain.py:462…` | **test:** `tests/test_the_archive_carries_every_field.py::test_every_key_of_the_nested_whitelists_survives` — Filed BEFORE the sweep that would have found it again, so the tree is… |
 | `GUIDED-100` | medium | The propagation probe itself: for each recorded decision kind, two projects identical except for that answer, and something downstream must differ | `turbotab/test_a_recorded_decision_changes_something.py; 41 kinds recorded, 23 probed (24 flips), 6 asserted…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_a_decision_about_the_analysis_reaches_the_fitted_pipeline` — BUILT AT L35-E as the instrument that would… |
 | `TEST-041` | medium | Four turbotab test files read figures.REGISTRY, which is populated only as an import side effect of figure_specs, and one of them asserted a count over it before anything had imported the populator… | `turbotab/figures.py:REGISTRY is an empty dict filled by turbotab/figure_specs.py's module body…` | **test:** `turbotab/test_the_registry_cannot_be_observed_empty.py::test_a_cold_import_of_figures_alone_sees_the_specs` — FOUND WHILE FIXING TEST-040 AND IT IS THE SAME PROPERTY… |
 | `TEST-046` | medium | A test docstring that names a page control its body never presses is trap #3b in its page-control form, and nothing detected it - the standing answer was to read docstrings against bodies by hand | `L48-A2. AGENT_ONBOARD.md 07 names trap #3b and the standing answer found GUIDED-145 once and nothing for five…` | **test:** `turbotab/test_a_test_that_names_a_control_presses_it.py::test_no_test_names_a_control_its_body_never_touches` — Both instances fixed rather than declared. NOT COVERED… |

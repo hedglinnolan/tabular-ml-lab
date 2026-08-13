@@ -409,6 +409,22 @@ def build_members(project) -> Dict[str, bytes]:
                              if lb.get("basis_source") else None),
             "n_groups": (int(lb["n_groups"])
                          if lb.get("n_groups") is not None else None),
+            # `L59-B` added this to the lockbox and did not add it here, so it
+            # has been dropped on every save since `60dfcf5` and the guard has
+            # been red for two loops. **It went unseen because the documented
+            # sweep is three commands and `L60-E` ran one of them** — this test
+            # lives in `tests/`, the sweep that reported 81 red covered
+            # `turbotab/`, and nothing reconciled the two.
+            #
+            # What it costs: `grain.py:462` reads it to say how many rows the
+            # seal was drawn FROM before rows with no outcome were dropped —
+            # `DRIVE-031`'s receipt, *"the seal names the base it actually drew
+            # from"*. A restored project had `None` there and the receipt
+            # silently stopped naming its base, which is the exact defect
+            # `L59-B` was written to fix, surviving in the archive.
+            "n_rows_before_outcome_drop": (
+                int(lb["n_rows_before_outcome_drop"])
+                if lb.get("n_rows_before_outcome_drop") is not None else None),
             "exploratory": bool(lb.get("exploratory", False)),
             # `GUIDED-102`. What a holdout this size can resolve, computed at
             # the seal and stored on the lockbox precisely because the seal is

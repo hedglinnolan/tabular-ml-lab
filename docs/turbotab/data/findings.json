@@ -12392,5 +12392,19 @@
   "verified_against": "",
   "test": "tests/integration/test_routing_baseline.py::test_the_chain_of_re_measurements_is_readable_rather_than_implied",
   "verified_ev": "tests/integration/test_routing_baseline.py ADJUDICATED_PRIOR / ADJUDICATED_PRIOR_PRIOR / LEAKY_ADJUDICATED"
+ },
+ {
+  "id": "TEST-092",
+  "area": "TEST",
+  "sev": "high",
+  "item": "L59-B added n_rows_before_outcome_drop to the lockbox and not to the archive's explicit whitelist, so every save has dropped it since 60dfcf5 -- and the guard that says so has been red for two loops because the documented sweep is three commands and only one was run",
+  "detail": "FOUND AT L61-E, running the tests/ half of the documented sweep. test_the_archive_carries_every_field::test_every_key_of_the_nested_whitelists_survives[lockbox] fails naming the key exactly, and its own message states the class: 'the lockbox.json member in archive.build_members is an explicit whitelist -- a key added to the lockbox and not added there is dropped on save, silently, and the restored project cannot tell it is incomplete.' DATED BY READING archive.py at three commits: the key is absent from the whitelist at 60dfcf5 (L59-B, the commit that added it to the lockbox), at b0764e2 and at 976c881. So it was red before L61 touched anything. WHAT IT COSTS, and it is the same defect L59-B was written to fix: grain.py:462 reads this key to say how many rows the seal was drawn FROM before rows with no outcome were dropped -- DRIVE-031's receipt, 'the seal names the base it actually drew from'. A project restored from an archive had None there, so the receipt silently stopped naming its base. The fix survived in the app and not in the archive. ── THE PART THAT OUTLIVES THE FIX IS WHY NOBODY SAW IT. AGENT_ONBOARD section 03 documents the sweep as THREE commands: turbotab/, tests/ minus three ignores, and tests/integration. L60-E ran the first, reported '81 failed / 2486 passed' as the FULL SWEEP, and nothing reconciled that against the other two -- so a red in tests/ was invisible to a report that called itself complete. The turbotab/ number is the one every loop quotes because it is the expensive one, and the phrase 'full sweep' has quietly come to mean it. That is a naming defect with a two-loop blind spot behind it.",
+  "ev": "turbotab/archive.py build_members lockbox.json whitelist; turbotab/engine.py:1054; turbotab/grain.py:462; tests/test_the_archive_carries_every_field.py::test_every_key_of_the_nested_whitelists_survives",
+  "act": "Fixed at L61-E. The class is open: nothing requires a report that says FULL SWEEP to have run all three commands, and the cheap two take 95 seconds together. A guard could assert the three counts were taken at the same commit, the way the baseline chain now asserts its stamps.",
+  "status": "FIXED",
+  "note": "Filed BEFORE the sweep that would have found it again, so the tree is still while the sweep runs. The archive fix is one whitelist entry and it is verified by the guard that was already red -- no new test was needed, which is the honest form here: the guard existed, worked, and was not run.",
+  "verified_against": "",
+  "test": "tests/test_the_archive_carries_every_field.py::test_every_key_of_the_nested_whitelists_survives",
+  "verified_ev": "turbotab/archive.py build_members lockbox.json whitelist; turbotab/engine.py:1054; turbotab/grain.py:462; tests/test_the_archive_carries_every_field.py::test_every_key_of_the_nested_whitelists_survives"
  }
 ]
