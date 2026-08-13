@@ -15,8 +15,92 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from models.glm import GLMWrapper
 from models.huber_glm import HuberGLMWrapper
 from models.rf import RFWrapper
-from xgboost import XGBRegressor, XGBClassifier
-from lightgbm import LGBMRegressor, LGBMClassifier
+
+# ─────────────────────────────────────────────────────────────────────────────
+# `MODELS-026`. THE GRADIENT-BOOSTING BACKENDS ARE OPTIONAL, LIKE torch.
+#
+# These were `from xgboost import ...` and `from lightgbm import ...` at module
+# scope, so an interpreter missing either one lost `GET /models` — and with it
+# Train, Explain, the figures and the report — to an unhandled
+# `ModuleNotFoundError` that reached Starlette as twenty-one characters of
+# *Internal Server Error*. Four human drives were spent on that.
+#
+# `TEST-038` is the standard already in this codebase and it is applied here
+# rather than invented: `utils/seed.py` wraps `import torch` in
+# `try/except ImportError` with a comment saying it is optional, torch is
+# deliberately not installed, and that absence is an expected condition that
+# takes no endpoint down. The two ledger rows are the same row, one estimator
+# over — and `TEST-038` said so first: *"one of the two is right about whether
+# torch is optional, and they cannot both be."* `requirements.txt` declares
+# xgboost and lightgbm while the environment treats them as optional; the code
+# treated them as mandatory. One of those had to give.
+#
+# **AND `PRODUCT_VISION.md` SAYS WHICH WAY.** *"The shelf is never shortened"*
+# is about not hiding a model from a user, not about refusing to start. A shelf
+# that says *"gradient boosting is unavailable in this install, and here is
+# why"* is the honest form; a 500 is not, and neither is quietly dropping the
+# row — a user who believes a model is unavailable will not think to look for
+# it.
+#
+# scikit-learn is NOT guarded and that is deliberate: it is not one model, it
+# is the pipeline, the metrics and eleven of the entries below. Without it
+# there is no registry to shorten, so `get_registry` raises
+# `RegistryUnavailable` and `api.py` turns it into a refusal a person can read.
+# ─────────────────────────────────────────────────────────────────────────────
+try:
+    from xgboost import XGBRegressor, XGBClassifier
+    _XGBOOST_ERROR: Optional[str] = None
+except Exception as exc:                                  # pragma: no cover
+    XGBRegressor = XGBClassifier = None                    # type: ignore
+    _XGBOOST_ERROR = f"{type(exc).__name__}: {exc}"
+
+try:
+    from lightgbm import LGBMRegressor, LGBMClassifier
+    _LIGHTGBM_ERROR: Optional[str] = None
+except Exception as exc:                                  # pragma: no cover
+    LGBMRegressor = LGBMClassifier = None                  # type: ignore
+    _LIGHTGBM_ERROR = f"{type(exc).__name__}: {exc}"
+
+
+class RegistryUnavailable(RuntimeError):
+    """The registry cannot be built at all in this interpreter.
+
+    Raised only where scikit-learn itself is missing, because then there is no
+    shelf to shorten. Carries the sentence a person acts on rather than a
+    traceback — `api.py` serves it as a refusal, not a 500.
+    """
+
+
+class ModelUnavailable(RuntimeError):
+    """One model's backend is absent. Raised by its factory, never at import.
+
+    The spec stays in the registry and on the shelf, marked, with this reason —
+    so the model is *visible and unavailable* rather than silently gone.
+    """
+
+
+def backend_error(key: str) -> Optional[str]:
+    """Why `key` cannot be fitted in this interpreter, or `None`.
+
+    Read by `turbotab.models.shelf` so the reason travels to the page. Keyed by
+    registry key rather than by package so a caller never has to know which
+    model comes from which library.
+    """
+    if key in ("xgb_reg", "xgb_clf"):
+        return _unavailable_sentence("XGBoost", "xgboost", _XGBOOST_ERROR)
+    if key in ("lgbm_reg", "lgbm_clf"):
+        return _unavailable_sentence("LightGBM", "lightgbm", _LIGHTGBM_ERROR)
+    return None
+
+
+def _unavailable_sentence(name: str, dist: str, error: Optional[str]) -> Optional[str]:
+    if error is None:
+        return None
+    return (f"{name} is not available in this install — importing {dist} "
+            f"raised {error}. The model is listed because it is part of this "
+            f"shelf; it cannot be fitted here until "
+            f"`pip install {dist}` succeeds in the interpreter running the "
+            f"app.")
 
 
 @dataclass
@@ -165,6 +249,8 @@ def _create_rf(task_type: str, random_state: int):
 
 def _create_xgb_reg(task_type: str, random_state: int):
     """Factory for XGBoost Regressor."""
+    if XGBRegressor is None:                              # pragma: no cover
+        raise ModelUnavailable(backend_error("xgb_reg"))
     return XGBRegressor(
         n_estimators=100, max_depth=3, learning_rate=0.1,
         random_state=random_state, verbosity=0, tree_method='hist'
@@ -173,6 +259,8 @@ def _create_xgb_reg(task_type: str, random_state: int):
 
 def _create_xgb_clf(task_type: str, random_state: int):
     """Factory for XGBoost Classifier."""
+    if XGBClassifier is None:                             # pragma: no cover
+        raise ModelUnavailable(backend_error("xgb_clf"))
     return XGBClassifier(
         n_estimators=100, max_depth=3, learning_rate=0.1,
         random_state=random_state, verbosity=0, tree_method='hist',
@@ -182,6 +270,8 @@ def _create_xgb_clf(task_type: str, random_state: int):
 
 def _create_lgbm_reg(task_type: str, random_state: int):
     """Factory for LightGBM Regressor."""
+    if LGBMRegressor is None:                             # pragma: no cover
+        raise ModelUnavailable(backend_error("lgbm_reg"))
     return LGBMRegressor(
         n_estimators=100, max_depth=-1, learning_rate=0.1,
         random_state=random_state, verbosity=-1
@@ -190,6 +280,8 @@ def _create_lgbm_reg(task_type: str, random_state: int):
 
 def _create_lgbm_clf(task_type: str, random_state: int):
     """Factory for LightGBM Classifier."""
+    if LGBMClassifier is None:                            # pragma: no cover
+        raise ModelUnavailable(backend_error("lgbm_clf"))
     return LGBMClassifier(
         n_estimators=100, max_depth=-1, learning_rate=0.1,
         random_state=random_state, verbosity=-1

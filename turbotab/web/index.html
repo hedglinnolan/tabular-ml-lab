@@ -920,6 +920,14 @@
   .shelf-row{ display:flex; align-items:baseline; gap:9px; flex-wrap:wrap;
               padding:3px 0; }
   .shelf-why{ font-size:12px; color:var(--muted); }
+  /* MODELS-026. A model this INSTALL cannot fit. Dimmed and still legible —
+     the row stays because the shelf is never shortened, and the reason sits
+     under it in the warn color because it is a fact about the machine rather
+     than a judgment about the data. `--warn` and not `--danger`: nothing is
+     wrong with the analysis. */
+  .shelf-row.shelf-gone .pill{ opacity:.5; cursor:not-allowed; }
+  .shelf-gone-why{ flex-basis:100%; margin:2px 0 0; font-size:12px;
+                   line-height:1.45; color:var(--warn); }
   /* L55-B. The recorded design's account of this order. Serif, because §03's
      three voices put the app's own explanation in the serif plane — the
      quoted sentence inside it is the user's, and it wears quotation marks
@@ -5915,11 +5923,28 @@
         return;
       }
       (g.models || []).forEach(function(m){
-        h += '<div class="shelf-row"><button class="pill" type="button" ' +
+        /* MODELS-026. A model whose BACKEND is absent stays on the shelf, in
+           its bucket, with its concern — and says it cannot be fitted here.
+
+           Not filtered, because "the shelf is never shortened" is about not
+           hiding a model from a user, and hiding one because the machine is
+           short a package is the same act with a better excuse. Not folded
+           into `concern` either: the concern is the engine's judgment about
+           THIS DATA and reads the same on every machine, while this is a fact
+           about the INSTALL. A user told "XGBoost is not available here" must
+           not read it as "XGBoost is a poor fit for your table".
+
+           The control is disabled rather than removed, so the row still
+           answers "is this model here?" with yes. */
+        var gone = m.unavailable_because || "";
+        h += '<div class="shelf-row' + (gone ? " shelf-gone" : "") +
+             '"><button class="pill" type="button" ' +
              'data-pick-model="' + esc(m.key) + '" aria-pressed="' +
-             (PICKED[m.key] ? "true" : "false") + '">' + esc(m.name) +
-             "</button>" +
+             (PICKED[m.key] ? "true" : "false") + '"' +
+             (gone ? ' disabled data-tip="' + esc(gone) + '"' : "") + ">" +
+             esc(m.name) + "</button>" +
              '<span class="shelf-why">' + esc(m.concern || "") + "</span>" +
+             (gone ? '<p class="shelf-gone-why">' + esc(gone) + "</p>" : "") +
              designNoteHTML(m) + "</div>";
       });
       h += "</div>";

@@ -2164,10 +2164,39 @@ async def get_models(project_id: str) -> Dict[str, Any]:
             400, "The shelf is ordered by the shape of your data, so it is "
                  "offered after the seal — the shape it reads must be the "
                  "shape the models will be fitted on.")
-    entries, ranked_on = project.model_shelf_ranked()
+    # `MODELS-026`. THE 500 THAT COST FOUR DRIVES, TURNED INTO A REFUSAL.
+    #
+    # `ml/model_registry.py` imports scikit-learn at module scope, so in an
+    # interpreter without it this line raised `ModuleNotFoundError` straight
+    # through to Starlette and the browser got twenty-one characters of
+    # *Internal Server Error* — on every file and every target, which is why no
+    # fixture could reproduce it and three drives looked for a data-dependent
+    # cause.
+    #
+    # xgboost and lightgbm are guarded at their own imports now and shorten
+    # nothing; this branch is scikit-learn, which is not one model but the
+    # pipeline, the metrics and half the shelf. There is no shelf to shorten,
+    # so the honest form is a refusal that names the package and the fix.
+    # `503`, not `500`: the request was well formed and the server cannot
+    # answer it in this environment.
+    try:
+        entries, ranked_on = project.model_shelf_ranked()
+    except ImportError as exc:
+        from ml import engine_stack as _stack
+
+        report = _stack.report()
+        raise HTTPException(
+            503,
+            f"The model shelf cannot be built in this install: {exc}. "
+            f"{report['why'] or ''} {report['fix'] or ''}".strip()) from exc
     from turbotab import packs as _packs
     return {
-        "disclosure": _models.SHELF_DISCLOSURE,
+        # `MODELS-026`. `SHELF_DISCLOSURE` opens "Every model is available",
+        # which is FALSE in an install missing a backend — the governing rule
+        # failing in the one paragraph whose job is to say nothing was hidden.
+        # Composed from the entries rather than fixed, and byte-identical to
+        # the old constant on any complete install.
+        "disclosure": _models.disclosure(entries),
         # Dataset-scoped, and legitimately so: p much greater than n is a
         # property of the shape rather than of any column. The shelf is ORDERED
         # by this and never filtered by it — a competent researcher can have a

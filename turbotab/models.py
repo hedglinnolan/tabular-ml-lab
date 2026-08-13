@@ -92,6 +92,38 @@ SHELF_DISCLOSURE = (
     "applies to a table this shape, and you may have a reason it does not "
     "apply to yours. Select whatever you intend to train.")
 
+#: **`MODELS-026`. The same disclosure where one model's backend is absent.**
+#:
+#: `SHELF_DISCLOSURE` opens *"Every model is available"*, and in an install
+#: missing xgboost that sentence is FALSE — the governing rule's
+#: *assert something false* branch, in the one paragraph whose whole job is to
+#: tell a user nothing has been hidden from them. It is not enough to guard the
+#: import and leave the sentence: the list would be complete and the claim
+#: about it would be wrong.
+#:
+#: The list is still not filtered, which is what *"the shelf is never
+#: shortened"* actually protects. What changes is that the app says which
+#: models this INSTALL cannot fit, rather than implying all of them can.
+SHELF_DISCLOSURE_WITH_UNAVAILABLE = (
+    "Every model is listed, and {n} cannot be fitted in this install — each "
+    "says why on its row. This order is about your data, not about which "
+    "models are any good — a model low on this list is one whose concern "
+    "applies to a table this shape, and you may have a reason it does not "
+    "apply to yours. Select whatever you intend to train.")
+
+
+def disclosure(entries: Sequence["ShelfEntry"]) -> str:
+    """The disclosure this shelf can honestly make.
+
+    Silent about absence where there is none, so an ordinary install reads
+    exactly as it did before `L61`.
+    """
+    n = sum(1 for e in entries if e.unavailable_because)
+    if not n:
+        return SHELF_DISCLOSURE
+    return SHELF_DISCLOSURE_WITH_UNAVAILABLE.format(n=n)
+
+
 _BUCKET_ORDER = {RECOMMENDED: 0, WORTH_TRYING: 1, NOT_RECOMMENDED: 2}
 
 
@@ -201,6 +233,19 @@ class ShelfEntry:
     # answer moved this model — an entry that stayed put is accounted for by the
     # shelf-level statement, not by a clause repeated down the column.
     design_notes: Tuple[DesignNote, ...] = field(default_factory=tuple)
+    # `MODELS-026`. Why this model cannot be FITTED in this install, or `""`.
+    #
+    # NOT a concern and not a bucket. `concern` is the engine's judgment about
+    # this DATA and it is the same sentence on every machine; this is a fact
+    # about the ENVIRONMENT and it is empty on any complete install. Keeping
+    # them apart is the whole point: a user told "XGBoost is not available
+    # here" must not read it as "XGBoost is a poor fit for your table".
+    #
+    # The entry stays on the shelf and in its bucket. `PRODUCT_VISION.md`'s
+    # *"the shelf is never shortened"* is about not hiding a model from a user,
+    # and hiding it because the machine is short a package is the same act with
+    # a better excuse.
+    unavailable_because: str = ""
 
     @property
     def design_rank(self) -> int:
@@ -222,7 +267,12 @@ class ShelfEntry:
                 "recommended_for_high_dim": self.recommended_for_high_dim,
                 "interpretability": self.interpretability,
                 "design_notes": [n.to_dict() for n in self.design_notes],
-                "ranked_lower_by_design": bool(self.design_rank)}
+                "ranked_lower_by_design": bool(self.design_rank),
+                # `MODELS-026`. Empty on any install that has the backend, so
+                # the wire is byte-identical there apart from this key. Sent
+                # rather than inferred from the key list, because the page must
+                # not have to know which model comes from which library.
+                "unavailable_because": self.unavailable_because}
 
 
 PREDICTION = "prediction"
@@ -367,8 +417,8 @@ def shelf(profile: Any, task_type: str, probe: Any = None,
     with nothing answered — leave the result byte-identical to what it was
     before `L55-B`: same models, same order, no notes.
     """
+    from ml import model_coach, model_registry as _registry
     from ml.model_registry import get_registry
-    from ml import model_coach
 
     registry = get_registry()
     try:
@@ -407,7 +457,13 @@ def shelf(profile: Any, task_type: str, probe: Any = None,
             requires_scaled_numeric=bool(caps.requires_scaled_numeric),
             recommended_for_high_dim=bool(caps.recommended_for_high_dim),
             interpretability=str(caps.interpretability_tier),
-            design_notes=design_notes(spec.name, caps, design)))
+            design_notes=design_notes(spec.name, caps, design),
+            # `MODELS-026`. Read from the registry rather than recomputed, so
+            # the sentence the shelf shows is the sentence the factory would
+            # raise. `""` on any install that has the backend, which is every
+            # install this suite runs on — the branch is driven in
+            # `test_a_missing_backend_shortens_nothing_and_says_why.py`.
+            unavailable_because=str(_registry.backend_error(key) or "")))
 
     # `design_rank` sits BETWEEN the bucket and the alphabet, which is the whole
     # of what the recorded design is allowed to do to this list. It moves an

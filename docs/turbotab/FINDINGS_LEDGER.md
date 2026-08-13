@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**403 of 940 closed.**
+**404 of 940 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 461 |
+| `OPEN` | 460 |
 | `PARTIAL` | 76 |
-| `FIXED` | 395 |
+| `FIXED` | 396 |
 | `NOT-A-DEFECT` | 8 |
 
 ---
 
-## OPEN — 461
+## OPEN — 460
 
 
 ### Guided-door drive feedback — 71
@@ -496,7 +496,7 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Models / training / eval — 21
+### Models / training / eval — 20
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -510,7 +510,6 @@ Nothing is closed without a regression test named after it.
 | `MODELS-012` | landmine | BCa acceleration is computed from a jackknife that is capped at 200 leave-one-out replicates and then PADDED to length n with the mean of those 200. | `ml/bootstrap.py:152-166 — `n_jack = min(n, 200)`, `jack_stats = np.full(n, np.nan)`, the loop runs only `for…` | Unchanged at HEAD, byte for byte. For n > 200 the BCa acceleration is still computed over an array whose tail is a constant, damping the third and second moments by an amount that… |
 | `MODELS-013` | landmine | The weighted_huber emphasis window is derived during fit and stored only on the instance as _whuber_t0 / _whuber_s, with legacy glucose constants (t0=180.0, s=20.0) as the getattr fallback. | `models/nn_whuber.py:376-378 sets them only in the `elif self.loss_function == 'weighted_huber'` branch; lines…` | Unchanged at HEAD. The emphasis window is still derived during fit, stored only on the instance, and read back through getattr with the legacy glucose constants 180.0 and 20.0 as… |
 | `T0-BUILD-006` | landmine | Classic decides which class is the event by alphabetical order, silently and with no way to see or change it | `ml/splits.py:294-301 (LabelEncoder on a categorical target); no Classic page renders or offers the class…` | Found at L9c while writing the register row for target-positive-class, and worth recording how: the row was first written asserting the opposite mapping from memory, then checked… |
-| `MODELS-026` | high | ml/model_registry.py imports the whole estimator stack at module scope -- sklearn at lines 6-14, then xgboost and lightgbm at 18-19 -- so an environment missing ANY of them kills GET /models with an… | `ml/model_registry.py:6-19; reached via api.py:2186 -> project.py:1924 -> models.py:370 shelf(); the serving…` | NOT FIXED AT L61 AND SAID PLAINLY -- the prompt's own scope note ruled that if B ran long the launch command ships and the guard waits. It ran long. ml/model_registry.py still… |
 | `MODELS-015` | invariant | Preprocessing is fit on training rows only, and cross-validation re-fits it inside every fold — a pre-transformed matrix must never be scored directly. | `ml/eval.py:182 make_cv_pipeline() composes Pipeline([('prep', clone(preprocessing)), ('densify', ...)…` | The invariant is implemented where it cannot be bypassed by accident, and NOTHING TESTS IT - so it stays OPEN. ml/eval.py:182-190 make_cv_pipeline composes Pipeline([('prep'… |
 | `MODELS-016` | invariant | Metrics are reported on the ORIGINAL target scale: when target_transformer is active, predictions are inverse-transformed and compared against y_*_original. | `pages/06:1486-1497 (test) and 1508-1517 (train), plus the CV branch wrapping the estimator in…` | The invariant is real, currently honored, and unguarded - so it stays OPEN. Every consumer inverse-transforms before scoring and prefers y_*_original, which is correct. What makes… |
 | `MODELS-018` | invariant | Every model factory has the signature (task_type: str, random_state: int) -> estimator, and every model object satisfies fit/predict, with predict_proba only reachable through the runtime… | `ml/model_registry.py:44 declares factory: Callable[[str, int], Any]; all 22 factories honor it.…` | The invariant holds today and nothing enforces either half, so it stays OPEN. The factory signature is declared in a type annotation that Python does not check and no test… |
@@ -719,7 +718,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 395
+## FIXED — 396
 
 
 ### Guided-door drive feedback — 148
@@ -1094,7 +1093,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-013` | medium | The Preprocess page reads capabilities.requires_scaled_numeric directly instead of resolving through the recipe table, so a pack's override cannot reach it | `pages/05_Preprocess.py:498,835; turbotab/recipes.py resolve() and the caps:requires_scaled_numeric selector` | **test:** `tests/integration/test_the_preprocess_page_asks_the_recipe_table.py::test_a_pack_row_reaches_the_preprocess_page` — L53-C, fanned out to four chunks PARTITIONED BY FIX… |
 | `MISC-016` | medium | The feature register has no rows for two shipped Classic pages and nothing gates its coverage, so a capability can be absent from the register without any check noticing | `docs/turbotab/FEATURE_REGISTER.md: 132 rows, zero matching pages/08_Sensitivity_Analysis (568 lines) and zero…` | **test:** `tests/test_a_specification_is_a_claim.py::test_every_classic_page_has_a_register_row_or_a_written_exemption (11 parametrizations) and… |
 
-### Models / training / eval — 12
+### Models / training / eval — 13
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1107,6 +1106,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-033` | high | The task-type detector tells the user, in both doors, that an ordinal score should be modeled as regression — B6 marks that SETTLED wrong | `ml/triage.py:83-86 — detect_task_type reaches this branch for an integer target with 2 < n_unique <= 10…` | **test:** `turbotab/test_an_ordinal_target_is_not_sent_to_a_linear_model_on_the_score.py::test_the_detector_does_not_send_an_ordered_score_to_a_linear_model` — L52-B, fanned out… |
 | `GUIDED-230` | high | The domain lens reaches thirteen modules and stops at the model shelf, so every recorded answer about the study's design is invisible to the one decision it should shape most | `L54-C, SCOPED AND NOT BUILT - the loop spent its budget on Part B and this is a whole part not done, recorded…` | **test:** `turbotab/test_the_shelf_reads_the_recorded_design.py::test_recording_inference_ranks_the_coefficientless_models_lower AND… |
 | `GUIDED-234` | high | GLM (OLS/Logistic) and GLM (Huber) wrap an estimator that has coefficients and do not forward them, so the two models the registry names for interpretable coefficients are two the coefficient figure… | `L55-B, found while measuring ModelCapabilities.exposes_coefficients against a real fit rather than declaring…` | **test:** `turbotab/test_a_wrapped_estimator_forwards_its_coefficients.py::test_a_linear_wrapper_forwards_the_estimators_own_coefficients AND… |
+| `MODELS-026` | high | ml/model_registry.py imports the whole estimator stack at module scope -- sklearn at lines 6-14, then xgboost and lightgbm at 18-19 -- so an environment missing ANY of them kills GET /models with an… | `ml/model_registry.py:6-19; reached via api.py:2186 -> project.py:1924 -> models.py:370 shelf(); the serving…` | **test:** `turbotab/test_a_missing_backend_shortens_nothing_and_says_why.py::test_the_page_renders_the_unavailable_row_rather_than_dropping_it` — FIXED AT L61-B2, AFTER ALL -- the… |
 | `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
 | `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
 | `GUIDED-103` | medium | Genuinely fold-local selection needs the training step to resample: this door fits each model once, so scope=train_folds is recorded and train_rows is what happens | `turbotab/training.py train() fits each pipeline once on the training partition; turbotab/pipeline_plan.py…` | **test:** `turbotab/test_the_whole_pipeline_is_refitted.py (17 tests, two target shapes, the page surface driven), especially… |
