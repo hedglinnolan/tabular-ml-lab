@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**387 of 923 closed.**
+**387 of 927 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 464 |
+| `OPEN` | 468 |
 | `PARTIAL` | 72 |
 | `FIXED` | 381 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 464
+## OPEN — 468
 
 
-### Guided-door drive feedback — 73
+### Guided-door drive feedback — 74
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -59,6 +59,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-236` | high | The ROC figure can never overlay more than one model: the spec takes a dict of models, its caption counts them and its checklist asserts they are overlaid with a legend, and figure_bundle hands it… | `L55-C, found while building a renderer for it and needing two series. turbotab/figure_bundle.py…` | TRAP 3b WITH THE CHECKLIST ITEM RATHER THAN THE TEST NAME: the item's TEXT carries a consequence - models are overlaid - that its PREDICATE never checks, and the predicate reads a… |
 | `GUIDED-238` | high | Half the figure checklist cannot fail: of 85 items, 43 read a constant and only 16 are genuinely falsifiable, so a scored checklist reports a compliance it never checked | `reported by the L57 execution agent's Part B reconnaissance, 2026-08-09; the named instance is…` | FILED BY THE ADJUDICATOR FROM THE EXECUTION AGENT'S HANDBACK, BECAUSE IT EXISTED ONLY IN A MESSAGE AND THE AGENT WAS ABOUT TO BE CLEARED. It stopped before Part B and therefore… |
 | `DRIVE-032` | high | The positive-class question is never asked for a numeric 0/1 target. The register says target-positive-class is always asked and never pre-selected at any confidence; on a binary Int64 target no such… | `verified at b4b8246: interview plans for step data/explore/features/preprocess on a 0/1 Int64 target serve no…` | C1 DRIVEN TO A FITTED METRIC RATHER THAN ARGUED FROM THE CODE, and it landed on the bad branch the row named: the app IS choosing the event without asking. RE-FILED FROM 'the… |
+| `DRIVE-036` | high | The repeat path dead-ends: grain=people repeat, unit=one row per person, then the aggregation menu answers 'there is no identifier column recorded, so there is nothing to combine rows by' -- and no… | `run-3 drive path 3, bp_sys with grain=people_repeat; seal button disabled:true class='answer notbuilt' tagged…` | THIRD HUMAN DRIVE, 2026-08-12, at 0dca497, and it is the first time anyone has walked the repeat chain in a drive -- runs 1 and 2 both answered one-row-per-person, so Q4-Q7 had… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
@@ -540,16 +541,19 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Page-layer extraction — 7
+### Page-layer extraction — 10
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | L51-C, AND THE PROVENANCE MATTERS: all four subagents died mid-work on the weekly account limit with no reports and no probes. Their patches were merged from four worktrees that… |
 | `DRIVE-016` | high | The three-series maximum is asserted in the test and not in the renderer: WEBC still offers four categorical colors and assigns --c4 to a fourth series, which is 12.3 from --c3 in dark mode against a… | `turbotab/web/index.html:4129 (WEBC) and :4179/:4187 (WEBC[idx % WEBC.length])…` | FILED BY THE ADJUDICATOR VERIFYING L57-A, AND IT IS THE CLASS THIS PROJECT KEEPS FINDING RATHER THAN A NEW ONE: a constraint declared in one place with a consumer that does not… |
 | `DRIVE-026` | high | choose_preparation_mode is the THIRD key in HANDLED_QUESTION_KEYS with no section behind it -- the preparation-mode row does not exist anywhere in the page | `turbotab/web/index.html:6455; ml/router.py:821` | Build the preparation-mode row, or move the key to ANSWERABLE. The engine side is complete: project.set_preparation_mode accepts per_model and uniform and api.py:688 routes it. |
-| `DRIVE-035` | high | What made GET /models fail on the tester's 21,849-row NHANES file is unknown, and the app could not say -- DRIVE-030 is the silence, this is the fault behind it | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md 4b-1` | Wait for the next drive. With DRIVE-030 landed, a failing /models now prints the server's own reason on screen, which is the trigger. |
+| `DRIVE-035` | high | What made GET /models fail on the tester's 21,849-row NHANES file is unknown, and the app could not say -- DRIVE-030 is the silence, this is the fault behind it | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md 4b-1` | -- RUN 3 MAKES IT REPRODUCIBLE ON DEMAND AND IT IS WORSE THAN A ONE-OFF. GET /models returned 500 on the tester's file for BOTH a regression target (kcal, 0 missing) and a… |
+| `DRIVE-037` | high | L59-A's self-diagnosing Train card only fires when /models was fetched and failed. When Train is gated by an unsealed seal the original silent state returns: a bare heading tagged 'stale', zero… | `run-3 drive path 3, unsealed project: Train renders heading + stale tag, zero controls, and no /models fetch…` | THIRD HUMAN DRIVE, 2026-08-12. THIS IS DRIVE-030 SURVIVING ITS OWN FIX ON A BRANCH THE FIX DID NOT COVER, and the tester found it by walking a path the previous two runs never… |
 | `DRIVE-028` | medium | The same lens one surface over: three entries in HANDLED_QUESTION_PREFIXES have no textual occurrence in the page other than the list entry itself, and nothing drives them | `turbotab/web/index.html HANDLED_QUESTION_PREFIXES` | Extend test_every_handled_key_reaches_the_dom to the prefixes: drive a project where the Router serves a key with each prefix and require a control. Do NOT close this on the grep… |
 | `DRIVE-029` | medium | Answering 'Yes, people repeat' cannot name the column that identifies the person from the Guided door, so the answer routes to an undetermined basis and a by-row split | `ml/router.py state_grain; turbotab/web/index.html askedCard` | Offer the suggestion's columns on the people_repeat branch, with the per-column evidence the route already serves. The suggestion is never the answer -- constitution 02 demotes… |
+| `DRIVE-038` | medium | A finding card's 'arrived' chip rendered the literal string [object Object] on the positive-class finding -- a non-string reaching esc() in the third positional argument of findingCard(f, withSource… | `run-3 drive path 2: <span class='chip arrived'>[object Object]</span>, 1 occurrence, persists across a lens…` | THIRD HUMAN DRIVE, 2026-08-12. NARROWED BY THE ADJUDICATOR AND NOT SOLVED, so the next loop does not repeat the search I just did. The chip is written in exactly one place… |
+| `DRIVE-039` | medium | After the seal is drawn, the Explore impossibility cards still render enabled 'Exclude those rows from the study' buttons with editable reason inputs, while the same card's prose says clause 04… | `run-3 drive path 1, project sealed: data-plaus-route='exclude_the_rows' buttons disabled:false with editable…` | THIRD HUMAN DRIVE, 2026-08-12. THE TESTER DID NOT PRESS IT, and said why: it would attempt an illegal mutation on a sealed project. That is the right call by a tester and it… |
 | `DRIVE-021` | low | The bulk binary-repair card says the columns were 'written as text' for six imputed_* columns that are bool dtype, so the repair's stated reason is wrong about the data it is offering to repair | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2 and 4 (F7)` | The card groups nine columns as 'need the same repair: read as binary' and its prose says they were written as text. THREE of the nine are text - gender, meds_hbp, meds_chol - and… |
 
 ### Other — 6
