@@ -140,6 +140,40 @@ def calibration_render(y_true, y_proba, **kw) -> Dict[str, Any]:
     return payload
 
 
+def _slope_reading(slope: Optional[float]) -> str:
+    """What THIS slope says, or nothing. `DRIVE-044`.
+
+    A calibration slope below 1 means the predictions are too extreme — spread
+    wider than the outcomes justify. Above 1 means the opposite: too
+    conservative, bunched toward the base rate. At 1 there is nothing to say.
+
+    **Silent where the number is missing**, which is a state this figure has:
+    `weak_calibration` returns `(None, None)` on one outcome class, constant
+    predictions or complete separation, and a reading attached to a quantity
+    nobody computed would be the sharpest form of this defect rather than a
+    milder one.
+
+    The band around 1 is not a threshold anybody picked — it is the rounding
+    the caption itself prints. `_fmt` renders three decimals, so a slope that
+    displays as `1.000` is one this sentence must not call extreme in either
+    direction, and 0.0005 is exactly the half-ulp of that display.
+    """
+    if slope is None:
+        return ""
+    try:
+        value = float(slope)
+    except (TypeError, ValueError):                       # pragma: no cover
+        return ""
+    if value != value:                                    # NaN
+        return ""
+    if abs(value - 1.0) < 0.0005:
+        return " (a slope of 1 is ideal)"
+    if value < 1.0:
+        return " (a slope below 1 indicates predictions that are too extreme)"
+    return (" (a slope above 1 indicates predictions that are too "
+            "conservative — bunched toward the base rate)")
+
+
 def _has(payload: Dict[str, Any], *keys: str) -> bool:
     return all(payload.get(k) is not None for k in keys)
 
@@ -263,8 +297,20 @@ CALIBRATION = register(FigureSpec(
         f"depends on the bin count, so read its wiggles against the "
         f"histogram below before reading them as miscalibration. Calibration "
         f"intercept {_fmt(p.get('calibration_intercept'))} and slope "
-        f"{_fmt(p.get('calibration_slope'))} (a slope below 1 indicates "
-        f"predictions that are too extreme); C-statistic "
+        f"{_fmt(p.get('calibration_slope'))}"
+        # `DRIVE-044`. THIS PARENTHETICAL WAS A CONSTANT. It read "(a slope
+        # below 1 indicates predictions that are too extreme)" unconditionally,
+        # immediately after the slope it is apparently about — and run 5 read
+        # it beside slope **1.141**, which is the opposite problem. A true
+        # generality, placed where a reader takes it as a statement about their
+        # own model, and the irony is that it sits inside the caption run 5
+        # praised for disclosing its own inadequacy.
+        #
+        # Branched on the measured value rather than moved out, because the
+        # reading IS useful — it is the thing a slope is for. What it may not
+        # do is say the same thing about both directions.
+        + _slope_reading(p.get("calibration_slope")) +
+        f"; C-statistic "
         f"{_fmt(p.get('c_statistic'))}; E:avg {_fmt(p.get('e_avg'))}. The "
         f"histogram along the axis shows the distribution of predicted risks, "
         f"events above and non-events below. The axis is not truncated."),

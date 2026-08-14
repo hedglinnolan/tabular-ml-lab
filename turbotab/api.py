@@ -2648,8 +2648,28 @@ async def get_explain(project_id: str, model: Optional[str] = None) -> Dict[str,
 
 
 @app.get("/project/{project_id}/training")
-async def get_training(project_id: str) -> Dict[str, Any]:
-    """The last run, or what is missing before there can be one."""
+async def get_training(project_id: str,
+                       models: Optional[str] = None) -> Dict[str, Any]:
+    """The last run, or what is missing before there can be one.
+
+    **`DRIVE-049`, and the cause is sharper than the symptom.** Run 5 read *"No
+    model is selected"* under the Train card with two models picked and the
+    button one line above reading *"Fit 2 model(s)"*. The panel was not stale —
+    it was answering a different question. The page keeps its picks in `PICKED`
+    and posts them to `/train` directly; it never records a `select_models`
+    decision, so `project.selected_models` is empty and `check()` correctly
+    reports what is missing FROM THE RECORD while the button reports what is
+    missing from the page.
+
+    `models` is the page saying which selection it is asking about. **The rule
+    stays here**: this does not let the page decide what is blocking, it lets
+    it name the state. Putting the answer in the page would be a second copy of
+    `check()`'s order, which this codebase has paid for twice
+    (`renderAsked`, `confirm_task_type`).
+
+    Absent, it answers about the record exactly as before — so a caller that
+    does not know about this parameter gets the old behavior.
+    """
     project = _project(project_id)
     from turbotab import training as _training
 
@@ -2664,8 +2684,10 @@ async def get_training(project_id: str) -> Dict[str, Any]:
         run = held["run"]
         return {"run": run.to_dict(), "blocked_by": None,
                 "stale": project.stale_since(getattr(run, "mark", None))}
+    asking_about = ([k for k in models.split(",") if k] if models is not None
+                    else list(project.selected_models or []))
     try:
-        _training.check(project, list(project.selected_models or []))
+        _training.check(project, asking_about)
     except _training.TrainingRefusal as exc:
         # WHAT IT NEEDS, not an empty object. The same rule the prevalence
         # surface follows: a step that has not happened and a step that

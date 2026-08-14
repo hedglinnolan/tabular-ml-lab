@@ -6025,6 +6025,25 @@
     (run.notes || []).forEach(function(n){
       h += '<p class="feat-note">' + esc(n) + "</p>";
     });
+    /* DRIVE-048. THE SCORE TO BEAT, beside the scores.
+
+       The engine's own imbalance finding says "Accuracy can be misleading; use
+       F1, PR-AUC, or balanced accuracy instead", and this table then leads with
+       Accuracy 0.88 on a column whose base rate is 0.878. Both statements are
+       true and they are three cards apart, so a reader has to hold two screens
+       in their head to see that the headline number is what a model that always
+       answers the more common level would score.
+
+       Accuracy is NOT removed and is not reordered: the shelf is never
+       shortened and that applies to metrics — a researcher may have a reason to
+       read it. What changes is that the number it must beat is on the same
+       line. */
+    if (run.majority_class_rate != null){
+      h += '<p class="feat-note">A model that always answers the more common ' +
+           "level scores " + num(run.majority_class_rate, 3) +
+           " on these held-out rows. Read every score against that, not " +
+           "against zero.</p>";
+    }
     h += '<table class="data"><tr><th>model</th><th>held-out</th>' +
          "<th>what the shelf said</th></tr>";
     (run.results || []).forEach(function(r){
@@ -6317,7 +6336,19 @@
 
   function renderTrainState(){
     if (!P || !P.target) return;
-    api("/project/" + P.id + "/training")
+    /* DRIVE-049. THE PANEL AND THE BUTTON ASK ABOUT THE SAME SELECTION.
+
+       The panel read "No model is selected" beside a button reading "Fit 2
+       model(s)", and it was not stale: `PICKED` lives in the page and is posted
+       to /train directly, so the RECORD's selection is empty and the server was
+       answering truthfully about a different state.
+
+       The picks travel with the question. The server still decides what is
+       blocking — putting that here would be a second copy of `check()`'s order,
+       which this file has paid for twice. */
+    var picked = Object.keys(PICKED).filter(function(k){ return PICKED[k]; });
+    api("/project/" + P.id + "/training?models=" +
+        encodeURIComponent(picked.join(",")))
       .then(function(body){ TRAIN = body; renderTrain(); })
       .catch(function(){});
   }
@@ -8219,6 +8250,10 @@
       var mk = t.getAttribute("data-pick-model");
       PICKED[mk] = !PICKED[mk];
       renderTrain();
+      /* DRIVE-049. The panel below the button is about the selection, so it is
+         re-asked when the selection changes rather than left saying what was
+         true before the click. */
+      renderTrainState();
       return;
     }
     /* `DRIVE-030`. ONE FAILED FETCH MUST NOT END THE SESSION.

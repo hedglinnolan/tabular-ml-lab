@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**408 of 951 closed.**
+**412 of 952 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 466 |
+| `OPEN` | 463 |
 | `PARTIAL` | 77 |
-| `FIXED` | 398 |
+| `FIXED` | 402 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 466
+## OPEN — 463
 
 
-### Guided-door drive feedback — 76
+### Guided-door drive feedback — 73
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -104,9 +104,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-222` | medium | The genomics expression-block selector is a shape rule the research does not license, and it decides the classification for two of the nine signatures | `L50-B, and its builder named it as the piece it was least sure of. A single covariate sets the maximum of the…` | sibling-of: GUIDED-221. Filed at medium rather than high because the failure is loud - a dropped gene is named on the card - rather than silent. |
 | `GUIDED-228` | medium | The metabolomics regex library lists pool under both the pooled-QC family and the proteomics family, so as written the six role families are not disjoint | `L50-D, a correction to the research file rather than to the code. METABOLOMICS_PACK section 01's sample-role…` | Filed against the RESEARCH FILE. The standing rule is that where the file and the code disagree the file wins - this is the case where the file disagrees with itself, and the… |
 | `GUIDED-229` | medium | packs.py is 3,671 lines and holds two packs, while the other three ship as modules of their own - an asymmetry that has now cost an adjudicator and two subagents time | `L50. turbotab/clinical.py and turbotab/nutrition.py exist as modules; metabolomics and genomics live in…` | Not moved unilaterally: relocating 3,000 lines during a wide fan-out would have made every subagent diff unmergeable, and the asymmetry is a documentation defect rather than a… |
-| `DRIVE-044` | medium | The calibration caption appends 'a slope below 1 indicates predictions that are too extreme' as a CONSTANT, so it prints beside a slope above 1 and reads as an interpretation of the figure it… | `turbotab/figure_specs.py:266-267; run 5 P4 and open q4` | Run 5 asked whether it is conditional or constant. Re-derived at bcbd378: CONSTANT. This is the governing rule's assert-something-false branch in a teaching caption, on the figure… |
-| `DRIVE-046` | medium | Table 1's Overall column pools rows excluded from the analysis, so the manuscript fails its own validator on any target with missing values | `run 5 B1 and open q2; validator passed:false on path 1, 13/13 on path 2` | CREDIT WHERE IT IS DUE AND IT IS THE POINT: the app detected and reported this rather than exporting silently, which is the refusal apparatus working in the artifact that leaves… |
-| `DRIVE-048` | medium | The performance table leads with accuracy on a 7.2:1 target while the app's own imbalance finding says accuracy misleads on exactly this data | `run 5 open q8; lens 3 base-rate check` | Not a numeric defect: every figure reconciled. It is the app disagreeing with itself across two surfaces of one page, which is the class the record keeps calling a sentence and a… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
@@ -114,7 +111,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-151` | low | engine.SEVERITY_RANK has no `blocker` key and ml/router.py's has one at 0, so a finding carrying that severity would rank LAST in the list the app presents and first in the Router - the two rank… | `turbotab/engine.py:195 SEVERITY_RANK = {'critical': 0, 'warning': 1, 'caution': 2, 'info': 3} and…` | FOUND AT L45-B WHILE BUILDING attention.NEVER_COLLAPSED, which holds both words because ml/router.py:77 holds both and a set that knew only one would be a rule depending on which… |
 | `GUIDED-206` | low | Project.set_orientation assigns self.df with no undo-stack entry - the only installer that did not | `L49-C, found by routing all twelve installers through one door. Every other pass that swaps the working table…` | Not fixed in L49 because changing what is undoable is a product decision, and the loop that found it was building a provenance mechanism. |
 | `GUIDED-220` | low | A column name repeated verbatim in the source CSV is renamed by pandas before the app sees it, so the most obviously duplicated gene identifier there is cannot be detected | `L50-C. pandas renames a repeated header to TP53.1, and the dot puts it outside every identifier grammar - so…` | **test:** `turbotab/test_the_gene_id_diagnostics_reach_an_upload.py::test_a_repeated_column_name_is_not_read_as_a_version` — Named in SHAPES_NOT_COVERED in the test file, not only… |
-| `DRIVE-049` | low | The panel under the Train card still reads 'No model is selected' with two models selected and after a completed fit, contradicting the button one line above it | `run 5 B4` | Low severity and worth keeping because of where it is: the Train step is the one no drive had ever reached, so this is the first report anyone has of its resting states. |
+| `GUIDED-240` | low | The model selection is never recorded as a decision -- the page holds it in PICKED and posts it straight to /train, so the transcript cannot say which models a user chose or considered | `turbotab/project.py select_models; turbotab/api.py decision.kind == 'select_models'; grep select_models in…` | Filed rather than fixed: the row it came from is closed, and choosing what a transcript holds is the product owner's call. |
 
 ### Application state / lockbox — 66
 
@@ -725,10 +722,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 398
+## FIXED — 402
 
 
-### Guided-door drive feedback — 150
+### Guided-door drive feedback — 154
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -880,8 +877,12 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-227` | medium | Two detectors over one table disagreed about what its columns are, because one saw the CSV reader's renaming and the other did not | `L50-D, found by the two readings contradicting each other rather than by either failing. The polarity census…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_both_polarities_are_reported_as_a_convention_and_not_a_fact` — The polarity finding is CONVENTION… |
 | `DRIVE-034` | medium | The prevalence-of-inadequacy widget computed an EAR cut-point result for `kcal`. Energy has no EAR in the sense the cut-point method requires, so this is a case where refusing is the correct answer. | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md F17 and §5; the widget returned 'Prevalence of inadequacy for…` | **test:** `turbotab/test_energy_has_no_ear.py::test_every_spelling_of_energy_is_refused` — OUTCOME 1 OF THE THREE THE ROW OFFERED: the pack excludes energy, the widget must… |
 | `DRIVE-040` | medium | After the event is chosen, /figures serves event: '1.0' rather than the level the user named. The repair encodes the chosen level as 1, so the figure payload carries the encoded value and the name… | `verified at 5f59a35: answering 'case' on a case/control target then fitting yields ModelResult.positive_label…` | **test:** `turbotab/test_the_level_a_reader_sees_is_the_one_they_chose.py::test_the_record_keeps_both_level_names` — CLOSED AT L62-B ON ALL THREE SURFACES, AND THE ROW'S PREMISE… |
+| `DRIVE-044` | medium | The calibration caption appends 'a slope below 1 indicates predictions that are too extreme' as a CONSTANT, so it prints beside a slope above 1 and reads as an interpretation of the figure it… | `turbotab/figure_specs.py:266-267; run 5 P4 and open q4` | **test:** `turbotab/test_four_sentences_the_app_stopped_saying.py::test_the_caption_carries_the_reading_for_its_own_slope` — FIXED AT L62-D1. The parenthetical is branched on the… |
+| `DRIVE-046` | medium | Table 1's Overall column pools rows excluded from the analysis, so the manuscript fails its own validator on any target with missing values | `run 5 B1 and open q2; validator passed:false on path 1, 13/13 on path 2` | **test:** `turbotab/test_four_sentences_the_app_stopped_saying.py::test_table_one_describes_the_cohort_and_not_the_upload` — FIXED AT L62-D2 by scoping Overall to the cohort… |
+| `DRIVE-048` | medium | The performance table leads with accuracy on a 7.2:1 target while the app's own imbalance finding says accuracy misleads on exactly this data | `run 5 open q8; lens 3 base-rate check` | **test:** `turbotab/test_four_sentences_the_app_stopped_saying.py::test_the_run_carries_what_a_majority_answer_would_score` — FIXED AT L62-D3 BY PUTTING THE BASE RATE BESIDE THE… |
 | `AUDIT-036` | low | The item-correlation figure's caption tells the reader that loadings and reliability appear 'below'; the app produces neither | `turbotab/figure_specs.py:2786-2788 — The shared `method_note` composed by _correlations reads "…Pearson…` | **test:** `turbotab/test_a_caption_describes_the_figure_that_was_drawn.py::test_no_survey_caption_points_the_reader_at_a_quantity_below and… |
 | `GUIDED-201` | low | Two L48 chunks each added a CSS rule inside the prototype stylesheet that a guard compares byte for byte - the natural place to put a rule is the one place it may not go | `L48. test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim asserts the prototype's whole…` | **test:** `turbotab/test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim` — No revert probe: the guard predates this loop and is itself the probe - it went… |
+| `DRIVE-049` | low | The panel under the Train card still reads 'No model is selected' with two models selected and after a completed fit, contradicting the button one line above it | `run 5 B4` | **test:** `turbotab/test_four_sentences_the_app_stopped_saying.py::test_the_panel_answers_about_the_selection_it_was_asked_about` — FIXED AT L62-D4, AND THE CAUSE IS SHARPER THAN… |
 
 ### Multi-file / JSON import — 68
 

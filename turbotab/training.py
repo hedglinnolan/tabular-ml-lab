@@ -136,6 +136,17 @@ class TrainingRun:
     #: predates the watermark and its staleness is undetermined — which is a
     #: third state, not a synonym for fresh.
     mark: Optional[int] = None
+    #: **What a model that always answers the more common level scores.**
+    #: `DRIVE-048`. The engine's own imbalance finding says *"Accuracy can be
+    #: misleading; use F1, PR-AUC, or balanced accuracy instead"*, and the
+    #: held-out table then leads with Accuracy 0.88 — sitting AT the 87.77%
+    #: base rate. Both true, and a reader has to hold two screens in their head
+    #: to see it. Carried so the number a metric must BEAT travels with the
+    #: metrics rather than being a fact about the data three cards away.
+    #:
+    #: `None` on regression, and on any classification run whose held-out rows
+    #: produced no usable outcome — never `0.0`, which is a score.
+    majority_class_rate: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -144,6 +155,7 @@ class TrainingRun:
             "seal_basis": self.seal_basis, "exploratory": self.exploratory,
             "features": list(self.features), "notes": list(self.notes),
             "mark": self.mark,
+            "majority_class_rate": self.majority_class_rate,
             "results": [r.to_dict() for r in self.results],
         }
 
@@ -560,6 +572,13 @@ def train(project: Any, model_keys: Sequence[str], *,
         seal_basis=disclosures.get("seal_basis"),
         exploratory=bool(_is_exploratory(project)),
         mark=stamped,
+        # `DRIVE-048`. The score to beat, computed from the HELD-OUT rows —
+        # the same rows every metric beside it is computed on, so the
+        # comparison is like for like. `None` on regression and on an empty
+        # holdout: returning `0.0` from ignorance would be a score.
+        majority_class_rate=(
+            float(y_test.value_counts(normalize=True).iloc[0])
+            if task_type == "classification" and len(y_test) else None),
         features=[str(c) for c in features.columns])
 
     # `GUIDED-089` / `GUIDED-095`. This used to be a note saying the recorded

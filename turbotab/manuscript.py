@@ -1254,7 +1254,22 @@ def table_one(project: Any, run: Optional[Dict[str, Any]] = None):
         partition_table1_variables
     from turbotab import training as _training
 
-    frame = getattr(project, "working_table", None)
+    # `DRIVE-046`. THE ROWS THE PAPER IS ABOUT, not every row uploaded.
+    #
+    # This read `working_table`, so a file with rows whose outcome is blank
+    # produced an Overall column counting them — run 5's path 1 said *"Expected
+    # analysis N=6297, Table 1 overall N=21849"* and the document failed its
+    # own validator, which is the refusal apparatus working and is why this is
+    # medium rather than high. The strata were already correct: a row with no
+    # outcome is in no level of the stratifier, so only Overall pooled.
+    #
+    # `outcome_rows` rather than `analysis_rows`: a paper describes its cohort
+    # INCLUDING the held-out rows — they are part of the study, they are simply
+    # not fitted on — and `manuscript.py`'s own `analysis_total` is
+    # `n_train + n_test`, which is exactly this population.
+    frame = getattr(project, "outcome_rows", None)
+    if frame is None:
+        frame = getattr(project, "working_table", None)
     if frame is None or frame.empty or not project.target:
         return None
     features = _training.feature_frame(project, frame)

@@ -2496,6 +2496,28 @@ class AnalysisProject:
         return self.df.loc[self.analysis_mask]
 
     @property
+    def outcome_rows(self) -> pd.DataFrame:
+        """Every row the study is ABOUT — held out or not, outcome present.
+
+        **`DRIVE-046`.** A third population, and the three are not
+        interchangeable. `training_rows` is what may inform a decision;
+        `analysis_rows` is what a model is fitted on; this is what a paper
+        DESCRIBES, and it is the one Table 1 and the manuscript's
+        `analysis_total` mean — `manuscript.py` computes that as
+        `n_train + n_test`, which is exactly these rows.
+
+        Table 1 was built over the whole uploaded table, so run 5's path 1
+        reported *"Expected analysis N=6297, Table 1 overall N=21849"* and the
+        document failed its own validator. The strata were already right: rows
+        with no outcome fall outside every level of the stratifier, so only the
+        Overall column pooled.
+        """
+        target = self.target
+        if not target or target not in self.df.columns:
+            return self.df
+        return self.df.loc[self.df[target].notna()]
+
+    @property
     def n_rows_held_out(self) -> int:
         """Rows the seal is holding back. Zero before the seal."""
         if not (self.lockbox and self.lockbox.get("labels")):

@@ -12443,11 +12443,11 @@
   "detail": "figure_specs.py:266-267 builds the caption as an f-string in which the parenthetical is literal text, unconditional on the value formatted immediately before it. Run 5 observed 'slope 1.141 (a slope below 1 indicates predictions that are too extreme)'. A slope above 1 means the opposite -- predictions not extreme enough. The clause is a true generality placed where a reader takes it as a statement about their own model.",
   "ev": "turbotab/figure_specs.py:266-267; run 5 P4 and open q4",
   "act": "Branch the clause on the measured slope, or move it out of the figure-specific sentence into the general teaching layer. The refusal apparatus already knows how to say nothing rather than something wrong.",
-  "status": "OPEN",
-  "note": "Run 5 asked whether it is conditional or constant. Re-derived at bcbd378: CONSTANT. This is the governing rule's assert-something-false branch in a teaching caption, on the figure PRODUCT_VISION calls the flagship clinical one -- and it sits inside a caption the same drive praised (P7) for disclosing its own inadequacy.",
+  "status": "FIXED",
+  "note": "FIXED AT L62-D1. The parenthetical is branched on the measured slope rather than moved out, because the reading IS what a slope is for -- what it may not do is say the same thing about both directions. Below 1: too extreme. Above 1: too conservative, bunched toward the base rate. Within the caption's own rounding of 1: ideal. AND SILENT WHERE THE NUMBER IS MISSING, which is a state this figure has -- weak_calibration returns (None, None) on one outcome class, constant predictions or complete separation, and a reading attached to a quantity nobody computed would be the sharpest form of this defect rather than a milder one. THE BAND AROUND 1 IS NOT A PICKED THRESHOLD: _fmt prints three decimals, so 0.0005 is the half-ulp of the caption's own display and a slope that renders as 1.000 cannot be called extreme in either direction.",
   "verified_against": "",
-  "test": "",
-  "verified_ev": "turbotab/figure_specs.py:266-267; run 5 P4 and open q4"
+  "test": "turbotab/test_four_sentences_the_app_stopped_saying.py::test_the_caption_carries_the_reading_for_its_own_slope",
+  "verified_ev": "turbotab/figure_specs.py _slope_reading() and CALIBRATION's caption; run 5 read the constant beside slope 1.141"
  },
  {
   "id": "DRIVE-045",
@@ -12471,11 +12471,11 @@
   "detail": "Run 5 path 1: 'Table 1 population matches the analysis cohort -- Expected analysis N=6297, Table 1 overall N=21849'. The strata are right (0: n=770, 1: n=5527 = 6,297); only Overall pools. Path 2 passes 13/13, confirming it is target-specific rather than a validator quirk.",
   "ev": "run 5 B1 and open q2; validator passed:false on path 1, 13/13 on path 2",
   "act": "Scope Overall to the analysis cohort, or carry both columns and label them. The validator already states which it expects.",
-  "status": "OPEN",
-  "note": "CREDIT WHERE IT IS DUE AND IT IS THE POINT: the app detected and reported this rather than exporting silently, which is the refusal apparatus working in the artifact that leaves the building. Filed as a defect because a validator that fails on every such target is a step a user cannot complete, not because the app was dishonest about it.",
+  "status": "FIXED",
+  "note": "FIXED AT L62-D2 by scoping Overall to the cohort rather than carrying two columns -- the validator already states which population it expects and a second column would have made the reader adjudicate. project.outcome_rows is a THIRD population and the three are not interchangeable: training_rows is what may inform a decision, analysis_rows is what a model is fitted on, outcome_rows is what a paper DESCRIBES. The last is what manuscript.py's own analysis_total means -- it computes n_train + n_test -- so Table 1 now agrees with the number the validator checks it against by construction rather than by coincidence. THE STRATA WERE ALREADY RIGHT and a test asserts they still are: a row with no outcome is in no level of the stratifier, so only Overall ever pooled, and a fix that moved the strata would have been changing something correct. WORTH KEEPING: the app caught this itself and reported passed:false rather than exporting silently, which is why it was medium and not high.",
   "verified_against": "",
-  "test": "",
-  "verified_ev": "run 5 B1 and open q2; validator passed:false on path 1, 13/13 on path 2"
+  "test": "turbotab/test_four_sentences_the_app_stopped_saying.py::test_table_one_describes_the_cohort_and_not_the_upload",
+  "verified_ev": "turbotab/project.py outcome_rows; turbotab/manuscript.py table_one; ml/manuscript_validator.py 'Table 1 population matches the analysis cohort'"
  },
  {
   "id": "DRIVE-047",
@@ -12499,11 +12499,11 @@
   "detail": "Run 5 path 1: the imbalance finding reads 'Accuracy can be misleading; use F1, PR-AUC, or balanced accuracy instead', and the held-out table then leads with Accuracy 0.88 / 0.887 -- both sitting AT the 87.77% base rate a majority classifier achieves. The app is right in the advice and undercuts it in the display.",
   "ev": "run 5 open q8; lens 3 base-rate check",
   "act": "Order the metrics by what the recorded data shape makes informative, or mark accuracy with the base rate beside it. Do not remove it -- the shelf is never shortened applies to metrics too.",
-  "status": "OPEN",
-  "note": "Not a numeric defect: every figure reconciled. It is the app disagreeing with itself across two surfaces of one page, which is the class the record keeps calling a sentence and a payload saying different things.",
+  "status": "FIXED",
+  "note": "FIXED AT L62-D3 BY PUTTING THE BASE RATE BESIDE THE METRICS, not by reordering them. The shelf is never shortened and that applies to metrics: a researcher may have a reason to read accuracy, and removing or demoting it would be the app deciding in their name. What was wrong is that the number accuracy must BEAT was three cards away, in the imbalance finding, so a reader had to hold two screens in their head to see that 0.88 is what a model answering the more common level every time would score. TrainingRun.majority_class_rate is computed from the HELD-OUT rows -- the same rows every metric beside it is computed on, so the comparison is like for like -- and the page prints one sentence above the table: 'A model that always answers the more common level scores 0.878 on these held-out rows. Read every score against that, not against zero.' None on regression and on an empty holdout, never 0.0, because zero is a score.",
   "verified_against": "",
-  "test": "",
-  "verified_ev": "run 5 open q8; lens 3 base-rate check"
+  "test": "turbotab/test_four_sentences_the_app_stopped_saying.py::test_the_run_carries_what_a_majority_answer_would_score",
+  "verified_ev": "turbotab/training.py TrainingRun.majority_class_rate; turbotab/web/index.html runHTML; ml/dataset_profile.py:743 is the advice it reconciles with"
  },
  {
   "id": "DRIVE-049",
@@ -12513,11 +12513,11 @@
   "detail": "Run 5 B4: with HGB and Logistic Regression selected the button reads 'Fit 2 model(s)' and the panel beneath still reads 'No model is selected. The shelf orders every model this task can use...'. Persisted after the fit succeeded.",
   "ev": "run 5 B4",
   "act": "Render the panel from the same selection state the button reads.",
-  "status": "OPEN",
-  "note": "Low severity and worth keeping because of where it is: the Train step is the one no drive had ever reached, so this is the first report anyone has of its resting states.",
+  "status": "FIXED",
+  "note": "FIXED AT L62-D4, AND THE CAUSE IS SHARPER THAN 'STALE'. The panel was not showing an old answer -- it was answering a DIFFERENT QUESTION. The page keeps its picks in PICKED and posts them to /train directly; it never records a select_models decision, so project.selected_models is empty permanently and check() correctly reported what is missing FROM THE RECORD while the button one line above reported what is missing from the page. Two truthful surfaces about two different states, which is this loop's whole theme arriving in the interaction layer. GET /training now takes a `models` parameter: the page NAMES the selection it is asking about and the server still decides what is blocking. Putting the answer in the page would have been a second copy of check()'s order, which this file has paid for twice (renderAsked, confirm_task_type) -- asserted by a test that asks about a model which is not on the shelf and requires the server to refuse it. Absent, the parameter changes nothing, so a caller that does not know about it gets the old behavior. WHAT IS NOT FIXED: the selection is still not a recorded decision. That is arguably right -- a decision per toggle would fill the transcript -- but it means the record cannot say which models a user considered. Filed as GUIDED-240.",
   "verified_against": "",
-  "test": "",
-  "verified_ev": "run 5 B4"
+  "test": "turbotab/test_four_sentences_the_app_stopped_saying.py::test_the_panel_answers_about_the_selection_it_was_asked_about",
+  "verified_ev": "turbotab/api.py get_training(models=); turbotab/web/index.html renderTrainState + the pick handler"
  },
  {
   "id": "MISC-022",
@@ -12546,5 +12546,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "turbotab/web/index.html resolutionHTML `if (!res.push) return \"\"`; turbotab/resolution.py _sentence, unconditional"
+ },
+ {
+  "id": "GUIDED-240",
+  "area": "GUIDED",
+  "sev": "low",
+  "item": "The model selection is never recorded as a decision -- the page holds it in PICKED and posts it straight to /train, so the transcript cannot say which models a user chose or considered",
+  "detail": "FOUND AT L62-D4 AS THE CAUSE UNDER DRIVE-049. project.select_models exists, api.py has a select_models decision branch, and nothing in web/index.html posts one -- measured, the string appears zero times in the page. The consequence DRIVE-049 was filed for is fixed; this is what is left. WHY IT IS LOW AND NOT OBVIOUS: recording every toggle would fill the transcript with decisions a user did not make, and select_models refuses an empty selection, so a naive fix would 400 on deselecting the last model. The honest options are to record ONCE at the fit -- which is when the selection becomes a fact rather than a hover -- or to leave it unrecorded and say so. Not decided here because it is a product question about what belongs in a transcript.",
+  "ev": "turbotab/project.py select_models; turbotab/api.py decision.kind == 'select_models'; grep select_models in turbotab/web/index.html returns 0",
+  "act": "Rule on whether a model selection belongs in the transcript, and if so record it at the fit rather than at each toggle.",
+  "status": "OPEN",
+  "note": "Filed rather than fixed: the row it came from is closed, and choosing what a transcript holds is the product owner's call.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/project.py select_models; turbotab/api.py decision.kind == 'select_models'; grep select_models in turbotab/web/index.html returns 0"
  }
 ]
