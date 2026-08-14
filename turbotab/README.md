@@ -30,13 +30,14 @@ does not start.
 
 ### ⚠ THIS SECTION USED TO SAY SOMETHING ELSE, AND IT COST FOUR HUMAN DRIVES
 
-Until `L61` it read:
+Until `L61` it read — quoted here as prose rather than as a fenced block, on
+purpose, because a fenced shell block in a document like this one **is an
+instruction** and a reader may run it. `tests/test_a_documented_command_still_works.py`
+found this quotation on its first run and was right to:
 
-```bash
-python3 -m venv turbotab/.venv
-turbotab/.venv/bin/python -m pip install -r turbotab/requirements.txt
-turbotab/.venv/bin/python -m uvicorn turbotab.api:app --port 8777
-```
+> `python3 -m venv turbotab/.venv`, then
+> `turbotab/.venv/bin/python -m pip install -r turbotab/requirements.txt`, then
+> `turbotab/.venv/bin/python -m uvicorn turbotab.api:app --port 8777`
 
 That was correct when this file was written and TurboTab was a walking skeleton
 with **no training step** — the table below is still true, and
