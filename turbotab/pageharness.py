@@ -569,6 +569,22 @@ El.prototype.getBoundingClientRect = function(){
   var top = this._rect !== undefined ? this._rect : (globalThis.innerHeight || 900) + 40;
   return {top: top, left: 0, right: 0, bottom: top, width: 0, height: 0};
 };
+// `DRIVE-047`, and `TEST-066` is why it is here rather than a surprise.
+//
+// That row's lesson: **an API the page never used is an API this harness never
+// implemented**, so a part that introduces one must check the instrument first.
+// `scrollIntoView` was absent, and the rail's first driven press did not report
+// "the viewport did not move" — it threw `sect.scrollIntoView is not a
+// function`, which a less careful reading would have taken for a broken fix.
+//
+// Recorded into the SAME list as `window.scrollTo`, deliberately.
+// `test_the_page_never_moves_the_viewport` asserts that list is empty across
+// every drive, and a second list would have let a viewport move through a
+// channel the guard does not read — which is the guard passing over exactly
+// what it exists to catch.
+El.prototype.scrollIntoView = function(o){
+  __scrolls.push({into: this.id || this.tagName, options: o || {}});
+};
 Object.defineProperty(El.prototype, "children", {get: function(){ return this._children; }});
 Object.defineProperty(El.prototype, "lastChild", {
   get: function(){ return this._children[this._children.length - 1] || null; }});

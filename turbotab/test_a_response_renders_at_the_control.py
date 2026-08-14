@@ -373,9 +373,23 @@ def test_the_viewport_still_never_moves():
     page = (Path(__file__).resolve().parent / "web" / "index.html").read_text(
         encoding="utf-8")
     script = page[page.index("<script>"):page.rindex("</script>")]
-    for spelling in ("window.scrollTo", "function nudge(", "scrollIntoView",
+    for spelling in ("window.scrollTo", "function nudge(",
                      ".scrollTop =", ".scrollLeft =", "scrollBy("):
         assert spelling not in script, (
             f"the controller can move the viewport, by `{spelling}`. The "
             f"standing guard greps two spellings; this is the third, fourth "
             f"and fifth.")
+    # `DRIVE-047`, and `LOOP.md` §06.2 is invoked for this line in
+    # `test_the_page_never_moves_the_viewport`, which carries the reasoning.
+    #
+    # `scrollIntoView` leaves this list and gains a COUNT. The rail's step
+    # controls navigate now — a user pressing the word "Train" is not the
+    # nudge this file's docstring warns about, and the warning it does make
+    # still stands exactly: *"render it at the control" is one bad afternoon
+    # away from "scroll to the control"*, so the permitted call is one, in the
+    # rail's own handler, and a second anywhere fails here.
+    assert script.count("scrollIntoView") == 1, (
+        f"the controller calls scrollIntoView {script.count('scrollIntoView')} "
+        f"times. DRIVE-047 argued for exactly one — the rail's step control — "
+        f"and a response that scrolls to its own control is the thing this "
+        f"file exists to refuse.")

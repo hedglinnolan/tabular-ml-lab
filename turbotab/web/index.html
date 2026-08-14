@@ -8076,6 +8076,7 @@
       "[data-answer-key],[data-answer-commit],[data-seal]," +
       "[data-feat-preview],[data-feat-add],[data-feat-remove],[data-feat-settle]," +
       "[data-lat-cell],[data-prep-mech],[data-prep-route],[data-prep-settle]," +
+      "[data-map]," +
       "[data-pick-model],[data-train-start],[data-train-cancel],[data-train-retry],[data-instab],[data-keep-id],[data-promote],[data-journal]," +
       "[data-sel-rank],[data-sel-set]," +
       "[data-study-toggle]," +
@@ -8246,6 +8247,42 @@
     if (t.hasAttribute("data-prev-ask")){ askPrevalence(); return; }
 
     /* ── the Train step ── */
+    /* ═════════ DRIVE-047 · THE RAIL NAVIGATES ═════════
+       Run 5: reaching Train from Data took roughly 40 viewport-heights, and
+       clicking Train in the rail changed the highlight and did not move.
+
+       **THIS IS THE ONE PLACE IN THE CONTROLLER THAT MOVES THE VIEWPORT, and
+       DRIVE-006 is why that sentence has to be written down.** That row deleted
+       a `nudge()` which scrolled when new content ARRIVED, and the rule it left
+       is the product owner's: *cards build downward and the user's scroll
+       follows them.* `test_the_page_never_moves_the_viewport` pins it, and
+       `test_a_response_renders_at_the_control` pins it again with the warning
+       that *"render it at the control is one bad afternoon away from scroll to
+       the control."*
+
+       The distinction this rests on, and it is the whole argument: DRIVE-006 is
+       about the page moving a reader who did not ask. A rail step is a control
+       whose ONLY purpose is to go somewhere — the user pressed the word
+       "Train". `research/INTERACTION_PACK.md` §04.1 is the sourced half: the
+       Layout Instability API excludes a shift within 500 ms of user input from
+       CLS entirely, because temporal proximity makes the causality legible.
+       That is this case exactly and it is not the nudge's case at all.
+
+       So the guards are AMENDED rather than evaded, in the loop that pressured
+       them, with `LOOP.md` §06.2 invoked in those words — see the report. They
+       now forbid movement the user did not ask for and assert this one does not
+       count, and they gained an assertion that the rail navigates at all.
+
+       A step that is not revealed yet is not navigated to: the rail would
+       otherwise scroll to a hidden element, which is a jump to nothing. */
+    if (t.hasAttribute("data-map")){
+      var mapKey = t.getAttribute("data-map");
+      var sect = $(SEC[mapKey]);
+      if (!sect || sect.classList.contains("is-hidden")) return;
+      sect.scrollIntoView({ block: "start",
+                            behavior: reduced ? "auto" : "smooth" });
+      return;
+    }
     if (t.hasAttribute("data-pick-model")){
       var mk = t.getAttribute("data-pick-model");
       PICKED[mk] = !PICKED[mk];
