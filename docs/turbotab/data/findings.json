@@ -12406,5 +12406,19 @@
   "verified_against": "",
   "test": "tests/test_the_archive_carries_every_field.py::test_every_key_of_the_nested_whitelists_survives",
   "verified_ev": "turbotab/archive.py build_members lockbox.json whitelist; turbotab/engine.py:1054; turbotab/grain.py:462; tests/test_the_archive_carries_every_field.py::test_every_key_of_the_nested_whitelists_survives"
+ },
+ {
+  "id": "TEST-093",
+  "area": "TEST",
+  "sev": "medium",
+  "item": "A sweep count is reported in the subject of a commit that itself changes the tree the sweep measured, so the number is stale the moment it is written and nothing says so",
+  "detail": "L60-E's commit 7e34743 is titled 'the sweep found 81 red'. Its sweep log was written at 00:34; the commit landed at 00:42 and added 18 lines to turbotab/nutrition.py -- a NO_EAR_USE_EER continue that removes energy from the prevalence dropdown. Three of the 81 were test_the_dropdown_offers_only_what_the_pack_recognizes over nhanes_dietary, nhanes_kilojoules and nhanes_partial_design, and that change is what turned them green. So 81 was never true of the tree the commit created, and the commit names the very test in its own comment. The number then propagated: L61's prompt built Part A on it, and DRIVE-041's note reads 'THE 81 SPLITS DIFFERENTLY FROM HOW IT WAS REPORTED' while decomposing 78. The L61 report's divergence item 9 attributed the gap to 'the four non-refusal reds and xdist's own isolation' and declined to chase it -- a speculation that would have been read later as a fact about the runner.",
+  "ev": "7e34743 subject vs turbotab/nutrition.py NO_EAR_USE_EER continue; l60/full.log mtime 00:34 vs commit 00:42; comm of FAILED node lists, 3 nodes, one file",
+  "act": "A sweep number belongs to a commit that does not change what it measured, or it carries the sha it was taken at. The cheap form is to stamp the count with the sha in the same line that states it, the way the baseline chain now asserts its stamps (TEST-091). The class is wider than sweeps: any measurement reported in the same commit as a change to its subject. Not fixed here -- filed so the next loop starts from a measurement rather than a search.",
+  "status": "OPEN",
+  "note": "Found by the adjudicator while reconciling the L61 report's arithmetic: 'the 81 is 74 + 4' does not add, and DRIVE-041's note supplies the real base of 78. Diffing the two runs' FAILED node lists cost no machine time and named the three exactly. THE VALUABLE CONSEQUENCE IS THE OPPOSITE OF A DEFECT: with the three explained by a code change, the serial run and the pytest-xdist -n 8 --dist loadfile run agree on every remaining failing node, 76 of 76, over identical populations of 2593. That removes the runner as a suspect and is the evidence needed to consider making xdist the documented sweep -- 41:34 against 2:01:40 on the constraint the product owner has raised three times. What is still missing is a paired run of both runners at ONE commit.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "7e34743 subject vs turbotab/nutrition.py NO_EAR_USE_EER continue; l60/full.log mtime 00:34 vs commit 00:42; comm of FAILED node lists, 3 nodes, one file"
  }
 ]
