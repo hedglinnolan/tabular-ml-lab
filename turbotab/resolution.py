@@ -259,7 +259,8 @@ def informative_range(n_classes: Optional[int]) -> float:
 def _push_because(task_type: str, n_test: int, events_test: Optional[int],
                   non_events_test: Optional[int],
                   n_classes: Optional[int] = None,
-                  thin_classes: int = 0) -> Optional[str]:
+                  thin_classes: int = 0,
+                  event_is_recorded: bool = False) -> Optional[str]:
     """Whether this is stark, and **the trigger contains no picked number.**
 
     Three conditions, each of which is a fact rather than a threshold:
@@ -330,19 +331,52 @@ def _push_because(task_type: str, n_test: int, events_test: Optional[int],
             return (f"{thin_classes} of the {n_classes or 2} outcome classes "
                     f"have fewer than two held-out rows, so a per-class rate "
                     f"is undefined rather than imprecise")
+        # `DRIVE-043` REACHES HERE TOO, and more sharply than into a label.
+        # These named `sensitivity` and `specificity` against a count of the
+        # least frequent level — and sensitivity is the rate OF THE EVENT. With
+        # the event as the majority, the branch that fired said "sensitivity is
+        # undefined" about the statistic that was fine and stayed silent about
+        # the one that was not. Reading the recorded event fixes the statistic
+        # named, not only the noun.
+        noun = event_noun(event_is_recorded)
         if events_test is not None and events_test < 2:
-            return (f"the held-out set contains {events_test} of the outcome, "
+            return (f"the held-out set contains {events_test} of {noun}, "
                     f"so sensitivity is undefined rather than imprecise")
         if non_events_test is not None and non_events_test < 2:
-            return (f"the held-out set contains {non_events_test} rows without "
-                    f"the outcome, so specificity is undefined rather than "
+            return (f"the held-out set contains {non_events_test} rows outside "
+                    f"{noun}, so specificity is undefined rather than "
                     f"imprecise")
     return None
 
 
+#: **`DRIVE-043`. The one noun for `events_held_out`, so three renderers cannot
+#: disagree about what the number is.**
+#:
+#: The count means two different things depending on whether anybody has said
+#: which level is the event, and until `L62` every sentence in this module
+#: called it *the outcome* in both cases. The page called the same field *"the
+#: less common outcome"*, which was true in the second case and only that one.
+#: One field, four renderers, three of them false — and the false ones are the
+#: ones that leave the building.
+#:
+#: `EVENT_NOUN` is what the number is when the event is on the record;
+#: `MINORITY_NOUN` is what it is when nobody has said. Both renderers below
+#: read these, `web/index.html`'s `resolutionHTML` renders the same two, and
+#: `test_the_event_count_says_what_it_counted` asserts the two implementations
+#: against each other rather than checking either alone.
+EVENT_NOUN = "the event"
+MINORITY_NOUN = "the less common outcome"
+
+
+def event_noun(event_is_recorded: bool) -> str:
+    """What `events_held_out` is a count OF, in words."""
+    return EVENT_NOUN if event_is_recorded else MINORITY_NOUN
+
+
 def statement(frame: pd.DataFrame, target: str, task_type: str,
               labels: List[Any], group_col: Optional[str] = None,
-              excluded: Sequence[Any] = ()) -> Dict[str, Any]:
+              excluded: Sequence[Any] = (),
+              event_level: Optional[Any] = None) -> Dict[str, Any]:
     """What this holdout can resolve, computed at the seal.
 
     `labels` is the lockbox's own row labels, so the counts describe the split
@@ -355,6 +389,19 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
     this module derives because the exclusion is a property of the project and
     this function is given a frame. `AUDIT-019`, and `candidate_parameters`
     carries the reasoning.
+
+    **`event_level` is the same shape of argument and it is `DRIVE-043`'s fix.**
+    Which level is the event is a property of the PROJECT — a recorded decision
+    — and this function is given a frame, so it is passed in by the one caller
+    that holds both, exactly as `excluded` is. `None` means nobody has said,
+    and then the count falls back to the least frequent level **and every
+    sentence says so** rather than calling it an event.
+
+    What it must not do is guess. `counts.index[-1]` was a guess that is right
+    whenever the event is the minority — the ordinary clinical case, and every
+    fixture in this repository — and silently wrong the moment a user names the
+    majority. That is the failure mode `AGENT_ONBOARD.md` trap #4 describes:
+    verifying against the fixture that works.
     """
     has_y = frame[target].notna()
     sealed = set(labels)
@@ -364,7 +411,8 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
     n_train = int((has_y & ~is_test).sum())
 
     events_test = non_events_test = events_train = None
-    minority = None
+    event = None
+    event_is_recorded = False
     n_classes = None
     thin_classes = 0
     if task_type == "classification":
@@ -374,12 +422,21 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
         # (`GUIDED-102`'s own correction), so what travels is how many.
         n_classes = int(len(counts)) or None
         if len(counts) >= 1:
-            minority = counts.index[-1]
+            # `DRIVE-043`. THE RECORDED EVENT WHERE THERE IS ONE, and the least
+            # frequent level only where there is not — with `event_is_recorded`
+            # travelling beside the count so no renderer has to guess which of
+            # the two it is looking at.
+            if event_level is not None and event_level in set(counts.index):
+                event = event_level
+                event_is_recorded = True
+            else:
+                event = counts.index[-1]
+                event_is_recorded = False
             in_test = frame.loc[has_y & is_test, target]
-            events_test = int((in_test == minority).sum())
+            events_test = int((in_test == event).sum())
             non_events_test = int(n_test - events_test)
             events_train = int(
-                (frame.loc[has_y & ~is_test, target] == minority).sum())
+                (frame.loc[has_y & ~is_test, target] == event).sum())
             # EVERY CLASS, not just the minority and its complement. A class
             # absent from the holdout is absent whatever its rank.
             held = frame.loc[has_y & is_test, target].value_counts()
@@ -389,7 +446,7 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
     parameters = candidate_parameters(frame, target, group_col, excluded)
     widest = _widest_interval(n_test)
     because = _push_because(task_type, n_test, events_test, non_events_test,
-                            n_classes, thin_classes)
+                            n_classes, thin_classes, event_is_recorded)
 
     return {
         "n": n, "n_train": n_train, "n_test": n_test,
@@ -409,6 +466,13 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
         "events_held_out": events_test,
         "non_events_held_out": non_events_test,
         "events_in_training": events_train,
+        # `DRIVE-043`. WHICH OF THE TWO THINGS THE COUNT ABOVE IS, travelling
+        # with it. The label is still not stored — the guard above is right and
+        # unchanged — but *whether anybody named the event* is a fact about the
+        # RECORD rather than a cell from the table, and without it every
+        # renderer has to guess, which is what four of them did.
+        "event_is_recorded": bool(event_is_recorded),
+        "event_count_noun": event_noun(bool(event_is_recorded)),
         # STATED, because a threshold that changes with the outcome's arity and
         # does not say so is a threshold nobody can check.
         "n_classes": n_classes,
@@ -436,11 +500,12 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
         "push": because is not None,
         "because": because,
         "headline": _headline(task_type, n_test, widest, events_test,
-                              n_classes),
+                              n_classes, event_is_recorded),
         "sentence": _sentence(n, n_train, n_test, task_type, widest,
                               parameters["total"], events_test, n_classes,
                               parameters["excluded_columns"],
-                              parameters["excluded_parameters"]),
+                              parameters["excluded_parameters"],
+                              event_is_recorded),
         # SAID OUT LOUD, because the absence of this line is what would turn
         # the module into the anti-pattern it exists to avoid.
         "not_a_verdict": (
@@ -455,10 +520,13 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
 
 def _headline(task_type: str, n_test: int, widest: Optional[float],
               events_test: Optional[int],
-              n_classes: Optional[int] = None) -> str:
+              n_classes: Optional[int] = None,
+              event_is_recorded: bool = False) -> str:
     where = f"{n_test:,} held-out row" + ("" if n_test == 1 else "s")
     if task_type == "classification" and events_test is not None:
-        where += f" ({events_test:,} with the outcome)"
+        # `DRIVE-043`. This said "with the outcome" whichever level was
+        # counted, and the count was the least frequent one.
+        where += f" ({events_test:,} of {event_noun(event_is_recorded)})"
     if widest is None:
         return f"This seal holds out {where}."
     line = (f"A metric estimated on {where} carries a 95% interval up to "
@@ -477,7 +545,8 @@ def _sentence(n: int, n_train: int, n_test: int, task_type: str,
               events_test: Optional[int],
               n_classes: Optional[int] = None,
               excluded_columns: Sequence[str] = (),
-              excluded_parameters: int = 0) -> str:
+              excluded_parameters: int = 0,
+              event_is_recorded: bool = False) -> str:
     """The methods line. Reports what was done and what it can resolve, and
     stops there — no adequacy, no adjective, no recommendation.
 
@@ -491,7 +560,14 @@ def _sentence(n: int, n_train: int, n_test: int, task_type: str,
             f"sealed as a held-out set before exploration and {n_train:,} were "
             f"available for fitting")
     if task_type == "classification" and events_test is not None:
-        line += f", with {events_test:,} of the held-out rows carrying the outcome"
+        # **`DRIVE-043`, and this is the sentence that leaves the building.**
+        # It read "carrying the outcome" over a count of the LEAST FREQUENT
+        # level. On run 5's `meds_hbp` — 87.77% `True`, and the user chose
+        # `True` — the Methods section printed 116 while every figure printed
+        # 829 on the same 945 rows. 945 − 829 = 116: the non-event count under
+        # an events label, in the artifact a reader takes away.
+        line += (f", with {events_test:,} of the held-out rows carrying "
+                 f"{event_noun(event_is_recorded)}")
     line += (f". {parameters:,} candidate predictor parameters were available "
              f"to the models, counted including any later dropped by feature "
              f"selection")

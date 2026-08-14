@@ -20,27 +20,26 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**404 of 949 closed.**
+**408 of 951 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 468 |
+| `OPEN` | 466 |
 | `PARTIAL` | 77 |
-| `FIXED` | 396 |
-| `NOT-A-DEFECT` | 8 |
+| `FIXED` | 398 |
+| `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 468
+## OPEN — 466
 
 
-### Guided-door drive feedback — 78
+### Guided-door drive feedback — 76
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `GUIDED-231` | critical | The INFERENCE half of the product was never ported: Guided cannot declare a hypothesis-testing goal, offers no statistical test, and holds no inference-family model, so the door that is the product… | `register.json state=classic-only: target-goal-selection (Prediction vs Hypothesis Testing)…` | CORRECTED BY THE PRODUCT OWNER, 2026-08-09, AND THE CORRECTED FORM IS STRONGER THAN WHAT WAS FILED. The original row said Guided CANNOT DECLARE a hypothesis-testing goal. THAT IS… |
-| `DRIVE-043` | critical | The exported Methods section labels the MINORITY-class count as the event count, so a manuscript states an event count that is false whenever the user's chosen event is the majority level | `turbotab/resolution.py:379 minority; :494 sentence; :409 events_held_out; turbotab/web/index.html:4853 'of…` | FOUND BY THE FIFTH HUMAN DRIVE AND BY NOTHING ELSE. It is DRIVE-032's shape one surface over: L60-A stopped the FIT guessing the event and L61-D1 stopped the FIGURE guessing it… |
 | `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
 | `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
 | `GUIDED-067` | high | No Dietary Reference Intake table ships anywhere in the repository, so every figure and every prevalence claim that needs an EAR, an RDA, an AI or a UL is unbuildable | `docs/turbotab/research/NUTRITION_PACK.md section 07 figure E; docs/turbotab/DOMAIN_SCIENCE.md section 04…` | Filed at L28-D as the blocker the two pending figures name. research/NUTRITION_PACK.md section 07 figure E specifies vertical lines at the EAR, RDA or AI and the UL for the… |
@@ -59,7 +58,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-233` | high | There is no EXPLAINABILITY pack, so every threshold the explanation suite needs would ship unsourced into the one subsystem whose whole job is calibrated honesty | `grep over the five research packs returns 0 for shap/shapley, 0 for attribution, 0 for feature importance and…` | THE PRODUCT OWNER SUPPLIED A DOMAIN-AGNOSTIC EXPLAINABILITY PLAYBOOK ON 2026-08-09 AND NAMED ITS ROLE EXACTLY: 'I see it as a useful mould for what we actually want to form into… |
 | `GUIDED-236` | high | The ROC figure can never overlay more than one model: the spec takes a dict of models, its caption counts them and its checklist asserts they are overlaid with a legend, and figure_bundle hands it… | `L55-C, found while building a renderer for it and needing two series. turbotab/figure_bundle.py…` | TRAP 3b WITH THE CHECKLIST ITEM RATHER THAN THE TEST NAME: the item's TEXT carries a consequence - models are overlaid - that its PREDICATE never checks, and the predicate reads a… |
 | `GUIDED-238` | high | Half the figure checklist cannot fail: of 85 items, 43 read a constant and only 16 are genuinely falsifiable, so a scored checklist reports a compliance it never checked | `reported by the L57 execution agent's Part B reconnaissance, 2026-08-09; the named instance is…` | FILED BY THE ADJUDICATOR FROM THE EXECUTION AGENT'S HANDBACK, BECAUSE IT EXISTED ONLY IN A MESSAGE AND THE AGENT WAS ABOUT TO BE CLEARED. It stopped before Part B and therefore… |
-| `DRIVE-045` | high | On a target with missing values the model shelf reasons about rows-minus-holdout instead of trainable rows, so its capacity advice is computed on a denominator four times too large | `run 5 B3 and open q3; fit reported 945 held out / 5,352 trained on the same page` | Sibling of DRIVE-043: both are surfaces computing from the whole table where the analysis population is the labeled subset. The seal gets this right and says so in one sentence… |
 | `DRIVE-047` | high | The whole interview renders as one column roughly 40 viewport-heights long, the rail highlights the active step without navigating to it, and the event refusal names a card far above the control that… | `run 5 lens 2, 'rendered but hard to reach / hard to read'` | THIS IS THE REACHABLE-BUT-UNREADABLE CLASS AND IT HAS NO OTHER INSTRUMENT. pageharness.py proves what the controller renders and says in its own docstring that it cannot prove… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
@@ -727,10 +725,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 396
+## FIXED — 398
 
 
-### Guided-door drive feedback — 147
+### Guided-door drive feedback — 149
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -749,6 +747,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-165` | critical | The impossible-values decision records that entries `were set to missing` and sets nothing to missing - the frame is unchanged and the transcript asserts an operation that did not happen | `REPORTED BY THE PRODUCT OWNER DRIVING A REAL NHANES EXPORT: `clicking 'set these entries to missing' does…` | **test:** `turbotab/test_the_impossible_entries_are_actually_set_to_missing.py (9 tests across two fixtures, including the manuscript layer and the band comparison)` — ACT… |
 | `GUIDED-170` | critical | The prevalence-of-inadequacy surface accepts any column as a nutrient and answered `Prevalence of inadequacy for SEQN is computed by the EAR cut-point method` with a SETTLED badge and a resolving… | `FOUND BY THE PRODUCT OWNER DRIVING A REAL NHANES EXPORT. He selected SEQN in the nutrient dropdown and…` | **test:** `turbotab/test_a_prevalence_needs_a_nutrient_to_be_about.py (27 tests: 3 NHANES fixtures x 5 non-nutrient columns, the dropdown driven through pageharness, and the two… |
 | `DRIVE-031` | critical | The study-population receipt asserts the held-out set is drawn from all rows when rows with a missing target are silently dropped. On the tester's file it read 'all 21849 rows are in the study… | `turbotab/eligibility.py / api._disclosures eligibility branch; reproduced verbatim at b4b8246 on a 21,849-row…` | **test:** `turbotab/test_the_seal_names_the_base_it_drew_from.py::test_the_seal_states_the_base_its_percentage_is_a_percentage_of` — ONE FALSE CLAUSE, TWO SENTENCES, AND THE… |
+| `DRIVE-043` | critical | The exported Methods section labels the MINORITY-class count as the event count, so a manuscript states an event count that is false whenever the user's chosen event is the majority level | `turbotab/resolution.py:379 minority; :494 sentence; :409 events_held_out; turbotab/web/index.html:4853 'of…` | **test:** `turbotab/test_the_event_count_says_what_it_counted.py::test_the_majority_event_is_counted_and_not_its_complement` — FIXED AT L62-A1, AND THE FIX READ THE RECORDED… |
 | `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | **test:** `turbotab/test_guided_drive.py::test_a_true_false_column_is_read_as_binary_not_coerced_to_numbers` — Fixed, and reproduced first: a True/False column with blanks is read… |
 | `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | **test:** `turbotab/test_guided_drive.py::test_missingness_routes_by_dtype` — Fixed. Cards name their column in the question text and in a mono chip, carry the count, the share… |
 | `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | **test:** `turbotab/test_guided_drive.py::test_a_diastolic_of_zero_is_impossible_and_a_high_one_is_improbable` — Fixed. The bundled NHANES reference now carries floor/ceiling… |
@@ -839,6 +838,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-226` | high | A finding asserting a column's IDENTITY on evidence that establishes only its SHAPE - and the upstream component it borrowed from was correct | `L50-D, and it is the sharpest of the four because the mistake is downstream of a correct component.…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_the_subject_claim_needs_a_name_and_not_only_a_shape` — THE GRAIN ROUTING IS THE PART TO KEEP: the… |
 | `GUIDED-237` | high | PRODUCT_VISION.md 06c shipped an explainability design whose instrument was misnamed, whose support claim was measurably false, and which asserted an absence the project's own pack already… | `docs/turbotab/PRODUCT_VISION.md#06c` | **test:** `docs/turbotab/PRODUCT_VISION.md §06c — the rewritten section is the fix; no executable guard exists for a design document, and the honest form of that is this category… |
 | `DRIVE-032` | high | The positive-class question is never asked for a numeric 0/1 target. The register says target-positive-class is always asked and never pre-selected at any confidence; on a binary Int64 target no such… | `verified at b4b8246: interview plans for step data/explore/features/preprocess on a 0/1 Int64 target serve no…` | **test:** `turbotab/test_the_event_is_chosen_and_never_guessed.py::test_an_unanswered_event_cannot_reach_a_fitted_label` — TWO DEFECTS, AND THE ROW NAMED ONE. The adjudicator's… |
+| `DRIVE-045` | high | On a target with missing values the model shelf reasons about rows-minus-holdout instead of trainable rows, so its capacity advice is computed on a denominator four times too large | `run 5 B3 and open q3; fit reported 945 held out / 5,352 trained on the same page` | **test:** `turbotab/test_the_shelf_reasons_about_rows_a_model_will_see.py::test_the_shelf_is_ranked_on_the_rows_a_model_will_see` — FIXED AT L62-A2, AND THE SWEEP FOUND A THIRD… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
@@ -1203,7 +1203,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## NOT-A-DEFECT — 8
+## NOT-A-DEFECT — 10
 
 
 ### Guided-door drive feedback — 4
@@ -1223,8 +1223,15 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-218` | low | Stale fix parameters: a fix computed against the pre-repair frame being applied to the post-repair frame, so positional params point at the wrong rows | `utils/import_ui.py:153-155 (current = repaired_frame(...); findings = diagnose(current))…` | NOT-A-DEFECT: not reachable at HEAD. render_import_doctor recomputes findings from `current` - the already-repaired frame - on every render, and apply_fix is called with that same… |
 | `IMPORT-221` | low | Stale structural repairs surviving a corrected re-upload, because the frame signature ignores content or falls back to shape alone | `utils/import_ui.py:_frame_signature and its fallback chain; utils/import_ui.py:147-151 (the reset on…` | NOT-A-DEFECT: already hardened, and the code documents both the original defect and the trap in its first fix. _frame_signature hashes CONTENT via hash_pandas_object, and its… |
 
-### Migration safety net — 1
+### Migration safety net — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `TEST-094` | medium | resolutionHTML renders nothing unless the resolution PUSHES, so the honest renderer of events_held_out was conditional while the false one in the Methods section was unconditional | `turbotab/web/index.html resolutionHTML `if (!res.push) return ""`; turbotab/resolution.py _sentence…` | Filed as a class rather than a defect. The card is correctly quiet; what is worth carrying is that a guard comparing a conditional renderer against an unconditional one must drive… |
 | `TEST-085` | low | ml/splits.py:300's alphabetical LabelEncoder is NOT a third instance of DRIVE-032's guess: the Guided fit never reaches it | `ml/splits.py:300; turbotab/training.py; turbotab/headless_train.py` | Filed as NOT-A-DEFECT against the SUSPICION, not against ml/splits.py -- the alphabetical encoding there is real and is Classic's, recorded in target-positive-class with a dated… |
+
+### Other — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `MISC-022` | medium | A3's sweep: which surfaces reason about a population the fit will not use -- the number is THREE, and the row named two | `driven at L62 against a fixture of run 5's shape; turbotab/project.py analysis_mask` | Filed so the number is on the record including the surfaces that were already right. |

@@ -12429,11 +12429,11 @@
   "detail": "resolution.py:379 computes events_test = (in_test == minority).sum() with minority = counts.index[-1] -- the least frequent level, never the recorded decision. resolution.py:494 then renders it as 'with {n} of the held-out rows carrying the outcome'. Run 5 drove meds_hbp, where True is 87.77% and the user chose True as the event: Methods printed 116 while the calibration, ROC and decision-curve payloads all printed 829 events on the same 945 rows. 945 - 829 = 116 exactly -- it is the NON-event count under an events label. THE QUANTITY IS DELIBERATE AND CORRECT; THE LABEL IS NOT. Both resolution.py:405-408 and web/index.html:4848-4852 carry the same documented reason for holding arithmetic rather than a class value (archive.assert_no_participant_data rejects a serialized class label), and THE PAGE RENDERS THE SAME FIELD HONESTLY as '116 of the less common outcome'. One field, two renderers, and only the one that leaves the building is false.",
   "ev": "turbotab/resolution.py:379 minority; :494 sentence; :409 events_held_out; turbotab/web/index.html:4853 'of the less common outcome'; run 5 B2",
   "act": "Either the Methods sentence adopts the page's wording -- 'of the less common outcome', one line, consistent with the documented design -- or Methods reads the recorded event and counts THAT, which is a build. Do not change events_held_out: its comment and the archive guard are right. Whichever is chosen, the two renderers of one field must not be able to disagree again; assert them against each other.",
-  "status": "OPEN",
-  "note": "FOUND BY THE FIFTH HUMAN DRIVE AND BY NOTHING ELSE. It is DRIVE-032's shape one surface over: L60-A stopped the FIT guessing the event and L61-D1 stopped the FIGURE guessing it, and resolution.py -- which composes the manuscript -- was never looked at, which is LOOP.md §06 check 5 (a sweep terminates where the sweeper's attention ended) and trap #1 (the recorded decision exists and this consumer does not read it). WHY 2,607 GREEN TESTS AND FIVE DRIVES MISSED IT: when the event is the minority -- the ordinary clinical case of a rare outcome -- minority IS the event and the sentence is accidentally true. It is false only when the user names the majority level, which is exactly what run 5 did. A sentence that is true on most fixtures and false on this one.",
+  "status": "FIXED",
+  "note": "FIXED AT L62-A1, AND THE FIX READ THE RECORDED DECISION RATHER THAN RENAMING THE SENTENCE -- the row offered both and said to say which. resolution.statement now takes an event_level argument, passed by project.seal_lockbox, which is the ONE PLACE THAT HOLDS BOTH the project and the frame; that is not a new pattern, it is exactly how `excluded` already reaches this function and the comment there says so. training.recorded_event_value is the one place that knows the encoding: apply_positive_class rewrites the outcome so the chosen level is 1, so the event's VALUE is 1 by construction and three call sites do not each get to know that. WHY THE OTHER OPTION WAS REFUSED: adopting the page's wording would have been one line and would have left the Methods section reporting a quantity nobody asked for. A reader wants the event count, the app has the decision, and the decision was simply never passed in. THE FALLBACK IS REAL AND IS NOT A GUESS: set_positive_class is not in PRE_BARRIER_ONLY_FIXES, so a user may seal first and answer afterwards, and the resolution is computed once at the seal and never recomputed. With no event recorded the count is the least frequent level AND EVERY SENTENCE SAYS SO -- event_is_recorded and event_count_noun travel with the count. THE COUNT IS UNCHANGED IN KIND: no class label is stored, the archive guard is untouched and still right. ── AND THE ROW SAID TWO RENDERERS. THERE WERE FOUR, THREE OF THEM FALSE. resolution._sentence is the Methods line the row names; resolution._headline says '(116 with the outcome)' on the same card; resolution._push_because says 'the held-out set contains 116 of the outcome, so SENSITIVITY is undefined' -- and that one is worse than a noun, because sensitivity is the rate OF THE EVENT, so with the event as the majority it announced the statistic that was fine and stayed silent about the one that was not. web/index.html is the fourth and the only honest one. ── ONE MORE THING THE DRIVE COULD NOT SEE: resolutionHTML returns '' unless res.push, so the page's honest line renders ONLY on a stark holdout while the Methods sentence renders unconditionally. The false renderer was the one always on screen.",
   "verified_against": "",
-  "test": "",
-  "verified_ev": "turbotab/resolution.py:379 minority; :494 sentence; :409 events_held_out; turbotab/web/index.html:4853 'of the less common outcome'; run 5 B2"
+  "test": "turbotab/test_the_event_count_says_what_it_counted.py::test_the_majority_event_is_counted_and_not_its_complement",
+  "verified_ev": "turbotab/resolution.py statement(event_level=) + event_noun(); turbotab/training.py recorded_event_value(); turbotab/project.py seal_lockbox; turbotab/web/index.html resolutionHTML"
  },
  {
   "id": "DRIVE-044",
@@ -12457,11 +12457,11 @@
   "detail": "Run 5 path 1: shelf said 'Neural Network -- n=20,904 supports the capacity' and 'SVC -- slow at n=20,904'. 20,904 = 21,849 - 945, ignoring the 15,552 rows with no outcome. Trainable n is 5,352, which the fit itself reports correctly. The regression path is right (18,572) because bp_sys has no missing values.",
   "ev": "run 5 B3 and open q3; fit reported 945 held out / 5,352 trained on the same page",
   "act": "Use the labeled-row count the seal already computes. RAISED FROM THE TESTER'S MEDIUM: this is not copy reading the wrong number, it is a RECOMMENDATION derived from it. A neural network at n=5,352 with 770 minority events is a different recommendation from one at n=20,904, and the shelf is the surface a user picks from.",
-  "status": "OPEN",
-  "note": "Sibling of DRIVE-043: both are surfaces computing from the whole table where the analysis population is the labeled subset. The seal gets this right and says so in one sentence; two consumers downstream do not read it.",
+  "status": "FIXED",
+  "note": "FIXED AT L62-A2, AND THE SWEEP FOUND A THIRD SURFACE THE ROW DID NOT NAME. project.analysis_mask is new and is deliberately a SECOND mask rather than a change to training_mask: the two answer different questions. training_mask answers *which rows may inform a decision* -- leakage, GUIDED-088 -- and dropping the sealed rows answers it. analysis_mask answers *which rows will the model see*, and training.train says what that is: features[has_y & ~is_test]. Both were correct about their own question; one surface asked the second and read the first answer. MEASURED IN A FIXTURE OF RUN 5'S SHAPE rather than argued: 2,000 rows, 1,400 with no outcome, 150 sealed. Before: /models n_rows_seen 1850, capacity clauses citing n=1850. After: 450, which is what training.train fits on. ── THE THIRD INSTANCE IS /recipes, and it was found by driving every surface that reports an n rather than by reading the two the row named. It measures how two scalings would rescale the columns relative to one another and uses that to decide WHETHER TO ASK a question; the scaler is fitted on the analysis population, so measuring over rows with no outcome raises or suppresses a question about a fit that will not include them. Also 1850 before, 450 after. ── AND THE FIX COMMITTED THE DEFECT ONCE BEFORE IT WAS CAUGHT: narrowing n_rows_seen made n_rows_withheld -- which meant SEALED -- silently start meaning SEALED OR UNUSABLE. Split into n_rows_withheld and n_rows_without_an_outcome, with a test asserting the three counts partition the table, because a reader told only the total cannot tell a large seal from a column that is mostly empty.",
   "verified_against": "",
-  "test": "",
-  "verified_ev": "run 5 B3 and open q3; fit reported 945 held out / 5,352 trained on the same page"
+  "test": "turbotab/test_the_shelf_reasons_about_rows_a_model_will_see.py::test_the_shelf_is_ranked_on_the_rows_a_model_will_see",
+  "verified_ev": "turbotab/project.py analysis_mask/analysis_rows + model_shelf_ranked; turbotab/api.py get_recipes ranking_frame; run 5 shelf clauses citing n=20,904 against 5,352 trained on"
  },
  {
   "id": "DRIVE-046",
@@ -12518,5 +12518,33 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "run 5 B4"
+ },
+ {
+  "id": "MISC-022",
+  "area": "MISC",
+  "sev": "medium",
+  "item": "A3's sweep: which surfaces reason about a population the fit will not use -- the number is THREE, and the row named two",
+  "detail": "MEASURED AT L62-A3 AND THE NUMBER IS THREE, not the two the row named. The sweep drove every surface that reports or reasons about an n on a project of run 5's shape -- /models, /recipes, /features, /selection, the resolution and the manuscript -- rather than grepping for training_rows, and compared each against pandas ground truth. Three read a population the fit will not use: the model shelf's ranking profile, the shelf's capacity clauses composed from it, and /recipes' divergence measurement. The ones that were already right are worth naming too, because a sweep that reports only what it found has not reported its coverage: resolution.statement masks with has_y and always did; the fit itself is correct and run 5 confirmed it independently; /features and /selection report no row count at that granularity. THE FOURTH CANDIDATE IS TABLE 1 AND IT IS DRIVE-046 rather than an instance of this -- it pools the whole uploaded table including the SEALED rows, which is a different population error with a different cause, and the app's own validator already catches it.",
+  "ev": "driven at L62 against a fixture of run 5's shape; turbotab/project.py analysis_mask",
+  "act": "Closed with DRIVE-045. Recorded apart from it because a sweep's COVERAGE is a separate claim from its findings.",
+  "status": "NOT-A-DEFECT",
+  "note": "Filed so the number is on the record including the surfaces that were already right.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "driven at L62 against a fixture of run 5's shape; turbotab/project.py analysis_mask"
+ },
+ {
+  "id": "TEST-094",
+  "area": "TEST",
+  "sev": "medium",
+  "item": "resolutionHTML renders nothing unless the resolution PUSHES, so the honest renderer of events_held_out was conditional while the false one in the Methods section was unconditional",
+  "detail": "FOUND AT L62-A1b WHILE BUILDING THE GUARD THAT ASSERTS THE TWO RENDERERS AGAINST EACH OTHER. The first draft of the harness arm compared the page's output against the Methods sentence on an ordinary seal and got an empty string back: web/index.html's resolutionHTML opens `if (!res || !res.push) return \"\"`, and push is PRODUCT_VISION section 04's *push the notable, pull the rest* -- true and deliberate. The consequence is the part worth keeping: on any holdout that is not stark, the only place a reader met this count was the Methods section, which was the false one. So 'two renderers disagreed' understates it -- they disagreed AND the false one was on screen more often. The guard now seals a stark holdout on purpose and asserts res['push'] is True before comparing, so it cannot pass by comparing a sentence against nothing. NOT A DEFECT IN THE PUSH RULE and not filed as one: the card is correctly quiet. Filed because a class -- *a conditional renderer and an unconditional one over one field* -- is invisible to any test that drives only the loud case, and this repository has the same shape wherever a card pushes.",
+  "ev": "turbotab/web/index.html resolutionHTML `if (!res.push) return \"\"`; turbotab/resolution.py _sentence, unconditional",
+  "act": "Nothing to build in the push rule. The guard now asserts push before comparing, so a future version of this comparison cannot pass against an empty string.",
+  "status": "NOT-A-DEFECT",
+  "note": "Filed as a class rather than a defect. The card is correctly quiet; what is worth carrying is that a guard comparing a conditional renderer against an unconditional one must drive the condition, or it compares a sentence against nothing and passes.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/web/index.html resolutionHTML `if (!res.push) return \"\"`; turbotab/resolution.py _sentence, unconditional"
  }
 ]

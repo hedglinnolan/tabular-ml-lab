@@ -451,6 +451,38 @@ def chosen_event_level(project: Any) -> Optional[str]:
     return str(level) if level not in (None, "") else None
 
 
+#: What the event's VALUE is in the working table once it has been recorded.
+#:
+#: `apply_positive_class` rewrites the outcome so the chosen level is `1`, so
+#: after the repair the event is `1` **by construction**. This constant is the
+#: one place that says so. Three call sites each knowing it would be three
+#: copies of an encoding decision that lives in `ml/binary_text.py`.
+EVENT_VALUE = 1
+
+
+def recorded_event_value(project: Any) -> Optional[Any]:
+    """The value to compare a column against to count events, or `None`.
+
+    **`DRIVE-043`.** `resolution.statement` counted events against
+    `counts.index[-1]` — the LEAST FREQUENT level, never the recorded decision.
+    When the event is the minority that is accidentally right, which is the
+    ordinary clinical case and every fixture this repository had; when the user
+    names the majority as the event it reports the non-event count under an
+    events label. Run 5 named `True` on a column that is 87.77% `True` and the
+    Methods section printed 116 where the figures printed 829, on the same 945
+    rows.
+
+    `None` means *nobody has said which level is the event*, and the caller
+    must then say what it is actually counting rather than calling it an event.
+    That branch is real and reachable: `set_positive_class` is not in
+    `PRE_BARRIER_ONLY_FIXES`, so a user may seal first and answer afterwards,
+    and the resolution is computed once at the seal and never recomputed.
+    """
+    if event_decision(project) is None:
+        return None
+    return EVENT_VALUE
+
+
 def train(project: Any, model_keys: Sequence[str], *,
           ctx: Any = None, seed: int = 42) -> TrainingRun:
     """Fit each model on the training rows and score it on the sealed ones.

@@ -2217,7 +2217,13 @@ async def get_models(project_id: str) -> Dict[str, Any]:
         # after somebody reverted the mask — which is a served number that is
         # true about a computation nobody performed.
         "n_rows_seen": int(ranked_on.n_rows),
-        "n_rows_withheld": int(len(project.df) - int(ranked_on.n_rows)),
+        # `DRIVE-045`. SPLIT, because narrowing `n_rows_seen` to the analysis
+        # population made one number mean two things. "Withheld" used to mean
+        # *sealed*; with unlabeled rows also excluded it silently became
+        # *sealed or unusable*, which is the same conflation this row is about,
+        # committed in the fix for it. Two counts, each saying which it is.
+        "n_rows_withheld": int(project.n_rows_held_out),
+        "n_rows_without_an_outcome": int(project.n_rows_without_an_outcome),
         "concern_note": _models.selection_note(entries, project.selected_models),
     }
 
@@ -2258,7 +2264,12 @@ async def get_recipes(project_id: str) -> Dict[str, Any]:
     # models will actually be fitted on* — and this read the whole table,
     # sealed rows included, so a question a user answers was raised or
     # suppressed partly by rows the models will never see.
-    ranking_frame = project.training_rows
+    # `DRIVE-045`, third instance — found by driving the sweep rather than by
+    # the row, which named two. The divergence between two scalings is measured
+    # so the app can decide whether to ASK about it, and the scaler is fitted on
+    # `features[has_y & ~is_test]`. Measuring it over rows with no outcome
+    # raises or suppresses a question on a population the fit never sees.
+    ranking_frame = project.analysis_rows
     # Scoped to THIS project's lens: `packs.load` never unloads, so the table
     # accumulates every pack any project in this process has selected.
     origins = _rec.allowed_origins(project.lens or [])
@@ -2294,7 +2305,13 @@ async def get_recipes(project_id: str) -> Dict[str, Any]:
         # reader — and `test_every_ranking_is_computed_on_the_training_rows` —
         # can check it rather than take it on trust.
         "n_rows_seen": int(len(ranking_frame)),
-        "n_rows_withheld": int(len(project.df) - len(ranking_frame)),
+        # `DRIVE-045`. SPLIT, because narrowing `n_rows_seen` to the analysis
+        # population made one number mean two things. "Withheld" used to mean
+        # *sealed*; with unlabeled rows also excluded it silently became
+        # *sealed or unusable*, which is the same conflation this row is about,
+        # committed in the fix for it. Two counts, each saying which it is.
+        "n_rows_withheld": int(project.n_rows_held_out),
+        "n_rows_without_an_outcome": int(project.n_rows_without_an_outcome),
         "models": resolved,
         "operations": [{"key": o.key, "label": o.label,
                         "determinacy": o.determinacy, "scope": o.scope,

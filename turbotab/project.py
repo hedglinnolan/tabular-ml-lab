@@ -1920,7 +1920,12 @@ class AnalysisProject:
         number that is true about a computation nobody performed.
         """
         from turbotab import engine, models as _models
-        prof = engine.profile(self.training_rows, self.target, self.task_type)
+        # `DRIVE-045`. `analysis_rows`, not `training_rows`. The shelf's
+        # capacity clauses cite `profile.n_rows` — *"n=20,904 supports the
+        # capacity"* — and 15,552 of those rows had no outcome and would never
+        # reach a fit. Leak-safe was never the question here; the question was
+        # what the model will see.
+        prof = engine.profile(self.analysis_rows, self.target, self.task_type)
         return (_models.shelf(prof, self.task_type or "regression",
                               design=self.recorded_design()),
                 prof)
@@ -2238,10 +2243,18 @@ class AnalysisProject:
         try:
             from turbotab import identifiers as _ids
             from turbotab import resolution as _res
+            from turbotab import training as _training
             self.lockbox["resolution"] = _res.statement(
                 self.df, self.target or "", self.task_type or "regression",
                 list(labels), self.grain.get("group_col"),
-                excluded=_ids.excluded(self))
+                excluded=_ids.excluded(self),
+                # `DRIVE-043`, and it is here for the same reason `excluded` is
+                # — this is the one place that holds both the project and the
+                # frame. Which level is the event is a recorded DECISION;
+                # `statement()` is handed a frame and cannot know it, and its
+                # guess was the least frequent level, which is right only while
+                # the event is the minority.
+                event_level=_training.recorded_event_value(self))
         except Exception as exc:                              # pragma: no cover
             # The seal succeeds without it. A study that cannot be described is
             # still a study that was sealed correctly, and refusing the barrier
@@ -2443,6 +2456,66 @@ class AnalysisProject:
     def training_rows(self) -> pd.DataFrame:
         """The frame a ranking may be computed on. See `training_mask`."""
         return self.df.loc[self.training_mask]
+
+    @property
+    def analysis_mask(self) -> pd.Series:
+        """True for every row a model will actually be FITTED on.
+
+        **`DRIVE-045`, and it is a different question from `training_mask`.**
+        That mask answers *which rows is a decision entitled to be informed
+        by*, which is about leakage and is satisfied by dropping the sealed
+        rows. This one answers *which rows will the model see*, and the answer
+        is narrower: `training.train` builds `X_train` from
+        `features[has_y & ~is_test]`, so a row with no outcome is not fitted on
+        and never was.
+
+        The gap is invisible on a complete column and enormous on a real one.
+        Run 5 uploaded a 21,849-row NHANES table with 15,552 rows carrying no
+        `meds_hbp`; the shelf reasoned about **n=20,904** — *"Neural Network —
+        n=20,904 supports the capacity"* — while the fit reported **5,352
+        trained on**, correctly, on the same page. A capacity recommendation at
+        n=20,904 is not the same recommendation as one at n=5,352, so this is
+        advice derived from the wrong denominator rather than copy quoting it.
+
+        **Kept as a second mask rather than folded into the first**, because
+        the two claims are different and a surface should say which one it
+        means. `training_mask` still guards the seal; this one describes the
+        fit. Where a surface's statistic is genuinely feature-only and has no
+        outcome in it, `training_mask` remains the right frame and the surface
+        says so.
+        """
+        mask = self.training_mask
+        target = self.target
+        if target and target in self.df.columns:
+            return mask & self.df[target].notna()
+        return mask
+
+    @property
+    def analysis_rows(self) -> pd.DataFrame:
+        """The frame a model will be fitted on. See `analysis_mask`."""
+        return self.df.loc[self.analysis_mask]
+
+    @property
+    def n_rows_held_out(self) -> int:
+        """Rows the seal is holding back. Zero before the seal."""
+        if not (self.lockbox and self.lockbox.get("labels")):
+            return 0
+        return int((~self.training_mask).sum())
+
+    @property
+    def n_rows_without_an_outcome(self) -> int:
+        """Rows no model can be fitted on, because the outcome is blank.
+
+        Reported BESIDE the held-out count rather than added to it. They are
+        excluded for unrelated reasons — one is a decision the app made to
+        protect a measurement, the other is a property of the file — and a
+        reader who is told only the total cannot tell a large seal from a
+        column that is mostly empty. `DRIVE-045`.
+        """
+        target = self.target
+        if not target or target not in self.df.columns:
+            return 0
+        return int(self.df[target].isna().sum())
 
     # ── invalidation ────────────────────────────────────────────────────────
 
