@@ -257,7 +257,16 @@ def _pca_payload(project, **_: Any) -> Dict[str, Any]:
     if project.target and project.target in table.columns:
         if table[project.target].nunique(dropna=True) <= 8:
             group_col = "__group__"
-            frame[group_col] = [str(v) for v in table[project.target]]
+            # `DRIVE-040`. THE LEVEL NAMES, WHERE THE RECORD HAS THEM. Run 5
+            # read the annotation as `<NA> 15,552, 1 5,527, 0 770` — a legend
+            # whose group names are the encoding rather than anything in the
+            # user's column. `outcome_level_names` is empty where the record
+            # cannot say, and then this is `str(v)` exactly as it was.
+            from turbotab import training as _training
+
+            names = _training.outcome_level_names(project)
+            frame[group_col] = [names.get(v, str(v))
+                                for v in table[project.target]]
 
     return figure_specs.pca_scores_payload(
         frame, group_col=group_col, qc_mask=qc_mask)

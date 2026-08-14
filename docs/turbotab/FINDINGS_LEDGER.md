@@ -576,7 +576,7 @@ Nothing is closed without a regression test named after it.
 ## PARTIAL — 77
 
 
-### Guided-door drive feedback — 18
+### Guided-door drive feedback — 17
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -597,7 +597,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-155` | medium | DESIGN_LANGUAGE section 05's three motion durations - 250ms Settle, 300ms Arrive, 150ms-per-section Propagate - have no source, and Propagate's form is a stagger, which has no demonstrated tracking… | `research/INTERACTION_PACK.md section 06.2, built at L46. The 200-500ms practitioner band cites no study…` | THE DURATIONS HALF IS DONE AT L47-A3 and the Propagate half is explicitly not scheduled - the PM's ruling at section 00: a form-claim about a motion with no mechanism to run does… |
 | `GUIDED-178` | medium | The right panel becomes a deck of per-model before/after tables at Preprocess - one card per model, paged like a deck, updating when that model's pipeline changes - and the thing it can honestly show… | `PRODUCT OWNER'S PROPOSAL, VERBATIM: `Pre-processing is also the moment where we can make that right hand viz…` | **test:** `turbotab/test_the_deck_keeps_its_cards.py::test_a_card_survives_a_re_render_as_the_same_element AND ::test_the_card_quotes_the_recipe_records_reason` — L54-B. FACE ONE… |
 | `GUIDED-209` | medium | A server-side list cut to a literal bound before it is served, with nothing saying so - 43 payload keys, and the sharpest is in the exported manuscript | `L49-D, answering 08 check 5 by looking one surface over from GUIDED-195. An AST walk over every non-test…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_every_list_a_new_finding_serves_states_its_bound` — L50-D discharges it FOR THIS LOOP'S PAYLOADS and… |
-| `DRIVE-040` | medium | After the event is chosen, /figures serves event: '1.0' rather than the level the user named. The repair encodes the chosen level as 1, so the figure payload carries the encoded value and the name… | `verified at 5f59a35: answering 'case' on a case/control target then fitting yields ModelResult.positive_label…` | **test:** `turbotab/test_a_string_class_label_is_a_label.py::test_the_curve_names_the_event_it_is_about` — REOPENED TO PARTIAL BY THE ADJUDICATOR ON RUN 5'S EVIDENCE. L61-D1 is… |
 
 ### Migration safety net — 12
 
@@ -656,6 +655,15 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-020` | medium | The lens is asked after the structural diagnosis has already run and is placed inside the Target step below the target picker, and both cards render as step 01, against OPENING_SEQUENCE.md's… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2, 3.3 and 6 (F3); docs/turbotab/OPENING_SEQUENCE.md` | **test:** `turbotab/test_one_decision_is_one_undo.py::test_the_target_card_renders_the_position_the_router_served` — THE NUMBERING HALF ONLY. The ordering half of this row is… |
 | `DRIVE-038` | medium | A finding card's 'arrived' chip rendered the literal string [object Object] on the positive-class finding -- a non-string reaching esc() in the third positional argument of findingCard(f, withSource… | `run-3 drive path 2: <span class='chip arrived'>[object Object]</span>, 1 occurrence, persists across a lens…` | **test:** `turbotab/test_a_finding_chip_refuses_a_non_string.py::test_an_object_in_that_slot_reaches_no_chip` — THE DEFENSIVE HALF ONLY, AND THE TRIGGER STAYS OPEN. The chip… |
 
+### Other — 4
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-011` | high | The Streamlit side has no record of the prediction/inference purpose at all, so none of the five decisions DOMAIN_SCIENCE section 01.3 says invert can read it | `utils/session_state.py has no purpose field; turbotab/purpose.py; DOMAIN_SCIENCE.md section 01.3…` | **test:** `turbotab/test_the_purpose_card_names_only_the_decisions_that_read_it.py::test_the_card_says_two_read_it_and_names_the_two_that_do_not` — L53-C, fanned out to four… |
+| `MISC-019` | high | DEFECT CLASS - a row is marked FIXED and its fix reached a fraction of the surfaces its own item describes, and ledger.py check cannot see it because it verifies that a test is NAMED rather than that… | `the instance is GUIDED-049, critical, FIXED, whose fix reached three call sites out of ten shipped surfaces…` | **test:** `turbotab/test_the_improbability_band_is_never_called_a_reference_interval.py::test_no_shipped_surface_calls_the_band_a_reference_interval` — REOPENED AT L62 BY THE… |
+| `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | **test:** `turbotab/test_a_skew_that_could_not_be_computed_is_not_reported_as_zero.py::test_an_unmeasurable_target_skew_is_not_reported_as_zero and… |
+| `AUDIT-012` | medium | Outlier advice is driven by a generic IQR rate that cannot tell physiologically impossible from abnormal-but-real, while the impossibility bands sit beside it unused | `ml/outliers.py:44 IQR fences; ml/eda_actions.py:412-420; ml/dataset_profile.py:214…` | **test:** `turbotab/test_the_outlier_remedy_is_not_offered_from_the_fence_alone.py::test_the_corrected_sentence_reaches_the_guided_finding_card and… |
+
 ### Verified against main — 3
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -687,14 +695,6 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-243` | high | HUNT dtype-mismatch-blocked-but-executed: the screen still shows a red 'will not work' blocker and then combines successfully, though the withheld row count and the recurrence on later legs are both… | `ml/join_doctor.py diagnose_join (a dtype mismatch is still classified blocking, can_proceed False, while…` | PARTIAL, measured at HEAD. A genuine text-vs-numeric key pair still gives dtype_mismatch True, can_proceed False and a red blocking message - and combine_ui overrides the block… |
 | `IMPORT-109` | medium | Duplicate key column name makes every ml/join_doctor.py entry point raise AttributeError and makes find_key_candidates silently drop the true key — but the module has no UI callers and no loader can… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 09'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — REOPENED AS PARTIAL AT L44-D BY THE MISC-019 SWEEP. THE SITES: ml/join_doctor.py:118, :380, :943, :1002. The… |
 | `IMPORT-240` | medium | HUNT stack-empty-file-turns-every-numeric-column-to-text: the dtype corruption is gone, but a header-only cycle now produces a FALSE type-conflict warning and is still never named as contributing… | `utils/combine.py plan_stack (total_rows as a plain sum, no zero-row check) and execute_stack's pd.concat…` | PARTIAL, measured at HEAD. Three cycles with glucose float64 in two of them and an empty header-only frame between: the stacked glucose column comes back float64 with 4 rows - the… |
-
-### Other — 3
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `AUDIT-011` | high | The Streamlit side has no record of the prediction/inference purpose at all, so none of the five decisions DOMAIN_SCIENCE section 01.3 says invert can read it | `utils/session_state.py has no purpose field; turbotab/purpose.py; DOMAIN_SCIENCE.md section 01.3…` | **test:** `turbotab/test_the_purpose_card_names_only_the_decisions_that_read_it.py::test_the_card_says_two_read_it_and_names_the_two_that_do_not` — L53-C, fanned out to four… |
-| `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | **test:** `turbotab/test_a_skew_that_could_not_be_computed_is_not_reported_as_zero.py::test_an_unmeasurable_target_skew_is_not_reported_as_zero and… |
-| `AUDIT-012` | medium | Outlier advice is driven by a generic IQR rate that cannot tell physiologically impossible from abnormal-but-real, while the impossibility bands sit beside it unused | `ml/outliers.py:44 IQR fences; ml/eda_actions.py:412-420; ml/dataset_profile.py:214…` | **test:** `turbotab/test_the_outlier_remedy_is_not_offered_from_the_fence_alone.py::test_the_corrected_sentence_reaches_the_guided_finding_card and… |
 
 ### Coach to Router — 2
 
@@ -728,7 +728,7 @@ Nothing is closed without a regression test named after it.
 ## FIXED — 398
 
 
-### Guided-door drive feedback — 149
+### Guided-door drive feedback — 150
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -879,6 +879,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-225` | medium | A magnitude or range threshold applied without first establishing that the block is that KIND of quantity - the app told a survey researcher their Likert responses had been log-transformed | `L50-D. METABOLOMICS_PACK section 01's already-transformed reading uses a max below about 40 with a low…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_a_likert_block_is_not_a_log_transformed_intensity_block` — sibling-of: GUIDED-224. Both are the same… |
 | `GUIDED-227` | medium | Two detectors over one table disagreed about what its columns are, because one saw the CSV reader's renaming and the other did not | `L50-D, found by the two readings contradicting each other rather than by either failing. The polarity census…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_both_polarities_are_reported_as_a_convention_and_not_a_fact` — The polarity finding is CONVENTION… |
 | `DRIVE-034` | medium | The prevalence-of-inadequacy widget computed an EAR cut-point result for `kcal`. Energy has no EAR in the sense the cut-point method requires, so this is a case where refusing is the correct answer. | `docs/turbotab/DRIVE_UX_SURFACING_NHANES_RUN2.md F17 and §5; the widget returned 'Prevalence of inadequacy for…` | **test:** `turbotab/test_energy_has_no_ear.py::test_every_spelling_of_energy_is_refused` — OUTCOME 1 OF THE THREE THE ROW OFFERED: the pack excludes energy, the widget must… |
+| `DRIVE-040` | medium | After the event is chosen, /figures serves event: '1.0' rather than the level the user named. The repair encodes the chosen level as 1, so the figure payload carries the encoded value and the name… | `verified at 5f59a35: answering 'case' on a case/control target then fitting yields ModelResult.positive_label…` | **test:** `turbotab/test_the_level_a_reader_sees_is_the_one_they_chose.py::test_the_record_keeps_both_level_names` — CLOSED AT L62-B ON ALL THREE SURFACES, AND THE ROW'S PREMISE… |
 | `AUDIT-036` | low | The item-correlation figure's caption tells the reader that loadings and reliability appear 'below'; the app produces neither | `turbotab/figure_specs.py:2786-2788 — The shared `method_note` composed by _correlations reads "…Pearson…` | **test:** `turbotab/test_a_caption_describes_the_figure_that_was_drawn.py::test_no_survey_caption_points_the_reader_at_a_quantity_below and… |
 | `GUIDED-201` | low | Two L48 chunks each added a CSS rule inside the prototype stylesheet that a guard compares byte for byte - the natural place to put a rule is the one place it may not go | `L48. test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim asserts the prototype's whole…` | **test:** `turbotab/test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim` — No revert probe: the guard predates this loop and is itself the probe - it went… |
 
@@ -1080,7 +1081,7 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-027` | medium | A control rendered a state it had not been told: an unanswered /seal body of {} made can_draw undefined, so the seal card drew 'Draw it now — not yet' with an empty reason beside it | `turbotab/web/index.html renderSeal` | **test:** `turbotab/test_the_seal_can_be_drawn_from_the_page.py::test_a_seal_payload_that_did_not_arrive_draws_nothing` — Revert probe: the typeof guard removed -> RED for 'an… |
 | `DRIVE-042` | medium | L60-D re-routed the energy branch and L60-E removed energy from the dropdown, and between them a page claim lost its subject twice while reading as downstream of the training refusal | `turbotab/test_the_page_says_what_the_record_says.py:415-431; turbotab/nutrition.py:1110-1130 at 7e34743…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim` — Fixed at L61-A. |
 
-### Other — 17
+### Other — 16
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1093,7 +1094,6 @@ Nothing is closed without a regression test named after it.
 | `MISC-014` | high | DOMAIN_SCIENCE section 03 asserts that the sensitivity fork is currently absent from the app entirely, and it is not: the capability ships in Classic, is listed as shared by FEATURE_PARITY, and is… | `docs/turbotab/DOMAIN_SCIENCE.md:263 primitive 4; ml/sensitivity.py 132 lines with…` | **test:** `turbotab/test_the_fork_is_run_both_ways.py (21 tests, two target shapes, route driven against the real API)` — ADJUDICATOR REVIEW OF THE DESIGN DOCS, requested by the… |
 | `MISC-015` | high | Four of DOMAIN_SCIENCE's seven primitives have zero ledger rows: hard stops, the sensitivity fork, the checklist engine and the generalized leakage detector are tracked only in a prose line inside an… | `ROADMAP.md D1 line reads 'hard stops, sensitivity fork, checklist engine, generalized leakage detector…` | **test:** `tests/test_a_specification_is_a_claim.py::test_every_specified_primitive_has_a_ledger_row (7 parametrizations) and ::test_the_primitive_inventory_is_not_stale`… |
 | `MISC-018` | high | ml/physiology_reference.get_reference_interval returns a p01/p99 pair, and a reference interval is a defined quantity that is not that - the central 95 percent per CLSI EP28-A3c - so the core's… | `ml/physiology_reference.py:176 get_reference_interval returns (p01, p99, unit); the table comment at line 44…` | **test:** `turbotab/test_the_improbability_band_is_never_called_a_reference_interval.py::test_no_shipped_surface_calls_the_band_a_reference_interval` — CLOSED AT L42-A2 BY… |
-| `MISC-019` | high | DEFECT CLASS - a row is marked FIXED and its fix reached a fraction of the surfaces its own item describes, and ledger.py check cannot see it because it verifies that a test is NAMED rather than that… | `the instance is GUIDED-049, critical, FIXED, whose fix reached three call sites out of ten shipped surfaces…` | **test:** `turbotab/test_the_improbability_band_is_never_called_a_reference_interval.py::test_no_shipped_surface_calls_the_band_a_reference_interval` — FILED BY THE ADJUDICATOR AT… |
 | `AUDIT-045` | high | NUTRITION_PACK.md 04 asserted the mechanism of a bias with a causal connective the primary source does not support, and it made the substitution curve read as a remedy for a bias it does not remedy | `docs/turbotab/research/NUTRITION_PACK.md:408` | **test:** `docs/turbotab/research/NUTRITION_PACK.md §04 — the corrected bullet quotes and dates the superseded wording, so a reader cannot silently revert it` — A TWO-WORD ERROR… |
 | `TEST-084` | high | A long-running server serves a CURRENT page against a STALE API and nothing surfaces the mismatch: Python modules are pinned at import, StaticFiles re-reads index.html per request, so the interface… | `turbotab/api.py:3366 app.mount('/', StaticFiles(directory=WEB_DIR, html=True)); serving process PID 99928…` | **test:** `turbotab/test_the_app_says_which_build_answered.py::test_a_page_newer_than_the_engine_is_reported` — THE APP ANSWERS IT NOW INSTEAD OF THE ADJUDICATOR. Python modules… |
 | `AUDIT-004` | medium | The quick baseline drops every row with any missing feature and reports no N cascade, so the number the user reads is about a subset nobody named | `ml/eda_actions.py:1209-1211; research/NUTRITION_PACK.md section 06 anti-patterns` | **test:** `tests/test_the_manuscript_does_not_assert_an_uncorrected_count.py::test_the_quick_baseline_reports_what_it_dropped` — FIXED at L30-B, alongside AUDIT-001 because a… |

@@ -797,6 +797,12 @@ def record_fix(project: Any, subject: str,
     if live.fix_kind == "set_positive_class":
         extra = {"choice": str(choice),
                  "event_level": binary_text.chosen_level_text(
+                     live.params, choice),
+                 # `DRIVE-040`'s remaining half. The event's name alone lets a
+                 # figure caption say what the curve is about; naming a COLUMN
+                 # HEADER or a group count needs both, and after this repair
+                 # the original spellings survive nowhere but the sentence.
+                 "comparison_level": binary_text.comparison_level_text(
                      live.params, choice)}
     # `live.fix_kind` travels so the record can say WHICH repair blanked a cell.
     project.apply_fix(new_df, live.id, live.title, description,

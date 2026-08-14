@@ -496,6 +496,34 @@ def chosen_level_text(params: Optional[Dict[str, Any]],
     return str(event) if event is not None else ""
 
 
+def comparison_level_text(params: Optional[Dict[str, Any]],
+                          event: Optional[str]) -> str:
+    """The OTHER level's spelling — the one that becomes `0`.
+
+    **`DRIVE-040`, and this is the half `L61` did not carry.** That loop
+    recorded the event's name and the figure could say *"829 events of True"*.
+    Three surfaces need more than that: Table 1's column headers, the PCA group
+    annotation and the event noticing card each render **both** levels, and
+    after the repair the column holds `0` and `1` and the finding's own
+    `spellings` have been recomputed to `{'0': '0', '1': '1'}` — the original
+    words are gone from everywhere except the decision's prose sentence.
+
+    Measured rather than assumed before this was written: with the decision
+    recorded, `payload` carried `choice` and `event_level` and nothing for the
+    comparison, and the live finding's spellings were `{'0': '0', '1': '1'}`.
+
+    Here for the same reason `chosen_level_text` is: this is where the sentence
+    already computes it, so the record and the sentence cannot disagree.
+    """
+    chosen = _normalize(event)
+    levels = list((params or {}).get("levels") or [])
+    spellings = (params or {}).get("spellings") or {}
+    other = next((lvl for lvl in levels if lvl != chosen), None)
+    if other is None:
+        return ""
+    return str(spellings.get(other, other))
+
+
 def apply_positive_class(df: pd.DataFrame,
                          finding: ShapeFinding,
                          event: Optional[str] = None) -> Tuple[pd.DataFrame, str]:
@@ -531,7 +559,9 @@ def apply_positive_class(df: pd.DataFrame,
     out[column] = pd.to_numeric(out[column], errors="coerce").astype("Int64")
 
     event_text = chosen_level_text(params, event)
-    other_text = spellings.get(other, other)
+    # One implementation, so the sentence below and the record `engine.record_fix`
+    # keeps cannot spell the same level two ways.
+    other_text = comparison_level_text(params, event)
     description = (f"'{column}' was encoded with {event_text} as the event "
                    f"(1) and {other_text} as the comparison (0).")
     n_missing = int(out[column].isna().sum())

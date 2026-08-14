@@ -1283,9 +1283,47 @@ def table_one(project: Any, run: Optional[Dict[str, Any]] = None):
             show_missing=True,
             use_median_iqr_if_skewed=True,
         ))
+    # `DRIVE-040`. THE COLUMN HEADERS NAME THE LEVELS THE USER CHOSE.
+    #
+    # `generate_table1` strata-labels from the column's values, and by the time
+    # it runs the outcome has been encoded — so run 5 read `0 (n=770)` and
+    # `1 (n=5527)` where the user had answered `False` and `True`. The values
+    # are right and they are not names.
+    #
+    # Renamed HERE rather than inside `ml/table_one.py`: that module is shared
+    # with the Streamlit door (`FEATURE_PARITY.md` §1) and has no access to a
+    # recorded decision, so teaching it about one would be the fork the roadmap
+    # forbids. This is the boundary that holds both.
+    #
+    # Silent where the record cannot say — every project sealed before `L62`,
+    # and any column the repair never touched. A header then reads exactly as
+    # it did before, which is a number rather than a wrong word.
+    table = _name_the_outcome_columns(table, project)
     return table, {**metadata, "grouping_var": grouping,
                    "n_continuous": len(continuous),
                    "n_categorical": len(categorical), **TABLE1_EVIDENCE}
+
+
+def _name_the_outcome_columns(table, project):
+    """Rewrite `0 (n=46)` to `ctl (n=46)` where the record names the level."""
+    import re as _re
+
+    from turbotab import training as _training
+
+    names = _training.outcome_level_names(project)
+    if not names or not hasattr(table, "rename"):
+        return table
+    # The header `generate_table1` composes is `<level> (n=<count>)`, so the
+    # rewrite is anchored on that shape rather than on a bare substring — a
+    # loose match would rename `Overall (N=300)` the moment a level is called
+    # `Overall`.
+    spelled = {str(value): name for value, name in names.items()}
+    renamed = {}
+    for column in table.columns:
+        match = _re.fullmatch(r"(.+?) \(n=(\d+)\)", str(column))
+        if match and match.group(1) in spelled:
+            renamed[column] = f"{spelled[match.group(1)]} (n={match.group(2)})"
+    return table.rename(columns=renamed) if renamed else table
 
 
 def _with_strobe_nut(sections: List[Dict[str, Any]],

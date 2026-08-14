@@ -1349,13 +1349,39 @@ async def preview_finding(project_id: str, finding_id: str,
                     "Choose which level is the event and this will show what "
                     "changes. There is no default — the choice sets the sign of "
                     "every effect estimate."),
-                "choices": (live.params or {}).get("spellings", {}),
+                # `DRIVE-040`. THE LEVELS AS THE USER TYPED THEM, where the
+                # record still knows. `live.params` is recomputed against the
+                # CURRENT column, so once the repair has run the spellings are
+                # `{'0': '0', '1': '1'}` and this card — which run 5 watched
+                # flip from `False`/`True` to `0.0`/`1.0` — re-offers the
+                # question in an alphabet the user never used. Overlaid rather
+                # than replaced: the keys are still the tokens the route
+                # accepts, so only what a reader sees changes.
+                "choices": _spellings_the_user_would_recognize(project, live),
                 "suggested": (live.params or {}).get("suggested"),
                 "suggested_reason": (live.params or {}).get("suggested_reason"),
             }
         return engine.preview_fix(project.df, live, choice=choice)
     except engine.EngineRefusal as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+def _spellings_the_user_would_recognize(project, live) -> Dict[str, str]:
+    """The finding's level spellings, with the recorded names where they exist.
+
+    `DRIVE-040`. Empty overlay on any project whose event was never recorded,
+    and on every project sealed before `L62` — the card then reads exactly as
+    it did, which is the encoded value rather than a word nobody typed.
+    """
+    from turbotab import training as _training
+
+    spellings = dict((live.params or {}).get("spellings") or {})
+    names = _training.outcome_level_names(project)
+    for value, name in names.items():
+        token = str(value)
+        if token in spellings:
+            spellings[token] = name
+    return spellings
 
 
 # ─────────────────────────────────────────────────────────────────────────────

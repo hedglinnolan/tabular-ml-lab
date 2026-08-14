@@ -460,6 +460,42 @@ def chosen_event_level(project: Any) -> Optional[str]:
 EVENT_VALUE = 1
 
 
+def outcome_level_names(project: Any) -> Dict[Any, str]:
+    """`{1: "True", 0: "False"}` — the encoded values back to what a user typed.
+
+    **`DRIVE-040`, and this is the half `L61` left.** That loop carried the
+    EVENT's name, which is enough for a figure caption — *"829 events of
+    True"*. It is not enough for anything that renders **both** levels, and
+    three surfaces do: Table 1's column headers (`0 (n=770)` / `1 (n=5527)`),
+    the PCA group annotation (`<NA> 15,552, 1 5,527, 0 770`), and the event
+    noticing card, which flips from `False`/`True` to `0.0`/`1.0` the moment
+    the answer is recorded.
+
+    **Measured before it was built**: with the decision recorded, the payload
+    carried `event_level` and nothing for the comparison, and the live
+    finding's own `spellings` had been recomputed to `{'0': '0', '1': '1'}` —
+    so after the repair the original words survived nowhere but the decision's
+    prose. `engine.record_fix` records both now.
+
+    **Empty where the record cannot say**, which includes every project sealed
+    before `L62`. A renderer then shows the encoded value, which is what it
+    showed before — silent rather than guessing, and a guess here would put a
+    word in a user's column that they never typed.
+    """
+    decision = event_decision(project)
+    if decision is None:
+        return {}
+    payload = getattr(decision, "payload", None) or {}
+    event = payload.get("event_level")
+    comparison = payload.get("comparison_level")
+    names: Dict[Any, str] = {}
+    if event not in (None, ""):
+        names[EVENT_VALUE] = str(event)
+    if comparison not in (None, ""):
+        names[1 - EVENT_VALUE] = str(comparison)
+    return names
+
+
 def recorded_event_value(project: Any) -> Optional[Any]:
     """The value to compare a column against to count events, or `None`.
 
