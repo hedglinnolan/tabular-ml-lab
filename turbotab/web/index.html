@@ -6346,9 +6346,21 @@
        The picks travel with the question. The server still decides what is
        blocking — putting that here would be a second copy of `check()`'s order,
        which this file has paid for twice. */
+    /* THE PARAMETER IS SENT ONLY WHEN THE TWO SELECTIONS DISAGREE, which is
+       exactly the state DRIVE-049 was about: the page holding picks the record
+       does not have. Where they agree — including where both are empty — the
+       question has one answer and the bare route is the honest one to ask.
+
+       Not a tidiness point. Route-set guards assert the EXACT set of paths a
+       render requests, and an unconditional `?models=` made five of them read
+       "the render asked for a route this drive did not answer" — a change to
+       every consumer's contract, for a parameter that changed no answer. */
     var picked = Object.keys(PICKED).filter(function(k){ return PICKED[k]; });
-    api("/project/" + P.id + "/training?models=" +
-        encodeURIComponent(picked.join(",")))
+    var recorded = (P.selected_models || []).slice();
+    var differs = picked.slice().sort().join(",") !== recorded.sort().join(",");
+    var path = "/project/" + P.id + "/training";
+    if (differs) path += "?models=" + encodeURIComponent(picked.join(","));
+    api(path)
       .then(function(body){ TRAIN = body; renderTrain(); })
       .catch(function(){});
   }

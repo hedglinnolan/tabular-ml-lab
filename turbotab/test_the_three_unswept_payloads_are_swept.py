@@ -106,6 +106,12 @@ FILED = {
     ("recipes", "n_choices_suppressed"): "GUIDED-202",
     ("recipes", "n_rows_seen"): "GUIDED-202",
     ("recipes", "n_rows_withheld"): "GUIDED-202",
+    # `DRIVE-045`, and it joins its two siblings rather than being excused
+    # separately. `n_rows_seen` narrowed to the analysis population at `L62`,
+    # which silently turned "withheld" from *sealed* into *sealed or unusable*;
+    # this is the split that keeps the two reasons apart. It is dark for the
+    # same reason they are and under the same row.
+    ("recipes", "n_rows_without_an_outcome"): "GUIDED-202",
 }
 
 
