@@ -12854,5 +12854,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "tests/test_american_spelling.py:24-35 (SKIP_DIRS), :36 (EXEMPT_PREFIXES), :70-79 (_source_files); .gitignore:38; reproduced at bf7e148"
+ },
+ {
+  "id": "GUIDED-244",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "/selection/evidence serves an n_rows_seen that is the count of NO computation on its own payload -- 825 beside scores every one of which was a 225-row statistic -- and the obvious one-line repair corrupts n_rows_withheld in the same response",
+  "detail": "api.py:2498 hands `project.training_mask` to selection.evidence; selection.py:344-345 derives `n_seen = int(len(frame))` from that frame and :445 serves it. But :382 does `pair = pd.concat([s, y], axis=1).dropna()` per column, so every score drops the outcome-blank rows the count includes. DRIVEN at bf7e148 on a 900-row frame with 600 blank outcomes: served n_rows_seen 825, served top score age = 0.0437, and the correlation over the 225 analysis rows is 0.0437 to four decimals -- every score in the table was a 225-row statistic. Reproduced independently on a regression variant: five columns, all five identical to four decimals against the 225-row computation. THE PAYLOAD ALSO CARRIES NO n_rows_without_an_outcome, so the reader is told a two-way split of a three-way exclusion. AND THE ONE-LINE FIX IS UNSAFE: passing analysis_mask at api.py:2498 leaves selection.py:352's `n_held_out = int(len(df)) - n_seen` deriving withheld by SUBTRACTION -- measured, it reports 675 when only 75 rows were sealed, which is precisely the DRIVE-045 conflation L62-A removed from /models.",
+  "ev": "turbotab/api.py:2498; turbotab/selection.py:344-345, :352, :382, :385, :445-446; driven at bf7e148 by two independent agents on different frames",
+  "act": "Report the count the scores were actually computed on. selection.py:385 already computes `len(pair)` per column on the MIN_PAIRS branch, so the honest number exists one branch away; where columns differ, say so rather than picking one. Do NOT narrow the mask at api.py:2498 without also giving this route the DRIVE-045 split, because :352 derives withheld by subtraction -- that is three edits, not one.",
+  "status": "OPEN",
+  "note": "SPLIT OUT OF DRIVE-050 BY THE ADJUDICATOR AT L63, AND THE SPLIT IS A RULING. DRIVE-050 mentions this route in one trailing sentence as 'reports the pre-fix population too'. That framing is too weak and it points at the wrong repair. The defect is not that the route reads training_rows -- it is that the number describes a computation nobody performed, which is GUIDED-092's failure mode rather than DRIVE-045's. || DELIBERATELY NOT IN L63, AND HERE IS THE REASON, so it is not rediscovered. TEST-101's stale expectation (test_every_ranking_is_computed_on_the_training_rows.py:263) asserts one expression for THREE routes, and at HEAD that expression is CORRECT for this one. L63 splits that loop per route on exactly that basis. Fixing this count in the same loop would make the split stale in the loop that wrote it -- the L62-C1 shape, where an authoritative statement and the code it describes moved apart inside one change. So: L63 splits the test on the current truth, this row records the current truth as wrong, and the loop that fixes it re-splits. Two moves that are each verifiable beat one that is not. || WHEN IT IS WORKED, note that selection.evidence is NOT covered by analysis_mask's own carve-out at project.py:2483-2485 ('where a surface's statistic is genuinely feature-only and has no outcome in it'): these scores are computed AGAINST the outcome. The carve-out's worked example is identifiers.py:206-221, which reads training_rows deliberately and says why. sibling-of: DRIVE-050",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/api.py:2498; turbotab/selection.py:344-345, :352, :382, :385, :445-446; driven at bf7e148 by two independent agents on different frames"
  }
 ]

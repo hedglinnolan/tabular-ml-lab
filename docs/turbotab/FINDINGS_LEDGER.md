@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**415 of 973 closed.**
+**415 of 974 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 480 |
+| `OPEN` | 481 |
 | `PARTIAL` | 78 |
 | `FIXED` | 405 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 480
+## OPEN — 481
 
 
-### Guided-door drive feedback — 79
+### Guided-door drive feedback — 80
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -62,6 +62,7 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-051` | high | n_rows_withheld and n_rows_without_an_outcome overlap on a reachable path, so the served counts sum past the size of the table and 'withheld' still silently means sealed OR unusable | `turbotab/project.py:2520-2540; turbotab/api.py:2251-2252, :2339-2340…` | The report caught the near-miss in the other direction and said so plainly -- 'the fix committed the defect once before I caught it' -- but the CURRENT state is still wrong, which… |
 | `GUIDED-242` | high | The forest plot silently picks one model out of N and names none, so the same rows publish different coefficients depending on which checkbox the user ticked first -- GUIDED-236's class, one figure… | `turbotab/figure_bundle.py:510,:544,:564,:493; turbotab/figure_specs.py:2392,:2521-2525; contrast…` | FOUND BY THE L63 RECONNAISSANCE FAN-OUT, BY THE SECOND READER, AFTER THE FIRST HAD DECLARED THE CONSUMER MAP 'CLOSED AND SMALL' WITH 'no consumer the row failed to name'. The… |
 | `GUIDED-243` | high | The ROC's bootstrap confidence interval is seeded once outside the per-model loop, so a model's published 95% CI is a fact about which checkbox was ticked first rather than about the data… | `turbotab/figure_specs.py:2230 (rng created), :2233 (the loop it is outside of), :2242 (the draw); measured at…` | FOUND BY THE L63 FAN-OUT'S VERIFIER, AGAINST A RECON THAT HAD MEASURED FOUR MODELS' INTERVALS AND PRONOUNCED THEM 'correct per-model bootstrap intervals' -- observing four numbers… |
+| `GUIDED-244` | high | /selection/evidence serves an n_rows_seen that is the count of NO computation on its own payload -- 825 beside scores every one of which was a 225-row statistic -- and the obvious one-line repair… | `turbotab/api.py:2498; turbotab/selection.py:344-345, :352, :382, :385, :445-446; driven at bf7e148 by two…` | SPLIT OUT OF DRIVE-050 BY THE ADJUDICATOR AT L63, AND THE SPLIT IS A RULING. DRIVE-050 mentions this route in one trailing sentence as 'reports the pre-fix population too'. That… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
