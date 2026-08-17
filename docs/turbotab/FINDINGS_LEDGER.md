@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**415 of 974 closed.**
+**415 of 975 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 481 |
+| `OPEN` | 482 |
 | `PARTIAL` | 78 |
 | `FIXED` | 405 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 481
+## OPEN — 482
 
 
 ### Guided-door drive feedback — 80
@@ -555,7 +555,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Other — 9
+### Other — 10
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -564,6 +564,7 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-018` | high | README.md asserts the app runs end to end through grain, eligibility and the seal, which is true of the API and false of the page a user drives | `docs/turbotab/README.md, the 'app is running, end to end' paragraph; refuted by…` | THE CLAIM: 'The app is running, end to end. A driver goes upload -> lens -> orientation -> target -> purpose -> grain -> eligibility -> seal -> explore -> features -> preprocess… |
 | `MISC-023` | high | The coverage guard MISC-019's reopening relies on catches new READERS of the mapping and not new NON-readers, so the defect class it is named for passes it -- and a qualifying surface already ships | `the guard at :198-218; driven falsification with a scratch fourth surface at HEAD; MISC-019's note` | MISC-019's reopening note claims 'a fourth surface added without it fails that test -- so the coverage claim is executable'. THAT SENTENCE IS FALSE and it is false in exactly the… |
 | `MISC-024` | high | DEFECT CLASS - no gate reads an authoritative spec paragraph, so a document can state a rule in the present tense that the code stopped obeying, and nothing in the suite can report it | `DESIGN_LANGUAGE.md section 05; PRODUCT_VISION.md section 09; git log 4f73329..HEAD carries neither filename` | BOTH DOCUMENTS AMENDED BY THE ADJUDICATOR AT e6b5251, which is later than the rule requires. THE RECURRENCE IS THE FINDING: PRODUCT_VISION section 09 is a section whose entire… |
+| `MISC-025` | high | AGENT_ONBOARD.md section 03 documented the xdist command as the FIRST thing an executor reads, while TEST-098's act, PM_TRANSITION section 04 and LOOP.md's L62 row all say it must not be documented… | `docs/turbotab/prompts/AGENT_ONBOARD.md section 03 command block; tests/test_a_fixed_rows_named_test_resolves_i…` | FOUND BECAUSE THE PRODUCT OWNER SAID HE HAD CLEARED THE EXECUTOR, AND THE ADJUDICATOR ASKED WHAT A FRESH AGENT READS FIRST. It reads section 03, and section 03 told it to run the… |
 | `AUDIT-038` | medium | 77 of the 131 registry entries are still unchecked against the engine, and the reason is a budget rather than a finding - recording it so the next loop does not read silence as coverage | `L51-E, and it is the honest half of this part. E ran last by the prompt's own sequencing, after Part C's four…` | AND A METHOD WARNING WORTH MORE THAN THE ROW: two of this part's capability checks returned a false absence because grep -E was given \\| alternation, which is a literal pipe in… |
 | `AUDIT-046` | medium | A loop commit swallowed the adjudicator's uncommitted docs edit, so its subject asserts something false about its own contents - the git add -A rule broken a third time, in the opposite direction… | `0c9cce3 contains docs/turbotab/prompts/PM_TRANSITION.md, 74 changed lines, under the subject 'L57-A: the…` | NOTHING WAS LOST AND THAT IS NOT THE POINT. The content is byte-identical to the adjudicator's own backup, verified by diff, and it is in HEAD. THE POINT IS THE RECORD LAYER… |
 | `MISC-022` | medium | A3's sweep: which surfaces reason about a population the fit will not use -- the number is THREE, and the row named two | `driven at L62 against a fixture of run 5's shape; turbotab/project.py analysis_mask` | REOPENED BY THE ADJUDICATOR: THE COMPLETENESS CLAIM IS FALSE. The row records THREE surfaces 'found by driving every surface that reports an n'. Two independent verifiers, both… |

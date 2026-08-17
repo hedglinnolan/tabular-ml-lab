@@ -109,6 +109,22 @@ venv/bin/python -m pytest tests/ --ignore=tests/integration \
 venv/bin/python -m pytest tests/integration -q                  # ~50 s
 ```
 
+> **THE PARALLEL FORM ON THE FIRST LINE IS HELD, NOT LICENSED — `TEST-098`.** It stays written down
+> because the measurement below is real and because a test pins it here, but **the run that licenses
+> it has cross-file filesystem races `--dist loadfile` does not prevent.** Four tests write inside the
+> repository during a run and three write a git-tracked path; measured, six concurrent readers of the
+> fixtures a generator rewrites logged **56 corrupted reads in 261**, one of them a silent 59-row
+> frame where 60 rows are committed. **So a green from the parallel form is not yet evidence**, and
+> the races are already realizable at HEAD under the `FIXED`-row guard's own
+> `pytest -n auto --dist load`. Fix the writers first; that is `L63` Part A, and Part F is what
+> licenses this line. **Until then: run the serial form when you intend to quote a number, and if you
+> use the parallel form for speed, say which one you used beside every count.**
+>
+> *(This paragraph exists because the command was documented here while three other documents said it
+> must not be — `AGENT_ONBOARD.md` against `TEST-098`, `PM_TRANSITION.md` §04 and `LOOP.md` §03's L62
+> row. Found on 2026-08-16 when the executor was cleared and the adjudicator asked what a fresh agent
+> would read first. `MISC-025`.)*
+
 **The first line gained `-n 8 --dist loadfile` at `L62` and the serial form is still correct.**
 `venv/bin/python -m pytest turbotab/ -q` on its own takes **2:00:46** and is what every count before
 `L62` was taken with. The parallel form is offered because it was **measured against the serial one
@@ -166,6 +182,37 @@ decay is the dangerous one**: an onboard that tells you to expect three reds in 
 is an onboard that makes you ignore a real regression. **Re-derive the expected-failure set whenever
 the environment moves, and name what moved it.** `numpy` is now 2.4.6, held there by `numba`, and
 `turbotab/` had never run under it before L55's sweep.
+
+### Running the app, and the only command that does it
+
+```bash
+make turbotab          # prints interpreter, environment and rev, then binds :8777
+make turbotab-check    # runs the same check and binds nothing
+```
+
+It **refuses with exit 2** on a stack it cannot import, naming the missing packages and the fix. That
+refusal is `L61-B1` and it exists because four separate drives were lost to a launch that bound a port
+on an interpreter without `sklearn`. **`make serve` is not TurboTab** — it is the old Streamlit app on
+`:8501`.
+
+**`ps` cannot tell you which interpreter is serving.** `venv/bin/python` is a symlink, so `ps` prints
+the resolved Homebrew path and a complete venv is indistinguishable from bare system Python. Use
+`lsof -p <pid> | grep site-packages`, or `curl -s localhost:8777/dev/status`, which names the
+interpreter, the prefix and the rev. **A server whose `rev` is not HEAD is a hybrid** — the page is
+re-read from disk every request while the Python behind it was loaded at start — and it says so
+itself. Restart before trusting anything it does.
+
+### Backgrounding a long run — `TEST-099`, which cost one loop three hours
+
+**`setsid` does not exist on macOS.** The shell forks, two PIDs appear, the binary is not found, and
+**nothing runs**. A loop reported the sweep as started on the strength of those PIDs and lost three
+hours to it — *"I verified a proxy instead of the thing, in a loop about exactly that."*
+
+> **A PID is not a running process. Assert the OUTPUT, never the process.**
+
+One `ls` of the log file, or a `tail` for a line the run must print, distinguishes *started* from
+*running*. It is the same check the launcher already applies to the model stack: do the real thing,
+do not consult a proxy for it.
 
 ---
 
