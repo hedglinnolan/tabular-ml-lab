@@ -42,6 +42,7 @@ import os
 import pathlib
 import sys
 
+import numpy as np
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
@@ -147,6 +148,114 @@ def _poison(project):
     project.df = poisoned
 
 
+def _blank_an_unsealed_outcome(project) -> int:
+    """Remove the outcome from unsealed rows, and return how many.
+
+    **THE SECOND PROBE, AND `_poison` STRUCTURALLY CANNOT SEE WHAT IT SEES.**
+    `_poison` overwrites values only on rows in `lockbox["labels"]`, and the
+    two populations `DRIVE-050` is about — `training_rows` and `analysis_rows`
+    — differ exactly on the outcome-BLANK rows, which are never sealed
+    (`engine.draw_holdout` opens with `eligible = df.index[y.notna()]`). So a
+    surface could read the wrong one of the two and the poison probe would stay
+    green over it, forever. That is `MISC-022`'s shape: a registry that looks
+    guarded and is not.
+
+    A scope rename cannot express this either — `analysis_rows` is a strict
+    SUBSET of `training_rows`, so `scope=TRAINING_ROWS` is still true under the
+    registry's own two-valued definition, and `Surface.__post_init__` hard-
+    refuses a third value with a `ValueError`. What was needed was a second
+    probe, and this is it.
+    """
+    target = str(project.target)
+    sealed = set(project.lockbox["labels"])
+    frame = project.df.copy()
+    unsealed = [i for i in frame.index
+                if i not in sealed and pd.notna(frame.at[i, target])]
+    assert len(unsealed) > 4, (
+        "there are no unsealed rows with an outcome to blank, so this probe "
+        "has nothing to move")
+    victims = unsealed[:max(4, len(unsealed) // 3)]
+    frame.loc[victims, target] = None
+    project.df = frame
+    return victims
+
+
+#: THE RANKING ITSELF, per surface — the thing `Surface.decides` names, and
+#: NOT the whole payload. Blanking a row and deleting it legitimately produce
+#: different table-level counts (`n_rows_without_an_outcome` moves by
+#: construction, the total row count moves), so comparing whole payloads
+#: asserts something the equivalence below does not claim and is not true.
+#: The order AND the clauses that justify it. The order alone is too coarse —
+#: measured: reverting `analysis_mask` to `training_mask` leaves the shelf's
+#: ORDER identical while every capacity clause on it cites a different `n`, so
+#: a projection that took only the keys was GREEN over the exact defect. The
+#: concern is what a user reads and it is where the population surfaces.
+_ORDER_OF = {
+    "model_shelf": lambda b: [(m.get("key"), m.get("concern"),
+                               m.get("design_notes"))
+                              for g in b.get("groups") or []
+                              for m in g.get("models") or []],
+    "selection_evidence": lambda b: b.get("ranked"),
+    "recipe_lattice": lambda b: [(o.get("key"), o.get("determinacy"),
+                                  o.get("because"),
+                                  tuple(o.get("variants") or ()))
+                                 for o in b.get("operations") or []],
+}
+
+
+@pytest.mark.parametrize("surface", rankings.training_scoped(),
+                         ids=[s.key for s in rankings.training_scoped()])
+def test_blanking_an_unsealed_outcome_is_the_same_as_removing_the_row(
+        client, surface):
+    """The probe `_poison` cannot be, and it is an EQUIVALENCE rather than a
+    movement. `DRIVE-050`.
+
+    **A movement assertion does not discriminate here, and that was measured
+    rather than assumed.** Blanking an outcome moves a training-scoped surface
+    under *both* implementations: under `analysis_rows` the row leaves the
+    population, and under `training_rows` it stays with a NaN outcome, which
+    changes the profile anyway. Reverting `analysis_mask` to `training_mask`
+    left a movement-based probe GREEN — it would have been a probe that looks
+    like a check and is not, which is `MISC-022`'s own shape arriving inside
+    the fix for it.
+
+    The equivalence does discriminate. A row whose outcome is blank can inform
+    no fit, so for a surface computed on the analysis population *blanking* it
+    and *deleting* it are the same operation and must produce byte-identical
+    output. For a surface computed on the training population they are not: the
+    blanked row is still counted, still profiled, still has its features read.
+    """
+    pid, project = _sealed(client)
+    target = str(project.target)
+
+    blanked_pid, blanked = _sealed(client)
+    victims = _blank_an_unsealed_outcome(blanked)
+
+    deleted_pid, deleted = _sealed(client)
+    frame = deleted.df.copy()
+    assert set(victims) <= set(frame.index)
+    deleted.df = frame.drop(index=list(victims))
+
+    # THE CONTROL: the two frames really do differ in the way the equivalence
+    # is about — same rows-with-an-outcome, different total rows.
+    assert len(blanked.df) - len(deleted.df) == len(victims)
+    assert (int(blanked.df[target].notna().sum())
+            == int(deleted.df[target].notna().sum()))
+
+    order = _ORDER_OF[surface.key]
+    after_blank = _stable(order(READS[surface.key](client, blanked_pid,
+                                                   blanked)))
+    after_delete = _stable(order(READS[surface.key](client, deleted_pid,
+                                                    deleted)))
+    assert after_blank == after_delete, (
+        f"{surface.key} answers differently when {len(victims)} unsealed rows "
+        f"have their outcome BLANKED than when the same rows are DELETED. No "
+        f"model can be fitted on either version of those rows, so a surface "
+        f"that tells them apart was computed on a population that includes "
+        f"rows no model will ever see. It decides {surface.decides}; it is "
+        f"served by {surface.served_by}.")
+
+
 def _stable(value):
     return json.dumps(value, sort_keys=True, default=str)
 
@@ -248,22 +357,117 @@ def test_the_served_row_count_excludes_the_lockbox(client):
     it. A separately-computed count keeps reporting the training total after
     somebody reverts the mask, which is the served number lying about a
     computation nobody performed.
+
+    THE LOOP OVER THREE ROUTES IS SPLIT, AND `TEST-101` IS WHY.
+    `n_rows_seen` genuinely means two different things depending on the route,
+    and one assertion over all three could only ever be right about one of
+    them. `/models` and `/recipes` narrowed to the ANALYSIS population at
+    `DRIVE-045` — the training rows minus those with no outcome, which is what
+    a model will actually be fitted on. `/selection/evidence` still counts off
+    `project.training_mask` (`api.py:2498`) and serves no
+    `n_rows_without_an_outcome` at all. Driven on one project: 225, 225, 825.
+
+    **The old single assertion passed only because of the fixture.**
+    `clinic_visits.csv` has zero NaN in `hba1c`, so `analysis_rows ==
+    training_rows` and both meanings coincide. It is not swapped — it is shared
+    with the poison probe, its positive control and five parametrized cases —
+    so a second fixture WITH blank outcomes is added beside it, and it is what
+    makes the split mean anything: on `clinic_visits.csv` the correction is
+    98 == 98 before and after, which is no signal at all.
+
+    `/selection/evidence`'s count is `GUIDED-244`, filed and deliberately
+    deferred: fixing it in the same loop that splits this would make the split
+    stale in the loop that wrote it.
     """
     pid, project = _sealed(client)
     n_sealed = len(set(project.lockbox["labels"]))
     assert n_sealed, "nothing was held out"                          # control
     n_all = len(project.df)
 
-    for path in (f"/project/{pid}/models",
-                 f"/project/{pid}/selection/evidence",
-                 f"/project/{pid}/recipes"):
+    for path in (f"/project/{pid}/models", f"/project/{pid}/recipes"):
         body = client.get(path).json()
         assert "n_rows_seen" in body, (
             f"{path} serves a ranking and does not say how many rows it saw")
-        assert body["n_rows_seen"] == n_all - n_sealed, (
-            f"{path} ranked on {body['n_rows_seen']} rows of {n_all} with "
-            f"{n_sealed} sealed")
+        assert body["n_rows_seen"] == len(project.analysis_rows), (
+            f"{path} ranked on {body['n_rows_seen']} rows; a model will be "
+            f"fitted on {len(project.analysis_rows)}")
         assert body.get("n_rows_withheld") == n_sealed
+
+    # THE THIRD ROUTE, AND ITS COUNT IS A DIFFERENT POPULATION ON PURPOSE —
+    # for now. `GUIDED-244`.
+    evidence = client.get(f"/project/{pid}/selection/evidence").json()
+    assert "n_rows_seen" in evidence, (
+        "/selection/evidence serves a ranking and does not say how many rows "
+        "it saw")
+    assert evidence["n_rows_seen"] == n_all - n_sealed, (
+        f"/selection/evidence counted {evidence['n_rows_seen']} of {n_all} "
+        f"with {n_sealed} sealed; it counts off `training_mask`, so this is "
+        f"the training total and not the analysis one")
+    assert evidence.get("n_rows_withheld") == n_sealed
+
+
+def test_the_three_routes_disagree_about_what_n_rows_seen_means(client):
+    """`TEST-101`, made falsifiable. The split above is unfalsifiable on
+    `clinic_visits.csv`, whose target has no blanks — 98 == 98 either way.
+
+    So this drives a frame that HAS blank outcomes and asserts the disagreement
+    directly: two routes report the analysis population, one reports the
+    training population, and the gap between them is exactly the unsealed rows
+    with no outcome. **"Still green" does not mean "no change needed"**, and
+    this is the assertion that can tell the difference.
+
+    When `GUIDED-244` lands, this test is where the third route's expectation
+    moves — deliberately, rather than by a loop discovering the split was stale.
+    """
+    n_rows, n_labeled = 300, 120
+    rng = np.random.default_rng(7)
+    frame = pd.DataFrame({
+        "age": rng.normal(50, 12, n_rows).round(1),
+        "bmi": rng.normal(27, 5, n_rows).round(1),
+        "sbp": rng.normal(128, 16, n_rows).round(1),
+        "chol": rng.normal(190, 30, n_rows).round(1),
+    })
+    outcome = pd.Series(rng.normal(7.0, 1.2, n_rows).round(2), dtype=object)
+    outcome.iloc[n_labeled:] = None
+    frame["hba1c"] = outcome
+    pid = client.post("/project", files={
+        "file": ("blank_outcomes.csv",
+                 frame.to_csv(index=False).encode(), "text/csv")}
+    ).json()["id"]
+
+    def decide(kind, **payload):
+        r = client.post(f"/project/{pid}/decision",
+                        json={"kind": kind, "payload": payload})
+        assert r.status_code == 200, (kind, r.text[:250])
+
+    decide("set_target", column="hba1c")
+    decide("set_purpose", answer="prediction")
+    decide("set_grain", answer="one_row_per_person")
+    decide("set_eligibility", answer="everyone")
+    decide("seal", fraction=0.25)
+    project = api.STORE.get(pid)
+
+    # THE CONTROL, on the axis that matters: without it every assertion below
+    # is satisfied by both meanings, which is the whole of `TEST-101`.
+    assert len(project.training_rows) > len(project.analysis_rows), (
+        "this frame has no rows whose outcome is blank, so the three routes "
+        "cannot disagree and nothing below is a measurement")
+
+    shelf = client.get(f"/project/{pid}/models").json()
+    recipes = client.get(f"/project/{pid}/recipes").json()
+    evidence = client.get(f"/project/{pid}/selection/evidence").json()
+
+    analysis, training = len(project.analysis_rows), len(project.training_rows)
+    assert shelf["n_rows_seen"] == recipes["n_rows_seen"] == analysis
+    assert evidence["n_rows_seen"] == training
+    assert shelf["n_rows_seen"] != evidence["n_rows_seen"], (
+        "the three routes agree, so `n_rows_seen` means one thing and this "
+        "test's premise — and the split above — is stale")
+    blank_unsealed = int((project.training_mask
+                          & project.df["hba1c"].isna()).sum())
+    assert training - analysis == blank_unsealed, (
+        f"the gap between the two meanings is {training - analysis} and the "
+        f"unsealed rows with no outcome number {blank_unsealed}")
 
 
 def test_every_ranking_primitive_is_called_only_from_a_declared_site():

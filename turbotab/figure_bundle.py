@@ -665,9 +665,13 @@ def _coefficients_and_model(project):
     # which is the same composition path and the same rows and therefore the
     # same model. Not a second engine: `pipeline_plan.compose` is the only
     # thing that builds a pipeline in this app.
-    rows = project.training_rows
+    # THE PROPERTY. `project.py:1948-1950` says in as many words that three
+    # inline copies of one rule is why `training_rows` became a property, and
+    # this was one of five hand-spelled copies of `analysis_mask` still
+    # standing after `DRIVE-045` gave the rule a name. `GUIDED-092` one level
+    # down.
+    rows = project.analysis_rows
     target = str(project.target)
-    rows = rows[rows[target].notna()]
     if rows.empty:
         return [], None, []
     X = _training.feature_frame(project, rows)

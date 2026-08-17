@@ -2907,8 +2907,13 @@ async def get_instability(project_id: str) -> Dict[str, Any]:
                        if k != "per_row"},
         }
         if result.get("task_type") == "classification":
-            rows = project.training_rows
-            rows = rows[rows[str(project.target)].notna()]
+            # THE PROPERTY, not a fourth inline copy of its rule.
+            # `project.py:1948-1950` says in as many words that three inline
+            # copies of one rule is why `training_rows` became a property;
+            # this is `GUIDED-092` one level down, and it was still spelled
+            # out by hand at five sites after `DRIVE-045` gave the rule a
+            # name.
+            rows = project.analysis_rows
             positive = sorted(rows[str(project.target)].dropna().unique())[-1]
             y = (rows[str(project.target)] == positive).astype(float)
             calib = _specs.calibration_instability_payload(result, y)

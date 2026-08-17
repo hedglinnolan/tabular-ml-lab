@@ -601,8 +601,12 @@ def train(project: Any, model_keys: Sequence[str], *,
         # to give is that no held-out row informs a fitted statistic, and THAT
         # is true and is what it now says — the claim is corrected to the one
         # the door can keep, not dropped.
+        # `X_train` is `features[has_y & ~is_test]` — the analysis population,
+        # not the training one. `DRIVE-050`'s class: the number is right and
+        # the label named a wider set of rows than the number counts.
         f"Every statistic in it is fitted once over the {int(len(X_train)):,} "
-        f"training rows, and the held-out rows inform none of them.")
+        f"training rows with an outcome, and the held-out rows inform none of "
+        f"them.")
 
     if run.exploratory:
         # The number is honest and what it MEANS is not what a clean split

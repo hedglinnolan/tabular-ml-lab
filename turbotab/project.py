@@ -1892,7 +1892,20 @@ class AnalysisProject:
             if decision.kind in said:
                 said[decision.kind] = decision.text
 
-        rows = self.training_rows
+        # `analysis_rows`, NOT `training_rows`, AND THE SHELF IS THIRTY-THREE
+        # LINES BELOW (`DRIVE-050`). `model_shelf_ranked` ranks on
+        # `self.analysis_rows` — that is `DRIVE-045`, same class, same file —
+        # while this composed the sentence that DESCRIBES that ranking from the
+        # wider population. Driven on a 900-row fixture (300 people × 3 visits,
+        # 600 blank outcomes, 25% seal): the one `/models` response served
+        # `n_rows_seen: 225` and, thirty lines of source away, *"This order was
+        # computed from 825 rows, which are 275 people."* The correct pair is
+        # 225 rows / 75 people.
+        #
+        # **THE PEOPLE COUNT IS THE ONE A REPEATED-MEASURES READER ACTS ON**,
+        # and it is derived from the same frame, so it was wrong by the same
+        # mistake and nothing had named it.
+        rows = self.analysis_rows
         group_col = (self.grain or {}).get("group_col")
         n_people = None
         if group_col and group_col in rows.columns:

@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**423 of 978 closed.**
+**426 of 979 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 477 |
+| `OPEN` | 475 |
 | `PARTIAL` | 78 |
-| `FIXED` | 413 |
+| `FIXED` | 416 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 477
+## OPEN — 475
 
 
-### Guided-door drive feedback — 78
+### Guided-door drive feedback — 77
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -57,7 +57,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-232` | high | Guided's Explain step cannot answer the question the product owner built it for: permutation importance reports a metric drop per feature and cannot show how two model families carve the same signal… | `turbotab/explain.py:141 uses sklearn.inspection.permutation_importance; import shap appears only in…` | THE DESIGN IS SETTLED AND RECORDED: PRODUCT_VISION.md 06c, three rulings made by the product owner on 2026-08-09. (1) A disagreement between an attribution and the pack's… |
 | `GUIDED-233` | high | There is no EXPLAINABILITY pack, so every threshold the explanation suite needs would ship unsourced into the one subsystem whose whole job is calibrated honesty | `grep over the five research packs returns 0 for shap/shapley, 0 for attribution, 0 for feature importance and…` | THE PRODUCT OWNER SUPPLIED A DOMAIN-AGNOSTIC EXPLAINABILITY PLAYBOOK ON 2026-08-09 AND NAMED ITS ROLE EXACTLY: 'I see it as a useful mould for what we actually want to form into… |
 | `GUIDED-238` | high | Half the figure checklist cannot fail: of 85 items, 43 read a constant and only 16 are genuinely falsifiable, so a scored checklist reports a compliance it never checked | `reported by the L57 execution agent's Part B reconnaissance, 2026-08-09; the named instance is…` | FILED BY THE ADJUDICATOR FROM THE EXECUTION AGENT'S HANDBACK, BECAUSE IT EXISTED ONLY IN A MESSAGE AND THE AGENT WAS ABOUT TO BE CLEARED. It stopped before Part B and therefore… |
-| `DRIVE-050` | high | A FOURTH surface reasons about the pre-fix population, on the same payload as L62-A's fix and thirty lines from it -- and the sentence it composes explicitly claims it is what the model order was… | `turbotab/api.py:2237; turbotab/project.py:1895,1899,1908 vs :1928; turbotab/models.py:371-380…` | FOUND IN ADJUDICATION BY TWO INDEPENDENT VERIFIERS, BOTH DRIVING RATHER THAN GREPPING. The loop's own sweep missed it and MISC-022's completeness claim is therefore false; it is… |
 | `DRIVE-051` | high | n_rows_withheld and n_rows_without_an_outcome overlap on a reachable path, so the served counts sum past the size of the table and 'withheld' still silently means sealed OR unusable | `turbotab/project.py:2520-2540; turbotab/api.py:2251-2252, :2339-2340…` | The report caught the near-miss in the other direction and said so plainly -- 'the fix committed the defect once before I caught it' -- but the CURRENT state is still wrong, which… |
 | `GUIDED-244` | high | /selection/evidence serves an n_rows_seen that is the count of NO computation on its own payload -- 825 beside scores every one of which was a 225-row statistic -- and the obvious one-line repair… | `turbotab/api.py:2498; turbotab/selection.py:344-345, :352, :382, :385, :445-446; driven at bf7e148 by two…` | SPLIT OUT OF DRIVE-050 BY THE ADJUDICATOR AT L63, AND THE SPLIT IS A RULING. DRIVE-050 mentions this route in one trailing sentence as 'reports the pre-fix population too'. That… |
 | `GUIDED-245` | high | RFWrapper does not forward `classes_`, so a Random Forest ships 120 held-out probabilities with no recorded `positive_label` -- and because `predictions_for` tested that condition on `scored[0]`… | `Driven on clinical_risk.csv at L63-B3. ['rf','logreg'] -> has_predictions False…` | FILED RATHER THAN FIXED, DELIBERATELY. It is a different defect class from L63-B's subject -- B is *which model is this figure about* and this is *which event are these… |
@@ -251,7 +250,7 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` | Unchanged at HEAD. Behaviorally harmless because the bodies are identical, and that is exactly why it is worth recording: it is direct evidence the file was edited by paste and… |
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | Accurate at HEAD: structurally portable as-is, and the row's own last clause is the condition - add tests BEFORE the port, not after. Two live defects in this file argue the point… |
 
-### Migration safety net — 57
+### Migration safety net — 56
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -282,7 +281,6 @@ Nothing is closed without a regression test named after it.
 | `TEST-052` | high | A mandatory FIELD standing in for a mandatory RENDERING - a raising constructor made the datum unskippable and the obligation it served was about the reader | `L50-F2, and it is sharper than trap #6. Evidence.__post_init__ REFUSES to construct a DISPUTED claim with no…` | Filed as the CLASS behind GUIDED-211, per AGENT_ONBOARD 08 check 1. sibling-of: GUIDED-211. |
 | `TEST-060` | high | Half of a fan-out's regression tests passed with the entire fan-out's code reverted - the agent that writes the fix and the test in one pass will write a test the fix does not need | `L51-C. Eight tests came back from four subagents. Reverting all 16 changed source files to HEAD left four of…` | Cheap detector available now and worth having before the rule: run the loop's new tests with the loop's own diff reverted. It is one command, it needs no per-row mapping, and it… |
 | `TEST-062` | high | All seven xfail guards in the A5/B6 registry are unconditional pytest.fail and none reads shipped code, so each is green over the defect CONDITION even though the file's ledger-drift check is sound | `Found by an L52-B verifier while checking a neighbouring row, and confirmed by the adjudicator.…` | AND L53 TRIPPED LINE 45 DELIBERATELY. Closing AUDIT-022 and 023 in Part A and AUDIT-032 in Part C put three rows in the state line 45 exists to catch - marked xfail here and… |
-| `TEST-101` | high | Two committed tests make mutually exclusive claims about the same field -- one asserts the pre-fix population for n_rows_seen and one asserts the post-fix population -- and BOTH pass | `found in L62 adjudication by two independent verifiers; test_the_shelf_reasons_about_rows_a_model_will_see.py…` | This is the sharpest thing the fan-out found after DRIVE-050, and it is invisible to every gate the project has. ledger.py check asks whether a FIXED row NAMES a test; nothing… |
 | `TEST-104` | high | `assert_identity_intact` has exactly one call site and no repair path reaches it, so a post-seal row drop silently shrinks the served held-out count below the lockbox's own label list -- and the… | `turbotab/project.py:2373-2383 (definition), :2154 (the only call site), :2605-2651 (apply_fix, which does not…` | DRIVEN, NOT REASONED. Found while verifying DRIVE-051; the recon had marked this UNDETERMINED with 'I read the method; I did not trace its callers', and the verifier traced them… |
 | `TEST-105` | high | DEFECT CLASS - a guard whose POPULATION is filtered by the compliance predicate, so the defective population is exactly what the filter removes -- six instances, and one of them is inside the… | `the six sites above, re-derived at bf7e148; the contrast case at turbotab/test_every_writer_that_can_blank_a_c…` | SPLIT FROM MISC-023 BY THE ADJUDICATOR, AND THE SPLIT IS THE POINT. The METHOD half -- a substring over globbed files standing in for behavior -- is NOT new: it is AGENT_ONBOARD… |
 | `TEST-027` | medium | utils/persistence.py is dead code — zero importers — yet contains the reproducibility manifest the new Project layer needs | `utils/persistence.py:1-158; zero import sites repo-wide` | Unchanged at HEAD - verified unreachable, not merely uncovered. The trap the row names is the one to record: it is tempting to adopt this wholesale as the Project serializer, and… |
@@ -737,10 +735,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 413
+## FIXED — 416
 
 
-### Guided-door drive feedback — 158
+### Guided-door drive feedback — 159
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -852,6 +850,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-237` | high | PRODUCT_VISION.md 06c shipped an explainability design whose instrument was misnamed, whose support claim was measurably false, and which asserted an absence the project's own pack already… | `docs/turbotab/PRODUCT_VISION.md#06c` | **test:** `docs/turbotab/PRODUCT_VISION.md §06c — the rewritten section is the fix; no executable guard exists for a design document, and the honest form of that is this category… |
 | `DRIVE-032` | high | The positive-class question is never asked for a numeric 0/1 target. The register says target-positive-class is always asked and never pre-selected at any confidence; on a binary Int64 target no such… | `verified at b4b8246: interview plans for step data/explore/features/preprocess on a 0/1 Int64 target serve no…` | **test:** `turbotab/test_the_event_is_chosen_and_never_guessed.py::test_an_unanswered_event_cannot_reach_a_fitted_label` — TWO DEFECTS, AND THE ROW NAMED ONE. The adjudicator's… |
 | `DRIVE-045` | high | On a target with missing values the model shelf reasons about rows-minus-holdout instead of trainable rows, so its capacity advice is computed on a denominator four times too large | `run 5 B3 and open q3; fit reported 945 held out / 5,352 trained on the same page` | **test:** `turbotab/test_the_shelf_reasons_about_rows_a_model_will_see.py::test_the_shelf_is_ranked_on_the_rows_a_model_will_see` — FIXED AT L62-A2, AND THE SWEEP FOUND A THIRD… |
+| `DRIVE-050` | high | A FOURTH surface reasons about the pre-fix population, on the same payload as L62-A's fix and thirty lines from it -- and the sentence it composes explicitly claims it is what the model order was… | `turbotab/api.py:2237; turbotab/project.py:1895,1899,1908 vs :1928; turbotab/models.py:371-380…` | **test:** `turbotab/test_the_shelf_reads_the_recorded_design.py::test_the_shelf_says_which_rows_it_ranked_and_how_many_people` — FOUND IN ADJUDICATION BY TWO INDEPENDENT… |
 | `GUIDED-242` | high | The forest plot silently picks one model out of N and names none, so the same rows publish different coefficients depending on which checkbox the user ticked first -- GUIDED-236's class, one figure… | `turbotab/figure_bundle.py:510,:544,:564,:493; turbotab/figure_specs.py:2392,:2521-2525; contrast…` | **test:** `turbotab/test_a_figure_says_which_model_it_is_about.py::test_the_forest_plot_names_the_model_its_coefficients_came_from` — FOUND BY THE L63 RECONNAISSANCE FAN-OUT, BY… |
 | `GUIDED-243` | high | The ROC's bootstrap confidence interval is seeded once outside the per-model loop, so a model's published 95% CI is a fact about which checkbox was ticked first rather than about the data… | `turbotab/figure_specs.py:2230 (rng created), :2233 (the loop it is outside of), :2242 (the draw); measured at…` | **test:** `turbotab/test_a_figure_says_which_model_it_is_about.py::test_a_models_interval_is_the_same_alone_first_and_last` — FOUND BY THE L63 FAN-OUT'S VERIFIER, AGAINST A RECON… |
 | `GUIDED-246` | high | Every calibration plot this app has ever drawn was captioned "Calibration of model on N observations" -- the literal word `model` -- because the only live caller drops the `model_name` kwarg and… | `figure_specs.calibration_payload takes `model_name: str = "model"` (:68-69) and publishes it at :98; the…` | **test:** `turbotab/test_a_figure_says_which_model_it_is_about.py::test_the_calibration_caption_names_the_model_it_drew` — FOUND WHILE RULING THE COMPANION ASYMMETRY, which is the… |
@@ -976,7 +975,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Migration safety net — 39
+### Migration safety net — 40
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1002,6 +1001,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-087` | high | /dev/status names the build but not the interpreter, and the interpreter is what caused the dataset-wide /models 500 that cost three drives | `turbotab/api.py dev_status; ml/model_registry.py:14-19` | **test:** `turbotab/test_the_app_says_which_interpreter_answered.py::test_the_page_renders_a_broken_environment_rather_than_only_serving_it` — FIXED AT L61-B3. _SERVED_BUILD now… |
 | `TEST-092` | high | L59-B added n_rows_before_outcome_drop to the lockbox and not to the archive's explicit whitelist, so every save has dropped it since 60dfcf5 -- and the guard that says so has been red for two loops… | `turbotab/archive.py build_members lockbox.json whitelist; turbotab/engine.py:1054; turbotab/grain.py:462…` | **test:** `tests/test_the_archive_carries_every_field.py::test_every_key_of_the_nested_whitelists_survives` — Filed BEFORE the sweep that would have found it again, so the tree is… |
 | `TEST-098` | high | The parallel sweep has cross-file filesystem races that --dist loadfile does not prevent -- one can silently turn a guard GREEN -- and none of them is disclosed beside the recommendation to adopt it | `measured during L62 adjudication against the two sweep logs at d464e0b; TEST-096 states the loadfile…` | **test:** `tests/test_no_test_writes_a_path_git_tracks.py::test_no_tracked_test_writes_a_path_git_tracks` — THIS IS WHY THE XDIST ADOPTION IS HELD RATHER THAN REFUSED. The… |
+| `TEST-101` | high | Two committed tests make mutually exclusive claims about the same field -- one asserts the pre-fix population for n_rows_seen and one asserts the post-fix population -- and BOTH pass | `found in L62 adjudication by two independent verifiers; test_the_shelf_reasons_about_rows_a_model_will_see.py…` | **test:** `turbotab/test_every_ranking_is_computed_on_the_training_rows.py::test_the_three_routes_disagree_about_what_n_rows_seen_means` — This is the sharpest thing the fan-out… |
 | `GUIDED-100` | medium | The propagation probe itself: for each recorded decision kind, two projects identical except for that answer, and something downstream must differ | `turbotab/test_a_recorded_decision_changes_something.py; 41 kinds recorded, 23 probed (24 flips), 6 asserted…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_a_decision_about_the_analysis_reaches_the_fitted_pipeline` — BUILT AT L35-E as the instrument that would… |
 | `TEST-041` | medium | Four turbotab test files read figures.REGISTRY, which is populated only as an import side effect of figure_specs, and one of them asserted a count over it before anything had imported the populator… | `turbotab/figures.py:REGISTRY is an empty dict filled by turbotab/figure_specs.py's module body…` | **test:** `turbotab/test_the_registry_cannot_be_observed_empty.py::test_a_cold_import_of_figures_alone_sees_the_specs` — FOUND WHILE FIXING TEST-040 AND IT IS THE SAME PROPERTY… |
 | `TEST-046` | medium | A test docstring that names a page control its body never presses is trap #3b in its page-control form, and nothing detected it - the standing answer was to read docstrings against bodies by hand | `L48-A2. AGENT_ONBOARD.md 07 names trap #3b and the standing answer found GUIDED-145 once and nothing for five…` | **test:** `turbotab/test_a_test_that_names_a_control_presses_it.py::test_no_test_names_a_control_its_body_never_touches` — Both instances fixed rather than declared. NOT COVERED… |
@@ -1107,7 +1107,7 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-027` | medium | A control rendered a state it had not been told: an unanswered /seal body of {} made can_draw undefined, so the seal card drew 'Draw it now — not yet' with an empty reason beside it | `turbotab/web/index.html renderSeal` | **test:** `turbotab/test_the_seal_can_be_drawn_from_the_page.py::test_a_seal_payload_that_did_not_arrive_draws_nothing` — Revert probe: the typeof guard removed -> RED for 'an… |
 | `DRIVE-042` | medium | L60-D re-routed the energy branch and L60-E removed energy from the dropdown, and between them a page claim lost its subject twice while reading as downstream of the training refusal | `turbotab/test_the_page_says_what_the_record_says.py:415-431; turbotab/nutrition.py:1110-1130 at 7e34743…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim` — Fixed at L61-A. |
 
-### Other — 17
+### Other — 18
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1128,6 +1128,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-007` | medium | Median imputation is the silent default and nothing states what it costs, which the clinical pack marks SETTLED as bad | `ml/pipeline.py:213; pages/05_Preprocess.py:1082; research/CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2…` | **test:** `tests/integration/test_classic_states_the_cost_of_median_imputation.py::test_the_smart_defaults_path_states_what_its_median_fill_costs` — L53-C, fanned out to four… |
 | `AUDIT-013` | medium | The Preprocess page reads capabilities.requires_scaled_numeric directly instead of resolving through the recipe table, so a pack's override cannot reach it | `pages/05_Preprocess.py:498,835; turbotab/recipes.py resolve() and the caps:requires_scaled_numeric selector` | **test:** `tests/integration/test_the_preprocess_page_asks_the_recipe_table.py::test_a_pack_row_reaches_the_preprocess_page` — L53-C, fanned out to four chunks PARTITIONED BY FIX… |
 | `MISC-016` | medium | The feature register has no rows for two shipped Classic pages and nothing gates its coverage, so a capability can be absent from the register without any check noticing | `docs/turbotab/FEATURE_REGISTER.md: 132 rows, zero matching pages/08_Sensitivity_Analysis (568 lines) and zero…` | **test:** `tests/test_a_specification_is_a_claim.py::test_every_classic_page_has_a_register_row_or_a_written_exemption (11 parametrizations) and… |
+| `MISC-027` | medium | A count filtered to rows with an outcome, printed under the label "training rows" -- the number is right and its name describes a strictly larger population. DRIVE-050's class, and two of the five… | `Five sites at 98d410f: instability.py:157 (the cluster-bootstrap sentence), instability.py:351 (`scored_on`…` | **test:** `turbotab/test_a_count_is_labeled_with_the_population_it_counts.py::test_a_publication_caption_names_the_population_it_counted` — FILED AS A CLASS BECAUSE THE INSTANCE… |
 
 ### Models / training / eval — 13
 

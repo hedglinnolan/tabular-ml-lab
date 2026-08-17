@@ -154,7 +154,8 @@ def scheme_for(project: Any, rows: pd.DataFrame) -> Dict[str, Any]:
         "rows_per_group": round(per_group, 2),
         "because": (
             f"You recorded that one `{group_col}` can appear in more than one "
-            f"row — {n_groups:,} of them across {len(rows):,} training rows, "
+            f"row — {n_groups:,} of them across {len(rows):,} training rows "
+            f"with an outcome, "
             f"about {per_group:.1f} rows each — so each resample draws "
             f"{n_groups:,} whole {group_col}s with replacement and takes all "
             f"of their rows. Drawing rows instead would pull the same "
@@ -225,8 +226,9 @@ def run(project: Any, model_key: str, *, b: int = B_RESAMPLES,
     target = str(project.target)
     group_col = (project.grain or {}).get("group_col")
 
-    rows = project.training_rows
-    rows = rows[rows[target].notna()]
+    # THE PROPERTY. See `project.py:1948-1950` — `GUIDED-092` one level
+    # down, and this was one of five inline copies of `analysis_mask`.
+    rows = project.analysis_rows
     if len(rows) < _training.MIN_TEST_ROWS:
         raise InstabilityRefusal(
             f"{len(rows)} training row(s) with an outcome is too few to "
@@ -348,8 +350,15 @@ def run(project: Any, model_key: str, *, b: int = B_RESAMPLES,
         "seeds_used": seeds,
         "failures": failures,
         "mape": _mape(original, matrix),
-        "scored_on": "training rows only (the held-out rows are not resampled "
-                     "and not predicted)",
+        # `DRIVE-050`'s class one file over. `rows` reached here already
+        # narrowed to those with an outcome (`:228-229`), so *"training rows
+        # only"* named a wider population than the number beside it, and
+        # `figure_specs.py` prints this same `n` labeled *"training rows"* in
+        # two PUBLICATION CAPTIONS. The correct phrasing was four lines from
+        # the wrong one, at the refusal above.
+        "scored_on": "training rows with an outcome (the held-out rows are "
+                     "not resampled and not predicted, and a row with no "
+                     "outcome cannot be scored against one)",
         # `GUIDED-114`. WHICH SCHEME WAS DRAWN, always, on every project. The
         # finding was two things: rows were drawn on grouped tables, and the
         # payload said nothing about it — 141,126 characters across eighteen

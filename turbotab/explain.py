@@ -153,6 +153,17 @@ def importance(project: Any, model_key: str, *, seed: int = 42,
     group_col = (project.grain or {}).get("group_col")
     features = _training.feature_frame(project, table)
 
+    # NOT COLLAPSED ONTO `project.analysis_rows`, AND HERE IS WHY — the
+    # `identifiers.py:205-222` model, which reads `training_rows` on purpose
+    # and says so rather than leaving the next reader to wonder.
+    #
+    # `analysis_rows` is `has_y & ~is_test` over `project.df`. This needs BOTH
+    # halves of that split — `X_test` is `has_y & is_test`, the held-out rows
+    # with an outcome, which has no property equivalent — and it needs them
+    # indexed against `features`, which is built from `working_table` rather
+    # than from `df`. Swapping the training half alone would leave two
+    # derivations of one mask in one function that must agree, which is worse
+    # than one honest copy. `DRIVE-050`, and `GUIDED-092` one level down.
     sealed = set(project.lockbox["labels"]) if project.lockbox else set()
     is_test = pd.Series([i in sealed for i in table.index], index=table.index)
     has_y = table[target].notna()

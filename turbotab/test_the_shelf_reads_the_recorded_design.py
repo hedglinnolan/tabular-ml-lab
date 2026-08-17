@@ -109,6 +109,98 @@ def _project(shape: str, purpose: Optional[str] = None,
     return p
 
 
+def _project_with_blank_outcomes(blank_from: int = 400) -> AnalysisProject:
+    """The shape `DRIVE-050` needs and NO fixture in this repository has.
+
+    Surveyed at L63: every one of the four fixtures with a genuine
+    people-repeat roster — `clinical_labs`, `clinical_longitudinal`,
+    `dietary_recalls`, `longitudinal_visits` — has a 100% complete target, and
+    two of them contain no NaN in any column at all. The one file that looks
+    like it has both (`metabolomics_paired_logged.csv`: 36 subjects × 2, eight
+    blank `responder`) is a false positive — its eight blank outcomes are
+    exactly its eight blank-`subject_id` QC rows, so the blanks belong to rows
+    with no person rather than to people whose visits lack an outcome.
+
+    **Without blank outcomes `analysis_rows == training_rows` and both the
+    correct and the incorrect implementation satisfy every assertion**, which
+    is why this defect survived `DRIVE-045` in the same file, thirty-three
+    lines from the fix. So the frame is derived from the real longitudinal
+    fixture with its outcome blanked from a row onward — a real roster, a real
+    seal, and the two populations genuinely different.
+    """
+    fixture, target, task, group_col = SHAPES["binary_numeric_repeated"]
+    df = pd.read_csv(DATA / fixture)
+    df.loc[df.index[blank_from:], target] = None
+    p = AnalysisProject.from_dataframe(df, fixture)
+    p.set_target(target, task, "high", [])
+    p.set_purpose(M.INFERENCE)
+    p.set_grain(G.PEOPLE_REPEAT, group_col=group_col)
+    p.set_repeat_kind("time_points")
+    p.set_unit_of_analysis(M.UNIT_RECORD)
+    p.set_eligibility(E.EVERYONE)
+    drawn = engine.draw_holdout(p.df, target, task, p.grain)
+    p.seal_lockbox(drawn["labels"], **drawn["disclosure"])
+    return p
+
+
+def test_the_shelf_says_which_rows_it_ranked_and_how_many_people(capsys):
+    """`DRIVE-050`. The sentence describing the ranking counted a wider
+    population than the ranking, and both numbers reached a reader.
+
+    `recorded_design()` set `rows = self.training_rows`; thirty-three lines
+    below, `model_shelf_ranked` ranks on `self.analysis_rows`. Driven on a
+    900-row fixture the ONE `/models` response served `n_rows_seen: 225` and,
+    in the same payload, *"This order was computed from 825 rows, which are 275
+    people."*
+
+    **The people count is the one a repeated-measures reader acts on**, and no
+    row had named it before `L63`. It is derived from the same frame, so it was
+    wrong by the same mistake.
+    """
+    project = _project_with_blank_outcomes()
+
+    # THE CONTROL THE FILE LACKED, and on the axis that matters. The existing
+    # control is `people < rows`, which is about the grain and is satisfied by
+    # both implementations.
+    n_training = len(project.training_rows)
+    n_analysis = len(project.analysis_rows)
+    assert n_training > n_analysis, (
+        f"the fixture has no rows whose outcome is blank ({n_training} "
+        f"training, {n_analysis} analysis), so it cannot tell the two "
+        f"implementations apart and this test proves nothing")
+
+    design = project.recorded_design()
+    assert design.n_rows == n_analysis, (
+        f"the recorded design says the order was computed from "
+        f"{design.n_rows} rows; the shelf ranked on {n_analysis}")
+    assert design.n_people == project.analysis_rows["subject_id"].nunique()
+
+    entries, ranked_on = project.model_shelf_ranked()
+    assert design.n_rows == int(ranked_on.n_rows), (
+        f"the sentence says {design.n_rows} and the profile the shelf actually "
+        f"ranked on holds {ranked_on.n_rows} — one response, two numbers, "
+        f"thirty-three lines of source apart")
+
+    # THE SENTENCE, not the field. `DRIVE-050`'s effect string contains no `n=`
+    # token at all, which is why `L63`-era regexes scoped to `model["concern"]`
+    # could never have seen this.
+    statements = {s["answer"]: s for s in M.design_statement(design)}
+    effect = statements["repeat_kind"]["effect"]
+    assert f"{n_analysis:,} rows" in effect, (
+        f"the statement does not say the count the order was computed from: "
+        f"{effect!r}")
+    assert f"{n_training:,} rows" not in effect, (
+        f"the statement still cites the training-row count: {effect!r}")
+    people = project.analysis_rows["subject_id"].nunique()
+    assert f"{people:,} people" in effect, effect
+    assert f"{project.training_rows['subject_id'].nunique():,} people" \
+        not in effect or people == project.training_rows["subject_id"].nunique()
+    with capsys.disabled():
+        print(f"\n  training {n_training} rows / "
+              f"{project.training_rows['subject_id'].nunique()} people · "
+              f"ranked on {n_analysis} rows / {people} people")
+
+
 def _keys(entries) -> List[str]:
     return [e.key for e in entries]
 
@@ -346,8 +438,15 @@ def test_the_shelf_level_statement_quotes_both_repeat_answers_and_says_the_numbe
         "answers are recorded and both are quoted, because the unit is what "
         "decides whether the repeats were resolved before the seal")
 
-    rows = len(project.training_rows)
-    people = project.training_rows["subject_id"].nunique()
+    # `analysis_rows`, NOT `training_rows` — `DRIVE-050`. This read
+    # `len(project.training_rows)` and passed either way, because
+    # `binary_numeric_repeated` has no blank outcome: the two populations are
+    # the same frame here, so the assertion could not tell the implementations
+    # apart. The falsifying fixture is
+    # `test_the_shelf_says_which_rows_it_ranked` below; this stays on the
+    # correct axis so the two agree about what the sentence means.
+    rows = len(project.analysis_rows)
+    people = project.analysis_rows["subject_id"].nunique()
     assert people < rows, (
         "the fixture's training rows are already one per person, so the "
         "rows-versus-people claim has nothing to distinguish")

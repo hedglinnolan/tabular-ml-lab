@@ -59,7 +59,9 @@ design does not reorder anything, because it does not differentiate: every model
 in the registry treats rows as independent, so the concern is uniform and
 demoting all of them is a no-op dressed as a judgment. What it does instead is
 **say the number** — how many rows the order was computed from, and how many
-people those rows are. `GUIDED-235` is the row for re-ranking on the effective
+people those rows are. Both are counted on the **analysis rows**, which is what
+the ranking is computed on: `DRIVE-050`, and see `RecordedDesign`'s own field
+contract. `GUIDED-235` is the row for re-ranking on the effective
 sample size; that is a change to what `model_coach` is asked, not a sentence,
 and it is not made in the same loop as the sentence.
 """
@@ -156,7 +158,16 @@ class RecordedDesign:
 
     `n_rows` / `n_people` describe the rows the shelf was RANKED on, not the
     table — the seal is drawn before the shelf is offered and the order is
-    computed on the training rows (`GUIDED-088`).
+    computed on the **analysis rows**: the training rows narrowed to those
+    whose outcome is present, which is what a model will actually be fitted on
+    (`GUIDED-088` for the seal, `DRIVE-045` for the narrowing).
+
+    **This contract said "the training rows" until `DRIVE-050`**, thirty-three
+    lines above a `model_shelf_ranked` that had ranked on `analysis_rows` since
+    `DRIVE-045` — so the field's own definition was a written instruction to
+    re-commit the defect, and a fix that corrected the producer and left this
+    standing would have handed the next builder the wrong rule in the one place
+    they would look it up.
     """
     purpose: Optional[str] = None
     purpose_said: Optional[str] = None
@@ -368,16 +379,21 @@ def design_statement(design: Optional[RecordedDesign]) -> List[Dict[str, Any]]:
         # concern lands on all of them equally; demoting all of them would move
         # nothing while reading as a judgment. What is available instead is the
         # number, which nothing else on this surface says.
+        # THE ROWS THE ORDER WAS ACTUALLY COMPUTED ON — the analysis rows, not
+        # the training rows. `DRIVE-050`: these two counts and the shelf's own
+        # `n_rows_seen` are served in ONE response, and they disagreed by every
+        # row whose outcome is blank.
         rows = design.n_rows
         people = design.n_people
         if rows is not None and people is not None:
-            counted = (f"This order was computed from {rows:,} rows, which are "
-                       f"{people:,} people"
+            counted = (f"This order was computed from {rows:,} rows with an "
+                       f"outcome, which are {people:,} people"
                        + (f" identified by `{design.group_column}`. "
                           if design.group_column else ". "))
         elif rows is not None:
-            counted = (f"This order was computed from {rows:,} rows, and how "
-                       f"many people those rows are was not recorded. ")
+            counted = (f"This order was computed from {rows:,} rows with an "
+                       f"outcome, and how many people those rows are was not "
+                       f"recorded. ")
         else:
             counted = ""
         quote = design.said("repeat_kind")
@@ -400,7 +416,11 @@ def design_statement(design: Optional[RecordedDesign]) -> List[Dict[str, Any]]:
                  "is held out, so the rows this order was computed on are "
                  "already one per person and no model here is being asked to "
                  "treat correlated rows as independent. The order below is "
-                 "unchanged by this answer.")),
+                 "unchanged by this answer.")
+                + (" Rows whose outcome is blank are not among them: no model "
+                   "can be fitted on a row with nothing to predict, so they "
+                   "are not part of what the order was computed on."
+                   if design.n_rows is not None else "")),
         })
 
     return out

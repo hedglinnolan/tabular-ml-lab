@@ -1766,7 +1766,12 @@ PREDICTION_INSTABILITY = register(FigureSpec(
         f"Prediction instability for {p.get('model_name', 'the model')}: the "
         f"entire modeling pipeline, including any variable selection, was "
         f"refitted in {p.get('b_completed', 0):,} bootstrap resamples of the "
-        f"{p.get('n', 0):,} training rows and each refitted model was applied "
+        # `DRIVE-050`'s class, in a PUBLICATION CAPTION. `p['n']` is
+        # `instability.py`'s already-outcome-filtered count and this printed it
+        # labeled *"training rows"* — a number about one population under the
+        # name of a wider one, in the artifact that leaves the building.
+        f"{p.get('n', 0):,} training rows with an outcome, and each refitted "
+        f"model was applied "
         f"back to those same rows — one point per row per resample "
         f"({p.get('points', 0):,} points, alpha {p.get('alpha', 0.02)}). "
         f"The 45° line is no change from the original model; vertical spread "
@@ -1915,8 +1920,10 @@ CALIBRATION_INSTABILITY = register(FigureSpec(
     caption=lambda p: (
         (f"Calibration instability for {p.get('model_name', 'the model')}: "
          f"{p.get('b_completed', 0):,} calibration curves, one per bootstrap "
+         # `DRIVE-050`'s class, second publication caption. See the
+         # prediction-instability caption above.
          f"refit of the entire pipeline, over {p.get('n', 0):,} training rows "
-         f"with {p.get('events', 0):,} events, binned into "
+         f"with an outcome and {p.get('events', 0):,} events, binned into "
          f"{p.get('n_bins', 10)} equal-width bins of predicted risk. Thin grey "
          f"curves are the bootstrap models; the bold curve is the original. "
          f"The dashed 45° line is ideal calibration. Spread between the grey "
