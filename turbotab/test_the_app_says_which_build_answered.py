@@ -77,11 +77,9 @@ def test_the_engine_stamp_is_read_once_and_does_not_follow_the_disk(capsys):
         print(f"\n  stamped once at import: {client_build['rev']!r}")
 
 
-def test_a_page_newer_than_the_engine_is_reported(capsys):
+def test_a_page_newer_than_the_engine_is_reported(capsys, tmp_path,
+                                                  monkeypatch):
     """The condition itself, driven by making the page newer.
-
-    The file's mtime is moved and restored — no content changes, so nothing
-    else in the tree can observe this.
 
     **The clean baseline is ESTABLISHED rather than required, and that is
     `L62`'s correction.** This used to open by asserting the working tree was
@@ -91,37 +89,55 @@ def test_a_page_newer_than_the_engine_is_reported(capsys):
     touched*. `L62` edited `index.html` after the Python, so the assertion
     fired on a clean tree with working code and cost a red in a two-hour sweep.
 
+    **The mtime now moves on a COPY, and that is `TEST-098`.** It used to move
+    on the tracked `turbotab/web/index.html` and put it back in a `finally` —
+    content-identical, so `git status` stayed clean afterwards and two full
+    sweeps never saw it. A tracked file's metadata is still a tracked file, and
+    `/dev/status` is precisely the surface that reads it, so under `-n auto`
+    any concurrent reader of that route observes a build state this test
+    invented. `api._page_path` exists so the page under test can be moved
+    without moving the page that ships.
+
     `_SERVED_BUILD` stamps `engine_loaded_at` once at import and `page_mtime`
     is read per request, so this test already owns the only variable that
     matters. It sets the page BELOW the engine for the baseline and ABOVE it
-    for the condition, and restores the real mtime either way — so the
-    precondition is a fact this test creates rather than one it hopes for.
+    for the condition — the precondition is a fact this test creates rather
+    than one it hopes for.
     """
     import os
 
     from turbotab import api
 
+    shipped_mtime = PAGE.stat().st_mtime_ns
+    stand_in = tmp_path / "index.html"
+    stand_in.write_bytes(PAGE.read_bytes())
+    monkeypatch.setattr(api, "_page_path", lambda: stand_in)
+
     client = _client()
     engine_at = api._SERVED_BUILD["newest_source_mtime"]
     assert engine_at, "the served build carries no engine mtime to compare with"
 
-    original = PAGE.stat()
-    try:
-        # THE BASELINE, MADE rather than assumed: the page an hour OLDER than
-        # the engine is unambiguously not a hybrid.
-        os.utime(PAGE, (original.st_atime, engine_at - 3600))
-        before = client.get("/dev/status").json()["build"]
-        assert before["page_newer_than_engine"] is False, (
-            "the page is an hour OLDER than the engine and /dev/status still "
-            "reports a hybrid, so the flag is not reading the two mtimes")
-        assert before["why"] is None, (
-            "a clean build carries a reason to restart, so the sentence is "
-            "not conditional on the state it explains")
+    # THE SEAM'S OWN CONTROL. A `monkeypatch.setattr` that named a function the
+    # route no longer calls would leave every assertion below reading the real
+    # page and passing for the wrong reason — trap #3, one layer out.
+    assert client.get("/dev/status").json()["build"]["page_mtime"] == \
+        stand_in.stat().st_mtime, (
+        "/dev/status is not reading the page `api._page_path` names, so this "
+        "test is driving a file the route does not consult")
 
-        os.utime(PAGE, (original.st_atime, engine_at + 3600))
-        after = client.get("/dev/status").json()["build"]
-    finally:
-        os.utime(PAGE, (original.st_atime, original.st_mtime))
+    # THE BASELINE, MADE rather than assumed: the page an hour OLDER than
+    # the engine is unambiguously not a hybrid.
+    os.utime(stand_in, (engine_at - 3600, engine_at - 3600))
+    before = client.get("/dev/status").json()["build"]
+    assert before["page_newer_than_engine"] is False, (
+        "the page is an hour OLDER than the engine and /dev/status still "
+        "reports a hybrid, so the flag is not reading the two mtimes")
+    assert before["why"] is None, (
+        "a clean build carries a reason to restart, so the sentence is "
+        "not conditional on the state it explains")
+
+    os.utime(stand_in, (engine_at + 3600, engine_at + 3600))
+    after = client.get("/dev/status").json()["build"]
 
     assert after["page_newer_than_engine"] is True, (
         "the page is an hour newer than the engine and /dev/status says they "
@@ -129,11 +145,28 @@ def test_a_page_newer_than_the_engine_is_reported(capsys):
     assert after["why"], "the report names no reason"
     assert "restart" in after["why"].lower()
 
+    # `TEST-100`. This read `assert isinstance(…, bool)` — a type check on a
+    # field `api.py` always produces through `bool()`, so it could not fail and
+    # asserted nothing. It was relaxed to that because the restored state was
+    # the real page's real mtime, which is whatever the last edit made it. On a
+    # stand-in the restored state is a fact this test sets, so the assertion
+    # can go back to naming a value.
+    os.utime(stand_in, (engine_at - 3600, engine_at - 3600))
     restored = client.get("/dev/status").json()["build"]
-    assert isinstance(restored["page_newer_than_engine"], bool), (
-        "the mtime was restored and the route stopped answering the question")
+    assert restored["page_newer_than_engine"] is False, (
+        "the page was put back an hour BELOW the engine and /dev/status still "
+        "reports a hybrid, so the flag latched instead of reading the mtimes")
+    assert restored["why"] is None, (
+        "the page is clean again and the route still names a reason to restart")
+
+    # The assertion the whole isolation is for: three mtime writes happened and
+    # none of them landed on the file git tracks.
+    assert PAGE.stat().st_mtime_ns == shipped_mtime, (
+        "the shipped page's mtime moved during a test that is supposed to be "
+        "driving a stand-in — `TEST-098`, committed inside its own fix")
     with capsys.disabled():
-        print(f"\n  page −1h → clean; page +1h → reported; mtime restored")
+        print(f"\n  page −1h → clean; page +1h → reported; page −1h → clean "
+              f"again, on a stand-in; {PAGE.name} mtime untouched")
 
 
 def test_the_banner_reaches_the_dom_rather_than_only_the_payload(capsys):

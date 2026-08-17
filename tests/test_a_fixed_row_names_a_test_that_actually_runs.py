@@ -41,9 +41,16 @@ exists to answer, while 347 closed rows rested on it. Its own docstring
 predicted it: *"a twenty-minute check is a check somebody turns off."*
 
 **What was expensive was the shape, not the work.** It ran every FILE any
-`FIXED` row named — **2796 tests across 142 files** — and then asked which node
-had skipped. It now runs **the named NODES**, which is 671 targets, because the
-question was never about the files.
+`FIXED` row named — **3,406 tests across 195 files** — and then asked which node
+had skipped. It now runs **the named NODES**, which is **1,345 targets across
+396 resolved `FIXED` rows**, because the question was never about the files.
+
+*(The four counts in this file read 2796 / 142 / 671 / 880 until `L63-A`, and
+the last two disagreed with each other about the same set. They were measured
+when the ledger held ~700 rows; it holds 975. `tests/fixed_row_guard.resolve()`
+is the one place that answers this — re-run it rather than quoting these, and
+correct them here when it moves. A number in a comment is a claim with the same
+decay as a number in prose.)*
 
 **Resolution is delegated to pytest rather than re-implemented.** The first
 attempt matched `def test_x(` with a regex and built `path::test_x`, which is
@@ -118,8 +125,8 @@ def test_every_fixed_rows_named_test_actually_runs():
 
     targets = sorted({n for ns in resolved.values() for n in ns})
     # PARALLEL, AND THIS IS THE FALLBACK THE ROW NAMED. Running the named NODES
-    # instead of the files that contain them cut the work from 2796 tests to
-    # 671 — a real 3x — and it was NOT ENOUGH: 671 nodes took 25:10, because the
+    # instead of the files that contain them cut the work from 3,406 tests to
+    # 1,345 — 2.5x — and it was NOT ENOUGH: the nodes took 25:10, because the
     # guards a `FIXED` row names are themselves the slow tests, several of them
     # page drives that start a JS engine each. Raising the timeout was never on
     # the menu; it converts a check nobody can wait for into a check nobody
@@ -130,7 +137,15 @@ def test_every_fixed_rows_named_test_actually_runs():
     # all four monsters in `turbotab/test_ask_me_anyway_reopens_the_question.py`
     # — 632s, 570s, 505s, 450s — on a single worker, which is 36 minutes of
     # serial work no other core can touch. Spreading individual tests instead
-    # brings the same 880 targets in at 19:08.
+    # brings the same targets in at 19:08.
+    #
+    # AND THE SET THIS RUNS OVER IS WHERE `TEST-098` IS REALIZABLE AT HEAD.
+    # `--dist load` puts the four in-repo writers and their cross-file readers
+    # on different workers by construction — `GUIDED-212` names the bare-marker
+    # node, `TEST-084` and `TEST-097` name the build-answered node, and all of
+    # them are `FIXED`, so all of them are targets here. That is why the class
+    # was worth fixing before any xdist adoption rather than after it:
+    # `tests/test_no_test_writes_a_path_git_tracks.py`.
     #
     # THE FLOOR IS THE LONGEST SINGLE TEST, 632s, and no amount of width goes
     # under it. If this guard ever breaches its budget again, that file is

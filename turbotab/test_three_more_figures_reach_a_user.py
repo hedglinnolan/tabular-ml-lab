@@ -47,10 +47,20 @@ def client():
     return TestClient(api.app)
 
 
-def _drive(client, fixture: str, decisions) -> str:
-    with open(FIXTURES / fixture, "rb") as fh:
+def _drive(client, fixture, decisions) -> str:
+    """`fixture` is a name inside `sample_data/`, or a full path to a CSV.
+
+    THE FULL-PATH FORM IS `TEST-098`. A test that needs a frame the fixture
+    directory does not hold used to write one INTO the fixture directory and
+    unlink it — measured, visible for 0.293 s and `git status --porcelain`
+    dirty for 0.210 s, during which the three `glob("*.csv")` readers of that
+    directory see 31 fixtures where 30 are committed. Taking a path lets the
+    frame live in `tmp_path` and costs one line here.
+    """
+    path = fixture if isinstance(fixture, Path) else FIXTURES / fixture
+    with open(path, "rb") as fh:
         pid = client.post("/project", files={
-            "file": (fixture, fh, "text/csv")}).json()["id"]
+            "file": (path.name, fh, "text/csv")}).json()["id"]
     for what, payload in decisions:
         response = client.post(f"/project/{pid}/decision",
                                json={"kind": what, "payload": payload})
@@ -219,24 +229,31 @@ def test_a_fold_change_is_refused_where_a_ratio_is_undefined():
         FS.volcano_payload(frame, group_col="group")
 
 
-def test_the_refusal_reaches_the_user_through_the_endpoint(client):
+def test_the_refusal_reaches_the_user_through_the_endpoint(client, tmp_path):
     """A precondition that only the payload builder can express still has to
     arrive somewhere a user stands. `figure_bundle.render` surfaces it under
     `unavailable`, carrying the refusal's own words — the path the shrinkage
     plot's one-recall refusal already uses, which is the evidence it is a shape
-    and not a patch."""
+    and not a patch.
+
+    The autoscaled frame is built in `tmp_path` rather than in `sample_data/`.
+    `TEST-098`, and see `_drive` for what the old placement cost.
+    """
     rng = np.random.default_rng(7)
     frame = pd.DataFrame(rng.normal(0, 1, size=(60, 40)),
                          columns=[f"mz_{i:03d}" for i in range(40)])
     frame["responder"] = [0] * 30 + [1] * 30
-    path = FIXTURES / "_autoscaled_tmp.csv"
+    path = tmp_path / "_autoscaled_tmp.csv"
     frame.to_csv(path, index=False)
-    try:
-        pid = _drive(client, path.name, [
-            ("set_lens", {"lens": ["metabolomics"]}),
-            ("set_target", {"column": "responder"})])
-    finally:
-        path.unlink()
+    n_fixtures = len(list(FIXTURES.glob("*.csv")))
+    pid = _drive(client, path, [
+        ("set_lens", {"lens": ["metabolomics"]}),
+        ("set_target", {"column": "responder"})])
+    # The three `glob("*.csv")` readers of the fixture directory counted the
+    # stray frame for 0.293 s each run. Asserted rather than commented.
+    assert len(list(FIXTURES.glob("*.csv"))) == n_fixtures, (
+        "driving this frame changed what `sample_data/*.csv` holds, so the "
+        "readers that count fixtures are seeing this test's working file")
     body = client.get(f"/project/{pid}/figures").json()
     entry = next(r for r in body["unavailable"] if r["id"] == "volcano")
     assert "z-units" in entry["why"]

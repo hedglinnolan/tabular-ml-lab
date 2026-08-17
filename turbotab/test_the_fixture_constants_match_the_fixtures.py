@@ -34,6 +34,7 @@ on a legitimate re-measurement instead of on a drift.
 from __future__ import annotations
 
 import hashlib
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -78,27 +79,74 @@ def test_the_generator_writes_every_sibling_it_claims_to():
             f"invented one")
 
 
-def test_running_the_generator_twice_writes_the_same_bytes():
+def test_running_the_generator_twice_writes_the_same_bytes(tmp_path):
     """Determinism, which everything below rests on.
 
     A seeded generator that is not reproducible makes every constant measured
     from it a statement about one particular run.
+
+    **RUN IN A SANDBOX, NOT IN `sample_data/`. `TEST-098`.** This used to spawn
+    the generator in place, and the generator truncates and rewrites **twelve
+    git-tracked files** — six matrices and six `.md` companions, 1,461,182
+    bytes — over the 0.421 s it runs. Six concurrent readers doing exactly what
+    the six cross-file readers of these fixtures do logged **56 corrupted
+    observations in 261 reads**: 55 `EmptyDataError`, and one silent 59-row
+    frame where 60 rows are committed. The silent short read is the one to
+    fear — it does not raise, it computes statistics on a partial matrix. The
+    tree never drifted, because the rewrite is byte-identical; only the disk
+    moved, mid-run, which is why two full sweeps never saw it.
+
+    The generator resolves its output directory from its own `__file__`, so a
+    copy of it beside a copy of its one input writes into the copy's directory
+    and touches nothing tracked. No change to the generator was needed.
+
+    **And the assertion is STRICTLY STRONGER than the one it replaces.** The
+    old form compared run N against run N+1, which a generator that is
+    reproducibly *wrong* satisfies. This compares a fresh run against the
+    **committed** bytes, so it also fails when the generator stops producing
+    what ships.
     """
     names = _generated()
-    before = {n: hashlib.sha256((DATA / n).read_bytes()).hexdigest()
-              for n in names}
-    out = subprocess.run([sys.executable, str(GENERATOR)],
-                         capture_output=True, text=True,
-                         cwd=str(HERE.parent))
+    sandbox = tmp_path / "sample_data"
+    sandbox.mkdir()
+    shutil.copy2(GENERATOR, sandbox / GENERATOR.name)
+    shutil.copy2(DATA / "genomics_expression.csv",
+                 sandbox / "genomics_expression.csv")
+
+    out = subprocess.run([sys.executable, str(sandbox / GENERATOR.name)],
+                         capture_output=True, text=True, cwd=str(tmp_path))
     assert out.returncode == 0, out.stderr[-1500:]
-    after = {n: hashlib.sha256((DATA / n).read_bytes()).hexdigest()
+
+    # THE CONTROL, and it is what proves the redirect worked rather than
+    # assuming it: if the generator had written to `sample_data/` after all,
+    # nothing would be here and the absence would read as a pass.
+    produced = sorted(p.name for p in sandbox.glob("*.csv")
+                      if p.name != "genomics_expression.csv")
+    assert produced == sorted(names), (
+        f"the sandboxed generator wrote {produced}, not {sorted(names)}. If "
+        f"this is empty it wrote into the real fixture directory instead, "
+        f"which is the whole defect this sandbox exists to remove")
+
+    committed = {n: hashlib.sha256((DATA / n).read_bytes()).hexdigest()
+                 for n in names}
+    fresh = {n: hashlib.sha256((sandbox / n).read_bytes()).hexdigest()
              for n in names}
-    drifted = sorted(n for n in names if before[n] != after[n])
+    drifted = sorted(n for n in names if committed[n] != fresh[n])
     assert not drifted, (
-        f"re-running the generator rewrote {drifted}. The seed is not the only "
-        f"thing deciding these files, so every number measured off them — "
-        f"including `packs._ESTIMATED_COUNTS_CV` and `_FPKM_CV` — is a claim "
-        f"about one run rather than about the fixture")
+        f"the generator no longer reproduces the committed {drifted}. The seed "
+        f"is not the only thing deciding these files, so every number measured "
+        f"off them — including `packs._ESTIMATED_COUNTS_CV` and `_FPKM_CV` — "
+        f"is a claim about one run rather than about the fixture")
+
+    # The companions travel with the matrices and are tracked too, so they are
+    # part of what "the generator still produces what ships" means.
+    companions = sorted(n for n in names
+                        if (DATA / f"{n}.md").read_bytes()
+                        != (sandbox / f"{n}.md").read_bytes())
+    assert not companions, (
+        f"the matrices reproduce and their companions do not: {companions}. "
+        f"The `.md` beside each fixture is what separates a derived fixture "
+        f"from an invented one")
 
 
 def test_the_estimated_counts_and_fpkm_separator_is_measured():

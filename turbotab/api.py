@@ -3477,6 +3477,23 @@ def _served_build() -> Dict[str, Any]:
 _SERVED_BUILD = _served_build()
 
 
+def _page_path() -> Path:
+    """The page whose mtime `/dev/status` compares against the engine's.
+
+    A FUNCTION RATHER THAN AN EXPRESSION INSIDE THE ROUTE, so a test can move
+    it. `TEST-098`: the only way to drive `page_newer_than_engine` was to
+    `os.utime` the tracked `turbotab/web/index.html` and put it back, which
+    mutates a git-tracked file's metadata mid-suite. Content-identical, so
+    `git status` stayed clean and two full sweeps never saw it — the class is
+    *a test that writes a path git tracks*, and metadata is a write.
+
+    It is deliberately not a module constant: `_SERVED_BUILD` is stamped once
+    at import on purpose, and a constant here would invite the same treatment
+    for a value that must be read per request.
+    """
+    return Path(__file__).resolve().parent / "web" / "index.html"
+
+
 @app.get("/dev/status")
 async def dev_status() -> Dict[str, Any]:
     """Whether the dev harness is on, AND which build is answering.
@@ -3487,7 +3504,7 @@ async def dev_status() -> Dict[str, Any]:
     fetched on every page load, so it costs nothing to answer honestly.
     """
     s = devchecks.session()
-    page = Path(__file__).resolve().parent / "web" / "index.html"
+    page = _page_path()
     try:
         page_mtime = page.stat().st_mtime
     except OSError:

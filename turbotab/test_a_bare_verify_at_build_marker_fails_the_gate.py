@@ -52,6 +52,7 @@ same: read the section, not the scanner.
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -66,9 +67,53 @@ sys.path.insert(0, str(TOOL.parent))
 import evidence as E  # noqa: E402
 
 
-def _check(cwd=ROOT):
-    return subprocess.run([sys.executable, str(TOOL), "check"],
+def _check(cwd=ROOT, tool=TOOL):
+    return subprocess.run([sys.executable, str(tool), "check"],
                           capture_output=True, text=True, cwd=str(cwd))
+
+
+def _mirror(root: Path) -> Path:
+    """A tree the gate can be pointed at, whose research corpus is a COPY.
+
+    `TEST-098`. The planted-marker test below used to strip a marker out of the
+    real `docs/turbotab/research/METABOLOMICS_PACK.md` and put it back in a
+    `finally` — a git-tracked file mutated for a measured **0.666 s** over
+    66,925 polls, during which two other files (three nodes) read the corrupted
+    corpus and went falsely **RED**. A false red is the tolerable direction and
+    it is still a false result in a two-hour sweep.
+
+    `evidence.py` derives `ROOT` from its own `__file__` and accepts no root
+    override, so **the copy carries the tool**: a real copy of `evidence.py`
+    four levels down a mirrored tree makes `parents[3]` the mirror. Everything
+    else is symlinked, so the gate reads the same package, the same emitters
+    and the same modules it always does — the corpus is the only thing that
+    moves, and it moves inside `tmp_path`.
+
+    Symlinks and not copies deliberately: `evidence.py` imports the `turbotab`
+    package to walk it, and that package imports `ml/` and `utils/` from the
+    root beside it. Mirroring by copy would be a second checkout to keep in
+    sync, which is this project's most-repeated defect one level down.
+    """
+    def link_siblings(real: Path, into: Path, carve: str) -> None:
+        into.mkdir(parents=True, exist_ok=True)
+        for entry in real.iterdir():
+            if entry.name != carve:
+                (into / entry.name).symlink_to(entry)
+
+    link_siblings(ROOT, root, "docs")
+    link_siblings(ROOT / "docs", root / "docs", "turbotab")
+    link_siblings(ROOT / "docs" / "turbotab", root / "docs" / "turbotab",
+                  "research")
+    shutil.copytree(RESEARCH, root / "docs" / "turbotab" / "research")
+
+    # The tool itself must be a REAL FILE at the mirrored depth: `.resolve()`
+    # follows symlinks, so a symlinked tool would compute the real root and
+    # read the real corpus — the mirror would be silently inert.
+    tools = root / "docs" / "turbotab" / "tools"
+    tools.unlink()
+    link_siblings(TOOL.parent, tools, TOOL.name)
+    shutil.copy2(TOOL, tools / TOOL.name)
+    return tools / TOOL.name
 
 
 def test_the_gate_passes_and_says_how_much_it_is_holding():
@@ -122,22 +167,43 @@ def test_a_bare_marker_fails_the_gate(tmp_path):
     A copy of the corpus with one marker stripped back to bare must turn the
     gate red. Without this the test above is satisfied by a corpus that happens
     to be clean, which is what it looked like for a dozen loops.
+
+    **The copy is now a real copy.** It used to be the tracked file itself,
+    edited and restored — see `_mirror`, and `TEST-098`. `tmp_path` was already
+    on this signature and unused; the isolation was requested and then not
+    used, so the fix was half-written for as long as the defect existed.
     """
-    victim = RESEARCH / "METABOLOMICS_PACK.md"
+    tool = _mirror(tmp_path)
+    victim = tmp_path / "docs" / "turbotab" / "research" / "METABOLOMICS_PACK.md"
     original = victim.read_text(encoding="utf-8")
     marker = "**[verify-at-build: 50% and the SD-vs-MAD default]**"
     assert marker in original, "the marker this plant uses has moved"
-    try:
-        victim.write_text(original.replace(marker, "**[verify-at-build]**"),
-                          encoding="utf-8")
-        out = _check()
-        assert out.returncode != 0, (
-            "a bare [verify-at-build] passed the gate. That is `GUIDED-212` "
-            "exactly, and it is what three documents said could not happen")
-        assert "bare [verify-at-build]" in out.stdout, out.stdout[-1200:]
-    finally:
-        victim.write_text(original, encoding="utf-8")
-    assert _check().returncode == 0, "the corpus was not restored"
+
+    # THE MIRROR'S OWN CONTROL, and it is the whole reason the red below means
+    # anything: an inert mirror — one whose tool resolved back to the real
+    # corpus, or whose symlinks did not resolve — would go red for its own
+    # reasons and read exactly like a caught plant.
+    clean = _check(cwd=tmp_path, tool=tool)
+    assert clean.returncode == 0, (
+        f"the UNMODIFIED mirror does not pass the gate, so a red below would "
+        f"be the mirror rather than the plant:\n{clean.stdout[-2000:]}"
+        f"\n{clean.stderr[-800:]}")
+
+    victim.write_text(original.replace(marker, "**[verify-at-build]**"),
+                      encoding="utf-8")
+    out = _check(cwd=tmp_path, tool=tool)
+    assert out.returncode != 0, (
+        "a bare [verify-at-build] passed the gate. That is `GUIDED-212` "
+        "exactly, and it is what three documents said could not happen")
+    assert "bare [verify-at-build]" in out.stdout, out.stdout[-1200:]
+    assert "METABOLOMICS_PACK.md" in out.stdout, (
+        f"the gate went red without naming the file the marker is in, so this "
+        f"cannot tell the plant from an unrelated failure:\n{out.stdout[-1200:]}")
+
+    # The real corpus was never touched, so there is nothing to restore — and
+    # this is the assertion that says so rather than the comment.
+    assert (RESEARCH / "METABOLOMICS_PACK.md").read_text(encoding="utf-8") \
+        == original, "the plant reached the tracked corpus"
 
 
 def test_the_declared_sentinels_are_not_a_way_round_it():
