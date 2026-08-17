@@ -75,6 +75,36 @@ severity styling, so a `critical` badge does not get to spend it.
 - **Ultracode is on as of 2026-08-16**: orchestrate substantive adjudication with the Workflow tool. The
   L62 fan-out — 11 agents, every load-bearing claim driven — found four things the report did not, two of
   which no single reader would have caught. **This is now the default for accepting a loop.**
+- **NEW, 2026-08-16, and it changes the cadence: we do not drive every loop.** His words: *"we need to
+  continue building the product and we cannot drive and test every single loop we run… We need to start
+  actually conducting more rapid development."* **His call, and the backlog supports it** — five drives
+  have produced more open drive-sourced work than five loops can consume, so the constraint has been his
+  attention rather than the supply of findings.
+
+  **Two amendments the adjudicator made when recording it, and they are the operative form:**
+
+  **1 · The interim instrument is the fan-out, not "direct code inspection."** A single careful reader is
+  exactly what missed the fourth surface at L62; two independent agents *driving* found it in one pass.
+  Inspection that does not drive is the grep lesson wearing a person.
+
+  **2 · Trigger on the work, not on a counter.** *"Every five loops"* is a tuned number and this project
+  has watched every tuned number decay — `AGENT_ONBOARD.md` §03 said "~8 min" for eighteen loops after it
+  stopped being true. **The condition that carries the same intent with no free parameter: drive when a
+  loop has shipped something a person can see.** A loop that is pure plumbing — the xdist fix, a registry,
+  a guard — needs no drive and should not wait for one. A loop that changes a screen has produced exactly
+  the class `pageharness.py` says in its own docstring it **cannot** verify. That is `DESIGN_LANGUAGE.md`
+  §05's own lesson — *prefer a rule with no free parameter over a rule with a tuned one* — applied to
+  process. In practice it will land near five and it will land there for a reason.
+
+  **The caution, stated once and then not repeated:** reachable-but-unreadable defects now accumulate
+  silently between drives. That is an accepted trade, not an oversight. **Its mitigation is that the drive,
+  when it comes, covers every surface built since the last one** rather than being a quick pass — so say
+  in the drive request which screens are new.
+
+  **And the real throughput win is not the cadence at all: it is `TEST-098`.** The sweep is the per-loop
+  tax and L62 measured a **41:23** alternative to **2:00:46**, held only for a false-green race in the
+  licensing run. Fixing the shared-file writers buys back an hour and twenty minutes on **every loop**,
+  which is worth more to rapid development than any drive schedule. It is L63 Part A for that reason.
 
 **Take his framings seriously; they have been load-bearing more often than mine.**
 
