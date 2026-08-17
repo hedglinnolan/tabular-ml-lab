@@ -207,12 +207,68 @@ def test_every_surface_that_renders_the_outcome_reads_one_mapping():
     import pathlib
 
     root = pathlib.Path(__file__).resolve().parent
+    population = list(root.glob("*.py")) + list(root.parent.glob("ml/*.py"))
+
+    # THE POSITIVE CONTROL ON THE INSTRUMENT, and `GUIDED-045` is the rule.
+    # `MISC-023`, and this is what was buildable: WIDENING THE GLOB IS A
+    # MEASURED NO-OP — the predicate was run over `turbotab/ ml/ pages/ utils/
+    # launcher/` and then over all 489 tracked `.py`, and the roster does not
+    # move in either case, so a loop that widened it and reported a fix would
+    # have produced a `FIXED` row over a change with zero observable effect.
+    # What the sweep did NOT have was any reason to believe it can find
+    # anything at all. `tests/test_the_landing_page_says_where_the_decision_
+    # curve_lives.py:158` is the in-tree exemplar.
+    assert len(population) >= 100, (
+        f"the sweep found {len(population)} modules; it is looking in the "
+        f"wrong place and its roster means nothing")
+    control = "outcome_level_names"
+    assert any(control in p.read_text(encoding="utf-8") for p in population
+               if p.name == "training.py"), (
+        f"the sweep cannot find {control} in `training.py`, which DEFINES it — "
+        f"so its answer about which surfaces read it is not evidence")
+
     readers = sorted(
-        p.name for p in list(root.glob("*.py")) + list(root.parent.glob("ml/*.py"))
+        p.name for p in population
         if not p.name.startswith("test_")
-        and "outcome_level_names" in p.read_text(encoding="utf-8"))
+        and control in p.read_text(encoding="utf-8"))
     assert readers == ["api.py", "figure_bundle.py", "manuscript.py",
                        "training.py"], (
         f"the surfaces reading the recorded level names are {readers}; this "
         f"test covers Table 1, the PCA annotation and the event card. A new "
         f"one is not wrong — but it is uncovered until it is named here.")
+
+
+def test_the_roster_is_file_granular_and_says_so():
+    """The limit of the guard above, asserted rather than left implicit.
+
+    **`MISC-023`'s real gap, and it is not the glob.** The roster is a list of
+    FILE NAMES, so a surface that renders an outcome level from INSIDE a
+    rostered file is blessed by the guard and can never be seen by it. The
+    concrete instance ships today: `training.py:110-111` serializes
+    `positive_label` — the raw class level, `"1.0"` or `"case"` — into
+    `ModelResult.to_dict()`, which is a served payload, and `training.py` is on
+    the roster. So is `figure_bundle.py`, whose `:422` falls back to
+    `str(event)` when the level was never named.
+
+    Both are correct today: the fallback is `DRIVE-040`'s deliberate silent
+    branch, and it is pinned by
+    `test_table_one_headers_keep_the_encoded_value_when_the_record_cannot_say`.
+    The finding is not that they are wrong; it is that the guard above cannot
+    tell you whether they are, and a reader takes its green as coverage of the
+    surfaces rather than of the files.
+    """
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parent
+    rostered = {"api.py", "figure_bundle.py", "manuscript.py", "training.py"}
+    serializers = []
+    for name in sorted(rostered):
+        text = (root / name).read_text(encoding="utf-8")
+        for lineno, line in enumerate(text.split("\n"), 1):
+            if "str(self.positive_label)" in line or "str(event)" in line:
+                serializers.append(f"{name}:{lineno}")
+    assert serializers, (
+        "no rostered file serializes a raw outcome level any more; if that is "
+        "true the file-granularity gap has closed and this test should say so "
+        "rather than pass silently")
+    assert len(serializers) >= 2, serializers

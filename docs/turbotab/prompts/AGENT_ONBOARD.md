@@ -472,6 +472,39 @@ match structure instead of text — the same lesson as trap #5 one layer in, and
 handed `\|` as an alternation reported *"no multiple-testing correction anywhere in shipped code"*
 while `ml/multiplicity.py` had been there the whole time.
 
+### 5c · Which way the assertion points, over a filtered population
+
+**`TEST-105`, and only this half is new.** The *method* half — a substring over globbed files
+standing in for behavior — is trap #5 above, and `rankings.py:40-46` already carries the standing
+answer in production source. What #5 and #5b do not give is the rule for telling a sweep that
+**controls itself** from one that passes **vacuously**, and it is not the quality of the pattern.
+It is the direction of the assertion.
+
+Six instances at L63, and the filter is the same six lines of Python in every one:
+
+- **Self-controlling — an equality against a NON-EMPTY expected roster.**
+  `test_every_surface_that_renders_the_outcome_reads_one_mapping` asserts
+  `readers == ["api.py", "figure_bundle.py", "manuscript.py", "training.py"]`. Break the glob and
+  the list comes back empty, which is not the roster, and it fails. **The assertion is its own
+  positive control.** `test_every_writer_that_can_blank_a_cell_files_it:258-263` is the same shape,
+  and it is why that one needs no separate control while its neighbours do.
+- **Vacuous — a NEGATIVE assertion.** `assert not undeclared`, `assert not lod`,
+  `assert not on_this_door`. Break the enumeration and the offending set is empty, which is exactly
+  what *clean* looks like. These need a control planted separately, and the good ones have it —
+  `test_the_purpose_card_names_only_the_decisions_that_read_it` puts a positive control before each
+  negative.
+- **Worst — a silent `continue` pre-filter with no assertion behind it at all.**
+  `docs/turbotab/tools/evidence.py:315-317` and `:340-342` skip any module whose text lacks
+  `Claim(` or `Evidence(`. The counts are **printed**, never asserted, and the tool returns `0`. If
+  either literal stops matching, **the gate checks less and still reports `ok`** — the shape inside
+  the instrument this project trusts most.
+
+> **A negative assertion over a filtered population is not a check until something proves the
+> population is non-empty for the right reason.**
+
+The two look identical in review: same glob, same substring, same six lines. Reading the assertions
+tells them apart; reading the filter never does.
+
 ### 4 · Verifying against the fixture that works
 
 `GUIDED-097`'s rule. Every Train and calibration claim used one fixture whose target is `0/1`, so
