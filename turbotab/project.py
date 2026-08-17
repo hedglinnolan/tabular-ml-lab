@@ -495,6 +495,23 @@ class AnalysisProject:
         way, because that is the part this method is for.
         """
         from turbotab import missingness as _miss
+        # EVERY POST-SEAL FRAME WRITE, NOT ONE OF THEM, AND BEFORE THE WRITE
+        # RATHER THAN AFTER IT. `TEST-104`.
+        #
+        # `assert_identity_intact` had exactly one call site — inside
+        # `trim_training_rows` — while ten methods install a frame after the
+        # barrier and nine of them checked nothing. Driven at HEAD: sealed 75
+        # rows, dropped 10 of them through `apply_fix`, and nothing raised;
+        # `n_rows_held_out` fell to 65 while `lockbox['labels']` stayed 75 and
+        # `/models` served `withheld=65`. Calling it here rather than at ten
+        # call sites is the point — `_install` is the one door every frame
+        # write already goes through, so a method added next loop inherits the
+        # check instead of needing to remember it.
+        #
+        # It is not a barrier check: `drop_rows` and `drop_empty_rows` are
+        # deliberately allowed on either side of the seal, and this only raises
+        # when a SEALED label stops naming a row.
+        self.assert_identity_intact(new_df)
         before = self.df
         if remember:
             self._history.append((tag, before))
@@ -2383,11 +2400,21 @@ class AnalysisProject:
                     "would name rows that no longer exist.")
         return None
 
-    def assert_identity_intact(self) -> None:
-        """Every sealed label must still name a row. The post-barrier check."""
+    def assert_identity_intact(self, frame: Optional[pd.DataFrame] = None
+                               ) -> None:
+        """Every sealed label must still name a row. The post-barrier check.
+
+        `frame` is the CANDIDATE table where one is being checked before it is
+        installed, and that is not a convenience. `_install` calls this on the
+        frame it is about to assign rather than on the one it has assigned:
+        raising afterwards leaves the damaged frame in place, so the project
+        ends up in exactly the state the check exists to prevent, with an
+        exception on top of it. `TEST-104`.
+        """
         if not self.barrier_raised:
             return
-        missing = [l for l in self.lockbox["labels"] if l not in self.df.index]
+        index = (self.df if frame is None else frame).index
+        missing = [l for l in self.lockbox["labels"] if l not in index]
         if missing:
             raise ProjectError(
                 f"{len(missing)} sealed row label(s) are no longer in the table "
@@ -2551,6 +2578,55 @@ class AnalysisProject:
         if not target or target not in self.df.columns:
             return 0
         return int(self.df[target].isna().sum())
+
+    @property
+    def n_rows_available_without_an_outcome(self) -> int:
+        """Rows the seal did NOT take and that still have no outcome.
+
+        **The disjoint one, and `DRIVE-051` is why there has to be one.**
+        `n_rows_seen`, `n_rows_held_out` and `n_rows_without_an_outcome` were
+        served side by side as a breakdown of the table and a guard asserted
+        they sum to it. They do not: `n_rows_seen` is `|T ∧ Y|`, `held_out` is
+        `|¬T|` and `without_an_outcome` is `|¬Y|` over the WHOLE frame, so the
+        sum overshoots by exactly `|¬T ∧ ¬Y|` — the sealed rows that have no
+        outcome — and by nothing else, because `analysis_mask` is
+        `training_mask & notna` and the first two are disjoint by construction.
+
+        This one is `|T ∧ ¬Y|`, so `seen + held_out + this == len(df)` is an
+        identity rather than a claim. **That is exactly why it cannot be the
+        check**: an assertion that can never fail is not an assertion, and this
+        project has already ruled on that. What is checked instead is that the
+        three blank-outcome counts agree with each other — see
+        `n_rows_held_out_without_an_outcome`.
+        """
+        target = self.target
+        if not target or target not in self.df.columns:
+            return 0
+        return int((self.training_mask & self.df[target].isna()).sum())
+
+    @property
+    def n_rows_held_out_without_an_outcome(self) -> int:
+        """The overlap, served as a number rather than left to be inferred.
+
+        **An overlap served as a number is legible; an overlap a reader infers
+        from an arithmetic failure is the defect.** `DRIVE-051`.
+
+        It is zero at seal time by construction — `engine.draw_holdout` opens
+        with `eligible = df.index[y.notna()]`, so the seal draws only from
+        outcome-bearing rows — and becomes non-zero only when a row LOSES its
+        outcome after being sealed. That is a mechanism rather than an accident
+        and there are two live paths to it, both driven: changing the target
+        after the seal (`set_target` is not refused post-seal and does not
+        clear the lockbox), and an ordinary post-seal data-quality repair
+        (`set_impossible_missing` writes NaN into the target and is not
+        barrier-gated). Measured: 600 rows, seen 404 / withheld 150 /
+        without-an-outcome 60, summing to 614 against 600 — over by 14, which
+        is this number.
+        """
+        target = self.target
+        if not target or target not in self.df.columns:
+            return 0
+        return int(((~self.training_mask) & self.df[target].isna()).sum())
 
     # ── invalidation ────────────────────────────────────────────────────────
 
@@ -2717,6 +2793,12 @@ class AnalysisProject:
         if not self._history:
             raise ProjectError("No applied fix to undo.")
         finding_id, previous = self._history.pop()
+        # THE ONE FRAME WRITE THAT DOES NOT GO THROUGH `_install`, so it needs
+        # the check explicitly — and before the assignment, for the same reason
+        # `_install` checks first. `TEST-104`: an undo restores a PRE-repair
+        # frame post-seal, and if that frame predates a row the seal names, the
+        # lockbox stops referring to rows that exist.
+        self.assert_identity_intact(previous)
         self.df = previous
         self.findings_stale = True
         return self.record(

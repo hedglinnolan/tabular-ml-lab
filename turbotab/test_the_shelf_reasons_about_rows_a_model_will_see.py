@@ -157,10 +157,179 @@ def test_the_two_reasons_a_row_is_excluded_are_reported_apart(client, sealed):
         assert body["n_rows_without_an_outcome"] == N - N_LABELED, (
             f"/{route} reports {body['n_rows_without_an_outcome']} rows with "
             f"no outcome; the file has {N - N_LABELED}")
+        # `DRIVE-051`. THE PARTITION IS NOW OVER THE DISJOINT FIELD, and this
+        # assertion is an IDENTITY rather than a check — see
+        # `test_the_overlap_between_the_seal_and_the_blanks_is_served`, which
+        # is the one that can still go red. It is kept because a breakdown
+        # presented as a breakdown should be asserted to be one, and because it
+        # would catch a producer that stopped deriving these from one frame.
         assert (body["n_rows_seen"] + body["n_rows_withheld"]
-                + body["n_rows_without_an_outcome"]) == len(project.df), (
+                + body["n_rows_available_without_an_outcome"]
+                ) == len(project.df), (
             "the three counts do not partition the table, so at least one of "
             "them is about a population the others are not")
+        # This fixture has no sealed row without an outcome — the seal draws
+        # only from outcome-bearing rows — so here the two blank counts agree.
+        assert body["n_rows_withheld_without_an_outcome"] == 0
+        assert (body["n_rows_available_without_an_outcome"]
+                == body["n_rows_without_an_outcome"])
+
+
+@pytest.fixture(scope="module")
+def sealed_then_blanked(client):
+    """A project where a SEALED row has lost its outcome. `DRIVE-051`.
+
+    The `sealed` fixture above cannot produce this state and no fixture can:
+    `engine.draw_holdout` opens with `eligible = df.index[y.notna()]`, so at
+    seal time the intersection is zero by construction. **The overlap requires
+    a row to LOSE its outcome after being sealed**, which is a mechanism rather
+    than an accident, and there are two live paths to it. This drives the
+    ordinary one — a post-seal data-quality repair — because a probe written
+    around the other (changing the target after the seal) invites the reading
+    that this is an edge case. It is not.
+
+    `set_impossible_missing` writes NaN into whatever column it is pointed at,
+    including the target, and it is not barrier-gated:
+    `PRE_BARRIER_ONLY_FIXES` is only `{promote_header, melt_repeated}`.
+    """
+    n_rows = 600
+    rng = np.random.default_rng(9)
+    frame = pd.DataFrame({
+        "age": rng.normal(50, 12, n_rows).round(1),
+        "bmi": rng.normal(27, 5, n_rows).round(1),
+    })
+    # Sixty physiologically impossible systolic readings, scattered, so the
+    # repair takes some sealed rows and some not.
+    values = list(rng.normal(128, 16, n_rows - 60).round(1)) + [5.0] * 60
+    frame["sbp"] = rng.choice(values, n_rows, replace=False)
+    pid = client.post("/project", files={
+        "file": ("impossible.csv", frame.to_csv(index=False).encode(),
+                 "text/csv")}).json()["id"]
+
+    def decide(kind, **payload):
+        r = client.post(f"/project/{pid}/decision",
+                        json={"kind": kind, "payload": payload})
+        assert r.status_code == 200, (kind, r.text[:250])
+
+    decide("set_target", column="sbp")
+    decide("set_grain", answer="one_row_per_person")
+    decide("set_eligibility", answer="everyone")
+    decide("seal", fraction=0.25)
+    project = api.STORE.get(pid)
+    assert project.barrier_raised
+    assert project.n_rows_held_out_without_an_outcome == 0, (
+        "the seal already took a row with no outcome, which `draw_holdout` "
+        "makes impossible — this fixture's premise has moved")
+    project.set_impossible_missing("sbp")
+    return pid, project
+
+
+def test_the_overlap_between_the_seal_and_the_blanks_is_served(
+        client, sealed_then_blanked):
+    """`DRIVE-051`, and this is the assertion that replaces the tautology.
+
+    The obvious repair — narrowing `n_rows_without_an_outcome` to the training
+    population — makes `seen + withheld + that == len(df)` true for every
+    dataset, so the guard could never fail again. That is the same loss as
+    relaxing it to `<=`, arriving by the other door.
+
+    So the disjoint field is served AND the overlap is served, and what is
+    asserted is that the three blank-outcome counts agree with each other.
+    They are three independently computed properties over three different
+    masks; nothing makes them agree except being right.
+    """
+    pid, project = sealed_then_blanked
+    for route in ("models", "recipes"):
+        body = client.get(f"/project/{pid}/{route}").json()
+
+        # THE CONTROL. Without a real overlap every assertion below is
+        # satisfied by the pre-fix implementation too.
+        overlap = body["n_rows_withheld_without_an_outcome"]
+        assert overlap > 0, (
+            f"/{route} reports no sealed row without an outcome, so this "
+            f"fixture no longer reaches the state `DRIVE-051` is about")
+
+        blank_total = body["n_rows_without_an_outcome"]
+        available = body["n_rows_available_without_an_outcome"]
+        assert available + overlap == blank_total, (
+            f"/{route}: {available} unsealed blanks + {overlap} sealed blanks "
+            f"= {available + overlap}, and the table reports {blank_total} "
+            f"blanks in total. Three properties over three masks, disagreeing")
+
+        # And the pre-fix sum is still WRONG, which is what makes the disjoint
+        # field necessary rather than cosmetic. Asserted so a later edit cannot
+        # quietly restore the old field to the breakdown.
+        naive = (body["n_rows_seen"] + body["n_rows_withheld"] + blank_total)
+        assert naive == len(project.df) + overlap, (
+            f"the old three counts sum to {naive} against {len(project.df)} "
+            f"rows; the overshoot should be exactly the {overlap} sealed rows "
+            f"with no outcome and nothing else")
+        assert (body["n_rows_seen"] + body["n_rows_withheld"] + available
+                ) == len(project.df)
+
+        # Against pandas, not against another server-side derivation.
+        target = str(project.target)
+        blank = project.df[target].isna()
+        assert overlap == int(((~project.training_mask) & blank).sum())
+        assert available == int((project.training_mask & blank).sum())
+
+
+def test_a_post_seal_repair_cannot_drop_a_sealed_row_unnoticed(client):
+    """`TEST-104`. `assert_identity_intact` had ONE call site and `apply_fix`
+    was not it.
+
+    Driven at HEAD: sealed 75 rows, dropped 10 of them through `apply_fix`,
+    nothing raised, `n_rows_held_out` fell to 65 while `lockbox['labels']`
+    stayed 75, and `/models` served `withheld=65`. **In that state the three
+    counts still summed to `len(df)`**, so the partition guard beside it stayed
+    green while `withheld == len(lockbox["labels"])` was false by 10 — the
+    guard was not merely fixture-kind, it was satisfiable by a state that is
+    wrong in a different way.
+
+    The check now lives in `_install`, the one door every frame write goes
+    through, so a method added next loop inherits it.
+    """
+    pid, project = _sealed_project(client)
+    sealed_labels = list(project.lockbox["labels"])
+    assert len(sealed_labels) > 10
+
+    keep = project.df.drop(index=sealed_labels[:10])
+    with pytest.raises(Exception) as caught:
+        project.apply_fix(keep, "made-up-finding", True, "drop", "dropped")
+    assert "no longer in the table" in str(caught.value), (
+        f"the drop was refused for the wrong reason: {caught.value}")
+
+    # The refusal is not a blanket ban on dropping rows after the seal —
+    # `drop_rows` and `drop_empty_rows` are deliberately allowed on either
+    # side. Only sealed rows are protected.
+    unsealed = [i for i in project.df.index if i not in set(sealed_labels)]
+    project.apply_fix(project.df.drop(index=unsealed[:5]), "f2", True,
+                      "drop_rows", "dropped five unsealed rows")
+    assert project.n_rows_held_out == len(project.lockbox["labels"])
+
+
+def _sealed_project(client):
+    n_rows = 400
+    rng = np.random.default_rng(21)
+    frame = pd.DataFrame({
+        "age": rng.normal(50, 12, n_rows).round(1),
+        "bmi": rng.normal(27, 5, n_rows).round(1),
+        "sbp": rng.normal(128, 16, n_rows).round(1),
+    })
+    pid = client.post("/project", files={
+        "file": ("identity.csv", frame.to_csv(index=False).encode(),
+                 "text/csv")}).json()["id"]
+
+    def decide(kind, **payload):
+        r = client.post(f"/project/{pid}/decision",
+                        json={"kind": kind, "payload": payload})
+        assert r.status_code == 200, (kind, r.text[:250])
+
+    decide("set_target", column="sbp")
+    decide("set_grain", answer="one_row_per_person")
+    decide("set_eligibility", answer="everyone")
+    decide("seal", fraction=0.25)
+    return pid, api.STORE.get(pid)
 
 
 def test_the_capacity_clauses_cite_the_same_n_the_shelf_ranked_on(client, sealed):

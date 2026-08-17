@@ -112,6 +112,23 @@ FILED = {
     # this is the split that keeps the two reasons apart. It is dark for the
     # same reason they are and under the same row.
     ("recipes", "n_rows_without_an_outcome"): "GUIDED-202",
+    # `DRIVE-051`, and these two join the same family for the same reason. The
+    # three counts above were served as a breakdown of the table and did not
+    # partition it: `n_rows_without_an_outcome` counts the whole frame, so it
+    # overlaps `n_rows_withheld` wherever a sealed row lost its outcome.
+    # `n_rows_available_without_an_outcome` is the disjoint remainder and
+    # `n_rows_withheld_without_an_outcome` is the overlap, served as a number
+    # rather than left for a reader to infer from an arithmetic failure.
+    #
+    # THEY ARE ADDED RATHER THAN RENAMED INTO, and that is deliberate. A rename
+    # trips BOTH assertions below — `undeclared` on the new key and `stale` on
+    # the old one, because `_family` keys on the raw payload key — so the table
+    # would have to move in two directions in one commit. Keeping
+    # `n_rows_without_an_outcome` with the meaning its name already states
+    # avoids inventing a second true-but-differently-scoped field under the
+    # same word, which is the confusion `DRIVE-045` was filed for.
+    ("recipes", "n_rows_available_without_an_outcome"): "GUIDED-202",
+    ("recipes", "n_rows_withheld_without_an_outcome"): "GUIDED-202",
 }
 
 

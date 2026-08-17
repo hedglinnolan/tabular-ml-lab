@@ -2249,7 +2249,18 @@ async def get_models(project_id: str) -> Dict[str, Any]:
         # *sealed or unusable*, which is the same conflation this row is about,
         # committed in the fix for it. Two counts, each saying which it is.
         "n_rows_withheld": int(project.n_rows_held_out),
+        # `DRIVE-051`. FOUR NUMBERS, EACH SAYING WHICH POPULATION IT IS ABOUT,
+        # because three of them were served as a breakdown of the table and did
+        # not partition it. `n_rows_without_an_outcome` counts the WHOLE frame,
+        # so it overlaps `n_rows_withheld` wherever a sealed row lost its
+        # outcome — driven, 404 + 150 + 60 = 614 against 600 rows. The overlap
+        # is now a number a reader can see rather than one they infer from an
+        # arithmetic failure, and the disjoint remainder is served beside it.
         "n_rows_without_an_outcome": int(project.n_rows_without_an_outcome),
+        "n_rows_available_without_an_outcome":
+            int(project.n_rows_available_without_an_outcome),
+        "n_rows_withheld_without_an_outcome":
+            int(project.n_rows_held_out_without_an_outcome),
         "concern_note": _models.selection_note(entries, project.selected_models),
     }
 
@@ -2337,7 +2348,18 @@ async def get_recipes(project_id: str) -> Dict[str, Any]:
         # *sealed or unusable*, which is the same conflation this row is about,
         # committed in the fix for it. Two counts, each saying which it is.
         "n_rows_withheld": int(project.n_rows_held_out),
+        # `DRIVE-051`. FOUR NUMBERS, EACH SAYING WHICH POPULATION IT IS ABOUT,
+        # because three of them were served as a breakdown of the table and did
+        # not partition it. `n_rows_without_an_outcome` counts the WHOLE frame,
+        # so it overlaps `n_rows_withheld` wherever a sealed row lost its
+        # outcome — driven, 404 + 150 + 60 = 614 against 600 rows. The overlap
+        # is now a number a reader can see rather than one they infer from an
+        # arithmetic failure, and the disjoint remainder is served beside it.
         "n_rows_without_an_outcome": int(project.n_rows_without_an_outcome),
+        "n_rows_available_without_an_outcome":
+            int(project.n_rows_available_without_an_outcome),
+        "n_rows_withheld_without_an_outcome":
+            int(project.n_rows_held_out_without_an_outcome),
         "models": resolved,
         "operations": [{"key": o.key, "label": o.label,
                         "determinacy": o.determinacy, "scope": o.scope,
