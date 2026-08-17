@@ -2033,7 +2033,9 @@ DCA_THRESHOLDS = (0.05, 0.35)
 def decision_curve_payload(y_true, risks: Dict[str, Any], *,
                            low: float = DCA_THRESHOLDS[0],
                            high: float = DCA_THRESHOLDS[1],
-                           n_points: int = 61) -> Dict[str, Any]:
+                           n_points: int = 61,
+                           excluded: Sequence[Dict[str, Any]] = (),
+                           n_scored: Optional[int] = None) -> Dict[str, Any]:
     """Net benefit across a threshold range, per model, plus both strategies.
 
     `y_true` is 1 for the event. `risks` maps a model's display name to its
@@ -2083,9 +2085,21 @@ def decision_curve_payload(y_true, risks: Dict[str, Any], *,
         # the figure most often produces.
         "y_range_drawn": [min(-0.05, round(lowest - 0.01, 4)), None],
         "y_lower_bound": min(-0.05, round(lowest - 0.01, 4)),
-        "risk_rug": [round(float(v), 4)
-                     for values in (risks or {}).values() for v in
-                     np.asarray(values, dtype=float)[:200]],
+        # KEYED PER MODEL, and `GUIDED-236`'s widening is what forced it. The
+        # cap is `[:200]` PER MODEL and this used to concatenate every model's
+        # risks into one flat list with no key — driven, 120 values became 480
+        # over four overlaid distributions, and the checklist guard beside it
+        # was `bool(p.get("risk_rug"))`, which stays green over all four. A rug
+        # is a picture of *this model's* predicted risks; four of them stacked
+        # unlabeled is a picture of nothing. Same trap-3b shape as the item
+        # this widening is named for, one figure over, and created by the fix.
+        "risk_rug": {name: [round(float(v), 4) for v in
+                            np.asarray(values, dtype=float)[:200]]
+                     for name, values in (risks or {}).items()},
+        "risk_rug_cap": 200,
+        "n_models_scored": int(n_scored if n_scored is not None
+                               else len(risks or {}) + len(excluded or [])),
+        "excluded_models": [dict(e) for e in (excluded or [])],
         "styles": {"treat_none": {"width": "thick"},
                    "treat_all": {"width": "thin"}},
         "shaded_range": [float(low), float(high)],
@@ -2133,10 +2147,16 @@ DECISION_CURVE = register(FigureSpec(
             lambda p: float(p.get("y_lower_bound", 0)) <= -0.05),
         ChecklistItem(
             "risk_distribution",
-            "The distribution of predicted risks is shown",
+            "Every drawn model's predicted risks are shown, and shown as its "
+            "own distribution",
             "A curve over a threshold range where almost no patient's "
-            "predicted risk falls is a curve about nobody.",
-            lambda p: bool(p.get("risk_rug"))),
+            "predicted risk falls is a curve about nobody — and a rug that "
+            "concatenates four models' risks into one unlabeled list is a "
+            "distribution of nothing. This read `bool(p['risk_rug'])`, which "
+            "is green over both.",
+            lambda p: (bool(p.get("risk_rug"))
+                       and set(p.get("risk_rug") or {})
+                       == set(p.get("models") or {}))),
         ChecklistItem(
             "strategies_distinguishable",
             "Treat-none is thick and treat-all is thin",
@@ -2217,18 +2237,43 @@ ROC_CLAIMS = (
 )
 
 
-def roc_payload(y_true, risks: Dict[str, Any]) -> Dict[str, Any]:
+def roc_payload(y_true, risks: Dict[str, Any], *,
+                excluded: Sequence[Dict[str, Any]] = (),
+                n_scored: Optional[int] = None) -> Dict[str, Any]:
     """One curve per model, overlaid, with the C-statistic and its interval.
 
     The interval is a bootstrap percentile rather than DeLong — §A4.4 accepts
     either and names both — and `n_boot` is stated in the caption for the same
     reason `B` is on the instability plots.
+
+    `n_scored` is how many models the CALLER had, which is the only thing this
+    function cannot work out for itself and the only thing that makes
+    `models_overlaid` a check rather than a restatement — see that item.
+    `excluded` names models the caller deliberately left out, with the reason.
     """
     from sklearn.metrics import roc_auc_score, roc_curve
 
     y = np.asarray(y_true, dtype=float)
-    rng = np.random.default_rng(42)
     n_boot = 200
+    # THE RESAMPLE INDICES ARE DRAWN ONCE AND SHARED BY EVERY MODEL, and both
+    # halves of that are deliberate (`GUIDED-243`).
+    #
+    # ONCE, because a single generator consumed INSIDE the loop made a model's
+    # published interval depend on how many models were looped before it.
+    # Measured: `roc_payload(y, {'A': a})` gave A `[0.6919, 0.875]` and
+    # `roc_payload(y, {'B': b, 'A': a})` gave the same A `[0.6815, 0.882]` —
+    # same outcome, same probabilities, same model, different published
+    # interval, and the dict order is nothing but the user's tick order. The
+    # point estimate was stable throughout, so nothing looked wrong.
+    #
+    # SHARED, because these curves are compared to each other. Resampling every
+    # model over the same bootstrap replicates is the paired form, which holds
+    # the sample fixed across models the way `instability.py` holds everything
+    # but the sample fixed — §A4.4 accepts a bootstrap percentile and does not
+    # ask for independent draws per model, and independent draws would put a
+    # difference between two models' intervals that came from the generator.
+    boot = np.random.default_rng(42)
+    replicates = [boot.integers(0, len(y), size=len(y)) for _ in range(n_boot)]
     curves = {}
     for name, values in (risks or {}).items():
         predicted = np.asarray(values, dtype=float)
@@ -2238,8 +2283,7 @@ def roc_payload(y_true, risks: Dict[str, Any]) -> Dict[str, Any]:
         except ValueError:
             continue
         draws = []
-        for _ in range(n_boot):
-            idx = rng.integers(0, len(y), size=len(y))
+        for idx in replicates:
             if len(np.unique(y[idx])) < 2:
                 continue
             draws.append(float(roc_auc_score(y[idx], predicted[idx])))
@@ -2254,12 +2298,28 @@ def roc_payload(y_true, risks: Dict[str, Any]) -> Dict[str, Any]:
             # too few bootstrap draws had both classes.
             "c_interval": interval,
         }
+    dropped = [dict(e) for e in (excluded or [])]
+    # A MODEL `roc_auc_score` REFUSED IS STILL A MODEL THAT WENT MISSING. It
+    # used to `continue` out of the loop and vanish; the accounting item below
+    # is what makes that visible instead of silent.
+    for name in (risks or {}):
+        if name not in curves and not any(e.get("model") == name
+                                          for e in dropped):
+            dropped.append({
+                "model": name,
+                "why": ("its C-statistic is undefined on these rows — the "
+                        "held-out outcomes are all one class")})
     return {
         "figure": "roc",
         "n": int(len(y)),
         "events": int(y.sum()),
         "n_boot": n_boot,
         "curves": curves,
+        # THE ACCOUNTING, and it is what `models_overlaid` reads. Every model
+        # the caller scored is either a curve or a named exclusion.
+        "n_models_scored": int(n_scored if n_scored is not None
+                               else len(risks or {}) + len(excluded or [])),
+        "excluded_models": dropped,
         "chance_line": {"kind": "diagonal", "label": "chance"},
         "aspect": "square",
         # §A4.4: the clinical convention, not TPR/FPR.
@@ -2311,10 +2371,21 @@ ROC = register(FigureSpec(
             lambda p: p.get("aspect") == "square"),
         ChecklistItem(
             "models_overlaid",
-            "Models are overlaid with a legend, not split into panels",
+            "Every scored model is on this axis, or is named as not being",
             "§A4.4's presentation instruction: separate panels make the "
-            "comparison the figure exists for into an act of memory.",
-            lambda p: p.get("legend") == "inside"),
+            "comparison the figure exists for into an act of memory. "
+            "`GUIDED-236`: this item read `p['legend'] == 'inside'` against a "
+            "key the producer hardcodes three lines away, so it could not "
+            "ever be false — and it was `passed: true`, driven on a real "
+            "two-model project through the real routes, over a payload "
+            "holding one curve. The predicate now reads the ACCOUNTING: the "
+            "curves plus the named exclusions must come to the number of "
+            "models the caller actually scored, which is the one quantity "
+            "this producer cannot derive for itself.",
+            lambda p: (bool(p.get("curves"))
+                       and (len(p.get("curves") or {})
+                            + len(p.get("excluded_models") or []))
+                       == int(p.get("n_models_scored") or -1))),
     ),
     caption=lambda p: (
         f"Discrimination for "
@@ -2326,7 +2397,20 @@ ROC = register(FigureSpec(
                f"{p.get('n_boot', 0):,} bootstrap draws)"
                if c.get("c_interval") else " (interval not estimable)")
             for name, c in (p.get("curves") or {}).items())
-        + ". The diagonal is chance. The C-statistic measures discrimination "
+        + ". "
+        + "".join(
+            f"{e.get('model')} is not drawn: {e.get('why')}. "
+            for e in (p.get("excluded_models") or []))
+        # THE COMPANION ASYMMETRY. This figure may overlay N models and its
+        # `calibration` companion is about exactly one of them; the companion
+        # rule promotes the two into the manuscript together, so a reader who
+        # is not told will read the calibration plot as covering the curves.
+        + ((f"The calibration plot beside it covers "
+            f"{p.get('companion_covers_model')} only, not all "
+            f"{len(p.get('curves') or {})} curves. ")
+           if (p.get("companion_covers_model")
+               and len(p.get("curves") or {}) > 1) else "")
+        + "The diagonal is chance. The C-statistic measures discrimination "
           "only — the probability that a randomly chosen patient with the "
           "event has a higher predicted risk than one without — and says "
           "nothing about whether the predicted risks are correct or whether "
@@ -2391,13 +2475,32 @@ FOREST_CLAIMS = (
 
 def forest_payload(coefficients: List[Dict[str, Any]], *,
                    ratio_measure: bool = True,
-                   scale: str = "per standard deviation") -> Dict[str, Any]:
+                   scale: str = "per standard deviation",
+                   model: Optional[str] = None,
+                   other_models: Sequence[str] = ()) -> Dict[str, Any]:
     """One row per model coefficient, with the scale it is on stated.
 
     `coefficients` carries `name`, `estimate`, `low`, `high`, and optionally
     `reference` for a categorical reference level — which is rendered as a row
     with NO estimate rather than omitted, because a reader who cannot see the
     reference cannot interpret the contrast.
+
+    **`model` IS WHOSE COEFFICIENTS THESE ARE, and `other_models` is who else
+    could have supplied them** (`GUIDED-242`). The payload used to carry no
+    model key of any kind while the caption read *"Model coefficients for N
+    predictors"* and the producer silently took whichever fitted model happened
+    to expose `coef_` first — so the same table, ticked in the other order,
+    published different numbers under the same sentence.
+
+    **Widening was NOT the answer here and that is the ruling.** The ROC
+    overlays models because N curves on one axis is a comparison a reader can
+    make; a forest plot of four overlaid coefficient sets is not a figure. Nor
+    is refusal: `PRODUCT_VISION.md`'s shelf rule is that judgment renders as
+    ranking and never as absence, and four committed tests require this figure
+    to be drawn on a `logreg`/`glm` project. So the figure is drawn, it names
+    the model, and where more than one candidate existed it says so and names
+    them. The governing rule permits silence; it does not permit a coefficient
+    table that will not say whose coefficients it is.
     """
     rows = []
     for entry in coefficients or []:
@@ -2420,6 +2523,7 @@ def forest_payload(coefficients: List[Dict[str, Any]], *,
     # WHETHER THE CALLER ACTUALLY GROUPED, measured rather than assumed. See
     # the `ordering` key below.
     grouped = any(r["group"] for r in rows)
+    others = [str(m) for m in (other_models or ()) if str(m) != str(model)]
     return {
         "figure": "forest",
         # THE LABEL IS THE SPEC. §A4.7 names it, so it is data rather than a
@@ -2428,6 +2532,21 @@ def forest_payload(coefficients: List[Dict[str, Any]], *,
         "not_titled": "Risk factors",
         "rows": rows,
         "n_rows": len(rows),
+        # WHOSE COEFFICIENTS. `None` where the caller did not say, which the
+        # caption renders as silence rather than as a guess — and which the
+        # checklist accepts only while there was nothing to choose between.
+        "model": model,
+        "other_models_with_coefficients": others,
+        "n_models_with_coefficients": len(others) + (1 if model else 0),
+        # THE ARBITRARY CHOICE, SAID OUT LOUD rather than hidden. Which model
+        # is drawn depends on the order the models were fitted, which is the
+        # order the user ticked them. That is not a defensible ranking, so it
+        # is reported as what it is instead of being dressed as one.
+        "model_note": ("" if len(others) == 0 else (
+            f"{len(others) + 1} fitted models expose coefficients. This is the "
+            f"first of them in the order they were fitted, which is the order "
+            f"they were ticked — not a ranking. The others are "
+            f"{', '.join(others)}.")),
         "ratio_measure": bool(ratio_measure),
         "x_scale": "log" if ratio_measure else "linear",
         "reference_line": 1.0 if ratio_measure else 0.0,
@@ -2517,12 +2636,26 @@ FOREST = register(FigureSpec(
             "The estimate and interval are printed beside each row",
             "Reading a value off a log axis is an estimate of an estimate.",
             lambda p: len(p.get("numeric_column") or []) == p.get("n_rows", -1)),
+        ChecklistItem(
+            "names_the_model_it_is_about",
+            "Where more than one model has coefficients, the figure says "
+            "which one's these are",
+            "`GUIDED-242`. A coefficient table drawn from whichever model "
+            "happened to be fitted first publishes different numbers for the "
+            "same data depending on the order the user ticked the models, "
+            "under a caption that names no model at all. One model needs no "
+            "disambiguation and the figure may stay silent; more than one and "
+            "silence is a claim about a model the reader cannot identify.",
+            lambda p: (int(p.get("n_models_with_coefficients") or 0) <= 1
+                       or bool(p.get("model")))),
     ),
     caption=lambda p: (
-        f"Model coefficients for {p.get('n_rows', 0):,} predictors, "
-        f"{p.get('scale_stated', '')}, on a "
+        f"Model coefficients for {p.get('n_rows', 0):,} predictors"
+        + (f" from {p.get('model')}" if p.get("model") else "")
+        + f", {p.get('scale_stated', '')}, on a "
         f"{p.get('x_scale', 'linear')}-scale axis with a reference line at "
         f"{p.get('reference_line', 1)}. "
+        + (f"{p.get('model_note')} " if p.get("model_note") else "")
         + (f"{p.get('n_reference_rows', 0):,} categorical reference level(s) "
            f"are shown as rows without an estimate. "
            if p.get("n_reference_rows") else "")

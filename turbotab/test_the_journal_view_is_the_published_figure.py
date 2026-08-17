@@ -123,46 +123,20 @@ def _survey(client, items=10):
     return pid, api.STORE.get(pid)
 
 
-def _overlaid(project, bundle):
-    """The ROC payload the bundle WOULD build if it read every scored model.
-
-    **This is not a hand-made payload and the distinction is the whole of trap
-    3.** `figure_specs.roc_payload` is the production producer and it is called
-    here with the production run's own held-out probabilities; what is bypassed
-    is one line in `figure_bundle._risks_or_refuse`, which takes `scored[0]`
-    and hands the spec exactly one model however many were fitted.
-
-    That line is `GUIDED-236`, filed rather than fixed: the ROC spec takes a
-    DICT of models, its caption counts them, and its checklist carries *"Models
-    are overlaid with a legend, not split into panels"* — over a payload that
-    can only ever hold one. The gap is ASSERTED below rather than worked
-    around silently.
-    """
-    from turbotab import figure_specs, training as _training
-
-    run = project.training_run
-    scored = [r for r in run.results if r.probabilities]
-    assert len(scored) >= 2, (
-        f"only {len(scored)} model produced held-out probabilities, so there "
-        f"are not two series to tell apart")
-    event = scored[0].positive_label
-    y_true = [1 if v == event else 0
-              for v in _training.y_true_for(project)]
-    risks = {r.name: r.probabilities for r in scored
-             if r.positive_label == event}
-
-    served = _row(bundle, "roc")
-    assert served, "the bundle admitted no ROC at all"
-    assert len(served["payload"]["curves"]) == 1, (
-        f"`figure_bundle` now supplies "
-        f"{len(served['payload']['curves'])} curves. GUIDED-236 may be fixed — "
-        f"if so this helper should be deleted and the served payload used "
-        f"directly, because it is only here to stand in for a bundle that "
-        f"could not overlay models.")
-
-    served["payload"] = figure_specs.roc_payload(y_true, risks)
-    assert len(served["payload"]["curves"]) >= 2
-    return bundle
+# `_overlaid` STOOD HERE AND IS DELETED, WHICH IS `GUIDED-236` CLOSING.
+#
+# It built the ROC payload the bundle WOULD have built if it read every scored
+# model — the real `figure_specs.roc_payload`, the real run's held-out
+# probabilities — and swapped the result into the served row, because
+# `figure_bundle._risks_or_refuse` took `scored[0]` and handed the spec exactly
+# one model however many were fitted. It carried its own retirement condition:
+# *"GUIDED-236 may be fixed — if so this helper should be deleted and the
+# served payload used directly, because it is only here to stand in for a
+# bundle that could not overlay models."*
+#
+# The bundle overlays models now, so the caller below passes `FB.render(project)`
+# straight through and the assertion is an end-to-end check rather than a check
+# on a stand-in. Strictly stronger, and the deletion is the evidence.
 
 
 def _routes(client, pid):
@@ -273,7 +247,14 @@ def test_the_journal_face_tells_series_apart_by_dash_rather_than_color():
     """
     client = _client()
     pid, project = _trained(client)
-    bundle = _overlaid(project, FB.render(project))
+    # `GUIDED-236` IS FIXED, SO THE STAND-IN IS GONE. This used to be
+    # `_overlaid(project, FB.render(project))` — a helper that called the real
+    # `figure_specs.roc_payload` with the real run's probabilities and swapped
+    # its output into the served row, because `figure_bundle` could only ever
+    # supply one curve. Its own message said to delete it if the row was ever
+    # fixed, and this is that. The assertion below is now an end-to-end check
+    # on the bundle instead of a check on a hand-composed payload.
+    bundle = FB.render(project)
     roc = _row(bundle, "roc")
     assert roc and len(roc["payload"]["curves"]) >= 2, (
         f"the ROC payload carries "

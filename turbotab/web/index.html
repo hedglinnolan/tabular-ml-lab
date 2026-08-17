@@ -4235,7 +4235,34 @@
   var JC = {ink: "#111111", grey: "#666666", light: "#AAAAAA", bg: "#FFFFFF"};
   var JFONT = "Georgia,'Times New Roman',serif";
   var JDASH = ["", "6 3", "2 3", "8 3 2 3"];
-  var WEBC = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)"];
+  /* THREE, NOT FOUR, AND THE RULING ALREADY EXISTED — `DRIVE-016`.
+     `test_the_categorical_ramp_is_separable_and_legible.py` sets
+     RAMP = ("--c1","--c2","--c3") and asserts `--c4 not in RAMP` with *"Three
+     is the measured maximum"*; `--c4` is retained as a low-chroma "Other" and
+     is never measured under the CVD gate. This list held four and indexed
+     `[idx % length]`, so it was spending a token the ramp does not have.
+     Do NOT add a fourth here: it would have to re-pass the CVD floor and be
+     re-carried byte-for-byte into `docs/turbotab/prototypes/`, which that
+     file checks. */
+  var WEBC = ["var(--c1)", "var(--c2)", "var(--c3)"];
+
+  /* Which ink and which dash a series gets, in one place because the curve and
+     its legend swatch are two separate emissions and they must not disagree.
+
+     `%` wraps silently, so before `DRIVE-016` a FIFTH series was byte-identical
+     to the first — same hue, same solid stroke — and nothing said so. With the
+     ramp at three that is a FOURTH series, which the models page can produce:
+     it offers twelve models and caps nothing. So beyond the ramp the app
+     borrows the journal ramp's dashes, which is the redundant channel §07
+     already relies on for print. Series 1-3 are hue-only and unchanged. */
+  function seriesInk(idx, journal){
+    return journal ? JC.ink : WEBC[idx % WEBC.length];
+  }
+  function seriesDash(idx, journal){
+    var d = journal ? JDASH[idx % JDASH.length]
+                    : JDASH[Math.floor(idx / WEBC.length) % JDASH.length];
+    return d ? ' stroke-dasharray="' + d + '"' : "";
+  }
 
   function figSVG(w, h, journal, inner){
     return '<svg class="fig-svg" viewBox="0 0 ' + w + " " + h + '" ' +
@@ -4285,18 +4312,16 @@
          DASH PATTERN, so the figure survives greyscale printing and a reader
          who cannot distinguish the hues. */
       s += '<path d="' + d.trim() + '" fill="none" stroke="' +
-           (journal ? JC.ink : WEBC[idx % WEBC.length]) + '" stroke-width="' +
+           seriesInk(idx, journal) + '" stroke-width="' +
            (journal ? "1.3" : "2.4") + '" stroke-linejoin="round"' +
-           (journal && JDASH[idx % JDASH.length]
-              ? ' stroke-dasharray="' + JDASH[idx % JDASH.length] + '"' : "") +
+           seriesDash(idx, journal) +
            "/>";
       var ly = S + 4 + idx * 15;
       s += '<line x1="' + pad + '" y1="' + ly + '" x2="' + (pad + 22) +
            '" y2="' + ly + '" stroke="' +
-           (journal ? JC.ink : WEBC[idx % WEBC.length]) + '" stroke-width="' +
+           seriesInk(idx, journal) + '" stroke-width="' +
            (journal ? "1.3" : "2.4") + '"' +
-           (journal && JDASH[idx % JDASH.length]
-              ? ' stroke-dasharray="' + JDASH[idx % JDASH.length] + '"' : "") +
+           seriesDash(idx, journal) +
            "/>";
       s += '<text x="' + (pad + 28) + '" y="' + (ly + 3.5) +
            '" font-size="10" fill="' + label + '">' + esc(name) +

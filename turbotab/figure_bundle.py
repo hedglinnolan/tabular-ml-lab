@@ -400,7 +400,18 @@ def _calibration_payload(project, **_: Any) -> Dict[str, Any]:
         raise FigureUnavailable(
             "this project holds no model predictions to calibrate")
     y_true, y_proba, model_name, event = run
-    payload = _specs.calibration_render(y_true, y_proba)
+    # `model_name=` IS PASSED, AND IT USED NOT TO BE. `calibration_payload`
+    # takes a `model_name` kwarg defaulting to the literal string `"model"`,
+    # publishes it at `figure_specs.py:98`, and its caption reads that key —
+    # so with the only live caller dropping it on the floor and writing the
+    # real name to a DIFFERENT key one line later, every calibration plot this
+    # app has ever drawn was captioned **"Calibration of model on N
+    # observations"**. The figure could not say which model it was about while
+    # holding the answer in the payload beside it. Found at L63-B4 while
+    # ruling the companion asymmetry, which is the same question one figure
+    # over. `payload["model"]` stays because the bundle and the ROC read it.
+    payload = _specs.calibration_render(y_true, y_proba,
+                                        model_name=model_name)
     payload["model"] = model_name
     payload["scored_on"] = "held-out rows only"
     # WHICH EVENT the curve is about, carried rather than assumed. On a 0/1
@@ -451,43 +462,139 @@ def predictions_for(project):
     if not scored:
         return None
     y_true = _training.y_true_for(project)
-    best = scored[0]
-    if len(y_true) != len(best.probabilities):
+    # THE FIRST CALIBRATABLE RUN, NOT THE FIRST SCORED ONE, and the distinction
+    # is a whole figure set. This read `best = scored[0]` and then refused if
+    # that one model recorded no `positive_label` — so it tested the condition
+    # on an arbitrary candidate instead of looking for one that meets it.
+    #
+    # Driven on `clinical_risk.csv`: `RFWrapper` does not forward `classes_`,
+    # so `training.py:646` records no `positive_label` for `rf` even though it
+    # returns 120 held-out probabilities. Ticking `['rf', 'logreg']` therefore
+    # made `has_predictions` FALSE and the ROC, the calibration plot and the
+    # decision curve all vanished — from a project that had fitted a perfectly
+    # calibratable logistic regression. Ticking `['logreg', 'rf']` drew all
+    # three. The tick order decided whether three clinical figures existed.
+    #
+    # Refusing when NOTHING records an event is still correct and is unchanged:
+    # guessing `1` would be right on a 0/1 target and silently wrong on every
+    # other one. The wrapper itself is `GUIDED-245`.
+    best = next((r for r in scored
+                 if r.positive_label is not None
+                 and len(y_true) == len(r.probabilities)), None)
+    if best is None:
         return None
     event = best.positive_label
-    if event is None:
-        # The run did not record which class the column is about. Refusing
-        # here is the honest branch: guessing `1` would be right on a 0/1
-        # target and silently wrong on every other one.
-        return None
     binary = [1 if value == event else 0 for value in y_true]
     return binary, best.probabilities, best.name, event
 
 
 def _risks_or_refuse(project):
-    """`(y_true, {model_name: risks})` from the held-out rows, or a refusal.
+    """`(y_true, {model: risks}, excluded, n_scored)` from the held-out rows.
 
     Every clinical figure added at L40 reads the same three things, so they
     read them in one place — four copies of *find the predictions* is four
     chances to disagree about which rows they came from, and the answer is
     always the same: the held-out rows and nowhere else.
+
+    **EVERY SCORED MODEL, NOT THE FIRST ONE** (`GUIDED-236`). This returned a
+    dict of exactly one, built from `predictions_for`'s single best run, while
+    `figure_specs.roc_payload` had always taken `Dict[str, Any]`, looped it,
+    counted the models in its caption and carried a checklist item reading
+    *"Models are overlaid with a legend, not split into panels"* — over a
+    payload that could hold one curve. The decision curve had the same defect
+    from the same line.
+
+    **`predictions_for` is deliberately left alone.** It is correctly named for
+    calibration, whose producer takes a probability VECTOR and not a dict, and
+    it is what `state()`'s `has_predictions` gates the ROC's own admission on.
+    This function is the one that needed widening; it is still the only place
+    the ROC and the decision curve find their risks.
+
+    **The hazard is `positive_label`, and it is `GUIDED-093` one level out.**
+    `positive_label` is per result (`training.py:646`), so two models binarized
+    against different events would put pictures of two different outcomes on
+    one axis, drawn confidently. Every model is therefore checked against the
+    event `predictions_for` chose, and anything dropped is NAMED in `excluded`
+    and reaches the caption — a silent drop here would be the same defect one
+    figure over. It is a defensive assertion rather than an observed failure: a
+    failed fit already has `probabilities = None` and never reaches `scored`,
+    and all four models agreed on a real drive. No fixture in this repository
+    produces a disagreement.
     """
     run = predictions_for(project)
     if run is None:
         raise FigureUnavailable(
             "this project holds no model predictions on the held-out rows")
-    y_true, y_proba, model_name, _event = run
-    return y_true, {model_name: y_proba}
+    y_true, y_proba, model_name, event = run
+
+    from turbotab import training as _training
+
+    fitted = getattr(project, "training_run", None)
+    scored = [r for r in getattr(fitted, "results", []) or [] if r.probabilities]
+    outcome = _training.y_true_for(project)
+
+    risks: Dict[str, Any] = {}
+    excluded: List[Dict[str, str]] = []
+    for result in scored:
+        name = str(result.name)
+        if result.positive_label is None:
+            # A DIFFERENT SENTENCE FROM *a different event*, and the recorded-
+            # absence rule is why it gets its own: *nobody recorded which class
+            # these probabilities are about* and *they are about the other
+            # class* are not the same claim and were rendering as one.
+            excluded.append({
+                "model": name,
+                "why": ("the run recorded no event for its probabilities, so "
+                        "which class the curve would be about is unknown — "
+                        "`GUIDED-245`")})
+            continue
+        if result.positive_label != event:
+            excluded.append({
+                "model": name,
+                "why": (f"its probabilities are about "
+                        f"`{result.positive_label}` and this figure is about "
+                        f"`{event}` — two events on one axis is a picture of "
+                        f"neither")})
+            continue
+        # PER MODEL, not once. The length check used to run against whichever
+        # model `scored[0]` happened to be.
+        if len(outcome) != len(result.probabilities):
+            excluded.append({
+                "model": name,
+                "why": (f"it scored {len(result.probabilities)} rows against "
+                        f"{len(outcome)} outcomes, so its curve would be drawn "
+                        f"over a different set of rows")})
+            continue
+        risks[name] = result.probabilities
+
+    if not risks:                                        # pragma: no cover
+        # `predictions_for` already found one, so this is unreachable unless
+        # the two disagree about the same run. Falling back to its answer is
+        # the honest branch: an empty dict would refuse a figure the app has
+        # the data for.
+        risks = {model_name: y_proba}
+    return y_true, risks, excluded, len(scored)
 
 
 def _decision_curve_payload(project, **_: Any) -> Dict[str, Any]:
-    y_true, risks = _risks_or_refuse(project)
-    return figure_specs.decision_curve_payload(y_true, risks)
+    y_true, risks, excluded, n_scored = _risks_or_refuse(project)
+    return figure_specs.decision_curve_payload(
+        y_true, risks, excluded=excluded, n_scored=n_scored)
 
 
 def _roc_payload(project, **_: Any) -> Dict[str, Any]:
-    y_true, risks = _risks_or_refuse(project)
-    return figure_specs.roc_payload(y_true, risks)
+    y_true, risks, excluded, n_scored = _risks_or_refuse(project)
+    payload = figure_specs.roc_payload(
+        y_true, risks, excluded=excluded, n_scored=n_scored)
+    # THE COMPANION ASYMMETRY, SAID ON THE WIRE. This figure now overlays N
+    # models and `calibration` — which the ROC declares as a companion and
+    # which the companion rule promotes into the manuscript alongside it — is
+    # about exactly ONE of them. Nothing said so, so a reader saw three curves
+    # promoted beside a calibration plot for a model the caption never
+    # connected to any of them.
+    calibrated = predictions_for(project)
+    payload["companion_covers_model"] = calibrated[2] if calibrated else None
+    return payload
 
 
 def _forest_payload(project, **_: Any) -> Dict[str, Any]:
@@ -499,22 +606,48 @@ def _forest_payload(project, **_: Any) -> Dict[str, Any]:
     """
     import numpy as np
 
-    coefficients = _coefficients_for(project)
+    coefficients, model, others = _coefficients_and_model(project)
     if not coefficients:
         raise FigureUnavailable(
             "no fitted model in this project exposes coefficients — a forest "
             "plot is about coefficients, and a tree ensemble has none")
-    return figure_specs.forest_payload(coefficients)
+    return figure_specs.forest_payload(coefficients, model=model,
+                                       other_models=others)
 
 
 def _coefficients_for(project):
     """`[{name, estimate, low, high}]` from a fitted linear model.
+
+    The rows only. `_coefficients_and_model` is the full answer and this is the
+    shape `state()`'s `has_coefficients` and the wrapped-estimator test ask for.
+    """
+    rows, _model, _others = _coefficients_and_model(project)
+    return rows
+
+
+def _coefficients_and_model(project):
+    """`(rows, model_name, other_models_with_coefficients)`.
 
     The interval is the coefficient plus or minus 1.96 standard errors where
     the estimator exposes them, and **the coefficient alone with no interval
     where it does not** — a forest plot of bare points is thinner than one
     with intervals and is not false, whereas an interval invented from nothing
     would be.
+
+    **WHICH MODEL'S COEFFICIENTS THESE ARE IS RETURNED RATHER THAN DISCARDED**
+    (`GUIDED-242`). This used to `return` inside the loop on the first result
+    exposing `coef_`, with `result.key` in scope and thrown away, and the
+    payload carried no model key at all — so on `clinical_risk.csv` with logreg
+    and LDA both fitted, ticking `['logreg','lda']` published `age=0.5908` and
+    ticking `['lda','logreg']` published `age=0.5905`, from a figure captioned
+    *"Model coefficients for N predictors"* that never said whose. Same rows,
+    same data, different published coefficients, no model named.
+
+    The loop now runs to the end so the OTHERS can be named too. That costs a
+    refit per remaining candidate, which is the honest price of being able to
+    say *"three models expose coefficients and this is one of them"* — a count
+    taken off the registry instead would call a tree a candidate, because
+    `coef_` only exists after a fit.
     """
     import numpy as np
 
@@ -523,7 +656,7 @@ def _coefficients_for(project):
 
     run = getattr(project, "training_run", None)
     if run is None or not getattr(project, "lockbox", None):
-        return []
+        return [], None, []
 
     # THE RUN DOES NOT RETAIN ITS FITTED ESTIMATORS — `ModelResult` carries the
     # PLAN as a dict and the predictions, which is the right thing to persist
@@ -536,11 +669,14 @@ def _coefficients_for(project):
     target = str(project.target)
     rows = rows[rows[target].notna()]
     if rows.empty:
-        return []
+        return [], None, []
     X = _training.feature_frame(project, rows)
     y = rows[target]
     registry = get_registry()
 
+    drawn: List[Dict[str, Any]] = []
+    chosen: Optional[str] = None
+    with_coefficients: List[str] = []
     for result in getattr(run, "results", []) or []:
         if result.error or result.key not in registry:
             continue
@@ -554,6 +690,11 @@ def _coefficients_for(project):
             continue
         if estimator is None or not hasattr(estimator, "coef_"):
             continue
+        with_coefficients.append(str(result.name))
+        if chosen is not None:
+            # Already have the rows. Keep looping only to finish naming the
+            # candidates — a figure that says *one of three* has to know three.
+            continue
         coef = np.ravel(np.asarray(estimator.coef_, dtype=float))
         try:
             names = [str(c) for c in pipe[:-1].get_feature_names_out()]
@@ -561,9 +702,11 @@ def _coefficients_for(project):
             names = []
         if len(names) != len(coef):
             names = [f"predictor {i + 1}" for i in range(len(coef))]
-        return [{"name": n, "estimate": float(c), "low": None, "high": None}
-                for n, c in zip(names, coef)]
-    return []
+        drawn = [{"name": n, "estimate": float(c), "low": None, "high": None}
+                 for n, c in zip(names, coef)]
+        chosen = str(result.name)
+    others = [n for n in with_coefficients if n != chosen]
+    return drawn, chosen, others
 
 
 def _survey_frame(project):
@@ -654,6 +797,19 @@ def _no_predictions_because(project) -> str:
     if not any(r.probabilities for r in run.results):
         return ("The models that were fitted do not produce probabilities, so "
                 "there is nothing to calibrate.")
+    unnamed = sorted({str(r.name) for r in run.results
+                      if r.probabilities and r.positive_label is None})
+    if unnamed:
+        # `GUIDED-245`. REACHABLE, and it used to fall through to the sentence
+        # below — which told a user the curve *should be drawn* on a surface
+        # whose entire job is to say why it was not. That is the governing
+        # rule's assert-something-false branch, in the explanation of a
+        # silence.
+        return (f"{', '.join(unnamed)} produced probabilities without "
+                f"recording which class they are about, so a calibration "
+                f"curve drawn from them could be this event or its mirror "
+                f"image. Fit a model that records its outcome level — a "
+                f"logistic regression does — and the curve is drawn.")
     return "There are predictions and the curve should be drawn."
 
 
