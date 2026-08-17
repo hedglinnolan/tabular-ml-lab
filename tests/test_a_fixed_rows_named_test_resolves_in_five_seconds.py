@@ -129,6 +129,48 @@ def test_the_rows_with_no_pytest_target_are_named_rather_than_ignored():
         f"ledger routing around the check rather than a category of fix.")
 
 
+def test_the_parallel_invocation_keeps_each_file_on_one_worker():
+    """`L62-E1`. §03 now offers `-n 8 --dist loadfile`, and `loadfile` is load-bearing.
+
+    The parallel form was licensed by measuring it against the serial one at a
+    single commit — same counts, byte-identical failure lists, 2.92× faster. The
+    flag that makes that safe is `--dist loadfile`, which keeps every test in a
+    file on one worker. Without it xdist distributes by test, and a
+    module-scoped fixture or a process-global table is then observed by several
+    workers at once — `TEST-063`'s shape, which is a defect this suite has
+    actually had.
+
+    **Read out of `AGENT_ONBOARD.md` §03 rather than restated**, for the same
+    reason the exclusion list above is: a second copy drifts, and it drifts
+    silently in the direction that removes a safeguard.
+    """
+    text = open(ONBOARD, encoding="utf-8").read()
+    parallel = [line for line in text.splitlines() if "-n 8" in line]
+    assert parallel, (
+        "§03 no longer offers a parallel invocation. If it was withdrawn this "
+        "test should be deleted with the reason, not left asserting a command "
+        "nobody is told to run.")
+    for line in parallel:
+        assert "--dist loadfile" in line, (
+            f"§03 offers a parallel run without `--dist loadfile`: {line!r}. "
+            f"Distributing by test rather than by file lets two workers share "
+            f"a module-scoped fixture, which is TEST-063's shape and is a "
+            f"defect this suite has had.")
+
+
+def test_the_two_documented_invocations_name_the_same_target():
+    """A parallel form that swept something narrower would be a faster number
+    about a smaller question, and the wall-clock would flatter it."""
+    text = open(ONBOARD, encoding="utf-8").read()
+    runs = [line for line in text.splitlines()
+            if "-m pytest turbotab/" in line and "venv/bin/python" in line]
+    assert len(runs) >= 1, f"parsed {runs} out of §03"
+    for line in runs:
+        assert " turbotab/ " in line, (
+            f"a documented sweep names something other than `turbotab/`: "
+            f"{line!r}")
+
+
 def test_the_documented_invocation_still_collects_this_check():
     """`TEST-067`. The split is only a fix while this file stays collected.
 

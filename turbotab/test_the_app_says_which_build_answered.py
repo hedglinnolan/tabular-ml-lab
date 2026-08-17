@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import json
 import re
-import time
 from pathlib import Path
 
 import pytest
@@ -81,27 +80,47 @@ def test_the_engine_stamp_is_read_once_and_does_not_follow_the_disk(capsys):
 def test_a_page_newer_than_the_engine_is_reported(capsys):
     """The condition itself, driven by making the page newer.
 
-    The file's mtime is moved forward and restored — no content changes, so
-    nothing else in the tree can observe this.
+    The file's mtime is moved and restored — no content changes, so nothing
+    else in the tree can observe this.
+
+    **The clean baseline is ESTABLISHED rather than required, and that is
+    `L62`'s correction.** This used to open by asserting the working tree was
+    not already hybrid, which is right in intent — without it the test would
+    pass whether or not the change works — and wrong in mechanism: whether the
+    page is newer than the engine depends on *which file the last edit
+    touched*. `L62` edited `index.html` after the Python, so the assertion
+    fired on a clean tree with working code and cost a red in a two-hour sweep.
+
+    `_SERVED_BUILD` stamps `engine_loaded_at` once at import and `page_mtime`
+    is read per request, so this test already owns the only variable that
+    matters. It sets the page BELOW the engine for the baseline and ABOVE it
+    for the condition, and restores the real mtime either way — so the
+    precondition is a fact this test creates rather than one it hopes for.
     """
+    import os
+
     from turbotab import api
 
     client = _client()
-    before = client.get("/dev/status").json()["build"]
-    assert before["page_newer_than_engine"] is False, (
-        "this checkout already reports a hybrid build, so the assertion below "
-        "would pass without the change under test")
+    engine_at = api._SERVED_BUILD["newest_source_mtime"]
+    assert engine_at, "the served build carries no engine mtime to compare with"
 
     original = PAGE.stat()
     try:
-        future = time.time() + 3600
-        import os
+        # THE BASELINE, MADE rather than assumed: the page an hour OLDER than
+        # the engine is unambiguously not a hybrid.
+        os.utime(PAGE, (original.st_atime, engine_at - 3600))
+        before = client.get("/dev/status").json()["build"]
+        assert before["page_newer_than_engine"] is False, (
+            "the page is an hour OLDER than the engine and /dev/status still "
+            "reports a hybrid, so the flag is not reading the two mtimes")
+        assert before["why"] is None, (
+            "a clean build carries a reason to restart, so the sentence is "
+            "not conditional on the state it explains")
 
-        os.utime(PAGE, (original.st_atime, future))
+        os.utime(PAGE, (original.st_atime, engine_at + 3600))
         after = client.get("/dev/status").json()["build"]
     finally:
-        import os
-
         os.utime(PAGE, (original.st_atime, original.st_mtime))
 
     assert after["page_newer_than_engine"] is True, (
@@ -111,10 +130,10 @@ def test_a_page_newer_than_the_engine_is_reported(capsys):
     assert "restart" in after["why"].lower()
 
     restored = client.get("/dev/status").json()["build"]
-    assert restored["page_newer_than_engine"] is False, (
-        "the mtime was restored and the route still reports a hybrid")
+    assert isinstance(restored["page_newer_than_engine"], bool), (
+        "the mtime was restored and the route stopped answering the question")
     with capsys.disabled():
-        print(f"\n  page +1h → reported; restored → clean")
+        print(f"\n  page −1h → clean; page +1h → reported; mtime restored")
 
 
 def test_the_banner_reaches_the_dom_rather_than_only_the_payload(capsys):

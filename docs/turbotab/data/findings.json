@@ -12415,11 +12415,11 @@
   "detail": "L60-E's commit 7e34743 is titled 'the sweep found 81 red'. Its sweep log was written at 00:34; the commit landed at 00:42 and added 18 lines to turbotab/nutrition.py -- a NO_EAR_USE_EER continue that removes energy from the prevalence dropdown. Three of the 81 were test_the_dropdown_offers_only_what_the_pack_recognizes over nhanes_dietary, nhanes_kilojoules and nhanes_partial_design, and that change is what turned them green. So 81 was never true of the tree the commit created, and the commit names the very test in its own comment. The number then propagated: L61's prompt built Part A on it, and DRIVE-041's note reads 'THE 81 SPLITS DIFFERENTLY FROM HOW IT WAS REPORTED' while decomposing 78. The L61 report's divergence item 9 attributed the gap to 'the four non-refusal reds and xdist's own isolation' and declined to chase it -- a speculation that would have been read later as a fact about the runner.",
   "ev": "7e34743 subject vs turbotab/nutrition.py NO_EAR_USE_EER continue; l60/full.log mtime 00:34 vs commit 00:42; comm of FAILED node lists, 3 nodes, one file",
   "act": "A sweep number belongs to a commit that does not change what it measured, or it carries the sha it was taken at. The cheap form is to stamp the count with the sha in the same line that states it, the way the baseline chain now asserts its stamps (TEST-091). The class is wider than sweeps: any measurement reported in the same commit as a change to its subject. Not fixed here -- filed so the next loop starts from a measurement rather than a search.",
-  "status": "OPEN",
-  "note": "Found by the adjudicator while reconciling the L61 report's arithmetic: 'the 81 is 74 + 4' does not add, and DRIVE-041's note supplies the real base of 78. Diffing the two runs' FAILED node lists cost no machine time and named the three exactly. THE VALUABLE CONSEQUENCE IS THE OPPOSITE OF A DEFECT: with the three explained by a code change, the serial run and the pytest-xdist -n 8 --dist loadfile run agree on every remaining failing node, 76 of 76, over identical populations of 2593. That removes the runner as a suspect and is the evidence needed to consider making xdist the documented sweep -- 41:34 against 2:01:40 on the constraint the product owner has raised three times. What is still missing is a paired run of both runners at ONE commit.",
+  "status": "FIXED",
+  "note": "MEASURED AT L62-E1 AND THE TWO RUNNERS AGREE, so the parallel command is written into AGENT_ONBOARD section 03 with its measurement beside it. Both at d464e0b, still tree, back to back on an otherwise idle machine: -n 8 --dist loadfile gave 2 failed / 2649 passed / 17 skipped / 9 xfailed in 41:23; serial gave 2 failed / 2649 passed / 17 skipped / 9 xfailed in 2:00:46. 2.92x. AND THE FAILURE LISTS ARE BYTE-IDENTICAL, not merely the same length -- diffed, because equal counts would pass over a swap and that is the check the comparison exists to make. --dist loadfile is not optional and the guard now says so: it keeps a file on one worker, which is what stops a module-scoped fixture being observed by two of them, and that is TEST-063's shape rather than a hypothetical. THE GUARD WAS EXTENDED RATHER THAN THE PROSE, as the row asked: test_a_fixed_rows_named_test_resolves_in_five_seconds already reads the --ignore list out of section 03 rather than restating it, and it now also reads the parallel line and fails if it loses --dist loadfile or if the two documented invocations stop naming the same target. A faster number about a smaller question would otherwise flatter itself.",
   "verified_against": "",
-  "test": "",
-  "verified_ev": "7e34743 subject vs turbotab/nutrition.py NO_EAR_USE_EER continue; l60/full.log mtime 00:34 vs commit 00:42; comm of FAILED node lists, 3 nodes, one file"
+  "test": "tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py::test_the_parallel_invocation_keeps_each_file_on_one_worker",
+  "verified_ev": "docs/turbotab/prompts/AGENT_ONBOARD.md section 03; tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py::test_the_parallel_invocation_keeps_each_file_on_one_worker"
  },
  {
   "id": "DRIVE-043",
@@ -12588,5 +12588,33 @@
   "verified_against": "",
   "test": "turbotab/test_the_page_never_moves_the_viewport.py::test_the_rail_navigates_when_a_user_presses_it",
   "verified_ev": "turbotab/pageharness.py El.prototype.scrollIntoView; TEST-066; LOOP.md section 02"
+ },
+ {
+  "id": "TEST-096",
+  "area": "TEST",
+  "sev": "medium",
+  "item": "Agreement between a parallel and a serial run at one commit is agreement about one tree -- it is not evidence of test isolation, and the parallel runner cannot produce the ordering defect the serial one would",
+  "detail": "FILED AT L62-E1 BESIDE THE PROPOSAL IT LIMITS, because the proposal is the kind that gets over-read. What was measured is that at d464e0b the two runners return the same counts and the same failure list. What that does NOT establish: that the suite is order-independent. A serial run executes files in collection order and a --dist loadfile run executes them in whatever order eight workers happen to free up in, so the parallel form NEVER produces the serial order and cannot fail on it. TEST-063 is the instance this matters for -- a test-isolation defect found by the full suite while the file passed alone -- and a loop that quoted a parallel run as evidence that isolation still holds would be citing a measurement that structurally cannot see it. THE HONEST STATEMENT: the parallel form is licensed for SPEED on a tree whose isolation is not in question. Where isolation IS the question -- after a loop that adds module-scoped fixtures or process-global tables -- the serial run is the one that answers it, and tests/test_suite_is_order_independent.py is the instrument that owns that claim directly. Recorded so the next loop does not have to rediscover the limit from a green parallel sweep.",
+  "ev": "L62-E1's paired measurement at d464e0b; TEST-063; tests/test_suite_is_order_independent.py",
+  "act": "Nothing to build. Read before quoting a parallel sweep as evidence of anything but speed.",
+  "status": "NOT-A-DEFECT",
+  "note": "Filed as the limit on TEST-093 rather than as a defect. A proposal that saves two hours a loop will be over-read unless what it does not establish is written down beside it.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "L62-E1's paired measurement at d464e0b; TEST-063; tests/test_suite_is_order_independent.py"
+ },
+ {
+  "id": "TEST-097",
+  "area": "TEST",
+  "sev": "low",
+  "item": "A guard's precondition depended on which file the last edit touched, so correct code produced a red in a two-hour sweep",
+  "detail": "FOUND AT L62-E1 IN THE PAIRED SWEEP, and both runners reported it, which is how it was told from a flake. test_a_page_newer_than_the_engine_is_reported opened by ASSERTING the working tree was not already a hybrid build -- right in intent, because without it the test passes whether or not the flag works, and wrong in mechanism. page_newer_than_engine compares index.html's mtime against the newest turbotab/*.py mtime, so it is true whenever the last edit happened to touch the page. L62 edited index.html after the Python, so a clean tree with working code failed. FIXED BY MAKING THE PRECONDITION rather than requiring it: _SERVED_BUILD stamps engine_loaded_at once at import and page_mtime is read per request, so the test already owned the only variable that matters. It now sets the page an hour BELOW the engine for the baseline and an hour ABOVE for the condition, and restores the real mtime either way -- so it also asserts the clean branch, which it never did. THE CLASS: a guard whose precondition is a property of the working tree rather than of the code will fire on editing order, and the cost is paid in whole-suite time rather than at the moment the edit is made.",
+  "ev": "turbotab/test_the_app_says_which_build_answered.py::test_a_page_newer_than_the_engine_is_reported; turbotab/api.py _served_build",
+  "act": "Fixed at L62-E1.",
+  "status": "FIXED",
+  "note": "",
+  "verified_against": "",
+  "test": "turbotab/test_the_app_says_which_build_answered.py::test_a_page_newer_than_the_engine_is_reported",
+  "verified_ev": "turbotab/test_the_app_says_which_build_answered.py::test_a_page_newer_than_the_engine_is_reported; turbotab/api.py _served_build"
  }
 ]

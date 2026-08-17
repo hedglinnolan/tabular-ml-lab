@@ -102,12 +102,31 @@ work around it.** Every count this project reports comes from a hand-rolled invo
 neither half runs too long:
 
 ```bash
-venv/bin/python -m pytest turbotab/ -q                          # ~2 HOURS on a quiet machine
+venv/bin/python -m pytest turbotab/ -q -n 8 --dist loadfile     # ~41 min  (L62: measured 41:23)
 venv/bin/python -m pytest tests/ --ignore=tests/integration \
     --ignore=tests/test_nn_modernization.py \
-    --ignore=tests/test_a_fixed_row_names_a_test_that_actually_runs.py -q   # ~35 s
-venv/bin/python -m pytest tests/integration -q                  # ~40 s
+    --ignore=tests/test_a_fixed_row_names_a_test_that_actually_runs.py -q   # ~44 s
+venv/bin/python -m pytest tests/integration -q                  # ~50 s
 ```
+
+**The first line gained `-n 8 --dist loadfile` at `L62` and the serial form is still correct.**
+`venv/bin/python -m pytest turbotab/ -q` on its own takes **2:00:46** and is what every count before
+`L62` was taken with. The parallel form is offered because it was **measured against the serial one
+at a single commit**, which is the only evidence that would license it:
+
+| | failed | passed | skipped | xfailed | wall |
+|---|---:|---:|---:|---:|---:|
+| `-n 8 --dist loadfile` | 2 | 2,649 | 17 | 9 | **41:23** |
+| serial | 2 | 2,649 | 17 | 9 | **2:00:46** |
+
+Same commit (`d464e0b`), still tree, back to back on an otherwise idle machine, and **the two
+failure lists are byte-identical** — not merely the same counts, which is the check that would have
+missed a swap. `2.92×`. `--dist loadfile` is not optional: it keeps each file on one worker, which is
+what stops a module-global fixture being observed by two of them (`TEST-063`'s shape).
+
+**`TEST-096` is the honest limit on this**, and read it before quoting a parallel run as evidence of
+test isolation: agreement at one commit is agreement about one tree. A parallel run cannot see an
+ordering defect that a serial one would, because it never produces the serial order.
 
 **Both timings on the `tests/` line have been wrong, in opposite directions.** It read `~20 min` for
 a command that takes **35.25 s** *(measured 2026-08-10 at `7abf21c`: 1,738 passed · 1 failed · 4

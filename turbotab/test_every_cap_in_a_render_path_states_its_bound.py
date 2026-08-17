@@ -145,6 +145,22 @@ NOT_A_CAP: Dict[Tuple[str, str], str] = {
         "`applied.length` sentences, so the count rendered is exactly the "
         "number of applied fixes the record holds: the surface renders all of "
         "them and there is no remainder to disclose."),
+    #: `DRIVE-049`, and both are copies made so `.sort()` has something of its
+    #: own to reorder. `Array.prototype.sort` mutates in place, so comparing
+    #: the page's picks against the record's without copying would silently
+    #: reorder `P.selected_models` — a render path rewriting the record it is
+    #: reading. Neither drops an element; the comparison is over the whole of
+    #: both lists, which is the point of it.
+    ("renderTrainState", "var recorded = (P.selected_models || []).slice();"): (
+        "`slice()` with no arguments is a COPY, not a cut. It exists so the "
+        "`.sort()` on the next line cannot reorder the record's own array in "
+        "place. Nothing is dropped and nothing is hidden from a reader."),
+    ("renderTrainState",
+     'var differs = picked.slice().sort().join(",") !== recorded.sort().join(",");'): (
+        "The same copy, on the page's side of the comparison. Both lists are "
+        "compared whole — the question is whether the page's selection and the "
+        "record's DISAGREE, and a cut on either side would answer a different "
+        "question while looking like this one."),
     ("prevalenceColumns", "return (P && P.nutrient_columns) ? "
                           "P.nutrient_columns.slice() : [];"): (
         "`slice()` with no arguments is a COPY, not a cut — the defensive copy "
