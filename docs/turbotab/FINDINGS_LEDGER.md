@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**415 of 963 closed.**
+**415 of 968 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 470 |
+| `OPEN` | 475 |
 | `PARTIAL` | 78 |
 | `FIXED` | 405 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 470
+## OPEN — 475
 
 
-### Guided-door drive feedback — 75
+### Guided-door drive feedback — 77
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -106,6 +106,8 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-228` | medium | The metabolomics regex library lists pool under both the pooled-QC family and the proteomics family, so as written the six role families are not disjoint | `L50-D, a correction to the research file rather than to the code. METABOLOMICS_PACK section 01's sample-role…` | Filed against the RESEARCH FILE. The standing rule is that where the file and the code disagree the file wins - this is the case where the file disagrees with itself, and the… |
 | `GUIDED-229` | medium | packs.py is 3,671 lines and holds two packs, while the other three ship as modules of their own - an asymmetry that has now cost an adjudicator and two subagents time | `L50. turbotab/clinical.py and turbotab/nutrition.py exist as modules; metabolomics and genomics live in…` | Not moved unilaterally: relocating 3,000 lines during a wide fan-out would have made every subagent diff unmergeable, and the asymmetry is a documentation defect rather than a… |
 | `GUIDED-241` | medium | C2, RULED AND NOT BUILT: the refusal should carry the control, and it is a build rather than a sentence | `turbotab/web/index.html the refused-card at the Train control; turbotab/training.py event_not_chosen's…` | Ruled at L62-C and deliberately unbuilt, per the loop's own scope note. The ruling is the deliverable here. |
+| `DRIVE-052` | medium | DRIVE-043 has a residual live path: answering the event AFTER the seal never recomputes the resolution, so the Methods sentence still carries the minority count while every figure counts the event | `L62 report divergence item 2 (the fallback is reachable); turbotab/project.py seal_lockbox resolution…` | MILDER THAN THE ORIGINAL AND THE SAME SHAPE. The original defect was unconditional; this one needs seal-then-answer, which the loop itself identified as a real user path. It is… |
+| `DRIVE-053` | medium | L62-D's Table 1 fix REGRESSES the active-cohort-filter case from passing to failing, because outcome_rows reads self.df while training.train reads project.working_table | `found in L62 adjudication; outcome_rows vs project.working_table in training.train` | A fix that trades one failing case for another is not a fix, and the 'by construction' phrasing is what hid it: a claim that two quantities agree BY CONSTRUCTION is a claim about… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
@@ -248,7 +250,7 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` | Unchanged at HEAD. Behaviorally harmless because the bodies are identical, and that is exactly why it is worth recording: it is direct evidence the file was edited by paste and… |
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | Accurate at HEAD: structurally portable as-is, and the row's own last clause is the condition - add tests BEFORE the port, not after. Two live defects in this file argue the point… |
 
-### Migration safety net — 53
+### Migration safety net — 56
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -280,6 +282,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-060` | high | Half of a fan-out's regression tests passed with the entire fan-out's code reverted - the agent that writes the fix and the test in one pass will write a test the fix does not need | `L51-C. Eight tests came back from four subagents. Reverting all 16 changed source files to HEAD left four of…` | Cheap detector available now and worth having before the rule: run the loop's new tests with the loop's own diff reverted. It is one command, it needs no per-row mapping, and it… |
 | `TEST-062` | high | All seven xfail guards in the A5/B6 registry are unconditional pytest.fail and none reads shipped code, so each is green over the defect CONDITION even though the file's ledger-drift check is sound | `Found by an L52-B verifier while checking a neighbouring row, and confirmed by the adjudicator.…` | AND L53 TRIPPED LINE 45 DELIBERATELY. Closing AUDIT-022 and 023 in Part A and AUDIT-032 in Part C put three rows in the state line 45 exists to catch - marked xfail here and… |
 | `TEST-098` | high | The parallel sweep has cross-file filesystem races that --dist loadfile does not prevent -- one can silently turn a guard GREEN -- and none of them is disclosed beside the recommendation to adopt it | `measured during L62 adjudication against the two sweep logs at d464e0b; TEST-096 states the loadfile…` | THIS IS WHY THE XDIST ADOPTION IS HELD RATHER THAN REFUSED. The measurement is real and reproduces: 2 failed / 2,649 passed / 17 skipped / 9 xfailed on both runners at d464e0b… |
+| `TEST-101` | high | Two committed tests make mutually exclusive claims about the same field -- one asserts the pre-fix population for n_rows_seen and one asserts the post-fix population -- and BOTH pass | `found in L62 adjudication by two independent verifiers; test_the_shelf_reasons_about_rows_a_model_will_see.py…` | This is the sharpest thing the fan-out found after DRIVE-050, and it is invisible to every gate the project has. ledger.py check asks whether a FIXED row NAMES a test; nothing… |
 | `TEST-027` | medium | utils/persistence.py is dead code — zero importers — yet contains the reproducibility manifest the new Project layer needs | `utils/persistence.py:1-158; zero import sites repo-wide` | Unchanged at HEAD - verified unreachable, not merely uncovered. The trap the row names is the one to record: it is tempting to adopt this wholesale as the Project serializer, and… |
 | `TEST-028` | medium | visualizations.py returns figures nobody inspects — the safest module to move and the easiest to break unnoticed | `visualizations.py:12,53,91,129,170; consumers pages/06_Train_and_Compare.py:69…` | Unchanged at HEAD: the module is genuinely pure and genuinely untested - the two tests that name it check that it imports, not what it draws. That combination is the row's point… |
 | `TEST-029` | medium | ml.feature_steps and ml.baseline_models are uncovered and produce the numbers the manuscript compares against | `ml/feature_steps.py:11,39; ml/baseline_models.py:21,150` | Unchanged at HEAD: both still uncovered, and both still produce published numbers. The seed sensitivity is the specific hazard - PCA's sign convention and KMeans' init are… |
@@ -299,12 +302,14 @@ Nothing is closed without a regression test named after it.
 | `TEST-083` | medium | pageharness dispatch(type, el) silently does nothing when its arguments are swapped. dispatch(el, 'click') looks up __docListeners[element], finds undefined, iterates an empty list and returns -- no… | `turbotab/pageharness.py:764-768` | FOUND BY THE ADJUDICATOR VERIFYING L59, AND IT HAD ALREADY COST A WRONG CONCLUSION. Driving the seal press under the harness I called `__harness.dispatch(btn, 'click')`. The… |
 | `TEST-099` | medium | DEFECT CLASS - a PID is not a running process, and a launcher that fails still forks a shell, so 'I started it' reads as 'it is running' | `L62 report divergence item 8; `which setsid` on this host` | The agent named the class itself and named it exactly -- 'I verified a proxy instead of the thing, in a loop about exactly that.' Filed because a class that lives only in a report… |
 | `TEST-100` | medium | TEST-097's repair WEAKENED an existing assertion while the report, the commit message and the ledger row all say only that it gained one | `TEST-097's diff against its commit message and ledger row` | Not a large defect and it is the shape that matters: this is the same loop that correctly refused to relax a gate under pressure at L60-E. An undisclosed relaxation inside a… |
+| `TEST-102` | medium | E2's interpreter matcher still carries the substring defect one spelling over -- a bare '.venv/bin/python' is classified as the FULL environment, so the rule passes over it | `found in L62 adjudication against E2's matcher at HEAD` | The loop reported this class about ITSELF -- 'my interpreter matcher classified turbotab/.venv/bin/python as the full environment' -- and repaired the reported instance rather… |
 | `TEST-033` | low | _NOT_STAGE_RESULTS in tests/integration/test_cascade_dag_equivalence.py:31 is defined and never referenced - a dead exclusion set that reads as if it were enforcing something | `tests/integration/test_cascade_dag_equivalence.py:31` | Filed post-Loop-1; not part of the 370 Tier-1 rows. |
 | `TEST-043` | low | A guard that searches the tree for a pattern has its own source inside the search space, so it flags the text in which it names what it is looking for - three instances in one loop | `reported by the L43 agent as its fourth divergence: the pragma check flagged the comment recording the…` | THE AGENT'S OWN SENTENCE IS THE ROW: `three times in one loop is a pattern I should have seen after the first - a guard whose own text is inside its search space has to say so.`… |
 | `TEST-045` | low | A parametrized test whose id contains a non-ASCII character cannot be addressed by revertprobe.py, so the one class of test this project requires a probe for is the one class that can silently have… | `Found at L46-C. turbotab/test_a_deferred_noticing_comes_back_where_it_said.py originally keyed its cases…` | FILED AT L46 AND FIXED IN THE INSTANCE ONLY - the test's own ids are now ASCII. THE CLASS IS WHY IT IS A ROW: LOOP.md section 09 requires a named regression test verified to fail… |
 | `TEST-076` | low | The EFFECTS sweep's own regex requires exactly one space after the colon, so it misses every aligned entry and reports 29 decision kinds with no effect sentence when the true number is 19 | `turbotab/test_a_press_can_answer_where_it_was_pressed.py:427` | Use \s+ after the colon, then re-derive GUIDED-181's partition on a passing run before anything rests on it. |
 | `TEST-079` | low | The spelling gate reads the GENERATED ledger markdown, and that markdown does not render the `act` field, so British spellings in `act` are exempt by construction. `ledger.py set` also has no… | `tests/test_american_spelling.py (governs generated markdown); docs/turbotab/tools/ledger.py `set` accepts…` | FOUND BY THE GATE FIRING ON SOMETHING ELSE. Writing the L59 prompt I used a British spelling and the pre-commit gate caught it in the prompt and REFUSED THE COMMIT, correctly. The… |
 | `TEST-082` | low | ledger.py `set` cannot change a finding's `item`, so a row that is re-characterized keeps a headline describing the old reading and the correction lives only in the note | `docs/turbotab/tools/ledger.py set` | Add --item to `set`, with the old text preserved in the note. |
+| `TEST-103` | low | A cluster of small residues from L62's verification, each real, none worth its own row | `L62 adjudication fan-out, 11 agents, all items driven` | Filed as one row deliberately -- eight low findings as eight rows is noise that buries the two that matter, and as zero rows is the thing this ledger exists to prevent. Split any… |
 
 ### Multi-file / JSON import — 51
 
