@@ -152,10 +152,35 @@ a stagger, and staggering has no demonstrated tracking benefit in either study u
 Whoever takes it decides first whether Propagate is a tracking task at all — `GUIDED-155` carries
 that half and it is not scheduled.
 
-**Scroll: the page never moves the viewport.** Cards build downward and the user's scroll follows
-them. There is no condition under which the interface scrolls on the user's behalf.
+**Scroll: the page never moves the viewport unbidden.** Cards build downward and the user's scroll
+follows them. **The interface never scrolls on the user's behalf — it may scroll only where the user
+pressed a control whose sole purpose is to go somewhere, and then exactly once.**
 **`PRODUCT_VISION.md` §09 described the middle rule in the present tense until L47**; this section
 is authoritative and §09 now says so.
+
+**This sentence read *"there is no condition under which the interface scrolls on the user's behalf"*
+until L62, and the code stopped matching it before the sentence moved** — the adjudicator's amendment,
+recorded here rather than only in the guard, because **a spec that contradicts the code is the exact
+decay §09 exists to record and this is its second occurrence on this same rule.** L62-C1 made the rail
+navigate and amended two guards to permit it, invoking `LOOP.md` §06.2; the amendment was disclosed in
+the guards and in `DRIVE-047`'s note, and **in neither of the two authoritative documents.** Nothing in
+the suite reads this paragraph, so nothing could report the disagreement.
+
+**Why the amendment is not the middle rule returning.** §05's own test for a scroll rule is *prefer a
+rule with no free parameter over a rule with a tuned one* — position (2) failed because *"below the
+viewport"* is **size-dependent**, correct at one dataset size and wrong at another. *"Did the user
+press a navigation control"* is **categorical**: it does not vary with the data, the viewport or the
+number of cards, so it cannot be right at one scale and wrong at the next. `DRIVE-006` is about
+**motion nobody asked for** — its own row reads *"**Auto**-scroll skips past the noticed card"* — and a
+rail step is a control whose only purpose is to go somewhere. **And the strict reading was not neutral:
+a rail that highlights the active step without navigating asserts an affordance the interface does not
+provide**, which is the governing rule's *assert something false* branch, so the absolute form obliged
+the app to keep committing a violation of a different kind. `research/INTERACTION_PACK.md` §04.1 is the
+sourced half — the Layout Instability API excludes a shift within 500 ms of user input from CLS
+entirely, because temporal proximity makes causality legible, `[SETTLED]` for the spec.
+
+**What is gated is now *which* scrolls, not *whether*: zero unbidden, exactly one per navigation
+press.** Both halves are load-bearing and both are counted.
 
 **This section implies a rendering requirement, and it was measured rather than asserted.** Rule 1
 says the settle *is* the receipt that a choice was recorded. A renderer that rebuilds the page

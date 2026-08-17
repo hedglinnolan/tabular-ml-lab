@@ -765,10 +765,19 @@ Five commitments, ordered. When two collide, the earlier wins.
 
 ## 09 · Revision to a stated rule — and the revision was itself revised
 
-**The current rule is the original one: the page never moves the viewport, under any condition.**
+**The current rule is scoped, not absolute: the page never moves the viewport *unbidden*, and it may
+scroll exactly once where the user pressed a control whose sole purpose is to go somewhere.**
 `DESIGN_LANGUAGE.md` §05 is authoritative and carries the full history; `turbotab/web/index.html`
 has no nudge, `DRIVE-006` deleted it, and
-`turbotab/test_the_page_never_moves_the_viewport.py` pins it.
+`turbotab/test_the_page_never_moves_the_viewport.py` pins the unbidden half at **zero** while
+`test_the_rail_navigates_when_a_user_presses_it` requires the navigating half to exist.
+
+**And this section said the absolute form in the present tense for a second time — L62 shipped the
+scoped rule and amended neither document.** The paragraph below describes exactly that failure at L47
+and it recurred, on the same rule, in the loop that changed it; the adjudicator wrote both documents
+after the fact, which is later than the rule requires. **A ruling is not a ruling until the
+authoritative text carries it**, and no test in this repository reads either paragraph, so nothing
+could have reported the disagreement.
 
 **This section said otherwise until L47**, and it said so in the present tense — *"new content is
 nudged into view only when it sits below the viewport… The prototype implements the revision"* —
@@ -776,7 +785,7 @@ while the app deliberately had no nudge at all and three green tests held it tha
 the repository resolved the disagreement: there was no supersession note in either direction. Two
 loops reasoned from the wrong one, `GUIDED-173`'s note among them.
 
-**The three positions, kept because the middle one is the part that generalizes:**
+**The four positions, kept because the middle one is the part that generalizes:**
 
 1. *The viewport never auto-scrolls; the user's scroll position is theirs.*
 2. *New content is nudged into view only when it sits below the viewport.* Adopted after the
@@ -785,6 +794,14 @@ loops reasoned from the wrong one, `GUIDED-173`'s note among them.
 3. **Back to (1), with no condition.** `metabolomics_untargeted.csv` produces nine structural
    findings, and revealing the Explore section scrolled the user *past the card they were reading*,
    every time.
+4. **(1) scoped to unbidden motion, at L62.** Zero scrolls the user did not ask for; **exactly one**
+   where they pressed a navigation control. Run 5 filed `DRIVE-047` — the rail highlighted the active
+   step and did not go there — and the absolute form of (3) required the app to keep shipping a
+   control that lied about being one. **This is not (2) returning**: (2) failed on a *size-dependent*
+   condition and *"did the user press a navigation control"* is categorical, so it cannot be correct
+   at one dataset size and wrong at another. Two human drives pointed opposite ways and the
+   distinction that resolves them is **who asked** — `DRIVE-006`'s row is titled *"**Auto**-scroll
+   skips past the noticed card."*
 
 **Why (2) failed is the lesson, and it is not "the threshold was wrong."** The revised rule had a
 **size-dependent condition** in it, so it was correct at one dataset size and incorrect at another,
