@@ -102,47 +102,57 @@ work around it.** Every count this project reports comes from a hand-rolled invo
 neither half runs too long:
 
 ```bash
-venv/bin/python -m pytest turbotab/ -q -n 8 --dist loadfile     # ~41 min  (L62: measured 41:23)
+venv/bin/python -m pytest turbotab/ -q -n 8 --dist loadfile     # ~42 min  (L63: measured 41:36)
 venv/bin/python -m pytest tests/ --ignore=tests/integration \
     --ignore=tests/test_nn_modernization.py \
     --ignore=tests/test_a_fixed_row_names_a_test_that_actually_runs.py -q   # ~44 s
 venv/bin/python -m pytest tests/integration -q                  # ~50 s
 ```
 
-> **THE PARALLEL FORM ON THE FIRST LINE IS HELD, NOT LICENSED — `TEST-098`.** It stays written down
-> because the measurement below is real and because a test pins it here, but **the run that licenses
-> it has cross-file filesystem races `--dist loadfile` does not prevent.** Four tests write inside the
-> repository during a run and three write a git-tracked path; measured, six concurrent readers of the
-> fixtures a generator rewrites logged **56 corrupted reads in 261**, one of them a silent 59-row
-> frame where 60 rows are committed. **So a green from the parallel form is not yet evidence**, and
-> the races are already realizable at HEAD under the `FIXED`-row guard's own
-> `pytest -n auto --dist load`. Fix the writers first; that is `L63` Part A, and Part F is what
-> licenses this line. **Until then: run the serial form when you intend to quote a number, and if you
-> use the parallel form for speed, say which one you used beside every count.**
+> **THE HOLD IS LIFTED, AND THE THING THAT LIFTED IT WAS THE REPAIR RATHER THAN THE RUN.**
+> `TEST-098` held this line because four tests wrote inside the repository during a run and three
+> wrote a git-tracked path — measured, six concurrent readers of the fixtures a generator rewrites
+> logged **56 corrupted reads in 261**, one of them a **silent 59-row frame where 60 rows are
+> committed**. All four now write into `tmp_path`, the class is filed as `MISC-026`, and
+> `tests/test_no_test_writes_a_path_git_tracks.py` guards it by resolving each write's destination
+> to a concrete path and **following a subprocess into the in-repo script it spawns** — which is the
+> only way the worst of the four was ever visible, since that test does not write. Verified after
+> the repair with a poller: **0 tracked files changed and 0 strays appeared across 24,966 polls**,
+> against the same poller catching the pre-fix write/restore shape in 532 polls while `git status`
+> reports the tree clean.
 >
-> *(This paragraph exists because the command was documented here while three other documents said it
-> must not be — `AGENT_ONBOARD.md` against `TEST-098`, `PM_TRANSITION.md` §04 and `LOOP.md` §03's L62
-> row. Found on 2026-08-16 when the executor was cleared and the adjudicator asked what a fresh agent
-> would read first. `MISC-025`.)*
+> *(This paragraph replaces the `MISC-025` hold, which existed because the command was documented
+> here while three other documents said it must not be. Lifted at `L63-F` on 2026-08-17.)*
 
 **The first line gained `-n 8 --dist loadfile` at `L62` and the serial form is still correct.**
-`venv/bin/python -m pytest turbotab/ -q` on its own takes **2:00:46** and is what every count before
+`venv/bin/python -m pytest turbotab/ -q` on its own takes **2:01:30** and is what every count before
 `L62` was taken with. The parallel form is offered because it was **measured against the serial one
 at a single commit**, which is the only evidence that would license it:
 
-| | failed | passed | skipped | xfailed | wall |
-|---|---:|---:|---:|---:|---:|
-| `-n 8 --dist loadfile` | 2 | 2,649 | 17 | 9 | **41:23** |
-| serial | 2 | 2,649 | 17 | 9 | **2:00:46** |
+| | failed | passed | skipped | xfailed | wall | commit |
+|---|---:|---:|---:|---:|---:|---|
+| `-n 8 --dist loadfile` | 0 | 2,686 | 17 | 9 | **41:36** | `816eee5` · L63 |
+| serial | 0 | 2,686 | 17 | 9 | **2:01:30** | `816eee5` · L63 |
+| `-n 8 --dist loadfile` | 2 | 2,649 | 17 | 9 | 41:23 | `d464e0b` · L62 |
+| serial | 2 | 2,649 | 17 | 9 | 2:00:46 | `d464e0b` · L62 |
 
-Same commit (`d464e0b`), still tree, back to back on an otherwise idle machine, and **the two
-failure lists are byte-identical** — not merely the same counts, which is the check that would have
-missed a swap. `2.92×`. `--dist loadfile` is not optional: it keeps each file on one worker, which is
-what stops a module-global fixture being observed by two of them (`TEST-063`'s shape).
+Same commit, still tree — `git status --porcelain` empty before **and** after both runs — back to
+back on an otherwise idle machine, `ps` checked at the start and again at twenty minutes. `2.92×`,
+the same ratio `L62` measured. `--dist loadfile` is not optional: it keeps each file on one worker,
+which is what stops a module-global fixture being observed by two of them (`TEST-063`'s shape).
 
-**`TEST-096` is the honest limit on this**, and read it before quoting a parallel run as evidence of
-test isolation: agreement at one commit is agreement about one tree. A parallel run cannot see an
-ordering defect that a serial one would, because it never produces the serial order.
+**Two honest limits on the L63 row, and read both before quoting it.**
+
+**The failure lists are byte-identical and they are both EMPTY**, which is a weaker check than the
+`L62` row's. Comparing lists rather than counts is what catches a swap — two runs that fail on
+different tests in equal numbers — and a comparison of two empty lists cannot catch anything. The
+`L62` pair, with two real failures agreeing by name, is the stronger evidence of the two; this pair
+is evidence that the suite is green under both runners and that the parallel form no longer races.
+
+**`TEST-096` is the other limit**: agreement at one commit is agreement about one tree, and a
+parallel run cannot see an ordering defect that a serial one would, because it never produces the
+serial order. Both L63 runs were invoked with `-p no:randomly`, which is **inert** — `pytest-randomly`
+is not installed in `venv/` — so both ran in collection order and neither is evidence about ordering.
 
 **Both timings on the `tests/` line have been wrong, in opposite directions.** It read `~20 min` for
 a command that takes **35.25 s** *(measured 2026-08-10 at `7abf21c`: 1,738 passed · 1 failed · 4

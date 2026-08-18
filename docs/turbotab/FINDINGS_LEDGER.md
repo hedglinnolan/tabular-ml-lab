@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**431 of 979 closed.**
+**433 of 979 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 470 |
+| `OPEN` | 468 |
 | `PARTIAL` | 78 |
-| `FIXED` | 421 |
+| `FIXED` | 423 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 470
+## OPEN — 468
 
 
 ### Guided-door drive feedback — 76
@@ -249,7 +249,7 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` | Unchanged at HEAD. Behaviorally harmless because the bodies are identical, and that is exactly why it is worth recording: it is direct evidence the file was edited by paste and… |
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | Accurate at HEAD: structurally portable as-is, and the row's own last clause is the condition - add tests BEFORE the port, not after. Two live defects in this file argue the point… |
 
-### Migration safety net — 53
+### Migration safety net — 52
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -297,7 +297,6 @@ Nothing is closed without a regression test named after it.
 | `TEST-074` | medium | The at-control gate's poster derivation is one call frame deep and its last handler's slice is unbounded, so the busiest posting control in the door is outside the gate's scope while its neighbour… | `turbotab/test_a_press_can_answer_where_it_was_pressed.py:113; :252` | Follow one call frame into page-local helpers when classifying a handler, and bound the last slice at the end of the delegate rather than at end of file. |
 | `TEST-075` | medium | delegated_attributes silently shrinks when a comment is placed between two string literals of a delegate's selector, and every downstream sweep reports green on the smaller enumeration | `turbotab/test_every_control_the_page_delegates_survives_being_pressed.py:79` | Either tolerate comments inside the selector expression, or make the floor assertion a shared precondition rather than one that each sweep has to remember to write. |
 | `TEST-083` | medium | pageharness dispatch(type, el) silently does nothing when its arguments are swapped. dispatch(el, 'click') looks up __docListeners[element], finds undefined, iterates an empty list and returns -- no… | `turbotab/pageharness.py:764-768` | FOUND BY THE ADJUDICATOR VERIFYING L59, AND IT HAD ALREADY COST A WRONG CONCLUSION. Driving the seal press under the harness I called `__harness.dispatch(btn, 'click')`. The… |
-| `TEST-099` | medium | DEFECT CLASS - a PID is not a running process, and a launcher that fails still forks a shell, so 'I started it' reads as 'it is running' | `L62 report divergence item 8; `which setsid` on this host` | The agent named the class itself and named it exactly -- 'I verified a proxy instead of the thing, in a loop about exactly that.' Filed because a class that lives only in a report… |
 | `TEST-102` | medium | E2's interpreter matcher still carries the substring defect one spelling over -- a bare '.venv/bin/python' is classified as the FULL environment, so the rule passes over it | `found in L62 adjudication against E2's matcher at HEAD` | The loop reported this class about ITSELF -- 'my interpreter matcher classified turbotab/.venv/bin/python as the full environment' -- and repaired the reported instance rather… |
 | `TEST-033` | low | _NOT_STAGE_RESULTS in tests/integration/test_cascade_dag_equivalence.py:31 is defined and never referenced - a dead exclusion set that reads as if it were enforcing something | `tests/integration/test_cascade_dag_equivalence.py:31` | Filed post-Loop-1; not part of the 370 Tier-1 rows. |
 | `TEST-043` | low | A guard that searches the tree for a pattern has its own source inside the search space, so it flags the text in which it names what it is looking for - three instances in one loop | `reported by the L43 agent as its fourth divergence: the pragma check flagged the comment recording the…` | THE AGENT'S OWN SENTENCE IS THE ROW: `three times in one loop is a pattern I should have seen after the first - a guard whose own text is inside its search space has to say so.`… |
@@ -545,7 +544,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Other — 9
+### Other — 8
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -553,7 +552,6 @@ Nothing is closed without a regression test named after it.
 | `MISC-021` | high | The door keeps acquiring surfaces and none of them acquires a mechanism: 105 innerHTML assignments and zero identity-preserving transitions, against a design language that says replacement teaches… | `L54-B, and the L47 table is the evidence rather than a new measurement. turbotab/web/index.html had 106…` | THE CLASS IS 'a design document specifies a mechanism and the implementation acquires only surfaces'. It is trap #1 inverted: not a capability with no consumer, but a REQUIREMENT… |
 | `DRIVE-018` | high | README.md asserts the app runs end to end through grain, eligibility and the seal, which is true of the API and false of the page a user drives | `docs/turbotab/README.md, the 'app is running, end to end' paragraph; refuted by…` | THE CLAIM: 'The app is running, end to end. A driver goes upload -> lens -> orientation -> target -> purpose -> grain -> eligibility -> seal -> explore -> features -> preprocess… |
 | `MISC-024` | high | DEFECT CLASS - no gate reads an authoritative spec paragraph, so a document can state a rule in the present tense that the code stopped obeying, and nothing in the suite can report it | `DESIGN_LANGUAGE.md section 05; PRODUCT_VISION.md section 09; git log 4f73329..HEAD carries neither filename` | BOTH DOCUMENTS AMENDED BY THE ADJUDICATOR AT e6b5251, which is later than the rule requires. THE RECURRENCE IS THE FINDING: PRODUCT_VISION section 09 is a section whose entire… |
-| `MISC-025` | high | AGENT_ONBOARD.md section 03 documented the xdist command as the FIRST thing an executor reads, while TEST-098's act, PM_TRANSITION section 04 and LOOP.md's L62 row all say it must not be documented… | `docs/turbotab/prompts/AGENT_ONBOARD.md section 03 command block; tests/test_a_fixed_rows_named_test_resolves_i…` | FOUND BECAUSE THE PRODUCT OWNER SAID HE HAD CLEARED THE EXECUTOR, AND THE ADJUDICATOR ASKED WHAT A FRESH AGENT READS FIRST. It reads section 03, and section 03 told it to run the… |
 | `AUDIT-038` | medium | 77 of the 131 registry entries are still unchecked against the engine, and the reason is a budget rather than a finding - recording it so the next loop does not read silence as coverage | `L51-E, and it is the honest half of this part. E ran last by the prompt's own sequencing, after Part C's four…` | AND A METHOD WARNING WORTH MORE THAN THE ROW: two of this part's capability checks returned a false absence because grep -E was given \\| alternation, which is a literal pipe in… |
 | `AUDIT-046` | medium | A loop commit swallowed the adjudicator's uncommitted docs edit, so its subject asserts something false about its own contents - the git add -A rule broken a third time, in the opposite direction… | `0c9cce3 contains docs/turbotab/prompts/PM_TRANSITION.md, 74 changed lines, under the subject 'L57-A: the…` | NOTHING WAS LOST AND THAT IS NOT THE POINT. The content is byte-identical to the adjudicator's own backup, verified by diff, and it is in HEAD. THE POINT IS THE RECORD LAYER… |
 | `MISC-022` | medium | A3's sweep: which surfaces reason about a population the fit will not use -- the number is THREE, and the row named two | `driven at L62 against a fixture of run 5's shape; turbotab/project.py analysis_mask` | REOPENED BY THE ADJUDICATOR: THE COMPLETENESS CLAIM IS FALSE. The row records THREE surfaces 'found by driving every surface that reports an n'. Two independent verifiers, both… |
@@ -730,7 +728,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 421
+## FIXED — 423
 
 
 ### Guided-door drive feedback — 160
@@ -971,7 +969,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Migration safety net — 43
+### Migration safety net — 44
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1014,6 +1012,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-091` | medium | The chain of superseded baseline readings was implied by filenames, and nothing asserted a re-measurement carries its own commit stamp | `tests/integration/test_routing_baseline.py ADJUDICATED_PRIOR / ADJUDICATED_PRIOR_PRIOR / LEAKY_ADJUDICATED` | **test:** `tests/integration/test_routing_baseline.py::test_the_chain_of_re_measurements_is_readable_rather_than_implied` — Built at L61-C. |
 | `TEST-093` | medium | A sweep count is reported in the subject of a commit that itself changes the tree the sweep measured, so the number is stale the moment it is written and nothing says so | `7e34743 subject vs turbotab/nutrition.py NO_EAR_USE_EER continue; l60/full.log mtime 00:34 vs commit 00:42…` | **test:** `tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py::test_the_parallel_invocation_keeps_each_file_on_one_worker` — MEASURED AT L62-E1 AND THE TWO RUNNERS… |
 | `TEST-095` | medium | pageharness had no scrollIntoView, so the first driven press of a navigating control threw rather than reporting that the viewport did not move -- TEST-066's class, in the guard that most needed the… | `turbotab/pageharness.py El.prototype.scrollIntoView; TEST-066; LOOP.md section 02` | **test:** `turbotab/test_the_page_never_moves_the_viewport.py::test_the_rail_navigates_when_a_user_presses_it` — Fixed at L62-C. |
+| `TEST-099` | medium | DEFECT CLASS - a PID is not a running process, and a launcher that fails still forks a shell, so 'I started it' reads as 'it is running' | `L62 report divergence item 8; `which setsid` on this host` | **test:** `tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py::test_the_documented_invocation_still_collects_this_check` — The agent named the class itself and named… |
 | `TEST-100` | medium | TEST-097's repair WEAKENED an existing assertion while the report, the commit message and the ledger row all say only that it gained one | `TEST-097's diff against its commit message and ledger row` | **test:** `turbotab/test_the_app_says_which_build_answered.py::test_a_page_newer_than_the_engine_is_reported` — Not a large defect and it is the shape that matters: this is the… |
 | `TEST-106` | medium | The spelling gate walks into `.claude/worktrees/`, so any agent worktree turns a commit red on files that are not part of the change -- the gate already met this class once and its fix named the… | `tests/test_american_spelling.py:24-35 (SKIP_DIRS), :36 (EXEMPT_PREFIXES), :70-79 (_source_files)…` | **test:** `tests/test_american_spelling.py::test_the_enumeration_covers_the_source_and_nothing_ignored` — FOUND BY TRIPPING IT, WHICH IS THE ONLY WAY IT WOULD HAVE BEEN FOUND. THE… |
 | `TEST-081` | low | ml/router.py names a guard, test_the_marker_is_the_constitutional_position, that does not exist anywhere in the tree | `ml/router.py:237` | **test:** `turbotab/test_the_marker_is_the_constitutional_position.py::test_the_document_and_the_router_agree_on_every_position` — WRITTEN, AND IT IS THE THIRD TIME THIS CLASS HAS… |
@@ -1082,7 +1081,7 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 
-### Other — 19
+### Other — 20
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1098,6 +1097,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-045` | high | NUTRITION_PACK.md 04 asserted the mechanism of a bias with a causal connective the primary source does not support, and it made the substitution curve read as a remedy for a bias it does not remedy | `docs/turbotab/research/NUTRITION_PACK.md:408` | **test:** `docs/turbotab/research/NUTRITION_PACK.md §04 — the corrected bullet quotes and dates the superseded wording, so a reader cannot silently revert it` — A TWO-WORD ERROR… |
 | `TEST-084` | high | A long-running server serves a CURRENT page against a STALE API and nothing surfaces the mismatch: Python modules are pinned at import, StaticFiles re-reads index.html per request, so the interface… | `turbotab/api.py:3366 app.mount('/', StaticFiles(directory=WEB_DIR, html=True)); serving process PID 99928…` | **test:** `turbotab/test_the_app_says_which_build_answered.py::test_a_page_newer_than_the_engine_is_reported` — THE APP ANSWERS IT NOW INSTEAD OF THE ADJUDICATOR. Python modules… |
 | `MISC-023` | high | The coverage guard MISC-019's reopening relies on catches new READERS of the mapping and not new NON-readers, so the defect class it is named for passes it -- and a qualifying surface already ships | `the guard at :198-218; driven falsification with a scratch fourth surface at HEAD; MISC-019's note` | **test:** `turbotab/test_the_level_a_reader_sees_is_the_one_they_chose.py::test_every_surface_that_renders_the_outcome_reads_one_mapping` — MISC-019's reopening note claims 'a… |
+| `MISC-025` | high | AGENT_ONBOARD.md section 03 documented the xdist command as the FIRST thing an executor reads, while TEST-098's act, PM_TRANSITION section 04 and LOOP.md's L62 row all say it must not be documented… | `docs/turbotab/prompts/AGENT_ONBOARD.md section 03 command block; tests/test_a_fixed_rows_named_test_resolves_i…` | **test:** `tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py::test_the_parallel_invocation_keeps_each_file_on_one_worker` — FOUND BECAUSE THE PRODUCT OWNER SAID HE… |
 | `MISC-026` | high | A test that writes a path git tracks -- the class behind TEST-098's four instances. Every one of them RESTORES, so `git status` is clean after the run and `git diff` is empty; the tree never drifts… | `Four instances at 98d410f: a subprocess rewriting 12 tracked files (1,461,182 bytes) in 0.421s; a research…` | **test:** `tests/test_no_test_writes_a_path_git_tracks.py::test_no_tracked_test_writes_a_path_git_tracks` — THE DETECTOR IS VALIDATED AGAINST THE FOUR REAL PRE-FIX BODIES, not… |
 | `AUDIT-004` | medium | The quick baseline drops every row with any missing feature and reports no N cascade, so the number the user reads is about a subset nobody named | `ml/eda_actions.py:1209-1211; research/NUTRITION_PACK.md section 06 anti-patterns` | **test:** `tests/test_the_manuscript_does_not_assert_an_uncorrected_count.py::test_the_quick_baseline_reports_what_it_dropped` — FIXED at L30-B, alongside AUDIT-001 because a… |
 | `AUDIT-006` | medium | The PCA biplot sets no aspect constraint, so PC2 is stretched to fill the panel and separation is visually exaggerated | `ml/macro_shape.py plot_pca_biplot; research/GENOMICS_PACK.md section 11; research/METABOLOMICS_PACK.md…` | **test:** `tests/test_the_biplot_does_not_stretch_the_second_component.py::test_the_biplot_constrains_pc2_to_the_scale_of_pc1` — L53-C, fanned out to four chunks PARTITIONED BY… |
