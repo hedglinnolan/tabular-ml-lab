@@ -211,6 +211,24 @@ When the agent says it is unsure, it has usually already checked.
    agent's own find arriving one document over: **writing about a matcher is enough to trip it.** Name
    the class, do not quote the tokens.)*
 
+5. **I read half a measurement and drew the conclusion from that half — and it is error 1 again, a third
+   time.** L65's §00.A3 told the agent the module the hook's probe misses is `fastapi`, and that the
+   defect is *"latent rather than live — say that rather than dressing it up."* **Both halves false.** The
+   set is `{fastapi, sklearn}`; `turbotab/.venv` carries fastapi and lacks sklearn, and `resolve_python`
+   selects it whenever `venv/` is absent. **My own reconnaissance had written *"(sklearn absent)"* in the
+   same sentence that reported fastapi present.** I read the half that answered the question I had asked
+   and never asked what else the gate imports. **The instruction to call it latent is the worst part** —
+   I told the agent to state a falsehood plainly, and being wrong in the direction of *understating* the
+   defect made it sound like calibration.
+6. **My own adjudication agents produced two errors of exactly the kinds this document warns about, and
+   only the refuters caught them.** One charged the execution report with miscounting citations, having
+   measured **at HEAD, after the loop's own repair rewrote the citation it was counting** — the same
+   one-write-late error it had correctly charged against the report in the paragraph above. The other
+   declared a test dead because it stayed green under a neuter that **zeroed the population instead of
+   falsifying the value**, while that file's own non-emptiness guard was failing in the same run to
+   announce the configuration was invalid. **A fan-out does not make the adjudicator right; it makes him
+   checkable. Refute your own agents, not only the report's claims.**
+
 **The generalization, which every PM before me also recorded:**
 
 > **Every number you state carries how you got it.** Mark it *(re-derived at `<sha>`)* or *(from the
@@ -312,29 +330,33 @@ is enough to trip it"*, which is a variant trap 5b does not warn about. It caugh
 
 ## 10 · What happens next
 
-1. **L65 IS WRITTEN** (`prompts/L65.md`), built by a nine-agent reconnaissance and a three-agent
-   refutation. **Two of my own claims were destroyed in the refutation and both corrections are in its
-   §00.** Read them before you adjudicate the report, because the numbers you will be tempted to check
-   against are the *old* ones:
-   - **The denominator is a PAIR, not a scalar.** Holding the context and `task_type` fixed: the **run**
-     branch pins **3** (#2, #5, #9 at PASS) and the **no-run** branch pins **4** (#5, #6, #9 at PASS and
-     **#2 at FAIL** — a permanent false alarm no user edit can clear, driven over 4,000 bundles and
-     confirmed on the production path). **L64's "eight" is not reproducible from source by any stated
-     rule**, and applying L64's own rule uniformly returns 11 or 12.
-   - **The "five" was never a measurement.** It is `13 − 8`, and `MISC-029`'s note uses the digit twice
-     for two different things. Anyone re-deriving "five" is reading L64 back to itself.
-   - **L64-B's mechanism does not transfer, and prescribing it was my error — the same error §06.1
-     records, one loop later.** As a payload predicate it declares only **5 of 8**, because #1/#2/#3 are
-     vacuous for structural reasons no payload can see. The declaration must be **structural**, derived
-     from the **context** where it is derivable at all.
-   - **Classic is HEALTHIER than Guided, not the same defect.** `_build_manuscript_context` writes all
-     four keys whose absence freezes the Guided checks, so Classic's 13 is honest — 13/13 dissent
-     against Guided's 11. Its download gate is real but leaky (5 of 13 buttons ungated; Streamlit
-     assembles the file before applying `disabled`). **`MISC-029`'s first correction needs re-scoping.**
-2. **Part A is `TEST-108`'s missing assertion** — run the hook inside a throwaway worktree and assert
-   no cross attributable to a missing module. It is the gap the adjudication found and it is small.
-   `GUIDED-238`'s remaining **78** items are the fill-out; `TEST-109` (the ledger cannot repair an
-   `ev`) is three lines and closes the only field the tool can create but not correct.
-3. **Ask for the seventh drive**, on a server restarted so `rev` equals HEAD, and say which screens are
-   new: the clinical figures on single-model projects, and the Train refusal's inline controls.
-4. **Keep adjudicating with a fan-out.** §07 is the argument and it has never once come back clean.
+**L65 is written, run and accepted five of five.** Its §03 row carries the detail; the queue below is
+what is left.
+
+1. **Write L66, and Part A is `MISC-033`** — prose asserting the opposite of what L65 shipped, at seven
+   sites across four files, **two in production source and one falsified by its own commit**. The
+   sharpest instance is a tripwire: `turbotab/test_the_checklist_count_says_what_it_counted.py:49-56`
+   writes down the condition under which its own abstraction would be wrong, `:113` meets that condition
+   two commits later, and **a green test at `:292` asserts the negation of four of those sentences.**
+   Beside it, **`TEST-110`'s class**: its `ev` went stale *inside the loop that repaired it to
+   demonstrate the repair*, because the loop's own first commit moved the line — and the sweep is
+   structurally blind to it, since a bare `:90` carries no filename token. **A citation with no filename
+   is invisible to the instrument built to check citations.** Repaired, but the class is open.
+2. **The live queue after L65, in value order.** `GUIDED-238`'s remaining **78** items — but §00.7 of
+   L65 is the reason to fix *reach* first: the nine already converted are still unreachable through
+   `figure_bundle.SOURCES`. Then `MISC-032` (the Classic download gate blocks a click rather than a
+   file; 5 of 13 buttons ungated), `TEST-111` (the spelling gate reads a clipped view — **driven green
+   at HEAD while 24 British-stem occurrences sit in `findings.json`**), `TEST-112` (the scratchpad
+   conftest hazard, filed against my own method), `MISC-030`, `GUIDED-244/248/249/250`, `MISC-023`.
+   **`GUIDED-231`** and **`GUIDED-232`/`233`** remain blocked on a product decision, not on execution.
+   **`DRIVE-036`** still needs a genuinely repeated-measures fixture; seven drives have never had one.
+3. **THE DRIVE IS OWED AND IT IS NOW TWO LOOPS DEEP.** The product owner chose to run L65 first and
+   drive both together. The server on `:8777` was restarted and `/dev/status` reported `rev` equal to
+   HEAD at `a759b8b` — **it is stale again the moment anything lands, so re-check before asking.**
+   Say which screens are new: **L64's** clinical figures on single-model projects and the Train
+   refusal's inline control, and **L65's** manuscript panel header, which now reads *"9 checks, 3 unmet ·
+   4 declared"* on an unsealed project and *"11 checks, 0 unmet · 2 declared"* on a fitted one.
+4. **Keep adjudicating with a fan-out — and refute your own agents, not only the report.** §07 is the
+   argument. At L65 the fan-out caught two adjudication errors that would otherwise have gone into the
+   record as rulings against a report that was right; see §06.6. **A fan-out does not make you right, it
+   makes you checkable, and only if you point it at yourself too.**
