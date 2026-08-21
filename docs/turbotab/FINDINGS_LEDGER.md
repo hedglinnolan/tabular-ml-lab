@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**440 of 993 closed.**
+**440 of 995 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 470 |
+| `OPEN` | 472 |
 | `PARTIAL` | 83 |
 | `FIXED` | 430 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 470
+## OPEN — 472
 
 
 ### Guided-door drive feedback — 76
@@ -249,7 +249,7 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` · **re-verified:** `models/rf.py:75-85 and :87-97 - predict_proba and supports_proba each defined twice, byte-identical, the…` | Unchanged at HEAD. Behaviorally harmless because the bodies are identical, and that is exactly why it is worth recording: it is direct evidence the file was edited by paste and… |
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` · **re-verified:** `visualizations.py:12, 53, 91, 129, 170 - five functions returning go.Figure or a formatted string, zero…` | Accurate at HEAD: structurally portable as-is, and the row's own last clause is the condition - add tests BEFORE the port, not after. Two live defects in this file argue the point… |
 
-### Migration safety net — 52
+### Migration safety net — 53
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -298,6 +298,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-075` | medium | delegated_attributes silently shrinks when a comment is placed between two string literals of a delegate's selector, and every downstream sweep reports green on the smaller enumeration | `turbotab/test_every_control_the_page_delegates_survives_being_pressed.py:79` | Either tolerate comments inside the selector expression, or make the floor assertion a shared precondition rather than one that each sweep has to remember to write. |
 | `TEST-083` | medium | pageharness dispatch(type, el) silently does nothing when its arguments are swapped. dispatch(el, 'click') looks up __docListeners[element], finds undefined, iterates an empty list and returns -- no… | `turbotab/pageharness.py:764-768` | FOUND BY THE ADJUDICATOR VERIFYING L59, AND IT HAD ALREADY COST A WRONG CONCLUSION. Driving the seal press under the harness I called `__harness.dispatch(btn, 'click')`. The… |
 | `TEST-102` | medium | E2's interpreter matcher still carries the substring defect one spelling over -- a bare '.venv/bin/python' is classified as the FULL environment, so the rule passes over it | `found in L62 adjudication against E2's matcher at HEAD` | The loop reported this class about ITSELF -- 'my interpreter matcher classified turbotab/.venv/bin/python as the full environment' -- and repaired the reported instance rather… |
+| `TEST-112` | medium | A stray root conftest.py left in a shared scratchpad by one agent silently monkeypatched production code for another, turning a planted regression from RED into GREEN -- a false green in an evidence… | `scratchpad/head/conftest.py, untracked, first line '# REVERT PROBE: restore a759b8b's _counts'; `git archive…` | THE REPOSITORY WAS NEVER CONTAMINATED -- verified: the main checkout has no root conftest.py and git status is clean. The hazard is entirely inside the adjudicator's own method… |
 | `TEST-033` | low | _NOT_STAGE_RESULTS in tests/integration/test_cascade_dag_equivalence.py:31 is defined and never referenced - a dead exclusion set that reads as if it were enforcing something | `tests/integration/test_cascade_dag_equivalence.py:31` | Filed post-Loop-1; not part of the 370 Tier-1 rows. |
 | `TEST-043` | low | A guard that searches the tree for a pattern has its own source inside the search space, so it flags the text in which it names what it is looking for - three instances in one loop | `reported by the L43 agent as its fourth divergence: the pragma check flagged the comment recording the…` | THE AGENT'S OWN SENTENCE IS THE ROW: `three times in one loop is a pattern I should have seen after the first - a guard whose own text is inside its search space has to say so.`… |
 | `TEST-045` | low | A parametrized test whose id contains a non-ASCII character cannot be addressed by revertprobe.py, so the one class of test this project requires a probe for is the one class that can silently have… | `Found at L46-C. turbotab/test_a_deferred_noticing_comes_back_where_it_said.py originally keyed its cases…` | FILED AT L46 AND FIXED IN THE INSTANCE ONLY - the test's own ids are now ASCII. THE CLASS IS WHY IT IS A ROW: LOOP.md section 09 requires a named regression test verified to fail… |
@@ -544,7 +545,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Other — 10
+### Other — 11
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -557,6 +558,7 @@ Nothing is closed without a regression test named after it.
 | `MISC-022` | medium | A3's sweep: which surfaces reason about a population the fit will not use -- the number is THREE, and the row named two | `driven at L62 against a fixture of run 5's shape; turbotab/project.py analysis_mask` | REOPENED BY THE ADJUDICATOR: THE COMPLETENESS CLAIM IS FALSE. The row records THREE surfaces 'found by driving every surface that reports an n'. Two independent verifiers, both… |
 | `MISC-030` | medium | figure_bundle._why_not's generic fallback -- "This figure does not apply to this project" -- is reached by eleven of seventeen registry figures, and for a figure gated on a DATA STATE the app knows… | `Driven at L64-A on clinical_risk.csv with no fit: figures.REGISTRY holds 17 ids, _why_not special-cased 6…` | FILED RATHER THAN SWEPT, and the split is the reason. The fallback is the HONEST answer for a figure gated on the kind of project -- a scree plot on a table with nothing to… |
 | `MISC-032` | medium | The Classic export gate blocks a click rather than a file, and five of the page's thirteen download buttons are never gated at all | `pages/10_Report_Export.py:2099, :2092, :2591, :2593, and the five ungated buttons at :2021, :2055, :2060…` | FOUND AT THE L65 RECONNAISSANCE BY AN ADVERSARIAL REFUTER, while breaking the adjudicator's claim that Classic renders 'the same inflated count, one door over'. THAT CLAIM IS… |
+| `MISC-033` | medium | L65 left prose asserting the opposite of what it shipped, at seven sites across four files -- two of them in production source, one falsified by its own commit, and a green test asserts the negation… | `ml/manuscript_validator.py:221-227 and :277-279; turbotab/test_the_checklist_count_says_what_it_counted.py:49…` | FOUND AT THE L65 ADJUDICATION BY AN ADVERSARIAL REFUTER BREAKING ANOTHER ADJUDICATION AGENT'S CENSUS, which had published one site and bounded the remainder to the wrong files.… |
 | `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
 
 ### Page-layer extraction — 5
@@ -1028,7 +1030,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-109` | medium | ledger.py has no path that writes a row's `ev`, so a stale evidence citation filed at add-time is permanent through the tool -- and the one instrument that owns the ledger is the one that cannot… | `docs/turbotab/tools/ledger.py cmd_set and cmd_add; GUIDED-245's ev field against training.py at 0b769d3…` | **test:** `tests/test_the_ledger_can_repair_its_own_citations.py::test_set_writes_the_evidence_citation_it_could_only_create` — FOUND BY THE EXECUTION AGENT AT L64 AND REPORTED… |
 | `TEST-081` | low | ml/router.py names a guard, test_the_marker_is_the_constitutional_position, that does not exist anywhere in the tree | `ml/router.py:237` | **test:** `turbotab/test_the_marker_is_the_constitutional_position.py::test_the_document_and_the_router_agree_on_every_position` — WRITTEN, AND IT IS THE THIRD TIME THIS CLASS HAS… |
 | `TEST-097` | low | A guard's precondition depended on which file the last edit touched, so correct code produced a red in a two-hour sweep | `turbotab/test_the_app_says_which_build_answered.py::test_a_page_newer_than_the_engine_is_reported…` | **test:** `turbotab/test_the_app_says_which_build_answered.py::test_a_page_newer_than_the_engine_is_reported` — Fixed at L62-E1. |
-| `TEST-110` | low | The pre-commit hook's can-the-gates-run probe enumerates a SUBSET of what the gates import, so an interpreter that passes the probe can still produce the false red the probe exists to prevent | `.githooks/lib.sh gates_can_run, the module tuple at :90 as filed; docs/turbotab/tools/evidence.py:302…` · **re-verified:** `.githooks/lib.sh:86-93 with the module tuple at :90; docs/turbotab/tools/evidence.py:302; turbotab/api.py:29…` | **test:** `tests/test_the_pre_commit_hook_can_run_where_it_is_run.py::test_the_probe_covers_every_package_the_gates_import_directly` — FOUND WHILE DRIVING TEST-108's REPAIR AT THE… |
+| `TEST-110` | low | The pre-commit hook's can-the-gates-run probe enumerates a SUBSET of what the gates import, so an interpreter that passes the probe can still produce the false red the probe exists to prevent | `.githooks/lib.sh gates_can_run at :131-147 with the module tuple at :136 (NOT :90 -- ac44be8, this loop's own…` · **re-verified:** `.githooks/lib.sh:86-93 with the module tuple at :90; docs/turbotab/tools/evidence.py:302; turbotab/api.py:29…` | **test:** `tests/test_the_pre_commit_hook_can_run_where_it_is_run.py::test_the_probe_covers_every_package_the_gates_import_directly` — FOUND WHILE DRIVING TEST-108's REPAIR AT THE… |
 
 ### Application state / lockbox — 33
 
