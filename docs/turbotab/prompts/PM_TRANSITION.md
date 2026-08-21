@@ -112,48 +112,25 @@ Branch `TurboTab`, HEAD **`0b769d3`**, tree clean, **pushed**. Ledger **988 find
 commit: **0 failed · 2,709 passed · 17 skipped · 9 xfailed in 41:49.** The four tests that wrote inside
 the repo now write to `tmp_path` and a guard holds them there.
 
-## 04b · **L64 IS NOT ADJUDICATED. THIS IS YOUR FIRST JOB.**
+## 04b · L64 is adjudicated. **Accepted four and a half of five.**
 
-The execution agent reported **four and a half of five parts** and its five commits are pushed. **I
-launched the 12-agent verification and was cleared before it returned.** Nothing is lost except the
-verification itself — and **the script that produced it is on disk and re-runnable verbatim**:
+The verification landed and the loop is closed: `LOOP.md` §03 carries its row, the ledger carries the
+corrections, everything is pushed. **You are not inheriting an unfinished job.**
 
-```
-/Users/nhedglin/.claude/projects/-Users-nhedglin-tabular-ml-lab/
-583f69fb-d6a1-4d8f-9eaf-22f6814f11d3/workflows/scripts/l64-adjudication-wf_b03934ab-45a.js
-   (23,350 bytes, written 2026-08-21 12:03)
-```
+**What it settled, so you do not re-open it.** Two dispositions were downgraded to `PARTIAL`
+(`TEST-108`, whose named test skips in the very environment its row is about; `GUIDED-238`, whose
+named node stays green over a full source revert and was repointed). The agent's **refusal of the
+prompt's partition was upheld** and the epistemology endorsed — *can this item ever fail in service*
+quantifies over states a producer **could** reach, which is a judgment, not an observation. And the
+agent's **refusal of my prescribed sentinel property was upheld**; see §06.1.
 
-Re-invoke it with `Workflow({scriptPath: "<that path>"})`. If it is gone, the cluster design was: **A**
-the wrappers and the `__getattr__` refusal · **B** the checklist partition refusal · **B5** the
-manuscript-validator audit · **C** the refusal carrying its control · **D** the three instruments and
-the one refused · **F** dispositions plus the reverted-diff detector. Each verified, then adversarially
-refuted by a different agent.
-
-**What the report claims, so you know what to check.** Ledger 988/435 re-derived and correct. Five
-commits. Part A: a glm-only or rf-only project now serves all three clinical figures. Part B: the
-checklist gained a third state and nine items were converted. Part C: the Train refusal carries the
-event question's controls, two presses, reusing the real renderer. Part D: three of four instruments;
-`MISC-028` deliberately not built, with a stated reason and a measurement instead.
-
-**Three claims are the load-bearing ones and none is verified:**
-
-1. **`B5` — of the manuscript validator's 13 checks, EIGHT are decided before the manuscript is read**
-   (5 frozen PASS, 3 producer arithmetic) **and only one has ever been shown to fail on a real
-   defect.** Those 13 are the only pass/fail set in the app feeding a **rendered** count a user sees.
-   If it holds, the header is inflated by a knowable amount and that is the sharpest finding in two
-   loops. **Count all 13 by hand — there is no excuse for sampling — and construct the failing state
-   for each you call frozen.**
-2. **`B` — the agent REFUSED the prompt's partition** and measured three instruments giving three
-   answers (mutation probe 85 of 86 falsifiable; static walk 19/42/22/3; empty payload 5 of 86). Its
-   position: *"the row's three-way split is not a measurement at all — it is a judgment about what a
-   producer can emit."* **Rule on that epistemology and give a defensible answer, not a shrug.** My
-   view, offered and not binding: the agent is probably right, and `GUIDED-238`'s `item` should stop
-   quoting a partition at all.
-3. **`A4`'s `# pragma: no cover` was false — 11 of 17 figure ids reach it.** Re-derive the 11.
-
-**One correction to me is already settled, driven, and in the ledger** — see `GUIDED-245`'s note and
-§06.4. Do not re-litigate it.
+**The result to carry forward is `MISC-029`, and it is the best thing in two loops.** Of the manuscript
+validator's thirteen checks — the only pass/fail set in the Guided door feeding a count a user sees —
+**eight are decided before the manuscript is read**, each frozen one shown to survive a state that
+should make it FAIL. The page renders *"13 checks, 0 unmet"* where the honest denominator is **5**, and
+asserts beside it *"Every consistency check the validator makes is met by this draft."* That is the
+governing rule's *assert-something-false* branch on the artifact that leaves the building. **Four
+corrections to that row are mine and are recorded in it.**
 
 ### The live queue after L64, in value order
 
@@ -245,8 +222,10 @@ check the way a closure ships with a probe.
 ## 07 · The fan-out, which is now the method, and what it actually finds
 
 Four runs: L62's adjudication (11 agents), L63's reconnaissance (12) and adjudication (14), L64's
-reconnaissance (8) and adjudication (12). **Every single cluster in every run came back
-`NEEDS_CORRECTION` or `HOLDS_WITH_CORRECTIONS`. None has ever come back clean, including mine.**
+reconnaissance (8) and adjudication (12). **Every driver in every run has come back `HOLDS_WITH_CORRECTIONS` or worse — no verification
+has ever been clean, including mine.** At L64 **two refuters returned `SOUND`** for the first time,
+which is the useful shape: the second reader finding nothing is evidence, and it took five fan-outs
+to see one.
 
 **What it reliably finds, and a single reader reliably does not:**
 
@@ -329,11 +308,15 @@ is enough to trip it"*, which is a variant trap 5b does not warn about. It caugh
 
 ## 10 · What happens next
 
-1. **Adjudicate L64** (§04b). Re-run the saved script. Rule on the three unverified claims, write the
-   `LOOP.md` §03 row, correct the ledger, commit, push.
-2. **Then L65.** Part A is whatever gap the adjudication finds. The substantial build is a choice
-   between finishing `GUIDED-238`'s 77 and starting `MISC-029`'s repair — **`MISC-029` is where a user
-   is shown an inflated number, so it is worth more.**
+1. **Write L65. `MISC-029` is Part B and it is not close** — a user is shown *"13 checks, 0 unmet"*
+   over a set in which eight cannot dissent, beside a sentence asserting every check is met. **The
+   shape to build is the one L64-B already shipped one registry over**: a scored/declared field on the
+   validation check and a third badge, so the header can read *"5 checks, 0 unmet · 8 declared."* Then
+   the same treatment for the Classic surface, which is unaudited and **gates downloads**.
+2. **Part A is `TEST-108`'s missing assertion** — run the hook inside a throwaway worktree and assert
+   no cross attributable to a missing module. It is the gap the adjudication found and it is small.
+   `GUIDED-238`'s remaining **78** items are the fill-out; `TEST-109` (the ledger cannot repair an
+   `ev`) is three lines and closes the only field the tool can create but not correct.
 3. **Ask for the seventh drive**, on a server restarted so `rev` equals HEAD, and say which screens are
    new: the clinical figures on single-model projects, and the Train refusal's inline controls.
 4. **Keep adjudicating with a fan-out.** §07 is the argument and it has never once come back clean.
