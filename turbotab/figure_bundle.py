@@ -468,7 +468,7 @@ def predictions_for(project):
     # on an arbitrary candidate instead of looking for one that meets it.
     #
     # Driven on `clinical_risk.csv`: `RFWrapper` does not forward `classes_`,
-    # so `training.py:646` records no `positive_label` for `rf` even though it
+    # so `training.py:650` records no `positive_label` for `rf` even though it
     # returns 120 held-out probabilities. Ticking `['rf', 'logreg']` therefore
     # made `has_predictions` FALSE and the ROC, the calibration plot and the
     # decision curve all vanished — from a project that had fitted a perfectly
@@ -511,7 +511,7 @@ def _risks_or_refuse(project):
     the ROC and the decision curve find their risks.
 
     **The hazard is `positive_label`, and it is `GUIDED-093` one level out.**
-    `positive_label` is per result (`training.py:646`), so two models binarized
+    `positive_label` is per result (`training.py:650`), so two models binarized
     against different events would put pictures of two different outcomes on
     one axis, drawn confidently. Every model is therefore checked against the
     event `predictions_for` chose, and anything dropped is NAMED in `excluded`
@@ -803,7 +803,9 @@ def _no_predictions_because(project) -> str:
                 "there is nothing to calibrate.")
     unnamed = sorted({str(r.name) for r in run.results
                       if r.probabilities and r.positive_label is None})
-    if unnamed:
+    named = [r for r in run.results
+             if r.probabilities and r.positive_label is not None]
+    if unnamed and not named:
         # `GUIDED-245`. REACHABLE, and it used to fall through to the sentence
         # below — which told a user the curve *should be drawn* on a surface
         # whose entire job is to say why it was not. That is the governing
@@ -814,11 +816,49 @@ def _no_predictions_because(project) -> str:
                 f"curve drawn from them could be this event or its mirror "
                 f"image. Fit a model that records its outcome level — a "
                 f"logistic regression does — and the curve is drawn.")
+    if unnamed:
+        # AND THE `not named` IS THE OTHER HALF OF THE SAME DEFECT (`L64-A4`).
+        # This branch used to fire whenever ANY model was unnamed, so a project
+        # that ticked one good model and one bad one served `has_predictions:
+        # True` — all three clinical figures drawn from the good one — beside a
+        # sentence instructing the user to *"fit a model that records its
+        # outcome level … and the curve is drawn"*, about a curve that was on
+        # the screen. Driven at L63's HEAD on `['glm','logreg']`, both halves
+        # in one response. `predictions_for` was corrected then and the
+        # sentence beside it was not.
+        return (f"There are predictions and the curve is drawn. "
+                f"{', '.join(unnamed)} produced probabilities without "
+                f"recording which class they are about, so it is not among "
+                f"the models the curve is drawn from.")
     return "There are predictions and the curve should be drawn."
 
 
 def _why_not(figure_id: str, project_state: Dict[str, Any]) -> str:
     if figure_id == "calibration":
+        return project_state["has_predictions_because"]
+    if figure_id in ("roc", "decision_curve"):
+        # `L64-A4`. THESE TWO GATE ON EXACTLY WHAT `calibration` GATES ON and
+        # said nothing about it. Their `when_applicable` is the same three-part
+        # predicate — classification, `has_predictions`, two classes — so a
+        # project that lost the calibration plot lost these with it, for the
+        # identical reason, and got *"This figure does not apply to this
+        # project"* while the plot beside them explained itself in full.
+        #
+        # Driven at HEAD before the wrapper fix: a `glm`-only project on
+        # `clinical_risk.csv` served that sentence for both. The figure applied
+        # perfectly — binary classification, 120 held-out predictions — and the
+        # app said it did not, which is the assert-something-false branch on
+        # the surface whose only job is explaining a silence.
+        name = ("ROC curve" if figure_id == "roc"
+                else "A decision curve")
+        if project_state.get("task_type") != "classification":
+            return (f"{name} is a claim about predicted probabilities, and "
+                    f"this is a {project_state.get('task_type') or 'not yet '
+                    'recorded'} task.")
+        if int(project_state.get("n_classes") or 2) != 2:
+            return (f"{name} contrasts one event against its absence, and the "
+                    f"recorded target has {project_state.get('n_target_levels')} "
+                    f"levels. `GUIDED-132` is the row for the multiclass form.")
         return project_state["has_predictions_because"]
     if figure_id == "shrinkage":
         if not project_state["has_dietary_lens"]:
@@ -873,7 +913,19 @@ def _why_not(figure_id: str, project_state: Dict[str, Any]) -> str:
         return (
             "No block of columns sharing one declared response scale was "
             "found, so there is no instrument to lay across a zero line.")
-    return "This figure does not apply to this project."   # pragma: no cover
+    # THE `# pragma: no cover` HERE WAS FALSE AND IS REMOVED (`L64-A4`).
+    # Driven: `figures.REGISTRY` holds 17 ids and `_why_not` special-cases 8;
+    # on a clinical project with no fit, ELEVEN ids reached this line and each
+    # returned this sentence. The pragma was suppressing coverage on the line
+    # that answers *"why is there no ROC curve?"* for the majority of this
+    # app's figures.
+    #
+    # It is still the honest answer for a figure gated on the KIND of project —
+    # a scree plot on a table with no components to plot. It was NOT the honest
+    # answer for a figure gated on a DATA STATE the app knows about and can
+    # name, which is why `roc` and `decision_curve` are handled above.
+    # `MISC-029` holds the remaining ids.
+    return "This figure does not apply to this project."
 
 
 # ─────────────────────────────────────────────────────────────────────────────

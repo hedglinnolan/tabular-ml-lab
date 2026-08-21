@@ -44,6 +44,8 @@ admitted.
 """
 from __future__ import annotations
 
+import importlib.util
+import inspect
 import os
 import sys
 import warnings
@@ -51,12 +53,16 @@ import warnings
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.base import clone
+from sklearn.linear_model import LinearRegression, LogisticRegression
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ml.model_registry import get_registry                          # noqa: E402
+from models.base import BaseModelWrapper                            # noqa: E402
 from models.glm import GLMWrapper                                   # noqa: E402
 from models.huber_glm import HuberGLMWrapper                        # noqa: E402
+from models.registry_wrappers import RegistryModelWrapper           # noqa: E402
 from models.rf import RFWrapper                                     # noqa: E402
 
 
@@ -127,6 +133,201 @@ def test_an_unfitted_wrapper_has_no_coefficients_to_report():
     """There are none before a fit, and reporting some would invent them."""
     assert not hasattr(GLMWrapper(task_type="regression"), "coef_")
     assert not hasattr(HuberGLMWrapper(), "coef_")
+
+
+# ═══════════ 1b · the rule, derived from the estimator ══════════════════════
+#
+# `L64-A5`. THIS FILE EXISTS BECAUSE A WRAPPER DROPPED AN ATTRIBUTE, AND IT
+# CONTAINED ZERO OCCURRENCES OF `classes_` — the attribute the next dropped one
+# turned out to be. `coef_` was named at L56, `intercept_` beside it, and
+# `classes_` stayed missing for seven loops and cost a `glm`-only project its
+# ROC, its calibration plot and its decision curve.
+#
+# So the attribute set is no longer written down here. It is read off the
+# fitted estimator, which is the only source that cannot go stale.
+
+#: Fitted by their own declaration, and skipped with a reason rather than
+#: silently. `nn` is absent because `torch` is not installed on this machine —
+#: `models/nn_whuber.py` cannot even be imported — and it is the one wrapper
+#: that ASSIGNS `classes_` itself, so it is also the one this rule most needs
+#: to cover. Reported by `test_the_skipped_wrapper_is_named` below.
+_UNFITTABLE_HERE = {"NNWeightedHuberWrapper": "torch is not installed"}
+
+
+def _concrete_wrappers():
+    """Every concrete `BaseModelWrapper` subclass that SHIPS.
+
+    Scoped to `models.*` on purpose. This file defines a stand-in below, and a
+    sweep that swept its own scaffolding would be measuring itself — the shape
+    `AGENT_ONBOARD.md` §07 #3 warns about, arriving through the enumeration
+    rather than through a fixture.
+    """
+    import models.glm, models.huber_glm, models.rf                 # noqa: F401
+    import models.registry_wrappers                                # noqa: F401
+
+    found, seen = [], set()
+
+    def walk(cls):
+        for sub in cls.__subclasses__():
+            if sub.__name__ in seen:
+                continue
+            seen.add(sub.__name__)
+            if (not inspect.isabstract(sub)
+                    and (sub.__module__ or "").startswith("models.")):
+                found.append(sub)
+            walk(sub)
+
+    walk(BaseModelWrapper)
+    return sorted(found, key=lambda c: c.__name__)
+
+
+def _fitted_pairs():
+    """`(label, wrapper)` fitted on a task each one declares it supports."""
+    X, y_reg, y_clf = _table()
+    out = []
+    for cls in _concrete_wrappers():
+        if cls.__name__ in _UNFITTABLE_HERE:
+            continue
+        if cls is RegistryModelWrapper:
+            # It takes an estimator rather than a task string, and it is built
+            # by no registry key — `pages/06` and `headless_train` construct it
+            # directly. Covered on both shapes anyway.
+            out.append(("registry-regression",
+                        _fit(cls(LinearRegression(), "reg"), X, y_reg)))
+            out.append(("registry-classification",
+                        _fit(cls(LogisticRegression(max_iter=200), "clf"),
+                             X, y_clf)))
+            continue
+        for task, y in (("regression", y_reg), ("classification", y_clf)):
+            try:
+                wrapper = cls(task_type=task)
+            except TypeError:
+                if task != "regression":
+                    continue
+                wrapper = cls()
+            # WHAT IT DECLARES IT SUPPORTS, asked of the object rather than of
+            # a table here: a regression-only wrapper fitted on labels would
+            # fail for a reason that has nothing to do with forwarding.
+            if task == "classification" and not wrapper.supports_proba():
+                continue
+            out.append((f"{cls.__name__}-{task}", _fit(wrapper, X, y)))
+    return out
+
+
+def _fitted_attributes(estimator):
+    """sklearn's own convention for *something a fit produced*."""
+    return sorted(
+        name for name in dir(estimator)
+        if name.endswith("_") and not name.startswith("_")
+        and not name.endswith("__") and hasattr(estimator, name))
+
+
+def test_a_wrapper_answers_for_every_attribute_its_estimator_learned(capsys):
+    """The positive direction, over the whole set rather than three names."""
+    pairs = _fitted_pairs()
+    # THE CONTROL. An empty enumeration asserts nothing and looks identical to
+    # a clean sweep — `AGENT_ONBOARD.md` §07 trap 5c, and this is the negative
+    # shape it warns about.
+    assert len(pairs) >= 4, (
+        f"only {len(pairs)} wrapper(s) could be fitted, so this sweep's "
+        f"silence says nothing: {[p[0] for p in pairs]}")
+
+    reported = []
+    for label, wrapper in pairs:
+        learned = _fitted_attributes(wrapper.model)
+        assert learned, f"{label}: the wrapped estimator learned nothing"
+        missing = [a for a in learned if not hasattr(wrapper, a)]
+        assert not missing, (
+            f"{label} holds a fitted estimator with {missing} and the wrapper "
+            f"answers for none of them. That is `GUIDED-234` and `GUIDED-245` "
+            f"in one sentence: the wrapper is lying about what it knows, and "
+            f"every consumer that asks it — the forest plot, `training.py`'s "
+            f"event record — believes the lie.")
+        reported.append(f"{label}:{len(learned)}")
+    with capsys.disabled():
+        print(f"\n  forwarded, per wrapper: {', '.join(reported)}")
+
+
+def test_a_wrapper_does_not_answer_for_an_attribute_its_estimator_lacks():
+    """The negative direction, and it is what keeps the rule honest.
+
+    A wrapper that answered for everything would satisfy the test above and put
+    a forest plot on a Random Forest.
+    """
+    X, y_reg, _ = _table()
+    forest = _fit(RFWrapper(n_estimators=10, task_type="regression"), X, y_reg)
+    learned = set(_fitted_attributes(forest.model))
+    # `classes_` is the case this row is about: a REGRESSOR has none, and the
+    # forwarding must not invent one.
+    assert "classes_" not in learned
+    for absent in ("coef_", "intercept_", "classes_", "a_made_up_attribute_"):
+        assert absent not in learned
+        assert not hasattr(forest, absent), (
+            f"the wrapper answers for `{absent}`, which its estimator does not "
+            f"have")
+
+
+def test_an_unfitted_wrapper_answers_for_nothing_its_estimator_has_not_learned():
+    """Before a fit there is nothing to forward, and a `clone()` is unfitted.
+
+    `clone()` is in here because sklearn calls it inside every `Pipeline`, and
+    a clone that inherited a fitted attribute would report a fit that never
+    happened.
+    """
+    X, _y_reg, y_clf = _table()
+    fitted = _fit(GLMWrapper(task_type="classification"), X, y_clf)
+    assert hasattr(fitted, "classes_")
+
+    for label, wrapper in (("unfitted", GLMWrapper(task_type="classification")),
+                           ("clone-of-fitted", clone(fitted))):
+        for attr in ("coef_", "intercept_", "classes_"):
+            assert not hasattr(wrapper, attr), (
+                f"{label} reports `{attr}`, so it is claiming a fit that has "
+                f"not happened")
+
+
+def test_the_skipped_wrapper_is_named():
+    """A skip nobody counts is coverage nobody has. `AGENT_ONBOARD.md` §07 3d.
+
+    `nn` is the wrapper that assigns `classes_` in `__init__` before any data
+    exists, which is precisely the case a naive read-only property breaks on —
+    so the one wrapper this rule most needs to cover is the one this machine
+    cannot fit. That is stated here rather than left as an absence in a list.
+    """
+    assert _UNFITTABLE_HERE == {"NNWeightedHuberWrapper": "torch is not installed"}
+    assert importlib.util.find_spec("torch") is None, (
+        "`torch` is installed now, so `NNWeightedHuberWrapper` can be fitted "
+        "and belongs in the sweep above rather than in the skip list")
+    # And the property it exercises is asserted on a stand-in of the same shape,
+    # so the mechanism is covered even while the wrapper is not.
+    stand_in = _AssignsItsOwnClasses()
+    assert stand_in.classes_ is None, (
+        "a wrapper that assigns `None` reads it back as something else, which "
+        "is the bug both naive versions of this forwarding have")
+    stand_in.classes_ = np.array([0, 1])
+    assert list(stand_in.classes_) == [0, 1]
+
+
+class _AssignsItsOwnClasses(BaseModelWrapper):
+    """`models/nn_whuber.py:320`'s shape, without torch.
+
+    It assigns `classes_ = None` in `__init__` before any data exists and reads
+    it back with `is not None` at `:636`. A plain read-only property fails at
+    construction; a "defer to the instance attribute if it is not None" version
+    falls through to `self.model` and raises.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("assigns-its-own")
+        self.classes_ = None
+
+    def fit(self, X_train, y_train, X_val=None, y_val=None, **kwargs):
+        self.classes_ = np.unique(y_train)
+        self.is_fitted = True
+        return {}
+
+    def predict(self, X):                                  # pragma: no cover
+        return X
 
 
 # ═══════════ 2 · the registry declaration follows the measurement ═══════════

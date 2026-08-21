@@ -48,7 +48,7 @@ def _fitted(models):
     df = pd.read_csv(os.path.join(DATA, "clinical_risk.csv"))
     df = df[df["readmit_30d"].notna()].copy()
     project = AnalysisProject.from_dataframe(df, "clinical_risk.csv")
-    # `"classification"` EXACTLY, and it is not cosmetic: `training.py:635`
+    # `"classification"` EXACTLY, and it is not cosmetic: `training.py:639`
     # gates `probabilities` on this string, so `"binary classification"` — the
     # phrase the shape tables use for the FIXTURE — fits every model and scores
     # none of them, and every assertion here would then be about an empty run.
@@ -257,6 +257,47 @@ def test_ticking_an_uncalibratable_model_first_does_not_delete_the_figures():
         f"logreg-first drew {sorted(both_orders['logreg'])}")
 
 
+@pytest.mark.parametrize("only", ["glm", "rf", "logreg"])
+def test_one_wrapper_backed_model_still_draws_the_clinical_figures(only, capsys):
+    """`GUIDED-245`, and it is the whole user-visible claim.
+
+    L63 fixed the ORDERING half — `predictions_for` takes the first
+    calibratable run, so a user who ticks a good model beside a bad one is
+    fine. **A user who ticks one bad model was not.** Driven at L63's HEAD on
+    `clinical_risk.csv`: fitting only `glm` gave `positive_label=None`,
+    `has_predictions=False`, and the ROC, the calibration plot and the decision
+    curve were all absent from the served bundle. `rf` behaved identically.
+    Only `logreg` — a raw sklearn estimator, not a wrapper — drew all three.
+
+    The cause was one attribute: `training.py:648` records which class a
+    model's probabilities are about by reading `classes_` off the fitted
+    pipeline, and `BaseModelWrapper` forwarded `coef_` and `intercept_` and not
+    that. `models/glm.py:25` holds a real `LogisticRegression`, so the answer
+    was available and unexposed the whole time.
+
+    `logreg` is parametrized beside the two wrappers as the control: it drew
+    all three before this fix and must still.
+    """
+    project = _fitted([only])
+    scored = [r for r in project.training_run.results if r.probabilities]
+    assert scored, f"{only} produced no held-out probabilities at all"
+    assert all(r.positive_label is not None for r in scored), (
+        f"{only} scored {len(scored)} model(s) and none recorded which class "
+        f"its probabilities are about, so `predictions_for` must refuse and "
+        f"the three clinical figures cannot be drawn — `GUIDED-245`")
+
+    bundle = FB.render(project)
+    drawn = {row["id"] for row in bundle["admitted"] + bundle["held"]}
+    missing = {"roc", "calibration", "decision_curve"} - drawn
+    assert not missing, (
+        f"a project fitted with only `{only}` is missing {sorted(missing)}. "
+        f"not_drawn says: "
+        f"{ {r['id']: r.get('why', '')[:80] for r in bundle['not_drawn']} }")
+    with capsys.disabled():
+        print(f"\n  {only}: event={scored[0].positive_label!r} · "
+              f"{len(drawn & {'roc', 'calibration', 'decision_curve'})}/3 drawn")
+
+
 def test_a_project_whose_models_all_record_no_event_still_refuses():
     """The other polarity, and it must not be lost to the fix above.
 
@@ -264,12 +305,38 @@ def test_a_project_whose_models_all_record_no_event_still_refuses():
     the honest branch — guessing `1` is right on a 0/1 target and silently
     wrong on every other one (`GUIDED-093`). A fix that made the figures appear
     here would have traded a false absence for a false picture.
+
+    **THE FIXTURE CHANGED AT `L64-A3` AND THE TEST DID NOT.** It used to fit
+    `rf` and rely on `RFWrapper` not forwarding `classes_` — so the refusal it
+    proves was proved by a *defect*, and its own message said so: *"this
+    fixture's models now record an event, so it no longer exercises the
+    refusal — `GUIDED-245` may be fixed."* It is. Every registry model that
+    produces probabilities now records its event, which is the whole of Part A,
+    so there is no fitted model left that reaches this branch.
+
+    The state is therefore constructed rather than found: a real run, with the
+    recorded label cleared on every scored result. That is exactly what a
+    wrapper which cannot name its classes produces, and it is what the branch
+    is about — the refusal is a property of the RECORD, not of any one
+    estimator, so building the record directly is the honest fixture rather
+    than a stand-in for one.
     """
-    project = _fitted(["rf"])
+    project = _fitted(["logreg", "rf"])
     scored = [r for r in project.training_run.results if r.probabilities]
-    assert scored and all(r.positive_label is None for r in scored), (
-        "this fixture's models now record an event, so it no longer exercises "
-        "the refusal — `GUIDED-245` may be fixed")
+    assert len(scored) >= 2, (
+        f"only {len(scored)} model scored, so clearing the labels below does "
+        f"not exercise a project where SEVERAL models cannot name their event")
+    # THE CONTROL, and it is what stops this becoming trap #3 — a fixture
+    # manufacturing the absence it then asserts. The labels are real before
+    # they are cleared, so the clearing is the only difference between a
+    # project that draws all three figures and one that refuses.
+    assert all(r.positive_label is not None for r in scored), (
+        "the models did not record an event to begin with, so this fixture is "
+        "not showing that the refusal survives — it is showing GUIDED-245")
+    assert FB.predictions_for(project) is not None
+    for result in scored:
+        result.positive_label = None
+
     assert FB.predictions_for(project) is None
     state = FB.state(project)
     assert state["has_predictions"] is False
@@ -280,6 +347,58 @@ def test_a_project_whose_models_all_record_no_event_still_refuses():
     why = state["has_predictions_because"]
     assert "should be drawn" not in why, why
     assert "Random Forest" in why and "which class" in why, why
+
+    # AND THE TWO FIGURES THAT VANISH WITH IT NOW SAY WHY. `L64-A4`: `roc` and
+    # `decision_curve` gate on exactly what `calibration` gates on and fell
+    # through to *"This figure does not apply to this project"* — on a binary
+    # classification project with 120 held-out predictions, where the figure
+    # applies perfectly and the real reason was already written one branch over.
+    bundle = FB.render(project)
+    not_drawn = {row["id"]: row.get("why", "") for row in bundle["not_drawn"]}
+    for figure_id in ("roc", "decision_curve", "calibration"):
+        assert figure_id in not_drawn, f"{figure_id} was drawn"
+        assert "does not apply" not in not_drawn[figure_id], (
+            f"{figure_id} is absent for a reason the app knows and can name, "
+            f"and it says {not_drawn[figure_id]!r}")
+        assert "which class" in not_drawn[figure_id], not_drawn[figure_id]
+
+
+def test_a_model_that_cannot_name_its_event_does_not_silence_one_that_can():
+    """`L64-A4`, the other half, and the wrapper fix HIDES it rather than
+    fixing it.
+
+    `_no_predictions_because` tested *is any model unnamed* before it tested
+    *did any model record a label*, so a project that ticked one good model and
+    one bad one served `has_predictions: True` — all three clinical figures
+    drawn — beside a sentence telling the user to *"fit a model that records
+    its outcome level … and the curve is drawn"*, about a curve that was on
+    screen. Driven at L63's HEAD on `['glm','logreg']`, both halves in one
+    response.
+
+    Every registry model now records its event, so the state has to be
+    constructed. That is the point: the contradiction is a property of the
+    sentence builder, and it would still be there if a wrapper regressed.
+    """
+    project = _fitted(["logreg", "rf"])
+    scored = [r for r in project.training_run.results if r.probabilities]
+    assert len(scored) >= 2
+    unnamed = next(r for r in scored if r.name != "Logistic Regression")
+    unnamed.positive_label = None
+
+    state = FB.state(project)
+    assert state["has_predictions"] is True, (
+        "a model that cannot name its event silenced one that can, which is "
+        "GUIDED-245's ordering half and L63 fixed it")
+    why = state["has_predictions_because"]
+    assert str(unnamed.name) in why, (
+        f"the model that could not contribute is not named at all: {why!r}")
+    assert "and the curve is drawn" in why, why
+    assert "Fit a model that records its outcome level" not in why, (
+        f"the served state instructs the user to fit a model that records its "
+        f"outcome level, on a project that has one and has drawn the curve "
+        f"from it: {why!r}")
+    drawn = {row["id"] for row in FB.render(project)["admitted"]}
+    assert {"roc", "calibration", "decision_curve"} <= drawn
 
 
 def test_the_calibration_caption_names_the_model_it_drew():

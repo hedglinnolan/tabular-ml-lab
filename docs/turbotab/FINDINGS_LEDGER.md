@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**430 of 987 closed.**
+**431 of 988 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 476 |
 | `PARTIAL` | 81 |
-| `FIXED` | 420 |
+| `FIXED` | 421 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
@@ -35,7 +35,7 @@ Nothing is closed without a regression test named after it.
 ## OPEN — 476
 
 
-### Guided-door drive feedback — 80
+### Guided-door drive feedback — 79
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -58,7 +58,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-233` | high | There is no EXPLAINABILITY pack, so every threshold the explanation suite needs would ship unsourced into the one subsystem whose whole job is calibrated honesty | `grep over the five research packs returns 0 for shap/shapley, 0 for attribution, 0 for feature importance and…` | THE PRODUCT OWNER SUPPLIED A DOMAIN-AGNOSTIC EXPLAINABILITY PLAYBOOK ON 2026-08-09 AND NAMED ITS ROLE EXACTLY: 'I see it as a useful mould for what we actually want to form into… |
 | `GUIDED-238` | high | Half the figure checklist cannot fail: of 85 items, 43 read a constant and only 16 are genuinely falsifiable, so a scored checklist reports a compliance it never checked | `reported by the L57 execution agent's Part B reconnaissance, 2026-08-09; the named instance is…` | FILED BY THE ADJUDICATOR FROM THE EXECUTION AGENT'S HANDBACK, BECAUSE IT EXISTED ONLY IN A MESSAGE AND THE AGENT WAS ABOUT TO BE CLEARED. It stopped before Part B and therefore… |
 | `GUIDED-244` | high | /selection/evidence serves an n_rows_seen that is the count of NO computation on its own payload -- 825 beside scores every one of which was a 225-row statistic -- and the obvious one-line repair… | `turbotab/api.py:2498; turbotab/selection.py:344-345, :352, :382, :385, :445-446; driven at bf7e148 by two…` | SPLIT OUT OF DRIVE-050 BY THE ADJUDICATOR AT L63, AND THE SPLIT IS A RULING. DRIVE-050 mentions this route in one trailing sentence as 'reports the pre-fix population too'. That… |
-| `GUIDED-245` | high | RFWrapper does not forward `classes_`, so a Random Forest ships 120 held-out probabilities with no recorded `positive_label` -- and because `predictions_for` tested that condition on `scored[0]`… | `Driven on clinical_risk.csv at L63-B3. ['rf','logreg'] -> has_predictions False…` | FILED RATHER THAN FIXED, DELIBERATELY. It is a different defect class from L63-B's subject -- B is *which model is this figure about* and this is *which event are these… |
 | `GUIDED-248` | high | A project whose only model records no event is told the ROC and the decision curve 'do not apply to this project' -- a generic fallback carrying a no-cover pragma, and it reaches the browser | `turbotab/figure_bundle.py _why_not's calibration special-case and its generic fallback with the no-cover…` | FOUND BY DRIVING GUIDED-245 RATHER THAN BY READING IT. It is the governing rule's assert-something-false branch on the surface whose whole job is explaining a silence, which makes… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
@@ -550,7 +549,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Other — 10
+### Other — 11
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -563,6 +562,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-046` | medium | A loop commit swallowed the adjudicator's uncommitted docs edit, so its subject asserts something false about its own contents - the git add -A rule broken a third time, in the opposite direction… | `0c9cce3 contains docs/turbotab/prompts/PM_TRANSITION.md, 74 changed lines, under the subject 'L57-A: the…` | NOTHING WAS LOST AND THAT IS NOT THE POINT. The content is byte-identical to the adjudicator's own backup, verified by diff, and it is in HEAD. THE POINT IS THE RECORD LAYER… |
 | `MISC-022` | medium | A3's sweep: which surfaces reason about a population the fit will not use -- the number is THREE, and the row named two | `driven at L62 against a fixture of run 5's shape; turbotab/project.py analysis_mask` | REOPENED BY THE ADJUDICATOR: THE COMPLETENESS CLAIM IS FALSE. The row records THREE surfaces 'found by driving every surface that reports an n'. Two independent verifiers, both… |
 | `MISC-028` | medium | The manuscript's split reconciliation cannot fail: it asserts train_n + val_n + test_n == analysis_total while analysis_total is DEFINED as n_train + n_test and val_n is pinned to 0 | `turbotab/test_the_manuscript_is_checked.py's split assertion against turbotab/manuscript.py's counts builder…` | DRIVE-051's CLASS ONE SURFACE OVER, AND IT IS LIVE. L63-D fixed the shelf's partition and swept only index.html for the four field names; it did not sweep the CLASS. This is… |
+| `MISC-030` | medium | figure_bundle._why_not's generic fallback -- "This figure does not apply to this project" -- is reached by eleven of seventeen registry figures, and for a figure gated on a DATA STATE the app knows… | `Driven at L64-A on clinical_risk.csv with no fit: figures.REGISTRY holds 17 ids, _why_not special-cased 6…` | FILED RATHER THAN SWEPT, and the split is the reason. The fallback is the HONEST answer for a figure gated on the kind of project -- a scree plot on a table with nothing to… |
 | `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
 
 ### Page-layer extraction — 5
@@ -739,10 +739,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 420
+## FIXED — 421
 
 
-### Guided-door drive feedback — 160
+### Guided-door drive feedback — 161
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -858,6 +858,7 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-051` | high | n_rows_withheld and n_rows_without_an_outcome overlap on a reachable path, so the served counts sum past the size of the table and 'withheld' still silently means sealed OR unusable | `turbotab/project.py:2520-2540; turbotab/api.py:2251-2252, :2339-2340…` | **test:** `turbotab/test_the_shelf_reasons_about_rows_a_model_will_see.py::test_the_overlap_between_the_seal_and_the_blanks_is_served` — The report caught the near-miss in the… |
 | `GUIDED-242` | high | The forest plot silently picks one model out of N and names none, so the same rows publish different coefficients depending on which checkbox the user ticked first -- GUIDED-236's class, one figure… | `turbotab/figure_bundle.py:510,:544,:564,:493; turbotab/figure_specs.py:2392,:2521-2525; contrast…` | **test:** `turbotab/test_a_figure_says_which_model_it_is_about.py::test_the_forest_plot_names_the_model_its_coefficients_came_from` — FOUND BY THE L63 RECONNAISSANCE FAN-OUT, BY… |
 | `GUIDED-243` | high | The ROC's bootstrap confidence interval is seeded once outside the per-model loop, so a model's published 95% CI is a fact about which checkbox was ticked first rather than about the data… | `turbotab/figure_specs.py:2230 (rng created), :2233 (the loop it is outside of), :2242 (the draw); measured at…` | **test:** `turbotab/test_a_figure_says_which_model_it_is_about.py::test_a_models_interval_is_the_same_alone_first_and_last` — FOUND BY THE L63 FAN-OUT'S VERIFIER, AGAINST A RECON… |
+| `GUIDED-245` | high | RFWrapper does not forward `classes_`, so a Random Forest ships 120 held-out probabilities with no recorded `positive_label` -- and because `predictions_for` tested that condition on `scored[0]`… | `Driven on clinical_risk.csv at L63-B3. ['rf','logreg'] -> has_predictions False…` | **test:** `turbotab/test_a_figure_says_which_model_it_is_about.py::test_one_wrapper_backed_model_still_draws_the_clinical_figures` — FILED RATHER THAN FIXED, DELIBERATELY. It is a… |
 | `GUIDED-246` | high | Every calibration plot this app has ever drawn was captioned "Calibration of model on N observations" -- the literal word `model` -- because the only live caller drops the `model_name` kwarg and… | `figure_specs.calibration_payload takes `model_name: str = "model"` (:68-69) and publishes it at :98; the…` | **test:** `turbotab/test_a_figure_says_which_model_it_is_about.py::test_the_calibration_caption_names_the_model_it_drew` — FOUND WHILE RULING THE COMPANION ASYMMETRY, which is the… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
