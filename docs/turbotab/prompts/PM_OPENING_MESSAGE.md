@@ -41,15 +41,14 @@ venv/bin/python docs/turbotab/tools/ledger.py stats
 
 ---
 
-## The one thing that is not finished
+## Where things stand
 
-**L64 was reported and is not adjudicated.** Its commits are pushed and safe. The verification was
-running when the session ended, and **`PM_TRANSITION.md` §04b tells you exactly how to re-run it** —
-the workflow script is on disk with its full path recorded, and the cluster design is written out in
-case it is not.
+**L64 is adjudicated and accepted** — four and a half of five, with two dispositions downgraded and
+the record written. Nothing is unfinished; you are starting on a clean branch.
 
-**Adjudicate it before you write L65.** Three claims in that report are load-bearing and none of them
-has been checked. The sharpest is worth knowing now: of the manuscript validator's thirteen checks —
-the only pass/fail set in the app that feeds a count a user actually sees — the agent reports that
-**eight are decided before the manuscript is read** and only one has ever been shown to fail on a real
-defect. If that holds, the number on the page is inflated by a knowable amount.
+**`PM_TRANSITION.md` §10 tells you what to write next, and one result should shape it.** The
+manuscript validator renders *"13 checks, 0 unmet"* to a user, and **eight of those thirteen are
+decided before the manuscript is read** — measured, each one shown to survive a state that should make
+it fail. Beside that number the page asserts *"Every consistency check the validator makes is met by
+this draft."* That is the governing rule's *assert-something-false* branch on the artifact that leaves
+the building, and it is `MISC-029`.
