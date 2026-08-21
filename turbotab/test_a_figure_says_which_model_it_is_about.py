@@ -528,6 +528,68 @@ def test_the_risk_rug_is_keyed_per_model():
         "the item about showing the distribution of predicted risks")
 
 
+def test_the_decision_curve_accounts_for_the_models_it_did_not_draw(capsys):
+    """`GUIDED-247`. The decision curve got the curves and not the accounting.
+
+    `_risks_or_refuse` already excludes a model that cannot name its event and
+    hands BOTH readers the same two keys — and only the ROC read them, so the
+    decision curve drew the survivors and said nothing about the one it
+    dropped. Driven: the DCA caption did not contain the excluded model's name
+    while the ROC caption, on the same numbers, did.
+
+    **The item insists on the CALLER-PASSED count, and that conjunct is the
+    whole of it.** The decision curve's model dict has no drop path — every
+    model handed in appears — so on the default path `len(models) +
+    len(excluded)` equals the defaulted count by construction. An item without
+    that conjunct would have been an 87th unfalsifiable item, in the same
+    registry, in the loop that is removing them (`GUIDED-238`).
+    """
+    y, a, b = _synthetic()
+    spec = FS.DECISION_CURVE
+
+    def failed(payload):
+        return [i.id for i in spec.checklist if not i.check(payload)]
+
+    # Defaulted count: the item refuses to certify an accounting nobody stated.
+    assert "models_accounted_for" in failed(
+        FS.decision_curve_payload(y, {"A": a, "B": b}))
+    # Two scored, two drawn.
+    assert not failed(FS.decision_curve_payload(y, {"A": a, "B": b},
+                                                n_scored=2))
+    # THE PROVING ASSERTION, and it is the ROC's own one figure over: two
+    # scored, ONE curve, nothing named → fail.
+    assert "models_accounted_for" in failed(
+        FS.decision_curve_payload(y, {"A": a}, n_scored=2))
+    # Name it and it passes — and the name reaches the caption.
+    excluded = [{"model": "B", "why": "the run recorded no event for its "
+                                      "probabilities"}]
+    payload = FS.decision_curve_payload(y, {"A": a}, excluded=excluded,
+                                        n_scored=2)
+    assert not failed(payload)
+    caption = spec.caption(payload)
+    assert "B is not drawn" in caption, caption[-200:]
+    # Both branches of the threshold clause already end in a period, so copying
+    # the ROC's join would have produced a doubled full stop.
+    assert ".." not in caption.replace("...", ""), caption[-200:]
+    with capsys.disabled():
+        print(f"\n  DCA caption tail: …{caption[-90:]}")
+
+
+def test_the_real_decision_curve_path_states_its_count():
+    """And the shipped caller passes it, or the item above is unreachable.
+
+    A capability with no consumer is `AGENT_ONBOARD.md` §07 trap #1, and an
+    accounting item nothing feeds is exactly that.
+    """
+    project = _fitted(["logreg", "lda"])
+    row = _row(FB.render(project), "decision_curve")
+    assert row is not None
+    assert row["payload"]["n_models_scored_stated"] is True, (
+        "the bundle does not state how many models it scored, so the "
+        "accounting item cannot fire on any real project")
+    assert not [i["id"] for i in row["checklist"] if not i["passed"]]
+
+
 def test_the_roc_caption_says_which_model_the_companion_covers():
     """The companion asymmetry, on the wire.
 

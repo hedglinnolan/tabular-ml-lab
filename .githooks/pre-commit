@@ -33,6 +33,21 @@ if ! PY=$(resolve_python); then
     exit 1
 fi
 
+# THE THIRD STATE — `TEST-108`. A gate that CANNOT RUN must not print the same
+# cross and the same "COMMIT REFUSED" as a gate that FAILED. `resolve_python`
+# falls back to a bare `python3`, so the branch above is effectively
+# unreachable and what actually happened in every agent worktree was six gates
+# dying on `ModuleNotFoundError` and reading as six red gates over correct code.
+if ! gates_can_run "$PY"; then
+    printf '\nGATES CANNOT RUN — this is not a failure of your code.\n'
+    printf '  %s has no pandas/pytest, so the six gates cannot execute.\n' "$PY"
+    printf '  This is usually a linked worktree with no environment of its own.\n'
+    printf '  Set TURBOTAB_PYTHON to a provisioned interpreter, or run the\n'
+    printf '  gates from the main checkout. Nothing was checked, so nothing is\n'
+    printf '  being asserted about this commit.\n'
+    exit 1
+fi
+
 # Nothing here touches application behavior, so a commit that changes neither
 # the ledger data nor any tracked markdown still pays ~2s. That is cheap enough
 # to be unconditional, and conditional gates are how gates get skipped.

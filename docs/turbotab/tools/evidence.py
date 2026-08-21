@@ -260,6 +260,74 @@ def _string(node) -> str:
     return ""
 
 
+# ── the two walks, lifted out of `check()` — `TEST-107` ─────────────────────
+#
+# **THE PRE-FILTERS ARE GONE AND THE COUNTS ARE RETURNED.** Both halves matter
+# and the second matters more.
+#
+# The filters were `if "Claim(" not in path.read_text(): continue` and the same
+# for `"Evidence("`. Break both literals and this gate checks **32 of 67 claims
+# and 0 of 51 module constants — and still prints `ok` and exits 0.** Verified
+# without touching the file, by exec'ing a patched copy of this source: a false
+# green in one of the six pre-commit gates, which is the shape `AGENT_ONBOARD.md`
+# §07 trap 5c names as the worst of the three. Dropping them costs **+0.65 s**
+# (0.600 → 1.251 s, median of five) on a 52-module corpus where only 4 and 5
+# modules carry the literals, and gives byte-identical counts.
+#
+# **A CEILING WOULD BE THE WRONG INSTRUMENT and `TEST-107`'s `act` is wrong to
+# suggest one.** The quantity it would bound is *modules skipped* — 48 and 47 of
+# 52 — which grows every time an unrelated module is added, so it would go red
+# for reasons that have nothing to do with claims going unchecked.
+# `repo_write_guard`'s ceiling bounds destinations the instrument KNOWS it
+# cannot see; that is a different quantity.
+#
+# What replaces it is a FLOOR, and a floor needs a number to stand on, which is
+# why these return their findings instead of printing them. `call_sites()`
+# already made this move and its docstring says why: *"A gate whose only
+# interface is stdout is a gate a test can only check the description of."*
+#
+# **And a zero-guard would not be enough**: 32 of the 67 claims come from the
+# unfiltered figure-registry loop above, so breaking the filter left 32, not 0.
+# The floors are per-walk for exactly that reason.
+
+def module_claims(modules=None) -> list:
+    """`(label, source)` for every `Claim` declared as a module constant."""
+    import importlib
+
+    _import_package()
+    from turbotab import packs
+
+    out = []
+    for path in (_modules() if modules is None else modules):
+        module = importlib.import_module(f"turbotab.{path.stem}")
+        for name, value in sorted(vars(module).items()):
+            if name.startswith("_") or not isinstance(value, tuple):
+                continue
+            for claim in value:
+                if not isinstance(claim, packs.Claim):
+                    continue
+                out.append((f"{path.name}/{name}/{claim.key}",
+                            claim.evidence.source))
+    return out
+
+
+def module_constants(modules=None) -> list:
+    """`(label, source)` for every module-level `Evidence`."""
+    import importlib
+
+    _import_package()
+    from turbotab import packs
+
+    out = []
+    for path in (_modules() if modules is None else modules):
+        module = importlib.import_module(f"turbotab.{path.stem}")
+        for name, value in sorted(vars(module).items()):
+            if not isinstance(value, packs.Evidence) or name.startswith("_"):
+                continue
+            out.append((f"{path.name}/{name}", value.source))
+    return out
+
+
 def check() -> int:
     problems = []
     _import_package()
@@ -310,22 +378,11 @@ def check() -> int:
 
     # Claims declared as module constants — the form every pack finding uses,
     # because a claim tuple built inline in a detector could not be walked.
-    import importlib
-
-    for path in _modules():
-        if "Claim(" not in path.read_text(encoding="utf-8"):
-            continue
-        module = importlib.import_module(f"turbotab.{path.stem}")
-        for name, value in sorted(vars(module).items()):
-            if name.startswith("_") or not isinstance(value, tuple):
-                continue
-            for claim in value:
-                if not isinstance(claim, packs.Claim):
-                    continue
-                n_claims += 1
-                bad = _resolve(claim.evidence.source)
-                if bad:
-                    problems.append(f"{path.name}/{name}/{claim.key}: {bad}")
+    for label, source in module_claims():
+        n_claims += 1
+        bad = _resolve(source)
+        if bad:
+            problems.append(f"{label}: {bad}")
 
     # ── 3 · every module-level Evidence resolves ────────────────────────────
     #
@@ -334,20 +391,12 @@ def check() -> int:
     # DESIGN_EVIDENCE were well-formed, resolvable, and reached no claim.
     # Resolving them is necessary and is not sufficient — check 5 is the half
     # that asks whether they arrive anywhere.
-    import importlib
-
     n_constants = 0
-    for path in _modules():
-        if "Evidence(" not in path.read_text(encoding="utf-8"):
-            continue
-        module = importlib.import_module(f"turbotab.{path.stem}")
-        for name, value in sorted(vars(module).items()):
-            if not isinstance(value, packs.Evidence) or name.startswith("_"):
-                continue
-            n_constants += 1
-            bad = _resolve(value.source)
-            if bad:
-                problems.append(f"{path.name}/{name}: {bad}")
+    for label, source in module_constants():
+        n_constants += 1
+        bad = _resolve(source)
+        if bad:
+            problems.append(f"{label}: {bad}")
 
     # ── 4 · a hand-written badge resolves too ───────────────────────────────
     n_literals = 0

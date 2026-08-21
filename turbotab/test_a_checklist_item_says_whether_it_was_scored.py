@@ -80,16 +80,22 @@ def _items():
             yield spec_id, item
 
 
-def test_the_population_is_eighty_six_items_across_seventeen_specs(capsys):
+def test_the_population_is_eighty_seven_items_across_seventeen_specs(capsys):
     """The count every number below is a fraction of, re-derived here.
 
-    `GUIDED-238` says 85. It is 86, and the row's own `act` asks for exactly
-    this re-derivation.
+    `GUIDED-238` says 85. It was **86** when this file was written, and it is
+    **87** at the end of the same loop: `L64-D` added
+    `decision_curve.models_accounted_for` for `GUIDED-247`. That is recorded
+    rather than absorbed, because this assertion caught its own loop's addition
+    and a number that moves silently is the decay this file exists to stop.
+
+    An equality rather than a floor, deliberately: a new checklist item is a
+    new claim the app makes to a reader, and it should arrive here.
     """
     specs = figures.REGISTRY
     items = list(_items())
     assert len(specs) == 17, sorted(specs)
-    assert len(items) == 86, len(items)
+    assert len(items) == 87, len(items)
     with capsys.disabled():
         print(f"\n  {len(items)} items across {len(specs)} specs")
 

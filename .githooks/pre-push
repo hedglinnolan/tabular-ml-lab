@@ -40,6 +40,17 @@ if ! PY=$(resolve_python); then
     exit 1
 fi
 
+# THE THIRD STATE — `TEST-108`. See `pre-commit`; the same reasoning applies to
+# a gate that is one check rather than six.
+if ! gates_can_run "$PY"; then
+    printf '\nGATE CANNOT RUN — this is not a failure of your code.\n'
+    printf '  %s has no pandas/pytest, so the value check cannot execute.\n' "$PY"
+    printf '  This is usually a linked worktree with no environment of its own.\n'
+    printf '  Set TURBOTAB_PYTHON to a provisioned interpreter. Nothing was\n'
+    printf '  checked, so nothing is being asserted about this push.\n'
+    exit 1
+fi
+
 # A branch deletion pushes nothing to check. `git push origin :branch` sends a
 # local ref of all-zeroes, and running a two-second test suite to approve a
 # deletion is noise.

@@ -2197,6 +2197,13 @@ def decision_curve_payload(y_true, risks: Dict[str, Any], *,
         "risk_rug_cap": 200,
         "n_models_scored": int(n_scored if n_scored is not None
                                else len(risks or {}) + len(excluded or [])),
+        # WHETHER THE CALLER SAID IT, or whether this defaulted. `GUIDED-247`:
+        # the model dict has NO drop path — every model handed in appears —
+        # so on the default path `len(models) + len(excluded)` equals the
+        # defaulted count BY CONSTRUCTION, and an accounting item that did not
+        # insist on the caller's own number would be an 87th unfalsifiable
+        # item, in the same registry, in the loop that is removing them.
+        "n_models_scored_stated": n_scored is not None,
         "excluded_models": [dict(e) for e in (excluded or [])],
         "styles": {"treat_none": {"width": "thick"},
                    "treat_all": {"width": "thin"}},
@@ -2262,6 +2269,23 @@ DECISION_CURVE = register(FigureSpec(
             "lines is a figure a reader has to decode rather than read.",
             lambda p: (p.get("styles", {}).get("treat_none", {}).get("width")
                        == "thick")),
+        ChecklistItem(
+            "models_accounted_for",
+            "Every scored model is on this axis, or is named as not being",
+            "`GUIDED-247`. The decision curve got the curves and not the "
+            "accounting: `_risks_or_refuse` already excludes a model that "
+            "cannot name its event, and this figure drew the survivors and "
+            "said nothing about the one it dropped — while the ROC beside it, "
+            "reading the same two keys, named it in its caption. A net-benefit "
+            "curve missing a model for a reason the reader is not told is the "
+            "silent-drop hole `GUIDED-236` closed one figure over.",
+            # `n_models_scored_stated` is the load-bearing conjunct. Without
+            # it this reduces to an identity on the default path.
+            lambda p: (bool(p.get("models"))
+                       and p.get("n_models_scored_stated") is True
+                       and (len(p.get("models") or {})
+                            + len(p.get("excluded_models") or []))
+                       == int(p.get("n_models_scored") or -1))),
     ),
     caption=lambda p: (
         f"Decision curve analysis over {p.get('n', 0):,} observations with "
@@ -2280,7 +2304,10 @@ DECISION_CURVE = register(FigureSpec(
            "about 20%. Confirm it brackets where reasonable clinicians "
            "treating your condition would disagree; the range should come "
            "from the decision, not from the data."
-           if p.get("range_is_default") else " — a range you set.")),
+           if p.get("range_is_default") else " — a range you set.")
+        + "".join(
+            f" {e.get('model')} is not drawn: {e.get('why')}"
+            for e in (p.get("excluded_models") or []))),
     # THE COMPANION RULE'S STRONGEST USE. §A4.5: a miscalibrated model produces
     # a misleading decision curve, so DCA presupposes calibration. Without the
     # calibration plot beside it this figure is inadmissible, not caveated.

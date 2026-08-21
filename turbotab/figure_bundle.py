@@ -504,19 +504,25 @@ def _risks_or_refuse(project):
     payload that could hold one curve. The decision curve had the same defect
     from the same line.
 
-    **`predictions_for` is deliberately left alone.** It is correctly named for
-    calibration, whose producer takes a probability VECTOR and not a dict, and
-    it is what `state()`'s `has_predictions` gates the ROC's own admission on.
-    This function is the one that needed widening; it is still the only place
-    the ROC and the decision curve find their risks.
+    **`predictions_for` keeps its single-run SHAPE, and that is the defensible
+    sentence.** This said *"deliberately left alone"* and was contradicted by
+    its own commit — `predictions_for` was rewritten in the same diff, and
+    again at `L64-A`. What was kept is its contract: it still returns ONE run,
+    because calibration's producer takes a probability VECTOR and not a dict,
+    and because `state()`'s `has_predictions` gates the ROC's own admission on
+    it. This function is the one that needed widening; it is still the only
+    place the ROC and the decision curve find their risks.
 
     **The hazard is `positive_label`, and it is `GUIDED-093` one level out.**
     `positive_label` is per result (`training.py:650`), so two models binarized
     against different events would put pictures of two different outcomes on
     one axis, drawn confidently. Every model is therefore checked against the
     event `predictions_for` chose, and anything dropped is NAMED in `excluded`
-    and reaches the caption — a silent drop here would be the same defect one
-    figure over. It is a defensive assertion rather than an observed failure: a
+    and reaches the caption of BOTH readers — a silent drop here would be the
+    same defect one figure over. This sentence was true of the ROC and false of
+    the decision curve for a loop (`GUIDED-247`): the accounting keys reached
+    both payloads and only the ROC read them, so the decision curve drew the
+    survivors and said nothing about the model it dropped. It is a defensive assertion rather than an observed failure: a
     failed fit already has `probabilities = None` and never reaches `scored`,
     and all four models agreed on a real drive. No fixture in this repository
     produces a disagreement.
