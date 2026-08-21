@@ -11,7 +11,7 @@ for seven times. Everything durable is in the repository.
 1. **`docs/turbotab/prompts/PM_TRANSITION.md`** — your onboard. The working relationship, the standing
    rulings, the fan-out method and what it actually finds, your predecessor's own errors and the shape
    they share, and what to protect about the execution agent. **Read it in full before you act.**
-   **Its §04b is a job that is already waiting for you — start there.**
+   **Start from its §10, which names the next loop's two parts and why.**
 2. **`docs/turbotab/prompts/AGENT_ONBOARD.md`** — the execution agent's onboard. Everything in it binds
    you too.
 3. Then `README.md`, `PRODUCT_VISION.md`, `ROADMAP.md`, and `LOOP.md` §§02, 05, 06, 03.
