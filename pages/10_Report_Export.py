@@ -489,12 +489,27 @@ def _build_manuscript_context(
         'best_model_by_metric': scoped_best_model_by_metric,
         'best_metric_name': scoped_best_metric_name,
         'explainability_methods': list(selected_explain),
+        # MISC-028. THE THIRD PRODUCER, AND IT SAYS SO NOW. `analysis_total` is
+        # the literal sum on the line below the three terms the validator's
+        # split check adds up, so *Split counts reconcile to analysis
+        # population* is an identity on this door and always was — the same
+        # defect the Guided producer carried, reached by a different route.
+        #
+        # It is ANNOTATED rather than repaired: there is no second count of
+        # this cohort anywhere in the Classic session to reconcile against, and
+        # inventing one here would be a number the validator then confirms
+        # against the arithmetic it came from. Naming the derivation lets the
+        # check declare itself instead of reporting scrutiny it did not apply.
+        # Nothing user-facing moves — `validation_report.passed` and therefore
+        # `exports_blocked` read `status`, which is untouched.
         'population_counts': {
             'upload_total': len(df) if df is not None else 0,
             'analysis_total': train_n + val_n + test_n,
             'train_n': train_n,
             'val_n': val_n,
             'test_n': test_n,
+            'analysis_total_source': 'split',
+            'split_source': 'split',
         },
         'dataset_descriptor': dataset_descriptor,
         'cohort_type': cohort_type,

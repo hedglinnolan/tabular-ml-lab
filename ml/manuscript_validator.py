@@ -263,16 +263,72 @@ def validate_manuscript_bundle(
         )
     )
 
+    # `MISC-028` / `MISC-031`. THE PARTS AND THE WHOLE HAVE TO COME FROM
+    # DIFFERENT PLACES OR THIS ANSWERS NOTHING. Until `L65` the Guided producer
+    # made both sides itself, in opposite and equally useless ways: on the run
+    # branch `analysis_total` was DEFINED as `train_n + test_n` with `val_n`
+    # pinned to `0`, an identity that could not FAIL; on the lockbox branch it
+    # wrote only two of the four keys, so the sum was `test_n` alone and the
+    # check could not PASS — an unfitted project was shown a failure no edit
+    # could ever clear.
+    #
+    # `turbotab.manuscript._counts` now takes the whole from the SEAL and the
+    # parts from the RUN, and says which in these two keys. They are read
+    # rather than assumed absent: a producer that supplies neither (the Classic
+    # door does) is treated as two derivations, which is the safe direction —
+    # it scores the check rather than excusing it.
+    split_source = population.get("split_source")
+    total_source = population.get("analysis_total_source")
+    one_derivation = bool(split_source) and split_source == total_source
+    # AND THE THIRD STATE, FOUND BY DRIVING THE PAGE RATHER THAN BY READING.
+    # `MISC-031` names the lockbox branch; a project that has not been SEALED
+    # reaches neither branch, so `population_counts` is `{}` and this compared
+    # `None` against `0` — FAIL, permanently, on a project whose author has
+    # simply not got to the seal yet. That is the same class one state earlier,
+    # and it is the plainest case of `MISC-029`'s criterion: the input is
+    # absent, so there is nothing to reconcile and nothing an author can do
+    # about it.
+    nothing_to_reconcile = expected_analysis_n is None
     split_total = sum(
         int(population.get(key) or 0)
         for key in ("train_n", "val_n", "test_n")
     )
+    reconciles = nothing_to_reconcile or expected_analysis_n == split_total
     checks.append(
         ManuscriptValidationCheck(
             name="Split counts reconcile to analysis population",
-            status="PASS" if expected_analysis_n == split_total else "FAIL",
+            status="PASS" if reconciles else "FAIL",
             location="Methods: Study Design",
-            detail=f"analysis_total={expected_analysis_n}, split_sum={split_total}.",
+            detail=(
+                f"analysis_total={expected_analysis_n}, "
+                f"split_sum={split_total}."
+                + (f" The total is the {total_source} count and the split is "
+                   f"the {split_source} partition, so these are two "
+                   f"derivations and a disagreement between them is real."
+                   if split_source and not one_derivation else "")),
+            # THE ONLY THING THAT CAN DECLARE THIS CHECK IS THE ABSENCE OF A
+            # SECOND DERIVATION, which is the same criterion the other three
+            # declared checks use one step out: `MISC-029` declares where an
+            # INPUT is missing, and this declares where the COMPARAND is. Both
+            # are "there is no second thing to compare against".
+            scored=not (one_derivation or nothing_to_reconcile),
+            declared_because=(
+                _DECLARED.format(
+                    what=("no analysis population reached the manuscript "
+                          "context at all, which is the state of a project "
+                          "that has not been sealed"),
+                    consequence=("there is no total for the split to "
+                                 "reconcile to, and no edit to the draft "
+                                 "could supply one"))
+                if nothing_to_reconcile else
+                _DECLARED.format(
+                    what=(f"both the analysis total and the split come from "
+                          f"the {split_source} partition, and nothing else in "
+                          f"this project has counted those rows"),
+                    consequence=("the sum restates the total instead of "
+                                 "testing it, and it will agree however wrong "
+                                 "that partition is"))
+                if one_derivation else ""),
         )
     )
 

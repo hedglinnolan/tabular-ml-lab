@@ -57,9 +57,27 @@ SHAPES_NOT_COVERED = [
 ]
 
 
+#: How many rows get their outcome blanked before the project is built, per
+#: shape. `MISC-028`, and it is the fixture half of that finding.
+#:
+#: **This function used to filter outcome-blank rows out before building the
+#: project**, which made `outcome_rows == df` by construction — so an assertion
+#: about the analysis population would have been a fixture supplying what
+#: production cannot (`AGENT_ONBOARD.md` §07 trap #3). Deleting the filter makes
+#: the classification shape falsifiable for free, because
+#: `metabolomics_untargeted.csv` carries 8 real blanks. The regression shape has
+#: **none** — `survey_instrument.csv`'s `age` column is complete — so they are
+#: injected, and `_project` asserts the separation happened rather than trusting
+#: either source.
+BLANK_OUTCOMES = {"survey_instrument.csv": 12}
+
+
 def _project(name, target, task, *, fit=True):
     df = pd.read_csv(f"turbotab/sample_data/{name}")
-    df = df[df[target].notna()].copy()
+    blanks = BLANK_OUTCOMES.get(name, 0)
+    if blanks:
+        df = df.copy()
+        df.loc[df.sample(blanks, random_state=11).index, target] = np.nan
     p = AnalysisProject.from_dataframe(df, name)
     p.target, p.task_type = target, task
     p.set_grain("not_sure")
@@ -73,6 +91,14 @@ def _project(name, target, task, *, fit=True):
     # of the journey rather than part of the fit, and a `fit=False` project that
     # skipped it would be a different state from the one a user reaches.
     eventfixture.choose_event(p, required=(task == "classification"))
+    # THE SEPARATION IS ASSERTED IN THE FIXTURE, NOT ASSUMED. A shape that
+    # stopped supplying outcome blanks would otherwise make every assertion
+    # below pass vacuously, which is the same silence the filter this replaced
+    # was producing.
+    assert len(p.outcome_rows) < len(p.df), (
+        f"{name}/{target} has no outcome-blank rows, so `outcome_rows` and the "
+        f"whole table are the same population here and nothing downstream can "
+        f"tell them apart. Add it to BLANK_OUTCOMES.")
     run = None
     if fit:
         run = T.train(p, [TARGET_SHAPES_BY_NAME[(name, target)]]).to_dict()
@@ -261,13 +287,30 @@ def test_the_sections_the_draft_cannot_source_are_named_not_silent():
     assert out["n_failed"] == 0, [
         r["Check"] for r in out["rows"] if r["Status"] == "FAIL"]
 
-    # WITHOUT one, three checks fail and NONE is attributable to a missing
-    # section — which is worth stating rather than glossing. They are all
-    # about counts a project with no fit does not have, and that is the honest
-    # state: a manuscript describing an analysis nobody ran cannot state its
-    # analysis population.
-    assert dry["n_failed"] == 3, [
+    # WITHOUT one, TWO checks fail and neither is attributable to a missing
+    # section — which is worth stating rather than glossing. Both are about
+    # counts a project with no fit does not have, and that is the honest state:
+    # a manuscript describing an analysis nobody ran cannot state its analysis
+    # population.
+    #
+    # **THIS READ `== 3` AND THE THIRD WAS A FALSE ALARM, WHICH IS WHY THE
+    # NUMBER MOVED.** `MISC-031`: the lockbox branch of `_counts` wrote only
+    # `analysis_total` and `test_n`, so *Split counts reconcile to analysis
+    # population* summed `test_n` alone — 14 against 72 — and reported a defect
+    # that described no manuscript and that no edit an author could make would
+    # ever clear. Driven over 4,000 randomized bundles its verdict set was
+    # `{'FAIL'}` and nothing else. The sentence above called all three "counts a
+    # project with no fit does not have"; that was true of two of them and this
+    # assertion held the third in place. `AGENT_ONBOARD.md` §07 trap 3c — a
+    # green test pinning the behavior that should change — so the count moved
+    # with the repair rather than the repair being chased back.
+    assert dry["n_failed"] == 2, [
         r["Check"] for r in dry["rows"] if r["Status"] == "FAIL"]
+    assert not any("Split counts" in r["Check"] for r in dry["rows"]
+                   if r["Status"] == "FAIL"), (
+        "the split reconciliation is failing on an unfitted project again, "
+        "which is MISC-031: a defect the author cannot clear because it "
+        "describes the producer rather than the draft")
     assert dry["n_failed_for_a_missing_section"] == 0
     # One PASSING check does name a missing section — *model names match
     # between development and evaluation sections*, which passes vacuously

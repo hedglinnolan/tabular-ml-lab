@@ -220,8 +220,62 @@ def _counts(project_dict: Dict[str, Any],
     number the validator then confirms against the prose it came from, which is
     a check that can only pass — worse than no check, because it reports
     agreement.
+
+    ## `MISC-028` and `MISC-031` — the whole and the parts came from one place
+
+    *Split counts reconcile to analysis population* sums `train_n`, `val_n` and
+    `test_n` and compares the result to `analysis_total`. Both branches below
+    used to produce both sides themselves, in opposite and equally useless
+    ways:
+
+    - **the run branch** set `analysis_total = train_n + test_n` with `val_n`
+      pinned to the literal `0`, and the check then summed those same three. An
+      identity. Driven over 406 `(n_train, n_test)` pairs including `(0, 0)`
+      and `(999999, 1)`: zero violations, and the only `val_n` ever observed
+      was `0`.
+    - **the lockbox branch** wrote only `analysis_total` and `test_n`, so
+      `int(population.get(key) or 0)` made the split sum `test_n` alone — 14
+      against 72. Driven over 4,000 randomized bundles: the verdict set is
+      `{'FAIL'}` and nothing else, so an unfitted project was shown a
+      validation failure that describes no manuscript defect and that **no edit
+      the author could make would ever clear**.
+
+    **And the lockbox branch meant a different population under the same key.**
+    `analysis_total` was `lockbox["n_total"]`, which is `len(df)` — the whole
+    uploaded table, outcome-blank rows included — while the run branch's is the
+    rows with an outcome. So on a file with blanks the abstract read *"A dataset
+    of 80 observations was analyzed, of which 16 were held out"* where 72 rows
+    have an outcome and 12 of the held-out ones do. That is the governing rule
+    failing in the artifact that leaves the building, under a key whose two
+    producers disagreed about what it counted.
+
+    ## The comparand, and it needed no plumbing
+
+    `lockbox["resolution"]` is written at the seal by `turbotab/resolution.py`
+    from three separate reductions over the frame — `n = has_y.sum()`,
+    `n_train = (has_y & ~is_test).sum()`, `n_test = (has_y & is_test).sum()`.
+    Its `n` is exactly `len(project.outcome_rows)`, which two docstrings
+    already assert is what `analysis_total` means
+    (`project.py::outcome_rows` and this file's Table 1 builder) while nothing
+    checked it. **`analysis_total` now comes from the seal on both branches and
+    the split comes from the run where there is one**, so the check compares
+    what the study is about against what the fit actually partitioned — two
+    derivations, by different code, from different moments.
+
+    Where there is no run there is no second derivation, because nothing has
+    partitioned anything except the seal. That is a fact about the app rather
+    than a failure of the repair, and it is said rather than hidden:
+    `analysis_total_source` and `split_source` are carried so the check can
+    declare itself instead of reporting scrutiny it did not apply (`MISC-029`).
     """
     lockbox = project_dict.get("lockbox") or {}
+    # `MISC-028`. THE SEAL'S OWN COUNT OF THE ROWS THE STUDY IS ABOUT, and it
+    # is `None` rather than `0` when the seal could not describe itself —
+    # `seal_lockbox` sets `resolution` to `None` and records
+    # `resolution_unavailable` rather than failing, so a zero here would be a
+    # count asserted from ignorance (trap 9).
+    resolution = lockbox.get("resolution") or {}
+    cohort_n = resolution.get("n")
     out: Dict[str, Any] = {"population_counts": {}, "feature_counts": {},
                            "included_models": []}
     if run:
@@ -238,10 +292,20 @@ def _counts(project_dict: Dict[str, Any],
             # partitions, and a missing key would let the sum quietly agree for
             # the wrong reason on a project that did have three.
             out["population_counts"] = {
-                "analysis_total": int(n_train) + int(n_test),
+                # `MISC-028`. THE SEAL WHERE IT CAN, THE RUN WHERE IT CANNOT.
+                # `cohort_n` is the seal's count and the split below is the
+                # fit's, so the check spans two derivations. Falling back to
+                # the sum keeps the number rather than dropping it, and
+                # `analysis_total_source` says which happened, so the check
+                # never has to guess whether it is comparing or restating.
+                "analysis_total": (int(cohort_n) if cohort_n is not None
+                                   else int(n_train) + int(n_test)),
                 "train_n": int(n_train),
                 "val_n": 0,
                 "test_n": int(n_test),
+                "analysis_total_source": ("sealed_cohort"
+                                          if cohort_n is not None else "run"),
+                "split_source": "run",
             }
         out["included_models"] = [r.get("key") for r in (run.get("results") or [])
                                   if not r.get("error")]
@@ -264,9 +328,36 @@ def _counts(project_dict: Dict[str, Any],
             out["feature_counts"] = {"selected": candidates,
                                      "candidates": candidates,
                                      "selection_ran": False}
+    elif cohort_n is not None:
+        # `MISC-028`/`MISC-031`. THIS BRANCH USED TO WRITE `lockbox["n_total"]`
+        # — `len(df)`, the whole uploaded table — and only two of the three
+        # split keys, so it named a different population under the same key AND
+        # made the reconciliation unpassable. All four come from the seal's own
+        # partition now: `resolution` counts rows WITH AN OUTCOME, which is
+        # what `analysis_total` means on the other branch and what the abstract
+        # claims when it says a dataset "was analyzed".
+        #
+        # `val_n` is written here for the same reason it is written above: a
+        # missing key sums as zero and would let the check agree for the wrong
+        # reason.
+        out["population_counts"] = {
+            "analysis_total": int(cohort_n),
+            "train_n": int(resolution.get("n_train") or 0),
+            "val_n": 0,
+            "test_n": int(resolution.get("n_test") or 0),
+            # AND IT SAYS SO. Both sides are one derivation here, because
+            # nothing has partitioned this project except the seal. The check
+            # declares itself rather than passing over a restatement.
+            "analysis_total_source": "sealed_cohort",
+            "split_source": "sealed_cohort",
+        }
     elif lockbox.get("n_total"):
-        out["population_counts"] = {"analysis_total": int(lockbox["n_total"]),
-                                    "test_n": int(lockbox.get("n_test") or 0)}
+        # The seal could not describe itself (`resolution_unavailable`). The
+        # table size is the only population left and it is NOT the analysis
+        # cohort, so it is not written as one — the abstract falls through to
+        # its author-gap sentence rather than stating a number that means
+        # something else.
+        out["population_counts"] = {}
     return out
 
 

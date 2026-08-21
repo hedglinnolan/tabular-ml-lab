@@ -104,14 +104,37 @@ SHAPES_NOT_COVERED = [
     "fixtures",
 ]
 
-#: The three checks the Guided door cannot score, by name rather than by index,
-#: so a validator that reorders its checks does not silently repoint this.
+#: The checks the Guided door cannot score, by name rather than by index, so a
+#: validator that reorders its checks does not silently repoint this.
 DECLARABLE = {
     "Table 1 includes all finalized predictors",
     "Model names match between development and evaluation sections",
     "Abstract feature-selection language matches actual reduction",
+    # `MISC-028`/`MISC-031`, and it joined this set AFTER `MISC-029` shipped.
+    # See `SCORED_BUT_UNMOVED_BY_A_MANUSCRIPT` below.
+    "Split counts reconcile to analysis population",
 }
-NEVER_DECLARED = "Split counts reconcile to analysis population"
+
+#: **THE SEAM THE SECOND BUILD FOUND IN THE FIRST, and it is recorded here
+#: rather than only in a report.**
+#:
+#: This file was written asserting that *Split counts reconcile* must NEVER be
+#: declared, because `MISC-028`/`MISC-031` were to give it a comparand instead.
+#: That was half right, and the half that was wrong is the useful half.
+#:
+#: The check never reads the manuscript at all — it compares `population_counts`
+#: against a sum of `population_counts`' own keys — so **the measurement below
+#: reports it pinned on every context, and always will.** Varying the bundle is
+#: the wrong axis for it. What `MISC-028` changed is whether a *project* can
+#: move it: with a run, the total now comes from the seal and the split from the
+#: fit, so a post-seal row drop separates them and the check fails. Without one,
+#: nothing has partitioned the project except the seal, both sides come from
+#: `resolution`, and the sum restates the total.
+#:
+#: So the criterion widened rather than broke: `MISC-029` declares where an
+#: INPUT is absent, and this needed the same treatment where the COMPARAND is.
+#: One rule — *there is no second thing to compare against* — with two faces.
+SCORED_BUT_UNMOVED_BY_A_MANUSCRIPT = "Split counts reconcile to analysis population"
 
 
 def _project(name, target, task, model, *, fit):
@@ -248,15 +271,31 @@ def test_the_declared_checks_are_exactly_the_ones_no_manuscript_can_move(
         context, rendered["methods"], rendered["report"], latex, task)
     declared = {c.name for c in report.declared_checks}
 
-    assert declared == pinned - {NEVER_DECLARED}, (
-        f"declared={sorted(declared)} but the checks no manuscript can move "
-        f"are {sorted(pinned)}. Every pinned check except "
-        f"{NEVER_DECLARED!r} must declare itself, and nothing that can "
-        f"dissent may.")
-    assert NEVER_DECLARED in pinned, (
-        f"{NEVER_DECLARED!r} is no longer pinned on the {'run' if fit else 'no-run'} "
-        f"branch. If MISC-028/MISC-031 gave it a real comparand, remove it "
-        f"from NEVER_DECLARED here — do not add it to the declared set.")
+    # NOTHING THAT CAN DISSENT MAY DECLARE ITSELF. This is the half that binds
+    # in both directions and it is the one the finding was about.
+    assert not (declared - pinned), (
+        f"{sorted(declared - pinned)} declare themselves and a manuscript CAN "
+        f"move them, so the denominator is now too small")
+
+    # And every pinned check declares, EXCEPT the one the manuscript is the
+    # wrong instrument for — see SCORED_BUT_UNMOVED_BY_A_MANUSCRIPT.
+    unexplained = pinned - declared - {SCORED_BUT_UNMOVED_BY_A_MANUSCRIPT}
+    assert not unexplained, (
+        f"{sorted(unexplained)} cannot be moved by any manuscript and are "
+        f"still counted as scrutiny. Either declare them or name why the "
+        f"bundle is the wrong axis for them, the way "
+        f"SCORED_BUT_UNMOVED_BY_A_MANUSCRIPT does.")
+
+    # The exception is real on the run branch and NOT on the no-run one, and
+    # asserting the difference is what stops it becoming a blanket excuse.
+    split = {c.name: c for c in report.checks}[
+        SCORED_BUT_UNMOVED_BY_A_MANUSCRIPT]
+    assert split.scored is fit, (
+        f"{SCORED_BUT_UNMOVED_BY_A_MANUSCRIPT!r} reports scored={split.scored} "
+        f"on the {'run' if fit else 'no-run'} branch. With a run the total "
+        f"comes from the seal and the split from the fit, so a project can "
+        f"move it and it must be scored; without one both sides come from the "
+        f"seal and it must declare itself.")
 
     with capsys.disabled():
         print(f"\n  {shape} {'run' if fit else 'no-run'}: "
