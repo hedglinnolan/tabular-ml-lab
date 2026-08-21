@@ -2374,6 +2374,30 @@
   function bySource(src){
     return P ? P.findings.filter(function(f){ return f.source === src; }) : [];
   }
+  /* THE EVENT QUESTION, FOUND BY WHAT IT IS. `GUIDED-241`.
+
+     By `fix_kind`, never by reading `TRAIN.blocked_by`. `api.py` has ruled
+     twice against letting the page decide which question a refusal names by
+     matching on the sentence — no `indexOf("event")`, no regex over prose —
+     and this codebase has already paid for that shape on two surfaces. If the
+     server is ever to name the question, it arrives as a new field BESIDE the
+     sentence and never replacing it.
+
+     `unanswered` is the whole point: `record_fix` records the choice and the
+     finding stays in `P.findings` afterwards (only `applied_fixes` changes),
+     so a control keyed on presence alone would keep offering an answered
+     question. */
+  function eventQuestionFinding(){
+    if (!P) return null;
+    var applied = P.applied_fixes || [];
+    for (var i = 0; i < P.findings.length; i++){
+      var f = P.findings[i];
+      if (f.fix_kind !== "set_positive_class") continue;
+      if (applied.indexOf(f.id) !== -1) continue;
+      return f;
+    }
+    return null;
+  }
 
   /* ═════════ CALLS ═════════ */
   function upload(file){
@@ -3241,7 +3265,8 @@
      Never pre-selected at any confidence: convention is offered with its
      reasoning shown, and `alive`/`dead` has no correct default because whether
      the event is death or survival is the research question. */
-  function positiveClassHTML(f, pv){
+  function positiveClassHTML(f, pv, boxId){
+    var dest = boxId ? ' data-pv-box="' + esc(boxId) + '"' : "";
     var choices = pv.choices || {};
     var keys = Object.keys(choices);
     var h = '<div class="pv-head"><span class="pv-title">The event</span>' +
@@ -3253,7 +3278,7 @@
     keys.forEach(function(k){
       var suggested = pv.suggested === k;
       h += '<button class="answer" data-event-for="' + esc(f.id) + '" data-event="' +
-           esc(k) + '" type="button">' + esc(choices[k]) +
+           esc(k) + '"' + dest + ' type="button">' + esc(choices[k]) +
            (suggested ? '<span class="chip">conventional</span>' : "") + "</button>";
     });
     h += "</div>";
@@ -3264,15 +3289,25 @@
     }
     h += "</div>";
     h += '<div class="choice-acts"><span class="said"></span>' +
-         '<button class="f-act" data-pv-close="' + esc(f.id) + '" type="button">Close</button>' +
+         '<button class="f-act" data-pv-close="' + esc(f.id) + '"' + dest +
+         ' type="button">Close</button>' +
          deferButton(f) + "</div>";
     return h;
   }
 
-  function openPanel(id, choice){
+  /* `boxId` IS THE THIRD ARGUMENT AND `GUIDED-241` IS WHY. This read
+     `$("pv-" + id)` — a document-wide lookup for a node `findingCard` writes,
+     and the positive-class finding's card renders in `#sec-data`. So reusing
+     this renderer at the Train step WITHOUT the argument writes the panel back
+     at the Data card: no error, no throw, the node exists, and the user
+     watching Train sees nothing happen. That is this row's own defect —
+     a response arriving somewhere other than where it was asked for —
+     reproduced inside its repair. The destination travels with the press. */
+  function openPanel(id, choice, boxId){
     var f = findingById(id);
     if (!f) return;
-    var box = $("pv-" + id);
+    var box = $(boxId || "pv-" + id);
+    if (!box) return;
 
     if (f.source !== "structure" || !f.fix_kind || f.fix_kind === "none"){
       /* GUIDED-031: this branch is no longer terminal. The server classifies
@@ -3300,7 +3335,7 @@
     job("Working out what that would change…", api(url))
       .then(function(pv){
         if (pv.fix_kind === "set_positive_class" && !pv.applicable){
-          box.innerHTML = positiveClassHTML(f, pv);
+          box.innerHTML = positiveClassHTML(f, pv, box.id);
         } else {
           box.innerHTML = pv.applicable ? previewHTML(f, pv, choice)
                                         : explainOnly(f, pv.description);
@@ -6054,8 +6089,39 @@
              atControlSlot("train-cancel") + "</div>";
     }
     if (TRAIN && TRAIN.blocked_by){
-      return '<div class="refused-card"><p class="r-reason">' +
-             esc(TRAIN.blocked_by) + "</p></div>";
+      /* `GUIDED-241`. THE REFUSAL CARRIES ITS CONTROL.
+
+         The sentence names a question — *"Answer 'Which of these is the event
+         you are predicting?' on the outcome, then fit"* — whose card lives in
+         `#sec-eda`, four whole sections and ~250 lines of markup above where
+         the user is standing, all of them revealed in one column. The page
+         never moves the viewport (§05, and `test_a_response_renders_at_the_
+         control.py` pins that at one permitted call and five spellings at
+         zero — and this comment must not name the spelling, because that guard
+         COUNTS it), so pointing is all the old card could do.
+
+         TWO PRESSES, exactly as at the Data card: this opens the question, the
+         answer opens the before/after, a third applies. Keeping both presses
+         is what stops this being a second implementation of the question with
+         weaker consequence disclosure — and it is also why no render-time
+         fetch is added, because the preview is fetched at PRESS time and a
+         press-time fetch does not appear in a bootstrap drive.
+
+         The finding is found in `P`, which every render already carries; the
+         id is the server's own (`positive_class__<target>`), never composed
+         here. And the panel gets its OWN container: reusing the Data card's
+         `pv-` slot is this row's defect committed inside its repair. */
+      var h = '<div class="refused-card"><p class="r-reason">' +
+              esc(TRAIN.blocked_by) + "</p>";
+      var ev = eventQuestionFinding();
+      if (ev){
+        h += '<div class="choice-acts">' +
+             '<button class="f-act" type="button" data-event-here="' +
+             esc(ev.id) + '" data-pv-box="pvTrainEvent" data-ac="train-event">' +
+             "Answer it here</button>" + atControlSlot("train-event") + "</div>";
+        h += '<div class="preview is-hidden" id="pvTrainEvent"></div>';
+      }
+      return h + "</div>";
     }
     var run = TRAIN && TRAIN.run;
     if (!run) return "";
@@ -8125,7 +8191,7 @@
     var t = e.target.closest ? e.target.closest(
       "[data-target-col],[data-panel],[data-pv-close],[data-defer],[data-dismiss]," +
       "[data-undismiss],[data-flag],[data-apply],[data-revert],[data-task]," +
-      "[data-event-for]," +
+      "[data-event-for],[data-event-here]," +
       "[data-look],[data-unskip],[data-exit-for],[data-att-send],[data-refusal-i],[data-prev-ask]," +
       "[data-answer-key],[data-answer-commit],[data-seal]," +
       "[data-feat-preview],[data-feat-add],[data-feat-remove],[data-feat-settle]," +
@@ -8776,7 +8842,21 @@
     if (t.hasAttribute("data-event-for")){
       // Choosing the event opens the before/after for that choice. It is still
       // not applied: the human confirms, as every CHOICE card requires.
-      openPanel(t.dataset.eventFor, t.dataset.event);
+      // `data-pv-box` carries the destination the question was ASKED in, so
+      // the answer lands there rather than at the Data card — `GUIDED-241`.
+      openPanel(t.dataset.eventFor, t.dataset.event, t.dataset.pvBox);
+      return;
+    }
+    /* THE SAME QUESTION, ASKED AT TRAIN. `GUIDED-241`: the Train step refuses
+       with a sentence naming a control four whole sections above where the
+       user is standing, and the page never moves the viewport (§05, and
+       `test_a_response_renders_at_the_control.py` pins it). So the control
+       comes to the refusal. Two presses, exactly as the Data card: this one
+       opens the question, the answer opens the before/after, and a third
+       applies — the consequence disclosure is not shortened because the
+       control moved. */
+    if (t.hasAttribute("data-event-here")){
+      openPanel(t.dataset.eventHere, undefined, t.dataset.pvBox);
       return;
     }
     /* GUIDED-149 · the collapsed remainder opens. No fetch — the group is
@@ -8788,7 +8868,15 @@
       return;
     }
     if (t.hasAttribute("data-panel")){ openPanel(t.dataset.panel); return; }
-    if (t.hasAttribute("data-pv-close")){ $("pv-" + t.dataset.pvClose).classList.add("is-hidden"); return; }
+    if (t.hasAttribute("data-pv-close")){
+      /* The panel that was OPENED, not the one at the Data card — the Close
+         button carries its own destination for the same reason the answers do
+         (`GUIDED-241`). Falls back to the finding's own slot for every caller
+         that renders in place. */
+      var closing = $(t.dataset.pvBox || "pv-" + t.dataset.pvClose);
+      if (closing) closing.classList.add("is-hidden");
+      return;
+    }
     if (t.hasAttribute("data-apply")){
       decide("apply", t.dataset.apply,
              t.dataset.choice ? { choice: t.dataset.choice } : {},

@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**431 of 988 closed.**
+**432 of 988 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 474 |
+| `OPEN` | 473 |
 | `PARTIAL` | 83 |
-| `FIXED` | 421 |
+| `FIXED` | 422 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 474
+## OPEN — 473
 
 
-### Guided-door drive feedback — 78
+### Guided-door drive feedback — 77
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -103,7 +103,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-222` | medium | The genomics expression-block selector is a shape rule the research does not license, and it decides the classification for two of the nine signatures | `L50-B, and its builder named it as the piece it was least sure of. A single covariate sets the maximum of the…` | sibling-of: GUIDED-221. Filed at medium rather than high because the failure is loud - a dropped gene is named on the card - rather than silent. |
 | `GUIDED-228` | medium | The metabolomics regex library lists pool under both the pooled-QC family and the proteomics family, so as written the six role families are not disjoint | `L50-D, a correction to the research file rather than to the code. METABOLOMICS_PACK section 01's sample-role…` | Filed against the RESEARCH FILE. The standing rule is that where the file and the code disagree the file wins - this is the case where the file disagrees with itself, and the… |
 | `GUIDED-229` | medium | packs.py is 3,671 lines and holds two packs, while the other three ship as modules of their own - an asymmetry that has now cost an adjudicator and two subagents time | `L50. turbotab/clinical.py and turbotab/nutrition.py exist as modules; metabolomics and genomics live in…` | Not moved unilaterally: relocating 3,000 lines during a wide fan-out would have made every subagent diff unmergeable, and the asymmetry is a documentation defect rather than a… |
-| `GUIDED-241` | medium | C2, RULED AND NOT BUILT: the refusal should carry the control, and it is a build rather than a sentence | `turbotab/web/index.html the refused-card at the Train control; turbotab/training.py event_not_chosen's…` | Ruled at L62-C and deliberately unbuilt, per the loop's own scope note. The ruling is the deliverable here. || L64 RECONNAISSANCE, 2026-08-20, by an 8-agent fan-out -- four… |
 | `DRIVE-052` | medium | DRIVE-043 has a residual live path: answering the event AFTER the seal never recomputes the resolution, so the Methods sentence still carries the minority count while every figure counts the event | `L62 report divergence item 2 (the fallback is reachable); turbotab/project.py seal_lockbox resolution…` | MILDER THAN THE ORIGINAL AND THE SAME SHAPE. The original defect was unconditional; this one needs seal-then-answer, which the loop itself identified as a real user path. It is… |
 | `DRIVE-053` | medium | L62-D's Table 1 fix REGRESSES the active-cohort-filter case from passing to failing, because outcome_rows reads self.df while training.train reads project.working_table | `found in L62 adjudication; outcome_rows vs project.working_table in training.train` | A fix that trades one failing case for another is not a fix, and the 'by construction' phrasing is what hid it: a claim that two quantities agree BY CONSTRUCTION is a claim about… |
 | `GUIDED-247` | medium | The decision curve got the curves and not the accounting: it carries n_models_scored and excluded_models and NOTHING reads them, so a silently-dropped model is exactly as silent as it was before the… | `turbotab/figure_specs.py DECISION_CURVE checklist and caption against ROC's; turbotab/figure_bundle.py…` | FILED AT THE L63 ADJUDICATION RATHER THAN REOPENING GUIDED-236, because GUIDED-236's item is about the ROC overlay and that is genuinely closed. This is the accounting the loop… |
@@ -739,10 +738,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 421
+## FIXED — 422
 
 
-### Guided-door drive feedback — 161
+### Guided-door drive feedback — 162
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -904,6 +903,7 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-044` | medium | The calibration caption appends 'a slope below 1 indicates predictions that are too extreme' as a CONSTANT, so it prints beside a slope above 1 and reads as an interpretation of the figure it… | `turbotab/figure_specs.py:266-267; run 5 P4 and open q4` | **test:** `turbotab/test_four_sentences_the_app_stopped_saying.py::test_the_caption_carries_the_reading_for_its_own_slope` — FIXED AT L62-D1. The parenthetical is branched on the… |
 | `DRIVE-046` | medium | Table 1's Overall column pools rows excluded from the analysis, so the manuscript fails its own validator on any target with missing values | `run 5 B1 and open q2; validator passed:false on path 1, 13/13 on path 2` | **test:** `turbotab/test_four_sentences_the_app_stopped_saying.py::test_table_one_describes_the_cohort_and_not_the_upload` — FIXED AT L62-D2 by scoping Overall to the cohort… |
 | `DRIVE-048` | medium | The performance table leads with accuracy on a 7.2:1 target while the app's own imbalance finding says accuracy misleads on exactly this data | `run 5 open q8; lens 3 base-rate check` | **test:** `turbotab/test_four_sentences_the_app_stopped_saying.py::test_the_run_carries_what_a_majority_answer_would_score` — FIXED AT L62-D3 BY PUTTING THE BASE RATE BESIDE THE… |
+| `GUIDED-241` | medium | C2, RULED AND NOT BUILT: the refusal should carry the control, and it is a build rather than a sentence | `turbotab/web/index.html the refused-card at the Train control; turbotab/training.py event_not_chosen's…` | **test:** `turbotab/test_the_refusal_carries_its_control.py::test_the_refusal_carries_the_control_and_the_answer_lands_at_train` — Ruled at L62-C and deliberately unbuilt, per the… |
 | `AUDIT-036` | low | The item-correlation figure's caption tells the reader that loadings and reliability appear 'below'; the app produces neither | `turbotab/figure_specs.py:2786-2788 — The shared `method_note` composed by _correlations reads "…Pearson…` | **test:** `turbotab/test_a_caption_describes_the_figure_that_was_drawn.py::test_no_survey_caption_points_the_reader_at_a_quantity_below and… |
 | `GUIDED-201` | low | Two L48 chunks each added a CSS rule inside the prototype stylesheet that a guard compares byte for byte - the natural place to put a rule is the one place it may not go | `L48. test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim asserts the prototype's whole…` | **test:** `turbotab/test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim` — No revert probe: the guard predates this loop and is itself the probe - it went… |
 | `DRIVE-049` | low | The panel under the Train card still reads 'No model is selected' with two models selected and after a completed fit, contradicting the button one line above it | `run 5 B4` | **test:** `turbotab/test_four_sentences_the_app_stopped_saying.py::test_the_panel_answers_about_the_selection_it_was_asked_about` — FIXED AT L62-D4, AND THE CAUSE IS SHARPER THAN… |
