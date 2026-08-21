@@ -1,12 +1,10 @@
 # You are taking over as project manager and adjudicator for TurboTab
 
 The previous PM was cleared. Everything durable is committed; this is the contextual onboard for what
-is not. **It replaces the L61-era version of this file** — a stale transition beside a current one is
-the decay this project has already paid for seven times.
+is not. **It replaces the L62-era version** — a stale transition beside a current one is the decay this
+project has already paid for seven times.
 
-**Nothing in the repository currently contradicts anything else in it.** The two documents that did —
-`DESIGN_LANGUAGE.md` §05 and `PRODUCT_VISION.md` §09, both stating the scroll rule in a form the code
-had stopped obeying — were amended at `e6b5251` and the class is `MISC-024`.
+**One thing is unfinished and it is the first thing you do. See §04b.**
 
 ---
 
@@ -14,27 +12,26 @@ had stopped obeying — were amended at `e6b5251` and the class is `MISC-024`.
 
 ```bash
 ps aux | grep "[p]ytest"; git status --short          # 1 · is a loop live? If yes, do NOT write findings.json / register.json
-git log --oneline origin/TurboTab..TurboTab | wc -l   # 2 · how far ahead
+git log --oneline origin/TurboTab..TurboTab | wc -l   # 2 · how far ahead — an unpushed loop is the risk
 lsof -nP -iTCP:8777 -sTCP:LISTEN                      # 3 · what is serving
 lsof -p <pid> | grep site-packages                    # ...and on WHICH interpreter. ps CANNOT answer this
 curl -s localhost:8777/dev/status                     # ...and which build it says it is
 ```
 
-**As of `e6b5251`: no loop running, tree clean, branch pushed.** The app launches with **`make turbotab`**
-— it prints its interpreter, environment and rev before binding, and **refuses with exit 2** on a stack it
-cannot import. `make turbotab-check` runs the check and binds nothing. **`make serve` is not TurboTab**;
-it is the old Streamlit app on 8501.
+The app launches with **`make turbotab`** — it prints its interpreter, environment and rev before
+binding, and **refuses with exit 2** on a stack it cannot import. `make turbotab-check` binds nothing.
+**`make serve` is not TurboTab**; it is the old Streamlit app on 8501.
 
 **`ps` cannot tell you the interpreter** — `venv/bin/python` is a symlink, so `ps` prints the resolved
-Homebrew path and a complete venv is indistinguishable from bare system Python. `lsof` on the serving
-process, or `sys.prefix` inside it. That confusion cost four drives.
+Homebrew path and a complete venv is indistinguishable from bare system Python. Use `lsof` on the
+serving process, or `/dev/status`. That confusion cost four drives.
 
 ---
 
 ## 01 · What this work is
 
-TurboTab is **research software**. Your job is statistical methodology and software engineering. There is
-no patient anywhere in this system; the "biology" is reference data and methodological literature.
+TurboTab is **research software**. Your job is statistical methodology and software engineering. There
+is no patient anywhere in this system; the "biology" is reference data and methodological literature.
 
 **Precision is the safety property and hedging is the defect.** The governing rule:
 
@@ -55,56 +52,29 @@ execution agent on his laptop, pastes its reports to you, and **you rule and wri
 **He expects you to be better than him at orchestration detail, so make calls, do not survey options.**
 When he reaffirms something, that is a decision.
 
-**He also drives the app himself.** Five drives so far. §05 is how to intake one and it is load-bearing.
-
 Each loop prompt goes to `docs/turbotab/prompts/L<n>.md` and is published as an Artifact with a copy
-button. The builder is disposable and lives in the scratchpad — regenerate it. It reads the repo file and
-embeds it **byte-for-byte as a JS string literal** (not escaped element text — HTML entities are not
-decoded inside `<script>`), and **verifies the literal decodes back from the written file**. Style comes
-from `DESIGN_LANGUAGE.md` — and note that `--stop` is reserved to the blocker band and is **not**
-severity styling, so a `critical` badge does not get to spend it.
+button. **The builder is disposable and lives in the scratchpad — regenerate it.** It reads the repo
+file and embeds it **byte-for-byte as a JS string literal** (not escaped element text — HTML entities
+are not decoded inside `<script>`), escapes `</` as `<\/`, and **verifies the literal decodes back from
+the written file.** Style comes from `DESIGN_LANGUAGE.md`: the five-hue palette, the three-voice type
+rule, and **`--stop` is reserved to the blocker band and is not severity styling**, so it must not
+appear on a prompt page at all.
 
 ### His standing rulings
 
 - **`ROADMAP.md` condition 7** — *"In addition to being correct, the engine must surface and it must be
   beautiful."*
-- **Time is the constraint.** He runs loops back to back.
+- **Time is the constraint.** He runs loops back to back. His words at L64: *"let's just keep devving."*
 - **He is a completist** — *"start fixing more items per loop."*
 - **A scoped sweep is acceptable evidence, quoted as scoped.**
-- **The app must be easy to launch and self-contained each time.** Delivered at L61 as `make turbotab`.
-- **Ultracode is on as of 2026-08-16**: orchestrate substantive adjudication with the Workflow tool. The
-  L62 fan-out — 11 agents, every load-bearing claim driven — found four things the report did not, two of
-  which no single reader would have caught. **This is now the default for accepting a loop.**
-- **NEW, 2026-08-16, and it changes the cadence: we do not drive every loop.** His words: *"we need to
-  continue building the product and we cannot drive and test every single loop we run… We need to start
-  actually conducting more rapid development."* **His call, and the backlog supports it** — five drives
-  have produced more open drive-sourced work than five loops can consume, so the constraint has been his
-  attention rather than the supply of findings.
-
-  **Two amendments the adjudicator made when recording it, and they are the operative form:**
-
-  **1 · The interim instrument is the fan-out, not "direct code inspection."** A single careful reader is
-  exactly what missed the fourth surface at L62; two independent agents *driving* found it in one pass.
-  Inspection that does not drive is the grep lesson wearing a person.
-
-  **2 · Trigger on the work, not on a counter.** *"Every five loops"* is a tuned number and this project
-  has watched every tuned number decay — `AGENT_ONBOARD.md` §03 said "~8 min" for eighteen loops after it
-  stopped being true. **The condition that carries the same intent with no free parameter: drive when a
-  loop has shipped something a person can see.** A loop that is pure plumbing — the xdist fix, a registry,
-  a guard — needs no drive and should not wait for one. A loop that changes a screen has produced exactly
-  the class `pageharness.py` says in its own docstring it **cannot** verify. That is `DESIGN_LANGUAGE.md`
-  §05's own lesson — *prefer a rule with no free parameter over a rule with a tuned one* — applied to
-  process. In practice it will land near five and it will land there for a reason.
-
-  **The caution, stated once and then not repeated:** reachable-but-unreadable defects now accumulate
-  silently between drives. That is an accepted trade, not an oversight. **Its mitigation is that the drive,
-  when it comes, covers every surface built since the last one** rather than being a quick pass — so say
-  in the drive request which screens are new.
-
-  **And the real throughput win is not the cadence at all: it is `TEST-098`.** The sweep is the per-loop
-  tax and L62 measured a **41:23** alternative to **2:00:46**, held only for a false-green race in the
-  licensing run. Fixing the shared-file writers buys back an hour and twenty minutes on **every loop**,
-  which is worth more to rapid development than any drive schedule. It is L63 Part A for that reason.
+- **Ultracode is on.** Orchestrate substantive adjudication with the Workflow tool. §07 is what the
+  fan-out has actually found, and it is the argument for keeping it.
+- **We do not drive every loop.** *"We need to continue building the product and we cannot drive and
+  test every single loop we run."* The operative form, with no free parameter: **drive when a loop has
+  shipped something a person can see.** A loop that is pure plumbing needs no drive. **Reachable-but-
+  unreadable defects accumulate silently between drives — that is an accepted trade, and its mitigation
+  is that the drive, when it comes, covers every surface built since the last one.** Say in the request
+  which screens are new.
 
 **Take his framings seriously; they have been load-bearing more often than mine.**
 
@@ -117,169 +87,239 @@ the live context). Then `DOMAIN_SCIENCE.md`.
 
 **Do not skip these; each is a ruling recorded because it decides work:**
 
-- `PRODUCT_VISION.md` **§06b** (correct, surfaced, beautiful) · **§06c** · "The shelf is never shortened"
-  · **§09**, which now carries **four** positions on the scroll rule.
+- `PRODUCT_VISION.md` **§06b** (correct, surfaced, beautiful) · **§06c** · "The shelf is never
+  shortened" · **§09**, which carries four positions on the scroll rule.
 - `ROADMAP.md` **condition 7**; "Why the front of the journey is where the depth belongs."
-- `DESIGN_LANGUAGE.md` **§05** (the scroll rule, scoped at L62 — read the *why it is not the middle rule
-  returning* paragraph before touching it), **§05.2**, **§07**, **§10**.
-- **`AGENT_ONBOARD.md`** — the execution agent's onboard; everything in it binds you too. **§03 is parsed
-  by a guard.**
+- `DESIGN_LANGUAGE.md` **§05**, **§05.2**, **§07**, **§10**.
+- **`AGENT_ONBOARD.md`** — the execution agent's onboard; everything in it binds you too. **§03 is
+  parsed by two guards** — one asserts it still offers a parallel invocation carrying `--dist
+  loadfile`, the other reads its `--ignore` list. Editing that block without reading them costs a loop.
 - **`VALUE_CHECK_ADJUDICATION.md`** — the authority when a frozen baseline moves.
 
-**Five research files in `research/`, authoritative. Read by section, when cited, never wholesale. Where
-a file and your recollection disagree, the file wins.**
+**Five research files in `research/`, authoritative. Read by section, when cited, never wholesale.
+Where a file and your recollection disagree, the file wins.**
 
 ---
 
 ## 04 · State right now
 
-Branch `TurboTab`, HEAD **`e6b5251`**, tree clean, **pushed**. Ledger **968 findings, 415 closed**
-(`OPEN` 475 · `PARTIAL` 78 · `FIXED` 405 · `NOT-A-DEFECT` 10). Register **184 rows**. Six pre-commit
-gates green. **L58–L62 accepted with their `LOOP.md` §03 rows written.**
+Branch `TurboTab`, HEAD **`0b769d3`**, tree clean, **pushed**. Ledger **988 findings, 435 closed**
+(`OPEN` 470 · `PARTIAL` 83 · `FIXED` 425 · `NOT-A-DEFECT` 10). Six pre-commit gates green.
+**L58–L63 accepted with their `LOOP.md` §03 rows written.**
 
-**L62's sweep**: `turbotab/` **2 failed · 2,649 passed · 17 skipped · 9 xfailed** at `d464e0b`, on
-**both** runners — serial **2:00:46**, `pytest-xdist -n 8 --dist loadfile` **41:23**, failure lists
-byte-identical. Both reds were repaired and **the full sweep has not been re-run since**, so the honest
-claim is *2 red at `d464e0b`, both diagnosed and repaired* — not 0 red.
+**The parallel sweep is licensed** as of L63 and `AGENT_ONBOARD.md` §03 carries the table:
+`-n 8 --dist loadfile` at **41:36** against serial **2:01:30**, both 0 failed. L64 re-took it at its own
+commit: **0 failed · 2,709 passed · 17 skipped · 9 xfailed in 41:49.** The four tests that wrote inside
+the repo now write to `tmp_path` and a guard holds them there.
 
-### The one thing most worth knowing
+## 04b · **L64 IS NOT ADJUDICATED. THIS IS YOUR FIRST JOB.**
 
-**The xdist speedup is real, measured, and deliberately not adopted.** `TEST-098`: the licensing run has
-cross-file races `--dist loadfile` does not prevent — a test truncates and rewrites five tracked
-`sample_data` CSVs mid-run while other files read them, and a doc-rewriting race with a measured **~0.7 s**
-window can turn a guard **falsely green**. **A false green is disqualifying for an evidence instrument in
-a way a false red is not.** Fix the shared-file writers, re-run the pair, then document the command. That
-is L63's Part A and it pays out on every loop after it.
+The execution agent reported **four and a half of five parts** and its five commits are pushed. **I
+launched the 12-agent verification and was cleared before it returned.** Nothing is lost except the
+verification itself — and **the script that produced it is on disk and re-runnable verbatim**:
 
-### The live queue, in value order
+```
+/Users/nhedglin/.claude/projects/-Users-nhedglin-tabular-ml-lab/
+583f69fb-d6a1-4d8f-9eaf-22f6814f11d3/workflows/scripts/l64-adjudication-wf_b03934ab-45a.js
+   (23,350 bytes, written 2026-08-21 12:03)
+```
 
-- **`DRIVE-050`** high — a **fourth** surface reasons about the pre-fix population, on the same `/models`
-  payload thirty lines from L62-A's fix, inside a sentence claiming that number *is* what the model order
-  was computed on. **The sweep committed the class it was sweeping for.** `MISC-022` reopened.
-- **`TEST-101`** high — two committed tests make **mutually exclusive** claims about `n_rows_seen` and
-  both pass. No gate can see this: `ledger.py check` asks whether a `FIXED` row *names* a test, never
-  whether two tests agree.
-- **`DRIVE-051`** high — `n_rows_withheld` and `n_rows_without_an_outcome` overlap on a reachable path;
-  the served counts **sum past the table size**, under a guard asserting a partition the data can violate.
-- **`MISC-023`** high — the coverage guard catches new **readers** of the outcome mapping, not new
-  **non-readers**, so its own defect class passes it. Driven and falsified.
-- **`MISC-024`** high — nothing gates a spec paragraph against the code.
-- **`DRIVE-052`** / **`DRIVE-053`** medium — `DRIVE-043` survives on the seal-then-answer path; L62-D's
-  Table 1 fix **regresses** the active-cohort-filter case from pass to fail.
-- **`GUIDED-241`** — C2 ruled and unbuilt: the refusal should **carry** the control, not scroll to it.
-- **`GUIDED-236`**'s ROC overlay — prerequisite met, directly observable, **the strongest candidate for a
-  substantial build.** `GUIDED-233`'s explainability pack is still the long pole.
-- **`DRIVE-036`** — needs a genuinely repeated-measures fixture; five drives have never exercised it.
+Re-invoke it with `Workflow({scriptPath: "<that path>"})`. If it is gone, the cluster design was: **A**
+the wrappers and the `__getattr__` refusal · **B** the checklist partition refusal · **B5** the
+manuscript-validator audit · **C** the refusal carrying its control · **D** the three instruments and
+the one refused · **F** dispositions plus the reverted-diff detector. Each verified, then adversarially
+refuted by a different agent.
+
+**What the report claims, so you know what to check.** Ledger 988/435 re-derived and correct. Five
+commits. Part A: a glm-only or rf-only project now serves all three clinical figures. Part B: the
+checklist gained a third state and nine items were converted. Part C: the Train refusal carries the
+event question's controls, two presses, reusing the real renderer. Part D: three of four instruments;
+`MISC-028` deliberately not built, with a stated reason and a measurement instead.
+
+**Three claims are the load-bearing ones and none is verified:**
+
+1. **`B5` — of the manuscript validator's 13 checks, EIGHT are decided before the manuscript is read**
+   (5 frozen PASS, 3 producer arithmetic) **and only one has ever been shown to fail on a real
+   defect.** Those 13 are the only pass/fail set in the app feeding a **rendered** count a user sees.
+   If it holds, the header is inflated by a knowable amount and that is the sharpest finding in two
+   loops. **Count all 13 by hand — there is no excuse for sampling — and construct the failing state
+   for each you call frozen.**
+2. **`B` — the agent REFUSED the prompt's partition** and measured three instruments giving three
+   answers (mutation probe 85 of 86 falsifiable; static walk 19/42/22/3; empty payload 5 of 86). Its
+   position: *"the row's three-way split is not a measurement at all — it is a judgment about what a
+   producer can emit."* **Rule on that epistemology and give a defensible answer, not a shrug.** My
+   view, offered and not binding: the agent is probably right, and `GUIDED-238`'s `item` should stop
+   quoting a partition at all.
+3. **`A4`'s `# pragma: no cover` was false — 11 of 17 figure ids reach it.** Re-derive the 11.
+
+**One correction to me is already settled, driven, and in the ledger** — see `GUIDED-245`'s note and
+§06.4. Do not re-litigate it.
+
+### The live queue after L64, in value order
+
+- **`MISC-029`** high, `PARTIAL` — the validator audit above.
+- **`MISC-030`** — `_why_not`'s fallback still wrong for nine figure ids.
+- **`GUIDED-238`** — 77 checklist items unconverted, and the partition question open.
+- **`MISC-028`** — the manuscript reconciliation that cannot fail. Measured, not built. **The prompt's
+  own total was off by one and the agent said so: 80, not 79, against 72 outcome rows.**
+- **`GUIDED-231`** critical — the inference half was never ported. Large, and blocked on a product
+  decision rather than on execution.
+- **`GUIDED-232`** / **`GUIDED-233`** — Explain cannot answer its own question; no explainability pack.
+  `GUIDED-233`'s own sequencing says the faithfulness harness comes first.
+- **`GUIDED-244`**, **`GUIDED-248`**, **`GUIDED-249`**, **`GUIDED-250`**, **`TEST-105`**, **`MISC-023`**.
+- **`DRIVE-036`** — needs a genuinely repeated-measures fixture; six drives have never exercised it.
+
+**A drive is due.** L64 shipped two things a person can see — the clinical figures returning for
+single-model projects, and the Train refusal carrying its control. **Before it, restart the server so
+`/dev/status`'s `rev` equals HEAD**; the one on `:8777` has been stale for a week. A rev mismatch is
+what made drive 3 unresolvable and it costs ten seconds to remove.
 
 ---
 
-## 05 · The five human drives, and how to intake the sixth
+## 05 · The six human drives, and how to intake the seventh
 
 **A human at the screen is the only instrument this project has for `PRODUCT_VISION.md` §06b's third
 condition.** `pageharness.py` says so in its own docstring: it proves what the controller renders and
 **cannot prove visibility**. Their report is **primary evidence, not a claim awaiting a probe.**
 
 **Sort every observation into: absent · unreachable · reachable-but-unreadable · working-as-designed.**
-The third class is the valuable one and has no other home. Check claimed absences against `register.json`
-first — **46 rows are `classic-only`**, deliberately not in Guided, each with a dated reason.
+The third class is the valuable one and has no other home. Check claimed absences against
+`register.json` first — **46 rows are `classic-only`**, deliberately not in Guided, each with a reason.
 
 **A tester's wrong diagnosis with a real symptom is still a real finding. The symptom is the evidence;
-the cause is yours to establish.**
+the cause is yours to establish.** Run 2's cause was a swallowed fetch, not a stale flag. Run 3's was a
+server 28 hours stale. Run 4's was the launch, not the venv. **Run 5 is the model**: it reconciled 34
+displayed quantities against independent ground truth, flagged its own uncertainty rather than guessing,
+and found a `critical` that 2,607 green tests could not — because it chose a target where the event is
+the **majority**, and the defective code was accidentally right whenever the event is the minority.
+**Your fixtures are mostly the accidentally-right case.**
 
-| run | symptom, real | diagnosis |
-|---|---|---|
-| 2 | Train empty, DOM-verified | wrong — a swallowed fetch, not a stale flag |
-| 3 | receipts disagree | wrong — **the server was 28 hours stale** |
-| 4 | `/models` 500 | wrong — the venv was complete; **the launch was wrong** |
-| 5 | Methods says 116 events, figures say 829 | **right, and honestly hedged** — they asked whether it was a label swap rather than guessing |
-
-**Run 5 is the model.** It drove two complete paths, reconciled 34 displayed quantities against
-independent ground truth (32 exact, 0 wrong, 2 scope disagreements), flagged its own uncertainty instead
-of guessing, and found a `critical` that 2,607 green tests could not — because it chose a target where
-the event is the **majority**, and the defective code was accidentally right whenever the event is the
-minority. **Your fixtures are mostly the accidentally-right case.**
-
-> **A report from a running app is evidence about the running app, not about the tree.** Before telling a
-> human their observation does not reproduce, establish what they were running: the process's start time,
-> and **its interpreter** — `lsof`, never `ps`, never `pip list` in your own shell.
-
-**Before the sixth drive, restart the server so `/dev/status`'s `rev` equals HEAD.** A rev mismatch is
-what made run 3 unresolvable, and it costs ten seconds to remove.
+> **A report from a running app is evidence about the running app, not about the tree.** Before telling
+> a human their observation does not reproduce, establish what they were running: the process's start
+> time, and **its interpreter** — `lsof`, never `ps`, never `pip list` in your own shell.
 
 ---
 
 ## 06 · Calibration — my errors this session
 
-**Every loop's divergence section has corrected the adjudicator, six loops running.** Read it first.
+**Every loop's divergence section has corrected the adjudicator, eight loops running.** Read it first.
 When the agent says it is unsure, it has usually already checked.
 
-1. **A commit message that asserted something the commit did not contain.** My first commit said *"I have
-   corrected it in the same commit."* It had not — the correction landed one commit later. `LOOP.md` §05's
-   `9ebf95d`/`7dd6aa6` lesson through a different door, in my first hour. **Recorded, not amended**,
-   because rewriting the sha would make the record read as though it had not happened.
-2. **A confident cause where I had a mechanism.** I read the 81-vs-78 sweep gap as *timing-shaped,
-   `TEST-040`'s class*. It was a **code change** — `7e34743`'s own `nutrition.py` edit, landing eight
-   minutes after its sweep log. I labeled it a hypothesis, which is the only reason it did no damage.
-3. **A number flagged as a defect that was two different datasets.** `n_available` 13 → 12. Withdrawn.
-4. **My L62 prompt said `events_held_out` had two renderers. There were four.** The agent found them.
-5. **I held a ruling in chat for a turn.** I wrote that §05 needed amending *"in the same breath as the
-   ruling"* — and then waited for the fan-out to confirm it before acting. The rule I was quoting says
-   the record is written in the same turn the decision is made.
+1. **I prescribed a mechanism more complex than the problem needed, from a measurement that was
+   correct.** The L64 fan-out measured *why* two candidate `classes_` fixes break the nn wrapper. I
+   turned that into a prescription for a sentinel-deferring property. The agent built it, verified it,
+   removed it as redundant, and was right: a property is a **data descriptor** and intercepts a lookup
+   that should have found the instance attribute; `__getattr__` does not intercept it, so the sentinel
+   has nothing to do. **The right question was *why does the property break*, not *how do I patch the
+   property*.** A measurement of two failures is not a search over mechanisms. Driven and recorded on
+   `GUIDED-245`. **This is the most dangerous kind of error I made, because the measurement's authority
+   carried into the conclusion drawn from it.**
+2. **I asserted a second scored registry that does not exist.** I found 98 `ChecklistItem`s across two
+   files and told the fan-out to check whether the second was inflating a compliance count. Its
+   `ChecklistItem` is a **different class with no predicate field at all.** The fan-out caught it. The
+   instinct — *check the surface nobody counted* — was right and produced `MISC-029`; the assertion was
+   not.
+3. **I shipped a prompt whose own header count was stale.** L64's header said 983 findings; I filed
+   four rows between writing it and committing. The agent noticed. **Write the header last.**
+4. **My prose trips the spelling gate almost every time** — five different British spellings across
+   three commits this session. The gate catches every one, which is the system working, but it costs a
+   commit cycle each time. Write American on the first pass.
+
+   *(And note where this bullet ends up: the first draft of it **listed the five spellings**, and the
+   gate refused the commit — the paragraph about tripping the gate tripped the gate. That is the L64
+   agent's own find arriving one document over: **writing about a matcher is enough to trip it.** Name
+   the class, do not quote the tokens.)*
 
 **The generalization, which every PM before me also recorded:**
 
-> **Every number you state carries how you got it.** Mark it *(re-derived at `<sha>`)* or *(from the row)*,
-> and **doubt the second kind first.** A file's existence is not its contents, a write-up's number is not a
-> measurement, a 200 is not a correct consequence, a PID is not a running process (`TEST-099`), and the
-> source tree is not the running app.
+> **Every number you state carries how you got it.** Mark it *(re-derived at `<sha>`)* or *(from the
+> row)*, and **doubt the second kind first.** A file's existence is not its contents, a write-up's
+> number is not a measurement, a 200 is not a correct consequence, a PID is not a running process, and
+> the source tree is not the running app.
 
-**Design is the only work here with no verification loop.** A design proposal ships with a prior-art check
-the way a closure ships with a probe.
-
----
-
-## 07 · The agent, and what to protect
-
-**It is exceptional and better than me at several of these.** In six consecutive loops it has corrected
-the adjudicator's premises, and it has **refused a part** with a measurement rather than shipping a weak
-version four times. At L62 it reported three process failures of its own unprompted, including losing
-three hours to `setsid` — *"I verified a proxy instead of the thing, in a loop about exactly that"* —
-and it handed back a product call rather than defending it.
-
-**Rule against it when it is wrong and say plainly when it is right. A refusal is a result.** At L62 I
-rejected its A3 sweep and corrected two of its ledger notes, and it was still four of five.
-
-**What it does not yet catch:** its own coverage claims. Twice at L62 a sweep asserted completeness that a
-fan-out falsified in one driven test. **A sweep's coverage is a measurement and needs the same provenance
-as a count.**
+**Design is the only work here with no verification loop.** A design proposal ships with a prior-art
+check the way a closure ships with a probe.
 
 ---
 
-## 08 · Habits that are load-bearing
+## 07 · The fan-out, which is now the method, and what it actually finds
+
+Four runs: L62's adjudication (11 agents), L63's reconnaissance (12) and adjudication (14), L64's
+reconnaissance (8) and adjudication (12). **Every single cluster in every run came back
+`NEEDS_CORRECTION` or `HOLDS_WITH_CORRECTIONS`. None has ever come back clean, including mine.**
+
+**What it reliably finds, and a single reader reliably does not:**
+
+- **A fourth surface thirty lines from a fix.** L62's sweep claimed to cover *"every surface that
+  reports an n"*; two independent drivers found one more, in the same file.
+- **An `act` field that would send the builder to the wrong function.** `GUIDED-236`'s said to split
+  `predictions_for`, retracted at L57 and never corrected in the row. `GUIDED-238`'s described a
+  compliance count that does not exist.
+- **The defect the fix creates.** L63's ROC widening would have published bootstrap intervals that
+  depend on tick order; the refuter measured it before it shipped.
+- **A verifier's own coverage claim.** At L63 a verifier said a file was "structurally out of reach" of
+  the revert detector; its refuter drove it and it was not.
+
+**Two structural facts about running them:**
+
+- **Agent worktrees have been handed out at an unrelated commit with no `turbotab/` directory, three
+  recorded times.** Tell every agent to check `git log --oneline -1` first and to recover with
+  `git checkout --detach <sha>` or `git archive`. They lose ten minutes each when you forget.
+- **Prompts go in as `.join('\n')` arrays, never template literals** — backticks in the prose break the
+  script parse, and this prose is full of them.
+
+**Bound the load.** The machine sits beside where Nolan sleeps. Targeted test files only, nothing over
+~3 minutes, no full sweeps inside a fan-out, and say the time of day in the brief.
+
+---
+
+## 08 · The agent, and what to protect
+
+**It is exceptional and better than me at several of these.** In eight consecutive loops it has
+corrected the adjudicator's premises, and it has **refused a part with a measurement rather than
+shipping a weak version** five times. At L64 it did the sharpest version of that yet: it built exactly
+what I prescribed, verified it, and then **deleted it and told me why** — and separately **refused to
+report a partition at all** rather than add a fourth unreproducible number to the ledger.
+
+**Rule against it when it is wrong and say plainly when it is right. A refusal is a result.**
+
+**What it does not yet catch:** its own coverage claims, and matchers firing on its own prose. At L64 it
+tripped two of its own guards by *writing about* the strings they search for — *"writing about a matcher
+is enough to trip it"*, which is a variant trap 5b does not warn about. It caught both itself.
+
+---
+
+## 09 · Habits that are load-bearing
 
 - **Verify in an isolated worktree, never the live tree.**
 - **Never write the data files while a loop runs.** `ps` and `git status` first.
 - **The ledger has exactly one writer and it is `ledger.py`.** `set` **replaces** the note — read the
-  existing one and append. File notes **through a Python file, never a shell heredoc**; zsh eats
-  backticks, and it also eats an unquoted `--include=*.py`.
-- **`docs/audit/` is the exempt path** for verbatim drive reports. Put them there and the spelling gate
-  passes; run 4's report at the repo root is why L60-E needed `--no-verify`.
-- **Never `git add -A`.** Stage explicit paths. Check the diffstat.
-- **Add the `LOOP.md` §03 row when you accept a loop.**
+  existing one and append. **`set` refuses a `FIXED` status without `--test`**, so pass the existing
+  value back. **`set` writes `verified_ev` only; `ev` is add-time-only and cannot be corrected through
+  the tool** — the L64 agent found that, and it means a stale `ev` on a closed row stays stale.
+- File notes **through a Python file, never a shell heredoc**; zsh eats backticks, and it eats an
+  unquoted `--include=*.py`.
+- **`docs/audit/` is the exempt path** for verbatim drive reports.
+- **Never `git add -A`.** Stage explicit paths. Check the diffstat — `ledger.py` serializes at
+  `indent=1` and a script that dumps at `indent=2` reformats nine thousand lines.
+- **Add the `LOOP.md` §03 row when you accept a loop**, and name in Part A the one gap you found.
 - **The check that fires most often:** was a named defect *class* filed, or only its instance?
 - **Never accept a moved threshold in the same loop as the change that pressured it** unless you invoke
-  §06.2 **in those words** — and when someone does, verify the guard got **stronger**, not smaller.
-- **`Ambiguity is OPEN, never FIXED`** — and per row: *does the fix reach the thing the row's own evidence
-  describes?*
-- **Keep prose lean.** He has asked for minimum PM bloat without losing execution fidelity.
+  §06.2 **in those words** — and verify the guard got **stronger**, not smaller.
+- **`Ambiguity is OPEN, never FIXED`** — and per row: *does the fix reach the thing the row's own
+  evidence describes?*
+- **Push before you might be cleared.** L64's five commits sat unpushed while I ran a 25-minute
+  verification. Nothing was lost, and nothing needed to be at risk.
 
 ### Standing rules the agents earned — do not re-derive
 
-- **§08.1, two tiers.** A `FIXED` arrives with its **probe output** or it is `PARTIAL`. The revert must be
-  **total**. A red quoting a `TypeError`, `ImportError` or `HarnessError` is red for the **wrong** reason.
+- **§08.1, two tiers.** A `FIXED` arrives with its **probe output** or it is `PARTIAL`. The revert must
+  be **total**. A red quoting a `TypeError`, `ImportError` or signature mismatch is red for the **wrong**
+  reason. **And the cheap detector is one command: run the loop's new tests with the loop's own source
+  diff reverted.** At L63 that gave 27 failed / 51 passed and settled three dispositions.
 - **A part may be REFUSED when carrying it out would violate the criterion the row itself states.**
 - **A pin that cannot flip is a comment.** `mark.xfail(strict=True)`, not `pytest.xfail()`.
-- **A grep answers "does this text appear", not "does this run."**
+- **A grep answers "does this text appear", not "does this run".**
 - **A matcher that fires on prose has silence that means nothing.**
 - **A suite is quotable only if nothing else is writing the tree *or competing for the machine*.**
 - **A class goes in the ledger the moment you name it. Say the number, including when it is zero.**
@@ -287,14 +327,13 @@ as a count.**
 
 ---
 
-## 09 · What happens next
+## 10 · What happens next
 
-1. **Write L63.** Part A is `TEST-098` — fix the shared-file writers, re-run the pair, document the xdist
-   command. It is cheap and it pays out forever. Then `DRIVE-050`/`TEST-101`/`DRIVE-051` as one theme:
-   the analysis population, and the tests that disagree about it.
-2. **`GUIDED-236`'s ROC overlay is the strongest substantial build available** and its prerequisite is
-   finally met.
-3. **Ask for the sixth drive**, on a server restarted so `rev` equals HEAD. Five drives have each found
-   something no suite could.
-4. **Adjudicate with a fan-out.** It is now the standing method, and §07's last paragraph is what to point
-   it at first.
+1. **Adjudicate L64** (§04b). Re-run the saved script. Rule on the three unverified claims, write the
+   `LOOP.md` §03 row, correct the ledger, commit, push.
+2. **Then L65.** Part A is whatever gap the adjudication finds. The substantial build is a choice
+   between finishing `GUIDED-238`'s 77 and starting `MISC-029`'s repair — **`MISC-029` is where a user
+   is shown an inflated number, so it is worth more.**
+3. **Ask for the seventh drive**, on a server restarted so `rev` equals HEAD, and say which screens are
+   new: the clinical figures on single-model projects, and the Train refusal's inline controls.
+4. **Keep adjudicating with a fan-out.** §07 is the argument and it has never once come back clean.
