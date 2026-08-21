@@ -263,6 +263,22 @@ def run(project: Any, model_key: str, *, b: int = B_RESAMPLES,
     failures: List[str] = []
     selected_sets: List[Sequence[str]] = []
     drawn_sizes: List[int] = []
+    # `GUIDED-238`, `L64-B3`. THE SCOPE, MEASURED RATHER THAN ASSERTED IN PROSE.
+    #
+    # `scored_on` below is a SENTENCE, and the checklist item that scores it
+    # read `"held-out" in scored_on` — so it passed on the string *"the
+    # held-out rows were resampled and predicted"*, which is precisely the
+    # condition its own `because` says it exists to catch, and FAILED on the
+    # honest sentence *"training rows with an outcome"*. A matcher firing on
+    # prose, in a shipping checklist (`AGENT_ONBOARD.md` §07 trap 5b).
+    #
+    # The quantity the item is actually about is *did any resample touch a
+    # sealed row*, and the loop below is the only place that can answer it.
+    # Counted per draw against the lockbox's own label list, so a producer that
+    # ever started drawing from the sealed rows makes the item go red instead
+    # of continuing to pass a sentence.
+    sealed_labels = set((project.lockbox or {}).get("labels") or [])
+    sealed_rows_drawn = 0
 
     for i, resample_seed in enumerate(seeds):
         if ctx is not None:
@@ -273,6 +289,9 @@ def run(project: Any, model_key: str, *, b: int = B_RESAMPLES,
         draw = _draw(rng, rows, scheme)
         Xb, yb = X.iloc[draw], y.iloc[draw]
         drawn_sizes.append(int(len(draw)))
+        if sealed_labels:
+            sealed_rows_drawn += sum(1 for label in rows.index[draw]
+                                     if label in sealed_labels)
         try:
             # THE PLAN IS COMPOSED AGAINST THE ORIGINAL FRAME AND FITTED ON THE
             # RESAMPLE, and the first working version had this backwards.
@@ -359,6 +378,10 @@ def run(project: Any, model_key: str, *, b: int = B_RESAMPLES,
         "scored_on": "training rows with an outcome (the held-out rows are "
                      "not resampled and not predicted, and a row with no "
                      "outcome cannot be scored against one)",
+        # THE SAME CLAIM AS DATA, so the checklist can score the scope instead
+        # of a substring of the sentence. See the counter above.
+        "held_out_rows_resampled": int(sealed_rows_drawn),
+        "rows_resampled_from": int(len(rows)),
         # `GUIDED-114`. WHICH SCHEME WAS DRAWN, always, on every project. The
         # finding was two things: rows were drawn on grouped tables, and the
         # payload said nothing about it — 141,126 characters across eighteen

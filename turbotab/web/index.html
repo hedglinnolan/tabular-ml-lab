@@ -709,6 +709,11 @@
   .check-i .mk{ font-family:var(--mono); font-size:11px; }
   .check-i.pass .mk{ color:var(--ok); }
   .check-i.fail .mk{ color:var(--warn); }
+  /* NEITHER OK NOR WARN — `GUIDED-238`. `--ok` means *recorded, sealed,
+     provenance-backed* (§02), and a rule the app repeated without checking has
+     none of that; `--warn` is the coach's voice and this is not advice. Muted
+     is the honest register: present, readable, and making no claim. */
+  .check-i.declared .mk{ color:var(--muted); }
   .check-i .because{ color:var(--muted); }
   .fig.held{ border-left:3px solid var(--warn); }
   .fig.absent{ background:var(--surface-2); }
@@ -4456,12 +4461,24 @@
       }
       var items = row.checklist || [];
       if (items.length){
+        /* THREE STATES, NOT TWO — `GUIDED-238`. A checklist item whose pass is
+           GUARANTEED by the producer never had a chance to fail, and a PASS
+           badge over an unperformed check is a certificate for something
+           nobody verified. Driven: a real bundle served 26 of 27 items PASS.
+           `scored: false` says the app is repeating a rule rather than
+           scoring it, and the reason is shown BESIDE the badge rather than on
+           failure only, because that is the moment it is worth reading. */
         h += '<div class="check">' + items.map(function(i){
-          return '<span class="check-i ' + (i.passed ? "pass" : "fail") + '">' +
-                 '<span class="mk">' + (i.passed ? "PASS" : "FAIL") + "</span>" +
+          var declared = (i.scored === false);
+          var cls = declared ? "declared" : (i.passed ? "pass" : "fail");
+          var mark = declared ? "STATED" : (i.passed ? "PASS" : "FAIL");
+          var note = declared ? (i.declared_because || "")
+                              : (i.passed ? "" : (i.because || ""));
+          return '<span class="check-i ' + cls + '">' +
+                 '<span class="mk">' + mark + "</span>" +
                  "<span>" + esc(i.text) +
-                 (i.passed || !i.because ? "" :
-                   ' <span class="because">— ' + esc(i.because) + "</span>") +
+                 (note ? ' <span class="because">— ' + esc(note) + "</span>"
+                       : "") +
                  "</span></span>";
         }).join("") + "</div>";
       }

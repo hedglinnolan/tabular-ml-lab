@@ -1050,7 +1050,26 @@ VOLCANO = register(FigureSpec(
             "level it reads as 'identified' when the honest word is "
             "'putatively annotated'.",
             lambda p: not p.get("labeled_features")
-            or bool(p.get("labels_require_msi_level"))),
+            or bool(p.get("labels_require_msi_level")),
+            # `GUIDED-238`, `L64-B3`. THE ONLY ITEM IN THIS FILE THAT NO
+            # PAYLOAD CAN FALSIFY, and it was measured rather than argued: a
+            # mutation probe over 24 keys × 9 sentinels plus 24 key-deletions —
+            # 240 mutations — produced not one False. Both disjuncts are
+            # producer literals three lines apart (`labeled_features: []` and
+            # `labels_require_msi_level: True`), and `labeled_features` has no
+            # other writer anywhere in `turbotab/`.
+            #
+            # The predicate is RIGHT and stays. What was wrong is the badge: it
+            # reported a POLICY DECLARATION as evidence the policy was met.
+            # This volcano draws no compound labels at all, so there is nothing
+            # to check — and the moment one is drawn the item becomes live on
+            # its own, which is why this is a predicate on the payload rather
+            # than a flag on the item.
+            scored_when=lambda p: bool(p.get("labeled_features")),
+            declared_because=(
+                "This figure labels no compounds, so there is no label whose "
+                "MSI level could be missing. The rule is stated and will be "
+                "scored the moment a volcano draws one.")),
     ),
     caption=lambda p: (
         f"Differential abundance of {p.get('n_features', 0):,} features "
@@ -1683,6 +1702,11 @@ def prediction_instability_payload(result: Dict[str, Any]) -> Dict[str, Any]:
         "worst_row_label": spread["worst_row_label"],
         "worst_interval": spread["worst_interval"],
         "scored_on": result.get("scored_on", ""),
+        # CARRIED FORWARD BESIDE THE SENTENCE, because `scope_stated`
+        # scores the measurement rather than the prose (`L64-B3`). A
+        # derived payload that copied only the sentence would leave the
+        # item unable to tell a clean draw from an unmeasured one.
+        "held_out_rows_resampled": result.get("held_out_rows_resampled"),
         # `GUIDED-114`. WHICH SAMPLING SCHEME PRODUCED THE CLOUD. The figure's
         # whole content is spread, and spread from a row bootstrap on a grouped
         # table is a LOWER BOUND rather than an estimate — measured at 21.4%
@@ -1714,7 +1738,19 @@ PREDICTION_INSTABILITY = register(FigureSpec(
             "A reader cannot judge the width of the cloud without knowing how "
             "many refits produced it, and B is the one number a different "
             "analyst would choose differently.",
-            lambda p: bool(p.get("b_completed"))),
+            # `GUIDED-238`, `L64-B3`. PRODUCER-GUARANTEED, so the badge says
+            # DECLARED rather than PASS. `instability.run` sets `b_completed`
+            # to `matrix.shape[0]` and REFUSES rather than returning a zero, so
+            # this predicate reports that the refusal held — not that the
+            # figure states B. Fixing it would mean changing what the producer
+            # is allowed to guarantee, which is a bigger change than the badge.
+            lambda p: bool(p.get("b_completed")),
+            scored_when=lambda p: False,
+            declared_because=(
+                "`instability.run` refuses rather than emitting a resample "
+                "count of zero, so this item cannot fail on any payload the "
+                "producer can build. The number IS stated in the caption; "
+                "what is not verified is that it had to be.")),
         ChecklistItem(
             "identity_line",
             "45° reference line, labeled",
@@ -1751,7 +1787,17 @@ PREDICTION_INSTABILITY = register(FigureSpec(
             "Which rows were resampled and predicted is stated",
             "An instability plot that had quietly resampled the held-out rows "
             "would look identical and would have dissolved the seal.",
-            lambda p: "held-out" in str(p.get("scored_on", ""))),
+            # `GUIDED-238`, `L64-B3`. THIS READ `"held-out" in scored_on` — a
+            # substring of the SENTENCE — so it passed the string *"the
+            # held-out rows were resampled and predicted"*, which is the
+            # condition the `because` above says it exists to catch, and
+            # FAILED the honest *"training rows with an outcome"*. A matcher
+            # firing on prose, in a shipping checklist. It scores the
+            # MEASUREMENT now: `instability.run` counts, per draw, how many
+            # resampled labels are in the lockbox, so a producer that ever
+            # started drawing sealed rows turns this red.
+            lambda p: (bool(p.get("scored_on"))
+                       and p.get("held_out_rows_resampled") == 0)),
         ChecklistItem(
             "sampling_scheme_stated",
             "Whether rows or whole groups were resampled is stated",
@@ -1760,7 +1806,16 @@ PREDICTION_INSTABILITY = register(FigureSpec(
             "more than independent samples would — measured at 21% narrower "
             "spread. The plot looks the same either way, so a reader who is "
             "not told cannot discount it.",
-            lambda p: bool(p.get("sampling", {}).get("sentence"))),
+            # `GUIDED-238`, `L64-B3`. Same shape as `b_stated` beside it:
+            # `instability.run` always composes `sampling.sentence` through
+            # `_sampling_sentence`, which returns a non-empty string on every
+            # branch, so no payload the producer can build falsifies this.
+            lambda p: bool(p.get("sampling", {}).get("sentence")),
+            scored_when=lambda p: False,
+            declared_because=(
+                "`_sampling_sentence` returns a non-empty string on every "
+                "branch, so this reports that the payload was built. The "
+                "scheme IS disclosed; that it had to be is not checked.")),
     ),
     caption=lambda p: (
         f"Prediction instability for {p.get('model_name', 'the model')}: the "
@@ -1859,6 +1914,11 @@ def calibration_instability_payload(result: Dict[str, Any],
         "reference_line": {"kind": "identity", "label": "ideal"},
         "aspect": "square",
         "scored_on": result.get("scored_on", ""),
+        # CARRIED FORWARD BESIDE THE SENTENCE, because `scope_stated`
+        # scores the measurement rather than the prose (`L64-B3`). A
+        # derived payload that copied only the sentence would leave the
+        # item unable to tell a clean draw from an unmeasured one.
+        "held_out_rows_resampled": result.get("held_out_rows_resampled"),
         "sampling": result.get("sampling") or {},
     }
 
@@ -1882,7 +1942,19 @@ CALIBRATION_INSTABILITY = register(FigureSpec(
             "The number of bootstrap resamples is stated on the figure",
             "The density of the grey band is a function of B; without it a "
             "reader cannot tell a tight model from a small B.",
-            lambda p: bool(p.get("b_completed"))),
+            # `GUIDED-238`, `L64-B3`. PRODUCER-GUARANTEED, so the badge says
+            # DECLARED rather than PASS. `instability.run` sets `b_completed`
+            # to `matrix.shape[0]` and REFUSES rather than returning a zero, so
+            # this predicate reports that the refusal held — not that the
+            # figure states B. Fixing it would mean changing what the producer
+            # is allowed to guarantee, which is a bigger change than the badge.
+            lambda p: bool(p.get("b_completed")),
+            scored_when=lambda p: False,
+            declared_because=(
+                "`instability.run` refuses rather than emitting a resample "
+                "count of zero, so this item cannot fail on any payload the "
+                "producer can build. The number IS stated in the caption; "
+                "what is not verified is that it had to be.")),
         ChecklistItem(
             "original_distinguishable",
             "The original model's curve is drawn in bold over the grey ones",
@@ -1908,14 +1980,33 @@ CALIBRATION_INSTABILITY = register(FigureSpec(
             "Which rows were resampled and predicted is stated",
             "Same reason as the prediction instability plot: a curve drawn "
             "over resampled held-out rows would look identical.",
-            lambda p: "held-out" in str(p.get("scored_on", ""))),
+            # `GUIDED-238`, `L64-B3`. THIS READ `"held-out" in scored_on` — a
+            # substring of the SENTENCE — so it passed the string *"the
+            # held-out rows were resampled and predicted"*, which is the
+            # condition the `because` above says it exists to catch, and
+            # FAILED the honest *"training rows with an outcome"*. A matcher
+            # firing on prose, in a shipping checklist. It scores the
+            # MEASUREMENT now: `instability.run` counts, per draw, how many
+            # resampled labels are in the lockbox, so a producer that ever
+            # started drawing sealed rows turns this red.
+            lambda p: (bool(p.get("scored_on"))
+                       and p.get("held_out_rows_resampled") == 0)),
         ChecklistItem(
             "sampling_scheme_stated",
             "Whether rows or whole groups were resampled is stated",
             "Same reason, and it applies to the grey band exactly as it "
             "applies to the scatter: a band drawn from a row bootstrap on a "
             "grouped table is narrower than the data supports.",
-            lambda p: bool(p.get("sampling", {}).get("sentence"))),
+            # `GUIDED-238`, `L64-B3`. Same shape as `b_stated` beside it:
+            # `instability.run` always composes `sampling.sentence` through
+            # `_sampling_sentence`, which returns a non-empty string on every
+            # branch, so no payload the producer can build falsifies this.
+            lambda p: bool(p.get("sampling", {}).get("sentence")),
+            scored_when=lambda p: False,
+            declared_because=(
+                "`_sampling_sentence` returns a non-empty string on every "
+                "branch, so this reports that the payload was built. The "
+                "scheme IS disclosed; that it had to be is not checked.")),
     ),
     caption=lambda p: (
         (f"Calibration instability for {p.get('model_name', 'the model')}: "
@@ -2744,6 +2835,11 @@ def classification_instability_payload(result: Dict[str, Any], *,
         "worst_flip_rate": round(float(flip_rate[order[0]]), 4) if len(order) else None,
         "sampling": result.get("sampling") or {},
         "scored_on": result.get("scored_on", ""),
+        # CARRIED FORWARD BESIDE THE SENTENCE, because `scope_stated`
+        # scores the measurement rather than the prose (`L64-B3`). A
+        # derived payload that copied only the sentence would leave the
+        # item unable to tell a clean draw from an unmeasured one.
+        "held_out_rows_resampled": result.get("held_out_rows_resampled"),
     }
 
 
@@ -2789,6 +2885,11 @@ def decision_curve_instability_payload(result: Dict[str, Any], y_true,
         "styles": base["styles"],
         "sampling": result.get("sampling") or {},
         "scored_on": result.get("scored_on", ""),
+        # CARRIED FORWARD BESIDE THE SENTENCE, because `scope_stated`
+        # scores the measurement rather than the prose (`L64-B3`). A
+        # derived payload that copied only the sentence would leave the
+        # item unable to tell a clean draw from an unmeasured one.
+        "held_out_rows_resampled": result.get("held_out_rows_resampled"),
     }
 
 
@@ -2819,19 +2920,50 @@ CLASSIFICATION_INSTABILITY = register(FigureSpec(
             "b_stated",
             "The number of bootstrap resamples is stated",
             "A flip rate over 6 refits and one over 200 are different claims.",
-            lambda p: bool(p.get("b_completed"))),
+            # `GUIDED-238`, `L64-B3`. PRODUCER-GUARANTEED, so the badge says
+            # DECLARED rather than PASS. `instability.run` sets `b_completed`
+            # to `matrix.shape[0]` and REFUSES rather than returning a zero, so
+            # this predicate reports that the refusal held — not that the
+            # figure states B. Fixing it would mean changing what the producer
+            # is allowed to guarantee, which is a bigger change than the badge.
+            lambda p: bool(p.get("b_completed")),
+            scored_when=lambda p: False,
+            declared_because=(
+                "`instability.run` refuses rather than emitting a resample "
+                "count of zero, so this item cannot fail on any payload the "
+                "producer can build. The number IS stated in the caption; "
+                "what is not verified is that it had to be.")),
         ChecklistItem(
             "sampling_scheme_stated",
             "Whether rows or whole groups were resampled is stated",
             "Same reason as the prediction instability plot: a row bootstrap "
             "on a grouped table understates every spread on this figure too.",
-            lambda p: bool(p.get("sampling", {}).get("sentence"))),
+            # `GUIDED-238`, `L64-B3`. Same shape as `b_stated` beside it:
+            # `instability.run` always composes `sampling.sentence` through
+            # `_sampling_sentence`, which returns a non-empty string on every
+            # branch, so no payload the producer can build falsifies this.
+            lambda p: bool(p.get("sampling", {}).get("sentence")),
+            scored_when=lambda p: False,
+            declared_because=(
+                "`_sampling_sentence` returns a non-empty string on every "
+                "branch, so this reports that the payload was built. The "
+                "scheme IS disclosed; that it had to be is not checked.")),
         ChecklistItem(
             "scope_stated",
             "Which rows were resampled and predicted is stated",
             "A flip rate computed over resampled held-out rows would look "
             "identical and would have dissolved the seal.",
-            lambda p: "held-out" in str(p.get("scored_on", ""))),
+            # `GUIDED-238`, `L64-B3`. THIS READ `"held-out" in scored_on` — a
+            # substring of the SENTENCE — so it passed the string *"the
+            # held-out rows were resampled and predicted"*, which is the
+            # condition the `because` above says it exists to catch, and
+            # FAILED the honest *"training rows with an outcome"*. A matcher
+            # firing on prose, in a shipping checklist. It scores the
+            # MEASUREMENT now: `instability.run` counts, per draw, how many
+            # resampled labels are in the lockbox, so a producer that ever
+            # started drawing sealed rows turns this red.
+            lambda p: (bool(p.get("scored_on"))
+                       and p.get("held_out_rows_resampled") == 0)),
     ),
     caption=lambda p: (
         (f"Classification instability for {p.get('model_name', 'the model')} "
@@ -2900,12 +3032,33 @@ DECISION_CURVE_INSTABILITY = register(FigureSpec(
             "b_stated",
             "The number of bootstrap resamples is stated",
             "The density of the grey band is a function of B.",
-            lambda p: bool(p.get("b_completed"))),
+            # `GUIDED-238`, `L64-B3`. PRODUCER-GUARANTEED, so the badge says
+            # DECLARED rather than PASS. `instability.run` sets `b_completed`
+            # to `matrix.shape[0]` and REFUSES rather than returning a zero, so
+            # this predicate reports that the refusal held — not that the
+            # figure states B. Fixing it would mean changing what the producer
+            # is allowed to guarantee, which is a bigger change than the badge.
+            lambda p: bool(p.get("b_completed")),
+            scored_when=lambda p: False,
+            declared_because=(
+                "`instability.run` refuses rather than emitting a resample "
+                "count of zero, so this item cannot fail on any payload the "
+                "producer can build. The number IS stated in the caption; "
+                "what is not verified is that it had to be.")),
         ChecklistItem(
             "sampling_scheme_stated",
             "Whether rows or whole groups were resampled is stated",
             "A row bootstrap on a grouped table narrows this band too.",
-            lambda p: bool(p.get("sampling", {}).get("sentence"))),
+            # `GUIDED-238`, `L64-B3`. Same shape as `b_stated` beside it:
+            # `instability.run` always composes `sampling.sentence` through
+            # `_sampling_sentence`, which returns a non-empty string on every
+            # branch, so no payload the producer can build falsifies this.
+            lambda p: bool(p.get("sampling", {}).get("sentence")),
+            scored_when=lambda p: False,
+            declared_because=(
+                "`_sampling_sentence` returns a non-empty string on every "
+                "branch, so this reports that the payload was built. The "
+                "scheme IS disclosed; that it had to be is not checked.")),
     ),
     caption=lambda p: (
         (f"Decision-curve instability for "

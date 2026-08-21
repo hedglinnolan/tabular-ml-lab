@@ -96,11 +96,40 @@ class ChecklistItem:
 
     `because` is what the reviewer would say. It is shown when the item fails,
     which is the only moment it is worth reading.
+
+    ## `scored_when`, and why a pass is not always a score — `GUIDED-238`
+
+    **Driven: a real bundle on `clinical_risk.csv` admits five figures and
+    serves 26 of 27 items PASS.** A reader takes that wall of green as *this
+    figure meets twenty-six publication requirements*. For some of them the app
+    never checked anything — the producer pins the value the predicate reads,
+    so the item reports that the payload was built rather than that the figure
+    is right. A PASS badge over an unperformed check is the governing rule's
+    assert-something-false branch, on the surface that exists to certify.
+
+    `scored_when` answers *did this render have anything to score?* and it is a
+    predicate on the payload rather than a flag on the item, because the answer
+    genuinely depends on the render: the volcano's labeling rule is live the
+    moment a volcano draws a label and vacuous until then. `None` — the
+    default — means always live, which is the honest default for the majority.
+
+    An item that can be unscored must say why, the same way `promotable` must
+    (`FigureSpec.__post_init__`). A declaration with no argument is the claim
+    without the evidence.
     """
     id: str
     text: str
     because: str
     check: Callable[[Dict[str, Any]], bool]
+    scored_when: Optional[Callable[[Dict[str, Any]], bool]] = None
+    declared_because: str = ""
+
+    def __post_init__(self) -> None:
+        if self.scored_when is not None and not self.declared_because:
+            raise FigureError(
+                f"{self.id}: an item that can report DECLARED states why it "
+                f"could not be scored. A badge that is neither a pass nor a "
+                f"failure and carries no reason is worse than either.")
 
 
 @dataclass(frozen=True)
@@ -185,16 +214,34 @@ class FigureSpec:
         """
         out = []
         for item in self.checklist:
+            # WHETHER THIS RENDER HAD ANYTHING TO SCORE, asked first and
+            # carried on BOTH branches below (`GUIDED-238`). A third state
+            # expressed at only one of the two producers of `passed` would
+            # serve a raising item in the old shape, which is the whole reason
+            # this is computed here rather than inside the `try`.
+            try:
+                scored = (True if item.scored_when is None
+                          else bool(item.scored_when(payload)))
+            except Exception:                              # pragma: no cover
+                # If the app cannot tell whether the item was live, it says it
+                # WAS — an unverified pass is the claim this field exists to
+                # stop making, so the uncertain case takes the stricter label.
+                scored = True
             try:
                 ok = bool(item.check(payload))
             except Exception as exc:                       # pragma: no cover
                 # Reported, never swallowed: a checklist item that raises is an
                 # item nobody scored, and silence would read as a pass.
-                ok = False
                 out.append({"id": item.id, "text": item.text, "passed": False,
+                            "scored": scored,
+                            "declared_because": ("" if scored
+                                                 else item.declared_because),
                             "because": f"the check could not run: {exc}"})
                 continue
             out.append({"id": item.id, "text": item.text, "passed": ok,
+                        "scored": scored,
+                        "declared_because": ("" if scored
+                                             else item.declared_because),
                         "because": "" if ok else item.because})
         return out
 

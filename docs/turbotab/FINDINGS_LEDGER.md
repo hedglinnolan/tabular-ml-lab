@@ -25,17 +25,17 @@ Nothing is closed without a regression test named after it.
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 476 |
-| `PARTIAL` | 81 |
+| `OPEN` | 474 |
+| `PARTIAL` | 83 |
 | `FIXED` | 421 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 476
+## OPEN — 474
 
 
-### Guided-door drive feedback — 79
+### Guided-door drive feedback — 78
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -56,7 +56,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-213` | high | The metabolomics sub-domain fork is never asked, so all thirteen hedges are asserted for tables they are wrong for | `L50-F2, and this is section 08 check 5's answer - what the same lens finds one surface over.…` | Named in SHAPES_NOT_COVERED in turbotab/test_the_metabolomics_hedges_reach_a_person.py rather than only in a report. This is a capability gap, not a fixture gap - a second… |
 | `GUIDED-232` | high | Guided's Explain step cannot answer the question the product owner built it for: permutation importance reports a metric drop per feature and cannot show how two model families carve the same signal… | `turbotab/explain.py:141 uses sklearn.inspection.permutation_importance; import shap appears only in…` | THE DESIGN IS SETTLED AND RECORDED: PRODUCT_VISION.md 06c, three rulings made by the product owner on 2026-08-09. (1) A disagreement between an attribution and the pack's… |
 | `GUIDED-233` | high | There is no EXPLAINABILITY pack, so every threshold the explanation suite needs would ship unsourced into the one subsystem whose whole job is calibrated honesty | `grep over the five research packs returns 0 for shap/shapley, 0 for attribution, 0 for feature importance and…` | THE PRODUCT OWNER SUPPLIED A DOMAIN-AGNOSTIC EXPLAINABILITY PLAYBOOK ON 2026-08-09 AND NAMED ITS ROLE EXACTLY: 'I see it as a useful mould for what we actually want to form into… |
-| `GUIDED-238` | high | Half the figure checklist cannot fail: of 85 items, 43 read a constant and only 16 are genuinely falsifiable, so a scored checklist reports a compliance it never checked | `reported by the L57 execution agent's Part B reconnaissance, 2026-08-09; the named instance is…` | FILED BY THE ADJUDICATOR FROM THE EXECUTION AGENT'S HANDBACK, BECAUSE IT EXISTED ONLY IN A MESSAGE AND THE AGENT WAS ABOUT TO BE CLEARED. It stopped before Part B and therefore… |
 | `GUIDED-244` | high | /selection/evidence serves an n_rows_seen that is the count of NO computation on its own payload -- 825 beside scores every one of which was a 225-row statistic -- and the obvious one-line repair… | `turbotab/api.py:2498; turbotab/selection.py:344-345, :352, :382, :385, :445-446; driven at bf7e148 by two…` | SPLIT OUT OF DRIVE-050 BY THE ADJUDICATOR AT L63, AND THE SPLIT IS A RULING. DRIVE-050 mentions this route in one trailing sentence as 'reports the pre-fix population too'. That… |
 | `GUIDED-248` | high | A project whose only model records no event is told the ROC and the decision curve 'do not apply to this project' -- a generic fallback carrying a no-cover pragma, and it reaches the browser | `turbotab/figure_bundle.py _why_not's calibration special-case and its generic fallback with the no-cover…` | FOUND BY DRIVING GUIDED-245 RATHER THAN BY READING IT. It is the governing rule's assert-something-false branch on the surface whose whole job is explaining a silence, which makes… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
@@ -549,7 +548,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Other — 11
+### Other — 10
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -557,7 +556,6 @@ Nothing is closed without a regression test named after it.
 | `MISC-021` | high | The door keeps acquiring surfaces and none of them acquires a mechanism: 105 innerHTML assignments and zero identity-preserving transitions, against a design language that says replacement teaches… | `L54-B, and the L47 table is the evidence rather than a new measurement. turbotab/web/index.html had 106…` | THE CLASS IS 'a design document specifies a mechanism and the implementation acquires only surfaces'. It is trap #1 inverted: not a capability with no consumer, but a REQUIREMENT… |
 | `DRIVE-018` | high | README.md asserts the app runs end to end through grain, eligibility and the seal, which is true of the API and false of the page a user drives | `docs/turbotab/README.md, the 'app is running, end to end' paragraph; refuted by…` | THE CLAIM: 'The app is running, end to end. A driver goes upload -> lens -> orientation -> target -> purpose -> grain -> eligibility -> seal -> explore -> features -> preprocess… |
 | `MISC-024` | high | DEFECT CLASS - no gate reads an authoritative spec paragraph, so a document can state a rule in the present tense that the code stopped obeying, and nothing in the suite can report it | `DESIGN_LANGUAGE.md section 05; PRODUCT_VISION.md section 09; git log 4f73329..HEAD carries neither filename` | BOTH DOCUMENTS AMENDED BY THE ADJUDICATOR AT e6b5251, which is later than the rule requires. THE RECURRENCE IS THE FINDING: PRODUCT_VISION section 09 is a section whose entire… |
-| `MISC-029` | high | The only pass/fail set in the app that feeds a RENDERED compliance count is the manuscript validator's 13 checks -- and nobody has ever asked whether any of them reads a constant | `ml/manuscript_validator.py, 426 lines, 13 checks.append sites with 13 matching status=PASS-if expressions…` | FILED AT THE L64 RECONNAISSANCE, AND IT IS WHERE GUIDED-238'S STATED HARM ACTUALLY LIVES. The shape of this finding is worth holding: an act field described a real harm, the… |
 | `AUDIT-038` | medium | 77 of the 131 registry entries are still unchecked against the engine, and the reason is a budget rather than a finding - recording it so the next loop does not read silence as coverage | `L51-E, and it is the honest half of this part. E ran last by the prompt's own sequencing, after Part C's four…` | AND A METHOD WARNING WORTH MORE THAN THE ROW: two of this part's capability checks returned a false absence because grep -E was given \\| alternation, which is a literal pipe in… |
 | `AUDIT-046` | medium | A loop commit swallowed the adjudicator's uncommitted docs edit, so its subject asserts something false about its own contents - the git add -A rule broken a third time, in the opposite direction… | `0c9cce3 contains docs/turbotab/prompts/PM_TRANSITION.md, 74 changed lines, under the subject 'L57-A: the…` | NOTHING WAS LOST AND THAT IS NOT THE POINT. The content is byte-identical to the adjudicator's own backup, verified by diff, and it is in HEAD. THE POINT IS THE RECORD LAYER… |
 | `MISC-022` | medium | A3's sweep: which surfaces reason about a population the fit will not use -- the number is THREE, and the row named two | `driven at L62 against a fixture of run 5's shape; turbotab/project.py analysis_mask` | REOPENED BY THE ADJUDICATOR: THE COMPLETENESS CLAIM IS FALSE. The row records THREE surfaces 'found by driving every surface that reports an n'. Two independent verifiers, both… |
@@ -583,10 +581,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 81
+## PARTIAL — 83
 
 
-### Guided-door drive feedback — 18
+### Guided-door drive feedback — 19
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -599,6 +597,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-034` | high | The recorded reverse-coding sentence promises a flip and a scoring step the app never performs, and it is exported into the manuscript | `turbotab/api.py:538-543 — On set_reverse_coding the dispatcher records text="{n} item(s) were declared…` | **test:** `turbotab/test_the_reverse_coding_card_does_not_promise_a_flip_either.py::test_the_card_does_not_tell_the_user_a_flip_is_coming` — L53-C, fanned out to four chunks… |
 | `GUIDED-180` | high | 18 live decision kinds have no ACTION_CONTRACT row, and two of them - apply_bulk and route_missingness_bulk - MUTATE THE WORKING TABLE, so the leak guard is inert on the highest-blast-radius paths in… | `turbotab/devchecks.py:596 ACTION_CONTRACT holds 27 rows; the decision handler in turbotab/api.py carries 47…` | **test:** `turbotab/test_an_unlisted_decision_kind_reports_as_unclassified.py::test_every_live_kind_is_declared_or_dated AND… |
 | `GUIDED-223` | high | str.capitalize() on composed prose containing an identifier lower-cases the identifier, so a column name or sample id ships altered inside a true sentence | `L50-D, found by driving a fixture rather than by any assertion. str.capitalize() upper-cases index 0 and…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_the_duplicate_reading_covers_the_renaming_a_reader_performs` — PARTIAL: closed in packs.py, open at… |
+| `GUIDED-238` | high | Half the figure checklist cannot fail: of 85 items, 43 read a constant and only 16 are genuinely falsifiable, so a scored checklist reports a compliance it never checked | `reported by the L57 execution agent's Part B reconnaissance, 2026-08-09; the named instance is…` | **test:** `turbotab/test_a_checklist_item_says_whether_it_was_scored.py::test_an_item_that_passes_on_an_empty_payload_is_named` — FILED BY THE ADJUDICATOR FROM THE EXECUTION… |
 | `DRIVE-036` | high | The repeat path dead-ends: grain=people repeat, unit=one row per person, then the aggregation menu answers 'there is no identifier column recorded, so there is nothing to combine rows by' -- and no… | `run-3 drive path 3, bp_sys with grain=people_repeat; seal button disabled:true class='answer notbuilt' tagged…` | THE FALSE SENTENCE IS PULLED AND THE ROW STAYS OPEN, which is the whole of L61-D2. The receipt's last clause -- 'and you can name it at any point before the seal' -- is a claim… |
 | `DRIVE-047` | high | The whole interview renders as one column roughly 40 viewport-heights long, the rail highlights the active step without navigating to it, and the event refusal names a card far above the control that… | `run 5 lens 2, 'rendered but hard to reach / hard to read'` | **test:** `turbotab/test_the_page_never_moves_the_viewport.py::test_the_rail_navigates_when_a_user_presses_it` — C1 ACCEPTED BY THE ADJUDICATOR ON THE PRODUCT CALL THE AGENT… |
 | `GUIDED-030` | medium | Four pack priors still have no consumer - GUIDED-024's defect surviving for a subset, now declared and counted rather than noticed | `turbotab/packs.py PACKS priors; test_every_prior_has_a_consumer_or_is_declared_unconsumed lists the four with…` | Four priors had no consumer at L21 and three still do. THE ONE REAL DEFECT IS FIXED as GUIDED-033: qc_rows_excluded stated at derived confidence that pooled QC rows are not… |
@@ -658,13 +657,14 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-061` | medium | Import cycle ml.publication ↔ utils.insight_ledger is a genuine layering inversion | `ml/publication.py:128,182,453,460; utils/insight_ledger.py (imports at module top)` | The inversion narrowed from four formatting helpers to one pure-data constant. The presentation helpers this row says belong to neither module are no longer imported from… |
 | `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | The row's blocking condition is satisfied and its recommendation still stands. 'Entirely untested, which is the reason to do it first WITH TESTS ATTACHED' - the tests are attached… |
 
-### Other — 5
+### Other — 6
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `AUDIT-011` | high | The Streamlit side has no record of the prediction/inference purpose at all, so none of the five decisions DOMAIN_SCIENCE section 01.3 says invert can read it | `utils/session_state.py has no purpose field; turbotab/purpose.py; DOMAIN_SCIENCE.md section 01.3…` | **test:** `turbotab/test_the_purpose_card_names_only_the_decisions_that_read_it.py::test_the_card_says_two_read_it_and_names_the_two_that_do_not` — L53-C, fanned out to four… |
 | `MISC-019` | high | DEFECT CLASS - a row is marked FIXED and its fix reached a fraction of the surfaces its own item describes, and ledger.py check cannot see it because it verifies that a test is NAMED rather than that… | `the instance is GUIDED-049, critical, FIXED, whose fix reached three call sites out of ten shipped surfaces…` | **test:** `turbotab/test_the_improbability_band_is_never_called_a_reference_interval.py::test_no_shipped_surface_calls_the_band_a_reference_interval` — STILL PARTIAL, AND ITS OWN… |
 | `MISC-023` | high | The coverage guard MISC-019's reopening relies on catches new READERS of the mapping and not new NON-readers, so the defect class it is named for passes it -- and a qualifying surface already ships | `the guard at :198-218; driven falsification with a scratch fourth surface at HEAD; MISC-019's note` | **test:** `turbotab/test_the_level_a_reader_sees_is_the_one_they_chose.py::test_every_surface_that_renders_the_outcome_reads_one_mapping` — MISC-019's reopening note claims 'a… |
+| `MISC-029` | high | The only pass/fail set in the app that feeds a RENDERED compliance count is the manuscript validator's 13 checks -- and nobody has ever asked whether any of them reads a constant | `ml/manuscript_validator.py, 426 lines, 13 checks.append sites with 13 matching status=PASS-if expressions…` | FILED AT THE L64 RECONNAISSANCE, AND IT IS WHERE GUIDED-238'S STATED HARM ACTUALLY LIVES. The shape of this finding is worth holding: an act field described a real harm, the… |
 | `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | **test:** `turbotab/test_a_skew_that_could_not_be_computed_is_not_reported_as_zero.py::test_an_unmeasurable_target_skew_is_not_reported_as_zero and… |
 | `AUDIT-012` | medium | Outlier advice is driven by a generic IQR rate that cannot tell physiologically impossible from abnormal-but-real, while the impossibility bands sit beside it unused | `ml/outliers.py:44 IQR fences; ml/eda_actions.py:412-420; ml/dataset_profile.py:214…` | **test:** `turbotab/test_the_outlier_remedy_is_not_offered_from_the_fence_alone.py::test_the_corrected_sentence_reaches_the_guided_finding_card and… |
 
