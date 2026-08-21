@@ -131,10 +131,19 @@ at a single commit**, which is the only evidence that would license it:
 
 | | failed | passed | skipped | xfailed | wall | commit |
 |---|---:|---:|---:|---:|---:|---|
+| `-n 8 --dist loadfile` | 0 | 2,709 | 17 | 9 | **41:49** | `4d1c85d` · L64 |
 | `-n 8 --dist loadfile` | 0 | 2,686 | 17 | 9 | **41:36** | `816eee5` · L63 |
 | serial | 0 | 2,686 | 17 | 9 | **2:01:30** | `816eee5` · L63 |
 | `-n 8 --dist loadfile` | 2 | 2,649 | 17 | 9 | 41:23 | `d464e0b` · L62 |
 | serial | 2 | 2,649 | 17 | 9 | 2:00:46 | `d464e0b` · L62 |
+
+**The `L64` row is the parallel form alone**, run at `4d1c85d` on a clean tree with `ps` checked at
+the start and again at twenty minutes, and it is a *repeat* of a licensed command rather than a
+second licensing pair — the serial half was not re-run, so it says nothing new about agreement. It
+is here because the passed count moved (2,686 → 2,709, twenty-three tests added that loop) and a
+table whose numbers stop being re-taken is the decay this section already carries two warnings
+about. `tests/` alongside it: 1 failed / 1,771 passed / 4 skipped in 47 s — the one failure is the
+`torch` one named below — and `tests/integration` 264 passed in 53 s.
 
 Same commit, still tree — `git status --porcelain` empty before **and** after both runs — back to
 back on an otherwise idle machine, `ps` checked at the start and again at twenty minutes. `2.92×`,
