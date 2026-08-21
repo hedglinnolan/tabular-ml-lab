@@ -155,6 +155,15 @@ def cmd_set(rows, args) -> int:
         r["test"] = norm(args.test)
     if args.evidence:
         r["verified_ev"] = norm(args.evidence)
+    # `TEST-109` and `TEST-079`. THE TWO FIELDS THE TOOL COULD CREATE AND NOT
+    # REPAIR. `cmd_add` was the sole writer of both, so a citation that was
+    # true when filed became permanently wrong through the only writer this
+    # project sanctions — and the instrument built to keep the ledger honest
+    # was structurally unable to fix the field carrying the line numbers.
+    if args.ev:
+        r["ev"] = norm(args.ev)
+    if args.act:
+        r["act"] = norm(args.act)
     save(rows)
     print(f"{args.id} -> {status}")
     return 0
@@ -290,9 +299,21 @@ def cmd_regen(rows, _args) -> int:
                 tail = r.get("note") or r.get("act") or ""
                 if r.get("test"):
                     tail = f"**test:** `{r['test']}` — {tail}" if tail else f"**test:** `{r['test']}`"
+                # `TEST-109`. THE RE-VERIFIED CITATION WAS RENDERED NOWHERE, so
+                # every correction filed through `set --evidence` since the
+                # flag existed was invisible in the generated ledger — the
+                # field that exists to say *and this was checked against HEAD*
+                # reached no reader. Shown only when it DIFFERS from `ev`:
+                # `cmd_add` seeds both from one argument, so printing it
+                # unconditionally would double 943 of 992 rows for nothing.
+                evidence = norm(r.get("ev"))
+                verified = norm(r.get("verified_ev"))
+                cell = f"`{clip(evidence, 110)}`"
+                if verified and verified != evidence:
+                    cell += f" · **re-verified:** `{clip(verified, 110)}`"
                 md.append(
                     f"| `{r['id']}` | {r['sev']} | {clip(norm(r['item']), 200)} "
-                    f"| `{clip(norm(r.get('ev')), 110)}` | {clip(norm(tail), 180)} |"
+                    f"| {cell} | {clip(norm(tail), 180)} |"
                 )
 
     body = "\n".join(md) + "\n"
@@ -301,7 +322,15 @@ def cmd_regen(rows, _args) -> int:
     tmp.replace(OUT)
     if OUT.stat().st_size < 1024:
         raise SystemExit("regen produced a suspiciously small ledger — aborting")
-    print(f"wrote {OUT.relative_to(ROOT.parent.parent)} — {done}/{len(rows)} closed")
+    # A DISPLAY LINE MUST NOT RAISE OVER A SUCCESSFUL WRITE. `relative_to`
+    # throws when `OUT` is not under the repository, which is every run against
+    # a throwaway ledger — so the file was written, swapped and size-checked,
+    # and then the tool died reporting it.
+    try:
+        where = OUT.relative_to(ROOT.parent.parent)
+    except ValueError:
+        where = OUT
+    print(f"wrote {where} — {done}/{len(rows)} closed")
     return 0
 
 
@@ -312,12 +341,40 @@ def main() -> int:
     p_next = sub.add_parser("next")
     p_next.add_argument("--n", type=int, default=15)
     p_next.add_argument("--area")
-    p_set = sub.add_parser("set")
+    # `TEST-109`. ABBREVIATION IS OFF HERE, AND THAT IS THE WHOLE OF THE
+    # RULING ON THE COLLISION.
+    #
+    # `set --ev` ALREADY WORKED before `--ev` existed: argparse resolves an
+    # unambiguous prefix, so it was `--evidence`, and `--evidence` writes
+    # `verified_ev`. Adding a literal `--ev` for the `ev` field would have
+    # silently moved the destination of a flag that worked today — same
+    # spelling, different field, no error and no warning. Driven in a sandboxed
+    # copy of this tool before the flag was added, and again after.
+    #
+    # With `allow_abbrev=False` the two are exact matches and cannot be
+    # confused. WHAT THIS BREAKS, said rather than discovered: every other
+    # prefix on this subcommand — `--st`, `--no`, `--ev` meaning `--evidence`.
+    # Nothing in the repository used one; `LOOP.md`, this file's own docstring
+    # and every prompt spell the flags in full, checked before the change.
+    # `add` keeps abbreviation, because no pair of its options is a prefix of
+    # another.
+    p_set = sub.add_parser("set", allow_abbrev=False)
     p_set.add_argument("id")
     p_set.add_argument("--status", required=True)
     p_set.add_argument("--note")
     p_set.add_argument("--test")
-    p_set.add_argument("--evidence")
+    # THE CONFUSING PAIR, NAMED IN THE HELP so it cannot be confused again.
+    p_set.add_argument("--evidence", "--verified-ev", dest="evidence",
+                       help="the RE-VERIFICATION of a citation; writes "
+                            "`verified_ev`, which is what an adjudicator "
+                            "confirmed rather than what was originally filed")
+    p_set.add_argument("--ev", help="the row's ORIGINAL evidence citation; "
+                                    "writes `ev`. TEST-109 — this is the "
+                                    "field the tool could create and not "
+                                    "repair")
+    p_set.add_argument("--act", help="the remedy; writes `act`. TEST-079 — "
+                                     "the field the spelling gate cannot see "
+                                     "because the markdown does not render it")
     p_add = sub.add_parser("add")
     p_add.add_argument("--id", required=True)
     p_add.add_argument("--area", required=True)
