@@ -44,7 +44,8 @@ fi
 # a gate that is one check rather than six.
 if ! gates_can_run "$PY"; then
     printf '\nGATE CANNOT RUN — this is not a failure of your code.\n'
-    printf '  %s has no pandas/pytest, so the value check cannot execute.\n' "$PY"
+    printf '  %s cannot import %s, so the value check cannot execute.\n' \
+           "$PY" "${GATES_MISSING:-its dependencies}"
     printf '  This is usually a linked worktree with no environment of its own.\n'
     printf '  Set TURBOTAB_PYTHON to a provisioned interpreter. Nothing was\n'
     printf '  checked, so nothing is being asserted about this push.\n'

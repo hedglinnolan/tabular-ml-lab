@@ -40,7 +40,8 @@ fi
 # dying on `ModuleNotFoundError` and reading as six red gates over correct code.
 if ! gates_can_run "$PY"; then
     printf '\nGATES CANNOT RUN — this is not a failure of your code.\n'
-    printf '  %s has no pandas/pytest, so the six gates cannot execute.\n' "$PY"
+    printf '  %s cannot import %s, so the six gates cannot execute.\n' \
+           "$PY" "${GATES_MISSING:-their dependencies}"
     printf '  This is usually a linked worktree with no environment of its own.\n'
     printf '  Set TURBOTAB_PYTHON to a provisioned interpreter, or run the\n'
     printf '  gates from the main checkout. Nothing was checked, so nothing is\n'

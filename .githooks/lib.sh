@@ -21,13 +21,22 @@
 #   ./venv             the FULL environment (Makefile's `PYTHON`), where the
 #                      whole suite runs
 #   turbotab/.venv     the Guided door's minimal environment — pandas, numpy,
-#                      FastAPI and nothing else. Enough for the four gates, and
-#                      deliberately not enough for the suite: its EMPTINESS is
-#                      a second, independent signal that the diagnose ->
-#                      profile -> detect path needs no scikit-learn, and a
-#                      signal that only exists while nothing is installed into
-#                      it. Preferred second so the gates run under the fuller
-#                      one when both exist.
+#                      FastAPI and nothing else. Deliberately not enough for
+#                      the suite: its EMPTINESS is a second, independent signal
+#                      that the diagnose -> profile -> detect path needs no
+#                      scikit-learn, and a signal that only exists while
+#                      nothing is installed into it. Preferred second so the
+#                      gates run under the fuller one when both exist.
+#
+#                      THIS LINE SAID "Enough for the four gates" AND IT WAS
+#                      FALSE IN BOTH HALVES. There are six, and this
+#                      interpreter runs five: `evidence.py check` imports every
+#                      `turbotab.*` module, one of which reaches `sklearn`,
+#                      which is the package this environment exists to lack. So
+#                      the emptiness that makes it a signal is the same
+#                      emptiness that stops it gating — measured, not reasoned,
+#                      and the reason `gates_can_run` below probes four names
+#                      rather than two.
 #   python / python3   whatever the shell offers
 set -uo pipefail
 
@@ -83,11 +92,56 @@ resolve_python() {
 # documented escape from a failing gate is `--no-verify`, so a gate that cannot
 # run teaches the operator to bypass gates. A distinct state is the difference
 # between "your code is wrong" and "this checkout cannot check your code".
+#
+# ── and the probe enumerated a SUBSET of what the gates import ───────────────
+#
+# `TEST-110`, found by driving `TEST-108`'s own fix. The list here was
+# `("pandas", "pytest")` while the six gates import FOUR third-party packages
+# directly from first-party code. An interpreter carrying the two probed names
+# and missing either of the others passed this check and then produced the
+# exact cross this state exists to prevent.
+#
+# IT WAS LIVE RATHER THAN HYPOTHETICAL, and in an environment listed twelve
+# lines above as a gate interpreter: under `turbotab/.venv` the hook printed
+# five ticks, `✗ evidence badges … No module named 'sklearn'` and `COMMIT
+# REFUSED`. `resolve_python` selects that interpreter whenever `venv/` is
+# absent, which is the state `LOOP.md` §05 already records the Makefile being
+# found in.
+#
+# THE NAMES ARE MEASURED, NOT RECALLED. Each gate was run under an import
+# recorder that logs only FIRST-PARTY -> THIRD-PARTY edges, so a package
+# reached through another package is not counted twice:
+#
+#   python parses      —                       (stdlib only)
+#   ledger schema      —                       (stdlib only)
+#   register schema    —                       (stdlib only)
+#   American spelling  pytest, pandas
+#   copy deck          pandas
+#   evidence badges    fastapi, sklearn, pandas, pydantic
+#
+# `numpy`, `pydantic` and `_pytest` are omitted because each is a hard
+# requirement of a name already listed and cannot be absent while that one is
+# present. `tests/test_the_pre_commit_hook_can_run_where_it_is_run.py` re-takes
+# that measurement and fails when a gate grows a dependency this list does not
+# carry — because naming today's four is how this recurs.
+#
+# It reports WHICH names are missing rather than a bare status, so the banner
+# can name them instead of restating the two it used to assume.
+GATES_MISSING=""
 gates_can_run() {
-    "$1" - <<'PROBE' >/dev/null 2>&1
+    GATES_MISSING=$("$1" - <<'PROBE' 2>/dev/null
 import importlib.util as u
-import sys
-missing = [m for m in ("pandas", "pytest") if u.find_spec(m) is None]
-sys.exit(1 if missing else 0)
+
+missing = []
+for name in ("pandas", "pytest", "fastapi", "sklearn"):
+    try:
+        present = u.find_spec(name) is not None
+    except Exception:
+        present = False          # a broken install is an absent one here
+    if not present:
+        missing.append(name)
+print(" ".join(missing))
 PROBE
+    ) || GATES_MISSING="a working python"
+    [ -z "${GATES_MISSING}" ]
 }

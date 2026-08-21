@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**434 of 992 closed.**
+**436 of 992 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 474 |
-| `PARTIAL` | 84 |
-| `FIXED` | 424 |
+| `OPEN` | 473 |
+| `PARTIAL` | 83 |
+| `FIXED` | 426 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 474
+## OPEN — 473
 
 
 ### Guided-door drive feedback — 76
@@ -249,7 +249,7 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` | Unchanged at HEAD. Behaviorally harmless because the bodies are identical, and that is exactly why it is worth recording: it is direct evidence the file was edited by paste and… |
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | Accurate at HEAD: structurally portable as-is, and the row's own last clause is the condition - add tests BEFORE the port, not after. Two live defects in this file argue the point… |
 
-### Migration safety net — 54
+### Migration safety net — 53
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -306,7 +306,6 @@ Nothing is closed without a regression test named after it.
 | `TEST-079` | low | The spelling gate reads the GENERATED ledger markdown, and that markdown does not render the `act` field, so British spellings in `act` are exempt by construction. `ledger.py set` also has no… | `tests/test_american_spelling.py (governs generated markdown); docs/turbotab/tools/ledger.py `set` accepts…` | FOUND BY THE GATE FIRING ON SOMETHING ELSE. Writing the L59 prompt I used a British spelling and the pre-commit gate caught it in the prompt and REFUSED THE COMMIT, correctly. The… |
 | `TEST-082` | low | ledger.py `set` cannot change a finding's `item`, so a row that is re-characterized keeps a headline describing the old reading and the correction lives only in the note | `docs/turbotab/tools/ledger.py set` | Add --item to `set`, with the old text preserved in the note. |
 | `TEST-103` | low | A cluster of small residues from L62's verification, each real, none worth its own row | `L62 adjudication fan-out, 11 agents, all items driven` | Filed as one row deliberately -- eight low findings as eight rows is noise that buries the two that matter, and as zero rows is the thing this ledger exists to prevent. Split any… |
-| `TEST-110` | low | The pre-commit hook's can-the-gates-run probe enumerates a SUBSET of what the gates import, so an interpreter that passes the probe can still produce the false red the probe exists to prevent | `.githooks/lib.sh:86-93 with the module tuple at :90; docs/turbotab/tools/evidence.py:302; turbotab/api.py:29…` | FOUND WHILE DRIVING TEST-108's REPAIR AT THE L65 RECONNAISSANCE. LATENT RATHER THAN LIVE, AND THE ROW SAYS SO RATHER THAN DRESSING IT UP: neither environment this repo builds can… |
 
 ### Multi-file / JSON import — 51
 
@@ -581,7 +580,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 84
+## PARTIAL — 83
 
 
 ### Guided-door drive feedback — 19
@@ -608,7 +607,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-178` | medium | The right panel becomes a deck of per-model before/after tables at Preprocess - one card per model, paged like a deck, updating when that model's pipeline changes - and the thing it can honestly show… | `PRODUCT OWNER'S PROPOSAL, VERBATIM: `Pre-processing is also the moment where we can make that right hand viz…` | **test:** `turbotab/test_the_deck_keeps_its_cards.py::test_a_card_survives_a_re_render_as_the_same_element AND ::test_the_card_quotes_the_recipe_records_reason` — L54-B. FACE ONE… |
 | `GUIDED-209` | medium | A server-side list cut to a literal bound before it is served, with nothing saying so - 43 payload keys, and the sharpest is in the exported manuscript | `L49-D, answering 08 check 5 by looking one surface over from GUIDED-195. An AST walk over every non-test…` | **test:** `turbotab/test_the_metabolomics_detectors_reach_an_upload.py::test_every_list_a_new_finding_serves_states_its_bound` — L50-D discharges it FOR THIS LOOP'S PAYLOADS and… |
 
-### Migration safety net — 15
+### Migration safety net — 14
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -626,7 +625,6 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-040` | medium | One test file holds 2157 seconds of the suite in four tests, and it sets the floor for every check that has to run the guards a FIXED row names | `L52-A, measured with --durations while fixing TEST-061. turbotab/test_ask_me_anyway_reopens_the_question.py…` | Filed rather than fixed because the file is not in this loop's scope and rewriting fixtures under four long-running page drives is its own loop with its own probe. The measurement… |
 | `TEST-063` | medium | A test rewrote the process-global operation registry and never restored it, so every later test in the same run resolved a fake pack's scale variants | `L53, found by the full suite and NOT by the test that caused it. turbotab/recipes._OPERATIONS is a…` | **test:** `turbotab/test_a_test_that_rewrites_the_registry_puts_it_back.py::test_the_registry_survives_the_files_that_rewrite_it` — THE CLASS IS WORTH MORE THAN THE INSTANCE: a… |
 | `TEST-099` | medium | DEFECT CLASS - a PID is not a running process, and a launcher that fails still forks a shell, so 'I started it' reads as 'it is running' | `L62 report divergence item 8; `which setsid` on this host` | **test:** `tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py::test_the_documented_invocation_still_collects_this_check` — The agent named the class itself and named… |
-| `TEST-108` | medium | The pre-commit hook goes RED IN ANY AGENT WORKTREE for an environmental reason, printing three ticks and three crosses -- and lib.sh's own header comment names that exact class | `.githooks/lib.sh resolve_python and its header comment; .githooks/pre-commit driven inside an agent worktree…` | **test:** `tests/test_a_documented_command_still_works.py::test_the_interpreter_the_documents_name_can_build_the_model_shelf` — FOUND BY TRIPPING IT: six of the fourteen… |
 
 ### Application state / lockbox — 12
 
@@ -740,7 +738,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 424
+## FIXED — 426
 
 
 ### Guided-door drive feedback — 163
@@ -984,7 +982,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Migration safety net — 43
+### Migration safety net — 45
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1029,8 +1027,10 @@ Nothing is closed without a regression test named after it.
 | `TEST-095` | medium | pageharness had no scrollIntoView, so the first driven press of a navigating control threw rather than reporting that the viewport did not move -- TEST-066's class, in the guard that most needed the… | `turbotab/pageharness.py El.prototype.scrollIntoView; TEST-066; LOOP.md section 02` | **test:** `turbotab/test_the_page_never_moves_the_viewport.py::test_the_rail_navigates_when_a_user_presses_it` — Fixed at L62-C. |
 | `TEST-100` | medium | TEST-097's repair WEAKENED an existing assertion while the report, the commit message and the ledger row all say only that it gained one | `TEST-097's diff against its commit message and ledger row` | **test:** `turbotab/test_the_app_says_which_build_answered.py::test_a_page_newer_than_the_engine_is_reported` — Not a large defect and it is the shape that matters: this is the… |
 | `TEST-106` | medium | The spelling gate walks into `.claude/worktrees/`, so any agent worktree turns a commit red on files that are not part of the change -- the gate already met this class once and its fix named the… | `tests/test_american_spelling.py:24-35 (SKIP_DIRS), :36 (EXEMPT_PREFIXES), :70-79 (_source_files)…` | **test:** `tests/test_american_spelling.py::test_the_enumeration_covers_the_source_and_nothing_ignored` — FOUND BY TRIPPING IT, WHICH IS THE ONLY WAY IT WOULD HAVE BEEN FOUND. THE… |
+| `TEST-108` | medium | The pre-commit hook goes RED IN ANY AGENT WORKTREE for an environmental reason, printing three ticks and three crosses -- and lib.sh's own header comment names that exact class | `.githooks/lib.sh resolve_python and its header comment; .githooks/pre-commit driven inside an agent worktree…` | **test:** `tests/test_the_pre_commit_hook_can_run_where_it_is_run.py::test_the_hook_finds_an_interpreter_from_inside_a_linked_worktree` — FOUND BY TRIPPING IT: six of the fourteen… |
 | `TEST-081` | low | ml/router.py names a guard, test_the_marker_is_the_constitutional_position, that does not exist anywhere in the tree | `ml/router.py:237` | **test:** `turbotab/test_the_marker_is_the_constitutional_position.py::test_the_document_and_the_router_agree_on_every_position` — WRITTEN, AND IT IS THE THIRD TIME THIS CLASS HAS… |
 | `TEST-097` | low | A guard's precondition depended on which file the last edit touched, so correct code produced a red in a two-hour sweep | `turbotab/test_the_app_says_which_build_answered.py::test_a_page_newer_than_the_engine_is_reported…` | **test:** `turbotab/test_the_app_says_which_build_answered.py::test_a_page_newer_than_the_engine_is_reported` — Fixed at L62-E1. |
+| `TEST-110` | low | The pre-commit hook's can-the-gates-run probe enumerates a SUBSET of what the gates import, so an interpreter that passes the probe can still produce the false red the probe exists to prevent | `.githooks/lib.sh:86-93 with the module tuple at :90; docs/turbotab/tools/evidence.py:302; turbotab/api.py:29…` | **test:** `tests/test_the_pre_commit_hook_can_run_where_it_is_run.py::test_the_probe_covers_every_package_the_gates_import_directly` — FOUND WHILE DRIVING TEST-108's REPAIR AT THE… |
 
 ### Application state / lockbox — 33
 
