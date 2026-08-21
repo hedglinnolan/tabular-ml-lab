@@ -382,13 +382,25 @@ def test_the_classic_table_does_not_silently_grow_two_columns():
         "them")
 
 
-def test_the_classic_context_declares_nothing_because_it_writes_the_keys():
+def test_the_classic_context_declares_none_of_these_because_it_writes_the_keys():
     """**Classic is the healthier door and the mechanism must say so.**
 
     Not a fixture standing in for Classic: the four keys are read out of
     `_build_manuscript_context`'s own return statement, and a context carrying
     them is put through the same validator. If Classic ever stopped writing one,
     this goes red rather than the count quietly inflating one door over.
+
+    **This test asserted `declared_checks` was EMPTY until `MISC-028` landed
+    one part later, and it was then a fixture supplying what production no
+    longer produces** — trap #3, in the file written to close a counting
+    defect. `pages/10` now also carries `analysis_total_source` and
+    `split_source`, both reading `split`, because its `analysis_total` is the
+    literal sum of the three terms the reconciliation adds up. So the real
+    Classic context declares exactly one check, and this builds the context
+    the page actually returns rather than the one it returned when this was
+    written. The split check's own behavior is asserted in
+    `test_the_split_reconciles_against_something.py`; what is asserted here is
+    that **none of `DECLARABLE`'s other three** is declared on that door.
     """
     page = (Path(__file__).resolve().parents[1] / "pages"
             / "10_Report_Export.py").read_text(encoding="utf-8")
@@ -398,10 +410,17 @@ def test_the_classic_context_declares_nothing_because_it_writes_the_keys():
             f"pages/10_Report_Export.py no longer writes {key} into the "
             f"manuscript context, so a Classic check that used to be live is "
             f"now declared and nothing here noticed")
+    for key in ("'analysis_total_source': 'split',",
+                "'split_source': 'split',"):
+        assert key in page, (
+            f"pages/10_Report_Export.py no longer carries {key}, so the "
+            f"context built below is not the one the page returns")
 
     classic_like = {
-        "population_counts": {"analysis_total": 100, "train_n": 60,
-                              "val_n": 20, "test_n": 20},
+        "population_counts": {"upload_total": 500, "analysis_total": 100,
+                              "train_n": 60, "val_n": 20, "test_n": 20,
+                              "analysis_total_source": "split",
+                              "split_source": "split"},
         "feature_counts": {"original": 12, "candidate": 12, "selected": 8},
         "feature_names_for_manuscript": ["age", "bmi"],
         "manuscript_primary_model": "rf",
@@ -410,9 +429,12 @@ def test_the_classic_context_declares_nothing_because_it_writes_the_keys():
     }
     report = validate_manuscript_bundle(classic_like, "", "", "",
                                         "classification")
-    assert not report.declared_checks, [c.name for c in
-                                        report.declared_checks]
-    assert len(report.scored_checks) == len(report.checks) == 13
+    declared = {c.name for c in report.declared_checks}
+    assert declared == {SCORED_BUT_UNMOVED_BY_A_MANUSCRIPT}, sorted(declared)
+    assert not (declared & (DECLARABLE - {SCORED_BUT_UNMOVED_BY_A_MANUSCRIPT})), (
+        f"Classic declares {sorted(declared)}, so a key whose absence declares "
+        f"a check on the Guided path has stopped being written one door over")
+    assert len(report.scored_checks) == len(report.checks) - 1 == 12
 
 
 # ═══════ 3 · IT REACHES A PERSON, OR IT IS L64-B ONE LOOP LATER ═══════

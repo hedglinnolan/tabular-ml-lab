@@ -340,6 +340,15 @@ def _counts(project_dict: Dict[str, Any],
         # `val_n` is written here for the same reason it is written above: a
         # missing key sums as zero and would let the check agree for the wrong
         # reason.
+        #
+        # AND THERE IS NO `elif lockbox.get("n_total")` FALLBACK BELOW, which
+        # is deliberate. Where the seal could not describe itself
+        # (`resolution_unavailable`) the table size is the only population
+        # left, and it is NOT the analysis cohort — writing it under
+        # `analysis_total` is exactly the defect this branch was repaired for.
+        # The block stays empty instead, so the abstract falls through to its
+        # author-gap sentence rather than stating a number that means
+        # something else.
         out["population_counts"] = {
             "analysis_total": int(cohort_n),
             "train_n": int(resolution.get("n_train") or 0),
@@ -351,13 +360,6 @@ def _counts(project_dict: Dict[str, Any],
             "analysis_total_source": "sealed_cohort",
             "split_source": "sealed_cohort",
         }
-    elif lockbox.get("n_total"):
-        # The seal could not describe itself (`resolution_unavailable`). The
-        # table size is the only population left and it is NOT the analysis
-        # cohort, so it is not written as one — the abstract falls through to
-        # its author-gap sentence rather than stating a number that means
-        # something else.
-        out["population_counts"] = {}
     return out
 
 
