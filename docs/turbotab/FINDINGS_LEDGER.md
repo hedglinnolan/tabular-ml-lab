@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**436 of 992 closed.**
+**437 of 992 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 473 |
-| `PARTIAL` | 83 |
-| `FIXED` | 426 |
+| `PARTIAL` | 82 |
+| `FIXED` | 427 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
@@ -580,7 +580,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 83
+## PARTIAL — 82
 
 
 ### Guided-door drive feedback — 19
@@ -656,14 +656,13 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-061` | medium | Import cycle ml.publication ↔ utils.insight_ledger is a genuine layering inversion | `ml/publication.py:128,182,453,460; utils/insight_ledger.py (imports at module top)` | The inversion narrowed from four formatting helpers to one pure-data constant. The presentation helpers this row says belong to neither module are no longer imported from… |
 | `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | The row's blocking condition is satisfied and its recommendation still stands. 'Entirely untested, which is the reason to do it first WITH TESTS ATTACHED' - the tests are attached… |
 
-### Other — 6
+### Other — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `AUDIT-011` | high | The Streamlit side has no record of the prediction/inference purpose at all, so none of the five decisions DOMAIN_SCIENCE section 01.3 says invert can read it | `utils/session_state.py has no purpose field; turbotab/purpose.py; DOMAIN_SCIENCE.md section 01.3…` | **test:** `turbotab/test_the_purpose_card_names_only_the_decisions_that_read_it.py::test_the_card_says_two_read_it_and_names_the_two_that_do_not` — L53-C, fanned out to four… |
 | `MISC-019` | high | DEFECT CLASS - a row is marked FIXED and its fix reached a fraction of the surfaces its own item describes, and ledger.py check cannot see it because it verifies that a test is NAMED rather than that… | `the instance is GUIDED-049, critical, FIXED, whose fix reached three call sites out of ten shipped surfaces…` | **test:** `turbotab/test_the_improbability_band_is_never_called_a_reference_interval.py::test_no_shipped_surface_calls_the_band_a_reference_interval` — STILL PARTIAL, AND ITS OWN… |
 | `MISC-023` | high | The coverage guard MISC-019's reopening relies on catches new READERS of the mapping and not new NON-readers, so the defect class it is named for passes it -- and a qualifying surface already ships | `the guard at :198-218; driven falsification with a scratch fourth surface at HEAD; MISC-019's note` | **test:** `turbotab/test_the_level_a_reader_sees_is_the_one_they_chose.py::test_every_surface_that_renders_the_outcome_reads_one_mapping` — MISC-019's reopening note claims 'a… |
-| `MISC-029` | high | The only pass/fail set in the app that feeds a RENDERED compliance count is the manuscript validator's 13 checks -- and nobody has ever asked whether any of them reads a constant | `ml/manuscript_validator.py, 426 lines, 13 checks.append sites with 13 matching status=PASS-if expressions…` | FILED AT THE L64 RECONNAISSANCE, AND IT IS WHERE GUIDED-238'S STATED HARM ACTUALLY LIVES. The shape of this finding is worth holding: an act field described a real harm, the… |
 | `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | **test:** `turbotab/test_a_skew_that_could_not_be_computed_is_not_reported_as_zero.py::test_an_unmeasurable_target_skew_is_not_reported_as_zero and… |
 | `AUDIT-012` | medium | Outlier advice is driven by a generic IQR rate that cannot tell physiologically impossible from abnormal-but-real, while the impossibility bands sit beside it unused | `ml/outliers.py:44 IQR fences; ml/eda_actions.py:412-420; ml/dataset_profile.py:214…` | **test:** `turbotab/test_the_outlier_remedy_is_not_offered_from_the_fence_alone.py::test_the_corrected_sentence_reaches_the_guided_finding_card and… |
 
@@ -738,7 +737,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 426
+## FIXED — 427
 
 
 ### Guided-door drive feedback — 163
@@ -1095,7 +1094,7 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 
-### Other — 19
+### Other — 20
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1112,6 +1111,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-084` | high | A long-running server serves a CURRENT page against a STALE API and nothing surfaces the mismatch: Python modules are pinned at import, StaticFiles re-reads index.html per request, so the interface… | `turbotab/api.py:3366 app.mount('/', StaticFiles(directory=WEB_DIR, html=True)); serving process PID 99928…` | **test:** `turbotab/test_the_app_says_which_build_answered.py::test_a_page_newer_than_the_engine_is_reported` — THE APP ANSWERS IT NOW INSTEAD OF THE ADJUDICATOR. Python modules… |
 | `MISC-025` | high | AGENT_ONBOARD.md section 03 documented the xdist command as the FIRST thing an executor reads, while TEST-098's act, PM_TRANSITION section 04 and LOOP.md's L62 row all say it must not be documented… | `docs/turbotab/prompts/AGENT_ONBOARD.md section 03 command block; tests/test_a_fixed_rows_named_test_resolves_i…` | **test:** `tests/test_a_fixed_rows_named_test_resolves_in_five_seconds.py::test_the_parallel_invocation_keeps_each_file_on_one_worker` — FOUND BECAUSE THE PRODUCT OWNER SAID HE… |
 | `MISC-026` | high | A test that writes a path git tracks -- the class behind TEST-098's four instances. Every one of them RESTORES, so `git status` is clean after the run and `git diff` is empty; the tree never drifts… | `Four instances at 98d410f: a subprocess rewriting 12 tracked files (1,461,182 bytes) in 0.421s; a research…` | **test:** `tests/test_no_test_writes_a_path_git_tracks.py::test_no_tracked_test_writes_a_path_git_tracks` — THE DETECTOR IS VALIDATED AGAINST THE FOUR REAL PRE-FIX BODIES, not… |
+| `MISC-029` | high | The only pass/fail set in the app that feeds a RENDERED compliance count is the manuscript validator's 13 checks -- and nobody has ever asked whether any of them reads a constant | `ml/manuscript_validator.py, 426 lines, 13 checks.append sites with 13 matching status=PASS-if expressions…` | **test:** `turbotab/test_the_checklist_count_says_what_it_counted.py::test_the_header_a_person_sees_counts_only_what_was_scored` — FILED AT THE L64 RECONNAISSANCE, AND IT IS WHERE… |
 | `AUDIT-004` | medium | The quick baseline drops every row with any missing feature and reports no N cascade, so the number the user reads is about a subset nobody named | `ml/eda_actions.py:1209-1211; research/NUTRITION_PACK.md section 06 anti-patterns` | **test:** `tests/test_the_manuscript_does_not_assert_an_uncorrected_count.py::test_the_quick_baseline_reports_what_it_dropped` — FIXED at L30-B, alongside AUDIT-001 because a… |
 | `AUDIT-006` | medium | The PCA biplot sets no aspect constraint, so PC2 is stretched to fill the panel and separation is visually exaggerated | `ml/macro_shape.py plot_pca_biplot; research/GENOMICS_PACK.md section 11; research/METABOLOMICS_PACK.md…` | **test:** `tests/test_the_biplot_does_not_stretch_the_second_component.py::test_the_biplot_constrains_pc2_to_the_scale_of_pc1` — L53-C, fanned out to four chunks PARTITIONED BY… |
 | `AUDIT-007` | medium | Median imputation is the silent default and nothing states what it costs, which the clinical pack marks SETTLED as bad | `ml/pipeline.py:213; pages/05_Preprocess.py:1082; research/CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2…` | **test:** `tests/integration/test_classic_states_the_cost_of_median_imputation.py::test_the_smart_defaults_path_states_what_its_median_fill_costs` — L53-C, fanned out to four… |

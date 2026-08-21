@@ -11,12 +11,47 @@ from ml.narrative_engine import _MODEL_NAMES
 
 @dataclass
 class ManuscriptValidationCheck:
-    """Single validation result."""
+    """Single validation result.
+
+    `scored` and `declared_because` are `MISC-029`. A check whose inputs are
+    absent from the manuscript context still appends a `PASS`, and the panel
+    then counts it as a unit of scrutiny — so a Guided draft was shown
+    *"13 checks, 0 unmet"* over a set in which three could not have said
+    anything else. **The number was the false assertion**; the sentence beside
+    it, which renders only when nothing failed, was true about the checks that
+    ran.
+
+    **`status` stays two-valued and nothing about the gate moves.** A third
+    value was measured and rejected: `to_rows` below collapses any non-`PASS`
+    status to the literal `"FAIL"` while `failed_checks` keys on `== "FAIL"`
+    and excludes a third value, so a third value serves `n_failed: 0` and
+    `passed: True` beside thirteen rows carrying eight `FAIL` — a header
+    reading *"13 checks, 8 unmet"* on a clean draft. That is trap #7, *the
+    machine-readable form is lossier than the sentence*, committed inside the
+    fix for it. Measured: two new fields turn 0 of 132 driven tests red across
+    11 files; a third status value turns 6 red across 3.
+
+    **The basis is STRUCTURAL and it comes from the CONTEXT, not from a
+    predicate over the payload.** `L64-B` shipped a `scored_when` predicate on
+    the figure checklist one registry over, and it does not transfer: run as a
+    payload predicate here it declares only five of the eight vacuous checks,
+    because *analysis population*, *split counts* and *final predictor count*
+    have their inputs **present** and are vacuous for reasons no predicate over
+    those inputs can see. So each check states its own basis where it is
+    derivable — *this key is absent*, *this list is empty* — and the app
+    recomputes it per render. Nothing writes a count down, and the two branches
+    of `turbotab.manuscript._counts` answer differently without anyone
+    maintaining two lists.
+    """
 
     name: str
     status: str
     location: str
     detail: str
+    #: Whether the manuscript could have moved this verdict at all.
+    scored: bool = True
+    #: Why not, in the words of the absent input. Empty when `scored`.
+    declared_because: str = ""
 
 
 @dataclass
@@ -27,22 +62,50 @@ class ManuscriptValidationReport:
 
     @property
     def failed_checks(self) -> List[ManuscriptValidationCheck]:
+        # DELIBERATELY UNCHANGED, and `passed` with it. `passed` gates the
+        # Classic download and `AGENT_ONBOARD.md` §08 check 2 is that a
+        # threshold does not move in the same loop as the change that
+        # pressured it. No declared check reports `FAIL` on either door today —
+        # `turbotab/manuscript.py` serves that as `n_declared_that_failed` and
+        # a test asserts it is zero — so excluding them here would change
+        # nothing observable while changing what a gate means.
         return [check for check in self.checks if check.status == "FAIL"]
 
     @property
     def passed(self) -> bool:
         return not self.failed_checks
 
-    def to_rows(self) -> List[Dict[str, str]]:
+    @property
+    def scored_checks(self) -> List[ManuscriptValidationCheck]:
+        """The checks the manuscript could have moved. `MISC-029`."""
+        return [check for check in self.checks if check.scored]
+
+    @property
+    def declared_checks(self) -> List[ManuscriptValidationCheck]:
+        """The checks that were decided before the draft was read."""
+        return [check for check in self.checks if not check.scored]
+
+    def to_rows(self) -> List[Dict[str, Any]]:
         return [
             {
                 "Status": "PASS" if check.status == "PASS" else "FAIL",
                 "Check": check.name,
                 "Location": check.location,
                 "Detail": check.detail,
+                "scored": check.scored,
+                "declared_because": check.declared_because,
             }
             for check in self.checks
         ]
+
+
+#: One sentence for one kind of absence, so a declared check reads the same
+#: wherever it appears. Borrowed in shape from `turbotab.manuscript`'s
+#: `_RENDER_IS_NOT_THE_FAULT`: the author is told the check did not run, and
+#: told why in terms of the input rather than of the check.
+_DECLARED = ("This check was decided before the draft was read: {what}, so "
+             "{consequence}. It is reported rather than counted, because a "
+             "verdict nothing could have changed is not a unit of scrutiny.")
 
 
 def _extract_section(text: str, heading: str, level: int) -> str:
@@ -144,7 +207,24 @@ def validate_manuscript_bundle(
     task_type: str,
     table1_df: Any = None,
 ) -> ManuscriptValidationReport:
-    """Validate manuscript consistency before export."""
+    """Validate manuscript consistency before export.
+
+    **Three checks declare themselves rather than being scored, and which
+    three depends on the context rather than on a list kept here.** Measured
+    over 3,000 randomized bundles per branch on two target shapes, holding the
+    context and `task_type` fixed and varying only the manuscript: on the
+    branch `turbotab.manuscript._counts` takes when a run is held, *Table 1
+    includes all finalized predictors* and *Abstract feature-selection
+    language* cannot dissent; on the no-run branch *Model names match* joins
+    them. Every other check moved in both directions.
+
+    **`Split counts reconcile to analysis population` is deliberately NOT
+    declared**, on either branch, and that is a decision rather than an
+    oversight. It is vacuous in two opposite ways — an identity that cannot
+    FAIL where a run wrote all three parts, and pinned at FAIL where the
+    lockbox branch wrote only two — and neither is repaired by saying so. It
+    gets a comparand instead; see `MISC-028` and `MISC-031`.
+    """
     context = manuscript_context or {}
     population = context.get("population_counts") or {}
     feature_counts = context.get("feature_counts") or {}
@@ -250,6 +330,17 @@ def validate_manuscript_bundle(
                 + ("..." if len(missing_table1_features) > 10 else "")
                 + "."
             ),
+            # `MISC-029`. The loop above iterates the finalized predictor list,
+            # so an ABSENT list makes it iterate nothing and pass whatever
+            # Table 1 contains — driven, a Table 1 whose index holds none of
+            # the predictors passes, and so does a zero-row one.
+            scored=bool(expected_feature_names),
+            declared_because=("" if expected_feature_names else _DECLARED.format(
+                what="no finalized predictor list reached the manuscript "
+                     "context (`feature_names_for_manuscript`)",
+                consequence="there is nothing to look for in Table 1, so this "
+                            "check passes over an empty list rather than over "
+                            "an agreement")),
         )
     )
 
@@ -270,6 +361,16 @@ def validate_manuscript_bundle(
                 if not missing_models
                 else f"Missing or inconsistent models: {', '.join(missing_models)}."
             ),
+            # `MISC-029`. With no model in the context the loop above never
+            # executes, so `missing_models` is empty for the one reason that
+            # is not a match.
+            scored=bool(included_models),
+            declared_because=("" if included_models else _DECLARED.format(
+                what="no model reached the manuscript context "
+                     "(`included_models` is empty)",
+                consequence="the comparison loop never runs, so this check "
+                            "passes over zero models rather than over a "
+                            "match")),
         )
     )
 
@@ -339,6 +440,21 @@ def validate_manuscript_bundle(
                 if not (should_not_reduce and reduction_language)
                 else f"Abstract still describes feature reduction even though original={original_count} and selected={selected_count}."
             ),
+            # `MISC-029`. `should_not_reduce` needs BOTH counts; with either
+            # absent it is False and the verdict is PASS whatever the abstract
+            # says. The check's premise, not its comparison, is what is
+            # missing.
+            scored=original_count is not None and selected_count is not None,
+            declared_because=(
+                "" if (original_count is not None
+                       and selected_count is not None)
+                else _DECLARED.format(
+                    what=("the pre-selection predictor count is absent from "
+                          "the manuscript context "
+                          "(`feature_counts['original']`)"),
+                    consequence=("whether the set actually shrank has no "
+                                 "answer, so this check cannot dissent "
+                                 "whatever the abstract claims"))),
         )
     )
 

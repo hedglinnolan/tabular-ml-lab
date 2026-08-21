@@ -973,6 +973,15 @@
   .d-was, .d-now{ font-size:12px; color:var(--muted); margin:2px 0;
                   max-width:78ch; line-height:1.5; }
   .d-was{ text-decoration:line-through; opacity:.75; }
+  /* MISC-029 · A DECLARED CHECK IS NOT A DEFECT IN THE DRAFT, so it must not
+     borrow `.diverged`'s warning rule. Same left-rail shape so the two read as
+     one panel, in the line color rather than the warn color — a check that
+     could not run and a check that failed are different facts, and rendering
+     them alike is the second uncalibrated layer of caution this project
+     forbids (AGENT_ONBOARD 00). */
+  .declared{ border-left:2px solid var(--line); padding:2px 0 2px 10px;
+             margin:0 0 8px; }
+  .dec-head{ font-size:12px; color:var(--ink); margin:0 0 3px; }
   .uperr{margin:12px 0 0;font-size:12.5px;color:var(--del);background:var(--del-tint);
          border:1px solid var(--del);border-radius:8px;padding:9px 12px;line-height:1.5}
   .uperr:empty{display:none}
@@ -3879,10 +3888,27 @@
       return '<div class="refused-card"><p class="r-reason">' +
              esc(MANU.because || "") + "</p></div>";
     var failed = (MANU.rows || []).filter(function(r){ return r.Status === "FAIL"; });
+    /* MISC-029 · THE COUNT SAYS WHAT IT COUNTED, AND IT IS READ RATHER THAN
+       RECOMPUTED. This line used to be `MANU.rows.length + " checks"`, which
+       asserted thirteen units of scrutiny on a Guided draft where three of the
+       thirteen were decided before the manuscript existed — no finalized
+       predictor list, no pre-selection predictor count, and on an unfitted
+       project no model at all. The number was the false assertion; the
+       sentence below merely ratified it.
+
+       The denominator now comes from `checklist_counts`, which the server has
+       computed since GUIDED-179 and nothing has ever read — that finding's
+       missing consumer, closed here. Recomputing it client-side is what let
+       the two drift in the first place. */
+    var CC = MANU.checklist_counts || {};
+    var declared = CC.declared || [];
+    var nScored = CC.n_scored;
+    if (typeof nScored !== "number") nScored = (MANU.rows || []).length;
+    var head = num(nScored, 0) + " checks, " + num(failed.length, 0) + " unmet";
+    if (declared.length) head += " · " + num(declared.length, 0) + " declared";
     var h = '<div class="run"><div class="run-head"><span class="run-lab">' +
             "What a reviewer will notice</span>" +
-            '<span class="run-note">' + num((MANU.rows || []).length, 0) +
-            " checks, " + num(failed.length, 0) + " unmet</span></div>";
+            '<span class="run-note">' + head + "</span></div>";
     /* GUIDED-131. The companion list joins the condition rather than being
        rendered under it. A draft that said "every consistency check is met"
        above a promoted figure missing its validation companion would be the
@@ -3890,8 +3916,18 @@
        job is to be the honest half. */
     if (!failed.length && !(MANU.promoted_exploratory || []).length
         && !(MANU.promoted_without_companion || []).length)
-      h += '<p class="feat-note">Every consistency check the validator makes ' +
-           "is met by this draft.</p>";
+      /* MISC-029 · RE-SCOPED RATHER THAN DELETED. The old sentence — "Every
+         consistency check the validator makes is met by this draft" — was not
+         literally false: it renders only when nothing failed, and when nothing
+         failed every check the validator made did pass. Deleting it would have
+         fixed the wrong thing. What it did was ratify a denominator that
+         claimed more scrutiny than was applied, so it now says which checks it
+         is speaking for. */
+      h += '<p class="feat-note">' + (declared.length
+             ? "Every consistency check that could be scored on this draft " +
+               "is met by it."
+             : "Every consistency check the validator makes is met by this " +
+               "draft.") + "</p>";
     failed.forEach(function(r){
       h += '<div class="diverged"><p class="d-head">' + esc(r.Check) + "</p>" +
            '<p class="d-now">' + esc(r.Detail) + "</p>" +
@@ -3923,6 +3959,30 @@
            (names ? esc(names) : "its validation companion") + "</p>" +
            '<p class="d-now">' + esc(f.because) + "</p></div>";
     });
+    /* MISC-029 · THE DECLARED CHECKS ARE SHOWN, NOT ONLY SUBTRACTED.
+       A header that reads "10 checks · 3 declared" and lists nothing has moved
+       the falsehood rather than removed it: the reader now knows a number was
+       withheld and cannot find out which. Each one carries the absent input in
+       the words of the input — `feature_names_for_manuscript` is absent,
+       `included_models` is empty — because that is the half an author can
+       act on.
+
+       Rendered in the panel's quiet class rather than as `diverged`: a check
+       that could not run is not a defect in the draft, and dressing it as one
+       would be the second uncalibrated layer of caution this project forbids
+       (AGENT_ONBOARD 00). */
+    if (declared.length){
+      h += '<p class="feat-note">' + num(declared.length, 0) +
+           (declared.length === 1 ? " check was" : " checks were") +
+           " decided before this draft was read, so " +
+           (declared.length === 1 ? "it is" : "they are") +
+           " reported rather than counted:</p>";
+      declared.forEach(function(d){
+        h += '<div class="declared"><p class="dec-head">' + esc(d.Check) +
+             "</p>" + '<p class="d-now">' + esc(d.because || "") + "</p>" +
+             '<p class="d-now">' + esc(d.Location || "") + "</p></div>";
+      });
+    }
     /* GUIDED-115. The LaTeX document, rendered by the exporter Classic uses.
        Its SIZE is stated rather than the document embedded: the point the
        reader needs is that an export exists and how much of one, and pasting

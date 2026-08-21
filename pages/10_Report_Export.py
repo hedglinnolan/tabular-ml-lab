@@ -2077,7 +2077,27 @@ validation_report = validate_manuscript_bundle(
     task_type=data_config.task_type or "regression",
     table1_df=validation_bundle['table1_df_local'],
 )
-validation_df = pd.DataFrame(validation_report.to_rows())
+# MISC-029. THE COLUMNS ARE SELECTED EXPLICITLY, and that is a decision.
+# `to_rows()` grew `scored` and `declared_because` so the Guided panel can stop
+# asserting more scrutiny than it applied; without this line those two would
+# land in the Classic table with no code change and no test covering them.
+#
+# They are dropped here rather than rendered because CLASSIC IS THE HEALTHIER
+# DOOR and the two must not get the same treatment.
+# `_build_manuscript_context` writes every context key whose absence declares a
+# check on the Guided path — `feature_names_for_manuscript`, `feature_counts`
+# with its `original`, `manuscript_primary_model`, `best_metric_name` — so
+# Classic's thirteen are thirteen LIVE checks and a `scored` column would be
+# thirteen `True`s. Measured: driven with identical needles, Classic dissents
+# 13/13 where the Guided context lets only 11/13.
+#
+# What is NOT built here, and it is filed rather than assumed away: if a
+# Classic session ever loses one of those keys the declaration would be real
+# and this table would not show it. That is MISC-032's neighbour and it waits
+# on the same ruling — `exports_blocked` below reads `validation_report.passed`
+# and must gate on exactly the set it gates on today.
+validation_df = pd.DataFrame(validation_report.to_rows())[
+    ["Status", "Check", "Location", "Detail"]]
 
 with st.expander("🔍 Pre-export Manuscript Validation", expanded=not validation_report.passed):
     if validation_report.passed:

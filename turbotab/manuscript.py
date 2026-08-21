@@ -772,28 +772,50 @@ def _checklist_counts(rows: List[Dict[str, Any]],
                       promoted: List[Dict[str, Any]],
                       orphaned: List[Dict[str, Any]]) -> Dict[str, Any]:
     """**The header and the list count different populations, and both are
-    right.** `GUIDED-179`, second half.
+    right.** `GUIDED-179`, second half — **and `MISC-029`, which is the
+    denominator itself.**
 
-    The panel's header is `rows.length + " checks, " + failed.length + " unmet"`
-    (`web/index.html:2770-2773`) and its body then renders the failed checks
-    **plus** the unsourced sections, the promoted EXPLORATORY figures and the
-    promoted figures missing a companion (`:2782-2812`). On a project with no
-    run that reads *"13 checks, 4 unmet"* above **six** items.
+    The panel's header was `rows.length + " checks, " + failed.length +
+    " unmet"` (`web/index.html:3884-3885`) and its body then renders the failed
+    checks **plus** the unsourced sections, the promoted EXPLORATORY figures
+    and the promoted figures missing a companion (`:3895-3925`). On a project
+    with no run that read *"13 checks, 4 unmet"* above **six** items.
 
-    Neither number is wrong. 13 and 4 are exact about the validator's checks;
-    the six is exact about what a reviewer will notice. What is missing is the
-    sentence saying they are different populations — and reconciling them by
-    making the header count the list would erase a distinction this file already
-    holds deliberately: *"a section the draft cannot source is not the same as a
-    check that failed, and rendering them alike would let a structural gap read
-    as a formatting slip."*
+    Neither number was wrong about what it counted. 13 and 4 are exact about
+    the validator's checks; the six is exact about what a reviewer will notice.
+    What was missing is the sentence saying they are different populations —
+    and reconciling them by making the header count the list would erase a
+    distinction this file holds deliberately: *"a section the draft cannot
+    source is not the same as a check that failed, and rendering them alike
+    would let a structural gap read as a formatting slip."*
 
-    So the payload SAYS which. It is served rather than rendered: `index.html`
-    is outside this part's edit boundary, so the panel still shows the bare
-    header and this sentence reaches no screen yet. That is a stated limit, not
-    a claim of completion.
+    **`MISC-029` is the other half and it is a falsehood rather than an
+    ambiguity.** Of those 13, three could not have said anything else — the
+    manuscript context carries no finalized predictor list, no pre-selection
+    predictor count, and on an unfitted project no model at all — so *"13
+    checks"* asserted thirteen units of scrutiny where ten were applied. The
+    header now reads the **scored** count from here, and the declared ones are
+    reported rather than counted.
+
+    **This function's own docstring used to end *"this sentence reaches no
+    screen yet. That is a stated limit, not a claim of completion."* It reaches
+    one now**, which is `GUIDED-179`'s missing consumer closed:
+    `validationHTML` reads `checklist_counts` instead of computing a
+    denominator client-side.
     """
     failed = [r for r in rows if r.get("Status") == "FAIL"]
+    # `MISC-029`. A row carries `scored` from `ManuscriptValidationCheck`;
+    # `.get(..., True)` rather than `[...]` so a caller passing rows from
+    # somewhere other than `to_rows` counts them as scrutiny rather than
+    # silently shrinking the denominator — the safe direction for a number
+    # that is a claim about how much was checked.
+    scored = [r for r in rows if r.get("scored", True)]
+    declared = [r for r in rows if not r.get("scored", True)]
+    # A check that says it could not be scored AND reports FAIL is a
+    # contradiction: the app would be asserting a defect it also says it could
+    # not have detected. It is served so it can be asserted at zero rather than
+    # assumed.
+    declared_failed = [r for r in declared if r.get("Status") == "FAIL"]
     beyond = [
         (len(unsourced), "section(s) the draft cannot source at all"),
         (len(promoted), "promoted EXPLORATORY figure(s)"),
@@ -804,24 +826,44 @@ def _checklist_counts(rows: List[Dict[str, Any]],
     if n_beyond:
         because = (
             f"The header counts the validator's checks and the list shows more "
-            f"than checks; both counts are right. There are {len(rows)} checks "
-            f"and {len(failed)} of them are unmet. The list shows those "
-            f"{len(failed)} and {n_beyond} further item(s) that are not "
-            f"validator checks at all: {_and_list(named)}. A section the draft "
-            f"cannot source is a structural gap the validator has no check for, "
-            f"so it is listed here and not counted there, because rendering "
-            f"them alike would let a structural gap read as a formatting slip.")
+            f"than checks; both counts are right. There are {len(scored)} "
+            f"scored checks and {len(failed)} of them are unmet. The list "
+            f"shows those {len(failed)} and {n_beyond} further item(s) that "
+            f"are not validator checks at all: {_and_list(named)}. A section "
+            f"the draft cannot source is a structural gap the validator has no "
+            f"check for, so it is listed here and not counted there, because "
+            f"rendering them alike would let a structural gap read as a "
+            f"formatting slip.")
     else:
         because = (
             f"The header and the list count the same {len(failed)} item(s) "
-            f"here: of {len(rows)} validator checks {len(failed)} are unmet, "
-            f"and nothing beyond the checks was found to list beside them.")
+            f"here: of {len(scored)} scored validator checks {len(failed)} "
+            f"are unmet, and nothing beyond the checks was found to list "
+            f"beside them.")
+    if declared:
+        because += (
+            f" {len(declared)} further check(s) of the {len(rows)} the "
+            f"validator makes were decided before this draft was read and are "
+            f"reported rather than counted, because a verdict nothing could "
+            f"have changed is not a unit of scrutiny.")
     return {
+        # `n_checks` KEEPS ITS MEANING — the roster the validator makes.
+        # Redefining a served field in place is the same defect this part is
+        # about one layer down: a number whose name stops matching what it
+        # counts. The header reads `n_scored` instead, and the two are served
+        # side by side so nothing downstream infers either by subtraction.
         "n_checks": len(rows),
         "n_unmet_checks": len(failed),
         "n_items_listed": len(failed) + n_beyond,
         "n_listed_that_are_not_checks": n_beyond,
         "header_and_list_count_the_same_population": n_beyond == 0,
+        "n_scored": len(scored),
+        "n_declared": len(declared),
+        "n_declared_that_failed": len(declared_failed),
+        "declared": [
+            {"Check": r.get("Check"), "Location": r.get("Location"),
+             "because": r.get("declared_because") or ""}
+            for r in declared],
         "because": because,
     }
 
