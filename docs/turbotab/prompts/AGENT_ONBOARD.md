@@ -76,7 +76,8 @@ work that is already scoped.**
 - `PRODUCT_VISION.md`, **"The export, and what a marked figure means"**.
 - `PRODUCT_VISION.md`, **"The shelf is never shortened"** and its three-rung ladder.
 
-**The five research files in `docs/turbotab/research/` are 4,247 lines and are authoritative.**
+**The five research files in `docs/turbotab/research/` are 4,262 lines and are authoritative.**
+*(Re-counted at `2761ab8`; it read 4,247 for several loops.)*
 The fifth, `INTERACTION_PACK.md`, was built at L46 and is different in one way that matters:
 **egress worked, so 100 of its 105 claims were read in primary text, and every one was then
 adversarially refuted.** It is also the only pack whose job is partly to say *do not cite this* —
@@ -171,7 +172,8 @@ missing the third `--ignore`, so following it ran the 2,099 s guard incidentally
 **A duration is a measurement and carries a date here for the same reason a count does.**
 
 **The timings above said "~8 min" for eighteen loops after it stopped being true.** `turbotab/` was
-1589 tests at L45 and is **2274+** now; a clean run took **2h02m** at L51. Budget accordingly, and
+1589 tests at L45 and **collects 2,735** now *(re-derived at `2761ab8`; this read "2274+" for ten
+loops, and the `+` made it true while understating by 461)*; a clean run took **2h02m** at L51. Budget accordingly, and
 **check `ps` first** — §06's rule about the machine is not decoration, it cost L50 its count and an
 hour of a person's evening.
 
@@ -371,14 +373,19 @@ recurred after being named. **They are ordered by how often they have actually f
 
 ### 1 · A capability shipped without its consumer
 
-**37 findings** — measured against a ledger of 672, now 861 and still growing — describe a capability
-that exists beside a path that never reaches it: four critical, many high, spanning inherited
+**37 findings** — measured against a ledger of 672, **989 at `2761ab8`** and still growing — describe a
+capability that exists beside a path that never reaches it: four critical, many high, spanning inherited
 Streamlit, early TurboTab, and last week. It is this codebase's oldest habit, and it has not stopped:
 L52 shipped two finished modules, `ml/sample_size_claim.py` and `ml/candidate_predictors.py`, with no
-importer between them.
+importer between them. **The 37 has not been re-derived and no replacement is offered** — a prose
+regex over the ledger returns 72, which is the overcount signature of trap 5b rather than growth.
+Treat it as a measurement from its own loop, not as a current count.
 
-**That instance is also the counter-example worth holding.** Their rows read `OPEN`, so the ledger
-was telling the truth — **trap #1 is dangerous when the row reads *closed*.** The cause there was a
+**That instance is also the counter-example worth holding, and it has since been closed.** Their rows
+read `OPEN` while the gap was live, so the ledger was telling the truth — **trap #1 is dangerous when
+the row reads *closed*.** *(Both are `FIXED` at `2761ab8` and both now have consumers —
+`pages/10_Report_Export.py:1736` and `pages/02_EDA.py:321-322`. The lesson is the tense: this
+paragraph asserted a live orphan for several loops after it was wired.)* The cause there was a
 fan-out partitioned by **row** when the fixes landed in files another chunk owned. **Partition a
 fan-out by FIX SITE, not by row.**
 
@@ -391,8 +398,11 @@ stays green while the app cannot reach what was built.**
 **The rule:** a part that adds a capability ships **either** with the path that consumes it, **or**
 with a test that names the missing consumer and **fails**. The second clause is the load-bearing
 one — sometimes the consumer genuinely cannot exist yet, and the honest form of that is a red test
-with a deadline, not a green suite over an unreachable module. `GUIDED-119`'s `xfail(strict=True)`
-is the model.
+with a deadline, not a green suite over an unreachable module. **`GUIDED-119` was the model and is
+now the completed example** — it shipped at L38 as an `xfail(strict=True)` naming the consumer it
+lacked, and the mark has since been removed because the claim is driven through the page harness. For
+a live one, `turbotab/test_the_a5_b6_registry_hits_are_each_a_failing_test.py:104` still carries
+`xfail(strict=True, reason="AUDIT-025 — filed at L43-B, not fixed this loop")`.
 
 **And flip it when the question is not import-shaped.** *Does anything outside a test file import
 this?* only catches the import version. Where the question is whether a *recorded* thing reaches a
@@ -458,8 +468,11 @@ absence, but a test declining to look when the defect is present.**
 **Establish the precondition from the DATA and assert it, then assert the consequence
 unconditionally.** L52 swept this: **78 conditional `pytest.skip` calls in test bodies — 55
 environmental and correct, 9 harmless, 14 in this shape.** Two were fixed and *both passed*, meaning
-they had been running all along and would have gone **quiet rather than red**. `AUDIT-039` holds the
-remaining twelve with file, line and guard.
+they had been running all along and would have gone **quiet rather than red**. `AUDIT-039` held the
+remaining twelve with file, line and guard, and **is `FIXED` at `2761ab8` holding zero** — five closed
+at L53-D, one of the remaining seven reclassified as genuinely environmental, the last six at L56-B2.
+**The L52 measurement stands as history; the "holds twelve" clause did not, and read as live work for
+several loops after it was done.**
 
 ### 3e · A test written in the same pass as its fix
 
@@ -512,11 +525,17 @@ Six instances at L63, and the filter is the same six lines of Python in every on
   what *clean* looks like. These need a control planted separately, and the good ones have it —
   `test_the_purpose_card_names_only_the_decisions_that_read_it` puts a positive control before each
   negative.
-- **Worst — a silent `continue` pre-filter with no assertion behind it at all.**
-  `docs/turbotab/tools/evidence.py:315-317` and `:340-342` skip any module whose text lacks
-  `Claim(` or `Evidence(`. The counts are **printed**, never asserted, and the tool returns `0`. If
-  either literal stops matching, **the gate checks less and still reports `ok`** — the shape inside
-  the instrument this project trusts most.
+- **Worst — a silent `continue` pre-filter with no assertion behind it at all. FIXED at L64, and the
+  paragraph is kept because the shape recurs, not because the instance is live.** `evidence.py` used
+  to skip any module whose text lacked `Claim(` or `Evidence(`; the counts were **printed**, never
+  asserted, and the tool returned `0`, so breaking either literal left **the gate checking less and
+  still reporting `ok`** — the shape inside the instrument this project trusts most. Measured then:
+  **32 of 67 claims and 0 of 51 module constants, still green.** `TEST-107` removed both filters and
+  lifted the walks into `module_claims()` / `module_constants()`, which **return** their findings so
+  floors can be asserted; a ceiling was considered and rejected as the wrong instrument. **Verified at
+  `2761ab8`: the gate now reports the full corpus — 67 claims and 51 module constants — and
+  `evidence.py:263-291` carries the history in the past tense.** Do not re-fix it; do look for the
+  next one.
 
 > **A negative assertion over a filtered population is not a check until something proves the
 > population is non-empty for the right reason.**

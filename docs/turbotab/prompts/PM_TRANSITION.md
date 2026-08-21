@@ -103,9 +103,13 @@ Where a file and your recollection disagree, the file wins.**
 
 ## 04 · State right now
 
-Branch `TurboTab`, HEAD **`0b769d3`**, tree clean, **pushed**. Ledger **988 findings, 435 closed**
-(`OPEN` 470 · `PARTIAL` 83 · `FIXED` 425 · `NOT-A-DEFECT` 10). Six pre-commit gates green.
-**L58–L63 accepted with their `LOOP.md` §03 rows written.**
+Branch `TurboTab`, tree clean. Ledger **989 findings, 434 closed** (`OPEN` 471 · `PARTIAL` 84 ·
+`FIXED` 424 · `NOT-A-DEFECT` 10) *(from the tool at `2761ab8`)*. Six pre-commit gates green.
+**L58–L64 accepted with their `LOOP.md` §03 rows written.**
+
+**Read HEAD off the machine, never off this line** — an earlier version of this paragraph named a
+commit and a count that were both one loop stale by the time it was read, which is the decay the whole
+document is written against.
 
 **The parallel sweep is licensed** as of L63 and `AGENT_ONBOARD.md` §03 carries the table:
 `-n 8 --dist loadfile` at **41:36** against serial **2:01:30**, both 0 failed. L64 re-took it at its own
@@ -308,11 +312,25 @@ is enough to trip it"*, which is a variant trap 5b does not warn about. It caugh
 
 ## 10 · What happens next
 
-1. **Write L65. `MISC-029` is Part B and it is not close** — a user is shown *"13 checks, 0 unmet"*
-   over a set in which eight cannot dissent, beside a sentence asserting every check is met. **The
-   shape to build is the one L64-B already shipped one registry over**: a scored/declared field on the
-   validation check and a third badge, so the header can read *"5 checks, 0 unmet · 8 declared."* Then
-   the same treatment for the Classic surface, which is unaudited and **gates downloads**.
+1. **L65 IS WRITTEN** (`prompts/L65.md`), built by a nine-agent reconnaissance and a three-agent
+   refutation. **Two of my own claims were destroyed in the refutation and both corrections are in its
+   §00.** Read them before you adjudicate the report, because the numbers you will be tempted to check
+   against are the *old* ones:
+   - **The denominator is a PAIR, not a scalar.** Holding the context and `task_type` fixed: the **run**
+     branch pins **3** (#2, #5, #9 at PASS) and the **no-run** branch pins **4** (#5, #6, #9 at PASS and
+     **#2 at FAIL** — a permanent false alarm no user edit can clear, driven over 4,000 bundles and
+     confirmed on the production path). **L64's "eight" is not reproducible from source by any stated
+     rule**, and applying L64's own rule uniformly returns 11 or 12.
+   - **The "five" was never a measurement.** It is `13 − 8`, and `MISC-029`'s note uses the digit twice
+     for two different things. Anyone re-deriving "five" is reading L64 back to itself.
+   - **L64-B's mechanism does not transfer, and prescribing it was my error — the same error §06.1
+     records, one loop later.** As a payload predicate it declares only **5 of 8**, because #1/#2/#3 are
+     vacuous for structural reasons no payload can see. The declaration must be **structural**, derived
+     from the **context** where it is derivable at all.
+   - **Classic is HEALTHIER than Guided, not the same defect.** `_build_manuscript_context` writes all
+     four keys whose absence freezes the Guided checks, so Classic's 13 is honest — 13/13 dissent
+     against Guided's 11. Its download gate is real but leaky (5 of 13 buttons ungated; Streamlit
+     assembles the file before applying `disabled`). **`MISC-029`'s first correction needs re-scoping.**
 2. **Part A is `TEST-108`'s missing assertion** — run the hook inside a throwaway worktree and assert
    no cross attributable to a missing module. It is the gap the adjudication found and it is small.
    `GUIDED-238`'s remaining **78** items are the fill-out; `TEST-109` (the ledger cannot repair an

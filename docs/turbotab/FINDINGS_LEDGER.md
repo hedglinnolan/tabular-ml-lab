@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**434 of 989 closed.**
+**434 of 992 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 471 |
+| `OPEN` | 474 |
 | `PARTIAL` | 84 |
 | `FIXED` | 424 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 471
+## OPEN — 474
 
 
 ### Guided-door drive feedback — 76
@@ -249,7 +249,7 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` | Unchanged at HEAD. Behaviorally harmless because the bodies are identical, and that is exactly why it is worth recording: it is direct evidence the file was edited by paste and… |
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | Accurate at HEAD: structurally portable as-is, and the row's own last clause is the condition - add tests BEFORE the port, not after. Two live defects in this file argue the point… |
 
-### Migration safety net — 53
+### Migration safety net — 54
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -306,6 +306,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-079` | low | The spelling gate reads the GENERATED ledger markdown, and that markdown does not render the `act` field, so British spellings in `act` are exempt by construction. `ledger.py set` also has no… | `tests/test_american_spelling.py (governs generated markdown); docs/turbotab/tools/ledger.py `set` accepts…` | FOUND BY THE GATE FIRING ON SOMETHING ELSE. Writing the L59 prompt I used a British spelling and the pre-commit gate caught it in the prompt and REFUSED THE COMMIT, correctly. The… |
 | `TEST-082` | low | ledger.py `set` cannot change a finding's `item`, so a row that is re-characterized keeps a headline describing the old reading and the correction lives only in the note | `docs/turbotab/tools/ledger.py set` | Add --item to `set`, with the old text preserved in the note. |
 | `TEST-103` | low | A cluster of small residues from L62's verification, each real, none worth its own row | `L62 adjudication fan-out, 11 agents, all items driven` | Filed as one row deliberately -- eight low findings as eight rows is noise that buries the two that matter, and as zero rows is the thing this ledger exists to prevent. Split any… |
+| `TEST-110` | low | The pre-commit hook's can-the-gates-run probe enumerates a SUBSET of what the gates import, so an interpreter that passes the probe can still produce the false red the probe exists to prevent | `.githooks/lib.sh:86-93 with the module tuple at :90; docs/turbotab/tools/evidence.py:302; turbotab/api.py:29…` | FOUND WHILE DRIVING TEST-108's REPAIR AT THE L65 RECONNAISSANCE. LATENT RATHER THAN LIVE, AND THE ROW SAYS SO RATHER THAN DRESSING IT UP: neither environment this repo builds can… |
 
 ### Multi-file / JSON import — 51
 
@@ -529,6 +530,23 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-113` | medium | The instability engine plots the wrong quantity on a multiclass target and does not refuse: _predict takes predict_proba's second column, which is the positive class of a binary problem and one class… | `turbotab/instability.py _predict returns proba[:, 1] for any classification task; no fixture in the…` | FOUND WHILE WRITING THE FIXTURE RULE'S not-covered list, which is the list doing its job. A multiclass project would get a prediction instability plot about ONE class's… |
 | `GUIDED-235` | medium | The model shelf is ranked on the row count under a recorded repeated-measures design, so every threshold the coach applies is applied to an inflated sample size | `L55-B, and the number is now on screen rather than only in the code. ml/model_coach.model_viability reads…` | WHAT LANDED INSTEAD IS THE NUMBER. The shelf's design statement says the order was computed from N rows, which are M people, and states that every model here treats rows as… |
 
+### Other — 12
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-037` | high | The anti-pattern registries do not exist in two of the five packs, so 'across the five packs' describes a conformance surface that is missing where the app does the most work | `L51-E, and this is the counted denominator the loop was asked for. DOMAIN_SCIENCE.md 03b's ~150 has never…` | The three registries are in three different formats - a table, dot-separated clauses, and per-section blocks - which is why the number was never counted: no single reader reads… |
+| `MISC-021` | high | The door keeps acquiring surfaces and none of them acquires a mechanism: 105 innerHTML assignments and zero identity-preserving transitions, against a design language that says replacement teaches… | `L54-B, and the L47 table is the evidence rather than a new measurement. turbotab/web/index.html had 106…` | THE CLASS IS 'a design document specifies a mechanism and the implementation acquires only surfaces'. It is trap #1 inverted: not a capability with no consumer, but a REQUIREMENT… |
+| `DRIVE-018` | high | README.md asserts the app runs end to end through grain, eligibility and the seal, which is true of the API and false of the page a user drives | `docs/turbotab/README.md, the 'app is running, end to end' paragraph; refuted by…` | THE CLAIM: 'The app is running, end to end. A driver goes upload -> lens -> orientation -> target -> purpose -> grain -> eligibility -> seal -> explore -> features -> preprocess… |
+| `MISC-024` | high | DEFECT CLASS - no gate reads an authoritative spec paragraph, so a document can state a rule in the present tense that the code stopped obeying, and nothing in the suite can report it | `DESIGN_LANGUAGE.md section 05; PRODUCT_VISION.md section 09; git log 4f73329..HEAD carries neither filename` | BOTH DOCUMENTS AMENDED BY THE ADJUDICATOR AT e6b5251, which is later than the rule requires. THE RECURRENCE IS THE FINDING: PRODUCT_VISION section 09 is a section whose entire… |
+| `MISC-031` | high | The manuscript validator's split-counts check is PINNED AT FAIL on the no-run branch, so an unfitted project is shown a validation failure that describes no real defect and that no user edit can ever… | `turbotab/manuscript.py:240-245 and :267-269; ml/manuscript_validator.py:186-193; turbotab/api.py:2773 and…` | FOUND AT THE L65 RECONNAISSANCE BY AN ADVERSARIAL REFUTER THAT WAS BREAKING THE ADJUDICATOR'S OWN CLAIM, and it is the best thing the fan-out produced. The adjudicator had… |
+| `AUDIT-038` | medium | 77 of the 131 registry entries are still unchecked against the engine, and the reason is a budget rather than a finding - recording it so the next loop does not read silence as coverage | `L51-E, and it is the honest half of this part. E ran last by the prompt's own sequencing, after Part C's four…` | AND A METHOD WARNING WORTH MORE THAN THE ROW: two of this part's capability checks returned a false absence because grep -E was given \\| alternation, which is a literal pipe in… |
+| `AUDIT-046` | medium | A loop commit swallowed the adjudicator's uncommitted docs edit, so its subject asserts something false about its own contents - the git add -A rule broken a third time, in the opposite direction… | `0c9cce3 contains docs/turbotab/prompts/PM_TRANSITION.md, 74 changed lines, under the subject 'L57-A: the…` | NOTHING WAS LOST AND THAT IS NOT THE POINT. The content is byte-identical to the adjudicator's own backup, verified by diff, and it is in HEAD. THE POINT IS THE RECORD LAYER… |
+| `MISC-022` | medium | A3's sweep: which surfaces reason about a population the fit will not use -- the number is THREE, and the row named two | `driven at L62 against a fixture of run 5's shape; turbotab/project.py analysis_mask` | REOPENED BY THE ADJUDICATOR: THE COMPLETENESS CLAIM IS FALSE. The row records THREE surfaces 'found by driving every surface that reports an n'. Two independent verifiers, both… |
+| `MISC-028` | medium | The manuscript's split reconciliation cannot fail: it asserts train_n + val_n + test_n == analysis_total while analysis_total is DEFINED as n_train + n_test and val_n is pinned to 0 | `turbotab/test_the_manuscript_is_checked.py's split assertion against turbotab/manuscript.py's counts builder…` | DRIVE-051's CLASS ONE SURFACE OVER, AND IT IS LIVE. L63-D fixed the shelf's partition and swept only index.html for the four field names; it did not sweep the CLASS. This is… |
+| `MISC-030` | medium | figure_bundle._why_not's generic fallback -- "This figure does not apply to this project" -- is reached by eleven of seventeen registry figures, and for a figure gated on a DATA STATE the app knows… | `Driven at L64-A on clinical_risk.csv with no fit: figures.REGISTRY holds 17 ids, _why_not special-cased 6…` | FILED RATHER THAN SWEPT, and the split is the reason. The fallback is the HONEST answer for a figure gated on the kind of project -- a scree plot on a table with nothing to… |
+| `MISC-032` | medium | The Classic export gate blocks a click rather than a file, and five of the page's thirteen download buttons are never gated at all | `pages/10_Report_Export.py:2099, :2092, :2591, :2593, and the five ungated buttons at :2021, :2055, :2060…` | FOUND AT THE L65 RECONNAISSANCE BY AN ADVERSARIAL REFUTER, while breaking the adjudicator's claim that Classic renders 'the same inflated count, one door over'. THAT CLAIM IS… |
+| `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
+
 ### Verified against main — 11
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -544,21 +562,6 @@ Nothing is closed without a regression test named after it.
 | `T0-PAGES-001` | medium | Duplicate-row detection has no engine home — it is inline in pages/01 | `pages/01_Upload_and_Audit.py (inline)` | Extract to the engine when pages/01 unfreezes; register the capability meanwhile. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
-
-### Other — 10
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `AUDIT-037` | high | The anti-pattern registries do not exist in two of the five packs, so 'across the five packs' describes a conformance surface that is missing where the app does the most work | `L51-E, and this is the counted denominator the loop was asked for. DOMAIN_SCIENCE.md 03b's ~150 has never…` | The three registries are in three different formats - a table, dot-separated clauses, and per-section blocks - which is why the number was never counted: no single reader reads… |
-| `MISC-021` | high | The door keeps acquiring surfaces and none of them acquires a mechanism: 105 innerHTML assignments and zero identity-preserving transitions, against a design language that says replacement teaches… | `L54-B, and the L47 table is the evidence rather than a new measurement. turbotab/web/index.html had 106…` | THE CLASS IS 'a design document specifies a mechanism and the implementation acquires only surfaces'. It is trap #1 inverted: not a capability with no consumer, but a REQUIREMENT… |
-| `DRIVE-018` | high | README.md asserts the app runs end to end through grain, eligibility and the seal, which is true of the API and false of the page a user drives | `docs/turbotab/README.md, the 'app is running, end to end' paragraph; refuted by…` | THE CLAIM: 'The app is running, end to end. A driver goes upload -> lens -> orientation -> target -> purpose -> grain -> eligibility -> seal -> explore -> features -> preprocess… |
-| `MISC-024` | high | DEFECT CLASS - no gate reads an authoritative spec paragraph, so a document can state a rule in the present tense that the code stopped obeying, and nothing in the suite can report it | `DESIGN_LANGUAGE.md section 05; PRODUCT_VISION.md section 09; git log 4f73329..HEAD carries neither filename` | BOTH DOCUMENTS AMENDED BY THE ADJUDICATOR AT e6b5251, which is later than the rule requires. THE RECURRENCE IS THE FINDING: PRODUCT_VISION section 09 is a section whose entire… |
-| `AUDIT-038` | medium | 77 of the 131 registry entries are still unchecked against the engine, and the reason is a budget rather than a finding - recording it so the next loop does not read silence as coverage | `L51-E, and it is the honest half of this part. E ran last by the prompt's own sequencing, after Part C's four…` | AND A METHOD WARNING WORTH MORE THAN THE ROW: two of this part's capability checks returned a false absence because grep -E was given \\| alternation, which is a literal pipe in… |
-| `AUDIT-046` | medium | A loop commit swallowed the adjudicator's uncommitted docs edit, so its subject asserts something false about its own contents - the git add -A rule broken a third time, in the opposite direction… | `0c9cce3 contains docs/turbotab/prompts/PM_TRANSITION.md, 74 changed lines, under the subject 'L57-A: the…` | NOTHING WAS LOST AND THAT IS NOT THE POINT. The content is byte-identical to the adjudicator's own backup, verified by diff, and it is in HEAD. THE POINT IS THE RECORD LAYER… |
-| `MISC-022` | medium | A3's sweep: which surfaces reason about a population the fit will not use -- the number is THREE, and the row named two | `driven at L62 against a fixture of run 5's shape; turbotab/project.py analysis_mask` | REOPENED BY THE ADJUDICATOR: THE COMPLETENESS CLAIM IS FALSE. The row records THREE surfaces 'found by driving every surface that reports an n'. Two independent verifiers, both… |
-| `MISC-028` | medium | The manuscript's split reconciliation cannot fail: it asserts train_n + val_n + test_n == analysis_total while analysis_total is DEFINED as n_train + n_test and val_n is pinned to 0 | `turbotab/test_the_manuscript_is_checked.py's split assertion against turbotab/manuscript.py's counts builder…` | DRIVE-051's CLASS ONE SURFACE OVER, AND IT IS LIVE. L63-D fixed the shelf's partition and swept only index.html for the four field names; it did not sweep the CLASS. This is… |
-| `MISC-030` | medium | figure_bundle._why_not's generic fallback -- "This figure does not apply to this project" -- is reached by eleven of seventeen registry figures, and for a figure gated on a DATA STATE the app knows… | `Driven at L64-A on clinical_risk.csv with no fit: figures.REGISTRY holds 17 ids, _why_not special-cased 6…` | FILED RATHER THAN SWEPT, and the split is the reason. The fallback is the HONEST answer for a figure gated on the kind of project -- a scree plot on a table with nothing to… |
-| `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
 
 ### Page-layer extraction — 5
 
