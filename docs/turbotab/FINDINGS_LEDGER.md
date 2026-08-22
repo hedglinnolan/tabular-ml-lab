@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**440 of 995 closed.**
+**440 of 1004 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 472 |
+| `OPEN` | 481 |
 | `PARTIAL` | 83 |
 | `FIXED` | 430 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 472
+## OPEN — 481
 
 
 ### Guided-door drive feedback — 76
@@ -561,6 +561,21 @@ Nothing is closed without a regression test named after it.
 | `MISC-033` | medium | L65 left prose asserting the opposite of what it shipped, at seven sites across four files -- two of them in production source, one falsified by its own commit, and a green test asserts the negation… | `ml/manuscript_validator.py:221-227 and :277-279; turbotab/test_the_checklist_count_says_what_it_counted.py:49…` | FOUND AT THE L65 ADJUDICATION BY AN ADVERSARIAL REFUTER BREAKING ANOTHER ADJUDICATION AGENT'S CENSUS, which had published one site and bounded the remainder to the wrong files.… |
 | `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
 
+### Human drive feedback — 10
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `DRIVE-054` | critical | The page reflows under the cursor when an answer is recorded, so clicks land on whatever moved -- and in an app whose premise is that every answer is written down, the layout answered questions the… | `docs/audit/DRIVE7_OBSERVATIONS.md sections 'Interaction and rendering problems' and 'THE DESIGN PASS'; driven…` | PRIMARY EVIDENCE FROM A HUMAN AT THE SCREEN, WHICH IS THE ONLY INSTRUMENT THIS PROJECT HAS FOR PRODUCT_VISION.md section 06b's third condition. THIS IS THE MOST SERIOUS FINDING OF… |
+| `DRIVE-010` | high | After the target is chosen the app does not ask which features to use, or whether to slice by subgroup | `The drive` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-055` | high | The ROC card asserts that the C-statistic does not exist and prints it in the same card, with a PASS row between them | `docs/audit/DRIVE7_OBSERVATIONS.md Run 1a; screenshots screenshot-1787416335600 and -1787416315996 at build…` | THE GOVERNING RULE'S assert-something-false BRANCH, AND IT ASSERTS BOTH SIDES AT ONCE. This is sharper than the usual instance of the class: the app is not merely wrong, it is… |
+| `DRIVE-056` | high | The reviewer panel and the draft never learn that a model was fitted, so L65-B's post-fit state is unreachable from the interface -- six fits across three datasets left the header frozen and the… | `docs/audit/DRIVE7_OBSERVATIONS.md Run 3 'AFTER fitting' and Run 4; driven by a human over six fits at build…` | THIS CORRECTS THE ADJUDICATOR'S OWN ACCEPTANCE OF L65-B AND THE CORRECTION IS MINE. Two independent adjudication agents drove '11 checks, 0 unmet - 4 declared'/'2 declared'… |
+| `DRIVE-057` | high | The app diagnoses the clustering hazard four times, contradicts itself about whether the split is clean, and offers no control to name the person column -- while elsewhere naming that column itself | `docs/audit/DRIVE7_OBSERVATIONS.md Runs 5a and 6; screenshots -1787419822723, -1787419914543, -1787420073896…` | THIS IS DRIVE-036's CONTENT, FOUND AT LAST: six previous drives never used a clustered fixture, and the row has sat unexercised. THE APP HOLDS THE ANSWER IT SAYS IT LACKS, which… |
+| `DRIVE-058` | medium | The two states that earn the app's strongest color wear its calmest ones -- red was never rendered once in six runs, and an unusable holdout is styled green SEALED | `docs/audit/DRIVE7_OBSERVATIONS.md 'THE DESIGN PASS' and Runs 5a/5b; screenshots -1787420661494, -1787420073896` | CONDITION THREE OF PRODUCT_VISION.md section 06b, MEASURED BY THE ONLY INSTRUMENT THAT CAN MEASURE IT. Note what this is NOT: it is not a complaint about taste. The app defines… |
+| `DRIVE-059` | medium | Literal markdown asterisks render unconverted inside serif prose on at least four datasets, in the voice the design language reserves for the app speaking | `docs/audit/DRIVE7_OBSERVATIONS.md Runs 5a and 6 and the design pass; build 0856c1d` | A SMALL DEFECT WHOSE CLASS IS NOT SMALL: the project already knows this failure mode well enough to have written a validator check for it, and pointed that check at the artifact… |
+| `DRIVE-060` | medium | Summary panels keep asserting states the app has already left -- 'This step is waiting for the seal' after sealing, and 'No model has been fitted yet' after fitting | `docs/audit/DRIVE7_OBSERVATIONS.md Run 1 'Other observations' and Run 2; screenshot-1787416112712; build…` | assert-something-false, IN THE MOST ORDINARY PLACE IT CAN HAPPEN, AND SEPARATE FROM DRIVE-056: that row is about the manuscript never receiving the run, this one is about panels… |
+| `DRIVE-061` | medium | The app chooses a missing-data strategy for the user and discloses it after the fit, in the one place its own rule says it may not choose | `docs/audit/DRIVE7_OBSERVATIONS.md Runs 2 and 4; build 0856c1d` | THE DISCLOSURE IS HONEST AND THAT IS WHY THIS IS FILED AS A PRODUCT DEFECT RATHER THAN A FALSEHOOD: the app says exactly what it did. It says it in small print, after the fact… |
+| `DRIVE-062` | medium | The app accepted a row identifier as a classification target 'at high confidence' -- 240 unique values across 240 rows -- while the same app refuses to hand that column to a model because every value… | `docs/audit/DRIVE7_OBSERVATIONS.md Run 4 'Other observations'; build 0856c1d` | FOUND BY A MIS-CLICK CAUSED BY DRIVE-054, which is worth recording: the layout defect manufactured the input that exposed this one. A target with one class per row cannot be… |
+
 ### Page-layer extraction — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -570,12 +585,6 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-029` | medium | Answering 'Yes, people repeat' cannot name the column that identifies the person from the Guided door, so the answer routes to an undetermined basis and a by-row split | `ml/router.py state_grain; turbotab/web/index.html askedCard` | Offer the suggestion's columns on the people_repeat branch, with the per-column evidence the route already serves. The suggestion is never the answer -- constitution 02 demotes… |
 | `DRIVE-039` | medium | After the seal is drawn, the Explore impossibility cards still render enabled 'Exclude those rows from the study' buttons with editable reason inputs, while the same card's prose says clause 04… | `run-3 drive path 1, project sealed: data-plaus-route='exclude_the_rows' buttons disabled:false with editable…` | THIRD HUMAN DRIVE, 2026-08-12. THE TESTER DID NOT PRESS IT, and said why: it would attempt an illegal mutation on a sealed project. That is the right call by a tester and it… |
 | `DRIVE-021` | low | The bulk binary-repair card says the columns were 'written as text' for six imputed_* columns that are bool dtype, so the repair's stated reason is wrong about the data it is offering to repair | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2 and 4 (F7)` | The card groups nine columns as 'need the same repair: read as binary' and its prose says they were written as text. THREE of the nine are text - gender, meds_hbp, meds_chol - and… |
-
-### DRIVE — 1
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `DRIVE-010` | high | After the target is chosen the app does not ask which features to use, or whether to slice by subgroup | `The drive` | From the product owner's second NHANES drive. Their words are the specification. |
 
 ---
 
@@ -722,7 +731,7 @@ Nothing is closed without a regression test named after it.
 | `MINE-020` | high | The JSON wrapper-key guess still lives in the engine while the disclosure lives in the view | `data_processor.py:124, 236-239, 283-287, 400-420; pages/01_Upload_and_Audit.py:311, 385-388, 413…` · **re-verified:** `data_processor.py:283-287 (the silent first-wins loop over _JSON_WRAPPER_KEYS is unchanged) versus :290-292…` | The disclosure landed; the guess did not change. inspect_json now computes the candidate wrapper keys and returns a note the page renders, which is what closed FINDINGS_LEDGER C4… |
 | `MINE-028` | high | The de-facto Router logic lives in the view, and four modules disagree about what 'done' means | `utils/theme.py:744-758; utils/workflow_provenance.py:461-477; utils/insight_ledger.py:495-501…` · **re-verified:** `utils/theme.py:743-764 now delegates to turbotab.readiness.assess (see SWEEP-001); the other three…` | One of the four definitions was removed; three remain. The theme.py probe this row names as the de-facto Router is gone - the page asks turbotab.readiness now and a source-reading… |
 
-### DRIVE — 2
+### Human drive feedback — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1205,7 +1214,7 @@ Nothing is closed without a regression test named after it.
 | `COACH-028` | invariant | Every model key in ml/model_registry.get_registry() has a viability verdict. | `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry — `missing = registry_keys…` · **re-verified:** `tests/test_coach_intelligence.py:121 - missing = registry_keys - set(v.keys()); assert not missing` | **test:** `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry` — The healthiest invariant in this domain, and it is intact: adding a model to the… |
 | `COACH-029` | invariant | The probe is seeded and reproducible. | `ml/coach_probe.py SEED=42 threaded through np.random.default_rng, KFold/StratifiedKFold(random_state=SEED)…` · **re-verified:** `ml/coach_probe.py:42-44 and the SEED threaded through np.random.default_rng…` | **test:** `tests/test_coach_intelligence.py::test_seeded_and_deterministic` — Determinism is real and structural: the probe is the one place in the engine that uses… |
 
-### DRIVE — 7
+### Human drive feedback — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|

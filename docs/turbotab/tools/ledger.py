@@ -62,6 +62,15 @@ AREA_NAME = {
     # adjudication and absent from this table until `add` started validating
     # against it — the map was a display convenience and is now a schema.
     "GUIDED": "Guided-door drive feedback",
+    # `DRIVE` is the SAME defect as `GUIDED` above, one area over, and it went
+    # unnoticed for longer because nobody had needed to `add` one: ten rows
+    # (`DRIVE-001`…`010`) have carried it since the human drives began, and
+    # `add` rejected an eleventh at the `L65` adjudication while `check` — the
+    # half the pre-commit gate runs — validates `area` not at all. So the two
+    # halves of the schema disagreed, and the corpus was the half that was
+    # right. Recorded rather than quietly corrected because the class is
+    # *a validator that refuses data its own repository already contains.*
+    "DRIVE": "Human drive feedback",
     # The multi-file / JSON import tail. `docs/FINDINGS_LEDGER.md` confirmed 48
     # defects there and lost the text of most of them when two audit runs never
     # wrote their results. These rows are the recovery: the ones the regression
