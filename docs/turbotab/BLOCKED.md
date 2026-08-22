@@ -157,3 +157,60 @@ satisfies `requirements-dev.txt`. `pytest-timeout` was declared at
 and no gate could see the difference. This is the third decay of the same claim
 in the same file — `LOOP.md` §05 records the first two — and the lesson keeps
 failing to catch it because the lesson is prose.
+
+---
+
+## L66's three pending files allocate three ledger ids twice, and the contract that produced them has no allocator
+
+**Found:** L66 orchestration, 2026-08-22, after all three agents finished.
+**Files:** `docs/turbotab/tools/pending/L66-A1.py` on `TurboTab-L66-A1`, and
+`docs/turbotab/tools/pending/L66-A2.py` on `TurboTab-L66-A2`.
+**Instrument:** reading both files after both agents reported.
+
+`L66` §00.6.2 has each agent write its intended `ledger.py` invocations to a
+pending file instead of touching `findings.json`, and §00.6.3 has the
+adjudicator apply the three files in agent order. **Nothing in that contract
+allocates ids.** Three agents ran concurrently, each read the same ledger, each
+found the same next free id, and two of them took it.
+
+**Six distinct findings are competing for three ids:**
+
+| id | Agent 1 filed | Agent 2 filed |
+|---|---|---|
+| `MISC-034` | high, `FIXED` — a container written by `innerHTML` in one branch and `ownChild` appends in another keeps what the assign branch left, forever | medium, `OPEN` — the 49 STATE+CONTRACT rows called "not closeable" are two different things, and the half called a boundary catalogue holds two criticals and thirteen highs |
+| `TEST-114` | high, `FIXED` — the page harness could not be asked what the page repaints | medium, `OPEN` — 143 of 1,005 rows carry an id whose prefix contradicts their `area` field |
+| `TEST-115` | medium, `OPEN` — the deck-region guard's matcher, two prongs, 0-of-0 today | high, `OPEN` — guards skipping worktrees by `'.worktrees' not in str(path)` are vacuous when the repository is itself checked out under `.worktrees/` |
+
+`IMPORT-268`–`271` from Agent 3 do not collide.
+
+**A second defect in the same file, independent of the collision.** Agent 1's
+pending file expresses its invocations as **comments** naming Python variables
+rather than as argv lists, and its three `add` lines carry no `--id`. `add`
+requires `--id`. So `L66-A1.py` cannot be applied mechanically even after the
+ids are settled; Agents 2 and 3 wrote argv lists that can. The contract said
+"a committed Python file holding your exact intended ledger invocations" and did
+not say executable, so this is the contract underspecifying rather than the
+agent departing from it.
+
+**What was NOT done to make it pass.** The ids were **not** renumbered and no
+pending file was edited. Renumbering is an allocation decision that belongs to
+adjudication, the ids are cross-referenced inside note prose in both files
+(Agent 1's `DRIVE-060` note says "filed as `MISC-034`"), and a rewrite that
+missed one cross-reference would put a wrong id in a record whose whole premise
+is provenance. `ledger.py check` refuses duplicate ids, so the collision fails
+loudly at apply time rather than silently — the gate works.
+
+**The recommended resolution, for whoever applies these.** Agent 1 is applied
+first under §00.6.3, so Agent 1 keeps `MISC-034` / `TEST-114` / `TEST-115` and
+Agent 2's five rows shift to the next free ids in each area, carrying their
+cross-references with them. That ordering is the contract's, not a judgment
+about which finding matters more.
+
+**The fix the contract needs, so this does not recur.** An id is not free
+because the ledger does not hold it; it is free because nothing has claimed it.
+Either the pending-file contract assigns each agent a disjoint id block up
+front, or `ledger.py` grows an `add` that allocates the next free id in an area
+itself and the pending files stop naming ids at all. The second is better: it
+removes the shared mutable resource instead of partitioning it, and it is the
+same move `count_dom_writes.py` made for a number three documents disagreed
+about.
