@@ -131,6 +131,39 @@ def cmd_stats(rows, _args) -> int:
     return 0
 
 
+def cmd_show(rows, args) -> int:
+    """Print whole rows by id, because the generated markdown truncates.
+
+    `FINDINGS_LEDGER.md` carries 2,237 ellipses: it elides `item`, `ev`, `note` and `act` to keep
+    the table readable, which is right for a table and wrong for anybody acting on a row. `MISC-021`
+    is the case that produced this subcommand — its `act` is 492 characters and the clause the
+    markdown drops is its last sentence, which is the criterion the whole row exists to state.
+
+    Until now the only way to read a row in full was to write a JSON reader, so every reader wrote
+    one, and a reader that reaches for the markdown instead gets a sentence that stops early with no
+    sign that it did. An agent cannot be told to avoid a trap it cannot see; give it the door.
+    """
+    by_id = {r["id"]: r for r in rows}
+    missing = [i for i in args.ids if i.upper() not in by_id]
+    for wanted in args.ids:
+        r = by_id.get(wanted.upper())
+        if r is None:
+            print(f"{wanted}: NOT FOUND")
+            continue
+        if args.json:
+            print(json.dumps(r, indent=1, ensure_ascii=False))
+            continue
+        print("=" * 78)
+        print(f"{r['id']}  |  area {r['area']}  |  sev {r['sev']}  |  status {r['status']}")
+        for field in ("item", "detail", "ev", "verified_ev", "note", "act", "test", "verified_against"):
+            if r.get(field):
+                print(f"\n  {field.upper()}\n    {r[field]}")
+        print()
+    # A missing id exits non-zero so a caller that scripts this cannot quietly carry on with
+    # nothing, which is the same failure the `ev`-rot rows are about one layer down.
+    return 1 if missing else 0
+
+
 def cmd_next(rows, args) -> int:
     """Emit the next batch to work, highest severity first, as JSON."""
     pool = [r for r in rows if r["status"] == "UNVERIFIED"]
@@ -398,11 +431,18 @@ def main() -> int:
     p_add.add_argument("--verified-against", dest="verified_against", default="")
     sub.add_parser("regen")
     sub.add_parser("check")
+    p_show = sub.add_parser("show")
+    p_show.add_argument("ids", nargs="+", help="finding ids, e.g. MISC-021 DRIVE-054")
+    p_show.add_argument(
+        "--json", action="store_true",
+        help="emit the raw row as JSON instead of the field-per-block reading form",
+    )
     args = ap.parse_args()
 
     rows = load()
     return {
         "stats": cmd_stats,
+        "show": cmd_show,
         "next": cmd_next,
         "set": cmd_set,
         "add": cmd_add,
