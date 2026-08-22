@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**440 of 1004 closed.**
+**440 of 1005 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 481 |
+| `OPEN` | 482 |
 | `PARTIAL` | 83 |
 | `FIXED` | 430 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 481
+## OPEN — 482
 
 
 ### Guided-door drive feedback — 76
@@ -249,7 +249,7 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` · **re-verified:** `models/rf.py:75-85 and :87-97 - predict_proba and supports_proba each defined twice, byte-identical, the…` | Unchanged at HEAD. Behaviorally harmless because the bodies are identical, and that is exactly why it is worth recording: it is direct evidence the file was edited by paste and… |
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` · **re-verified:** `visualizations.py:12, 53, 91, 129, 170 - five functions returning go.Figure or a formatted string, zero…` | Accurate at HEAD: structurally portable as-is, and the row's own last clause is the condition - add tests BEFORE the port, not after. Two live defects in this file argue the point… |
 
-### Migration safety net — 53
+### Migration safety net — 54
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -280,6 +280,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-052` | high | A mandatory FIELD standing in for a mandatory RENDERING - a raising constructor made the datum unskippable and the obligation it served was about the reader | `L50-F2, and it is sharper than trap #6. Evidence.__post_init__ REFUSES to construct a DISPUTED claim with no…` | Filed as the CLASS behind GUIDED-211, per AGENT_ONBOARD 08 check 1. sibling-of: GUIDED-211. |
 | `TEST-060` | high | Half of a fan-out's regression tests passed with the entire fan-out's code reverted - the agent that writes the fix and the test in one pass will write a test the fix does not need | `L51-C. Eight tests came back from four subagents. Reverting all 16 changed source files to HEAD left four of…` | Cheap detector available now and worth having before the rule: run the loop's new tests with the loop's own diff reverted. It is one command, it needs no per-row mapping, and it… |
 | `TEST-062` | high | All seven xfail guards in the A5/B6 registry are unconditional pytest.fail and none reads shipped code, so each is green over the defect CONDITION even though the file's ledger-drift check is sound | `Found by an L52-B verifier while checking a neighbouring row, and confirmed by the adjudicator.…` · **re-verified:** `Found by an L52-B verifier and CORRECTED IN COUNT BY THE ADJUDICATOR AT L53: it is SEVEN guards, not twelve…` | AND L53 TRIPPED LINE 45 DELIBERATELY. Closing AUDIT-022 and 023 in Part A and AUDIT-032 in Part C put three rows in the state line 45 exists to catch - marked xfail here and… |
+| `TEST-113` | high | Guards that measure a suspected mechanism rather than the consequence — a countable class, never counted. DRIVE-054 is the proven instance: every scroll guard is green (scrollIntoView exactly once… | `docs/turbotab/RETROSPECTIVE.md; docs/turbotab/RETROSPECTIVE_PACK.md section 04-B…` | One agent, one pass over guard/test files: classify each guard as consequence-measuring or mechanism-measuring; file a row per confirmed mechanism-only guard protecting a… |
 | `TEST-027` | medium | utils/persistence.py is dead code — zero importers — yet contains the reproducibility manifest the new Project layer needs | `utils/persistence.py:1-158; zero import sites repo-wide` · **re-verified:** `utils/persistence.py defines save_dataframe, load_dataframe, save_model (joblib.dump), load_model…` | Unchanged at HEAD - verified unreachable, not merely uncovered. The trap the row names is the one to record: it is tempting to adopt this wholesale as the Project serializer, and… |
 | `TEST-028` | medium | visualizations.py returns figures nobody inspects — the safest module to move and the easiest to break unnoticed | `visualizations.py:12,53,91,129,170; consumers pages/06_Train_and_Compare.py:69…` · **re-verified:** `visualizations.py:12, 53, 91, 129, 170 - five public functions, no streamlit import, no st.pyplot or…` | Unchanged at HEAD: the module is genuinely pure and genuinely untested - the two tests that name it check that it imports, not what it draws. That combination is the row's point… |
 | `TEST-029` | medium | ml.feature_steps and ml.baseline_models are uncovered and produce the numbers the manuscript compares against | `ml/feature_steps.py:11,39; ml/baseline_models.py:21,150` · **re-verified:** `ml/feature_steps.py:11 create_pca_step and :39 KMeansFeatures (both stochastic); ml/baseline_models.py:21…` | Unchanged at HEAD: both still uncovered, and both still produce published numbers. The seed sensitivity is the specific hazard - PCA's sign convention and KMeans' init are… |

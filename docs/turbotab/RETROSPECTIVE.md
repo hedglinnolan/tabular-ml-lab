@@ -104,6 +104,44 @@ pre-existing defect surface newly reached by better instruments — the light go
 surface was already there.** Not yet ruled on by the product owner; recorded as the measurement
 pack §02 said nobody had.
 
+## 05 · Drive cadence — DECIDED
+
+**His ruling, verbatim: "I'd like to stick to an evening per 5 loops unless you think we would be
+extended too far past our supply lines with that design."**
+
+The facilitator's supply-lines assessment, given and recorded: **an evening per five loops is
+workable, with the two riders that were part of the accepted sequencing** — (a) the substrate
+repair's acceptance requires a drive regardless of where it falls in the count, because reflow is
+exactly what no harness can feel; (b) a loop that ships a *new interaction pattern* pulls the drive
+forward rather than stacking un-driven. Two structural reasons the floor is safe now when it was
+not before: backlog-closure loops (§01) mostly re-verify known defects with named tests and are
+drive-cheap; and the design-as-claims instrument (§01b.3) converts part of the drive-only defect
+class into gated checks. Drive 7 priced the accepted trade: nine findings, one critical, none
+visible to 2,774 tests.
+
+**Drives follow the Drive 7 protocol**, now written into `PM_TRANSITION.md` §02: ground truth
+reconciled in a shell before trusting the screen, verbatim quotes, and "this is wrong" separated
+from "this felt bad."
+
+## 06 · The recurring error shapes get mechanisms, not paragraphs — DECIDED
+
+**His ruling, verbatim: "I am ratifying your second principle."** The principle: **a rule that
+lives in prose is a comment; a rule that lives in a gate is a mechanism** — the method held to the
+same law the project wrote about its code at `DRIVE-022`. Every future retro item that says "X
+recurred" must answer *what gate now fires*, not *what paragraph now exists*.
+
+The three consequences, executed this session:
+
+1. Error shape A (a measurement's authority carrying into an unlicensed conclusion): every
+   prescription in a loop prompt carries its own falsification, and pre-ship refuters diff prompt
+   assertions against the reconnaissance's reported facts. Written into `LOOP.md` §06.
+2. Error shape B (guards that measure a suspected mechanism rather than the consequence): the
+   repository-wide count is owed and now has a door — **`TEST-113`, filed OPEN through
+   `ledger.py`** — on the backlog queue §01 unfroze.
+3. Error shape C (verification along a path no user walks): now an acceptance check in `LOOP.md`
+   §06 — *ask of every acceptance probe: how did this state arise?* — rather than a sentence
+   living only inside `DRIVE-056`'s row.
+
 ---
 
 *Sections below this line are appended as the conversation continues.*

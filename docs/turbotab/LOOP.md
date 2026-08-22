@@ -490,7 +490,25 @@ has silence that means nothing* — and four adjudicators' greps came back empty
 anyway. **Before writing that something does not exist, open the file that would contain it and say
 which file you opened.** A grep is evidence about text; an absence is a claim about behavior.
 
-**What to look for, in order of how often it has mattered:**
+### Three mechanisms from the L58–L65 retrospective (2026-08-22) — checks, not chapters
+
+The product owner ratified the principle that **a recurring error shape gets a gate or a
+point-of-use check, not another paragraph** — the method's own `DRIVE-022` law. The three shapes
+that recurred after their rules were written (`RETROSPECTIVE_PACK.md` §04) each now carry one:
+
+1. **A prescription in a prompt carries its own falsification.** Every *do X because Y* the
+   adjudicator writes must state what observation would make it wrong — and the pre-ship refuters
+   diff each prompt assertion against the reconnaissance's reported facts, sentence against
+   sentence. L65's §00.A3 shipped a falsehood the recon's own sentence contradicted; that diff was
+   checkable and nobody's job.
+2. **Acceptance of a user-facing part requires verification along the path a user walks.** A number
+   produced by handing the harness a state the interface never delivers is not the number the part
+   owed (`DRIVE-056`: two agents drove the header to *"11 checks, 0 unmet"* on a fitted project the
+   interface cannot produce; a human fit six models and the panel never moved). Ask of every
+   acceptance probe: *how did this state arise?*
+3. **A guard measures the consequence, not the suspected mechanism.** `DRIVE-054`'s scroll guards
+   are green while the page moves for a reason they do not measure. The repository-wide count of
+   guards with this shape is owed as `TEST-113`.
 
 1. **Was a named defect *class* filed, or only its instance?** The highest-value finding of `L26`
    was a class the agent named in a docstring and did not file. A class that lives only in prose

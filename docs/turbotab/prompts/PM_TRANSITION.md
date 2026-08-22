@@ -70,11 +70,18 @@ appear on a prompt page at all.
 - **Ultracode is on.** Orchestrate substantive adjudication with the Workflow tool. §07 is what the
   fan-out has actually found, and it is the argument for keeping it.
 - **We do not drive every loop.** *"We need to continue building the product and we cannot drive and
-  test every single loop we run."* The operative form, with no free parameter: **drive when a loop has
-  shipped something a person can see.** A loop that is pure plumbing needs no drive. **Reachable-but-
-  unreadable defects accumulate silently between drives — that is an accepted trade, and its mitigation
-  is that the drive, when it comes, covers every surface built since the last one.** Say in the request
-  which screens are new.
+  test every single loop we run."* **The cadence was ruled at the 2026-08-22 retrospective, in his
+  words: an evening of driving per five loops**, replacing the trigger-only form, with two riders
+  that pull a drive forward regardless of the count: **the substrate repair (`DRIVE-054`) cannot be
+  accepted without a drive**, because reflow is precisely what no harness can feel; and **a loop that
+  ships a new interaction pattern** (not merely new copy on an existing pattern) **does not stack
+  un-driven on top of others that did.** The drive, when it comes, still covers every surface built
+  since the last one — say in the request which screens are new. **Drives follow the Drive 7
+  protocol** (`docs/audit/DRIVE7_OBSERVATIONS.md` is the exemplar): ground truth reconciled in a
+  shell before trusting the screen, verbatim quotes rather than paraphrase, and *"this is wrong"*
+  separated from *"this felt bad"* — the separation sorts findings into two different repair queues.
+  Reachable-but-unreadable defects still accumulate between drives; Drive 7 priced that trade at
+  nine findings, one critical, none visible to 2,774 tests.
 
 **Take his framings seriously; they have been load-bearing more often than mine.**
 

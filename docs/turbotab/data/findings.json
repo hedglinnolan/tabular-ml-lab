@@ -13288,5 +13288,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "docs/audit/DRIVE7_OBSERVATIONS.md Run 4 'Other observations'; build 0856c1d"
+ },
+ {
+  "id": "TEST-113",
+  "area": "TEST",
+  "sev": "high",
+  "item": "Guards that measure a suspected mechanism rather than the consequence — a countable class, never counted. DRIVE-054 is the proven instance: every scroll guard is green (scrollIntoView exactly once, scrollTo/scrollTop/scrollBy zero) while a human lost ten state changes to layout reflow the guards do not measure. The audit owed: walk the repository's guards and count how many assert the mechanism they suspect instead of the consequence a user suffers.",
+  "detail": "Filed from the 2026-08-22 retrospective (RETROSPECTIVE.md, mechanism-principle ruling). Pack section 04-B posed the question; the product owner ratified that a recurring error shape gets a gate or an audit, not a paragraph. This row is the audit's door into the backlog queue.",
+  "ev": "docs/turbotab/RETROSPECTIVE.md; docs/turbotab/RETROSPECTIVE_PACK.md section 04-B; docs/audit/DRIVE7_OBSERVATIONS.md DRIVE-054",
+  "act": "One agent, one pass over guard/test files: classify each guard as consequence-measuring or mechanism-measuring; file a row per confirmed mechanism-only guard protecting a user-reachable consequence.",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "docs/turbotab/RETROSPECTIVE.md; docs/turbotab/RETROSPECTIVE_PACK.md section 04-B; docs/audit/DRIVE7_OBSERVATIONS.md DRIVE-054"
  }
 ]
