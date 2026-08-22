@@ -37,6 +37,38 @@ regards as stable.
 **His stated objective for the method, verbatim:** *"I want to strike the balance between
 components are correct and components are built."*
 
+## 01b · Sequencing and the shape of the three excellences — DECIDED
+
+The product owner clarified the one big definition-of-done change: domain-informed content **at
+step 0** of the app (not step 10), cascading down into the routing and what options are presented.
+He affirmed excellence in all three of capabilities, rules, and design — which is §06b restated,
+not a new demand — and tentatively ordered them capabilities → rules → design, then asked for a
+recommendation. **He accepted the following, verbatim ruling: "I do accept your recommendations."**
+
+1. **Substrate first.** The identity-preserving DOM write specified at L54 (the `DRIVE-054`
+   repair) and the stale-summary-panel class go ahead of the step-0 domain content, because those
+   defects tax every subsequent capability, rule, and drive — Drive 7 lost ten state changes to
+   the page moving, including the target twice, each a permanent false line in the transcript.
+   This settles pack §08.5.
+2. **Rules and capabilities fuse: a diagnosis never ships without its lever.** Each piece of
+   domain content arrives with the control that acts on it, as one unit of work. Evidence: Run 5a
+   warned four times and empowered zero; Run 6 named `patient_id` itself and then recorded that no
+   column was named.
+3. **Design splits into two kinds.** Design-as-claims (color grammar, stale text — the palette is
+   defined as claims) moves into the correctness queue and gets an instrument: the states are
+   enumerable and the required tint is derivable from the app's own rules. This is condition
+   three's first partial instrument and settles the direction of pack §08.4. Design-as-taste
+   (card sameness, tooltip containers, typography) trails and stays human-checked by drives, on
+   purpose.
+4. **One typed memory queue.** The long-term memory of what the app still owes holds all three
+   types in one place with the ledger's discipline — each entry typed (capability / rule /
+   design-intent), filed once, closed with evidence. Whether it is a new ledger area or a promoted
+   `FEATURE_REGISTER.md` is mechanics, settled in the handoff.
+
+**Condition 5 of the definition of done stands unchanged** (the ledger closes; zero OPEN). What
+moves is allocation (§01), not the condition. *(Recorded as the facilitator's reading of his
+ruling; he has not contradicted it.)*
+
 ## 02 · How the work scales — OPEN, direction stated
 
 He raised increasing the number of parallel execution agents (*"get more developers on this
