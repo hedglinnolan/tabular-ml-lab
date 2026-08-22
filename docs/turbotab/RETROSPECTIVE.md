@@ -69,20 +69,33 @@ recommendation. **He accepted the following, verbatim ruling: "I do accept your 
 moves is allocation (§01), not the condition. *(Recorded as the facilitator's reading of his
 ruling; he has not contradicted it.)*
 
-## 02 · How the work scales — OPEN, direction stated
+## 02 · How the work scales — DECIDED
 
 He raised increasing the number of parallel execution agents (*"get more developers on this
-team"*) as the way to buy both correctness and build rate. Raised, not yet ruled; the sprint's own
-evidence on coordination costs (TEST-112's cross-agent false green; eight consecutive loops of
-adjudicator corrections) is being weighed against it in this conversation.
+team"*). The facilitator's recommendation, which he accepted (*"I say yes to both"*): **new
+parallel capacity points at backlog closure across separated ledger areas first** (GUIDED 93,
+STATE 76, TEST 65, CONTRACT 63, IMPORT 56 open at HEAD — largely independent surfaces, each with
+written evidence and a named-test closure discipline), **not at parallel feature-building on one
+DOM.** The coordination failure mode is on the record: TEST-112, one agent's stray `conftest.py`
+silently poisoning another agent's measurement — a cost that scales with builders sharing a
+surface, not with closers working separate areas. **Feature work stays serial through the loop
+structure until the substrate repair lands; revisit after.**
 
-## 03 · "A long term memory of what needs to go inside it" — OPEN, needs definition
+## 03 · "A long term memory of what needs to go inside it" — DECIDED
 
 His words: *"Ultimately, I want us to have a long term memory when we build this app of what needs
-to go inside it."* The ledger is the long-term memory of **defects**; what he is pointing at is a
-durable record of **content and capability still owed** — the domain-informed material of the one
-big definition-of-done change. What that instrument is (and whether `ROADMAP.md` /
-`DOMAIN_PACKS.md` / `FEATURE_REGISTER.md` already are it, badly) is not yet settled.
+to go inside it."* Clarified in conversation: domain-informed content **at step 0**, cascading
+into routing and options; and the memory must hold all three excellences — capabilities, rules,
+design intents — in one queue (§01b.4).
+
+**Mechanics, settled here as delegated: the container is `FEATURE_REGISTER.md`, promoted.** It is
+already schema-gated at pre-commit, maintained through `tools/register.py`, generated from
+`data/register.json`, and its own prose states the thesis — *"the count is what makes 'we owe N
+things' a number rather than a feeling."* The extension owed (build work for a future loop, not
+this retro): a typed owed-entry — `capability | rule | design-intent` — with states
+`owed → built (with evidence) → verified`, so a diagnosis-without-lever like Run 5a's person
+column is filed once as an owed capability and cannot be lost to a cleared session. **The ledger
+stays defects-only**; the register becomes the memory of what the app still owes.
 
 ## 04 · Instruments-vs-surface: the blame-date audit — MEASURED
 
@@ -142,6 +155,118 @@ The three consequences, executed this session:
    §06 — *ask of every acceptance probe: how did this state arise?* — rather than a sentence
    living only inside `DRIVE-056`'s row.
 
+## 07 · The fan-out — DECIDED
+
+**His ruling: "I say yes to both"** (this and §02). The refutation layers are kept
+unconditionally — they are the demonstrably load-bearing part: six fan-outs, no driver has ever
+come back clean, two SOUND refuters in that entire history, and in L65 the refuters caught two
+errors inside the adjudication itself that would otherwise have entered the record as rulings
+against a report that was right *(pack §03, from the workflow runs' own totals)*. What was never
+justified is the **size** (nine-agent reconnaissance, fourteen-agent adjudication, ~2.63M tokens
+at L65). **The control arm: on the first backlog-closure loop — the cheapest, best-understood
+kind of loop the method now has — run a half-size configuration and diff what the full size would
+have caught.** If the half-size arm misses nothing that matters, the savings fund the added
+parallel closure capacity; if it misses real things, the 2.6M is finally a priced purchase instead
+of an assumed one. This settles pack §08.2.
+
+## 08 · Project management debt — ACKNOWLEDGED, itemized
+
+**His words: "I realize we have been incurring project management debt from this 60+ loop
+project."** The debt, named so it can be worked rather than felt (each item already measured
+somewhere in the record):
+
+1. **Onboarding staleness points the dangerous direction.** Pack §07, audited at `2761ab8`: every
+   staleness found described work as outstanding that was already done — the direction that
+   invites a fresh agent to re-fix finished work or distrust an honest gate.
+2. **Document growth with untested inheritance.** `AGENT_ONBOARD.md` 653 lines, `PM_TRANSITION.md`
+   ~340, `LOOP.md` ~570 with §03 rows grown from two lines to essays. Nobody has tested whether a
+   fresh agent reads them in full. The mechanism principle (§06) applies to these documents too:
+   rules they carry should migrate toward gates and point-of-use checklists, and prose that is
+   only narrative history can be long without being load-bearing.
+3. **Prose asserting the opposite of what shipped** — the `MISC-033` class (seven sites, four
+   files, one falsified by its own commit), plus the ledger `ev`-rot class (`TEST-109`/`TEST-110`)
+   now partially repaired by `set --ev`.
+4. **Guards that measure mechanisms rather than consequences** — the countable, never-counted
+   class, now doored as `TEST-113`.
+5. **No owed-content memory** — settled by §03's register promotion; the debt until it is built is
+   that owed capabilities live in drive logs and cleared sessions.
+
+## 09 · What was examined and ruled fine — the number is three
+
+A retrospective that invents changes for everything it touches is worse than one that says what
+works. Three things were examined against the sprint's evidence and deliberately **not** changed:
+
+1. **Condition 5 of the definition of done stands** (the ledger closes; zero OPEN). The blame
+   audit (§04) showed the surface is not outgrowing the loops; the divergence was allocation, and
+   allocation is what moved.
+2. **The loop structure itself stands** — prompt, four-to-six parts, adjudication, divergence
+   section, log row. Eight loops, eight acceptances, and the divergence section corrected the
+   adjudicator all eight times; that is the system working, not failing.
+3. **Design-as-taste stays a human-only check, on purpose** — the drive is the instrument, now on
+   a ruled cadence with a written protocol. Condition three's *claims* half gets a machine
+   instrument; its *taste* half keeps the human one.
+
 ---
 
-*Sections below this line are appended as the conversation continues.*
+## 10 · Handoff — what the next session needs before it writes L66, in order
+
+*This section is the reason the retrospective was held. It records decisions; it does not author
+the loop. The product owner authors the next loops in a separate session.*
+
+**First, verify state off the machine, not off this page:** `git log --oneline -1` (this file's
+last commit should be at or after `5ddd92f`), `python docs/turbotab/tools/ledger.py stats`
+(1,005 total / 440 closed / 565 open+partial as of this writing — `TEST-113` is the +1), and the
+six pre-commit gates run on any commit you make.
+
+**1. The ruled priority order for the work itself.** Substrate first: the identity-preserving DOM
+write specified at L54 (the `DRIVE-054` repair) plus the stale-summary-panel class — these tax
+every subsequent capability, rule, and drive, and the product owner ruled them ahead of the step-0
+domain content. **A drive gates the substrate loop's acceptance** (reflow is what no harness can
+feel; L65 proved the harness can be handed a state no user can reach). After the substrate: the
+step-0 domain content, shipped as **rule+lever pairs — a diagnosis never ships without its
+lever.** Run 5a (warned four times, empowered zero) and Run 6 (the app named `patient_id` itself,
+then recorded that no column was named) are the canonical instances the fusion exists to prevent.
+
+**2. Every loop now carries backlog allocation.** The sprint closed 2 of ~520 pre-existing open
+findings *(re-derived at `6f3efad` vs `cd89962`)*; the product owner ruled that indefensible.
+Loops target backlog closure as deliberate work. New parallel capacity goes to area-separated
+closure agents first (§02); feature work stays serial until the substrate lands.
+
+**3. The fan-out control arm has a designated site.** First backlog-closure loop, half-size
+configuration, diff against what full size catches (§07). Keep the refuters regardless.
+
+**4. Drive cadence is ruled and written into `PM_TRANSITION.md` §02.** An evening per five loops;
+the substrate loop and any new-interaction-pattern loop pull it forward; the Drive 7 protocol
+(ground truth in a shell first, verbatim quotes, wrong-vs-felt-bad separation) is the required
+method.
+
+**5. Three new point-of-use checks live in `LOOP.md` §06** — prescriptions carry their
+falsification and refuters diff prompt claims against recon facts; acceptance probes must answer
+*how did this state arise*; guards measure consequences (`TEST-113` is the audit owed). The
+ratified principle behind them: **a recurring error shape gets a gate, not a paragraph.**
+
+**6. The owed-content memory is specified and unbuilt.** Promote `FEATURE_REGISTER.md`: typed
+entries (`capability | rule | design-intent`), states `owed → built → verified`, schema-gated as
+it already is (§03). Until built, owed capabilities noticed in drives should still be filed
+somewhere durable rather than left in observation logs.
+
+**7. The design-as-claims instrument is decided-direction, unspecified.** Color grammar is
+enforceable: the states are enumerable, the required tint derivable from the app's own palette
+rules (`DESIGN_LANGUAGE.md`). Drive 7's two canonical failures: "NOT A VERIFIED CLEAN SPLIT"
+rendered amber, and the interval-wider-than-informative-range seal rendered green, while red
+appeared zero times in six runs. Condition three's taste half stays human.
+
+**8. Measurements you do not need to re-derive** (both stamped in this file): the frozen-backlog
+split (§01) and the blame-date audit (§04 — 32 of 42 line-citable sprint findings point at
+pre-sprint code; the script is preserved in the session scratchpad and is cheap to re-run at any
+HEAD).
+
+**9. The PM debt list is §08.** Item 1 (onboard staleness, dangerous direction) is the one that
+bites a fresh agent first.
+
+**10. What did not change is §09.** Do not reopen condition 5, the loop structure, or the
+human-only taste check without new evidence.
+
+*Retrospective held 2026-08-22, facilitated against `RETROSPECTIVE_PACK.md` at `cd89962`, which
+remains unedited. All rulings quoted are the product owner's; all measurements carry their
+derivation.*
