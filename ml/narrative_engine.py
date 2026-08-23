@@ -297,6 +297,27 @@ def _count_phrase(count: int, singular: str, plural: Optional[str] = None) -> st
     return f"{count} {noun}"
 
 
+def _lockbox_open_count(ctx: Dict[str, Any]) -> Optional[int]:
+    """How many times the sealed test set was scored against — or None.
+
+    None means the question could not be answered here (a draft regenerated
+    outside the session that produced it). None is not zero and is not one: a
+    sentence claiming a single access must not be written from an absence.
+    """
+    value = ctx.get("lockbox_open_count")
+    if value is None:
+        try:
+            from utils.test_lockbox import get_lockbox
+            lb = get_lockbox()
+            value = lb.get("opened_count") if lb else None
+        except Exception:
+            return None
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _oxford_join(items: List[str]) -> str:
     """Join a list for manuscript prose."""
     cleaned = [str(item).strip() for item in items if str(item).strip()]
@@ -804,13 +825,35 @@ class NarrativeEngine:
             if _lb_ins is not None and _lb_ins.resolved:
                 _p = (_lb_ins.resolution_details or {}).get("params", {})
                 _frac = _p.get("fraction")
-                parts.append(
+                _frozen = (
                     "The held-out test set"
                     + (f" ({_frac:.0%} of eligible observations)" if _frac else "")
                     + " was frozen at data upload, before any feature engineering "
-                    "or feature selection, and was accessed only for the final "
-                    "evaluation."
+                    "or feature selection"
                 )
+                # "Accessed only for the final evaluation" is a claim about a
+                # COUNT, and it was generated from a resolution recorded at
+                # upload — before anything had been accessed at all. The count
+                # is now measured; the sentence may only make the claim the
+                # count supports (`SWEEP-008`).
+                _opens = _lockbox_open_count(self.ctx)
+                if _opens is not None and _opens > 1:
+                    parts.append(
+                        _frozen + f", and was accessed {_opens} times during "
+                        "model development. Because model, preprocessing or "
+                        "feature choices could follow each access, the reported "
+                        "held-out performance is not a single untouched "
+                        "evaluation and may be optimistically biased."
+                    )
+                elif _opens == 1:
+                    parts.append(_frozen + ", and was accessed only for the "
+                                           "final evaluation.")
+                else:
+                    # No count available (a draft regenerated outside the
+                    # session that produced it), or nothing scored yet. State
+                    # the freeze, which is recorded, and claim nothing about
+                    # how often it was opened.
+                    parts.append(_frozen + ".")
 
         return " ".join(parts)
 
@@ -1719,6 +1762,18 @@ class NarrativeEngine:
                     "biased and should not be presented as validated held-out "
                     "performance"
                 ] + list(limitations)
+            else:
+                # Same shape, same reason: a study-wide caveat goes first
+                # because `[:5]` removes the last one, and this one is about
+                # the whole evaluation rather than one column (`SWEEP-008`).
+                _opens = _lockbox_open_count(self.ctx)
+                if _opens is not None and _opens > 1:
+                    limitations = [
+                        f"the held-out test set was accessed {_opens} times "
+                        f"during model development rather than once at the end, "
+                        f"so the reported held-out performance is not a single "
+                        f"untouched evaluation and may be optimistically biased"
+                    ] + list(limitations)
 
             if limitations:
                 parts.append("**Limitations (auto-generated from analysis ledger):** ")

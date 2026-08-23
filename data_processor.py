@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from typing import Any, List, Tuple, Optional, Union
+from typing import Any, Dict, List, Tuple, Optional, Union
 import io
 import json
 
@@ -189,6 +189,84 @@ def _json_lines_to_records(text: str) -> List[Any]:
     return records
 
 
+# float64 holds consecutive integers exactly only up to 2**53. Above it, two
+# distinct participant IDs become one value with no error and no warning.
+_EXACT_INT_LIMIT = 2 ** 53
+
+
+def _large_int_fields(records: List[Any]) -> Dict[str, List[Any]]:
+    """Top-level keys whose integer values need more precision than float64.
+
+    `json.loads` parses integers with arbitrary precision, so the values are
+    still exact HERE. It is `json_normalize` (and `DataFrame`) that floats a
+    column the moment one value is null, and a float64 above 2**53 has already
+    collided two IDs into one — the false merge `ml/join_doctor.py` calls the
+    worst outcome it can produce, created upstream of everything join_doctor
+    inspects (`IMPORT-209`).
+
+    Booleans are excluded: `isinstance(True, int)` is True in Python and a
+    flag column is not an identifier.
+    """
+    big: Dict[str, List[Any]] = {}
+    if not isinstance(records, list):
+        return big
+    seen_any: Dict[str, bool] = {}
+    for row in records:
+        if not isinstance(row, dict):
+            continue
+        for key, value in row.items():
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, int):
+                # A single non-integer value means the column is not an
+                # integer identifier and must not be forced into Int64.
+                seen_any[key] = False
+                continue
+            seen_any.setdefault(key, True)
+            if abs(value) > _EXACT_INT_LIMIT:
+                big[key] = []
+    out: Dict[str, List[Any]] = {}
+    for key in big:
+        if not seen_any.get(key, False):
+            continue
+        out[key] = [
+            (row.get(key) if isinstance(row, dict) else None) for row in records
+        ]
+    return out
+
+
+def _repair_large_ints(df: pd.DataFrame, records: List[Any]) -> pd.DataFrame:
+    """Restore exact integers from the PARSED values.
+
+    Rebuilt from the records rather than from the frame: once the column is
+    float64 the collision has already happened and nothing downstream — not
+    join_doctor, not the grain question, not the seal — can undo it.
+    """
+    for key, values in _large_int_fields(records).items():
+        if key not in df.columns or len(values) != len(df):
+            continue
+        try:
+            if pd.api.types.is_integer_dtype(df[key]):
+                continue      # already exact — nothing was lost, change nothing
+        except (TypeError, ValueError):
+            pass
+        try:
+            df[key] = pd.array(values, dtype="Int64")
+        except (TypeError, ValueError, OverflowError):
+            # Beyond even Int64 (or mixed) — text keeps every digit, which is
+            # what an identifier needs. A number nobody can compare is worse
+            # than a string everybody can.
+            df[key] = pd.Series([None if v is None else str(v) for v in values],
+                                dtype="object", index=df.index)
+    return df
+
+
+def _normalize_records(records: List[Any], max_level: int) -> pd.DataFrame:
+    """`json_normalize`, with large integers kept exact."""
+    return _repair_large_ints(pd.json_normalize(records, max_level=max_level),
+                              records)
+
+
 def _stringify_nonscalar_cells(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
     """Render list/dict cells as compact JSON text.
 
@@ -243,14 +321,14 @@ def _json_obj_to_frame(obj: Any, records_key: Optional[str] = None,
         if not obj:
             raise ValueError("This JSON contains an empty list — there are no rows to load.")
         if all(isinstance(x, dict) for x in obj):
-            return pd.json_normalize(obj, max_level=max_level)
+            return _normalize_records(obj, max_level)
         if all(isinstance(x, (list, tuple)) for x in obj):
             return pd.DataFrame(obj)
         if all(not isinstance(x, (dict, list, tuple)) for x in obj):
             return pd.DataFrame({"value": obj})
         # Mixed content — normalize what we can rather than fail outright.
-        return pd.json_normalize(
-            [x if isinstance(x, dict) else {"value": x} for x in obj], max_level=max_level
+        return _normalize_records(
+            [x if isinstance(x, dict) else {"value": x} for x in obj], max_level
         )
 
     # --- object at the top level ------------------------------------------
@@ -270,15 +348,38 @@ def _json_obj_to_frame(obj: Any, records_key: Optional[str] = None,
         if {"columns", "data"} <= keys and isinstance(obj.get("data"), list):
             try:
                 df = pd.DataFrame(obj["data"], columns=obj["columns"])
+                _rows = [dict(zip(obj["columns"], r)) for r in obj["data"]
+                         if isinstance(r, (list, tuple))]
+                if len(_rows) == len(df):
+                    df = _repair_large_ints(df, _rows)
                 if isinstance(obj.get("index"), list) and len(obj["index"]) == len(df):
-                    df.index = obj["index"]
+                    # A NON-UNIQUE index cannot be installed. Everything
+                    # downstream addresses a row by its LABEL — the test-set
+                    # lockbox seals labels, `ml/splits.resolve_split_rows`
+                    # resolves them — so a repeated label stops naming one row:
+                    # sealing it seals every row carrying it while the count
+                    # reports the labels drawn, and a 15% holdout was measured
+                    # at 42% of the rows (`IMPORT-207`). The labels are kept as
+                    # an ordinary column, where they are visible and usable
+                    # (including as the subject column) rather than silently
+                    # load-bearing.
+                    _idx = pd.Index(obj["index"])
+                    if _idx.is_unique:
+                        df.index = _idx
+                    else:
+                        _name = "index"
+                        _n = 2
+                        while _name in df.columns:
+                            _name = f"index_{_n}"
+                            _n += 1
+                        df.insert(0, _name, list(obj["index"]))
                 return df
             except Exception:
                 pass  # fall through to the generic handling below
 
         # pandas orient='table': {"schema": {...}, "data": [...]}
         if {"schema", "data"} <= keys and isinstance(obj.get("data"), list):
-            return pd.json_normalize(obj["data"], max_level=max_level)
+            return _normalize_records(obj["data"], max_level)
 
         # API-style wrapper: {"data": [...]}, {"results": [...]}, ...
         for wrapper in _JSON_WRAPPER_KEYS:

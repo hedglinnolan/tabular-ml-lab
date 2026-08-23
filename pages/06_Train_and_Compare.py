@@ -96,8 +96,20 @@ render_step_indicator(6, "Train & Compare Models")
 st.title("🧠 Train & Compare Models")
 st.caption("This is the center of the recommended workflow: establish a credible baseline result before deciding whether you need advanced analyses.")
 render_breadcrumb("06_Train_and_Compare")
-from utils.test_lockbox import render_lockbox_status, is_exploratory as _lb_is_exploratory
-render_lockbox_status("This page opens the held-out test set exactly once.")
+from utils.test_lockbox import (render_lockbox_status,
+                                is_exploratory as _lb_is_exploratory,
+                                lockbox_open_count as _lb_open_count)
+# "Exactly once" was a promise the page could not keep: both train buttons are
+# re-runnable and nothing counted the openings, so a second look at the sealed
+# rows was invisible (`SWEEP-008`). The count is now recorded when held-out
+# metrics are computed, and this says what it says.
+_lb_opens_before = _lb_open_count()
+render_lockbox_status(
+    "Training on this page opens the held-out test set."
+    if _lb_opens_before == 0 else
+    f"Training again re-opens the same sealed rows — they have been scored "
+    f"against {_lb_opens_before} time(s) already."
+)
 render_page_navigation("06_Train_and_Compare")
 
 # Progress indicator
@@ -679,6 +691,8 @@ if st.button("Prepare Splits", type="primary"):
         st.session_state.train_row_labels = list(_split.train_labels)
         st.session_state.val_row_labels = list(_split.val_labels)
         st.session_state.test_row_labels = list(_split.test_labels)
+        # What the trim actually did, so no downstream page re-derives it.
+        st.session_state["split_trim_record"] = _split.trim_record
         # Positions cannot outlive the frame they index into.
         for _stale in ("train_indices", "val_indices", "test_indices"):
             st.session_state.pop(_stale, None)
@@ -727,7 +741,13 @@ if st.button("Prepare Splits", type="primary"):
             f"✅ Splits ready — Train {_n_tr:,} ({_n_tr/_n_all:.0%}) · "
             f"Val {_n_va:,} ({_n_va/_n_all:.0%}) · Test {_n_te:,} ({_n_te/_n_all:.0%})"
         )
-        st.caption("Train fits each model · Validation tunes it · Test is scored once, at the end.")
+        # This caption used to say the test set was scored a single time, at
+        # the end — the chip's unenforced promise in another voice, beside a
+        # button that can be pressed again (`SWEEP-008`). What the page can say
+        # without counting is what each partition is FOR; the count itself is
+        # on the chip above.
+        st.caption("Train fits each model · Validation tunes it · Test is what "
+                   "the final numbers are reported on.")
         # Guardrails for small evaluation sets
         if len(X_test) < 5:
             st.error(
@@ -1301,6 +1321,12 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
         This cannot be interrupted once started — close the tab to abandon the run.
         """)
 
+    # One TRAINING RUN is one opening of the sealed set, however many models it
+    # scores. Both train buttons are re-runnable and nothing counted the
+    # openings, so the chip and this page went on saying "opened once" while a
+    # researcher iterated against the held-out metric (`SWEEP-008`).
+    _opened_this_run = False
+
     for model_name in models_to_train:
         with progress_container:
             if use_optimization:
@@ -1540,6 +1566,14 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 else:
                     y_test_proba = model.predict_proba(X_test_model) if model.supports_proba() else None
                     test_metrics = calculate_classification_metrics(y_test, y_test_pred, y_test_proba)
+
+                # Recorded HERE, at the line where a held-out number comes into
+                # existence, rather than at the button — a run that fails before
+                # scoring anything has not opened anything.
+                if not _opened_this_run:
+                    from utils.test_lockbox import record_lockbox_open
+                    record_lockbox_open("Train & Compare")
+                    _opened_this_run = True
 
                 # Compute train-set metrics for overfitting assessment (#92)
                 try:

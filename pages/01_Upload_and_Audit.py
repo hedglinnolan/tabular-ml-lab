@@ -1279,10 +1279,81 @@ if task_mode == "prediction":
             ensure_lockbox, render_lockbox_status, get_lockbox,
             DEFAULT_TEST_FRACTION, is_exploratory,
         )
+        # ── who is a subject? ────────────────────────────────────────────
+        # The question the heuristics exist to guess at, asked plainly. It was
+        # never asked: `detect_cohort_structure` was imported and never called,
+        # nothing wrote `entity_id_override_value`, so the declared-entity path
+        # below — and `use_group_split` on Train & Compare — were dead code and
+        # a name the token list did not recognize had no way to be corrected
+        # (`IMPORT-257`). The heuristic is now the SUGGESTION and this is the
+        # answer.
+        _prev_lb = get_lockbox()
+        _prev_basis = (_prev_lb or {}).get('seal_basis')
+        _cohort = st.session_state.get('cohort_structure_detection')
+        if _cohort is None:
+            _cohort = CohortStructureDetection()
+            st.session_state.cohort_structure_detection = _cohort
+        _SUBJ_AUTO = "Let the app work it out"
+        _SUBJ_NONE = "No — each row is a different participant"
+        _subject_options = [_SUBJ_AUTO, _SUBJ_NONE] + [str(c) for c in df.columns]
+        if 'subject_id_declaration' not in st.session_state:
+            if getattr(_cohort, 'entity_id_override_enabled', False):
+                _declared_now = getattr(_cohort, 'entity_id_override_value', None)
+                st.session_state['subject_id_declaration'] = (
+                    str(_declared_now) if _declared_now in list(df.columns) else _SUBJ_NONE)
+            else:
+                st.session_state['subject_id_declaration'] = _SUBJ_AUTO
+        elif st.session_state['subject_id_declaration'] not in _subject_options:
+            # The named column left the data (engineering, a repair). Fall back
+            # rather than let Streamlit raise on a default that is gone.
+            st.session_state['subject_id_declaration'] = _SUBJ_AUTO
+        with st.expander(
+                "👤 Which column identifies a subject/participant?",
+                expanded=_prev_basis == 'undetermined'):
+            st.caption(
+                "If one person can appear in more than one row (repeated visits, "
+                "several samples per participant), the held-out set must be drawn "
+                "by PERSON — otherwise the same person is in training and in the "
+                "test set and held-out performance reads better than it is. The "
+                "app guesses from column names, and a name it does not recognize "
+                "is why this control exists."
+            )
+            _subject_choice = st.selectbox(
+                "Which column identifies a subject/participant?",
+                options=_subject_options,
+                key='subject_id_declaration',
+                label_visibility="collapsed",
+                help="Choose the column holding one value per person. Pick the "
+                     "second option if every row is a different person.",
+            )
+            if _subject_choice == _SUBJ_AUTO:
+                _cohort.entity_id_override_enabled = False
+                _cohort.entity_id_override_value = None
+                if _prev_lb and _prev_lb.get('group_col'):
+                    st.caption(f"Currently splitting by `{_prev_lb['group_col']}` "
+                               f"(detected from its name).")
+            else:
+                _cohort.entity_id_override_enabled = True
+                _cohort.entity_id_override_value = (
+                    None if _subject_choice == _SUBJ_NONE else _subject_choice)
+                if _subject_choice == _SUBJ_NONE:
+                    st.caption(
+                        "Recorded: one row per participant. The held-out set is "
+                        "drawn by row and the seal records that you stated it."
+                    )
+                else:
+                    _n_subj = int(df[_subject_choice].nunique(dropna=True))
+                    st.caption(
+                        f"Recorded: `{_subject_choice}` identifies a participant — "
+                        f"{_n_subj:,} of them across {len(df):,} rows. The held-out "
+                        f"set is drawn by participant, and this column is held back "
+                        f"from the predictors."
+                    )
+            st.session_state.cohort_structure_detection = _cohort
+
         # A declared subject/entity ID always wins over auto-detection: with
         # repeated measures the split must be by SUBJECT, or the same person
         # lands in both training and the sealed test set.
-        _cohort = st.session_state.get('cohort_structure_detection')
         _entity_col = getattr(_cohort, 'entity_id_final', None) if _cohort else None
         _lb = ensure_lockbox(df, target_col, task_type_final, group_col=_entity_col)
         if _lb is not None and _lb.get('group_col'):

@@ -171,48 +171,28 @@ def test_a_many_to_many_product_is_undetermined_rather_than_silent():
     assert leak == 10
 
 
-# ── what is still false, pinned so it cannot be forgotten ────────────────
+# ── the gap that used to be pinned here, now closed ──────────────────────
 
-def test_KNOWN_GAP_an_unrecognized_id_name_is_still_recorded_as_cross_sectional():
-    """KNOWN GAP, asserted so it stays visible: `IMPORT-022`.
+def test_an_unrecognized_id_name_is_sealed_as_undetermined_not_cross_sectional():
+    """The KNOWN GAP this test spent its life pinning (`IMPORT-022`) is closed.
 
-    The `KNOWN_GAP_` prefix is load-bearing and belongs in the NAME, not only
-    here. CI prints the name and nothing else, so a green line reading
-    `test_an_unrecognized_id_name_is_still_recorded_as_cross_sectional PASSED`
-    is indistinguishable from a regression guard — it scans as the suite
-    endorsing the behavior it is in fact recording as broken. Same silence this
-    project keeps finding, one layer up. See `FEATURE_PARITY.md`, "name every
-    test after the defect it guards".
+    `SUBJ` repeats 60 values × 3 rows — a textbook repeated-measures shape.
+    The name-token gate still does not *recognize* the spelling (first assert,
+    unchanged — constitution §02: name lists cannot close this), and a row
+    split over this frame still leaks (second assert, unchanged). What changed
+    is what the seal ASSERTS: measured repetition under an unrecognized name
+    now routes to `undetermined` with a loud chip pointing at the pages/01
+    subject-declaration control, never to a clean `cross_sectional` lock.
+    Classic asks instead of guessing, which is the fix the old docstring's
+    forward path (`target-grain-question`) named.
 
-    `SUBJ` repeats 60 values × 3 rows — a textbook repeated-measures shape —
-    and the name-token gate rejects it before the repetition is ever measured,
-    so the seal records `cross_sectional` and renders a clean lock over a
-    23-of-60 leak.
-
-    Constitution §02 says name lists cannot close this and must not be tuned as
-    though they could: the fix is to *ask*. This test asserts the current, wrong
-    behavior deliberately.
-
-    **It goes red when CLASSIC asks the grain question — not when the question
-    ships.** The distinction is the whole reason this docstring was corrected at
-    L14. The question shipped in the Guided door at L13 (`turbotab/grain.py`,
-    `AnalysisProject.set_grain`), and this test stayed green, correctly: it
-    drives `ensure_lockbox`, which is Classic's path and still infers. A reader
-    who trusted the old wording — *"it will fail when the grain question
-    ships"* — would have concluded from the green line either that the question
-    had not shipped or that this test was broken. Both wrong, and a test whose
-    entire job is to be honest about a gap cannot afford to be misread about
-    when it fires.
-
-    So: change it when `pages/01_Upload_and_Audit.py` calls the grain question
-    instead of `detect_repeated_subjects`. Until then, green here means Classic
-    still guesses. See `IMPORT-022`, and the register row
-    `target-grain-question` for the dated forward path.
+    This test is now an ordinary regression guard: red again means the seal
+    went back to asserting a grain it never measured.
     """
     df = cohort(np.repeat(range(60), 3), key="SUBJ")
     assert detect_repeated_subjects(df) is None
     lb, leak = seal(df, key="SUBJ")
     assert leak > 0, "the fixture no longer exercises the leak"
-    assert lb["seal_basis"] == SEAL_CROSS_SECTIONAL, (
-        "the name gate now routes to a truthful basis — good; update "
-        "IMPORT-022 and this test together")
+    assert lb["seal_basis"] == SEAL_UNDETERMINED, (
+        "a roster-shaped column with an unrecognized name must never seal as "
+        "cross_sectional (IMPORT-022)")

@@ -9,7 +9,10 @@ Methodological contract (split-first workflow):
   fits, feature selection, target-association views — operates on training
   rows only, via train_row_mask().
 - Train & Compare consumes the frozen labels as THE test set and only divides
-  the remaining rows into train/validation. The test set is opened once.
+  the remaining rows into train/validation. Opening it is COUNTED
+  (`opened_count`, `record_lockbox_open`): the contract is one opening, both
+  train buttons are re-runnable, and a chip that promised "opened once" beside
+  an uncounted button was asserting something it could not know (`SWEEP-008`).
 - 'Exploratory mode' disables the quarantine explicitly; downstream metrics
   and the manuscript are watermarked accordingly (never silently).
 
@@ -101,6 +104,30 @@ def get_lockbox() -> Optional[Dict[str, Any]]:
     return None
 
 
+def _index_identity(df: pd.DataFrame) -> str:
+    """A hash of the row LABELS, which are what the lockbox actually seals.
+
+    The signature used to cover cell content only, so a frame whose rows were
+    renumbered — `reset_index()`, a re-export, a fresh assembly of the same
+    tables — hashed IDENTICALLY to the frame the seal was drawn on, and
+    `ensure_lockbox` handed back the stale lockbox. Its labels then named
+    different people, or nobody at all.
+
+    Order-insensitive on purpose: membership is decided by label, so a permuted
+    frame with the same labels seals exactly the same rows and is the same
+    identity. A legitimate re-upload of the same file rebuilds the same labels
+    (a fresh RangeIndex over the same rows) and still matches, which is what
+    keeps a redraw from firing on every reload.
+    """
+    try:
+        return str(int(pd.util.hash_pandas_object(pd.Series(df.index)).sum()))
+    except Exception:
+        try:
+            return f"{len(df.index)}|{df.index.dtype}|{df.index[:1].tolist()}"
+        except Exception:
+            return str(len(df))
+
+
 def _lockbox_signature(df: pd.DataFrame, target_col: str, task_type: str,
                        fraction: float, seed: int, group_col: Optional[str] = None) -> str:
     try:
@@ -114,7 +141,7 @@ def _lockbox_signature(df: pd.DataFrame, target_col: str, task_type: str,
             content = f"{df.shape}|{tuple(df.columns)}|{df.notna().sum().sum()}"
         except Exception:
             content = str(df.shape)
-    return (f"{content}|{df.shape}|{target_col}|{task_type}|"
+    return (f"{content}|{_index_identity(df)}|{df.shape}|{target_col}|{task_type}|"
             f"{fraction:.4f}|{seed}|{group_col or ''}")
 
 
@@ -188,6 +215,61 @@ def _id_kind(col: Any) -> Optional[str]:
     return "record"
 
 
+# ── the name-blind half ──────────────────────────────────────────────────────
+# A column is ROSTER-SHAPED when its values repeat like a list of people:
+# many distinct values, each carrying a handful of rows, and carrying them
+# REGULARLY. The test never sees the column's name, so no spelling can defeat
+# it — which is the whole point, because `_SUBJECT_ID_TOKENS` is a list and the
+# next unrecognized spelling is always one dataset away (`IMPORT-022`).
+#
+# Regularity is what separates a roster from a coincidence: three visits per
+# person is a study design; an integer covariate that happens to average 2.4
+# rows per value is not. Measured as the share of values whose row count equals
+# the modal row count.
+_ROSTER_MIN_REPEATS = 2.0
+_ROSTER_MIN_REGULARITY = 0.5
+
+
+def _roster_shape(s: pd.Series, k: int, n: int) -> Optional[Dict[str, Any]]:
+    """Shape facts about a column that repeats like a roster, or None.
+
+    Deliberately NOT told the column's name. The bounds are the ones the seal
+    already uses, so the detector and the split cannot disagree about what
+    "repeats" means.
+
+    The floor of two rows per value is the price of being name-blind: at 1.3
+    rows per value a partial-follow-up roster and a mostly-unique measurement
+    are the same shape, and there is no evidence left to separate them. That
+    case is covered by the name list when it recognizes the spelling and by the
+    declared subject column when it does not — never by guessing here.
+    """
+    try:
+        if pd.api.types.is_float_dtype(s) or pd.api.types.is_bool_dtype(s):
+            return None                   # a measurement or a flag, not a roster
+        if pd.api.types.is_datetime64_any_dtype(s):
+            return None                   # a visit date repeats; it is not a person
+    except Exception:
+        return None
+    if k < _MIN_GROUPS_FOR_GROUPED_LOCKBOX:
+        return None                       # a stratum, not a roster
+    non_null = int(s.notna().sum())
+    if not non_null:
+        return None
+    rows_per = non_null / k
+    if rows_per < _ROSTER_MIN_REPEATS or rows_per > _MAX_ROWS_PER_GROUP:
+        return None
+    try:
+        sizes = s.dropna().value_counts()
+        modal = int(sizes.mode().iloc[0]) if len(sizes) else 0
+        regular = float((sizes == modal).mean()) if len(sizes) else 0.0
+    except Exception:
+        return None
+    if regular < _ROSTER_MIN_REGULARITY:
+        return None
+    return {"n_groups": k, "n_rows": n, "rows_per": rows_per,
+            "modal_rows_per": modal, "regular_share": regular}
+
+
 def _nests_within(df: pd.DataFrame, fine: str, coarse: str) -> bool:
     """True when every value of `fine` sits inside exactly one value of `coarse`."""
     try:
@@ -257,10 +339,29 @@ def rank_grouping_candidates(df: pd.DataFrame,
         # instead of rendering a clean lock over them.
         kind = _id_kind(col)
         if kind is None:
+            # MEASURED REPETITION IS NEVER DISCARDED. This used to `continue`,
+            # and a column holding 60 people across 180 rows vanished because
+            # `SUBJ` is not in the token list: the split went by row, the same
+            # person landed on both sides, and the seal recorded
+            # `cross_sectional` — a positive claim that the study has one row
+            # per person, asserted over repetition this loop had already
+            # measured (`IMPORT-020`, `IMPORT-022`).
+            #
+            # A name we do not recognize is not evidence of anything. The
+            # SHAPE is, so a roster-shaped column reaches `unclear` and the
+            # seal records `undetermined` — a disclosure rather than a guess.
+            # It is not promoted to a group column: which column identifies a
+            # participant is the user's to state, not ours to infer from shape
+            # alone (the picker on Upload & Audit is where they state it).
+            shape = _roster_shape(s, k, n)
+            if shape:
+                unclear.append({"column": str(col), "kind": None,
+                                "reason": "unrecognized_name", **shape})
             continue
         if rows_per > _MAX_ROWS_PER_GROUP:
             unclear.append({"column": str(col), "n_groups": k, "n_rows": n,
-                            "kind": kind, "rows_per": rows_per})
+                            "kind": kind, "rows_per": rows_per,
+                            "reason": "repeats_too_often"})
             continue
         found.append({"column": str(col), "n_groups": k, "n_rows": n, "kind": kind})
     if not found:
@@ -268,8 +369,14 @@ def rank_grouping_candidates(df: pd.DataFrame,
         # identifier. The caller needs to know the difference between "no
         # repetition" and "repetition we could not read".
         if unclear:
+            # A column whose name we did not recognize but whose shape is a
+            # roster is the more actionable of the two, so it is named first:
+            # the user can point at it in the subject picker.
             _state()["_lockbox_repetition_unclear"] = sorted(
-                unclear, key=lambda c: -c["rows_per"])[:3]
+                unclear,
+                key=lambda c: (0 if c.get("reason") == "unrecognized_name" else 1,
+                               -(c.get("regular_share") or 0.0),
+                               -c["rows_per"]))[:3]
         return []
 
     # A person beats a bare record id; both beat a cluster. Only if nothing
@@ -310,6 +417,77 @@ def detect_repeated_subjects(df: pd.DataFrame,
     return (top["column"], top["n_groups"], top["n_rows"])
 
 
+def declared_subject_col() -> Tuple[bool, Optional[str]]:
+    """What the USER said identifies a subject: (answered, column).
+
+    `(True, None)` is the answer "one row per participant" and is a different
+    fact from `(False, None)`, which is no answer at all. The first stops the
+    heuristic; the second is what runs it. Read from the same
+    `cohort_structure_detection` record Train & Compare reads, so the seal and
+    the train/val split cannot disagree about who the subject is.
+    """
+    cohort = _state().get("cohort_structure_detection")
+    if cohort is None or not getattr(cohort, "entity_id_override_enabled", False):
+        return False, None
+    return True, (getattr(cohort, "entity_id_override_value", None) or None)
+
+
+def record_lockbox_open(source: str = "") -> Optional[Dict[str, Any]]:
+    """Count one opening of the sealed test set, with a timestamp.
+
+    Called where held-out metrics are actually computed. The count is what
+    makes "opened once" a measured fact rather than a promise the interface
+    repeats: both train buttons are re-runnable, so a second opening costs two
+    clicks, and nothing else in the app would notice (`SWEEP-008`).
+    """
+    lb = get_lockbox()
+    if lb is None:
+        return None
+    from datetime import datetime
+    opens = list(lb.get("opened_at") or [])
+    opens.append(datetime.now().isoformat(timespec="seconds")
+                 + (f" ({source})" if source else ""))
+    lb["opened_at"] = opens
+    lb["opened_count"] = int(lb.get("opened_count", 0)) + 1
+    _state()["test_lockbox"] = lb
+    return lb
+
+
+def lockbox_open_count() -> int:
+    """How many times held-out metrics have been computed against this seal."""
+    lb = get_lockbox()
+    if lb is None:
+        return 0
+    try:
+        return int(lb.get("opened_count", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def quarantine_is_active() -> bool:
+    """True only when a lockbox exists AND is being enforced.
+
+    The question every page-level caption about held-out rows has to ask
+    before it asserts anything. `train_row_mask` returns an all-True mask both
+    when the quarantine is OFF and when there is no lockbox at all, and a
+    caption guarded on exploratory mode alone therefore claimed an exclusion
+    that had not happened (`MINE-005`).
+    """
+    return get_lockbox() is not None and not is_exploratory()
+
+
+def lockbox_absence_reason() -> Optional[Dict[str, Any]]:
+    """Why there is no lockbox, when we know — for the page to render.
+
+    Absence is a STATE, not a None. Something refused to seal, or nothing ever
+    tried; either way the researcher is owed the difference between "held out"
+    and "nothing was held out".
+    """
+    if get_lockbox() is not None:
+        return None
+    return _state().get("_lockbox_not_sealed") or None
+
+
 def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
                    fraction: Optional[float] = None,
                    seed: Optional[int] = None,
@@ -322,8 +500,19 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
     invalidates downstream results — models evaluated against a different
     test set are no longer comparable.
     """
+    def _cannot_seal(reason: str, **detail) -> Optional[Dict[str, Any]]:
+        """No seal drawn — record WHY, so the page can render the absence.
+
+        Only when there is no lockbox at all: an earlier seal that still
+        stands is not an absence.
+        """
+        lb = get_lockbox()
+        if lb is None:
+            _state()["_lockbox_not_sealed"] = {"reason": reason, **detail}
+        return lb
+
     if df is None or not target_col or target_col not in df.columns:
-        return get_lockbox()
+        return _cannot_seal("no_target")
 
     fraction = float(fraction if fraction is not None
                      else _state().get("test_lockbox_fraction", DEFAULT_TEST_FRACTION))
@@ -332,22 +521,49 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
     y = df[target_col]
     eligible = df.index[y.notna()]
     if len(eligible) < _MIN_ROWS_FOR_LOCKBOX:
-        return get_lockbox()
+        return _cannot_seal("too_few_rows", n_eligible=int(len(eligible)),
+                            minimum=_MIN_ROWS_FOR_LOCKBOX)
 
-    # If the caller did not name a subject column, look for one anyway: a
-    # merge with repeated measures otherwise splits the SAME subject across
-    # train and test, so the "held-out" rows were already trained on and the
-    # quarantine is silently worthless.
+    # A duplicated row label cannot be sealed. Membership is decided by LABEL
+    # (module docstring), so sealing one label seals every row carrying it,
+    # while `n_test` and `fraction` count the labels DRAWN: a 15% chip over a
+    # 42% holdout (`IMPORT-207`). `ml/splits.resolve_split_rows` already
+    # refuses a duplicated label for the same reason; refusing here keeps the
+    # two consistent, and refusing is louder than a number nobody can check.
+    if df.index.has_duplicates:
+        _dupes = df.index[df.index.duplicated()].unique()
+        return _cannot_seal("duplicate_row_labels",
+                            n_duplicated=int(len(_dupes)),
+                            examples=[str(x) for x in list(_dupes[:3])])
+
+    # A DECLARED subject column wins over the heuristic, and a declared "one
+    # row per participant" stops the heuristic from guessing at all — that is
+    # the difference between an answer and an absence of one. Read here rather
+    # than only from the caller so every seal site inherits the declaration.
     group_kind = "subject"
+    _declared, _declared_col = declared_subject_col()
+    if _declared and _declared_col and not group_col:
+        group_col = _declared_col
     if not group_col:
-        ranked = rank_grouping_candidates(df)
-        if ranked:
-            group_col = ranked[0]["column"]
-            group_kind = ranked[0]["kind"]
+        if _declared:
+            # The user said there is no subject column. Believe them, and do
+            # not let a leftover `unclear` from a previous frame turn their
+            # answer into "we could not tell".
+            _state().pop("_lockbox_repetition_unclear", None)
+        else:
+            ranked = rank_grouping_candidates(df)
+            if ranked:
+                group_col = ranked[0]["column"]
+                group_kind = ranked[0]["kind"]
     else:
         group_kind = _id_kind(group_col) or "subject"
     if group_col and group_col not in df.columns:
         group_col = None
+    # A declaration that names a column this frame does not have is not an
+    # answer any more; say so rather than quietly reverting to a row split.
+    _state().pop("_lockbox_declared_missing", None)
+    if _declared and _declared_col and _declared_col not in df.columns:
+        _state()["_lockbox_declared_missing"] = str(_declared_col)
 
     sig = _lockbox_signature(df, target_col, task_type, fraction, seed,
                             f"{group_col}|{'+'.join(sorted(stratify_cols or []))}")
@@ -514,7 +730,12 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
         # `inherited_from_assembly` for a project that arrived through
         # multi-file assembly having already answered it. Written now so those
         # land without migrating a persisted, round-tripped artifact.
-        "basis_source": BASIS_DETECTED,
+        "basis_source": BASIS_USER_STATED if _declared else BASIS_DETECTED,
+        # Opening the sealed set is a COUNTED event, not a promise the chip
+        # repeats. Zero here; `record_lockbox_open` is called where held-out
+        # metrics are computed (`SWEEP-008`).
+        "opened_count": 0,
+        "opened_at": [],
         # What made the basis undetermined, so the disclosure can name it.
         "undetermined_because": (list(_state().get("_lockbox_repetition_unclear") or [])
                                  if seal_basis == SEAL_UNDETERMINED else None),
@@ -527,6 +748,7 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
         # Let the page disclose the redraw — a silent reset reads as data loss
         _state()["_lockbox_redrawn"] = True
 
+    _state().pop("_lockbox_not_sealed", None)
     _state()["test_lockbox"] = lockbox
     return lockbox
 
@@ -584,8 +806,76 @@ def render_lockbox_status(context: str = "") -> None:
         return
     lb = get_lockbox()
     if lb is None:
+        # ABSENCE IS A STATE, not a None. This used to `return` and render
+        # nothing, so every page that said "held-out test rows are excluded"
+        # said it over a mask that excluded nothing (`MINE-005`). Exploratory
+        # mode is loud because it is chosen; a lockbox that was never drawn is
+        # not chosen, which is a reason to be louder rather than quieter.
+        _dc = _state().get("data_config")
+        if not getattr(_dc, "target_col", None):
+            # No outcome chosen yet: there is no modeling problem to protect,
+            # nothing has been asserted, and a warning here would be noise on a
+            # page the user has not configured. Silence is honest; the moment a
+            # target exists, absence becomes a finding.
+            return
+        _why = lockbox_absence_reason() or {}
+        _reason = _why.get("reason")
+        if _reason == "duplicate_row_labels":
+            _detail = (
+                f"The data has {_why.get('n_duplicated', '?')} repeated row "
+                f"label(s) (e.g. {', '.join(_why.get('examples') or []) or '—'}), "
+                f"so a label no longer names one row: sealing one would seal "
+                f"every row carrying it, and the held-out fraction would not be "
+                f"the one reported. Re-load the file with unique row labels — a "
+                f"plain CSV export, or a JSON export without an index — and the "
+                f"set will be sealed."
+            )
+        elif _reason == "too_few_rows":
+            _detail = (
+                f"Only {_why.get('n_eligible', '?')} row(s) have a value for the "
+                f"outcome; at least {_why.get('minimum', _MIN_ROWS_FOR_LOCKBOX)} "
+                f"are needed before holding any out."
+            )
+        elif _reason == "no_target":
+            _detail = ("No outcome has been chosen yet, so there is nothing to "
+                       "hold a test set out for.")
+        else:
+            _detail = ("No test set was sealed in this session — a restored save "
+                       "file without a lockbox does this, as does a change that "
+                       "cleared it.")
+        st.warning(
+            "🔓 **No held-out test set is in force.** " + _detail +
+            " Until one is, target-aware steps (EDA target views, feature "
+            "engineering fits, feature selection) see every row, and any "
+            "performance measured afterwards is not held-out performance.",
+            icon="🔓",
+        )
         return
     extra = f" {context}" if context else ""
+
+    # What the seal can honestly say about being opened. "Opened once" was
+    # printed unconditionally beside two re-runnable train buttons, so a
+    # researcher who iterated against the test metric was told the opposite of
+    # what they had done (`SWEEP-008`).
+    _opens = lockbox_open_count()
+    if _opens == 0:
+        _open_phrase = "not opened yet — it opens at Train & Compare"
+    elif _opens == 1:
+        _open_phrase = "opened once, at Train & Compare"
+    else:
+        _open_phrase = f"**opened {_opens} times** at Train & Compare"
+
+    if _opens > 1:
+        st.warning(
+            f"⚠️ The sealed test set has been **opened {_opens} times** — "
+            f"models have been scored against it on {_opens} separate training "
+            f"runs. A held-out estimate is unbiased only for a single, final "
+            f"evaluation; once a choice (features, preprocessing, models) is "
+            f"made after seeing a held-out number, that number is part of the "
+            f"model selection and reads better than it will on new data. Report "
+            f"it as such, and say in the Methods that the set was accessed "
+            f"{_opens} times."
+        )
 
     # Held out is not the same as scoreable, and that is true on EVERY path
     # through this function — so it is computed here, once, above the branch,
@@ -632,8 +922,8 @@ def render_lockbox_status(context: str = "") -> None:
             f"🔒 Test set for this run ({run['column']} = {run['label']}): "
             f"n={n_here:,} — this run's share of the {lb['n_test']:,} rows drawn "
             f"once at upload, before the study was split, so every run is "
-            f"evaluated against the same held-out people. Opened once at "
-            f"Train & Compare.{extra}"
+            f"evaluated against the same held-out people. Sealed set "
+            f"{_open_phrase}.{extra}"
         )
         return
 
@@ -671,15 +961,42 @@ def render_lockbox_status(context: str = "") -> None:
     if lb.get("seal_basis") == SEAL_UNDETERMINED:
         _why = lb.get("undetermined_because") or []
         _cols = ", ".join(f"`{c['column']}`" for c in _why[:2]) or "a column"
-        _rate = max((c.get("rows_per") or 0) for c in _why) if _why else 0
+        _named = [c for c in _why if c.get("reason") == "unrecognized_name"]
+        if _named:
+            # The shape says roster; only the SPELLING was unfamiliar. Name the
+            # column and point at the control that settles it, because here the
+            # user can answer in one click.
+            _first = _named[0]
+            st.warning(
+                f"⚠️ Could not tell whether one person can appear in more than "
+                f"one row. `{_first['column']}` repeats like a list of people — "
+                f"{_first['n_groups']:,} values across {_first['n_rows']:,} rows, "
+                f"about {_first['rows_per']:.1f} rows each — but it is not a "
+                f"column name this app recognizes as an identifier, so it was "
+                f"not used to draw the split. The held-out set was drawn by row: "
+                f"if those rows do repeat people, the same person is on both "
+                f"sides and held-out performance will read better than it is. "
+                f"Say which column identifies a participant on **Upload & Audit** "
+                f"(*Who is a subject?*) and the set will be re-drawn by subject."
+            )
+        else:
+            _rate = max((c.get("rows_per") or 0) for c in _why) if _why else 0
+            st.warning(
+                f"⚠️ Could not tell whether one person can appear in more than one "
+                f"row. {_cols} looks like an identifier but repeats about "
+                f"{_rate:.0f} times per value — too often to read as one, and too "
+                f"structured to ignore. The held-out set was drawn by row, so if "
+                f"these rows do repeat people, the same person is on both sides and "
+                f"held-out performance will read better than it is. Treat these "
+                f"numbers as exploratory until you confirm the shape."
+            )
+
+    _declared_missing = _state().get("_lockbox_declared_missing")
+    if _declared_missing:
         st.warning(
-            f"⚠️ Could not tell whether one person can appear in more than one "
-            f"row. {_cols} looks like an identifier but repeats about "
-            f"{_rate:.0f} times per value — too often to read as one, and too "
-            f"structured to ignore. The held-out set was drawn by row, so if "
-            f"these rows do repeat people, the same person is on both sides and "
-            f"held-out performance will read better than it is. Treat these "
-            f"numbers as exploratory until you confirm the shape."
+            f"⚠️ You named `{_declared_missing}` as the subject column, but it is "
+            f"not in the data any more, so the held-out set was NOT drawn by "
+            f"subject. Name a column that is still present on Upload & Audit."
         )
 
     # The same sentence the cohort branch has always had, on the path that
@@ -703,8 +1020,8 @@ def render_lockbox_status(context: str = "") -> None:
         st.caption(
             f"🔒 Test set: {lb['fraction']:.0%} (n={lb['n_test']} rows from "
             f"{lb.get('n_test_groups', '?')} {_noun}, split by '{lb['group_col']}' so no "
-            f"{_one} appears on both sides) held out since upload — opened once at "
-            f"Train & Compare.{extra}"
+            f"{_one} appears on both sides) held out since upload — "
+            f"{_open_phrase}.{extra}"
         )
         if lb.get("group_kind") == "cluster":
             st.caption(
@@ -717,5 +1034,5 @@ def render_lockbox_status(context: str = "") -> None:
         st.caption(
             f"🔒 Test set: {lb['fraction']:.0%} (n={lb['n_test']}"
             f"{', stratified' if lb.get('stratified') else ''}) held out since upload — "
-            f"opened once at Train & Compare.{extra}"
+            f"{_open_phrase}.{extra}"
         )

@@ -137,15 +137,29 @@ if categorical_excluded:
 # Running selectors on all rows would let the test set vote on which
 # predictors enter the model — the classic feature-selection leakage
 # (Ambroise & McLachlan 2002; ESL §7.10.2).
-from utils.test_lockbox import train_row_mask, is_exploratory
+from utils.test_lockbox import train_row_mask, is_exploratory, quarantine_is_active
 
 mask = df[target_col].notna() & train_row_mask(df.index)
 X = df.loc[mask, numeric_features].values
 y = df.loc[mask, target_col].values
-if not is_exploratory():
+# The caption states what the MASK did, which is not the same question as
+# whether exploratory mode is off. With no lockbox `train_row_mask` returns
+# all-True and this said "held-out test rows are excluded" over a selection
+# that had just voted with every row in the study (`MINE-005`). The chip
+# rendered above says why there is no lockbox; this says what it cost here.
+if quarantine_is_active():
     st.caption(
         f"Selection methods see n={int(mask.sum())} training rows; "
         f"held-out test rows are excluded to prevent selection leakage."
+    )
+elif not is_exploratory():
+    st.warning(
+        f"⚠️ No held-out test set is in force, so selection ran on all "
+        f"n={int(mask.sum())} rows with a value for the outcome — including any "
+        f"rows you later evaluate on. Predictors chosen this way carry selection "
+        f"leakage (Ambroise & McLachlan 2002), and performance measured on those "
+        f"rows afterwards is not held-out performance. Seal a test set on "
+        f"**Upload & Audit** and re-run selection before reporting."
     )
 
 # Handle NaN in features (simple imputation for feature selection)
