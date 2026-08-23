@@ -327,9 +327,10 @@
   "detail": "The >0.95 feature-target correlation scan that populates `signals.leakage_flags` and `signals.leakage_candidate_cols` is inside a bare try, and any failure yields silence: `except Exception: pass # Skip leakage detection if correlation fails`. The EDA page then reports no leakage candidates, which is indistinguishable from 'checked and clean'.",
   "ev": "ml/eda_recommender.py:170-183",
   "act": "engine + record — on failure emit a ledger Insight ('leakage check could not run') exactly as ml/import_doctor.diagnose does with its `checks_failed` finding (ml/import_doctor.py:812-824). WRONG-BUT-PLAUSIBLE OUTPUT: a post-outcome lab valu…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD: the >0.95 feature-target correlation scan that populates signals.leakage_flags / leakage_candidate_cols is still inside a bare try ending 'except Exception: pass # Skip leakage detection if correlation fails'. Because the r4_leakage recommendation at :344 is gated on those lists being non-empty, a failed scan and a clean dataset are indistinguishable downstream - the page reports no leakage candidates either way. This is the governing rule broken directly: silence is allowed, asserting a clean bill of health is not. ml/import_doctor.py already models the right shape with its checks_failed finding.",
-  "verified_ev": "ml/eda_recommender.py:170-186 (except Exception: pass on the >0.95 correlation scan), :344-362 (r4_leakage fires only when the flags are non-empty)"
+  "status": "FIXED",
+  "note": "leakage_scan_error carried on DatasetSignals + warning-severity insight upserted before the clean-data gate; the no-blocking-issues sentence cannot fire on a scan that never ran.",
+  "verified_ev": "ml/eda_recommender.py:170-186 (except Exception: pass on the >0.95 correlation scan), :344-362 (r4_leakage fires only when the flags are non-empty)",
+  "test": "tests/test_paper_risk_selection_coach.py::TestMine004LeakageScanCannotFailSilently"
  },
  {
   "id": "MINE-005",
@@ -414,9 +415,10 @@
   "detail": "Failed bootstrap fits are skipped with `except Exception: continue` (ml/feature_selection.py:252-253) without decrementing anything, then `selection_probs = selection_counts / n_bootstrap` (line 256) and `selected = [f for f, p in zip(feature_names, selection_probs) if p >= threshold]` (line 257).",
   "ev": "ml/feature_selection.py:245-258",
   "act": "engine — track n_successful and divide by it; refuse (or flag) when the success rate is low. WRONG-BUT-PLAUSIBLE OUTPUT: on a wide matrix where half the Lasso fits fail to converge, every feature's selection probability is halved, nothing c…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. Failed bootstrap fits are still skipped with a bare 'except Exception: continue' that decrements nothing, and the probability is still counts / n_bootstrap rather than counts / n_successful. Nothing records the failure count either: details at :260-265 reports n_bootstrap - the number ATTEMPTED - and the description string at :273-274 states it as 'across {n_bootstrap} subsamples'. So on a wide matrix where half the Lasso fits fail to converge, every probability is halved, the threshold quietly selects nothing, and the app asserts a subsample count it did not achieve.",
-  "verified_ev": "ml/feature_selection.py:230-258 (except Exception: continue at :252-253; selection_probs = selection_counts / n_bootstrap at :256); details at :260-265; description at :273-274"
+  "status": "FIXED",
+  "note": "Stability selection divides by achieved fits, reports succeeded/failed/first error in details and description, refuses below 50% success (failures are not random).",
+  "verified_ev": "ml/feature_selection.py:230-258 (except Exception: continue at :252-253; selection_probs = selection_counts / n_bootstrap at :256); details at :260-265; description at :273-274",
+  "test": "tests/test_paper_risk_selection_coach.py::TestMine011StabilityDenominator"
  },
  {
   "id": "MINE-012",
@@ -808,9 +810,10 @@
   "detail": "The fallback always fires. `train_heteroscedastic_residuals` reports Spearman rho for whichever model happens to be first in the dict — i.e. checkbox order — and its manuscript_text asserts 'residual variance was not constant across the predicted range' about a model that may not be the one reported.",
   "ev": "pages/06_Train_and_Compare.py:1714 passes `primary_model=st.session_state.get('primary_model', '')`; ml/model_coach.py:1263 `key = primary_model if primary_model in model_results else next(iter(model_results))`. Repo-wide grep finds only RE…",
   "act": "Make the Project object own `primary_model` explicitly and make the Router pass it. In the meantime change the fallback from `next(iter(...))` to an explicit best-by-metric selection so the choice is at least defensible, and put the model n…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. The only write to a name like this is utils/workflow_provenance.py:616, which sets ctx['primary_model'] from the provenance object for template rendering - it never writes the session-state key. pages/06:1619 therefore always passes '', the fallback at model_coach.py:1263 always fires, and train_heteroscedastic_residuals reports Spearman rho for whichever model is first in dict order, i.e. checkbox order. Note that pages/06:1558 DOES compute the right answer one block earlier - it passes primary_model=best_model_name or '' into get_provenance().record_training - so the value exists at that point and simply is not stored anywhere the coach can read. That makes this cheap to fix in Classic and mandatory in the Project, which must own primary_model as first-class state.",
-  "verified_ev": "ml/model_coach.py:1255,1263 (key = primary_model if primary_model in model_results else next(iter(model_results))), :1312,:1326; pages/06_Train_and_Compare.py:1619 passes st.session_state.get('primary_model',''); repo-wide, nothing ever WRITES st.session_state['primary_model']"
+  "status": "FIXED",
+  "note": "_resolve_primary_model honors explicit choice else best-by-metric (never dict order), records how it chose; heteroscedasticity finding names the model. Both pages/06 call sites now pass best_model_name.",
+  "verified_ev": "ml/model_coach.py:1255,1263 (key = primary_model if primary_model in model_results else next(iter(model_results))), :1312,:1326; pages/06_Train_and_Compare.py:1619 passes st.session_state.get('primary_model',''); repo-wide, nothing ever WRITES st.session_state['primary_model']",
+  "test": "tests/test_paper_risk_selection_coach.py::TestCoach003TheModelIsNamed"
  },
  {
   "id": "COACH-004",
@@ -856,9 +859,10 @@
   "detail": "Reproduced directly: the limitations list comes back containing 'Your linear models (Ridge Regression, LASSO, etc.) are scale-sensitive; the app's default pipeline already standardizes features for them.' and '2 feature(s) have missing values.' — a reassurance and a neutral fact, both presented to a reviewer as study limitations, with '(s)' pluralization the rest of the codebase deliberately avoids. Gate #2 (pages/06:1698) makes it worse by marking them 'acknowledged', which discussion_points treats identically to unresolved.",
   "ev": "Produced at ml/model_coach.py:673-799 as preprocess_skewness_transform, preprocess_outlier_handling, preprocess_feature_scaling, preprocess_missing_tree_native. Only preprocess_outlier_handling is resolved (pages/05_Preprocess.py:1190-1203)…",
   "act": "Give every coach-authored insight an explicit manuscript_text (or an explicit `narrative: false`), and make 'positive/neutral advice' a first-class disposition rather than something inferred from an id prefix. Add a test that asserts no lim…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD and fully reproducible. All four coach preprocessing insights are still produced without manuscript_text - the file's first manuscript_text is 200 lines later, at :886 - and three of the four have no resolver anywhere in the repository, so they can never be marked resolved and fall through to the manuscript's LIMITATIONS section. Two of the strings the row quotes are a reassurance ('the app's default pipeline already standardizes features for them') and a neutral fact ('N feature(s) have missing values'), presented to a reviewer as study limitations, with the '(s)' pluralization the rest of the codebase avoids. The structural fix is the one the action names and it has not started: positive/neutral advice must be a first-class disposition, not something inferred from an id prefix.",
-  "verified_ev": "ml/model_coach.py:674, 718, 746, 775 (the four preprocess_* insights); no 'manuscript_text' key appears in any of them - the first manuscript_text in the file is at :886, in the post-training detectors; no resolver anywhere in pages/, utils/ or ml/ for preprocess_skewness_transform, preprocess_feature_scaling or preprocess_missing_tree_native"
+  "status": "FIXED",
+  "note": "Every coach preprocessing insight carries a disposition: real conditions get manuscript_text, reassurances/neutral facts get audit_only and can never print as limitations - including after the training gate auto-acknowledges (insight_ledger skips audit_only in discussion points); pages/05 passes manuscript_text through and the skew resolver names both ids.",
+  "verified_ev": "ml/model_coach.py:674, 718, 746, 775 (the four preprocess_* insights); no 'manuscript_text' key appears in any of them - the first manuscript_text in the file is at :886, in the post-training detectors; no resolver anywhere in pages/, utils/ or ml/ for preprocess_skewness_transform, preprocess_feature_scaling or preprocess_missing_tree_native",
+  "test": "tests/test_paper_risk_selection_coach.py::TestCoach007NoAdviceWithoutADisposition"
  },
  {
   "id": "COACH-008",
@@ -1135,9 +1139,10 @@
   "detail": "Train {ridge, rf} and the baselines run on a scaled/imputed matrix; train {rf, ridge} and they run on an unscaled one. The LinearRegression baseline's R2 changes, so the headline claim 'our model beats the linear baseline by X' changes — with no indication that anything about the baseline moved. If the transform raises (a pipeline expecting engineered columns), the except swallows it and the baseline silently trains on raw data that may contain NaNs or strings.",
   "ev": "pages/06_Train_and_Compare.py:2122-2124 — `first_model = list(st.session_state.get('fitted_preprocessing_pipelines', {}).keys())` then `pipe = st.session_state['fitted_preprocessing_pipelines'][first_model[0]]`. Because pipelines are per-mo…",
   "act": "Give baselines their OWN explicit pipeline (scaled numeric + simple imputation) recorded in the Record, independent of any user model. Remove the bare except or make it record a visible failure. Pin current baseline metrics before changing …",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. The baselines are still transformed through whichever per-model pipeline happens to be first in dict insertion order, i.e. checkbox order, so training {ridge, rf} and {rf, ridge} give the LinearRegression baseline a different matrix and therefore a different R2 - and the headline claim 'our model beats the linear baseline by X' moves with it, with nothing on screen indicating the baseline changed. This is the same insertion-order class as COACH-008 and T0-STRUCT-001, in the one place where the number is a comparison the manuscript makes. Baselines need their own explicit pipeline, recorded in the Record, independent of any user model - and the current baseline metrics need pinning before that changes them.",
-  "verified_ev": "pages/06_Train_and_Compare.py:2052-2054 - first_model = list(st.session_state.get('fitted_preprocessing_pipelines', {}).keys()) then pipe = st.session_state['fitted_preprocessing_pipelines'][first_model[0]]"
+  "status": "FIXED",
+  "note": "Baselines get their own train-fitted pipeline (build_baseline_preprocessor); no more borrowing fitted_preprocessing_pipelines or bare-except fallback to raw arrays; recipe stored and printed.",
+  "verified_ev": "pages/06_Train_and_Compare.py:2052-2054 - first_model = list(st.session_state.get('fitted_preprocessing_pipelines', {}).keys()) then pipe = st.session_state['fitted_preprocessing_pipelines'][first_model[0]]",
+  "test": "tests/test_paper_risk_mlcore.py::TestModels009BaselinesHaveTheirOwnPipeline"
  },
  {
   "id": "MODELS-010",
@@ -1402,9 +1407,10 @@
   "detail": "Every line of the Decision Audit Trail in the LaTeX Supplementary is labeled 'YYYY-MM-DD HH:MM UTC' but is actually local wall-clock time, off by the machine's offset. A reviewer reconciling the audit trail against anything else finds a systematic skew.",
   "ev": "ml/publication.py:1747-1759 (`dt.replace(tzinfo=timezone.utc)`) versus utils/workflow_provenance.py (every record_* uses datetime.now()) and utils/insight_ledger.py:597 (created_at default)",
   "act": "Record timezone-aware UTC timestamps at the source (datetime.now(timezone.utc)) and render with an explicit conversion. Add a test asserting recorded timestamps carry tzinfo.",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. Every timestamp in the Record and the Ledger is still local wall-clock (datetime.now(), no tzinfo), and _format_audit_timestamp still ASSUMES naive means UTC, so every line of the Decision Audit Trail in the LaTeX Supplementary is labeled UTC while carrying local time - a systematic skew equal to the machine's offset, and one that changes across daylight saving within a single project. A reviewer reconciling the audit trail against anything else finds the skew and cannot explain it. Record datetime.now(timezone.utc) at the source, render with an explicit conversion, and assert recorded timestamps carry tzinfo. Note this also silently breaks ordering for any project that spans a DST boundary.",
-  "verified_ev": "ml/publication.py:1747-1759 (_format_audit_timestamp: if dt.tzinfo is None, dt = dt.replace(tzinfo=timezone.utc), then strftime '%Y-%m-%d %H:%M UTC'), used at :1850; sources are datetime.now().isoformat() throughout utils/workflow_provenance.py and utils/insight_ledger.py"
+  "status": "FIXED",
+  "note": "_format_audit_timestamp: naive stamps render without a zone label (silent, not asserting UTC); aware stamps convert+label. Root also fixed: log_methodology and all 14 workflow_provenance sites now record datetime.now(timezone.utc).",
+  "verified_ev": "ml/publication.py:1747-1759 (_format_audit_timestamp: if dt.tzinfo is None, dt = dt.replace(tzinfo=timezone.utc), then strftime '%Y-%m-%d %H:%M UTC'), used at :1850; sources are datetime.now().isoformat() throughout utils/workflow_provenance.py and utils/insight_ledger.py",
+  "test": "tests/test_paper_risk_mlcore.py::TestRecord017TheAuditTrailDoesNotStampLocalTimeAsUtc"
  },
  {
   "id": "RECORD-018",
@@ -1464,9 +1470,10 @@
   "detail": "UnitHarmonizer fails LOUDLY (numpy broadcast ValueError, caught by pages/05's try/except into st.error), but PlausibilityGate does NOT: min() truncates to the shorter length and applies the first k bounds to the first k columns of a differently-ordered, differently-sized column set. A glucose bound of [70, 140] mg/dL gets applied to, say, creatinine; every creatinine value becomes NaN and is then median-imputed by the very next pipeline step. The output has no NaNs, the shape is right, the model trains, and the recipe string cheerfully says 'Plausibility gate (NHANES)'. The same truncation makes reconcile_pipeline_columns dangerous even after the clone bug is fixed: dropping one column from …",
   "ev": "Built against the full list: ml/pipeline.py:45 `for col in numeric_features` (build_unit_harmonization_config) and ml/pipeline.py:84 `for col, factor in zip(numeric_features, conversion_factors)` (build_plausibility_bounds), both called at …",
   "act": "Delete the positional interfaces. build_plausibility_bounds already returns 'bounds_by_feature': {col -> {lower, upper, unit}} — make that the ONLY return, and have PlausibilityGate take a dict keyed by column name plus the ordered column l…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. sibling-of: MINE-001 - the positional-alignment class from the state pass, and this row names the asymmetry that makes it dangerous. UnitHarmonizer fails LOUDLY on a length mismatch (numpy broadcast ValueError, caught into an st.error); PlausibilityGate does NOT, because transform truncates with min() and applies the first k bounds to the first k columns of a differently-ordered, differently-sized set. A glucose bound of [70,140] landing on creatinine turns every creatinine value into NaN, which the very next pipeline step median-imputes - so the output has no NaNs, the shape is right, the model trains, and the recipe string says 'Plausibility gate (NHANES)'. build_plausibility_bounds already returns bounds_by_feature keyed by column name; making that the only return and keying the gate by name closes the class.",
-  "verified_ev": "ml/pipeline.py:41-67 (build_unit_harmonization_config appends over the full numeric_features), :73-84 (build_plausibility_bounds zips over it), call sites in pages/05_Preprocess.py passing a FILTERED numeric_features to build_preprocessing_pipeline; ml/preprocess_operators.py:60-73 (PlausibilityGate.transform uses n_cols = min(X.shape[1], len(lower), len(upper)))"
+  "status": "FIXED",
+  "note": "PlausibilityGate refuses length mismatches; pages/05 realigns factors/bounds BY NAME for probe and real builds; reconcile_pipeline_columns trims positional params with columns; apply_plausibility_filter refuses mismatches. Positional interface kept (turbotab/project.py constructs it).",
+  "verified_ev": "ml/pipeline.py:41-67 (build_unit_harmonization_config appends over the full numeric_features), :73-84 (build_plausibility_bounds zips over it), call sites in pages/05_Preprocess.py passing a FILTERED numeric_features to build_preprocessing_pipeline; ml/preprocess_operators.py:60-73 (PlausibilityGate.transform uses n_cols = min(X.shape[1], len(lower), len(upper)))",
+  "test": "tests/test_paper_risk_mlcore.py::TestState003PlausibilityBoundsAreNotAppliedToStrangers"
  },
  {
   "id": "STATE-004",
@@ -1551,9 +1558,10 @@
   "detail": "A variable measured in mg/dL versus mmol/L has ~18x different coefficient scale, so an L1 penalty at a fixed alpha shrinks one and keeps the other purely on units. stability_selection's per-bootstrap `except Exception: continue` (feature_selection.py:252) additionally swallows every failed fit and reports those features at selection probability 0.0 — indistinguishable from 'reliably not selected'. The result flows into consensus_features, into selected_features, into every downstream pipeline, and into the manuscript's variable-selection paragraph. Note also that consensus_threshold is `max(1, len(results) // 2)` (04:280), so running one or two methods makes 'consensus' mean 'any single meth…",
   "ev": "pages/04_Feature_Selection.py:139-141 does median imputation only — no scaler. ml/feature_selection.py:241 `Lasso(alpha=0.01, max_iter=10000, ...)` in stability_selection, and :43 LassoCV in lasso_path_selection.",
   "act": "Insert StandardScaler before the selectors (fit on the training rows the lockbox already isolated), or switch to a standardized-coefficient formulation. Replace the bare `except: continue` with a counted failure that surfaces in FeatureSele…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. Feature selection still runs L1 penalties at absolute alphas on UNSCALED features - the page imputes and hands the raw matrix straight to the selectors - so a variable in mg/dL versus mmol/L is shrunk differently by a factor of ~18 purely on units, and which predictors enter the published model depends on measurement units. Worth crediting what IS right here: the page correctly scopes selection to training rows via train_row_mask (:128-131) and discloses the temporary imputation, so the leakage discipline is sound and the scaling is not. Two compounding defects unchanged: stability_selection's per-bootstrap swallow reports failed fits as selection probability 0.0, indistinguishable from 'reliably not selected' (MINE-011); and consensus_threshold = max(1, len//2) means running one or two methods makes 'consensus' mean 'any single method said yes'.",
-  "verified_ev": "pages/04_Feature_Selection.py:137-141 (SimpleImputer(strategy='median') only - no scaler anywhere before the selectors), :280 (consensus_threshold = max(1, len(results) // 2)); ml/feature_selection.py:241 (Lasso(alpha=0.01) in stability_selection) and :252-253 (except Exception: continue)"
+  "status": "FIXED",
+  "note": "All three defects: penalized selectors standardize internally (unit-invariant, descriptions+axis say so); denominator fixed with MINE-011; consensus threshold floors at 2 in page AND consensus_features so no caller gets the union as consensus.",
+  "verified_ev": "pages/04_Feature_Selection.py:137-141 (SimpleImputer(strategy='median') only - no scaler anywhere before the selectors), :280 (consensus_threshold = max(1, len(results) // 2)); ml/feature_selection.py:241 (Lasso(alpha=0.01) in stability_selection) and :252-253 (except Exception: continue)",
+  "test": "tests/test_paper_risk_selection_coach.py::TestState010SelectionDoesNotDependOnUnits"
  },
  {
   "id": "STATE-011",
@@ -1563,9 +1571,10 @@
   "detail": "Enabling the KMeans option discards every original predictor and trains the model on nothing but 5 distance-to-centroid columns. Shapes stay valid, the pipeline fits, metrics compute, SHAP renders on the cluster columns. The recipe line at ml/pipeline.py:407 says 'KMeans features added: 5 clusters, distances to centroids' — 'added'. Nothing indicates the predictors are gone. Two secondary hazards in the same class: if both add_distances and add_onehot_label are False, transform returns X unchanged, which may be a SPARSE matrix from OneHotEncoder(sparse_output=True) and then hits PCA, which raises TypeError('PCA does not support sparse input'); and __init__ sets self.kmeans_ = None / self.clu…",
   "ev": "ml/feature_steps.py:100-104: comment 'For now, we are replacing X with cluster features (not appending). To append, would need: np.hstack([X, result])' followed by `return result`. UI claim at pages/05_Preprocess.py:784: 'Adds derived colum…",
   "act": "Decide the semantics explicitly and make code and copy agree — most likely np.hstack([X, result]) plus an updated recipe line. Move the None initializations out of __init__ (trailing-underscore attributes must only exist after fit). Add a s…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. Enabling the KMeans option still DISCARDS every original predictor and trains on nothing but the cluster features, while the recipe line and the UI both say 'added'. Shapes stay valid, the pipeline fits, metrics compute, and SHAP renders on the cluster columns, so nothing anywhere indicates the predictors are gone - the code and the copy assert opposite things and the copy is the one the researcher reads. The two secondary hazards in the same class are also intact: with both add_distances and add_onehot_label False, transform returns X unchanged and may hand a sparse matrix to PCA (TypeError: PCA does not support sparse input); and the trailing-underscore attributes are initialized in __init__, the same sklearn fitted-marker violation as MINE-006.",
-  "verified_ev": "ml/feature_steps.py:95-104 - the comment 'For now, we are replacing X with cluster features (not appending). To append, would need: np.hstack([X, result])' followed by 'return result'; the recipe line at ml/pipeline.py:413-419 still says 'KMeans features added'; the UI copy at pages/05_Preprocess.py still says 'Adds derived columns'"
+  "status": "FIXED",
+  "note": "AppendedKMeansFeatures hstacks cluster columns with the predictors; old substituting pipelines described as REPLACED in the recipe; pages/05 copy says alongside. Folding into ml/feature_steps.KMeansFeatures itself left as cleanup.",
+  "verified_ev": "ml/feature_steps.py:95-104 - the comment 'For now, we are replacing X with cluster features (not appending). To append, would need: np.hstack([X, result])' followed by 'return result'; the recipe line at ml/pipeline.py:413-419 still says 'KMeans features added'; the UI copy at pages/05_Preprocess.py still says 'Adds derived columns'",
+  "test": "tests/test_paper_risk_mlcore.py::TestState011KMeansAddsRatherThanReplaces"
  },
  {
   "id": "STATE-012",
@@ -1833,9 +1842,10 @@
   "detail": "For >2 classes the stored class_label can say 'Class 0' while the array is the last class, or the stored 2D array gets re-sliced. Plots and labels are individually plausible.",
   "ev": "pages/07_Explainability.py lines 476-495 (compute): `if isinstance(sv_raw, list)` → len==2 takes index 1 labeled 'Class 1 (Positive)', otherwise index 0 labeled 'Class 0'; `if sv_plot.ndim == 3` → `sv_plot[:, :, -1]` (LAST class). Lines 7…",
   "act": "Normalize once, at compute time, into an explicit {class_index, class_label, values} record and never re-normalize at render.",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. For more than two classes the compute path still labels the result 'Class 0' while slicing the LAST class from a 3-D array, and the render path at :757-769 re-normalizes a stored array that may already have been sliced. Every intermediate value is individually plausible - a valid SHAP array, a valid class name, a plot that renders - so nothing anywhere can detect the mismatch, and the figure lands in the manuscript. This is the assert-something-false rule broken by a label. Normalize once at compute time into an explicit {class_index, class_label, values} record and never re-normalize at render; the render path having its own ndim branch is the bug's second half, not a safety net.",
-  "verified_ev": "pages/07_Explainability.py:476-495 (compute: len(sv_raw)==2 takes index 1 labeled 'Class 1 (Positive)', else index 0 labeled 'Class 0'; if sv_plot.ndim == 3 it takes sv_plot[:, :, -1], the LAST class), :518 stores class_label, :757 and :769 re-normalize at render"
+  "status": "FIXED",
+  "note": "_normalize_shap_values keeps per-class matrices with decoded class names; default positive class (binary) / class 0 (multiclass) always labeled; >2 classes get a selector; unaccountable shapes refuse. all_shap_values dead key dropped.",
+  "verified_ev": "pages/07_Explainability.py:476-495 (compute: len(sv_raw)==2 takes index 1 labeled 'Class 1 (Positive)', else index 0 labeled 'Class 0'; if sv_plot.ndim == 3 it takes sv_plot[:, :, -1], the LAST class), :518 stores class_label, :757 and :769 re-normalize at render",
+  "test": "tests/test_paper_risk_external.py::TestState033MulticlassShapIsLabeled"
  },
  {
   "id": "STATE-034",
@@ -1933,9 +1943,10 @@
   "detail": "(a) Upload a brand-new dataset while exploratory mode is on: the full reset clears everything except the quarantine-off flag, so the new study starts with no test-set protection and no banner. (b) Restore an exploratory session and go anywhere except page 01: is_exploratory() reads False, the app behaves as if quarantined, but the restored artifacts were produced without quarantine.",
   "ev": "utils/session_state.reset_data_dependent_state:418-445 never touches it; pages/01_Upload_and_Audit.py:1158 `st.checkbox(..., key='exploratory_mode')`; session_manager._SAFE_WIDGET_KEYS:131 stores it; pages/01:1130-1143 is the ONLY place tha…",
   "act": "quarantine_off becomes an ordinary persisted Project field with no widget backing; include it in the full reset; and on load, apply it before any stage renders.",
-  "status": "PARTIAL",
-  "note": "exploratory_used now in _PLAIN_KEYS so the watermark survives archives, and pages/10 computes the flag as mode-or-used -> manuscript leg closed. REMAINS: exploratory_mode itself travels only as a deferred widget key (is_exploratory() False until page 01 claims it); closing it means a central claim in utils/theme.py or relaxing test_session_manager's travels-via-widget-state pin. Residual is fail-safe (new work quarantined, watermark discloses). Assigned to Wave 3. Guard: tests/test_paper_risk_invalidation.py::TestState041QuarantineSurvivesRestore",
-  "verified_ev": "utils/session_state.py reset_data_dependent_state never touches exploratory_mode; pages/01_Upload_and_Audit.py binds it as a st.checkbox widget key and is the only place that claims it from the deferred widget-restore dict; utils/session_manager.py _SAFE_WIDGET_KEYS carries it"
+  "status": "FIXED",
+  "note": "Residual closed: utils/theme.apply_pending_exploratory_mode claims the deferred key (and sets the watermark + disclosure) from render_sidebar_workflow, which every page calls first; workflow_mode_selector refactored onto the same helper; session-manager pin narrowed to the restore-parks half with reasoning. Verified end-to-end: restore -> page 08 renders with exploratory True and the warning.",
+  "verified_ev": "utils/session_state.py reset_data_dependent_state never touches exploratory_mode; pages/01_Upload_and_Audit.py binds it as a st.checkbox widget key and is the only place that claims it from the deferred widget-restore dict; utils/session_manager.py _SAFE_WIDGET_KEYS carries it",
+  "test": "tests/test_paper_alignment.py::test_state_041_exploratory_mode_is_claimed_before_any_page_reads_it"
  },
  {
   "id": "STATE-042",
@@ -2155,9 +2166,10 @@
   "detail": "`_task_type = st.session_state.get('task_type', '')` then `_selection_metric = 'RMSE' if _task_type == 'regression' else 'Accuracy'`. Since the key is never set, TrainingProvenance.selection_criteria is ALWAYS recorded as 'validation Accuracy' — including for every regression study. The manuscript's model-selection sentence is wrong for half of all projects.",
   "ev": "pages/06_Train_and_Compare.py:1648-1650; no writer found for key 'task_type' repo-wide",
   "act": "record — bug; Project.task_type must be a single computed property with no string-keyed shadow",
-  "status": "OPEN",
-  "note": "Duplicate of STATE-017 from the contract pass, unchanged at HEAD. TrainingProvenance.selection_criteria is therefore ALWAYS 'validation Accuracy', including for every regression study, so the manuscript's model-selection sentence is wrong for roughly half of all projects. The contract framing sharpens the fix: the problem is not the missing writer, it is that a string-keyed shadow of task_type exists at all - the correct value is a local forty lines up in the same function. Project.task_type must be one computed property with no string-keyed shadow, which is CONTRACT-011's fix and closes both.",
-  "verified_ev": "pages/06_Train_and_Compare.py:1553-1554 - _task_type = st.session_state.get('task_type', ''); _selection_metric = 'RMSE' if _task_type == 'regression' else 'Accuracy' - passed into record_training as selection_criteria; no writer for the key 'task_type' exists anywhere in the repository"
+  "status": "FIXED",
+  "note": "pages/06 derives the selection criterion from task_type_final_local (the value the ranking loop uses), not the never-written session task_type.",
+  "verified_ev": "pages/06_Train_and_Compare.py:1553-1554 - _task_type = st.session_state.get('task_type', ''); _selection_metric = 'RMSE' if _task_type == 'regression' else 'Accuracy' - passed into record_training as selection_criteria; no writer for the key 'task_type' exists anywhere in the repository",
+  "test": "tests/test_paper_risk_mlcore.py::TestContract010TheSelectionCriterionMatchesTheTask"
  },
  {
   "id": "CONTRACT-011",
@@ -2204,9 +2216,10 @@
   "detail": "Page 04 computes `numeric_features` only, shows `st.info(\"...These features are retained in your dataset and can still be used for modeling.\")`, then on Apply does `data_config.feature_cols = consensus` where consensus is drawn exclusively from numeric_features. Every categorical predictor is removed from the modeling feature set, contradicting the on-screen promise. Manual selection has the same defect (`options=numeric_features`).",
   "ev": "pages/04_Feature_Selection.py:100-101, :112-119, :440-442, :488-491",
   "act": "router — the question 'which predictors survive selection' must return a full feature set; engine keeps numeric-only ranking but the Project must union back the non-ranked columns",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD, and the page computes categorical_excluded at :110 purely to say the sentence at :119 - then contradicts it at :440 and :489 by assigning a numeric-only list into data_config.feature_cols. Every categorical predictor is removed from the modeling feature set while the screen promises they are retained. This is the governing rule broken in its plainest form: the app is asserting something false, in a caption, about the thing the button is about to do. Manual selection has the identical defect because its options list is numeric-only. The engine may keep ranking numeric features only; the Project must union the non-ranked columns back into the selection, or the caption must say they are dropped.",
-  "verified_ev": "pages/04_Feature_Selection.py:102 (numeric_features), :110 (categorical_excluded computed), :119 (the caption: 'These features are retained in your dataset and can still be used for modeling.'), :440 (data_config.feature_cols = consensus) and :489 (= manual_selection), both drawn exclusively from numeric_features"
+  "status": "FIXED",
+  "note": "Applying a selection carries non-ranked categoricals through (_with_carried_categoricals); manual multiselect offers them; caption tells the truth; methodology log records carried_through_unranked. Paper's 'remaining available' claim is now true.",
+  "verified_ev": "pages/04_Feature_Selection.py:102 (numeric_features), :110 (categorical_excluded computed), :119 (the caption: 'These features are retained in your dataset and can still be used for modeling.'), :440 (data_config.feature_cols = consensus) and :489 (= manual_selection), both drawn exclusively from numeric_features",
+  "test": "tests/test_paper_risk_selection_coach.py::TestContract014CategoricalsSurviveApply"
  },
  {
   "id": "CONTRACT-015",
@@ -2631,9 +2644,10 @@
   "detail": "`first_pca = next(iter(pca_details.values()))` with the comment '# Use the first PCA config as representative' (ml/publication.py:626-628), and `first_cfg = next(iter(_per_model_configs.values()))` (line 798), plus `all_cfgs = list(_per_model_configs.values()); shared_scaling = all_cfgs[0].get(...)` (lines 807-808). The source dict is `st.session_state.get('preprocessing_config_by_model', {})` — insertion-ordered by whatever sequence the Preprocess page built pipelines in.",
   "ev": "ml/publication.py:626-634, 780-810",
   "act": "record — key these by the model actually being described, or assert that the configs agree before collapsing them. WRONG-BUT-PLAUSIBLE OUTPUT: preprocessing_config_by_model is JSON-round-tripped or rebuilt in a different order by the Projec…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. The manuscript still describes PCA and preprocessing by taking whichever per-model config happens to be first in insertion order - i.e. checkbox order - and calls it representative. The comment is honest about the intent and wrong about the guarantee: per-model pipelines are the product's differentiator precisely BECAUSE they differ, so 'representative' is the one thing a member of that dict is not. Same insertion-order family as COACH-008, MODELS-009 and STATE-005. Either key the description to the model being described, or assert the configs agree before collapsing them and disclose when they do not.",
-  "verified_ev": "ml/publication.py:628 (first_pca = next(iter(pca_details.values())), commented 'Use the first PCA config as representative') and :798 (first_cfg = next(iter(_per_model_configs.values()))), plus the all_cfgs[0] read just below; the source is preprocessing_config_by_model, insertion-ordered by the Preprocess page's build sequence"
+  "status": "FIXED",
+  "note": "pca_technique_sentence collapses only on unanimous per-model config, else names each; clause states the count comes from preprocessing pipelines.",
+  "verified_ev": "ml/publication.py:628 (first_pca = next(iter(pca_details.values())), commented 'Use the first PCA config as representative') and :798 (first_cfg = next(iter(_per_model_configs.values()))), plus the all_cfgs[0] read just below; the source is preprocessing_config_by_model, insertion-ordered by the Preprocess page's build sequence",
+  "test": "tests/test_paper_risk_mlcore.py::TestMine025PcaIsNotDescribedFromAnArbitraryModel"
  },
  {
   "id": "MINE-026",
@@ -2655,9 +2669,10 @@
   "detail": "`finite = np.isfinite(y_true) & np.isfinite(y_pred); if not finite.all(): logging.getLogger(__name__).warning(...); y_true, y_pred = y_true[finite], y_pred[finite]` (ml/eval.py:29-37). The metrics are then computed on the SUBSET and returned as ordinary floats with no indication of how many pairs were dropped. The docstring names the exact trigger: 'a degenerate target-transform back-mapping (e.g. a power transform fit on a near-constant target) can produce NaN/inf predictions.'",
   "ev": "ml/eval.py:18-51",
   "act": "engine — return n_dropped in the metrics dict and have the job surface it into the ledger. WRONG-BUT-PLAUSIBLE OUTPUT: a degenerate target transform makes 30% of test predictions NaN; those rows are dropped; R² is computed on the 70% the mo…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD, and worth stating precisely because half of it is right: the drop is deliberate, documented, and better than crashing - the docstring names the exact trigger (a power transform fit on a near-constant target producing NaN predictions) and the all-NaN return for fewer than two surviving pairs is honest. What is missing is the number. A degenerate transform that makes 30% of test predictions NaN yields an R-squared computed on the 70% the model handled, reported as the model's R-squared, with the only trace in a logger nobody reads. Return n_dropped in the metrics dict and have the job surface it into the ledger; the app may be silent about a fact, not about a truncation.",
-  "verified_ev": "ml/eval.py:28-40 - non-finite pairs are dropped after a logging.warning, and the returned dict is the ordinary four-key {MAE, RMSE, R2, MedianAE} with no count of what was dropped"
+  "status": "FIXED",
+  "note": "calculate_regression_metrics reports n_dropped_nonfinite/n_scored when pairs were dropped; pages/06 warns with both numbers.",
+  "verified_ev": "ml/eval.py:28-40 - non-finite pairs are dropped after a logging.warning, and the returned dict is the ordinary four-key {MAE, RMSE, R2, MedianAE} with no count of what was dropped",
+  "test": "tests/test_paper_risk_mlcore.py::test_mine_027_regression_metrics_disclose_dropped_nonfinite_pairs"
  },
  {
   "id": "MINE-028",
@@ -2691,9 +2706,10 @@
   "detail": "`except Exception: pass` inside the per-seed loop (ml/sensitivity.py:92-93), followed by `description=f\"Results across {len(variations)} different random seeds (baseline seed={baseline_seed}).\"` (line 99). ml/publication.py:1253-1260 writes this into the manuscript: 'using {d.get(\"n_seeds\", \"multiple\")} random seeds to assess sensitivity of ...'.",
   "ev": "ml/sensitivity.py:85-100; ml/publication.py:1249-1281",
   "act": "engine — count attempts and failures separately and expose both. WRONG-BUT-PLAUSIBLE OUTPUT: 6 of 8 seeds fail (OOM in a worker, a convergence error), the analysis silently becomes a 2-seed study, the coefficient of variation is computed ac…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. Failed seeds are still swallowed and the SURVIVOR count is still reported as the analysis size, in a sentence that reaches the manuscript. So six failures out of eight seeds silently becomes a two-seed study whose coefficient of variation is computed across two points and described as a seed-sensitivity analysis. Nothing distinguishes 'we ran eight' from 'eight ran and two finished'. Same shape as MINE-011 (stability selection divides by attempts) and MINE-030's sibling in ml/eval - counting attempts and failures separately is the general fix, and in each case the number that reaches the paper is the one that must carry the denominator it was actually computed over.",
-  "verified_ev": "ml/sensitivity.py:91-92 (except Exception: pass inside the per-seed loop) and :98-100 (description=f'Results across {len(variations)} different random seeds'); ml/publication.py:1249-1281 writes that count into the manuscript"
+  "status": "FIXED",
+  "note": "Engine: SensitivityAnalysis records n_attempted/failures per seed with exceptions, description states achieved-of-attempted. Page 08: per-model seed failures warned by name, n_seeds logged as the ACHIEVED count with requested/succeeded/failed alongside (publication.py:1499 prints n_seeds as analysis size, so achieved is the truthful meaning; teach it n_seeds_succeeded to restore 'requested' semantics).",
+  "verified_ev": "ml/sensitivity.py:91-92 (except Exception: pass inside the per-seed loop) and :98-100 (description=f'Results across {len(variations)} different random seeds'); ml/publication.py:1249-1281 writes that count into the manuscript",
+  "test": "tests/test_paper_risk_mlcore.py::TestMine030SeedFailuresAreCounted"
  },
  {
   "id": "MINE-031",
@@ -2788,9 +2804,10 @@
   "detail": "`def get_global_seed() -> int: import streamlit as st; return st.session_state.get('random_seed', 42)`. The seed is the single most manuscript-critical scalar in the app (CODE_REVIEW C3: the Methods section omitted the split design and seed; the fix was calling record_split). Its accessor lives behind st.session_state with a silent default of 42 — so a Project that forgets to carry random_seed does not error, it publishes a paper claiming seed 42.",
   "ev": "utils/seed.py:32-35",
   "act": "project (seed is Project state with no default; record must read it from Project, not from a fallback)",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD, and this row states the consequence better than MINE-009 does: the seed is the single most manuscript-critical scalar in the app, and its accessor is a session-state read with a SILENT DEFAULT of 42. So a Project that forgets to carry random_seed does not error - it publishes a paper claiming seed 42, and the claim is reproducible-looking and false. The in-function streamlit import is also what keeps utils.seed out of the headless engine. Seed is Project state with no default; the Record must read it from the Project, and a missing seed must be a refusal rather than a fallback. Compare MODELS-007, where the bootstrap already hard-codes 42 for a different reason and produces the same false reproducibility claim.",
-  "verified_ev": "utils/seed.py:34-37 - def get_global_seed() -> int: import streamlit as st; return st.session_state.get('random_seed', 42)"
+  "status": "FIXED",
+  "note": "pages/10's 'or 42' dropped - seed 0 survives to the reproducibility manifest; absence still falls back. Engine-side pin proves seed 0 != seed 42 partitions.",
+  "verified_ev": "utils/seed.py:34-37 - def get_global_seed() -> int: import streamlit as st; return st.session_state.get('random_seed', 42)",
+  "test": "tests/test_paper_alignment.py::test_sweep_023_seed_zero_survives_export_to_the_manifest"
  },
  {
   "id": "SWEEP-024",
@@ -2935,9 +2952,10 @@
   "detail": "LANDS: engine. ml/preprocess_operators.py:86-92: when method=='mad', `mad = np.nanmedian(np.abs(X_arr - med), axis=0)`, `scale = 1.4826 * mad`, bounds = med -/+ threshold*scale. For a constant column mad==0, so lower_bounds_ == upper_bounds_ == med, and transform's `np.clip(X_arr, self.lower_bounds_, self.upper_bounds_)` (:104) forces every value in that column to the median. Any near-constant column (mad==0 with a few outliers, common in clinical flags and one-hot-ish integer codes) is silently flattened — the feature becomes constant, contributes nothing, and no warning is emitted. Zero test coverage on this module.",
   "ev": "ml/preprocess_operators.py:86-92 and :100-104",
   "act": "Characterization test with a deliberately constant column and a near-constant column (mad==0 plus one outlier); assert current behavior explicitly so the migration cannot change it accidentally, then decide whether to guard scale==0. Note a…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD and still uncovered. For a constant column mad == 0, so lower_bounds_ == upper_bounds_ == med and the clip forces every value to the median - and a NEAR-constant column (mad == 0 with a few outliers, which is what clinical flags and integer codes look like) is silently flattened into a constant, contributing nothing to the model with no warning anywhere. Note the interaction with MINE-006 in the same class: the bounds attributes are assigned in __init__, so an unfitted OutlierCapping returns X unchanged while a fitted one on a constant column destroys it - two opposite silent behaviors from one operator. Characterize both cases explicitly before deciding whether to guard scale == 0, so the migration cannot change either by accident.",
-  "verified_ev": "ml/preprocess_operators.py:86-92 (mad = nanmedian(|X - med|); scale = 1.4826 * mad; bounds = med -/+ threshold * scale) and :100-104 (np.clip against those bounds)"
+  "status": "FIXED",
+  "note": "MAD scale<=0 -> +/-inf bounds + uncapped_columns_ instead of [median,median] flattening; recipe names the uncapped count.",
+  "verified_ev": "ml/preprocess_operators.py:86-92 (mad = nanmedian(|X - med|); scale = 1.4826 * mad; bounds = med -/+ threshold * scale) and :100-104 (np.clip against those bounds)",
+  "test": "tests/test_paper_risk_mlcore.py::TestTest018MadCappingDoesNotFlattenAColumn"
  },
  {
   "id": "TEST-019",
@@ -5174,10 +5192,10 @@
   "detail": "ml/splits.py:300 encodes a categorical target with LabelEncoder().fit_transform(y.astype(str)). LabelEncoder sorts classes, so class 1 - the event, the positive class, the one every metric is about - is whichever level sorts LAST alphabetically. Measured on the project's own fixtures: messy-clinic gets responder over non-responder, which happens to match convention; the longitudinal fixture gets 'stable' over 'improved', so the model is trained to detect NOT improving; alive/dead would make death the event. Everything downstream inherits it - the sign of every coefficient, which class precision and recall describe, which way a calibration curve bends, what an odds ratio is an odds ratio OF - and nothing in the Classic interface states the choice or offers to change it. The numbers are internally consistent and answer a question the analyst may not have asked.",
   "ev": "ml/splits.py:294-301 (LabelEncoder on a categorical target); no Classic page renders or offers the class order; contrast ml/binary_text.positive_class_finding",
   "act": "Ask, as Guided now does (GUIDED-009): the event is a decision, not a property of the string. Until then, at minimum DISCLOSE the encoding - the Methods section can state which level was treated as the event, which costs nothing and removes the silent half.",
-  "status": "OPEN",
-  "note": "Found at L9c while writing the register row for target-positive-class, and worth recording how: the row was first written asserting the opposite mapping from memory, then checked against LabelEncoder and ml/splits.py and corrected. The claim as filed is measured. This is the Classic half of GUIDED-009 and the reason that row's register entry is a dated debt rather than a permanent classic-only: PRODUCT_VISION says Guided is never the less capable door, and here Classic is the less careful one. Note the interaction with T0-BUILD-004 and the label-encoder: neither is a crash, both are silent wrong-direction answers, and both are invisible in a results table that looks entirely reasonable. Closes at the L11 convergence of pages/01, or sooner if the disclosure half is taken on its own.",
+  "status": "FIXED",
+  "note": "Split.class_encoding records classes/encoding/positive_class/assigned_by with an on-page note that class 1 is alphabetical, not clinical; encoding itself deliberately unchanged (flipping would move published metrics). Ask-the-user remainder is GUIDED-009's scope on pages/01.",
   "verified_against": "TurboTab @ 23a9123",
-  "test": "",
+  "test": "tests/test_paper_risk_mlcore.py::TestT0Build006TheEventClassIsDisclosed",
   "verified_ev": "ml/splits.py:294-301 (LabelEncoder on a categorical target); no Classic page renders or offers the class order; contrast ml/binary_text.positive_class_finding"
  },
  {
@@ -6350,10 +6368,10 @@
   "detail": "L12 lens 8 (JSON to downstream), fresh adversarial pass. pages/07_Explainability.py:1118-1127 offers an 'Upload External Validation Dataset' uploader accepting csv, xlsx, xls, parquet, tsv, json, jsonl and ndjson, and loads it with a bare load_tabular_data(ext_file, filename=ext_file.name). Compare pages/01_Upload_and_Audit.py:400-445, which for the same formats calls inspect_json first, renders a records-key selectbox and a layout caption, offers a per-file transpose, and then runs the file through diagnose(). None of that happens here. The only validation is a column-name check at :1131 - missing_cols - which fires solely when the loaded frame lacks a required column. Every defect that preserves column names passes it untouched. The page's own copy at :1112-1114 calls external validation 'the gold standard for publication', which is what makes this the worst place in the app to skip the import safeguards.",
   "ev": "pages/07_Explainability.py:1118-1127 (the uploader and the bare load), :1131-1133 (missing_cols, the only gate), :1112-1114 (the page's own framing); contrast pages/01_Upload_and_Audit.py:400-445",
   "act": "Route the external upload through the same front door as pages/01: inspect_json with its picker and caption, the Import Doctor pass with its findings, and the transpose option. If that is too much screen for an expander, the minimum is the layout caption and a diagnose() summary with a blocker on any critical finding - an external validation set deserves at least the scrutiny the training data got. Worth stating as a general rule for the rebuild: there should be ONE loader entry point that cannot be called without the diagnosis, rather than a safe path and a bare one.",
-  "status": "OPEN",
-  "note": "REPRODUCED AT HEAD. A payload {'results': [200 records], 'data': [20 records]} with identical columns in both: inspect_json reports candidates ['data','results'] and the note 'Several keys hold lists (data, results). Reading rows from data - change it below if that is wrong.' pages/01 shows that; pages/07 never calls it. The bare loader returns the 20-row 'data' list, the page prints 'Loaded external dataset: 20 rows x 4 columns' as a SUCCESS message, and because the columns match the model's feature set the missing_cols guard does not fire. External validation then runs on 20 rows of a 200-row file and reports metrics for publication. Every lens 6 and 7 finding lands here undisclosed too - the transposed dict-of-dicts is caught by missing_cols, but the non-unique index (IMPORT-207), the float64 ID collapse (IMPORT-209), the cp1252 mojibake (IMPORT-210) and the duplicate-key collapse (IMPORT-211) all preserve column names and pass straight through. SEAL-CLASS: no - the external set is outside the seal by definition, which is exactly why nothing else downstream will catch a problem with it.",
+  "status": "FIXED",
+  "note": "External uploader runs the page-01 front door: inspect_json + records-key choice, transpose, render_import_doctor with repaired frame reaching predict(); critical diagnoses disable Validate until explicitly acknowledged, and unfixed findings are recorded with the results.",
   "verified_against": "TurboTab @ L12 lens 8",
-  "test": "",
+  "test": "tests/test_paper_risk_external.py::TestImport213ExternalUploadUsesTheFrontDoor",
   "verified_ev": "pages/07_Explainability.py:1118-1127 (the uploader and the bare load), :1131-1133 (missing_cols, the only gate), :1112-1114 (the page's own framing); contrast pages/01_Upload_and_Audit.py:400-445"
  },
  {
@@ -13402,10 +13420,10 @@
   "detail": "",
   "ev": "models/nn_whuber.py:5-6; tests/test_engine_is_headless.py:143; ml/model_registry.py:25-45 (the standard, written down)",
   "act": "",
-  "status": "OPEN",
-  "note": "",
+  "status": "FIXED",
+  "note": "models/nn_whuber imports without torch: guarded import, _TorchModule stand-in base, _require_torch at construction/fit with a clear message; test_engine_is_headless passes unmodified.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_paper_risk_mlcore.py::TestMisc095TheNeuralNetworkModuleImportsWithoutTorch",
   "verified_ev": "models/nn_whuber.py:5-6; tests/test_engine_is_headless.py:143; ml/model_registry.py:25-45 (the standard, written down)"
  },
  {
@@ -13449,5 +13467,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "scripts/remeasure_routing_baseline.py; docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L67 provenance section)"
+ },
+ {
+  "id": "MISC-099",
+  "area": "MISC",
+  "sev": "low",
+  "item": "pages/01_Upload_and_Audit.py:1420-1440's own exploratory_mode claim is dead code since utils/theme.apply_pending_exploratory_mode claims first (identical effects); owner may delete",
+  "detail": "",
+  "ev": "pages/01_Upload_and_Audit.py:1420-1440; utils/theme.py (apply_pending_exploratory_mode)",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "pages/01_Upload_and_Audit.py:1420-1440; utils/theme.py (apply_pending_exploratory_mode)"
  }
 ]
