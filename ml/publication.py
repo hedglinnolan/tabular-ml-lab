@@ -142,6 +142,45 @@ def _describe_outlier_handling(method: str, params: Optional[Dict[str, Any]] = N
     return None
 
 
+def pca_technique_sentence(pca_details: Dict[Any, Dict[str, Any]]) -> str:
+    """The Methods clause for PCA, over the PER-MODEL preprocessing configs.
+
+    `MINE-025`: this used to be `next(iter(pca_details.values()))` under the
+    comment "use the first PCA config as representative". The dict is
+    insertion-ordered by the Preprocess page's build sequence — checkbox order —
+    so the component count the Methods stated as the study's belonged to
+    whichever model the analyst happened to tick first. Per-model pipelines are
+    the product's differentiator precisely BECAUSE they differ, which makes
+    'representative' the one thing a member of that dict is not.
+
+    Collapse only when the configs agree; name them per model when they do not.
+    The clause also says where the number comes from: these are PREPROCESSING
+    PCA settings, and the sentence they annotate sits in the feature-engineering
+    subsection.
+    """
+    def _detail(d: Dict[str, Any]) -> str:
+        mode, n_comp = d.get('mode'), d.get('n_components')
+        if mode == "Fixed Components" and n_comp:
+            return f"{int(n_comp)} components"
+        if mode == "Variance Threshold" and n_comp:
+            return f"{int(n_comp * 100)}% of variance retained"
+        return "unspecified"
+
+    if not pca_details:
+        return "PCA dimensionality reduction"
+
+    details = list(pca_details.values())
+    if len({(d.get('mode'), d.get('n_components')) for d in details}) == 1:
+        described = _detail(details[0])
+        if described == "unspecified":
+            return "PCA dimensionality reduction"
+        return (f"PCA dimensionality reduction ({described} in each model's "
+                f"preprocessing pipeline)")
+    per_model = "; ".join(f"{key}: {_detail(d)}" for key, d in pca_details.items())
+    return (f"PCA dimensionality reduction, configured per model "
+            f"({per_model})")
+
+
 def generate_methods_from_log() -> Dict[str, List[Dict[str, Any]]]:
     """Extract methodology actions grouped by step from session state log.
 
@@ -353,6 +392,105 @@ def _resolve_manuscript_context(
         'best_model_by_metric': context.get('best_model_by_metric'),
         'best_metric_name': context.get('best_metric_name'),
     }
+
+
+def external_validation_record() -> Optional[Dict[str, Any]]:
+    """What page 07 recorded about an external cohort, or None.
+
+    Provenance first, session state second: the provenance record is what
+    survives an export and what a downstream reset nulls, so a manuscript
+    composed after the data changed cannot claim an external validation whose
+    results the same reset deleted.
+    """
+    try:
+        import streamlit as st
+    except ImportError:
+        return None
+    try:
+        prov = st.session_state.get('workflow_provenance')
+        ev = getattr(prov, 'external_validation', None) if prov is not None else None
+        if ev is not None:
+            return {
+                'dataset_name': getattr(ev, 'dataset_name', ''),
+                'n_rows': int(getattr(ev, 'n_rows', 0) or 0),
+                'models': list(getattr(ev, 'models_validated', []) or []),
+                'n_bootstrap': int(getattr(ev, 'n_bootstrap', 0) or 0),
+                'repairs': list(getattr(ev, 'import_repairs', []) or []),
+                'metrics': dict(getattr(ev, 'metrics', {}) or {}),
+            }
+        stored = st.session_state.get('external_validation_results')
+        if isinstance(stored, dict) and stored.get('per_model'):
+            return {
+                'dataset_name': stored.get('dataset_name', ''),
+                'n_rows': int(stored.get('n_rows', 0) or 0),
+                'models': list(stored.get('per_model', {}).keys()),
+                'n_bootstrap': int(stored.get('n_bootstrap', 0) or 0),
+                'repairs': list(stored.get('import_repairs', []) or []),
+            }
+    except Exception:
+        return None
+    return None
+
+
+def external_validation_sentence(record: Optional[Dict[str, Any]]) -> str:
+    """The Performance Evaluation sentence for an external cohort.
+
+    Says only what the record holds. With no record the wording stays the
+    unqualified one the caller's own flag used to produce — a caller that
+    passes external_validation=True is asserting it, not this function.
+    """
+    if not record:
+        return "External validation was performed on an independent dataset. "
+
+    n_rows = record.get('n_rows') or 0
+    name = str(record.get('dataset_name') or "").strip()
+    models = [m for m in (record.get('models') or [])]
+    parts = ["External validation was performed on an independent dataset"]
+    if n_rows:
+        parts.append(f" of {n_rows:,} rows")
+    if name:
+        parts.append(f" ({name})")
+    parts.append(".")
+    if models:
+        parts.append(
+            f" {_oxford_join([_publication_model_label(m) for m in models])} "
+            f"{'were' if len(models) != 1 else 'was'} scored on that cohort")
+        n_boot = record.get('n_bootstrap') or 0
+        if n_boot:
+            parts.append(
+                f", with 95% confidence intervals from {int(n_boot):,} "
+                f"bootstrap resamples")
+        parts.append(".")
+    # The numbers themselves, when the record carries them: an external
+    # validation the manuscript only ASSERTS happened is the same omission this
+    # sentence exists to close.
+    metrics = record.get('metrics') or {}
+    for model_key, per_metric in metrics.items():
+        if not isinstance(per_metric, dict):
+            continue
+        rendered = []
+        for metric_name, vals in per_metric.items():
+            if not isinstance(vals, dict) or vals.get('estimate') is None:
+                continue
+            lo, hi = vals.get('ci_lower'), vals.get('ci_upper')
+            if lo is not None and hi is not None:
+                rendered.append(f"{metric_name} {float(vals['estimate']):.3f} "
+                                f"(95% CI {float(lo):.3f}–{float(hi):.3f})")
+            else:
+                rendered.append(f"{metric_name} {float(vals['estimate']):.3f}")
+        if rendered:
+            parts.append(f" On the external cohort, "
+                         f"{_publication_model_label(model_key)} achieved "
+                         f"{_oxford_join(rendered)}.")
+
+    repairs = record.get('repairs') or []
+    if repairs:
+        parts.append(
+            f" Before validation the external file required "
+            f"{len(repairs)} structural repair{'s' if len(repairs) != 1 else ''} "
+            f"at import: {'; '.join(str(r) for r in repairs)}.")
+    parts.append(" ")
+    return "".join(parts)
 
 
 def generate_methods_section(
@@ -657,16 +795,7 @@ def generate_methods_section(
                         
                         # FIX 2: Specific parsing by transform type
                         if 'PCA' in technique_name.upper() and pca_details:
-                            # Use the first PCA config as representative
-                            first_pca = next(iter(pca_details.values()))
-                            mode = first_pca.get('mode')
-                            n_comp = first_pca.get('n_components')
-                            if mode == "Fixed Components" and n_comp:
-                                techniques.append(f"PCA dimensionality reduction ({int(n_comp)} components)")
-                            elif mode == "Variance Threshold" and n_comp:
-                                techniques.append(f"PCA dimensionality reduction (retaining {int(n_comp*100)}% of variance)")
-                            else:
-                                techniques.append(f"PCA dimensionality reduction")
+                            techniques.append(pca_technique_sentence(pca_details))
                         elif 'Polynomial' in technique_name:
                             # Extract degree and mode from "Polynomial degree 2 (full)" or "Polynomial degree 2 (interaction-only)"
                             import re
@@ -1256,10 +1385,16 @@ def generate_methods_section(
         f"Model performance was evaluated on the workflow's held-out data using {', '.join(metrics_used)}. "
         f"When available, 95% confidence intervals were computed from 1,000 BCa bootstrap resamples. "
     )
+    # The parameter was never passed by anything: page 10 assembles this call
+    # from session state, and page 07 computed external metrics, displayed them
+    # and dropped them, so the flag stayed False no matter what the researcher
+    # had actually done. The record is now written when the validation runs, and
+    # it is what this section reads when the caller does not say.
+    ext_record = external_validation_record() if not external_validation else None
+    if ext_record:
+        external_validation = True
     if external_validation:
-        sections.append(
-            "External validation was performed on an independent dataset. "
-        )
+        sections.append(external_validation_sentence(ext_record))
 
     # Explainability - check both parameter and session state
     explainability_to_mention = set(explainability_methods or [])
@@ -1863,16 +1998,24 @@ def _clean_audit_text(text: Any) -> str:
 
 
 def _format_audit_timestamp(timestamp: str) -> str:
-    """Format timestamps consistently for the audit appendix."""
+    """Format timestamps consistently for the audit appendix.
+
+    `RECORD-017`: a NAIVE timestamp is not UTC. Every entry in the Record and
+    the Ledger is `datetime.now().isoformat()` — local wall clock, no tzinfo —
+    and this used to stamp each one 'UTC', so every line of the exported
+    Decision Audit Trail was off by the machine's offset (and near midnight, off
+    by a day) with nothing to explain the skew to a reviewer reconciling it
+    against lab notes or a commit log. A naive stamp is now rendered without a
+    zone label: silent about a fact this function does not know, rather than
+    asserting one it does not. Aware stamps are still converted and labeled.
+    """
     if not timestamp:
         return "Timestamp unavailable"
     try:
         dt = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
-        return dt.strftime("%Y-%m-%d %H:%M UTC")
+            return dt.strftime("%Y-%m-%d %H:%M")
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     except Exception:
         return _clean_audit_text(timestamp)
 

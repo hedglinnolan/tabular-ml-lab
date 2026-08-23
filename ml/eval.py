@@ -21,35 +21,54 @@ def calculate_regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict
     metric functions raise on them. If no finite pairs remain, all metrics
     are NaN — an honest 'no valid predictions' rather than a crash.
 
+    `MINE-027`: the drop is deliberate, but the NUMBER is not optional. A
+    transform that makes 30% of test predictions non-finite yields metrics
+    computed on the 70% the model handled — biased optimistic, because the
+    dropped rows are exactly the ones it blew up on — and the only trace used
+    to be a logger nobody reads in a Streamlit app. When anything is dropped,
+    the returned dict carries `n_dropped_nonfinite` and `n_scored` so the
+    number travels with the metric it changed. The ordinary path returns the
+    ordinary four keys, so nothing downstream renders a column that only ever
+    reads zero.
+
     Returns:
-        Dictionary with MAE, RMSE, R2, MedianAE
+        Dictionary with MAE, RMSE, R2, MedianAE — plus n_dropped_nonfinite and
+        n_scored whenever a pair was dropped.
     """
     y_true = np.asarray(y_true, dtype=float).ravel()
     y_pred = np.asarray(y_pred, dtype=float).ravel()
     finite = np.isfinite(y_true) & np.isfinite(y_pred)
-    if not finite.all():
+    n_dropped = int((~finite).sum())
+    if n_dropped:
         import logging
         logging.getLogger(__name__).warning(
             "calculate_regression_metrics: dropping %d non-finite prediction "
             "pair(s) — check for a degenerate target transform",
-            int((~finite).sum()),
+            n_dropped,
         )
         y_true, y_pred = y_true[finite], y_pred[finite]
+
+    def _disclose(metrics: Dict[str, float]) -> Dict[str, float]:
+        if n_dropped:
+            metrics['n_dropped_nonfinite'] = n_dropped
+            metrics['n_scored'] = int(y_true.size)
+        return metrics
+
     if y_true.size < 2:
-        return {'MAE': float('nan'), 'RMSE': float('nan'),
-                'R2': float('nan'), 'MedianAE': float('nan')}
+        return _disclose({'MAE': float('nan'), 'RMSE': float('nan'),
+                          'R2': float('nan'), 'MedianAE': float('nan')})
 
     mae = mean_absolute_error(y_true, y_pred)
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     r2 = r2_score(y_true, y_pred)
     median_ae = np.median(np.abs(y_true - y_pred))
 
-    return {
+    return _disclose({
         'MAE': float(mae),
         'RMSE': float(rmse),
         'R2': float(r2),
         'MedianAE': float(median_ae)
-    }
+    })
 
 
 def calculate_classification_metrics(

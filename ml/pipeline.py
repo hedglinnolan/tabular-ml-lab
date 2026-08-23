@@ -25,10 +25,72 @@ try:
     _HAS_TARGET_ENCODER = True
 except ImportError:
     _HAS_TARGET_ENCODER = False
+from sklearn.base import BaseEstimator, TransformerMixin
 from ml.feature_steps import create_pca_step, KMeansFeatures
 from ml.preprocess_operators import UnitHarmonizer, PlausibilityGate, OutlierCapping, plausibility_row_mask
 from ml.clinical_units import infer_unit, CLINICAL_VARIABLES
 from ml.physiology_reference import load_reference_bundle, match_variable_key, get_improbability_band
+
+
+class AppendedKMeansFeatures(BaseEstimator, TransformerMixin):
+    """Cluster features APPENDED to the matrix they were computed on.
+
+    `STATE-011`: `KMeansFeatures.transform` returns only the cluster columns —
+    "for now, we're replacing X with cluster features (not appending)", says its
+    comment — while the recipe line, the Preprocess page and the Methods section
+    all say *added*. Enabling the checkbox therefore discarded every clinical
+    predictor and trained the model on nothing but distances to k centroids:
+    shapes stayed valid, the pipeline fitted, metrics computed, and SHAP
+    rendered on `kmeans_dist_cluster_*` with nothing on screen to say the study's
+    variables were gone. The copy is what the researcher reads, so the code is
+    what changes: the predictors stay, and the cluster columns follow them.
+
+    The output is dense because the input block may be sparse (one-hot) while
+    the distances never are, and an optional PCA step downstream does not accept
+    sparse input.
+    """
+
+    def __init__(self, n_clusters: int = 5, add_distances: bool = True,
+                 add_onehot_label: bool = False, random_state: int = 42):
+        self.n_clusters = n_clusters
+        self.add_distances = add_distances
+        self.add_onehot_label = add_onehot_label
+        self.random_state = random_state
+
+    def _inner(self) -> KMeansFeatures:
+        return KMeansFeatures(
+            n_clusters=self.n_clusters,
+            add_distances=self.add_distances,
+            add_onehot_label=self.add_onehot_label,
+            random_state=self.random_state,
+        )
+
+    @staticmethod
+    def _dense(X) -> np.ndarray:
+        return np.asarray(X.toarray() if hasattr(X, "toarray") else X, dtype=float)
+
+    def fit(self, X, y=None):
+        self.kmeans_features_ = self._inner().fit(X)
+        self.n_input_features_ = self._dense(X).shape[1]
+        return self
+
+    def transform(self, X):
+        from sklearn.utils.validation import check_is_fitted
+        check_is_fitted(self, "kmeans_features_")
+        base = self._dense(X)
+        if not (self.add_distances or self.add_onehot_label):
+            # Nothing was asked for; the matrix passes through unchanged.
+            return base
+        cluster = self._dense(self.kmeans_features_.transform(X))
+        return np.hstack([base, cluster])
+
+    def get_feature_names_out(self, input_features=None):
+        cluster_names = self._inner().get_feature_names_out(input_features=[])
+        cluster_names = [] if cluster_names is None else [str(n) for n in cluster_names]
+        if input_features is None:
+            n_in = getattr(self, "n_input_features_", 0)
+            input_features = [f"feature_{i}" for i in range(n_in)]
+        return np.array([str(f) for f in input_features] + cluster_names)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -265,6 +327,16 @@ def apply_plausibility_filter(
     ub = plausibility_bounds.get("upper_bounds", [])
     if not lb and not ub:
         return df
+    # `STATE-003`: the bounds are positional over `numeric_features`. A shorter
+    # or differently-ordered column list would drop rows for being outside
+    # another variable's reference range — and dropping rows is not a mistake
+    # anything downstream can see.
+    if len(lb) != len(numeric_features) or len(ub) != len(numeric_features):
+        raise ValueError(
+            f"Plausibility bounds ({len(lb)} lower, {len(ub)} upper) do not "
+            f"line up with the {len(numeric_features)} numeric feature(s) they "
+            f"would be applied to. They are positional, so filtering here would "
+            f"judge each column against another column's range.")
     X = df[numeric_features].values.astype(float)
     if unit_conversion_factors:
         X = X * np.array(unit_conversion_factors, dtype=float)
@@ -449,9 +521,10 @@ def build_preprocessing_pipeline(
     # Build pipeline steps
     steps = [('preprocessor', preprocessor)]
     
-    # Optional: KMeansFeatures (must come before PCA if both enabled)
+    # Optional: KMeansFeatures (must come before PCA if both enabled).
+    # `STATE-011`: appended, not substituted — see AppendedKMeansFeatures.
     if use_kmeans_features:
-        kmeans_transformer = KMeansFeatures(
+        kmeans_transformer = AppendedKMeansFeatures(
             n_clusters=kmeans_n_clusters,
             add_distances=kmeans_add_distances,
             add_onehot_label=kmeans_add_onehot,
@@ -525,7 +598,14 @@ def _describe_outlier(t: Any) -> str:
     if not isinstance(params, dict):
         return f"Outlier treatment ({method}; parameters not recorded on the fitted step)"
     if method == 'mad':
-        return f"MAD capping ({float(params.get('threshold', 3.5))}× MAD)"
+        desc = f"MAD capping ({float(params.get('threshold', 3.5))}× MAD)"
+        # `TEST-018`: a column whose MAD is zero is left uncapped rather than
+        # collapsed onto its median, and the Methods section is told which.
+        uncapped = getattr(t, 'uncapped_columns_', None)
+        if uncapped:
+            desc += (f"; {len(uncapped)} column(s) had zero MAD (half or more of "
+                     f"the values equal the median) and were left uncapped")
+        return desc
     lo = float(params.get('lower_q', 0.01)) * 100
     hi = float(params.get('upper_q', 0.99)) * 100
     desc = f"Percentile clip ({lo:g}th–{hi:g}th)"
@@ -634,7 +714,16 @@ def get_pipeline_recipe(pipeline: Pipeline, plausibility_mode: Optional[str] = N
     # Add optional feature engineering steps
     if "kmeans_features" in pipeline.named_steps:
         kmeans = pipeline.named_steps["kmeans_features"]
-        kmeans_desc = f"KMeans features added: {kmeans.n_clusters} clusters"
+        if isinstance(kmeans, AppendedKMeansFeatures):
+            kmeans_desc = (f"KMeans features added alongside the existing "
+                           f"predictors: {kmeans.n_clusters} clusters")
+        else:
+            # A pipeline built before `STATE-011` (or by another builder) may
+            # still hold the substituting transformer. It does not do what
+            # "added" says, so the recipe does not say it.
+            kmeans_desc = (f"KMeans cluster features REPLACED the preprocessed "
+                           f"feature matrix — the original predictors were not "
+                           f"passed to the model: {kmeans.n_clusters} clusters")
         if kmeans.add_distances:
             kmeans_desc += ", distances to centroids"
         if kmeans.add_onehot_label:
@@ -663,8 +752,10 @@ def get_pipeline_recipe(pipeline: Pipeline, plausibility_mode: Optional[str] = N
 def get_feature_names_after_transform(pipeline: Pipeline, original_feature_names: List[str]) -> List[str]:
     """
     Get feature names after pipeline transformation.
-    Handles preprocessor, optional KMeansFeatures, and optional PCA.
-    KMeans replaces preprocessor output with kmeans_dist_cluster_* / kmeans_cluster_*.
+    Handles preprocessor, optional KMeans cluster features, and optional PCA.
+    KMeans APPENDS kmeans_dist_cluster_* / kmeans_cluster_* to the preprocessor
+    output (`STATE-011`); a pipeline still holding the older substituting
+    transformer is named for what it does instead.
     PCA replaces preceding features with PC1, PC2, ...
     """
     feature_names: List[str] = []
@@ -683,16 +774,15 @@ def get_feature_names_after_transform(pipeline: Pipeline, original_feature_names
 
     if "kmeans_features" in pipeline.named_steps:
         kmeans = pipeline.named_steps["kmeans_features"]
-        if hasattr(kmeans, "get_feature_names_out"):
-            feature_names = [str(x) for x in kmeans.get_feature_names_out()]
+        cluster_names: List[str] = []
+        if getattr(kmeans, "add_distances", True):
+            cluster_names += [f"kmeans_dist_cluster_{i}" for i in range(kmeans.n_clusters)]
+        if getattr(kmeans, "add_onehot_label", False):
+            cluster_names += [f"kmeans_cluster_{i}" for i in range(kmeans.n_clusters)]
+        if isinstance(kmeans, AppendedKMeansFeatures):
+            feature_names = list(feature_names) + cluster_names
         else:
-            feature_names = []
-            if getattr(kmeans, "add_distances", True):
-                for i in range(kmeans.n_clusters):
-                    feature_names.append(f"kmeans_dist_{i}")
-            if getattr(kmeans, "add_onehot_label", False):
-                for i in range(kmeans.n_clusters):
-                    feature_names.append(f"kmeans_cluster_{i}")
+            feature_names = cluster_names
 
     if "pca" in pipeline.named_steps:
         pca = pipeline.named_steps["pca"]
@@ -751,11 +841,37 @@ def reconcile_pipeline_columns(pipe, available_columns):
 
     Returns ``(new_pipe, dropped)``. ``new_pipe is pipe`` (unchanged) when
     nothing needed dropping. Transformers left with no columns are removed.
+
+    `STATE-003`: the two operators whose parameters are POSITIONAL over the
+    block's columns are trimmed with it. Dropping a column and leaving the
+    conversion factors and plausibility bounds at their old length would apply
+    each of them to the wrong column from that point on — which is exactly the
+    misalignment `PlausibilityGate.transform` now refuses rather than absorbs.
     """
     from sklearn.base import clone
 
     available = set(available_columns)
     dropped: List[str] = []
+
+    def _trim_positional_params(trans, cols, kept):
+        """Reindex positional operator parameters onto the surviving columns."""
+        if not isinstance(trans, Pipeline):
+            return trans
+        keep_idx = [i for i, c in enumerate(cols) if c in available]
+        if len(keep_idx) == len(cols):
+            return trans
+        for _sname, step in trans.steps:
+            if isinstance(step, UnitHarmonizer):
+                factors = list(step.conversion_factors or [])
+                if len(factors) == len(cols):
+                    step.conversion_factors = [factors[i] for i in keep_idx]
+            elif isinstance(step, PlausibilityGate):
+                lower = list(step.lower_bounds or [])
+                upper = list(step.upper_bounds or [])
+                if len(lower) == len(cols) and len(upper) == len(cols):
+                    step.lower_bounds = [lower[i] for i in keep_idx]
+                    step.upper_bounds = [upper[i] for i in keep_idx]
+        return trans
 
     def _fix_ct(ct: ColumnTransformer) -> ColumnTransformer:
         new_transformers = []
@@ -764,7 +880,8 @@ def reconcile_pipeline_columns(pipe, available_columns):
                 kept = [c for c in cols if c in available]
                 dropped.extend([c for c in cols if c not in available])
                 if kept:
-                    new_transformers.append((name, clone(trans), kept))
+                    new_transformers.append(
+                        (name, _trim_positional_params(clone(trans), cols, kept), kept))
                 # a transformer with no surviving columns is dropped entirely
             else:
                 new_transformers.append((name, clone(trans), cols))

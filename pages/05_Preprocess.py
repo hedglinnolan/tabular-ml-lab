@@ -214,8 +214,18 @@ if _profile:
 
                 # ── Evidence probe: measure instead of guessing ──
                 if _probe_result is None:
+                    # MINE-005's shape: `train_row_mask` returns an all-True mask
+                    # both when the quarantine is off and when nothing was ever
+                    # sealed, so "TRAINING rows only" was a claim about an
+                    # exclusion that may not have happened. Ask the seal.
+                    from utils.test_lockbox import quarantine_is_active as _probe_quarantine
+                    _probe_rows_phrase = (
+                        "TRAINING rows only (the sealed test rows are excluded)"
+                        if _probe_quarantine() else
+                        "every row with a target — no test set is sealed in this "
+                        "session, so nothing is held back from the probe")
                     if st.button("🔬 Run evidence probe (~10 s)", key="run_coach_probe",
-                                 help="Quick seeded cross-validation on TRAINING rows only: "
+                                 help=f"Quick seeded cross-validation on {_probe_rows_phrase}: "
                                       "is there learnable signal, does non-linearity pay, "
                                       "would more data help? Advisory — never a reportable result."):
                         from ml.coach_probe import run_probe
@@ -336,6 +346,7 @@ try:
                 finding=_pi["finding"],
                 implication=_pi["implication"],
                 recommended_action=_pi["recommended_action"],
+                manuscript_text=_pi.get("manuscript_text", ""),
                 model_scope=_pi.get("model_scope", []),
                 relevant_pages=_pi.get("relevant_pages", []),
                 theory_anchor=_pi.get("theory_anchor", ""),
@@ -870,11 +881,12 @@ else:
                 "🧪 Cluster-based features (experimental)",
                 value=_uk,
                 key=f"preprocess_{_mk}_use_kmeans",
-                help="Adds distance-to-centroid columns that capture nonlinear cluster structure in your data.",
+                help="Adds distance-to-centroid columns alongside your predictors, capturing nonlinear cluster structure in your data.",
             )
             if _uk:
                 st.warning(
-                    "⚠️ **Experimental feature.** Adds derived columns (distance to each KMeans centroid). "
+                    "⚠️ **Experimental feature.** Adds derived columns (distance to each KMeans centroid) "
+                    "**alongside** your existing predictors, which are kept. "
                     "Increases feature count. Makes SHAP/coefficient interpretation harder — "
                     "'distance to cluster 3' is not meaningful to domain experts. "
                     "Most useful for neural nets or when you suspect latent subgroups in your data."
@@ -1125,6 +1137,31 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                 pb = plausibility_bounds if use_plaus and plausibility_bounds else None
                 pmode = model_config["plausibility_mode"]
 
+                # STATE-003. `uf` and `pb` are POSITIONAL lists built over the
+                # full `numeric_features`; the real build below passes
+                # `numeric_features_safe`, which drops the already-transformed
+                # engineered columns. Handing the unfiltered lists to a filtered
+                # column set applies bound j to column j' != j — an NHANES band
+                # for one biomarker gating another, every out-of-range value
+                # turned to NaN and median-imputed by the very next step, with
+                # the recipe still reading "Plausibility gate (NHANES)".
+                # UnitHarmonizer raised on the mismatch; PlausibilityGate
+                # truncated in silence. Realigned BY NAME here, so both operators
+                # see the columns their numbers were computed for.
+                def _align_to(cols: List[str]):
+                    _uf = None
+                    if uf is not None:
+                        _by_name = dict(zip(numeric_features, uf))
+                        _uf = [_by_name.get(c, 1.0) for c in cols]
+                    _pb = None
+                    if pb is not None:
+                        _bounds = pb.get("bounds_by_feature", {})
+                        _pb = dict(pb)
+                        _pb["lower_bounds"] = [(_bounds.get(c) or {}).get("lower") for c in cols]
+                        _pb["upper_bounds"] = [(_bounds.get(c) or {}).get("upper") for c in cols]
+                    return _uf, _pb
+
+                _uf_temp, _pb_temp = _align_to(numeric_features)
                 temp_pipeline = build_preprocessing_pipeline(
                     numeric_features=numeric_features,
                     categorical_features=categorical_features,
@@ -1135,8 +1172,8 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     numeric_missing_indicators=model_config["numeric_missing_indicators"],
                     numeric_outlier_treatment=model_config["numeric_outlier_treatment"],
                     numeric_outlier_params=model_config["numeric_outlier_params"],
-                    unit_harmonization_factors=uf,
-                    plausibility_bounds=pb,
+                    unit_harmonization_factors=_uf_temp,
+                    plausibility_bounds=_pb_temp,
                     plausibility_mode=pmode,
                     categorical_imputation=model_config["categorical_imputation"],
                     categorical_encoding=model_config["categorical_encoding"],
@@ -1177,6 +1214,7 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                 _all_excluded = _exclude_from_log | _exclude_from_power | _exclude_from_pca
                 numeric_features_safe = [f for f in numeric_features if f not in _all_excluded]
                 numeric_features_passthrough = [f for f in numeric_features if f in _all_excluded]
+                _uf_safe, _pb_safe = _align_to(numeric_features_safe)
 
                 pipeline = build_preprocessing_pipeline(
                     numeric_features=numeric_features_safe,
@@ -1189,8 +1227,8 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     numeric_missing_indicators=model_config["numeric_missing_indicators"],
                     numeric_outlier_treatment=model_config["numeric_outlier_treatment"],
                     numeric_outlier_params=model_config["numeric_outlier_params"],
-                    unit_harmonization_factors=uf,
-                    plausibility_bounds=pb,
+                    unit_harmonization_factors=_uf_safe,
+                    plausibility_bounds=_pb_safe,
                     plausibility_mode=pmode,
                     categorical_imputation=model_config["categorical_imputation"],
                     categorical_encoding=model_config["categorical_encoding"],
@@ -1412,7 +1450,7 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                 # eda_target_skew is deliberately NOT here: it concerns the target
                 # variable, which a feature power transform does not touch — it is
                 # resolved on Train & Compare when a target transform is applied.
-                for _skew_id in ["eda_skew_group"]:
+                for _skew_id in ["eda_skew_group", "preprocess_skewness_transform"]:
                     _ins = _pp_resolve_ledger.get(_skew_id)
                     if _ins and not _ins.resolved:
                         if _models_without:

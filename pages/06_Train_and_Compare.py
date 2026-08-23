@@ -482,8 +482,12 @@ if task_type_final == 'regression':
 
 st.session_state.split_config = split_config
 
-# Cross-validation option - read from session_state
-use_cv_default = st.session_state.get('use_cv', False)
+# Cross-validation option - read from session_state.
+# Default ON: the tutorial this app is written for describes cross-validation as
+# the routine way to read a model's spread, not as an extra. The neural network
+# is still excluded from the fold loop below (PyTorch models run their own
+# validation loop), which is a skip the record states rather than a silent one.
+use_cv_default = st.session_state.get('use_cv', True)
 use_cv = st.checkbox("Enable Cross-Validation", value=use_cv_default, key="train_use_cv")
 if use_cv:
     cv_folds_default = st.session_state.get('cv_folds', 5)
@@ -573,6 +577,25 @@ if st.button("Prepare Splits", type="primary"):
             st.session_state["target_label_encoder"] = le
         else:
             st.session_state.pop("target_label_encoder", None)
+
+        # T0-BUILD-006. Which level is the event was decided by the alphabet and
+        # was never rendered, offered or recorded anywhere. The engine now states
+        # it in `notes` (surfaced above) and hands back the mapping; the record
+        # keeps it so the Methods section can name the class its metrics are about.
+        if _split.class_encoding:
+            st.session_state["target_class_encoding"] = _split.class_encoding
+            if task_type_final == 'classification':
+                log_methodology(
+                    step='Model Training',
+                    action=(
+                        f"Outcome levels encoded alphabetically; "
+                        f"{_split.class_encoding.get('positive_class')!r} is class 1 "
+                        f"(the event every classification metric describes)"
+                    ),
+                    details=_split.class_encoding,
+                )
+        else:
+            st.session_state.pop("target_class_encoding", None)
 
         # CV must inherit the split's leakage semantics or the folds leak what
         # the split was careful about.
@@ -1563,6 +1586,21 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
 
                 if task_type_final == 'regression':
                     test_metrics = calculate_regression_metrics(y_test_eval, y_test_pred)
+                    # MINE-027. Metrics computed on a SUBSET of the held-out set
+                    # are not the held-out metrics, and the denominator has to
+                    # reach the person reading the number.
+                    _n_dropped = int(test_metrics.get('n_dropped_nonfinite', 0))
+                    if _n_dropped:
+                        st.warning(
+                            f"{model_name.upper()}: {_n_dropped} of "
+                            f"{_n_dropped + int(test_metrics.get('n_scored', 0))} "
+                            f"test prediction(s) were non-finite and could not be "
+                            f"scored. The metrics below are computed on the "
+                            f"remaining {int(test_metrics.get('n_scored', 0))} row(s), "
+                            f"not on the full held-out set — usually a degenerate "
+                            f"target back-transform. Report them with that N or "
+                            f"drop the target transform."
+                        )
                 else:
                     y_test_proba = model.predict_proba(X_test_model) if model.supports_proba() else None
                     test_metrics = calculate_classification_metrics(y_test, y_test_pred, y_test_proba)
@@ -1719,8 +1757,13 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
         try:
             from utils.workflow_provenance import get_provenance
             from ml.holdout_selection import criterion_phrase
-            _task_type = st.session_state.get('task_type', '')
-            _selection_metric = 'RMSE' if _task_type == 'regression' else 'Accuracy'
+            # CONTRACT-010. This read `st.session_state['task_type']`, a key
+            # nothing in the repository writes, so the ternary always took the
+            # 'Accuracy' branch and every regression study recorded 'the held-out
+            # Accuracy' as its selection criterion — an accuracy no regression
+            # run ever computed. The resolved task type is the local the ranking
+            # loop above uses; the record now reads the same one.
+            _selection_metric = 'RMSE' if task_type_final_local == 'regression' else 'Accuracy'
             _model_results_local = st.session_state.get('model_results', {})
             # AUDIT-030. This recorded `validation <metric>` and the loop above
             # ranks `results['metrics']`, which is the TEST dict written at
@@ -1804,7 +1847,9 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 model_results=model_results,
                 task_type=task_type_final_local,
                 bootstrap_results=st.session_state.get("bootstrap_results"),
-                primary_model=st.session_state.get("primary_model", ""),
+                # COACH-003: nothing ever writes st.session_state['primary_model'],
+                # so this always passed ''. best_model_name is resolved at :1727-1742.
+                primary_model=best_model_name or "",
             )
             for diag in _diagnostics:
                 _tc_ledger.upsert(Insight(
@@ -2249,32 +2294,45 @@ if st.session_state.get('trained_models'):
                 y_test_base = st.session_state.get("y_test")
 
             if X_train_base is not None and y_test_base is not None:
-                # Use the first model's preprocessing pipeline for baselines
-                first_model = list(st.session_state.get("fitted_preprocessing_pipelines", {}).keys())
-                if first_model:
-                    pipe = st.session_state["fitted_preprocessing_pipelines"][first_model[0]]
-                    try:
-                        X_train_t = pipe.transform(X_train_base)
-                        X_test_t = pipe.transform(X_test_base)
-                    except Exception:
-                        X_train_t = np.array(X_train_base)
-                        X_test_t = np.array(X_test_base)
-                else:
-                    X_train_t = np.array(X_train_base)
-                    X_test_t = np.array(X_test_base)
+                # MODELS-009. The baselines get their OWN preprocessing, stated
+                # below the table. They used to be transformed through whichever
+                # per-model pipeline was first in insertion order — checkbox
+                # order — so the comparator the headline claim is made against
+                # moved with the order the analyst ticked the boxes, and a bare
+                # except silently computed it on raw arrays instead.
+                from ml.baseline_models import prepare_baseline_matrices
+                try:
+                    X_train_t, X_test_t, _baseline_prep = prepare_baseline_matrices(
+                        X_train_base, X_test_base)
+                except Exception as _baseline_err:
+                    X_train_t = None
+                    st.warning(
+                        f"Baselines were not computed: the baseline preprocessing "
+                        f"could not be fitted ({_baseline_err}). A baseline "
+                        f"computed on untransformed data is not the comparator "
+                        f"this table claims, so no number is shown."
+                    )
 
-                baselines = train_baseline_models(
-                    X_train_t, np.array(y_train_base),
-                    X_test_t, np.array(y_test_base),
-                    task_type=data_config.task_type or "regression",
-                )
-                st.session_state["baseline_results"] = baselines
+                if X_train_t is not None:
+                    baselines = train_baseline_models(
+                        X_train_t, np.array(y_train_base),
+                        X_test_t, np.array(y_test_base),
+                        task_type=data_config.task_type or "regression",
+                        preprocessing_description=_baseline_prep,
+                    )
+                    st.session_state["baseline_results"] = baselines
 
         if st.session_state.get("baseline_results"):
             baselines = st.session_state["baseline_results"]
             _xte_b = st.session_state.get('X_test')
+            _bl_prep_note = next(
+                (b.get("preprocessing") for b in baselines.values() if b.get("preprocessing")),
+                "")
             st.caption(f"Baselines are evaluated on the same held-out test set "
-                       f"(n={len(_xte_b) if _xte_b is not None else 0}), on the original target scale.")
+                       f"(n={len(_xte_b) if _xte_b is not None else 0}), on the original target scale."
+                       + (f" Baseline features: {_bl_prep_note} — the baselines' own "
+                          f"preprocessing, not any trained model's pipeline."
+                          if _bl_prep_note else ""))
             for bname, bres in baselines.items():
                 st.markdown(f"**{bname}:** {bres['description']}")
                 cols_b = st.columns(len(bres["metrics"]))

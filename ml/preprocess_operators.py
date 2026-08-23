@@ -82,7 +82,21 @@ class PlausibilityGate(BaseEstimator, TransformerMixin):
     def transform(self, X):
         check_is_fitted(self, ("lower_bounds_", "upper_bounds_"))
         X_arr = np.asarray(X, dtype=float).copy()
-        n_cols = min(X_arr.shape[1], len(self.lower_bounds_), len(self.upper_bounds_))
+        # `STATE-003`: the bounds are POSITIONAL, so a matrix that is not the
+        # column set they were built for means bound j lands on column j' != j —
+        # an NHANES band for one biomarker applied to another, every value
+        # outside it turned to NaN, and the very next pipeline step imputing
+        # those NaNs to the median. `min()` used to absorb the mismatch in
+        # silence. `UnitHarmonizer` fails loudly on the same mistake; so does
+        # this now.
+        if len(self.lower_bounds_) != X_arr.shape[1] or len(self.upper_bounds_) != X_arr.shape[1]:
+            raise ValueError(
+                f"PlausibilityGate was fitted with {len(self.lower_bounds_)} "
+                f"lower and {len(self.upper_bounds_)} upper bound(s) but was "
+                f"handed a matrix with {X_arr.shape[1]} column(s). The bounds "
+                f"are positional, so applying them here would gate columns "
+                f"against another column's reference range.")
+        n_cols = X_arr.shape[1]
         for idx in range(n_cols):
             lower = self.lower_bounds_[idx]
             upper = self.upper_bounds_[idx]
@@ -120,11 +134,26 @@ class OutlierCapping(BaseEstimator, TransformerMixin):
             scale = 1.4826 * mad
             self.lower_bounds_ = med - threshold * scale
             self.upper_bounds_ = med + threshold * scale
+            # `TEST-018`: mad == 0 whenever at least half the values equal the
+            # median — every binary flag with prevalence != 50%, every integer
+            # code with a dominant level, every mostly-zero count. The bounds
+            # then collapse to [median, median] and the clip below forces the
+            # whole column to that constant: the predictor is destroyed inside
+            # the pipeline, its coefficient and SHAP value are zero for a
+            # mechanical reason, and the recipe still says "MAD capping". A
+            # capping step may trim extremes; it may not delete a variable. Such
+            # a column is left uncapped and named on the fitted step, so the
+            # recipe can say which ones.
+            degenerate = ~np.isfinite(scale) | (scale <= 0)
+            self.lower_bounds_ = np.where(degenerate, -np.inf, self.lower_bounds_)
+            self.upper_bounds_ = np.where(degenerate, np.inf, self.upper_bounds_)
+            self.uncapped_columns_ = np.flatnonzero(degenerate).tolist()
         else:
             lower_q = float(params.get("lower_q", 0.01))
             upper_q = float(params.get("upper_q", 0.99))
             self.lower_bounds_ = np.nanpercentile(X_arr, lower_q * 100, axis=0)
             self.upper_bounds_ = np.nanpercentile(X_arr, upper_q * 100, axis=0)
+            self.uncapped_columns_ = []
         return self
 
     def transform(self, X):

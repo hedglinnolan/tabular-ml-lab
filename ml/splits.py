@@ -15,7 +15,10 @@ partitions is the worse leak:
                        an entity id exists. Same-subject rows never straddle.
 2. ``chronological`` — sort by the datetime column and slice. No shuffle.
 3. ``lockbox``       — the sealed labels *are* the test set. Only the remaining
-                       rows are divided into train and validation.
+                       rows are divided into train and validation, and that
+                       division is itself grouped by the declared subject when
+                       there is one: the seal keeps the test set, the grouping
+                       keeps a subject out of both train and validation.
 4. ``stratified`` / ``random`` — ``train_test_split``.
 
 **Row identity.** `Split` carries both, and the distinction is `T0-ID-001`:
@@ -121,6 +124,14 @@ class Split:
     cv_groups_train: Optional[np.ndarray] = None
 
     label_encoder: Optional[Any] = None
+
+    # Which level of a categorical outcome became class 1 — the event every
+    # classification metric is about (`T0-BUILD-006`). `None` when no encoding
+    # happened. Recorded because the choice is made by the alphabet and is
+    # otherwise invisible: `{"classes": [...], "positive_class": ...,
+    # "encoding": {level: code}}`.
+    class_encoding: Optional[Dict[str, Any]] = None
+
     lockbox_applied: bool = False
     n_trimmed_rows: int = 0
     notes: List[str] = field(default_factory=list)
@@ -394,9 +405,36 @@ def make_split(
         raise SplitError(
             f"Single-class target: {y.nunique()} unique value(s) after removing "
             "missing values. Classification needs at least 2 classes.")
+    class_encoding: Optional[Dict[str, Any]] = None
     if _target_is_categorical(y):
         label_encoder = LabelEncoder()
         y = pd.Series(label_encoder.fit_transform(y.astype(str)), index=y.index)
+        # `T0-BUILD-006`: LabelEncoder sorts, so class 1 — the event, the class
+        # precision, recall, F1, AUROC and every coefficient sign are about — is
+        # whichever level sorts LAST alphabetically. 'stable' beats 'improved',
+        # 'dead' loses to 'alive', 'Control' beats 'Case'. Nothing in the app
+        # rendered the mapping, so a study could report the complement of the
+        # question it asked and read entirely plausible. The choice stays
+        # alphabetical (changing it silently would move every published metric),
+        # but it is now a stated fact rather than an invisible one.
+        classes = [str(c) for c in label_encoder.classes_]
+        class_encoding = {
+            "classes": classes,
+            "encoding": {c: int(i) for i, c in enumerate(classes)},
+            "positive_class": classes[-1] if classes else None,
+            "assigned_by": "alphabetical order (LabelEncoder)",
+        }
+        if task_type == "classification" and len(classes) == 2:
+            notes.append(
+                f"Outcome encoding: {classes[1]!r} is class 1 — the event every "
+                f"metric describes — and {classes[0]!r} is class 0. The order is "
+                f"alphabetical, not clinical; if the event you are studying is "
+                f"{classes[0]!r}, precision, recall, F1 and AUROC below describe "
+                f"its complement.")
+        elif task_type == "classification":
+            notes.append(
+                "Outcome encoding (alphabetical): "
+                + ", ".join(f"{c}={i}" for i, c in enumerate(classes)))
 
     cv_strategy: str = "standard"
     cv_groups_train: Optional[np.ndarray] = None
@@ -442,18 +480,64 @@ def make_split(
     elif strategy == "lockbox":
         idx_test = positions[is_test_row]
         rest = positions[~is_test_row]
-        strat = None
-        if spec.stratify and task_type == "classification":
-            candidate = y.iloc[rest]
-            if candidate.value_counts().min() >= 2:
-                strat = candidate
-        try:
-            idx_train, idx_val = train_test_split(
-                rest, test_size=_relative_val(spec),
-                random_state=spec.random_state, stratify=strat)
-        except ValueError:
-            idx_train, idx_val = train_test_split(
-                rest, test_size=_relative_val(spec), random_state=spec.random_state)
+
+        # The remainder is grouped by the DECLARED subject when there is one.
+        # The lockbox keeps owning the test set — routing to `choose_strategy`'s
+        # grouped branch to fix this would trade a train/validation leak for a
+        # train/TEST one by drawing a fresh test set past the seal. So: sealed
+        # test, grouped train/validation.
+        groups_all = None
+        if spec.entity_id_col and spec.entity_id_col in df.columns:
+            groups_all = to_numpy_1d(df.loc[kept_labels, spec.entity_id_col])
+
+        idx_train = idx_val = None
+        if groups_all is not None:
+            rest_groups = groups_all[rest]
+            n_groups = len(pd.unique(rest_groups))
+            if n_groups >= 2:
+                gss_rest = GroupShuffleSplit(
+                    n_splits=1, test_size=_relative_val(spec),
+                    random_state=spec.random_state)
+                tr_rel, va_rel = next(gss_rest.split(rest, y.iloc[rest], rest_groups))
+                idx_train, idx_val = rest[tr_rel], rest[va_rel]
+                # The folds inherit the split's leakage semantics or they leak
+                # what the split was careful about.
+                cv_strategy = "group"
+                cv_groups_train = rest_groups[tr_rel]
+                notes.append(
+                    f"Train and validation were divided by {spec.entity_id_col!r}: "
+                    f"no subject has rows in both. ({n_groups} subjects outside "
+                    f"the sealed test set.)")
+                straddling = (set(pd.unique(rest_groups))
+                              & set(pd.unique(groups_all[is_test_row])))
+                if straddling:
+                    notes.append(
+                        f"{len(straddling)} subject(s) have rows in BOTH the "
+                        f"sealed test set and the training data. The lockbox was "
+                        f"sealed by row at upload, before the subject column was "
+                        f"declared, so this split cannot repair it — re-seal on "
+                        f"Upload & Audit with the subject declared to remove the "
+                        f"leak.")
+            else:
+                notes.append(
+                    f"Only {n_groups} distinct {spec.entity_id_col!r} value(s) "
+                    "outside the sealed test set, so train and validation could "
+                    "not be divided by subject; the same subject may appear in "
+                    "both.")
+
+        if idx_train is None:
+            strat = None
+            if spec.stratify and task_type == "classification":
+                candidate = y.iloc[rest]
+                if candidate.value_counts().min() >= 2:
+                    strat = candidate
+            try:
+                idx_train, idx_val = train_test_split(
+                    rest, test_size=_relative_val(spec),
+                    random_state=spec.random_state, stratify=strat)
+            except ValueError:
+                idx_train, idx_val = train_test_split(
+                    rest, test_size=_relative_val(spec), random_state=spec.random_state)
         notes.append(
             f"Test set from the upload lockbox: n={len(idx_test)}, sealed before "
             "feature engineering or selection could see it. The remaining rows "
@@ -491,6 +575,7 @@ def make_split(
         cv_strategy=cv_strategy,
         cv_groups_train=cv_groups_train,
         label_encoder=label_encoder,
+        class_encoding=class_encoding,
         lockbox_applied=lockbox_applied,
         n_trimmed_rows=n_trimmed,
         notes=notes,
