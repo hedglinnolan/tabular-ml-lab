@@ -201,9 +201,10 @@
   "detail": "utils/test_lockbox.py stores `labels` as index LABELS and `train_row_mask()` tests `lbl not in test_set`. But pages/06 computes `original_indices = np.where(mask)[0]` — POSITIONAL offsets into the frame returned by `get_data()` at split time — and stores `st.session_state.train_indices/val_indices/test_indices = original_indices[...].tolist()`. Page 07 then does `df_raw.iloc[test_indices]` against a FRESH `get_data()` call. If the row set changed between Train and Explain (cohort started/cleared, `filtered_data` written by page 05, FE re-applied, a cleaning action dropping rows) the .iloc selects DIFFERENT PEOPLE with no error — SHAP/permutation/subgroup results are then computed on the wron…",
   "ev": "pages/06_Train_and_Compare.py:383 (`original_indices = np.where(mask)[0]`), :683-693; pages/07_Explainability.py:185,196,1196; utils/test_lockbox.py:237-248",
   "act": "project — store split membership as index labels (Index/boolean mask) in the Project; drop the positional *_indices keys entirely",
-  "status": "OPEN",
-  "note": "Still OPEN, and the silent-corruption path is unchanged. The split block did move to ml/splits.py and it now reports LABELS (Split.train/val/test_labels), and pages/06:556-558 stores train/val/test_row_labels alongside. But the positional keys were NOT dropped: pages/06:551-553 still writes train/val/test_indices via df.index.get_indexer(...), and pages/07:185,196,1196 still does df_raw.iloc[test_indices] against a FRESHLY fetched get_data() frame. No consumer reads the labels. So the two conventions still coexist and any change to the row set between Train and Explain (cohort start/clear, filtered_data write, row-dropping repair) still selects different people with no error. What remains: page 07 must select by label (.loc on test_row_labels) and the positional keys must be deleted.",
-  "verified_ev": "pages/06_Train_and_Compare.py:551-558; pages/07_Explainability.py:185,196,1196; ml/splits.py:107-109,387-389; utils/test_lockbox.py:461-472"
+  "status": "FIXED",
+  "note": "Labels-only end to end: pages/06 stores *_row_labels and pops legacy positional keys; ml/splits.resolve_split_rows is the single way back (split-recorded order, SplitIdentityError naming missing rows); session_state.get_split_rows is the front door. Positional keys removed from the app.",
+  "verified_ev": "pages/06_Train_and_Compare.py:551-558; pages/07_Explainability.py:185,196,1196; ml/splits.py:107-109,387-389; utils/test_lockbox.py:461-472",
+  "test": "tests/test_paper_risk_split_identity.py::test_contract_001_a_longer_frame_returns_the_same_people_not_the_same_slots"
  },
  {
   "id": "CONTRACT-002",
@@ -251,9 +252,10 @@
   "detail": "`_df_to_parquet_bytes` drops the index; on restore pandas assigns a fresh RangeIndex. lockbox.json restores `labels` verbatim (and deliberately coerces them to int/str to avoid a type mismatch). If raw_data/working_table carried anything other than a contiguous 0..n-1 RangeIndex at save time — any frame produced by a merge, a row-dropping cleaning action, or a cohort slice — the restored labels name different rows. `train_row_mask` then returns a wrong mask with no error, and the 'sealed' test set is silently no longer sealed.",
   "ev": "utils/session_manager.py:169-172, :278-306; utils/test_lockbox.py:16-17 (\"stores index LABELS ... so membership survives\"), :247-248",
   "act": "project — persist the index explicitly (to_parquet(index=True)) and add a restore-time assertion that every lockbox label exists in the restored index",
-  "status": "OPEN",
-  "note": "resolved-in-core; closes at L11 convergence of utils/session_manager.py. The core got this right: turbotab/archive.py:275-278 writes to_parquet(index=True) with a comment naming row identity as the reason. Classic did not change - utils/session_manager.py:171 is still df.to_parquet(buf, index=False) and _read_parquet at :504-506 has no index restore and no restore-time assertion that every lockbox label survives. Any frame that carried a non-RangeIndex at save time (merge output, row-dropping repair, cohort slice) comes back renumbered and train_row_mask silently names different rows. Same defect as MINE-002.",
-  "verified_ev": "utils/session_manager.py:169-172 (_df_to_parquet_bytes, index=False), :211,:221, :504-506 (_read_parquet); utils/test_lockbox.py:7,461-472"
+  "status": "FIXED",
+  "note": "Archives persist the frame index (to_parquet(index=True), turbotab/archive.py approach); manifest flags index_preserved; restore refuses the lockbox loudly on pre-flag archives or missing labels and re-draws from saved seed+fraction. persistence.py same fix.",
+  "verified_ev": "utils/session_manager.py:169-172 (_df_to_parquet_bytes, index=False), :211,:221, :504-506 (_read_parquet); utils/test_lockbox.py:7,461-472",
+  "test": "tests/test_paper_risk_session_index.py::test_sealed_rows_survive_the_round_trip_with_a_gappy_index"
  },
  {
   "id": "CONTRACT-006",
@@ -299,9 +301,10 @@
   "detail": "The lockbox freezes `\"labels\": list(test_labels)` (utils/test_lockbox.py:213) and membership is tested by label: `return pd.Series([lbl not in test_set for lbl in index], index=index)` (utils/test_lockbox.py:248). The docstring states the contract: 'The lockbox stores index LABELS (not positions) so membership survives feature engineering and row filtering, which preserve the original index' (utils/test_lockbox.py:16-17). But `_df_to_parquet_bytes` does `df.to_parquet(buf, index=False)` (utils/session_manager.py:171), so raw_data / df_engineered / filtered_data / working_table all come back with a fresh RangeIndex. filtered_data and df_engineered are exactly the frames that PRESERVE a non-co…",
   "ev": "utils/test_lockbox.py:16-17, 213, 248; utils/session_manager.py:73-78, 171, 485-489",
   "act": "project — serialize dataframes with the index preserved (index=True + explicit index round-trip), or move the lockbox to a content-addressed row key. WRONG-BUT-PLAUSIBLE OUTPUT: after Save/Resume, labels [5,9,40] land on RangeIndex rows 5,9…",
-  "status": "OPEN",
-  "note": "resolved-in-core; closes at L11 convergence of utils/session_manager.py. Duplicate of CONTRACT-005 from the landmine pass. Confirmed at HEAD: the lockbox still stores list(test_labels) as index LABELS (utils/test_lockbox.py:423) and train_row_mask still tests membership by label (:471-472), while utils/session_manager.py:171 still writes index=False. turbotab/archive.py:275-278 fixed it in the core with index=True; Classic did not inherit it.",
-  "verified_ev": "utils/test_lockbox.py:7,423,461-472; utils/session_manager.py:169-172, 504-506"
+  "status": "FIXED",
+  "note": "Same root as CONTRACT-005, fixed together. Restore-time _check_row_labels refuses a lockbox whose labels miss the restored index; cohort_run gets the same check. Residual: _lockbox_signature still hashes index=False (handed to the lockbox-detection cluster) so non-archive renumbering routes remain its scope.",
+  "verified_ev": "utils/test_lockbox.py:7,423,461-472; utils/session_manager.py:169-172, 504-506",
+  "test": "tests/test_paper_risk_session_index.py::test_a_lockbox_naming_missing_rows_is_refused"
  },
  {
   "id": "MINE-003",
@@ -445,9 +448,10 @@
   "detail": "Page 06 stores positions, not labels: `original_indices = np.where(mask)[0]` then `st.session_state.test_indices = original_indices[...].tolist()` (pages/06_Train_and_Compare.py:383, 683-693). Page 07 reads them back as positions into a freshly-fetched frame: `raw_candidate = df_raw.iloc[test_indices]` and `y_raw = df_raw[data_config.target_col].iloc[test_indices].values` where `df_raw = get_data()` (pages/07_Explainability.py:182-198). get_data() applies cohort filtering and prefers df_engineered over filtered_data over raw_data (utils/session_state.py:194-217), so the row set it returns can differ between the two page visits.",
   "ev": "pages/06_Train_and_Compare.py:383, 683-693; pages/07_Explainability.py:182, 184, 198; utils/session_state.py:194-217",
   "act": "project — the Project must expose the test set as row LABELS with a single accessor; positional indices across page boundaries cannot survive a job queue where the frame is re-materialized. WRONG-BUT-PLAUSIBLE OUTPUT: switch cohorts (or app…",
-  "status": "OPEN",
-  "note": "Duplicate of CONTRACT-001 from the landmine pass, and the half it names is entirely unfixed IN CLASSIC. The derivation changed - pages/06:551-553 now computes positions with df.index.get_indexer(_split.train/val/test_labels) instead of np.where(mask)[0] - but the STORED artifact is still positional, and pages/07:185,196,1196 still does df_raw.iloc[test_indices] with df_raw = get_data(). get_data still applies the active cohort filter and still prefers df_engineered over filtered_data over raw_data, so the row set can differ between the Train visit and the Explain visit and the .iloc lands on different people with no error. pages/06:556-558 now also stores test_row_labels; page 07 does not read it. L36-B: RESOLVED-IN-CORE; CLOSES AT L11 CONVERGENCE OF pages/07. The Guided door's Explain step fetches the held-out rows BY LABEL through turbotab/explain.held_out_frame, which reads project.working_table and the lockbox labels - the same accessor and the same mask the training step used - so the rows explained are the rows scored by construction rather than by care. Asserted the way Classic fails: apply a cohort filter between the two reads and the frame follows the labels, losing the removed rows rather than silently landing on different ones. Decision A's identity barrier is what makes that possible, and this is the first artifact that has needed it. The row stays OPEN because Streamlit never retires and the defect is still live for every Classic user.",
-  "verified_ev": "pages/06_Train_and_Compare.py:540-558; pages/07_Explainability.py:181-196, 1180-1196; utils/session_state.py:194-233 (get_data applies the cohort filter and prefers df_engineered over filtered_data over raw_data)"
+  "status": "FIXED",
+  "note": "Both page-07 consumers (SHAP/permutation matrix+target, subgroup strata) resolve by label; mismatch is an st.error with disclosed fallback to the recorded matrix (subgroups run nothing), never a swallow; length guard added on the subgroup pairing.",
+  "verified_ev": "pages/06_Train_and_Compare.py:540-558; pages/07_Explainability.py:181-196, 1180-1196; utils/session_state.py:194-233 (get_data applies the cohort filter and prefers df_engineered over filtered_data over raw_data)",
+  "test": "tests/test_paper_risk_split_identity.py::test_mine_014_the_positional_split_keys_are_gone"
  },
  {
   "id": "SWEEP-001",
@@ -1590,9 +1594,10 @@
   "detail": "Any future edit that adds or reorders a branch in one block and not the other produces splits whose stored train_indices/test_indices describe a different partition than X_train/X_test — used by Explainability to map rows back to the original dataframe. The mismatch is a wrong-rows-in-the-SHAP-plot bug, not a crash. Additionally the whole block mixes positional and label identity: `original_indices = np.where(mask)[0]` is POSITIONAL while `orig_labels = df.index[mask]` is LABEL-based, and both are live in the same scope; train_indices is stored as positions while the lockbox is labels.",
   "ev": "pages/06_Train_and_Compare.py:349-720. The split arrays are written via set_splits() at :610 or :646; the index lists are written by a SECOND independent branch at :682-693 keyed on the same three conditions.",
   "act": "Extract `build_splits(df, data_config, split_config, lockbox, cohort_detection) -> SplitResult` FIRST, before any frontend work, with SplitResult as one immutable value object written atomically (arrays + index lists + strategy + seed + loc…",
-  "status": "PARTIAL",
-  "note": "Two of the three claims are closed; the third is not. The 370-line block is out of the button handler and into ml/splits.py as make_split, with SplitSpec in and an immutable Split out; the equivalence suite pins every branch against the page's old behavior, plus branch priority, non-mutation, reproducibility and headless import. And the dual-branch sync hazard is gone - pages/06:551-553 is now ONE expression, df.index.get_indexer(_split.train/val/test_labels), with a comment recording that the per-strategy branches existed only to carry their own index bookkeeping. WHAT REMAINS is the identity half this row also names: the split now reports LABELS but pages/06 still derives and stores POSITIONS from them, and pages/07 still consumes those positions against a freshly fetched frame. See CONTRACT-001 / MINE-014 - this row does not close until the positional keys are dropped.",
-  "verified_ev": "ml/splits.py:59-393 (SplitSpec, Split, choose_strategy, make_split - the four branches, extracted); pages/06_Train_and_Compare.py:392,414 (from ml.splits import ...; _split = make_split(...)); :540-558 (ONE get_indexer expression replacing the second branch block); tests/integration/test_split_extraction_equivalence.py (12 tests incl. all four branches, branch priority, non-mutation, reproducibility, headless import) and tests/integration/test_characterization_split.py"
+  "status": "FIXED",
+  "note": "The positions half is gone with CONTRACT-001; the split's labels are the only stored partition.",
+  "verified_ev": "ml/splits.py:59-393 (SplitSpec, Split, choose_strategy, make_split - the four branches, extracted); pages/06_Train_and_Compare.py:392,414 (from ml.splits import ...; _split = make_split(...)); :540-558 (ONE get_indexer expression replacing the second branch block); tests/integration/test_split_extraction_equivalence.py (12 tests incl. all four branches, branch priority, non-mutation, reproducibility, headless import) and tests/integration/test_characterization_split.py",
+  "test": "tests/test_paper_risk_split_identity.py::test_state_014_rows_come_back_in_the_order_the_split_recorded"
  },
  {
   "id": "STATE-015",
@@ -1723,9 +1728,10 @@
   "detail": "iloc on a different-length or differently-ordered frame either raises IndexError (loud, fine) or returns the WRONG ROWS (silent). Wrong rows produce a plausible y vector, so permutation importance, external-validation labels, and subgroup stratification are quietly computed against mismatched outcomes. pages/07 wraps the whole reconstruction in `except Exception: pass` (line 204-205) and falls back to X_test — hiding even the loud case.",
   "ev": "Written pages/06 lines 681-693; read pages/07 lines 185-196 (`df_raw.iloc[test_indices]` for permutation/SHAP raw rows AND `df_raw[target].iloc[test_indices]` for y) and line 1196 (subgroup labels). get_data() precedence is df_engineered > …",
   "act": "Stop passing positions. The split should emit a TestSet carrying its own index labels (the lockbox already stores LABELS, not positions — utils/test_lockbox line 411 uses `set(_lockbox['labels'])`). Make row identity label-based end to end.",
-  "status": "OPEN",
-  "note": "Duplicate of CONTRACT-001 / MINE-014 from the state pass, unchanged at HEAD, and it names the aggravating detail the others do not: pages/07:204-205 wraps the whole reconstruction in a bare except and falls back to X_test, so even the LOUD version of this failure - an IndexError from a shorter frame - is swallowed. What is left is the silent version: same length, different rows, a plausible y vector, and permutation importance, external-validation labels and subgroup stratification all computed against mismatched outcomes. The swallow is what turns a detectable bug into an undetectable one, and it should go first.",
-  "verified_ev": "pages/06_Train_and_Compare.py:551-553 (positions written) and :556-558 (labels written but unread); pages/07_Explainability.py:185,196 (df_raw.iloc[test_indices]) and :1196; :204-205 (except Exception: pass, falling back to X_test)"
+  "status": "FIXED",
+  "note": "Missing label refuses; extra rows harmless under label lookup; duplicate labels refused too (.loc would over-return and misalign stored vectors).",
+  "verified_ev": "pages/06_Train_and_Compare.py:551-553 (positions written) and :556-558 (labels written but unread); pages/07_Explainability.py:185,196 (df_raw.iloc[test_indices]) and :1196; :204-205 (except Exception: pass, falling back to X_test)",
+  "test": "tests/test_paper_risk_split_identity.py::test_state_025_duplicate_labels_are_refused"
  },
  {
   "id": "STATE-026",
@@ -1868,8 +1874,8 @@
   "detail": "A researcher enables plausibility filtering in 'filter' mode AFTER applying feature engineering: the rows they excluded are silently still in the training data, and the manuscript's n is wrong. Conversely, a filtered_data left over from an abandoned preprocessing config keeps shrinking the dataset across every reset that is not a full data change.",
   "ev": "utils/session_state.get_data:207-212 (`df_engineered` first, `filtered_data` only in the else branch); pages/05_Preprocess.py:863 writes filtered_data; reset_downstream_results:301-358 never touches it (only set_data:264 and reset_data_depe…",
   "act": "Collapse the three frames into one explicit derivation chain on the Project (base → cleaned → filtered → engineered) with each step recorded, so 'engineered' is computed FROM 'filtered' rather than instead of it. Add filtered_data to the in…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD, both halves. filtered_data is still DEAD whenever df_engineered exists, so enabling plausibility filtering in 'filter' mode after applying feature engineering silently keeps the excluded rows in the training data and the manuscript's n is wrong. And reset_downstream_results still never clears it, so a filtered_data left over from an abandoned preprocessing config keeps shrinking the dataset across every partial reset. The two failures point opposite directions from one cause: three frames with an implicit precedence instead of one explicit derivation chain. base -> cleaned -> filtered -> engineered, each step recorded, with engineered computed FROM filtered rather than instead of it.",
+  "status": "PARTIAL",
+  "note": "get_data() no longer lets df_engineered shadow filtered_data: engineered columns, then filtered rows by label mask, either page order; foreign-vintage mask skipped rather than emptying the frame. REMAINS: reset_downstream_results never pops filtered_data - now correctness-relevant, assigned to the reset/invalidation cluster. Guard test: tests/test_paper_risk_split_identity.py::test_state_037_the_plausibility_filter_survives_feature_engineering",
   "verified_ev": "utils/session_state.py:196 (docstring: df_engineered > filtered_data > raw_data), :207-215 (the precedence), :280 and :486 (the only two places filtered_data is popped - set_data and reset_data_dependent_state); reset_downstream_results never touches it; pages/05_Preprocess.py:863 writes it"
  },
  {
@@ -2173,8 +2179,8 @@
   "detail": "`get_data()` returns df_engineered if present, ELSE filtered_data, ELSE raw_data. Page 05 writes `st.session_state['filtered_data'] = filtered_df` when any model uses plausibility_mode='filter'. If FE was applied first (the normal order), df_engineered wins and the plausibility filter is silently discarded — the pipeline was configured and n_output_features measured against filtered rows, but training runs on unfiltered rows. Worse, reset_downstream_results() does NOT pop filtered_data (only set_data and reset_data_dependent_state do), so it persists stale across dataset content changes.",
   "ev": "utils/session_state.py:206-217; pages/05_Preprocess.py:863; absent from utils/session_state.py:283-415",
   "act": "project — model row-filters as an explicit ordered stack of masks on the Project, not a precedence chain of shadow DataFrames",
-  "status": "OPEN",
-  "note": "Duplicate of STATE-037 from the contract pass, unchanged at HEAD, and it names the measurement consequence the other does not: the pipeline was CONFIGURED and n_output_features MEASURED against the filtered rows, then training runs on the unfiltered ones - so the reported feature count and the transform actually applied describe different row sets. Combined with the missing pop, a filtered_data left over from an abandoned config keeps shrinking the dataset across every partial reset. The fix both rows converge on: model row filters as an explicit ordered stack of masks on the Project, not a precedence chain of shadow DataFrames.",
+  "status": "PARTIAL",
+  "note": "Recipe line about the plausibility gate is now true when FE ran first (same get_data() fix as STATE-037). REMAINS: pages/05 Build Pipelines writes/pops filtered_data with no reset_downstream_results call - divergence now loud (page 07 refuses) but the reset belongs to the invalidation cluster. Guard test: tests/test_paper_risk_split_identity.py::test_contract_013_a_filter_written_after_engineering_is_not_a_no_op",
   "verified_ev": "utils/session_state.py:196, 207-215 (df_engineered > filtered_data > raw_data); pages/05_Preprocess.py:863 writes filtered_data; reset_downstream_results never pops it - only set_data (:280) and reset_data_dependent_state (:486) do"
  },
  {
@@ -6525,10 +6531,10 @@
   "detail": "normalize_key computes fold_case per call as 'folding does not reduce the number of distinct IDs', and each side of a join is normalized by a SEPARATE call - diagnose_join, repair_keys and execute_join each normalize left and right independently. A single case collision anywhere in one column disables folding for that column only, so the left side compares as 'a01' while the right compares as 'A01'.",
   "ev": "ml/join_doctor.py normalize_key (fold_case computed from `text.str.lower().nunique() == text.nunique()` on the single column passed in); the independent per-side calls in diagnose_join, repair_keys and execute_join",
   "act": "Decide folding ONCE for the pair and pass it explicitly to both calls - normalize_key already takes fold_case as an override, so the machinery exists and only the decision site is wrong. The safe joint rule is to fold only when folding is non-destructive on BOTH sides, and to say so when it is not.",
-  "status": "OPEN",
-  "note": "REPRODUCES AT HEAD, exactly as recorded. sites.specimen = ['A01','B02'] normalizes to ['a01','b02'] (folded, no collision). labs.specimen = ['A01','a01','B02'] normalizes to ['A01','a01','B02'] (NOT folded, because folding would merge A01 and a01). diagnose_join then reports matched_keys=1 and predicted_rows=1, and execute_join returns 1 row - the recorded 'Result: 1 rows' for a pair that shares two specimens. The asymmetry is visible directly in the two normalize_key outputs. SEAL-CLASS: yes by consequence - the surviving row is a mis-pairing, so identity is wrong before anything downstream runs. Note the same entry appears twice in HUNT as asymmetric-case-folding-misjoins-ids; one defect, two filings, dispositioned here once.",
+  "status": "FIXED",
+  "note": "key_reading(left,right) decides case-folding once for the pair; fold only when non-destructive on both sides; refusal disclosed with the colliding values named. Wired through diagnose_join, repair_keys, execute_join, describe_join.",
   "verified_against": "TurboTab @ L12 HUNT batch 1",
-  "test": "",
+  "test": "tests/test_paper_risk_join_stack.py::TestImport233CaseFoldingIsDecidedForThePair",
   "verified_ev": "ml/join_doctor.py normalize_key (fold_case computed from `text.str.lower().nunique() == text.nunique()` on the single column passed in); the independent per-side calls in diagnose_join, repair_keys and execute_join"
  },
  {
@@ -6539,10 +6545,10 @@
   "detail": "_canon_scalar protects only against float conversion it performs itself, canonicalizing integers with arbitrary precision. When the value ARRIVES as float64 - which happens as soon as one row's ID is blank, in every loader - the damage is already done and the _DECIMAL_RE branch canonicalizes the collapsed digits as though exact. Nothing checks whether a numeric key column could have lost precision.",
   "ev": "ml/join_doctor.py _canon_scalar (the _DECIMAL_RE branch); the collapse is created upstream at load - see IMPORT-209 for the JSON path and data_processor's read_csv for the CSV path",
   "act": "Detect the condition rather than defend against it after the fact: a float64 key column whose non-null magnitudes exceed 2**53 cannot be trusted and must be reported, not canonicalized. Fix it at the loader (IMPORT-209) so the value never becomes float64, and add the check here as the backstop for frames the app did not load itself.",
-  "status": "OPEN",
-  "note": "REPRODUCES AT HEAD. Three float64 IDs 9007199254740993 / ...992 / ...994 collapse to 2 distinct values before join_doctor sees them. diagnose_join then reports matched_keys=2, predicted_rows=5, row_multiplication=True, and the warning reads 'Both files have several rows per ID, so every combination is produced: 2 shared IDs become 5 rows' - the collision explained as a fan-out. That is the recorded defect: the app does not merely lose the distinction, it offers a confident and wrong explanation for the symptom. SEAL-CLASS: YES. Two participants sharing an ID is corrupted row identity, and this is the same defect IMPORT-209 files at the JSON loader - 209 is where it is created, 234 is where it is misexplained. Neither closes the other.",
+  "status": "FIXED",
+  "note": "numeric_key_precision_loss() blocks any float64 key with magnitude >= 2^53 in diagnose_join (blocking, early-return so the fan-out story cannot narrate the collision) and execute_join raises. Loader arm that CREATES the collapse is IMPORT-209, still OPEN.",
   "verified_against": "TurboTab @ L12 HUNT batch 1",
-  "test": "",
+  "test": "tests/test_paper_risk_join_stack.py::TestImport234Float64IdCollapseIsRefused",
   "verified_ev": "ml/join_doctor.py _canon_scalar (the _DECIMAL_RE branch); the collapse is created upstream at load - see IMPORT-209 for the JSON path and data_processor's read_csv for the CSV path"
  },
  {
@@ -6567,10 +6573,10 @@
   "detail": "index_like is computed as _looks_like_row_index(left) AND _looks_like_row_index(right), and both the confidence downgrade and the score penalty key off that conjunction. A small-integer measurement (age, visit number, parity, dose) paired against a row counter therefore has index_like False, escapes the penalty, scores above the genuinely index-like pair, and becomes suggest_best.",
   "ev": "ml/join_doctor.py:599 (index_like as the conjunction of both sides), :293-299 (the confidence branch that keys off it), and the score penalty that does likewise",
   "act": "Penalize the pair when EITHER side is a bare counter, not only when both are. A counter on one side is enough to make the overlap meaningless, because a 1..N counter overlaps anything 1..N by construction. The conjunction is the wrong Boolean.",
-  "status": "OPEN",
-  "note": "REPRODUCES AT HEAD, exactly as recorded and with the ranking inverted as described. Two unrelated 50-row files, each carrying a 'row' counter plus one measurement: find_key_candidates returns ('age','row') at MEDIUM with index_like=False and score 0.312, ahead of ('row','row') at LOW with index_like=True and score 0.150. suggest_best returns ('age','row','medium'). The honest pairing is correctly penalized and the nonsense one is not, so the penalty makes the ranking worse than no penalty would. SEAL-CLASS: YES by inheritance - a medium-confidence junk key fuses two unrelated cohorts, and combine_ui offers medium in the dropdown with the top-scoring candidate pre-selected (see IMPORT-203). Same family as the HUNT entry index-like-key-accepted-silently, which is the both-sides-counter case and is dispositioned separately.",
+  "status": "FIXED",
+  "note": "index_like is now OR across the pair; ('age','row') drops to LOW below the honest counter pairing and suggest_best returns None for unrelated counter-carrying files; named-identifier pairs still pass. combine_ui no longer suppresses the no-match/no-ID warnings.",
   "verified_against": "TurboTab @ L12 HUNT batch 1",
-  "test": "",
+  "test": "tests/test_paper_risk_join_stack.py::TestImport236IndexPenaltyAppliesWhenEitherSideIsACounter",
   "verified_ev": "ml/join_doctor.py:599 (index_like as the conjunction of both sides), :293-299 (the confidence branch that keys off it), and the score penalty that does likewise"
  },
  {
@@ -6735,10 +6741,10 @@
   "detail": "_canon_scalar returns None for any value whose stripped, lower-cased text appears in _KEY_MISSING_TOKENS, a fixed list of fourteen strings including ordinary short codes. There is no check for whether the value also occurs on the other side - which is strong evidence it is a real shared identifier rather than a blank - and no per-column heuristic.",
   "ev": "ml/join_doctor.py _KEY_MISSING_TOKENS and _canon_scalar; measured at HEAD",
   "act": "Use the other side as evidence. A token appearing in BOTH files' key columns is behaving like an identifier, whatever it spells, and should be kept with a note rather than deleted. That is the same asymmetry the module already applies elsewhere: evidence from the pair beats a name list, which is constitution 02's rule one level down.",
-  "status": "OPEN",
-  "note": "REPRODUCES AT HEAD. Four study centres named NA, NB, NC and ND appear identically in both files. _canon_scalar('NA') returns None while NB, NC and ND survive; diagnose_join reports matched_keys 3 of 4 and execute_join returns 3 rows for centres NB, NC and ND. Centre NA is gone. PARTIAL IMPROVEMENT worth recording precisely, because it changes the character of the defect without removing it: the app is no longer silent - it warns '1 in a and 1 in b row(s) have no ID at all (blank or unknown). They cannot be matched and will be dropped.' So the loss is disclosed, but the disclosure is itself false: NA is not a row with no ID, it is a row whose ID the app refused to read. Left OPEN rather than PARTIAL because the deletion - the defect the entry names - is unchanged. SEAL-CLASS: no.",
+  "status": "FIXED",
+  "note": "Token list split: prose blanks always missing; ambiguous tokens (na . - -- ?) decided per pair by _coded_key_tokens shape-consistency. NA/NB/NC/ND centres survive with a note; a dropped token is disclosed with its spelling and the true reason, never 'no ID'. Both-sides rule deliberately rejected (R exports put NA on both sides).",
   "verified_against": "TurboTab @ L12 HUNT batch 3",
-  "test": "",
+  "test": "tests/test_paper_risk_join_stack.py::TestImport248RealKeyValuesAreNotDeletedAsMissingTokens",
   "verified_ev": "ml/join_doctor.py _KEY_MISSING_TOKENS and _canon_scalar; measured at HEAD"
  },
  {
@@ -6819,10 +6825,10 @@
   "detail": "plan_stack intersects and unions raw column labels with no normalization. combine.py has no equivalent of join_doctor's _name_similarity, so 'age' and 'Age', or 'glucose' and 'glucose ', are simply different columns.",
   "ev": "utils/combine.py plan_stack - the shared/union sets built from raw labels; measured at HEAD",
   "act": "Normalize for COMPARISON only - case and surrounding whitespace - and report the near-matches as a question rather than merging them silently. The join path already has the machinery and the same instinct; the stack path has neither.",
-  "status": "OPEN",
-  "note": "REPRODUCES AT HEAD. Cycle 1 ['SEQN','age','glucose'] stacked with cycle 2 ['SEQN','Age','Glucose '] gives shared_columns ['SEQN'] and a result carrying all of age, Age, glucose and Glucose ' - 'age' is null in 2 of 4 rows. PARTIAL DISCLOSURE, recorded so the row is not overstated: plan_stack does warn 'Only 1 of 5 columns appear in every file (20%). The rest will be blank for the files that lack them.' That is true and it is a real signal - but it describes the shape, not the cause, and a researcher reading it has no reason to suspect two of those columns are one variable. Left OPEN because the columns still split. SEAL-CLASS: no.",
+  "status": "FIXED",
+  "note": "plan_stack names near-duplicate column spellings (case/whitespace) with the specific colliding pairs, ungated by overlap_frac; columns reported, never silently merged.",
   "verified_against": "TurboTab @ L12 HUNT batch 4",
-  "test": "",
+  "test": "tests/test_paper_risk_join_stack.py::TestImport254StackNamesThatDifferOnlyByCaseOrSpacing",
   "verified_ev": "utils/combine.py plan_stack - the shared/union sets built from raw labels; measured at HEAD"
  },
  {
@@ -6847,10 +6853,10 @@
   "detail": "pages/01 filters the offered feature list against utils.combine.reserved_columns(), and that function lists only SOURCE_COLUMN. Neither the join key recorded by execute_join nor the lockbox's group_col is added, and the feature multiselect defaults to everything on offer.",
   "ev": "utils/combine.py reserved_columns() returns ['__source_file'] and nothing else, measured at HEAD; pages/01_Upload_and_Audit.py:849-851 filters against it; the join key is known to execute_join and the group column to ensure_lockbox, and neither is registered",
   "act": "Register the identifiers the app already knows: the join key at the moment execute_join records it, and group_col at the moment the seal is drawn. An ID is not a predictor - it is either noise or, on a grouped split, a direct leak of group membership into the model.",
-  "status": "OPEN",
-  "note": "REPRODUCES AT HEAD. reserved_columns() returns exactly ['__source_file']. There is nowhere for a join key or a group column to be recorded, so pages/01's filter cannot exclude them and the multiselect defaults to including them. SEAL-CLASS: YES, and this is the sharper reading. On a grouped seal the group column IS the subject ID; handing it to the model as a feature lets the model learn the identity the split was drawn on, so held-out performance is measuring memorization of participant IDs. Compare IMPORT-241 and IMPORT-022 - the same subject-identity thread, here reaching the model rather than the split.",
+  "status": "FIXED",
+  "note": "Reserved-column registry in utils/combine.py; combine_ui registers executed join keys at commit (role-scoped), pages/01 registers lockbox group_col at seal and picker; held-back columns disclosed with reasons; registry cleared with the working table.",
   "verified_against": "TurboTab @ L12 HUNT batch 4",
-  "test": "",
+  "test": "tests/test_paper_risk_join_stack.py::TestImport256IdentifiersAreNotOfferedAsPredictors",
   "verified_ev": "utils/combine.py reserved_columns() returns ['__source_file'] and nothing else, measured at HEAD; pages/01_Upload_and_Audit.py:849-851 filters against it; the join key is known to execute_join and the group column to ensure_lockbox, and neither is registered"
  },
  {
@@ -9728,9 +9734,9 @@
   "ev": "pages/02_EDA.py:1575-1589 (_resolve_insights_from_eda_result) called at :1639; utils/insight_ledger.py:1233-1234 and :1170-1195 — pages/02_EDA.py:344-358 creates, per flagged column, an Insight with severity='blocker', finding='Potential target leakage: {col} has >0.95 correlation with target', recommended_action='Remove {col} from feature set', and a manuscript_text limitation ('…raising the possibility of information leakage; results including this predictor should be interpreted with caution'). :1470 renders it as \"**Target leakage detected** in N feature(s). This must be resolved.\" The recommendation card offers a 'Leakage Detection' run button (:1691, run_action='leakage_scan'). Pressing it runs ml/eda_actions.py:630-663, which only re-reads signals.leakage_candidate_cols and returns a findings string — it removes nothing. pages/02_EDA.py:1639 then calls _resolve_insights_from_eda_result, which at :1575-1589 matches on the id prefix 'eda_leakage_' and calls ledger.resolve(...) with resolution_details={'action_",
   "act": "WHAT THE REGISTRY REQUIRES: §A5.5 Anti-patterns names leakage predictors as a thing that must not be silently carried into a model. The governing rule is that the app may be silent and may refuse but must never assert something false: reporting a still-present leakage predictor under \"Addressed observations\" and in an \"N were addressed during the modeling workflow\" count is an assertion that an action was taken when only a diagnostic was viewed, and suppressing the caveat the app itself authored is the disfavored thing done silently. THE ASSERTION THAT FAILS TODAY: Seed a ledger with Insight(id='eda_leakage_lab_x', severity='blocker', manuscript_text='…information leakage; …interpreted with caution'). Call _resolve_insights_from_eda_result('leakage_scan', {'findings': ['Found 1 columns with >0.95 correlation to target'], 'warnings': ['These columns should be excluded from features to prevent leakage']}, 'Leakage Detection'). Assert ledger.get('eda_leakage_lab_x').resolved is False — FAILS (it is True). Assert 'information leakage' appears in ledger.discussion_points_for_manuscript()['limitations'] — FAILS (the list is empty; utils/insight_ledger.py:1233- USER PATH: Classic Streamlit door: pages/02_EDA.py — the EDA scan flags a leakage blocker → the 'Leakage Detection' recommendation card (:1691) → press \"Run Leakage Detection\" (_run_and_show at :1613-1639) → pages/10_Report_Export.py:1229-1232 (report narrative) and :674 → NarrativeEngine Discussion (limitations).",
   "status": "FIXED",
-  "note": "L53-C, fanned out to four chunks PARTITIONED BY FIX SITE rather than by row - L52's partition was by row and two rows died because their fix belonged in another chunk's file. Probed by a different subagent than wrote it (section 08.1 tier 2), with a TOTAL revert. VERIFIER: RED FOR THE STATED REASON, revert confirmed TOTAL, and the claim judged CORRECTED rather than deleted or blurred. WHAT CHANGED: Moved the recommendation-panel -> ledger bridge out of pages/02_EDA.py into ml/eda_actions.py (_ACTION_TO_INSIGHT_MAP, DIAGNOSTIC_ONLY_ACTIONS, record_diagnostic_on_insights, diagnostic_disclosure) and corrected what it claims. A completed diagnostic is now ATTACHED to the insights it speaks to (insight.metadata['diagnostics_run'], with changed_the_data=False) and the insight stays OPEN; ledger.resolve is no longer called. pages/02_EDA.py's _resolve_insights_from_eda_result now returns the sentence the page shows, stored in session_state and rendered on the post-rerun pass (the button block's own output is discarded by st.rerun() — trap 6). Fixed the CLASS, not the instance: all five mapped BEFORE: Report narrative: '... 1 were addressed during the modeling workflow ... Addressed observations: - Potential target leakage: lab_x has >0.95 correlation with target -> Leakage Detection: Found 1 columns with >0.95 correlation to target', and discussion_points_for_manuscript() silently dropped the app's own caveat ('...raising the possibility of information leakage; results incl AFTER: Page: 'Leakage Detection reads the data and reports — it removed, filled and transformed nothing. The 1 observation it speaks to stays **open** in the report until an action on a later page addresses it.' Report narrative lists the blocker under 'Accepted/unresolved observations:' and the manuscript keeps the caveat. BUILDER'S PROBE: E AssertionError: pressing Run Leakage Detection marked the leakage blocker(s) ['eda_leakage_lab_x'] RESOLVED. ml/eda_actions.leakage_scan re-reads signals.leakage_candidate_cols and returns a string — it removes no column, so nothing was addressed and the column is still a feature. E assert not ['eda_leakage_lab_x'] INDEPENDENT PROBE: TOTAL REVERT: /Users/nhedglin/tabular-ml-lab/ml/eda_actions.py and /Users/nhedglin/tabular-ml-lab/pages/02_EDA.py — every uncommitted file the AUDIT-032 change touched (git diff --stat over the chunk's four files confirms only these two carry AUDIT-032 hunks). Backed up with shutil.copy2, overwritten with `git show HEAD:<path>` stdout, never git checkout. Baseline BEFORE any revert: 6 passed (no ANCHOR_ERROR). LITERAL FAILURE LINE under revert, both parametrizations: `E AssertionError: pressing Run Leakage Detection marked the leakage blocker(s) ['eda_leakage_lab_x'] RESOLVED. ml/eda_actions.leakage_scan re-reads signals.leakage_candidate_cols and returns a string — it removes no column, so nothing was addressed and the column is still a feature.` / `E assert not ['eda_leakage_lab_x']` at tests/integration/test_a_diagnostic_run_is_not_an_action_taken.py:126. Matches the builder's reported probe verbatim. No TypeError/KeyError/AttributeError/ImportError anywhere in the traceback; the failure-message f-string interpolates only `resolved`, a list built in the test, so it survives revert",
+  "note": "Guard test re-pointed after main's diagnostics dedup removed the leakage deep-dive button (L66 merge): the page-drive vehicle is now VIF, the subject unchanged - the leakage blocker stays open, caveated, and unresolved after a diagnostic runs. Automatic >0.95 scan and sign-off gating verified alive at HEAD (ml/eda_recommender.py:456-481, pages/02_EDA.py:359-375,768-771,2540-2541).",
   "verified_against": "",
-  "test": "tests/integration/test_a_diagnostic_run_is_not_an_action_taken.py::test_running_the_leakage_card_leaves_the_blocker_open",
+  "test": "tests/integration/test_a_diagnostic_run_is_not_an_action_taken.py::test_running_a_diagnostic_leaves_the_leakage_blocker_open",
   "verified_ev": "pages/02_EDA.py:1575-1589 (_resolve_insights_from_eda_result) called at :1639; utils/insight_ledger.py:1233-1234 and :1170-1195 — pages/02_EDA.py:344-358 creates, per flagged column, an Insight with severity='blocker', finding='Potential target leakage: {col} has >0.95 correlation with target', recommended_action='Remove {col} from feature set', and a manuscript_text limitation ('…raising the possibility of information leakage; results including this predictor should be interpreted with caution'). :1470 renders it as \"**Target leakage detected** in N feature(s). This must be resolved.\" The recommendation card offers a 'Leakage Detection' run button (:1691, run_action='leakage_scan'). Pressing it runs ml/eda_actions.py:630-663, which only re-reads signals.leakage_candidate_cols and returns a findings string — it removes nothing. pages/02_EDA.py:1639 then calls _resolve_insights_from_eda_result, which at :1575-1589 matches on the id prefix 'eda_leakage_' and calls ledger.resolve(...) with resolution_details={'action_"
  },
  {
@@ -13316,5 +13322,61 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "ml/eda_actions.py:1385 (MERGE NOTE); pages/02_EDA.py:149 (_TRAIN_ONLY_ACTIONS)"
+ },
+ {
+  "id": "MISC-091",
+  "area": "MISC",
+  "sev": "medium",
+  "item": "AUDIT-032's diagnostic-disclosure mechanism is dead UI on the EDA page: three of four surviving diagnostics are not in _ACTION_TO_INSIGHT_MAP so they disclose nothing, and VIF resolves its mapped set before the recorder runs, so record_diagnostic_on_insights always returns [] and diagnostic_disclosure's n_open>0 branch is unreachable; no insight carries diagnostics_run history from this page",
+  "detail": "",
+  "ev": "pages/02_EDA.py:2280-2306; ml/eda_actions.py (_ACTION_TO_INSIGHT_MAP, diagnostic_disclosure)",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "pages/02_EDA.py:2280-2306; ml/eda_actions.py (_ACTION_TO_INSIGHT_MAP, diagnostic_disclosure)"
+ },
+ {
+  "id": "MISC-092",
+  "area": "MISC",
+  "sev": "low",
+  "item": "VIF's post-run disclosure says it 'changes nothing. No open observation is waiting on it' after just closing N collinearity clusters - not false about the data, but silent exactly where the AUDIT-032 sentence was meant to speak; the user is never told N observations were closed",
+  "detail": "",
+  "ev": "pages/02_EDA.py:2280-2306 (upsert -> VIF resolve -> record ordering)",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "pages/02_EDA.py:2280-2306 (upsert -> VIF resolve -> record ordering)"
+ },
+ {
+  "id": "MISC-093",
+  "area": "MISC",
+  "sev": "low",
+  "item": "leakage_scan is still mapped in _ACTION_TO_INSIGHT_MAP / DIAGNOSTIC_ONLY_ACTIONS but has no UI on any page after main's diagnostics dedup - dead registration; the automatic >0.95 scan and sign-off gating are alive and separate",
+  "detail": "",
+  "ev": "ml/eda_actions.py (_ACTION_TO_INSIGHT_MAP); pages/02_EDA.py (no leakage_scan widget at HEAD)",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "ml/eda_actions.py (_ACTION_TO_INSIGHT_MAP); pages/02_EDA.py (no leakage_scan widget at HEAD)"
+ },
+ {
+  "id": "MISC-094",
+  "area": "MISC",
+  "sev": "medium",
+  "item": "TRANSITION_PLAN.md section 05 asserts 'Classic is frozen as engine-move-only', which merges from main do not honor and do not announce - false at HEAD (main's diagnostics dedup moved Classic's routing baseline); every future merge will move the baseline again. Adjudication note's 'The premise that expired' section has the writeup; the plan doc itself still asserts the freeze",
+  "detail": "",
+  "ev": "docs/turbotab/TRANSITION_PLAN.md section 05; docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L66 entry)",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "docs/turbotab/TRANSITION_PLAN.md section 05; docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L66 entry)"
  }
 ]
