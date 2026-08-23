@@ -31,7 +31,10 @@ def save_dataframe(df: pd.DataFrame, name: str, session_id: Optional[str] = None
     """
     session_dir = _get_session_dir(session_id)
     path = session_dir / f"{name}.parquet"
-    df.to_parquet(path, index=False)
+    # index=True, as in session_manager: rows are identified by index LABEL
+    # (the test-set lockbox and cohort runs hold labels), so a frame reloaded
+    # with a fresh 0..n-1 RangeIndex hands those labels to different rows.
+    df.to_parquet(path, index=True)
     return str(path)
 
 

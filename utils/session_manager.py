@@ -29,9 +29,18 @@ Members:
                                   (schema >= 2.1; restoring the exact holdout
                                   keeps results comparable across sessions)
     coach_probe.json           -- ProbeResult numbers (schema >= 2.1)
-    data/<name>.parquet        -- DataFrames, one per entry
+    data/<name>.parquet        -- DataFrames, one per entry, index INCLUDED
     datasets/<id>.parquet      -- entries from datasets_registry
     datasets/index.json        -- name mapping for datasets_registry
+
+Row identity
+------------
+Frames are written with their index. The lockbox and the cohort run identify
+rows by index LABEL, so a frame restored with a fresh 0..n-1 RangeIndex would
+hand those labels to different rows — silently, since the frame's contents are
+unchanged. manifest.json records `index_preserved`; archives without it are
+older files whose frames came back renumbered, and label-identified state is
+refused rather than applied to rows it may no longer name.
 
 Rejected on load:
     - Anything that is not a valid ZIP
@@ -59,6 +68,10 @@ SAVE_SCHEMA_VERSION = "2.1"
 # (lockbox.json, coach_probe.json); everything present is restored as before.
 _ACCEPTED_SCHEMA_VERSIONS = {"2.0", "2.1"}
 SAVE_EXTENSION = "tmllab"
+
+# Manifest flag: the parquet members were written with their index. Absent in
+# every archive saved before row identity was persisted; see _check_row_labels.
+_INDEX_PRESERVED_FLAG = "index_preserved"
 
 # Upper bounds on input size -- zip-bomb defense-in-depth beyond Streamlit's
 # own maxUploadSize. Set generously above the typical 5-50 MB real session.
@@ -168,7 +181,12 @@ _NEVER_PERSIST: Set[str] = {
 
 def _df_to_parquet_bytes(df: pd.DataFrame) -> bytes:
     buf = io.BytesIO()
-    df.to_parquet(buf, index=False)
+    # index=True: row identity IS the index label here. The lockbox seals index
+    # LABELS (utils/test_lockbox.py) and a cohort run holds them too, so an
+    # index dropped on save comes back renumbered 0..n-1 while the labels stay
+    # where they were — naming different rows, with no error and an unchanged
+    # lockbox signature. turbotab/archive.py:275-278 for the same decision.
+    df.to_parquet(buf, index=True)
     return buf.getvalue()
 
 
@@ -441,6 +459,11 @@ def _build_archive_members() -> Dict[str, bytes]:
     # --- Manifest (written last so it can reference what landed) ---
     manifest = {
         "schema_version": SAVE_SCHEMA_VERSION,
+        # Whether the parquet members carry their index. Archives written before
+        # this flag existed do not, and the restore cannot tell a renumbered
+        # frame from an untouched one after the fact — so the flag, not a guess,
+        # decides whether label-identified state may be restored.
+        _INDEX_PRESERVED_FLAG: True,
         "saved_at": datetime.now().isoformat(),
         "workflow_step": str(st.session_state.get("current_page", "Unknown")),
         "saved_keys": sorted(set(saved_keys)),
@@ -517,6 +540,47 @@ def _read_json(zf: zipfile.ZipFile, name: str) -> Any:
 def _read_parquet(zf: zipfile.ZipFile, name: str) -> pd.DataFrame:
     with zf.open(name) as f:
         return pd.read_parquet(io.BytesIO(f.read()))
+
+
+def _row_identity_reference() -> Optional[pd.DataFrame]:
+    """The restored frame whose index the saved row labels are read against.
+
+    raw_data first: the lockbox and the cohort run are both drawn full-study
+    (utils/session_state.get_data(full_study=True)), and every narrower frame is
+    a row subset of it, so it is the frame every saved label must be found in.
+    """
+    for key in _DATAFRAME_KEYS:
+        value = st.session_state.get(key)
+        if isinstance(value, pd.DataFrame) and len(value) > 0:
+            return value
+    return None
+
+
+def _check_row_labels(labels: list, index_preserved: bool) -> None:
+    """Raise unless the saved row labels still name rows in the restored data.
+
+    A label-identified set — the sealed holdout, a cohort run — is only
+    meaningful against the index it was drawn on. Labels that survive a restore
+    into a renumbered frame do not fail: they select whoever now sits at those
+    positions, and every downstream count keeps reporting the original n. So the
+    absence of a saved index cannot be treated as probably-fine; it is refused,
+    and the caller's warning tells the user what to re-do.
+    """
+    frame = _row_identity_reference()
+    if frame is None:
+        # No data came back with the archive, so no rows are being claimed yet.
+        # Whatever the user loads next is checked by the lockbox's own signature.
+        return
+    if not index_preserved:
+        raise ValueError(
+            "this archive was saved before row identity was persisted, so its "
+            "rows came back renumbered 0..n-1 and the saved labels can no "
+            "longer be matched to them")
+    missing = [lbl for lbl in labels if lbl not in frame.index]
+    if missing:
+        raise ValueError(
+            f"{len(missing)} of {len(labels)} saved row labels are absent from "
+            f"the restored data (e.g. {missing[:3]})")
 
 
 def _reconstruct_dataclass(key: str, data: Dict[str, Any]) -> Any:
@@ -616,6 +680,7 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], li
                 f"(this app writes {SAVE_SCHEMA_VERSION!r} and accepts "
                 f"{sorted(_ACCEPTED_SCHEMA_VERSIONS)})."
             )
+        index_preserved = bool(manifest.get(_INDEX_PRESERVED_FLAG, False))
 
         # Clear derived/trained state up front.
         _clear_downstream_state()
@@ -713,6 +778,10 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], li
                 labels = data.get("labels")
                 if not isinstance(labels, list) or not labels:
                     raise ValueError("cohort has no rows")
+                # Same row-identity check as the lockbox below: a run whose
+                # labels have been renumbered under it reports one group's name
+                # over another group's rows.
+                _check_row_labels(labels, index_preserved)
                 st.session_state["cohort_run"] = {
                     "column": str(data["column"]),
                     "value": data.get("value"),
@@ -792,6 +861,12 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], li
                 labels = data.get("labels")
                 if not isinstance(labels, list) or not labels:
                     raise ValueError("lockbox has no labels")
+                # Before the seal is applied to rows: the labels have to name
+                # the same rows they were drawn on. A seal over the wrong rows
+                # is worse than no seal, because the chip goes on reporting the
+                # original n while the held-out metric is scored on rows the
+                # model trained on.
+                _check_row_labels(labels, index_preserved)
                 st.session_state["test_lockbox"] = {
                     "labels": list(labels),
                     "fraction": float(data.get("fraction", 0.15)),
