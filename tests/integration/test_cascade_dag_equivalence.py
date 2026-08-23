@@ -190,6 +190,10 @@ _NOT_YET_DECLARED_IN_THE_DAG = {
     "bland_altman_results", "preprocessing_summary",
     "table1_custom_test_footnotes",
     "filtered_data",
+    # Registered when external validation gained persistence (IMPORT-213 wave):
+    # cleared by the production reset so a new dataset cannot inherit another
+    # cohort's external metrics; the DAG has no external-validation stage yet.
+    "external_validation_results",
 }
 
 

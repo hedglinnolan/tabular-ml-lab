@@ -1259,11 +1259,12 @@ class NarrativeEngine:
     def _gen_model_evaluation(self) -> str:
         """Model evaluation: metrics by model, including confidence intervals when available."""
         metrics = self.ctx.get("metrics_by_model", {})
-        if not metrics:
+        if not metrics and not self.ctx.get("external_validation"):
             return ""
 
         parts = []
-        parts.append("Model performance was evaluated using the following metrics:")
+        if metrics:
+            parts.append("Model performance was evaluated using the following metrics:")
 
         for model_name, model_metrics in metrics.items():
             if not model_metrics:
@@ -1294,6 +1295,20 @@ class NarrativeEngine:
             
             if metric_strs:
                 parts.append(f"**{self._model_name(model_name)}**: {', '.join(metric_strs)}.")
+
+        # External validation is a Methods claim of its own, and the record now
+        # exists to make it. The sentence is composed where the fallback path
+        # composes it so the two drafts cannot disagree.
+        if self.ctx.get("external_validation"):
+            from ml.publication import external_validation_sentence
+            parts.append(external_validation_sentence({
+                "dataset_name": self.ctx.get("external_validation_dataset", ""),
+                "n_rows": self.ctx.get("external_validation_n", 0),
+                "models": self.ctx.get("external_validation_models", []),
+                "n_bootstrap": self.ctx.get("external_validation_bootstrap", 0),
+                "repairs": self.ctx.get("external_validation_repairs", []),
+                "metrics": self.ctx.get("external_validation_metrics", {}),
+            }).strip())
 
         return " ".join(parts)
 

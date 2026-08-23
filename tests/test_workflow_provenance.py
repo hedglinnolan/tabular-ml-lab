@@ -252,8 +252,11 @@ def test_get_completeness_empty():
     assert set(comp.keys()) == {
         'upload', 'eda', 'feature_engineering', 'feature_selection',
         'split', 'preprocessing', 'training', 'explainability',
-        'sensitivity', 'statistical_validation',
+        'external_validation', 'sensitivity', 'statistical_validation',
     }
+    # Derived from section_names() minus the named exclusions — coach is
+    # provenance but not a reporting stage.
+    assert 'coach' not in comp
 
 
 def test_get_completeness_partial():
@@ -279,6 +282,8 @@ def test_get_completeness_full():
     prov.record_preprocessing(configs_by_model={'LR': {}}, imputation_method='mean')
     prov.record_training(models_trained=['LR'], primary_model='LR')
     prov.record_explainability(methods=['shap'], models=['LR'])
+    prov.record_external_validation(dataset_name='ext.csv', n_rows=50,
+                                    n_features=1, models_validated=['LR'])
     prov.record_sensitivity(seed_stability=True)
     prov.record_statistical_test(test_name='t-test', variable='a')
     comp = prov.get_completeness()

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -211,6 +211,32 @@ class ExplainabilityProvenance:
 
 
 @dataclass
+class ExternalValidationProvenance:
+    """Recorded when trained models are scored on an independent cohort.
+
+    The page used to display external metrics and drop them, so the one result
+    a reviewer weighs most heavily never reached the manuscript
+    (`ml/publication.py`'s `external_validation` flag was never set by anything).
+    The numbers themselves live in `session_state['external_validation_results']`;
+    what belongs in the record is the account a Methods section has to make —
+    which file, how many rows, which models, and what the import review had to
+    repair before the file was believed.
+    """
+    dataset_name: str = ""
+    n_rows: int = 0
+    n_features: int = 0
+    models_validated: List[str] = field(default_factory=list)
+    metrics: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    n_bootstrap: int = 0
+    # What the front door found and what the user applied — an external cohort
+    # that needed repairs is a cohort the Methods section must say was repaired.
+    import_repairs: List[str] = field(default_factory=list)
+    structural_findings: str = ""
+    records_key: str = ""
+    timestamp: str = ""
+
+
+@dataclass
 class SensitivityProvenance:
     """Recorded when sensitivity analyses are run."""
     seed_stability: bool = False
@@ -259,6 +285,7 @@ class WorkflowProvenance:
     preprocessing: Optional[PreprocessingProvenance] = None
     training: Optional[TrainingProvenance] = None
     explainability: Optional[ExplainabilityProvenance] = None
+    external_validation: Optional[ExternalValidationProvenance] = None
     sensitivity: Optional[SensitivityProvenance] = None
     statistical_validation: Optional[StatisticalValidationProvenance] = None
     coach: Optional[CoachProvenance] = None
@@ -291,7 +318,7 @@ class WorkflowProvenance:
             n_samples=n_samples,
             n_features=len(feature_cols),
             data_source=data_source,
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             # Repairs applied at import happen before this record exists. A
             # fresh UploadProvenance with cleaning_actions=[] used to erase them.
             cleaning_actions=list(self.pending_cleaning_actions),
@@ -345,7 +372,7 @@ class WorkflowProvenance:
             "rows_before": rows_before,
             "rows_after": rows_after,
             "details": details or {},
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         if self.upload is None:
             self.pending_cleaning_actions.append(entry)
@@ -357,14 +384,14 @@ class WorkflowProvenance:
     def record_eda_analysis(self, analysis_name: str) -> None:
         """Called by EDA page for each analysis run."""
         if self.eda is None:
-            self.eda = EDAProvenance(timestamp=datetime.now().isoformat())
+            self.eda = EDAProvenance(timestamp=datetime.now(timezone.utc).isoformat())
         if analysis_name not in self.eda.analyses_run:
             self.eda.analyses_run.append(analysis_name)
 
     def record_table1(self) -> None:
         """Called by EDA when Table 1 is generated."""
         if self.eda is None:
-            self.eda = EDAProvenance(timestamp=datetime.now().isoformat())
+            self.eda = EDAProvenance(timestamp=datetime.now(timezone.utc).isoformat())
         self.eda.table1_generated = True
 
     def record_feature_engineering(
@@ -380,7 +407,7 @@ class WorkflowProvenance:
             n_features_created=n_created,
             n_features_before=n_before,
             n_features_after=n_after,
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def record_feature_selection(
@@ -421,7 +448,7 @@ class WorkflowProvenance:
             n_features_after=n_after,
             features_kept=list(features_kept),
             consensus_methods=list(consensus_methods or []),
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             candidates_screened=merged,
         )
 
@@ -452,7 +479,7 @@ class WorkflowProvenance:
             target_trim_enabled=target_trim_enabled,
             target_trim_lower=target_trim_lower,
             target_trim_upper=target_trim_upper,
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def record_preprocessing(
@@ -492,7 +519,7 @@ class WorkflowProvenance:
             shared=shared,
             per_model=per_model,
             models_configured=list(configs_by_model.keys()),
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def record_training(
@@ -529,7 +556,7 @@ class WorkflowProvenance:
             nn_config_source=nn_config_source,
             nn_config_reasoning=dict(nn_config_reasoning or {}),
             nn_config_modifications=dict(nn_config_modifications or {}),
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def record_explainability(
@@ -541,7 +568,33 @@ class WorkflowProvenance:
         self.explainability = ExplainabilityProvenance(
             methods_used=list(methods),
             models_explained=list(models),
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+
+    def record_external_validation(
+        self,
+        dataset_name: str,
+        n_rows: int,
+        n_features: int,
+        models_validated: List[str],
+        metrics: Optional[Dict[str, Dict[str, Any]]] = None,
+        n_bootstrap: int = 0,
+        import_repairs: Optional[List[str]] = None,
+        structural_findings: str = "",
+        records_key: str = "",
+    ) -> None:
+        """Called by Explainability when an external cohort has been scored."""
+        self.external_validation = ExternalValidationProvenance(
+            dataset_name=str(dataset_name or ""),
+            n_rows=int(n_rows),
+            n_features=int(n_features),
+            models_validated=list(models_validated),
+            metrics=dict(metrics or {}),
+            n_bootstrap=int(n_bootstrap),
+            import_repairs=list(import_repairs or []),
+            structural_findings=str(structural_findings or ""),
+            records_key=str(records_key or ""),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def record_sensitivity(
@@ -555,7 +608,7 @@ class WorkflowProvenance:
             seed_stability=seed_stability,
             seed_stability_cv=seed_stability_cv,
             feature_dropout=feature_dropout,
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def record_statistical_test(
@@ -575,7 +628,7 @@ class WorkflowProvenance:
         """
         if self.statistical_validation is None:
             self.statistical_validation = StatisticalValidationProvenance(
-                timestamp=datetime.now().isoformat(),
+                timestamp=datetime.now(timezone.utc).isoformat(),
             )
         self.statistical_validation.tests_run.append({
             "test_name": test_name,
@@ -623,25 +676,24 @@ class WorkflowProvenance:
             headline=headline or "",
             picks=list(picks or []),
             probe_summary=probe_summary or "",
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
+
+    #: Sections that are provenance but not reporting stages: the coach records
+    #: advice given, and advice is not a TRIPOD-checkable step of the study.
+    COMPLETENESS_EXCLUDED = ("coach",)
 
     def get_completeness(self) -> Dict[str, bool]:
         """Returns which workflow stages have been recorded.
 
-        Useful for TRIPOD compliance checking.
+        Useful for TRIPOD compliance checking. Derived from the record's own
+        schema (like the reset's section list), so a new section cannot be
+        forgotten here; exclusions are named, not implicit.
         """
         return {
-            "upload": self.upload is not None,
-            "eda": self.eda is not None,
-            "feature_engineering": self.feature_engineering is not None,
-            "feature_selection": self.feature_selection is not None,
-            "split": self.split is not None,
-            "preprocessing": self.preprocessing is not None,
-            "training": self.training is not None,
-            "explainability": self.explainability is not None,
-            "sensitivity": self.sensitivity is not None,
-            "statistical_validation": self.statistical_validation is not None,
+            name: getattr(self, name) is not None
+            for name in section_names()
+            if name not in self.COMPLETENESS_EXCLUDED
         }
 
     def get_methods_context(self) -> Dict[str, Any]:
@@ -746,6 +798,16 @@ class WorkflowProvenance:
             ctx["explainability_methods"] = self.explainability.methods_used
             ctx["models_explained"] = self.explainability.models_explained
 
+        if self.external_validation:
+            ev = self.external_validation
+            ctx["external_validation"] = True
+            ctx["external_validation_dataset"] = ev.dataset_name
+            ctx["external_validation_n"] = ev.n_rows
+            ctx["external_validation_models"] = list(ev.models_validated)
+            ctx["external_validation_metrics"] = dict(ev.metrics)
+            ctx["external_validation_bootstrap"] = ev.n_bootstrap
+            ctx["external_validation_repairs"] = list(ev.import_repairs)
+
         if self.sensitivity:
             ctx["seed_stability"] = self.sensitivity.seed_stability
             ctx["feature_dropout"] = self.sensitivity.feature_dropout
@@ -818,6 +880,11 @@ class WorkflowProvenance:
             prov.explainability = ExplainabilityProvenance(**{
                 k: v for k, v in data["explainability"].items()
                 if k in ExplainabilityProvenance.__dataclass_fields__
+            })
+        if data.get("external_validation"):
+            prov.external_validation = ExternalValidationProvenance(**{
+                k: v for k, v in data["external_validation"].items()
+                if k in ExternalValidationProvenance.__dataclass_fields__
             })
         if data.get("sensitivity"):
             prov.sensitivity = SensitivityProvenance(**{

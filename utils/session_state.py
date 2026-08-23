@@ -448,6 +448,10 @@ _ANALYSIS_KEYS: tuple = (
     "dataset_profile",
     # Written by pages/07 next to `partial_dependence`, read by pages/10.
     "pdp_results",
+    # External-cohort metrics written by pages/07. They describe models fitted
+    # on the data being replaced, and ml/publication.py states that external
+    # validation was performed on the strength of them.
+    "external_validation_results",
     "bland_altman_results", "preprocessing_summary",
 )
 
@@ -729,10 +733,10 @@ def log_methodology(step: str, action: str, details: Optional[Dict[str, Any]] = 
         action: Description of what was done
         details: Optional dict with additional parameters
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     
     entry = {
-        'timestamp': datetime.now().isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
         'step': step,
         'action': action,
         'details': details or {}
