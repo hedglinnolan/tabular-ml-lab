@@ -70,15 +70,29 @@ LEAKY_BASELINE = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-leaky.j
 # missing; this one is Classic's own UI. Ruled in
 # `VALUE_CHECK_ADJUDICATION.md` §"L66 · Classic moved, and this time it was not
 # the measuring stick", enumerated key by key, and accepted.
-ADJUDICATED = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l66.json"
+#
+# **`L67`: Classic asks the §02 grain question.** A subject-declaration control
+# landed on `pages/01_Upload_and_Audit.py:1310` closing `IMPORT-022`/`IMPORT-257`,
+# and it is the same clause Guided's `state_grain` carries. One key added on all
+# four datasets, nothing removed, nothing re-keyed: +1 `questions_asked` and +1
+# `irrelevant_questions` each. Ruled in `VALUE_CHECK_ADJUDICATION.md` §"L67 ·
+# Classic asks the grain question, and the harness has nowhere to put it".
+#
+# **The stamp on this file is `30f48e4+wt`, and the suffix is load-bearing.** The
+# grain control is NOT committed — `git show 30f48e4:pages/01_Upload_and_Audit.py`
+# has no `subject_id_declaration`, so re-measuring at that commit reproduces `l66`,
+# not this. A stamp that cannot be resolved by `git show` announces its own limit
+# rather than quietly failing to honor it.
+ADJUDICATED = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l67.json"
 # The measurements this one superseded, oldest first. Kept named so the chain of
 # re-measurements is readable rather than implied by filenames —
-# l9 → l9c → l61 → l66. A list rather than one constant per link because the
-# chain is now four long and `_PRIOR_PRIOR_PRIOR` is not a name.
+# l9 → l9c → l61 → l66 → l67. A list rather than one constant per link because the
+# chain is now five long and `_PRIOR_PRIOR_PRIOR` is not a name.
 ADJUDICATED_SUPERSEDED = [
     ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9.json",
     ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9c.json",
     ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l61.json",
+    ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l66.json",
 ]
 
 # What the adjudication permits the two references to disagree about, and by
@@ -107,18 +121,25 @@ ADJUDICATED_SUPERSEDED = [
 # required-decision inventories key for key, which is why `ADJUDICATED_KEY_DELTAS`
 # below is unchanged. The net is −6 on three datasets and −5 on longitudinal;
 # the per-key enumeration is in the adjudication note, not summarized here.
+# **`L67` moves the two count rows again, by exactly +1 each.** Classic gained
+# the §02 grain question (`subject_id_declaration`). It settles no inventory key,
+# so it scores as irrelevant — the `GUIDED-018` accounting shape, arriving at the
+# other door. `constitutional` stays 0 for Classic because the harness reads
+# self-declared clause labels and Classic declares none; that omission is ruled a
+# recorded limitation, not corrected here, and it is not in `_PREREG_METRICS`
+# either way.
 ADJUDICATED_DELTAS = {
     ("messy-clinic", "required_decisions"): (9, 10),
-    ("messy-clinic", "questions_asked"): (34, 28),         # L66
-    ("messy-clinic", "irrelevant_questions"): (25, 18),    # L66 (was (25, 24))
+    ("messy-clinic", "questions_asked"): (34, 29),         # L67 (L66 was 28)
+    ("messy-clinic", "irrelevant_questions"): (25, 19),    # L67 (L66 was 18)
     ("messy-clinic", "coverage"): (0.1111, 0.1),
     ("longitudinal", "required_decisions"): (1, 2),
-    ("longitudinal", "questions_asked"): (32, 27),         # L66
-    ("longitudinal", "irrelevant_questions"): (31, 25),    # L66 (was (31, 30))
+    ("longitudinal", "questions_asked"): (32, 28),         # L67 (L66 was 27)
+    ("longitudinal", "irrelevant_questions"): (31, 26),    # L67 (L66 was 25)
     ("longitudinal", "coverage"): (1.0, 0.5),
     ("wide-assay", "required_decisions"): (1, 2),          # L61
-    ("wide-assay", "questions_asked"): (31, 25),           # L66
-    ("wide-assay", "irrelevant_questions"): (30, 23),      # L66 (was (30, 29))
+    ("wide-assay", "questions_asked"): (31, 26),           # L67 (L66 was 25)
+    ("wide-assay", "irrelevant_questions"): (30, 24),      # L67 (L66 was 23)
     ("wide-assay", "coverage"): (1.0, 0.5),                # L61
 }
 
@@ -158,19 +179,21 @@ ADJUDICATED_KEY_DELTAS = {
 # second drift cannot hide inside the first* — and it is worth saying plainly
 # that the leaky half did not have it before `L61` and nothing said so.
 LEAKY_ADJUDICATED = (ROOT / "docs" / "turbotab" / "data"
-                     / "routing-baseline-leaky-l66.json")
-LEAKY_SUPERSEDED = [ROOT / "docs" / "turbotab" / "data"
-                    / "routing-baseline-leaky-l61.json"]
+                     / "routing-baseline-leaky-l67.json")
+LEAKY_SUPERSEDED = [
+    ROOT / "docs" / "turbotab" / "data" / "routing-baseline-leaky-l61.json",
+    ROOT / "docs" / "turbotab" / "data" / "routing-baseline-leaky-l66.json",
+]
 
-# L66 moves this dataset for the same cause as the three above — main's
-# diagnostics dedup — and it loses one key the others do not: the
+# L66 moved this dataset for the same cause as the three above — main's
+# diagnostics dedup — and it lost one key the others did not: the
 # recommendation panel's `rec_run_leakage_scan`, whose label was the bare word
 # "Run". `test_classic_does_not_ask_about_the_leak` below is the test that
-# feels that one.
+# feels that one. L67 then adds the grain question here as on every dataset.
 LEAKY_DELTAS = {
     ("leaky-sepsis", "required_decisions"): (1, 2),
-    ("leaky-sepsis", "questions_asked"): (31, 25),         # L66
-    ("leaky-sepsis", "irrelevant_questions"): (30, 23),    # L66 (was (30, 29))
+    ("leaky-sepsis", "questions_asked"): (31, 26),         # L67 (L66 was 25)
+    ("leaky-sepsis", "irrelevant_questions"): (30, 24),    # L67 (L66 was 23)
     ("leaky-sepsis", "coverage"): (1.0, 0.5),
 }
 
@@ -689,7 +712,7 @@ def test_the_leaky_reference_differs_from_the_frozen_one_only_as_ruled():
 def test_the_chain_of_re_measurements_is_readable_rather_than_implied():
     """Every superseded reading is still on disk and still named.
 
-    `l9 → l9c → l61 → l66`, and the leaky file's own chain beside it. The rule this
+    `l9 → l9c → l61 → l66 → l67`, and the leaky file's own chain beside it. The rule this
     keeps is the one `VALUE_CHECK_ADJUDICATION.md` sets: *the frozen artifact is
     not edited, both readings are preserved in data, the ruling is published.*
     A chain implied by filenames alone is one a later loop can break by writing

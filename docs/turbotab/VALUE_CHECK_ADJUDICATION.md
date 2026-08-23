@@ -1088,3 +1088,172 @@ this file:
 - A movement that flatters the builder gets **more** enumeration than one that does not, not
   less. This entry lists every key that left, arrived, or was merely renamed, because the
   temptation to summarize is strongest when the summary is favorable.
+
+---
+
+# L67 · Classic asks the grain question, and the harness has nowhere to put it
+
+**Seventh adjudication.** The movement is the smallest and cleanest this file has recorded — one
+key, the same key, on all four datasets, nothing removed — and it lands on the one question this
+document has already ruled on twice, from the other door. `GUIDED-018` asked whether a
+constitutional question may be counted as noise. It was ruled at `L16`, for Guided. **Classic has
+now asked one**, and the answer L16 gave depended on a fact about Classic that is no longer true.
+
+## What happened
+
+A fix wave added a subject-declaration control to `pages/01_Upload_and_Audit.py:1310-1327` — an
+expander, *"👤 Which column identifies a subject/participant?"*, wrapping a selectbox keyed
+`subject_id_declaration`. It closes `IMPORT-022` / `IMPORT-257`: measured repetition under a column
+name the app does not recognize now seals as `undetermined` rather than as one-row-per-person, and
+the user can declare the subject column instead of the app guessing wrong in silence.
+
+That is constitution **§02, the grain question** — the same clause, asked for the same reason, as
+Guided's `state_grain` (`ml/router.py:648`, `clause="lockbox-02"`).
+
+## Every difference, enumerated
+
+**Added on all four datasets:** `subject_id_declaration` — *"Which column identifies a
+subject/participant?"*
+
+**Removed: nothing. Re-keyed: nothing.** Every other key in `l66` reproduced exactly.
+
+| dataset | `questions_asked` | `irrelevant_questions` | `constitutional` | `irrelevant_net` |
+|---|---|---|---:|---|
+| messy-clinic | 28 → **29** | 18 → **19** | 0 | 18 → **19** |
+| wide-assay | 25 → **26** | 23 → **24** | 0 | 23 → **24** |
+| longitudinal | 27 → **28** | 25 → **26** | 0 | 25 → **26** |
+| leaky-sepsis | 25 → **26** | 23 → **24** | 0 | 23 → **24** |
+
+`required_decisions`, `covered`, `coverage`, `coverage_ratio`, `findings_driven` and
+`pull_affordances` are unchanged on every dataset, and the required-decision inventories are
+identical key for key. **+1 asked, +1 irrelevant, exactly, four times.** A question in, a question
+counted as noise — which is `L16`'s opening sentence with the door swapped.
+
+## The accounting question, ruled
+
+The `+1` on `irrelevant_questions` is arithmetic, not judgment: `irrelevant = asked −
+required_decisions`, there is no grain key in the inventory, so a question covering nothing in it
+is surplus by construction. `L16` settled that the literal count is correct and stands. What is
+open is whether Classic's grain question should also be counted in **`constitutional`**, so that
+`irrelevant_net` reads 18/23/25/23 rather than 19/24/26/24.
+
+**The harness can technically do it.** `QuestionRecord.clause` is a real field
+(`turbotab/measure.py:129`) and `Measurement.constitutional` (`:229-260`) counts any record that
+names a clause, cites no finding and settles no inventory key. All three conjuncts hold for
+`subject_id_declaration`. The Classic harness simply never sets `clause`, so every Classic widget
+is `clause=None` and Classic's `constitutional` is 0 by omission.
+
+**Ruled: not attributed in this loop. Classic's `constitutional` stays 0, and the omission is
+recorded as an accounting limitation rather than corrected quietly.** Four grounds, in order of
+weight:
+
+1. **The harness would be classifying its own subject.** `L16`'s mechanism rule is explicit:
+   *"`Question.clause` on the Router carries the label, and the harness reads it rather than
+   deciding for itself which questions are constitutional — a harness that classified its own
+   homework."* Guided's question declares `clause="lockbox-02"` in `ml/router.py` and the harness
+   reads it. Classic's selectbox declares nothing; attributing a clause to it means a hand-written
+   `widget key → clause` constant living in the test file, written by the party the number
+   describes. The existing `_map_to_requirement` is not a precedent for this — it maps a Classic
+   button to an inventory key by matching the **engine-written `fix_label`**, so ground truth
+   external to the harness does the deciding.
+2. **It changes nothing that is failing.** `constitutional` and `irrelevant_net` are not in
+   `_PREREG_METRICS`, so attribution would not move a single guarded number and would not make the
+   drift test pass. The `+1/+1` has to be adjudicated and banked either way. Bundling an unforced
+   accounting change into the loop pressured by an unrelated drift is `LOOP.md` §06.2, and unlike
+   `L61` there is no same-purpose argument to invoke it on.
+3. **`L16` left this question open by name and it is not this loop's to close.** *"Whether the
+   Classic column has constitutional questions too"* is listed verbatim under that entry's "What
+   this does not settle". It is filed, not forgotten.
+4. **The direction is the unusual one and deserves the same suspicion, not less.** Attribution
+   makes **Classic** look better — `irrelevant_net` 19 → 18 on messy-clinic. The standing rule here
+   is that the reading which flatters a door is not banked by the agent arguing for it, and that
+   rule does not acquire an exception when the flattered door is the comparator rather than the
+   builder's own.
+
+## The `L16` caveat is now wrong, and this is the correction
+
+`L16` wrote:
+
+> **Whether the Classic column has constitutional questions too.** It is measured from a frozen
+> baseline and cannot gain the label, so its `constitutional` is structurally 0 rather than
+> measured 0.
+
+**Both halves of that sentence have expired.** `L66` recorded that Classic is no longer frozen —
+`main` ships UI changes to it and a merge does not announce them. And Classic has now gained a
+constitutional question in fact. So Classic's `constitutional = 0` is no longer *structurally*
+zero and no longer *conservatively* zero: it is **measured wrong, by exactly one question per
+dataset, in a known direction.**
+
+The caveat that must accompany any cross-door net-reading comparison is therefore strengthened, not
+repeated:
+
+> Guided's `constitutional` is read from self-declared clause labels; Classic's is 0 because the
+> harness never asks. As of `L67` that 0 is known to be short by one — Classic asks the §02 grain
+> question at `pages/01_Upload_and_Audit.py:1310`. Any comparison of the two doors'
+> `irrelevant_net` flatters Guided by one question per dataset, and quoting one without this
+> sentence is quoting a number the project knows to be wrong.
+
+## Both readings
+
+Neither reading moves a verdict, and it is worth being precise about why: **every pre-registered
+threshold binds on Guided, and Guided did not move.** Classic is the comparator; nothing is banked
+against its cost metrics.
+
+| | `l66` reference | `l67` reference (binding) | `l67` under attribution (not banked) |
+|---|---|---|---|
+| Classic `irrelevant_questions`, messy-clinic | 18 | **19** | 19 |
+| Classic `constitutional`, messy-clinic | 0 | **0** | 1 |
+| Classic `irrelevant_net`, messy-clinic | 18 | **19** | 18 |
+| Guided, all metrics, all datasets | — | **unchanged** | unchanged |
+| `verdict.passes` | — | **unchanged** | unchanged |
+
+The third column is written down so that the reading this entry declines to bank is on the record
+rather than merely declined — the same discipline `routing-value-check.json`'s
+`passes_under_literal_reading` keeps.
+
+## Provenance: the stamp says `+wt` and here is why
+
+**The grain control is not committed.** `git show 30f48e4:pages/01_Upload_and_Audit.py` contains no
+`subject_id_declaration`; the control exists only in the working tree, alongside other uncommitted
+paper-risk fixes from parallel agents. Stamping this measurement `30f48e4` would claim that
+re-measuring at that commit reproduces these numbers, and it does not — it reproduces `l66`.
+
+So both files are stamped **`30f48e4+wt`**, and the suffix means *this commit plus an uncommitted
+working tree*. It is deliberately not a valid revision: a stamp that cannot be resolved by `git
+show` is a stamp that announces its own limitation instead of quietly failing to honor it.
+
+**One correction owed to `L66`, which is not made by editing it.** `routing-baseline-l66.json` is
+stamped `f507ce2` with no suffix, and that tree was also dirty. The measurement rule — *the
+envelope may gain labels, never lose or alter one* — forbids amending it, so the correction is
+recorded here. What makes it a small error rather than a live one: this re-measurement reproduced
+every `l66` key on every dataset exactly, adding one and removing none, so whatever else was
+uncommitted at `f507ce2` did not move Classic's count.
+
+**Measured** 2026-08-23, `venv/bin/python`, via `scripts/remeasure_routing_baseline.py` with and
+without `--leaky`. `l66`, `l61`, `l9c`, `l9` and both frozen files are unedited and on disk.
+
+## The ruling
+
+**The `l67` readings are binding.** The fix is **accepted** — a control that lets a user declare
+the subject column, on a page that previously guessed from column names and sealed a wrong guess
+silently, is `IMPORT-022` closing, and it is worth one point of measured noise on a metric that
+binds nothing. Frozen artifacts untouched, pre-registration unedited, no threshold approached.
+
+Not settled by this entry:
+
+1. **Whether Classic's harness should read clause labels at all**, and if so from what — a
+   declaration on the widget, a registry, or something the constitution documents own. This is
+   `GUIDED-018`'s Classic half and it is now live rather than hypothetical. It needs a mechanism
+   that is not the harness marking its own homework, and that is a design question, not a loop's
+   incidental fix.
+2. **Whether §02 arriving in Classic changes what the two doors are being compared on.** Classic
+   now asks a constitutional question that Guided also asks. That is the first question in the
+   measured window the two doors have in common by clause rather than by coincidence, and this
+   file has no rule for what that means.
+
+## Precedent added
+
+- **A stamp is a claim about reproducibility.** If the tree the measurement was taken from is not
+  the tree a reader can check out, the stamp says so in the stamp — not in a comment beside it.
+- **An accounting change that fixes no failing assertion is not part of the loop that revealed the
+  need for it.** Bank the drift; file the accounting; do not let the second ride in on the first.
