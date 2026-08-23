@@ -1167,6 +1167,26 @@ class InsightLedger:
                 return False
         return True
 
+    def narrative_summary(self) -> Dict[str, int]:
+        """Counts over the insights a publication narrative may speak about.
+
+        `AUDIT-042`: `summary()` counts the LEDGER — every pre-resolved bridge
+        entry `log_methodology` writes on each button press included — and that
+        is the right answer for a ledger view. It is the wrong answer for any
+        sentence that claims observations were *addressed*, and page 10 was
+        asking it for exactly that: measured, six button presses produced
+        "Systematic data quality audit: 6 observation(s) identified and
+        addressed" in the same report.md as a narrative saying 0 were
+        identified. Every producer of an addressed-count reads this instead, so
+        the count and the list beneath it cannot come from two filters again.
+        """
+        worthy = [i for i in self._insights if self._is_narrative_worthy(i)]
+        return {
+            "total": len(worthy),
+            "resolved": sum(1 for i in worthy if i.resolved),
+            "unresolved": sum(1 for i in worthy if not i.resolved),
+        }
+
     def narrative_for_report(self) -> str:
         """Generate a concise methods-section narrative.
 

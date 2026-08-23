@@ -281,6 +281,65 @@ class TestState008RecipeOmitsNothing:
             "the export drops the 'rows filtered' line by omitting the mode")
         assert "plausibility_mode=cfg.get" in page10
 
+    def test_the_ui_recipe_states_the_row_filter_the_export_states(self):
+        """`get_pipeline_recipe` cannot see the row filter — it is not on the
+        fitted object. Page 06's "Preprocessing used" panel omitted the mode, so
+        the recipe a researcher READS lost the 'rows filtered to NHANES range'
+        line that the recipe they EXPORT keeps: two descriptions of one run."""
+        page06 = (REPO / "pages" / "06_Train_and_Compare.py").read_text()
+        assert not re.search(r"get_pipeline_recipe\(fitted_prep\)", page06)
+        assert 'plausibility_mode=_recipe_cfg.get("plausibility_mode")' in page06
+
+        from ml.pipeline import build_preprocessing_pipeline, get_pipeline_recipe
+        pipe = build_preprocessing_pipeline(numeric_features=["a"],
+                                            categorical_features=[])
+        pipe.fit(pd.DataFrame({"a": np.arange(20, dtype=float)}))
+        assert "rows filtered" not in get_pipeline_recipe(pipe)
+        assert "rows filtered" in get_pipeline_recipe(pipe, plausibility_mode="filter")
+
+
+class TestModels009TheBaselineRecipeReachesTheManuscript:
+    """The baselines anchor "is the model better than trivial?", and they went
+    through their OWN fixed preprocessing. `_summarize_baselines` dropped the
+    key, so the .tex sentence claiming the same held-out test set could never
+    say the recipe differed."""
+
+    def test_the_summary_carries_it(self):
+        page10 = (REPO / "pages" / "10_Report_Export.py").read_text()
+        body = _page10_source("_summarize_baselines")
+        assert "'preprocessing'" in body, (
+            "the comparator's preprocessing does not travel with its numbers")
+        assert "baseline_results" in page10
+
+    def test_the_tex_names_it(self):
+        from ml.latex_report import generate_latex_report
+
+        tex = generate_latex_report(
+            title="T", authors="A", affiliation="X", methods_section="## Methods\n\nm.\n",
+            model_results={"ridge": {"metrics": {"RMSE": 1.2, "R2": 0.4}}},
+            task_type="regression", n_total=100, n_train=70, n_val=15, n_test=15,
+            manuscript_context={"baseline_results": {
+                "Baseline: Mean": {"metrics": {"RMSE": 2.0},
+                                   "preprocessing": "median imputation, one-hot"}}})
+
+        assert "held-out test set achieved" in tex
+        assert "median imputation, one-hot" in tex
+        assert "not the per-model preprocessing pipelines" in tex
+
+    def test_a_baseline_without_a_recorded_recipe_says_nothing(self):
+        from ml.latex_report import generate_latex_report
+
+        tex = generate_latex_report(
+            title="T", authors="A", affiliation="X", methods_section="## Methods\n\nm.\n",
+            model_results={"ridge": {"metrics": {"RMSE": 1.2, "R2": 0.4}}},
+            task_type="regression", n_total=100, n_train=70, n_val=15, n_test=15,
+            manuscript_context={"baseline_results": {
+                "Baseline: Mean": {"metrics": {"RMSE": 2.0}}}})
+
+        assert "held-out test set achieved" in tex
+        assert "their own fixed recipe" not in tex, (
+            "an unrecorded recipe must be absent, not invented")
+
 
 # ── RECORD-007 · the .tex carries what the .md carries ───────────────────
 

@@ -59,64 +59,104 @@ def _build_transform_map(engineered_features, engineering_log):
 # ml/publication.py turns each entry into a named technique in the Methods
 # section, and narrative_engine joins them verbatim. So an entry is a CLAIM
 # about a feature the model saw.
-_LOG_ENTRY_TRANSFORMS = (
-    ("Polynomial", ("polynomial",)),
-    ("Custom interaction", ("polynomial", "other")),
-    ("Mathematical transforms", ("log", "sqrt", "power", "reciprocal")),
-    ("Ratio features", ("ratio",)),
-    ("Binning", ("binning",)),
-    ("TDA", ("tda",)),
-    ("PCA", ("pca",)),
-    ("UMAP", ("umap",)),
-)
 
 
-def _prune_engineering_log(engineering_log, engineered_features, removed):
-    """Drop log entries whose entire output has been removed.
+def _entry_feature_names(entry, universe):
+    """The feature names one log entry is about, from the names in its text.
 
-    `STATE-027`: the removal path updated the frame and the name list and left
-    the log alone, so removing every feature a technique created still left the
-    Methods section asserting that technique was applied. An entry is dropped
-    only when nothing surviving can be attributed to it — an entry that names a
-    removed feature and no surviving one, or whose technique tag matches no
-    surviving feature. Anything unattributable is kept: a log this page cannot
-    parse is not evidence that the work did not happen.
+    `universe` is every name the entry could be talking about (survivors plus
+    the just-removed). Tokenized exactly — `age_x_bmi` in an entry does NOT
+    attribute it to `age_x_bmi_2`.
     """
     import re
 
+    tokens = set(re.findall(r"[A-Za-z0-9_.]+", str(entry)))
+    return tokens & set(universe)
+
+
+def _surviving_log_indices(engineering_log, engineered_features, removed,
+                           sources=None):
+    """Indices of the log entries that still describe a feature the model sees.
+
+    `STATE-027`: the removal path updated the frame and the name list and left
+    the log alone, so removing every feature a technique created still left the
+    Methods section asserting that technique was applied.
+
+    The first repair pruned by TECHNIQUE TAG — the tag of the entry's prefix
+    against the tags of the surviving feature names — and a tag is not an
+    attribution. It inverted both ways: `Custom Square (A²)` and `Math x²` both
+    tag `power`, so removing every mathematical transform left "Mathematical
+    transforms: +1 features" standing on the strength of a custom interaction's
+    survivor (a FALSE KEEP); and any removal at all pruned every entry whose tag
+    no surviving name happened to carry, so a single-feature polynomial (`age^2`
+    tags `other`, not `polynomial`) lost its log line while its feature lived on
+    in the frame (a FALSE DROP).
+
+    Attribution is now by NAME. An entry is dropped only when the features it
+    is attributable to include one of the REMOVED and none that survive; every
+    entry this page cannot attribute is kept, on every path, because a log we
+    cannot parse is not evidence that the work did not happen. `sources` is the
+    per-entry list of names the technique created, recorded by `_fe_commit` at
+    the moment it created them — the entries that state a count rather than a
+    name ("Polynomial degree 2 (full): +2 features") are attributable only
+    through it.
+    """
     if not removed:
-        return list(engineering_log)
+        return list(range(len(engineering_log)))
     removed = set(removed)
     survivors = set(engineered_features)
-    surviving_tags = set(_build_transform_map(list(survivors), []).values())
+    universe = removed | survivors
 
-    kept = []
-    for entry in engineering_log:
-        text = str(entry)
-        tokens = set(re.findall(r"[A-Za-z0-9_.]+", text))
-        if (tokens & removed) and not (tokens & survivors):
+    keep = []
+    for idx, entry in enumerate(engineering_log):
+        produced = set((sources or [])[idx]) if sources and idx < len(sources) else set()
+        produced |= _entry_feature_names(entry, universe)
+        if produced and (produced & removed) and not (produced & survivors):
             continue
-        tags = next((t for prefix, t in _LOG_ENTRY_TRANSFORMS
-                     if text.startswith(prefix)), None)
-        if tags is not None and not (set(tags) & surviving_tags):
-            continue
-        kept.append(entry)
-    return kept
+        keep.append(idx)
+    return keep
 
 
-def _fe_commit(X_engineered, engineered_features, engineering_log, removed=()):
-    """The ONE writer of the three work-in-progress keys.
+def _prune_engineering_log(engineering_log, engineered_features, removed,
+                           sources=None):
+    """Drop log entries whose entire output has been removed."""
+    keep = _surviving_log_indices(engineering_log, engineered_features,
+                                  removed, sources)
+    return [engineering_log[i] for i in keep]
+
+
+def _fe_commit(X_engineered, engineered_features, engineering_log, removed=(),
+               created=()):
+    """The ONE writer of the work-in-progress keys.
 
     The frame, the name list and the log are one state in three slots, and
     twelve hand-written assignment triples meant the failure mode was always
     the one you forgot (`STATE-027`). Every technique tab commits through here.
+
+    `created` is what the technique just made. It is recorded alongside the log
+    entry so a later removal can ask which entry the removed feature belongs to
+    instead of guessing from a technique tag — a count-only entry names nothing
+    and is otherwise unattributable forever.
     """
-    engineering_log = _prune_engineering_log(
-        engineering_log, engineered_features, removed)
     wip = st.session_state.fe_work_in_progress
+    sources = list(wip.get('engineering_log_sources') or [])
+    n_new = len(engineering_log) - len(sources)
+    if n_new > 0:
+        # One appended entry owns everything this commit created. A commit that
+        # appends SEVERAL entries writes one per feature and names that feature
+        # in the entry text, so those are attributed by name instead.
+        sources += [list(created)] if n_new == 1 else [[] for _ in range(n_new)]
+    sources = sources[:len(engineering_log)]
+
+    keep = _surviving_log_indices(engineering_log, engineered_features,
+                                  removed, sources)
+    engineering_log = [engineering_log[i] for i in keep]
+    sources = [sources[i] for i in keep]
+
     wip['X_engineered'] = X_engineered
     wip['engineered_features'] = engineered_features
     wip['engineering_log'] = engineering_log
+    wip['engineering_log_sources'] = sources
     return engineering_log
 
 
@@ -223,7 +263,10 @@ if ('fe_work_in_progress' not in st.session_state
     st.session_state.fe_work_in_progress = {
         'X_engineered': X.copy(),
         'engineered_features': [],
-        'engineering_log': []
+        'engineering_log': [],
+        # Parallel to engineering_log: what each entry created, so a removal can
+        # be attributed to the entry that made it (`STATE-027`).
+        'engineering_log_sources': []
     }
     st.session_state.fe_features_hash = _features_hash
     st.session_state.fe_reset_requested = False
@@ -424,7 +467,7 @@ with _fe_tabs[0]:
                     st.caption(f"Skipped {_skipped_dupes} polynomial feature(s) that already existed.")
                 
                 # Save back to session state
-                _fe_commit(X_engineered, engineered_features, engineering_log)
+                _fe_commit(X_engineered, engineered_features, engineering_log, created=new_cols)
                 
                 st.success(f"✅ Created **{len(new_cols):,} polynomial features**")
                 st.rerun()  # Refresh to show updated summary
@@ -470,7 +513,7 @@ with _fe_tabs[0]:
                                        "Multiply (A \u00d7 B)": "*",
                                        "Divide (A / B)": "/"}.get(_ci_op, "*")},
                                [_new_col_name], _replay.PURE)
-                _fe_commit(X_engineered, engineered_features, engineering_log)
+                _fe_commit(X_engineered, engineered_features, engineering_log, created=[_new_col_name])
                 st.rerun()
     else:
         st.info('No numeric features available for custom interactions.')
@@ -569,7 +612,7 @@ with _fe_tabs[1]:
                     engineering_log.append(f"Mathematical transforms: +{len(new_cols)} features")
 
                     # Save back to session state
-                    _fe_commit(X_engineered, engineered_features, engineering_log)
+                    _fe_commit(X_engineered, engineered_features, engineering_log, created=new_cols)
 
                     # Resolve skew insight if all skewed features have been transformed
                     # Resolve skew insight with structured details
@@ -665,7 +708,7 @@ with _fe_tabs[2]:
                                        new_cols, _replay.PURE)
                         
                         # Save back to session state
-                        _fe_commit(X_engineered, engineered_features, engineering_log)
+                        _fe_commit(X_engineered, engineered_features, engineering_log, created=new_cols)
                         
                         st.session_state.ratio_list = []  # Clear list
                         st.success(f"✅ Created **{len(new_cols)} ratio features**")
@@ -752,7 +795,7 @@ with _fe_tabs[3]:
                     engineering_log.append(f"Binning ({strategy}, {n_bins} bins): +{len(new_cols)} features")
                     
                     # Save back to session state
-                    _fe_commit(X_engineered, engineered_features, engineering_log)
+                    _fe_commit(X_engineered, engineered_features, engineering_log, created=new_cols)
                     
                     st.success(f"✅ Created **{len(new_cols)} binned features**")
                     st.rerun()
@@ -935,7 +978,7 @@ And crucially: **Which of these structures persist as you zoom in/out?** Persist
                 engineering_log.append(f"TDA (H{homology_dims}): +{len(tda_feature_names)} features")
                 
                 # Save back to session state
-                _fe_commit(X_engineered, engineered_features, engineering_log)
+                _fe_commit(X_engineered, engineered_features, engineering_log, created=tda_feature_names)
                 
                 progress_bar.progress(100, "Complete!")
                 
@@ -1005,7 +1048,7 @@ as supplementary features alongside originals.
                     engineering_log.append(f"PCA: +{n_components_pca} features ({pca.explained_variance_ratio_.sum():.1%} variance)")
                     
                     # Save back to session state
-                    _fe_commit(X_engineered, engineered_features, engineering_log)
+                    _fe_commit(X_engineered, engineered_features, engineering_log, created=pca_cols)
                     
                     st.success(f"✅ Created **{n_components_pca} PCA features** ({pca.explained_variance_ratio_.sum():.1%} variance)")
                     st.rerun()
@@ -1050,7 +1093,7 @@ as supplementary features alongside originals.
                     engineering_log.append(f"UMAP: +{n_components_umap} features")
                     
                     # Save back to session state
-                    _fe_commit(X_engineered, engineered_features, engineering_log)
+                    _fe_commit(X_engineered, engineered_features, engineering_log, created=umap_cols)
                     
                     st.success(f"✅ Created **{n_components_umap} UMAP features**")
                     st.rerun()
@@ -1138,7 +1181,8 @@ with _fe_tabs[6]:
                             f"{_pct:.1f}% missing)"
                         )
 
-                    _fe_commit(X_engineered, engineered_features, engineering_log)
+                    _fe_commit(X_engineered, engineered_features, engineering_log,
+                               created=[f"{f}_has_data" for f in _to_create])
                     st.success(f"✅ Created **{len(_to_create)} missingness indicator(s)**: "
                                f"{', '.join(f'`{f}_has_data`' for f in _to_create)}")
                     st.rerun()
@@ -1182,7 +1226,8 @@ with _fe_tabs[6]:
                                     f"{len(cat_map)} categories)"
                                 )
 
-                            _fe_commit(X_engineered, engineered_features, engineering_log)
+                            _fe_commit(X_engineered, engineered_features, engineering_log,
+                                       created=[f"{f}_ordinal" for f in _to_encode])
                             st.success(f"✅ Created **{len(_to_encode)} ordinal encoding(s)**")
                             st.rerun()
         else:

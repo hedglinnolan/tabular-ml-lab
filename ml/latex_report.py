@@ -113,6 +113,12 @@ def _resolve_latex_manuscript_context(
         'best_metric_name': context.get('best_metric_name'),
         'feature_counts': dict(context.get('feature_counts') or {}),
         'population_counts': dict(context.get('population_counts') or {}),
+        # `MODELS-009`: the Results section reads `manuscript_facts` for the
+        # baseline comparison and this resolver never put it there, so the
+        # "null and simple baselines on the same held-out test set" sentence —
+        # the anchor for "is the model better than trivial?" — was composed from
+        # an empty dict in every run and never printed at all.
+        'baseline_results': dict(context.get('baseline_results') or {}),
     }
 
 
@@ -584,6 +590,27 @@ def _metrics_to_latex_table(
     lines.append(r"\bottomrule")
     lines.append(r"\end{tabular}")
     lines.append(r"\end{adjustbox}")
+
+    # `MINE-027`: a cell in this table is not the held-out score unless the N it
+    # was computed on is the held-out N. When a degenerate target back-transform
+    # made some predictions non-finite, those pairs were dropped before scoring
+    # and the truncation reached a Streamlit warning and nothing else — least of
+    # all the table a reviewer reads. The count is NOT a metric column (it was,
+    # briefly, and rendered as a model score); it is a footnote to the numbers
+    # it qualifies.
+    notes = []
+    for name, res in model_results.items():
+        disclosure = res.get("test_scoring") or {}
+        if disclosure.get("n_dropped_nonfinite"):
+            notes.append(
+                f"{_escape_latex(_model_display_name(name))}: computed on "
+                f"{disclosure['n_scored']} of {disclosure.get('n_pairs', '?')} "
+                f"pairs; {disclosure['n_dropped_nonfinite']} non-finite "
+                f"pair(s) excluded")
+    if notes:
+        lines.append(r"\vspace{2pt}")
+        lines.append(r"{\footnotesize \textit{Note:} " + "; ".join(notes) + ".}")
+
     lines.append(r"\end{spacing}")
     lines.append(r"\end{table}")
 
@@ -850,14 +877,28 @@ def generate_latex_report(
         baselines = manuscript_facts.get('baseline_results') or {}
         if baselines:
             b_parts = []
+            b_recipes = []
             for bname, bdata in baselines.items():
                 metrics = (bdata or {}).get('metrics', {})
                 m_txt = ", ".join(f"{_escape_latex(str(k))} = {v:.4f}" for k, v in metrics.items())
                 b_parts.append(f"{_escape_latex(str(bname))} ({m_txt})")
+                recipe = (bdata or {}).get('preprocessing')
+                if recipe and recipe not in b_recipes:
+                    b_recipes.append(recipe)
             sections.append(
                 "For reference, null and simple baseline models evaluated on the same "
                 "held-out test set achieved: " + "; ".join(b_parts) + "."
             )
+            # `MODELS-009`: "the same held-out test set" is true and "the same
+            # preprocessing" is not — the baselines have their own fixed recipe.
+            # A comparison whose recipe is unstated invites the reader to assume
+            # the models' one.
+            if b_recipes:
+                sections.append(
+                    "The baseline features went through their own fixed recipe ("
+                    + "; ".join(_escape_latex(str(r)) for r in b_recipes)
+                    + "), not the per-model preprocessing pipelines above."
+                )
 
         # The table above is generated from the same recorded results, so
         # reproducing the draft's Results prose would state the numbers twice.

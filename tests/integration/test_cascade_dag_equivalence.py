@@ -194,6 +194,15 @@ _NOT_YET_DECLARED_IN_THE_DAG = {
     # cleared by the production reset so a new dataset cannot inherit another
     # cohort's external metrics; the DAG has no external-validation stage yet.
     "external_validation_results",
+    # Registered in the STATE-037/040/044 repair wave. Both belong to stages the
+    # DAG already has — the split and the EDA profile — but as SECOND keys those
+    # stages do not declare:
+    #   split_trim_record ……… the realized target trim of one split
+    #                          (`CONTRACT-021`), stale the moment it is redrawn
+    #   dataset_profile_scope … WHICH ROWS `dataset_profile` describes; a scope
+    #                          note outliving its profile labels the next one
+    "split_trim_record",
+    "dataset_profile_scope",
 }
 
 

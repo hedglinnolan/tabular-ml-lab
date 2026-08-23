@@ -182,25 +182,72 @@ class TestState038ManuscriptResultKeys:
         "manuscript_export_context",      # a stale one WINS over rebuilding
     )
 
-    def test_they_are_registered(self):
-        from utils.session_state import _ANALYSIS_KEYS, _REPORT_KEYS
+    # The wave-2 sweep of "read by an export surface, cleared by nobody".
+    LATER_KEYS = (
+        "split_trim_record",       # pages/06 → the realized trim of ONE split
+        "dataset_profile_scope",   # pages/02 → which rows the profile describes
+    )
 
-        registry = set(_ANALYSIS_KEYS) | set(_REPORT_KEYS)
-        missing = [k for k in self.MANUSCRIPT_KEYS if k not in registry]
+    def test_they_are_registered(self):
+        from utils.session_state import _ANALYSIS_KEYS, _REPORT_KEYS, _SPLIT_KEYS
+
+        registry = set(_ANALYSIS_KEYS) | set(_REPORT_KEYS) | set(_SPLIT_KEYS)
+        missing = [k for k in self.MANUSCRIPT_KEYS + self.LATER_KEYS
+                   if k not in registry]
         assert not missing, f"unregistered manuscript result keys: {missing}"
 
     def test_a_target_change_clears_them(self, session):
         from utils.session_state import reset_downstream_results
 
-        for key in self.MANUSCRIPT_KEYS:
+        for key in self.MANUSCRIPT_KEYS + self.LATER_KEYS:
             session[key] = {"from": "the model this reset destroys"}
         session["partial_dependence"] = {"age": [1, 2]}
 
         reset_downstream_results()
 
-        survivors = [k for k in self.MANUSCRIPT_KEYS if k in session]
+        survivors = [k for k in self.MANUSCRIPT_KEYS + self.LATER_KEYS
+                     if k in session]
         assert not survivors, f"survived the reset: {survivors}"
         assert session["partial_dependence"] == {}
+
+
+class TestMethodologyLogIsTheLedgersSecondProducer:
+    """pages/10:996 and ml/publication read `ledger_log or methodology_log`.
+
+    The ledger's half rolls back on a downstream reset; the session list did
+    not, so the fallback re-printed the Mann-Whitney and Shapiro-Wilk rows whose
+    results the same reset had just deleted.
+    """
+
+    def test_the_rolled_back_pages_lose_their_entries(self, session):
+        from utils.insight_ledger import InsightLedger
+        from utils.session_state import log_methodology, reset_downstream_results
+
+        session["insight_ledger"] = InsightLedger()
+        log_methodology("Upload & Audit", "Selected target y", {"target": "y"})
+        log_methodology("Preprocessing", "Built pipelines", {"scaling": "standard"})
+        log_methodology("Statistical Validation", "Mann-Whitney U on glucose",
+                        {"test_name": "Mann-Whitney U", "p_value": 0.004})
+        log_methodology("EDA", "Generated correlation matrix", {})
+        assert len(session["methodology_log"]) == 4
+
+        reset_downstream_results()
+
+        steps = [e["step"] for e in session["methodology_log"]]
+        assert steps == ["Upload & Audit"], (
+            f"stale rows survived the reset that deleted their results: {steps}")
+        # And the two sources agree, which is the point of pruning by the same
+        # page set the ledger rolls back.
+        ledger_steps = [e["step"] for e in session["insight_ledger"].get_methodology_log()]
+        assert ledger_steps == steps
+
+    def test_a_step_this_module_cannot_place_is_kept(self, session):
+        from utils.session_state import reset_downstream_results
+
+        session["methodology_log"] = [{"step": "Hand-written note", "action": "x",
+                                       "details": {}}]
+        reset_downstream_results()
+        assert [e["step"] for e in session["methodology_log"]] == ["Hand-written note"]
 
 
 # ── STATE-037 handoff: the row filter is part of who the results describe ──
@@ -240,10 +287,55 @@ class TestState037FilteredDataIsInvalidated:
     def test_build_pipelines_calls_it_on_both_arms(self):
         src = (REPO / "pages" / "05_Preprocess.py").read_text(encoding="utf-8")
         write = src.index('st.session_state["filtered_data"] = filtered_df')
-        pop = src.index('st.session_state.pop("filtered_data", None)\n                sample_source = df')
+        pop = src.index('st.session_state.pop("filtered_data", None)\n'
+                        '                # The base, not `df`')
         for site in (write, pop):
             assert "_invalidate_on_row_filter_change" in src[site - 200:site], (
                 "filtered_data changes hands with no downstream invalidation")
+
+    def test_the_filter_is_computed_from_the_unmasked_base(self, session):
+        """The ratchet: get_data() is already masked by the filter being rebuilt.
+
+        Filtering the filtered and writing the result back means every press can
+        only remove more people, and WIDENING a bound restores none of them.
+        Measured on a 100-row study: 78 rows stayed excluded under bounds that
+        admitted all 100.
+        """
+        from ml.pipeline import apply_plausibility_filter
+        from utils.session_state import get_data, set_data
+
+        study = _study(100).assign(age=lambda d: d["age"].abs())
+        set_data(study)
+        session["df_engineered"] = study.copy()
+        narrow = {"lower_bounds": [45.0, 25.0, 90.0],
+                  "upper_bounds": [55.0, 29.0, 110.0]}
+        wide = {"lower_bounds": [0.0, 0.0, 0.0],
+                "upper_bounds": [999.0, 999.0, 999.0]}
+        cols = ["age", "bmi", "glucose"]
+
+        # Press once with the narrow bounds, as the page does.
+        session["filtered_data"] = apply_plausibility_filter(
+            get_data(apply_row_filter=False), cols, narrow, None)
+        narrowed = len(session["filtered_data"])
+        assert 0 < narrowed < len(study), "fixture must actually exclude rows"
+
+        # The base frame is unchanged by the mask that now exists…
+        assert len(get_data(apply_row_filter=False)) == len(study)
+        assert len(get_data()) == narrowed
+        # …so widening the bound restores exactly the rows the bounds admit.
+        session["filtered_data"] = apply_plausibility_filter(
+            get_data(apply_row_filter=False), cols, wide, None)
+        assert len(session["filtered_data"]) == len(study), (
+            "widening a plausibility bound restored nothing: the filter was "
+            "computed from the already-filtered frame")
+
+    def test_the_build_handler_filters_the_base_frame(self):
+        """The page source, because the handler is not callable in isolation."""
+        src = (REPO / "pages" / "05_Preprocess.py").read_text(encoding="utf-8")
+        assert "df_base = get_data(apply_row_filter=False)" in src
+        assert "apply_plausibility_filter(\n                    df_base," in src, (
+            "the plausibility filter is being computed from the masked frame")
+        assert "sample_source = df_base" in src
 
 
 # ── STATE-040: the watermark outlives what it stains ──────────────────────
@@ -272,11 +364,53 @@ class TestState040ExploratoryWatermark:
         reset_downstream_results(clear_feature_selection=False)
         assert session.get("exploratory_used") is True
 
-    def test_a_full_reset_still_clears_it(self, session):
-        from utils.session_state import reset_downstream_results
+    def test_the_full_downstream_reset_keeps_it_too(self, session):
+        """The APPLIED selection survives every call, so the stain must.
+
+        `selected_features` / `pre_fe_feature_cols` / `data_config.feature_cols`
+        are written by page 04 and cleared by no reset here — including the
+        unflagged one. The watermark was popped anyway, so a same-schema
+        set_data left the Methods claiming a sealed lockbox ahead of a feature
+        set chosen with it open.
+        """
+        from utils.session_state import DataConfig, reset_downstream_results
 
         session["exploratory_used"] = True
+        session["selected_features"] = ["age", "bmi"]
+        session["data_config"] = DataConfig(target_col="glucose",
+                                            feature_cols=["age", "bmi"])
+
         reset_downstream_results()
+
+        assert session["selected_features"] == ["age", "bmi"], (
+            "fixture must reproduce the survivor")
+        assert session.get("exploratory_used") is True
+
+    def test_a_same_schema_data_change_keeps_it(self, session):
+        """The measured route: set_data → full downstream reset → clean claim."""
+        from utils.session_state import set_data
+
+        study = _study()
+        set_data(study)
+        session["exploratory_used"] = True
+        session["selected_features"] = ["age", "bmi"]
+
+        set_data(study.assign(glucose=lambda d: d["glucose"] + 1))
+
+        assert session["selected_features"] == ["age", "bmi"]
+        assert session.get("exploratory_used") is True, (
+            "the watermark cleared while the selection it stains stayed applied")
+
+    def test_only_a_new_dataset_clears_it(self, session):
+        """reset_data_dependent_state empties the selection, so it may."""
+        from utils.session_state import reset_data_dependent_state
+
+        session["exploratory_used"] = True
+        session["selected_features"] = ["age", "bmi"]
+
+        reset_data_dependent_state()
+
+        assert session["selected_features"] == []
         assert "exploratory_used" not in session
 
 
@@ -345,6 +479,24 @@ class TestAudit042CountMatchesList:
         assert "0 were addressed during the modeling workflow" in text
         assert "Addressed observations:" not in text, (
             "a count above an empty list is the assertion this row is about")
+
+    def test_the_second_producer_reads_the_same_filter(self):
+        """pages/10's strengths line printed summary()["resolved"] — the ledger
+        count — beside a narrative built from _is_narrative_worthy. Measured:
+        six button presses, "6 observation(s) identified and addressed", and a
+        narrative one line above saying 0 were identified."""
+        ledger = self._ledger()
+
+        assert ledger.summary()["resolved"] == 2, "fixture must hold the bridge entries"
+        assert ledger.narrative_summary() == {
+            "total": 1, "resolved": 0, "unresolved": 1}
+
+        page10 = (REPO / "pages" / "10_Report_Export.py").read_text(encoding="utf-8")
+        strengths = page10.index('f"Systematic data quality audit: {_resolved_count}')
+        assert "_resolved_count = _report_ledger.narrative_summary()" in \
+            page10[strengths - 900:strengths], (
+                "the strengths line counts activity records as addressed "
+                "observations")
 
     def test_a_real_resolution_is_still_counted(self):
         from utils.insight_ledger import Insight
@@ -430,6 +582,48 @@ class TestState044UnknownMeansChanged:
         assert session["trained_models"], (
             "unknown-means-changed must not turn every page visit into a reset")
 
+    def test_a_relabeled_reupload_is_a_change(self, session):
+        """The collision channel: `index=False` made the fingerprint a hash of
+        the MULTISET of rows, so a re-upload of the same people in a different
+        order — a RangeIndex, so every label now names someone else — matched
+        exactly. Models, metrics and `test_row_labels` survived, and the sealed
+        test set became 50 different people with nothing to refuse on."""
+        from ml.splits import resolve_split_rows
+        from utils.session_state import get_data, set_data
+
+        study = _study(60)
+        set_data(study)
+        session["trained_models"] = {"rf": object()}
+        session["test_row_labels"] = list(study.index[-15:])
+        sealed_before = resolve_split_rows(get_data(), session["test_row_labels"], "test")
+
+        resorted = study.sort_values("age").reset_index(drop=True)
+        assert sorted(resorted["glucose"]) == sorted(study["glucose"]), (
+            "fixture must be the SAME rows, reordered")
+        set_data(resorted)
+
+        assert session["trained_models"] == {}, (
+            "a re-sorted re-upload renamed every row and invalidated nothing")
+        assert "test_row_labels" not in session
+        # The fixture is only meaningful if the relabeling really moved people.
+        assert not sealed_before.reset_index(drop=True).equals(
+            resorted.loc[list(study.index[-15:])].reset_index(drop=True))
+
+    def test_a_label_faithful_reorder_is_not_a_change(self, session):
+        """Sorting a frame WITHOUT resetting the index moves no one: the labels
+        travel with their rows, so every recorded split still names the same
+        people and the results are still about them."""
+        from utils.session_state import set_data
+
+        study = _study(60)
+        set_data(study)
+        session["trained_models"] = {"rf": object()}
+
+        set_data(study.sort_values("age"))
+
+        assert session["trained_models"], (
+            "a reorder that renamed nobody destroyed the analysis")
+
     def test_a_restored_session_without_a_fingerprint_is_not_a_change(self, session):
         from utils.session_state import set_data
 
@@ -449,24 +643,86 @@ class TestState027EngineeringLogFollowsTheFeatures:
     def _ns(self):
         return _page_namespace(
             "03_Feature_Engineering.py",
-            ["_build_transform_map", "_LOG_ENTRY_TRANSFORMS",
-             "_prune_engineering_log", "_fe_commit"])
+            ["_build_transform_map", "_entry_feature_names",
+             "_surviving_log_indices", "_prune_engineering_log", "_fe_commit"])
 
-    def test_removing_a_techniques_whole_output_drops_its_claim(self):
-        prune = self._ns()["_prune_engineering_log"]
-        log = ["Polynomial degree 2 (full): +2 features",
-               "PCA: +3 features (81.0% variance)"]
+    def _wip(self, session):
+        session["fe_work_in_progress"] = {
+            "X_engineered": None, "engineered_features": [],
+            "engineering_log": [], "engineering_log_sources": []}
+        return session["fe_work_in_progress"]
 
-        kept = prune(log, ["PCA_1", "PCA_2", "PCA_3"], ["age bmi", "age^2"])
+    def _session_after(self, session, steps, removed):
+        """Replay real commits (each recording what it created), then a removal."""
+        commit = self._ns()["_fe_commit"]
+        self._wip(session)
+        feats: list = []
+        log: list = []
+        for entry, created in steps:
+            log = log + [entry]
+            feats = feats + list(created)
+            log = commit(None, feats, log, created=created)
+        feats = [f for f in feats if f not in removed]
+        return commit(None, feats, log, removed=removed)
+
+    def test_removing_a_techniques_whole_output_drops_its_claim(self, session):
+        """A count-only entry is attributable only through what it recorded."""
+        kept = self._session_after(
+            session,
+            [("Polynomial degree 2 (full): +2 features", ["age bmi", "age^2"]),
+             ("PCA: +3 features (81.0% variance)", ["PCA_1", "PCA_2", "PCA_3"])],
+            ["age bmi", "age^2"])
 
         assert kept == ["PCA: +3 features (81.0% variance)"], (
             "the Methods section named a technique that produced nothing the "
             "model saw")
 
+    def test_a_shared_technique_tag_is_not_an_attribution(self, session):
+        """The verifier's FALSE KEEP, with the exact strings pages/03 writes.
+
+        `Custom interaction (Square (A²))` and `Mathematical transforms` both
+        produce features that tag `power`, so a tag-based pruner kept the maths
+        claim on the strength of the custom interaction's survivor — after every
+        maths output had been removed.
+        """
+        kept = self._session_after(
+            session,
+            [("Custom interaction (Square (A²)): age_squared", ["age_squared"]),
+             ("Mathematical transforms: +1 features", ["log_bmi"])],
+            ["log_bmi"])
+
+        assert kept == ["Custom interaction (Square (A²)): age_squared"], (
+            "the surviving technique lost its entry and the emptied one kept "
+            "its claim — the tag inversion, both ways at once")
+
+    def test_an_unrelated_removal_leaves_every_other_technique_standing(self, session):
+        """The verifier's FALSE DROP: `age^2` tags `other`, not `polynomial`."""
+        kept = self._session_after(
+            session,
+            [("Polynomial degree 2 (full): +1 features", ["age^2"]),
+             ("Missingness indicator: bmi_has_data (1 = observed, 0 = missing; "
+              "8.0% missing)", ["bmi_has_data"]),
+             ("Mathematical transforms: +1 features", ["log_age"])],
+            ["log_age"])
+
+        assert kept == [
+            "Polynomial degree 2 (full): +1 features",
+            "Missingness indicator: bmi_has_data (1 = observed, 0 = missing; "
+            "8.0% missing)",
+        ], "removing one feature deleted techniques whose output is still there"
+
+    def test_a_partial_removal_keeps_the_technique(self, session):
+        kept = self._session_after(
+            session,
+            [("PCA: +3 features (81.0% variance)", ["PCA_1", "PCA_2", "PCA_3"])],
+            ["PCA_1", "PCA_2"])
+        assert kept == ["PCA: +3 features (81.0% variance)"]
+
     def test_a_technique_with_survivors_keeps_its_entry(self):
         prune = self._ns()["_prune_engineering_log"]
         log = ["Mathematical transforms: +2 features"]
-        assert prune(log, ["log_age"], ["sqrt_bmi"]) == log
+        assert prune(log, ["log_age"], ["sqrt_bmi"],
+                     [["log_age", "sqrt_bmi"]]) == log
 
     def test_an_entry_that_names_its_feature_follows_that_feature(self):
         prune = self._ns()["_prune_engineering_log"]
@@ -477,30 +733,58 @@ class TestState027EngineeringLogFollowsTheFeatures:
 
         assert kept == [log[1]]
 
+    def test_a_removed_name_that_is_a_substring_of_a_survivor(self):
+        """Exact tokens: `age_x_bmi` in the text is not `age_x_bmi_2`."""
+        prune = self._ns()["_prune_engineering_log"]
+        log = ["Custom interaction (*): age_x_bmi"]
+        assert prune(log, ["age_x_bmi_2"], ["age_x_bmi"]) == []
+        assert prune(log, ["age_x_bmi"], ["age_x_bmi_2"]) == log
+
     def test_an_unparseable_entry_is_kept(self):
         """Absent is better than false, but so is a log we cannot attribute."""
         prune = self._ns()["_prune_engineering_log"]
         log = ["Domain feature added by hand"]
         assert prune(log, ["kept_feature"], ["gone"]) == log
 
+    def test_a_count_only_entry_with_no_recorded_source_is_kept(self):
+        """"Unattributable is kept" must hold on EVERY path, including the one
+        where a restored session carries a log and no attribution."""
+        prune = self._ns()["_prune_engineering_log"]
+        log = ["Polynomial degree 2 (full): +2 features"]
+        assert prune(log, ["PCA_1"], ["age bmi", "age^2"]) == log
+
     def test_every_write_site_goes_through_the_one_committer(self):
         src = (REPO / "pages" / "03_Feature_Engineering.py").read_text(encoding="utf-8")
         body = src.split("def _fe_commit", 1)[1].split("\n\n\n", 1)[1]
-        for key in ("X_engineered", "engineered_features", "engineering_log"):
+        for key in ("X_engineered", "engineered_features", "engineering_log",
+                    "engineering_log_sources"):
             assert f"fe_work_in_progress['{key}'] =" not in body, (
-                "three parallel assignments: the failure mode is always the one "
+                "parallel assignments: the failure mode is always the one "
                 "you forget")
             assert f'fe_work_in_progress["{key}"] =' not in body
 
-    def test_the_committer_writes_all_three(self, session):
+    def test_the_committer_writes_all_of_them(self, session):
         ns = self._ns()
-        session["fe_work_in_progress"] = {
-            "X_engineered": None, "engineered_features": [], "engineering_log": []}
+        self._wip(session)
         frame = _study()
 
-        ns["_fe_commit"](frame, ["PCA_1"], ["PCA: +1 features"])
+        ns["_fe_commit"](frame, ["PCA_1"], ["PCA: +1 features"], created=["PCA_1"])
 
         wip = session["fe_work_in_progress"]
         assert wip["X_engineered"] is frame
         assert wip["engineered_features"] == ["PCA_1"]
         assert wip["engineering_log"] == ["PCA: +1 features"]
+        assert wip["engineering_log_sources"] == [["PCA_1"]], (
+            "a log entry that does not know what it made can never be pruned "
+            "by anything but a guess")
+
+    def test_every_technique_tab_records_what_it_created(self):
+        src = (REPO / "pages" / "03_Feature_Engineering.py").read_text(encoding="utf-8")
+        body = src.split("# Initialize\ninit_session_state()", 1)[1]
+        lines = body.splitlines()
+        calls = [" ".join(lines[i:i + 2]) for i, line in enumerate(lines)
+                 if "_fe_commit(" in line]
+        assert len(calls) >= 10, "the technique tabs moved; re-point this test"
+        for call in calls:
+            assert "created=" in call or "removed=" in call, (
+                f"a commit that records nothing it made: {call.strip()}")

@@ -961,9 +961,23 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             def _get(mk: str, key: str, default: Any) -> Any:
                 return st.session_state.get(f"preprocess_{mk}_{key}", default)
 
+            # `STATE-037`, second half: the module-level `df` above is already
+            # MASKED by the filtered_data this button wrote last time — get_data()
+            # applies the row filter to every page. Deriving the unit factors, the
+            # bounds and the filter from it and writing the result back to
+            # filtered_data is a ratchet: each press filters the filtered, so
+            # rebuilding can only ever remove more people, and WIDENING a bound
+            # restores nobody. Measured on a 100-row study, 23 rows stayed excluded
+            # under bounds that admitted them. The row filter is recomputed from
+            # the unmasked base frame so that what is written reflects the current
+            # bounds and nothing else.
+            df_base = get_data(apply_row_filter=False)
+            if df_base is None:
+                df_base = df
+
             any_unit = any(_get(mk, "unit_harmonization", False) for mk in model_keys)
             unit_overrides = st.session_state.get("unit_overrides", {})
-            unit_config = build_unit_harmonization_config(df, numeric_features, unit_overrides) if any_unit else None
+            unit_config = build_unit_harmonization_config(df_base, numeric_features, unit_overrides) if any_unit else None
             any_plaus = any_unit and any(_get(mk, "plausibility_gating", False) for mk in model_keys)
             plausibility_bounds = build_plausibility_bounds(numeric_features, unit_config["conversion_factors"]) if (unit_config and any_plaus) else None
 
@@ -1012,7 +1026,7 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             if any_filter:
                 uf_list = unit_config["conversion_factors"] if unit_config else None
                 filtered_df = apply_plausibility_filter(
-                    df, numeric_features, plausibility_bounds, uf_list
+                    df_base, numeric_features, plausibility_bounds, uf_list
                 )
                 # Constitution 04: a robustness trim applies to the TRAINING
                 # partition only, and "also trim the test set to match" is
@@ -1031,12 +1045,12 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                 from utils.test_lockbox import get_lockbox as _get_lb, is_exploratory as _is_exp
                 _lb_now = _get_lb()
                 if _lb_now and not _is_exp():
-                    _sealed = [l for l in _lb_now["labels"] if l in df.index]
+                    _sealed = [l for l in _lb_now["labels"] if l in df_base.index]
                     _restored = [l for l in _sealed if l not in filtered_df.index]
                     if _restored:
                         filtered_df = pd.concat(
-                            [filtered_df, df.loc[_restored]]).loc[
-                                [i for i in df.index
+                            [filtered_df, df_base.loc[_restored]]).loc[
+                                [i for i in df_base.index
                                  if i in set(filtered_df.index) | set(_restored)]]
                         st.info(
                             f"Plausibility filtering removed rows from the training "
@@ -1053,7 +1067,9 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             else:
                 _invalidate_on_row_filter_change(None)
                 st.session_state.pop("filtered_data", None)
-                sample_source = df
+                # The base, not `df`: with the filter now off, the previous
+                # press's mask is exactly what must not survive into this build.
+                sample_source = df_base
             X_sample = sample_source[all_features]
 
             # Target Encoding is the only step that reads y at fit time, and it

@@ -217,7 +217,8 @@ def init_session_state():
         st.session_state.insight_ledger = InsightLedger()
 
 
-def get_data(full_study: bool = False) -> Optional[pd.DataFrame]:
+def get_data(full_study: bool = False,
+             apply_row_filter: bool = True) -> Optional[pd.DataFrame]:
     """Get active data from session state.
     Columns come from df_engineered (if feature engineering was applied), else
     raw_data. Rows are then masked by filtered_data (the preprocess row
@@ -230,10 +231,18 @@ def get_data(full_study: bool = False) -> Optional[pd.DataFrame]:
     the test lockbox (every cohort inherits its slice of ONE split) and choosing
     the target and features (fixed across runs, which is what makes the runs
     comparable at all).
+
+    `apply_row_filter=False` returns the frame the row filter is computed FROM —
+    the engineered/raw frame with the cohort applied but WITHOUT the
+    filtered_data mask. Exactly one caller needs it: the code that RECOMPUTES
+    filtered_data (`pages/05`). Filtering the already-filtered frame and writing
+    the result back is a one-way ratchet — every rebuild can only ever remove
+    more rows, and widening a plausibility bound restores none of them
+    (`STATE-037`). Every other caller wants the masked frame.
     """
     # Explicitly check for None to avoid DataFrame boolean ambiguity
     df_eng = st.session_state.get('df_engineered')
-    df_filt = st.session_state.get('filtered_data')
+    df_filt = st.session_state.get('filtered_data') if apply_row_filter else None
     if df_eng is not None:
         df = df_eng
         if df_filt is not None:
@@ -309,7 +318,7 @@ def _hashable_cell(value: Any) -> Any:
 
 
 def _content_fingerprint(df: pd.DataFrame) -> Optional[int]:
-    """Cheap deterministic fingerprint of a DataFrame's contents.
+    """Cheap deterministic fingerprint of a DataFrame's contents AND row labels.
 
     Stable across .copy() (hashes values, not identity).
 
@@ -319,9 +328,20 @@ def _content_fingerprint(df: pd.DataFrame) -> Optional[int]:
     schema kept every stale model, metric and figure. Unhashable cells are now
     stringified for hashing instead. None is reserved for a frame we genuinely
     cannot fingerprint, and callers must treat it as CHANGED, never as clean.
+
+    `STATE-044` (second half): the sum was taken with `index=False`, which makes
+    it a hash of the *multiset* of rows and therefore blind to WHICH ROW IS
+    WHICH. A re-upload of the same people sorted differently — a RangeIndex, so
+    every label now names a different person — produced an identical
+    fingerprint, and set_data took the benign-rerun branch: models, metrics and
+    `test_row_labels` survived, and the sealed test set silently became 50 other
+    people that `resolve_split_rows` had no reason to refuse. Each row's content
+    is now paired WITH its label before summing, so a label-faithful reorder
+    (the labels travel with their rows) still fingerprints the same while
+    relabeled content does not.
     """
     try:
-        return hash((df.shape, int(pd.util.hash_pandas_object(df, index=False).sum())))
+        return hash((df.shape, int(pd.util.hash_pandas_object(df, index=True).sum())))
     except Exception:
         pass
     try:
@@ -330,7 +350,7 @@ def _content_fingerprint(df: pd.DataFrame) -> Optional[int]:
             if coerced[col].dtype == object:
                 coerced[col] = coerced[col].map(_hashable_cell)
         return hash((df.shape,
-                     int(pd.util.hash_pandas_object(coerced, index=False).sum())))
+                     int(pd.util.hash_pandas_object(coerced, index=True).sum())))
     except Exception:
         return None
 
@@ -432,6 +452,10 @@ _SPLIT_KEYS: tuple = (
     "target_transformer", "target_label_encoder",
     "y_train_original", "y_val_original", "y_test_original",
     "cv_strategy", "cv_groups_train",
+    # The realized target-trim (thresholds, basis, test_rows_exempt, n_trimmed)
+    # that pages/06 persists from the Split it just drew (`CONTRACT-021`). It
+    # describes one split and goes stale with it.
+    "split_trim_record",
 )
 
 # Analysis results from pages 02–09.
@@ -446,6 +470,10 @@ _ANALYSIS_KEYS: tuple = (
     "table1_df", "table1_metadata", "custom_table1_tests",
     "table1_custom_test_footnotes",
     "dataset_profile",
+    # WHICH ROWS the profile above describes (pages/02 writes it, pages/10
+    # prints it beside the p/n ratio and the sufficiency verdict). A scope note
+    # that outlives its profile labels the next one's numbers.
+    "dataset_profile_scope",
     # Written by pages/07 next to `partial_dependence`, read by pages/10.
     "pdp_results",
     # External-cohort metrics written by pages/07. They describe models fitted
@@ -607,31 +635,50 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     # (high-cardinality, probe findings), and post-training diagnostics all
     # describe data or models that no longer exist. Absent is better than
     # false.
+    _rollback_pages = {
+        "05_Preprocess", "06_Train_and_Compare",
+        "07_Explainability", "08_Sensitivity_Analysis",
+        "09_Hypothesis_Testing",
+    }
+    if clear_feature_selection:
+        _rollback_pages |= {"03_Feature_Engineering", "04_Feature_Selection"}
+    _pruned_pages = {"02_EDA", "05_Preprocess", "06_Train_and_Compare"}
+
     ledger = st.session_state.get("insight_ledger")
     if ledger is not None:
         if hasattr(ledger, "rollback_resolutions"):
-            _rollback_pages = {
-                "05_Preprocess", "06_Train_and_Compare",
-                "07_Explainability", "08_Sensitivity_Analysis",
-                "09_Hypothesis_Testing",
-            }
-            if clear_feature_selection:
-                _rollback_pages |= {"03_Feature_Engineering", "04_Feature_Selection"}
             ledger.rollback_resolutions(_rollback_pages)
         if hasattr(ledger, "prune_auto_generated"):
-            ledger.prune_auto_generated({
-                "02_EDA", "05_Preprocess", "06_Train_and_Compare",
-            })
+            ledger.prune_auto_generated(_pruned_pages)
+
+    # `methodology_log` is the ledger's SECOND producer, and it was in neither
+    # reset: pages/10 and ml/publication read `ledger_log or methodology_log`,
+    # so the moment the rollback above emptied the ledger's methodology view the
+    # fallback took over and re-printed the very Mann-Whitney and Shapiro-Wilk
+    # rows whose results this reset had just deleted. It is pruned by the SAME
+    # page set as the ledger, so the two sources cannot disagree; a step this
+    # module cannot attribute to a page is kept, as everywhere else.
+    _mlog = st.session_state.get("methodology_log")
+    if _mlog:
+        _cleared_pages = _rollback_pages | _pruned_pages
+        st.session_state["methodology_log"] = [
+            e for e in _mlog
+            if not isinstance(e, dict)
+            or _STEP_TO_PAGE.get(e.get("step"), "") not in _cleared_pages
+        ]
 
     # A manuscript is only quarantine-clean if EVERY surviving result was
-    # computed with the lockbox on. The watermark may therefore be dropped only
-    # by a reset that clears everything it stains — `STATE-040`: this pop used to
-    # be unconditional, so the toggle-off call (clear_feature_engineering=False)
-    # deliberately kept a df_engineered fitted with the test rows in view and
-    # deleted the one flag that would have disclosed it, and the exported
-    # manuscript then claimed an unqualified held-out result.
-    if clear_feature_engineering and clear_feature_selection:
-        st.session_state.pop("exploratory_used", None)
+    # computed with the lockbox on, and the applied feature selection
+    # (`selected_features`, `pre_fe_feature_cols`, `data_config.feature_cols`)
+    # survives EVERY call here — including the full one. `STATE-040`: the pop
+    # used to be unconditional, then conditional on the two clear_* flags, and
+    # both versions let a same-schema set_data clear the watermark while the
+    # selection chosen with the lockbox open stayed applied; the Methods then
+    # claimed a clean held-out evaluation of a model fitted on features picked
+    # with the test rows in view. Nothing here clears that selection, so nothing
+    # here may clear its watermark. Only reset_data_dependent_state — genuinely
+    # new data, which empties `selected_features` and rebuilds `data_config` —
+    # drops it.
 
 
 def reset_data_dependent_state():
@@ -653,6 +700,11 @@ def reset_data_dependent_state():
 
     st.session_state.pop("methodology_log", None)
     st.session_state.pop("workflow_provenance", None)
+    # The honesty watermark stains the APPLIED feature selection, which only
+    # this reset clears (`selected_features` above, `data_config` at the top).
+    # See the note at the end of reset_downstream_results: no partial reset may
+    # drop it, because no partial reset drops what it describes.
+    st.session_state.pop("exploratory_used", None)
     # New dataset → a fresh test lockbox is drawn on the next config save
     st.session_state.pop("test_lockbox", None)
     st.session_state.pop("_lockbox_ledger_noted", None)

@@ -43,33 +43,96 @@ def test_mine_027_regression_metrics_disclose_dropped_nonfinite_pairs():
     then computed on the rows the model handled — biased optimistic, because the
     dropped rows are the ones it blew up on — and used to be returned as the
     model's held-out R²/RMSE with the only trace in a logger nobody reads."""
+    from ml.eval import calculate_regression_metrics, regression_scoring_disclosure
+
+    y_true = np.arange(10, dtype=float)
+    y_pred = y_true + 0.1
+    y_pred[:3] = np.nan
+
+    disclosure = regression_scoring_disclosure(y_true, y_pred)
+
+    assert disclosure['n_dropped_nonfinite'] == 3
+    assert disclosure['n_scored'] == 7
+    assert disclosure['n_pairs'] == 10
+    assert np.isfinite(calculate_regression_metrics(y_true, y_pred)['R2'])
+
+
+def test_mine_027_the_disclosure_is_not_a_metric():
+    """It rode the metrics dict, and everything downstream ITERATES that dict:
+    `n_dropped_nonfinite=30` became a Test Set Metric tile, two columns of the
+    comparison table, and a term in the narrative's Methods sentence."""
     from ml.eval import calculate_regression_metrics
 
     y_true = np.arange(10, dtype=float)
     y_pred = y_true + 0.1
     y_pred[:3] = np.nan
 
-    metrics = calculate_regression_metrics(y_true, y_pred)
-
-    assert metrics['n_dropped_nonfinite'] == 3
-    assert metrics['n_scored'] == 7
-    assert np.isfinite(metrics['R2'])
+    assert set(calculate_regression_metrics(y_true, y_pred)) == {
+        'MAE', 'RMSE', 'R2', 'MedianAE'}
 
 
-def test_mine_027_the_ordinary_path_returns_the_ordinary_keys():
-    """No truncation, no disclosure column: a count that only ever reads zero
-    would become a metric column in every table."""
-    from ml.eval import calculate_regression_metrics
+def test_mine_027_the_ordinary_path_discloses_nothing():
+    """No truncation, no disclosure: a field that only ever reads zero would be
+    stored beside every result and rendered by every consumer."""
+    from ml.eval import calculate_regression_metrics, regression_scoring_disclosure
 
-    metrics = calculate_regression_metrics(np.arange(10, dtype=float),
-                                           np.arange(10, dtype=float) + 0.1)
+    y_true = np.arange(10, dtype=float)
+    metrics = calculate_regression_metrics(y_true, y_true + 0.1)
     assert set(metrics) == {'MAE', 'RMSE', 'R2', 'MedianAE'}
+    assert regression_scoring_disclosure(y_true, y_true + 0.1) is None
 
 
 def test_mine_027_the_page_surfaces_the_truncation():
-    assert "n_dropped_nonfinite" in PAGE_06, (
+    assert "regression_scoring_disclosure" in PAGE_06, (
         "Train & Compare renders the regression metrics; if it does not read "
         "the dropped-pair count, the truncation is disclosed to nobody")
+    assert "'test_scoring': _test_scoring" in PAGE_06, (
+        "the disclosure must be stored BESIDE the metrics so the export can "
+        "publish it — and outside them so nothing renders it as a score")
+
+
+def test_mine_027_the_export_publishes_the_denominator():
+    """pages/10's headline metrics and the .tex table are where the truncated
+    numbers get quoted; the N has to be there, not in a Streamlit warning."""
+    page10 = (REPO / "pages" / "10_Report_Export.py").read_text(encoding="utf-8")
+    assert "test_scoring" in page10 and "held-out rows" in page10
+
+    from ml.latex_report import _metrics_to_latex_table
+
+    tex = _metrics_to_latex_table(
+        {"rf": {"metrics": {"RMSE": 3.2, "R2": 0.41},
+                "test_scoring": {"n_dropped_nonfinite": 3, "n_scored": 7,
+                                 "n_pairs": 10}}},
+        task_type="regression")
+    assert "computed on 7 of 10 pairs" in tex
+    assert "3 non-finite pair(s) excluded" in tex
+    # And it stays a footnote, never a column.
+    assert "n_dropped_nonfinite" not in tex
+
+    clean = _metrics_to_latex_table(
+        {"rf": {"metrics": {"RMSE": 3.2, "R2": 0.41}}}, task_type="regression")
+    assert "Note:" not in clean
+
+
+def test_mine_027_the_narrative_states_it_in_prose():
+    from ml.narrative_engine import NarrativeEngine
+    from utils.workflow_provenance import WorkflowProvenance
+
+    prov = WorkflowProvenance()
+    prov.record_training(models_trained=["rf"], primary_model="rf",
+                         metrics_by_model={"rf": {"RMSE": 3.2, "R2": 0.41}})
+    engine = NarrativeEngine(
+        prov,
+        manuscript_context={"selected_model_results": {
+            "rf": {"metrics": {"RMSE": 3.2, "R2": 0.41},
+                   "test_scoring": {"n_dropped_nonfinite": 3, "n_scored": 7,
+                                    "n_pairs": 10}}}})
+    text = engine._gen_model_evaluation()
+
+    assert "n_dropped_nonfinite" not in text, (
+        "a disclosure printed as `key=value` beside RMSE reads as a metric")
+    assert "could not be scored" in text
+    assert "remaining 7" in text
 
 
 # ── MODELS-009 · the comparator owns its preprocessing ───────────────────

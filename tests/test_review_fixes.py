@@ -410,11 +410,21 @@ class TestLedgerInvalidation:
         assert not ledger.get("eda_leakage_col").acknowledged
         assert ledger.get("eda_skew_group").acknowledged
 
-    def test_exploratory_used_cleared_only_by_reset(self):
-        from utils.session_state import reset_downstream_results
+    def test_exploratory_used_cleared_only_by_a_new_dataset(self):
+        """`STATE-040`: the watermark stains the APPLIED feature selection, and
+        no downstream reset clears that — only reset_data_dependent_state does.
+        This used to assert the opposite, so a same-schema re-upload dropped the
+        watermark while the selection chosen with the lockbox open stayed
+        applied. See tests/test_paper_risk_invalidation.py for the full path."""
+        from utils.session_state import (reset_data_dependent_state,
+                                         reset_downstream_results)
 
         st.session_state["exploratory_used"] = True
+        st.session_state["selected_features"] = ["age"]
         reset_downstream_results()
+        assert st.session_state.get("exploratory_used") is True
+
+        reset_data_dependent_state()
         assert "exploratory_used" not in st.session_state
 
 

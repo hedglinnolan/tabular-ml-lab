@@ -208,6 +208,12 @@ def generate_metadata() -> Dict[str, Any]:
             'target_trim_lower': getattr(split_config, 'target_trim_lower', 0.0),
             'target_trim_upper': getattr(split_config, 'target_trim_upper', 1.0),
             'target_transform': getattr(split_config, 'target_transform', 'none'),
+            # The three above are the trim that was ASKED FOR. This is the trim
+            # that RAN — thresholds, the rows they were computed from, whether
+            # sealed test rows were exempt, and how many rows went
+            # (`CONTRACT-021`). pages/06 records it from the Split itself; None
+            # when no trim ran.
+            'target_trim_realized': st.session_state.get('split_trim_record'),
         },
         'preprocessing': st.session_state.get('preprocessing_config', {}),
         'models_trained': list(trained_models.keys())
@@ -598,7 +604,16 @@ def _summarize_baselines() -> Optional[Dict[str, Dict[str, Any]]]:
         metrics = bres.get('metrics') or {}
         summary = {k: float(v) for k, v in metrics.items() if isinstance(v, (int, float))}
         if summary:
-            out[bname] = {'metrics': summary, 'description': bres.get('description', '')}
+            out[bname] = {
+                'metrics': summary,
+                'description': bres.get('description', ''),
+                # `MODELS-009`: the comparator's preprocessing travels with the
+                # comparator's numbers. This summary dropped it, so the LaTeX
+                # sentence claiming the baselines were evaluated "on the same
+                # held-out test set" could never name the recipe they went
+                # through — a different recipe from the models they anchor.
+                'preprocessing': bres.get('preprocessing', ''),
+            }
     return out or None
 
 
@@ -1163,6 +1178,20 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
                 report_lines.append(f"**Test RMSE:** {best_model_result['metrics']['RMSE']:.4f}")
             if best_model_result['metrics'].get('R2') is not None:
                 report_lines.append(f"**Test R²:** {best_model_result['metrics']['R2']:.4f}")
+            # `MINE-027`: the manuscript half. A truncated denominator that
+            # reached only a Streamlit warning on the training page is not
+            # disclosed to the reader of the export — and these two numbers are
+            # what gets quoted.
+            _best_scoring = best_model_result.get('test_scoring')
+            if _best_scoring:
+                report_lines.append(
+                    f"**Test-set scoring:** computed on "
+                    f"{_best_scoring['n_scored']:,} of {_best_scoring['n_pairs']:,} "
+                    f"held-out rows; {_best_scoring['n_dropped_nonfinite']:,} "
+                    f"non-finite prediction pair(s) were excluded (usually a "
+                    f"degenerate target back-transform). The metrics above are "
+                    f"not computed on the full held-out set."
+                )
         else:
             if best_model_result['metrics'].get('Accuracy') is not None:
                 report_lines.append(f"**Test Accuracy:** {best_model_result['metrics']['Accuracy']:.4f}")
@@ -1790,8 +1819,13 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
         strength_items.append("Model-agnostic explainability via SHAP analysis")
     if perm_imp:
         strength_items.append("Permutation importance for feature contribution assessment")
-    # Ledger-sourced strengths: resolved issues = methodological rigor
-    _resolved_count = _report_ledger.summary()["resolved"]
+    # Ledger-sourced strengths: resolved issues = methodological rigor.
+    # `AUDIT-042` second producer: this read summary()["resolved"], the
+    # UNFILTERED ledger count, and printed it as observations "identified and
+    # addressed" three lines from a narrative built with _is_narrative_worthy —
+    # six button presses, "6 observation(s) identified and addressed", narrative
+    # says 0. One filter feeds both.
+    _resolved_count = _report_ledger.narrative_summary()["resolved"]
     if _resolved_count > 0:
         strength_items.append(
             f"Systematic data quality audit: {_resolved_count} observation(s) "
@@ -2791,5 +2825,12 @@ with st.expander("Advanced / State Debug", expanded=False):
     st.write(f"• Features: {len(st.session_state.get('selected_features') or (data_config.feature_cols if data_config else []))}")
     st.write(f"• Trained models: {len(trained_models)}")
     st.write(f"• Dataset profile: {'Available' if profile else 'Not computed'}")
-    st.write(f"• Insight ledger: {len(_report_ledger)} entries ({_report_ledger.summary()['resolved']} resolved)")
+    # Both counts, both labeled: the ledger's own total is a debug fact, but
+    # the resolved count on its own reads as the manuscript's addressed count
+    # and is not one (`AUDIT-042`).
+    st.write(
+        f"• Insight ledger: {len(_report_ledger)} entries "
+        f"({_report_ledger.summary()['resolved']} resolved, of which "
+        f"{_report_ledger.narrative_summary()['resolved']} are narrative-worthy "
+        f"— the rest are activity records)")
     st.write(f"• Git info: {get_git_info()}")

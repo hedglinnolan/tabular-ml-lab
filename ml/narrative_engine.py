@@ -599,6 +599,16 @@ class NarrativeEngine:
             if frozen_metrics:
                 self.ctx["metrics_by_model"] = frozen_metrics
                 self.ctx["models_trained"] = list(frozen_metrics.keys())
+            # `MINE-027`: kept OUT of metrics_by_model on purpose — that dict is
+            # iterated as scores. The N the metrics were computed on travels in
+            # its own slot and is stated in prose.
+            _disclosures = {
+                key: payload["test_scoring"]
+                for key, payload in selected_results.items()
+                if isinstance(payload, dict) and payload.get("test_scoring")
+            }
+            if _disclosures:
+                self.ctx["scoring_disclosure_by_model"] = _disclosures
             # `AUDIT-026`, the primary export path's second source of the same
             # fact. `record_training` carries `cv_models_run` only for runs
             # trained after that field existed; every other run reaches this
@@ -1295,6 +1305,23 @@ class NarrativeEngine:
             
             if metric_strs:
                 parts.append(f"**{self._model_name(model_name)}**: {', '.join(metric_strs)}.")
+
+        # `MINE-027`: how many held-out pairs the numbers above could NOT be
+        # computed on. It used to ride the metrics dict, so the loop above
+        # printed `n_dropped_nonfinite=30` as if it were a model score. A
+        # disclosure is a sentence, not a metric.
+        for model_name, disclosure in (
+                self.ctx.get("scoring_disclosure_by_model") or {}).items():
+            if not disclosure or not disclosure.get("n_dropped_nonfinite"):
+                continue
+            parts.append(
+                f"For {self._model_name(model_name)}, "
+                f"{disclosure['n_dropped_nonfinite']} of "
+                f"{disclosure.get('n_pairs', '?')} held-out prediction pairs "
+                f"were non-finite and could not be scored; the metrics above "
+                f"are computed on the remaining {disclosure['n_scored']}, not "
+                f"on the full held-out set."
+            )
 
         # External validation is a Methods claim of its own, and the record now
         # exists to make it. The sentence is composed where the fallback path

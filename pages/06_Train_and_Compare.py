@@ -14,7 +14,7 @@ from utils.session_state import (
     DataConfig, SplitConfig, ModelConfig, set_splits, add_trained_model,
     TaskTypeDetection, CohortStructureDetection, log_methodology,
 )
-from utils.seed import set_global_seed, get_global_seed
+from utils.seed import set_global_seed
 from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_metric_row, render_sidebar_workflow
 from ml.splits import to_numpy_1d
@@ -1584,19 +1584,23 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 else:
                     y_test_eval = y_test
 
+                _test_scoring = None
                 if task_type_final == 'regression':
                     test_metrics = calculate_regression_metrics(y_test_eval, y_test_pred)
                     # MINE-027. Metrics computed on a SUBSET of the held-out set
                     # are not the held-out metrics, and the denominator has to
-                    # reach the person reading the number.
-                    _n_dropped = int(test_metrics.get('n_dropped_nonfinite', 0))
-                    if _n_dropped:
+                    # reach the person reading the number. It travels BESIDE the
+                    # metrics, never inside them: everything downstream iterates
+                    # `metrics` and rendered the counts as two more model scores.
+                    from ml.eval import regression_scoring_disclosure
+                    _test_scoring = regression_scoring_disclosure(y_test_eval, y_test_pred)
+                    if _test_scoring:
                         st.warning(
-                            f"{model_name.upper()}: {_n_dropped} of "
-                            f"{_n_dropped + int(test_metrics.get('n_scored', 0))} "
+                            f"{model_name.upper()}: {_test_scoring['n_dropped_nonfinite']} of "
+                            f"{_test_scoring['n_pairs']} "
                             f"test prediction(s) were non-finite and could not be "
                             f"scored. The metrics below are computed on the "
-                            f"remaining {int(test_metrics.get('n_scored', 0))} row(s), "
+                            f"remaining {_test_scoring['n_scored']} row(s), "
                             f"not on the full held-out set — usually a degenerate "
                             f"target back-transform. Report them with that N or "
                             f"drop the target transform."
@@ -1679,6 +1683,10 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 # Store results (y_test and y_test_pred are always on original scale)
                 model_results = {
                     'metrics': test_metrics,
+                    # NOT a metric, and deliberately not in `metrics`: how many
+                    # held-out pairs the metrics above could not be computed on
+                    # (`MINE-027`). None on the ordinary path.
+                    'test_scoring': _test_scoring,
                     'train_metrics': train_metrics,
                     'history': results.get('history', {}),
                     'y_test_pred': y_test_pred,
@@ -2766,7 +2774,16 @@ Poor performance may be due to:
                     from ml.pipeline import get_pipeline_recipe
                     st.subheader("Preprocessing used")
                     st.caption(f"Pipeline for **{name.upper()}**")
-                    st.code(get_pipeline_recipe(fitted_prep), language=None)
+                    # The row filter is part of the recipe, and it is not on the
+                    # fitted object: without the mode this recipe silently drops
+                    # the "rows filtered to NHANES range" line the export keeps.
+                    _recipe_cfg = ((st.session_state.get("preprocessing_config_by_model") or {}).get(name)
+                                   or st.session_state.get("preprocessing_config") or {})
+                    st.code(
+                        get_pipeline_recipe(
+                            fitted_prep,
+                            plausibility_mode=_recipe_cfg.get("plausibility_mode")),
+                        language=None)
                     st.markdown("---")
 
                 st.subheader("Test Set Metrics")
@@ -2775,6 +2792,16 @@ Poor performance may be due to:
                 for i, (metric_name, metric_value) in enumerate(metrics.items()):
                     with metric_cols[i]:
                         st.metric(metric_name, f"{metric_value:.4f}")
+                _scoring = results.get("test_scoring")
+                if _scoring:
+                    # `MINE-027`: these tiles are not the held-out metrics unless
+                    # the denominator is stated with them.
+                    st.caption(
+                        f"Computed on {_scoring['n_scored']} of "
+                        f"{_scoring['n_pairs']} held-out rows; "
+                        f"{_scoring['n_dropped_nonfinite']} non-finite "
+                        f"prediction pair(s) could not be scored."
+                    )
 
                 if name == "nn" and results.get("history", {}).get("train_loss"):
                     st.subheader("Learning Curves")
