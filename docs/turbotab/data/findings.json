@@ -13302,5 +13302,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "docs/turbotab/RETROSPECTIVE.md; docs/turbotab/RETROSPECTIVE_PACK.md section 04-B; docs/audit/DRIVE7_OBSERVATIONS.md DRIVE-054"
+ },
+ {
+  "id": "MISC-090",
+  "area": "MISC",
+  "sev": "medium",
+  "item": "quick_probe_baselines survived the main merge but lost its only UI entry point: main deleted the recommendation panel that reached it, TurboTab fixed its lockbox leak at the caller. Kept in code with 3 passing test files, unreachable from the app. Decide: re-list as its own EDA section, or take main's deletion and retire the tests.",
+  "detail": "",
+  "ev": "ml/eda_actions.py:1385 (MERGE NOTE); pages/02_EDA.py:149 (_TRAIN_ONLY_ACTIONS)",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "ml/eda_actions.py:1385 (MERGE NOTE); pages/02_EDA.py:149 (_TRAIN_ONLY_ACTIONS)"
  }
 ]
