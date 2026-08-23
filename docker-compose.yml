@@ -1,0 +1,68 @@
+# Tabular ML Lab — Docker Compose
+#
+# Usage:
+#   docker compose up              # App only (no LLM)
+#   docker compose --profile ollama up   # App + local Ollama LLM
+#
+# Configure via .env file (copy .env.example to .env and edit)
+
+services:
+  app:
+    build: .
+    ports:
+      - "${APP_PORT:-8501}:8501"
+    # NOTE ON LOGINS: this container does not authenticate anyone, by design.
+    # Put it behind your institution's existing single sign-on (Shibboleth,
+    # CAS, Keycloak, an SSO-aware nginx) and let that decide who gets through.
+    # It previously accepted AUTH_MODE / AUTH_HEADER variables that nothing in
+    # the app ever read, so setting AUTH_MODE=proxy looked like protection and
+    # was not. Do not expose this port to the open internet.
+    environment:
+      # LLM backend
+      - LLM_BACKEND=${LLM_BACKEND:-ollama}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - VLLM_BASE_URL=${VLLM_BASE_URL:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: ${APP_MEMORY_LIMIT:-4g}
+
+  # Optional: local Ollama LLM sidecar
+  # Activate with: docker compose --profile ollama up
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: ${OLLAMA_MEMORY_LIMIT:-8g}
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  ollama_models:

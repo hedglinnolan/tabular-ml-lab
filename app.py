@@ -349,7 +349,7 @@ st.markdown("""
 st.markdown("---")
 st.caption("""
 **Tabular ML Lab** · Open source research tool · Not for clinical decision-making  
-[GitHub](https://github.com/hedglinnolan/tabular-ml-lab) · [Report Issues](https://github.com/hedglinnolan/tabular-ml-lab/issues) · [University Deployment Guide](https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker)
+[GitHub](https://github.com/hedglinnolan/tabular-ml-lab) · [Report Issues](https://github.com/hedglinnolan/tabular-ml-lab/issues) · [University Deployment Guide](https://github.com/hedglinnolan/tabular-ml-lab/blob/main/UNIVERSITY_DEPLOYMENT.md)
 """)
 
 # Debug

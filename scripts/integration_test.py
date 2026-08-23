@@ -200,11 +200,17 @@ def test_eda_page(page):
     else:
         log("OLS proxy explanation not found (#28) - may need data loaded first", "SKIP")
     
-    # Check for recommendation panel (#26)
-    if has_text(page, "Recommended for Your Data") or has_text(page, "Deep Dive"):
-        log("EDA Deep Dive section present", "PASS")
+    # The Deep Dive tab strip and its recommendation panel are gone; the four
+    # surviving diagnostics are now top-level sections on the page.
+    if has_text(page, "Multicollinearity (VIF)") and has_text(page, "Influence Diagnostics"):
+        log("EDA classical diagnostics sections present", "PASS")
     else:
-        log("EDA Deep Dive not visible (may need data)", "SKIP")
+        log("EDA classical diagnostics not visible (may need data)", "SKIP")
+
+    if has_text(page, "Cluster Structure"):
+        log("EDA cluster structure tool present", "PASS")
+    else:
+        log("EDA cluster structure not visible (may need data)", "SKIP")
 
 
 def test_feature_engineering(page):

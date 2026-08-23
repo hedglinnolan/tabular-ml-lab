@@ -356,6 +356,118 @@ if task_type_final == 'regression':
         )
     split_config.target_transform = target_transform_sel
 
+    # Before/after preview. A transform you cannot see is a transform you cannot
+    # judge — this shows the shape change the selected option actually makes to
+    # this target, and refuses up front when the option is undefined on the data
+    # (log on values <= -1, Box-Cox on values <= 0) instead of erroring out
+    # minutes later at training time.
+    _pv_target = data_config.target_col
+    if target_transform_sel != 'none' and _pv_target in df.columns:
+        _pv_series = pd.to_numeric(df[_pv_target], errors='coerce').dropna()
+        if trim_enabled and len(_pv_series) > 1:
+            _pv_lo = float(_pv_series.quantile(trim_lower))
+            _pv_hi = float(_pv_series.quantile(trim_upper))
+            _pv_series = _pv_series[(_pv_series >= _pv_lo) & (_pv_series <= _pv_hi)]
+        _pv_vals = _pv_series.to_numpy(dtype=float)
+
+        # Cap the preview sample: Box-Cox/Yeo-Johnson each run a 1-D MLE search,
+        # ~6s on a million rows and paid on every rerun. 50k fixes lambda to
+        # three decimals and keeps this under a quarter second.
+        _pv_n_full = len(_pv_vals)
+        _pv_sampled = _pv_n_full > 50_000
+        if _pv_sampled:
+            _pv_vals = np.random.default_rng(0).choice(_pv_vals, size=50_000, replace=False)
+
+        _pv_block = None
+        if _pv_n_full < 10:
+            _pv_block = f"Only {_pv_n_full} usable numeric target value(s) — too few to preview."
+        elif target_transform_sel == 'log1p' and np.any(_pv_vals <= -1):
+            _pv_block = (
+                f"Log (log1p) is undefined at or below -1, and {int((_pv_vals <= -1).sum()):,} "
+                f"row(s) fall there (minimum = {_pv_vals.min():.4g}). Training would stop with this "
+                f"error. Yeo-Johnson is defined for every real value."
+            )
+        elif target_transform_sel == 'box-cox' and np.any(_pv_vals <= 0):
+            _pv_block = (
+                f"Box-Cox requires strictly positive values, and {int((_pv_vals <= 0).sum()):,} "
+                f"row(s) are at or below zero (minimum = {_pv_vals.min():.4g}). Training would stop "
+                f"with this error. Yeo-Johnson handles zero and negative values."
+            )
+
+        if _pv_block:
+            st.warning(
+                f"⚠️ **{_transform_labels[target_transform_sel]} cannot be applied to "
+                f"`{_pv_target}`.** {_pv_block}"
+            )
+        else:
+            @st.cache_data(show_spinner=False)
+            def _preview_target_transform(values, method):
+                """Transformed values plus a label naming the fitted parameter."""
+                if method == 'log1p':
+                    return np.log1p(values), "log1p(y)"
+                from sklearn.preprocessing import PowerTransformer
+                _pt = PowerTransformer(method=method, standardize=False)
+                _out = _pt.fit_transform(values.reshape(-1, 1)).ravel()
+                return _out, f"{method} (λ = {float(_pt.lambdas_[0]):.3f})"
+
+            _pv_after, _pv_label = None, ""
+            try:
+                _pv_after, _pv_label = _preview_target_transform(_pv_vals, target_transform_sel)
+            except Exception as _pv_exc:
+                # Box-Cox raises on a constant target, among others.
+                st.warning(
+                    f"⚠️ Could not fit {_transform_labels[target_transform_sel]} on `{_pv_target}`: "
+                    f"{type(_pv_exc).__name__}: {str(_pv_exc)[:140]}"
+                )
+
+            if _pv_after is not None and not np.isfinite(_pv_after).all():
+                st.warning(
+                    f"⚠️ {_transform_labels[target_transform_sel]} produced non-finite values on "
+                    f"`{_pv_target}`. Choose a different transform."
+                )
+            elif _pv_after is not None:
+                _, _pv_px = _get_plotly()
+                _pv_skew_before = float(pd.Series(_pv_vals).skew())
+                _pv_skew_after = float(pd.Series(_pv_after).skew())
+
+                _pv_col1, _pv_col2 = st.columns(2)
+                with _pv_col1:
+                    _pv_fig_before = _pv_px.histogram(
+                        x=_pv_vals, nbins=40,
+                        title=f"Before — {_pv_target} (skew {_pv_skew_before:+.2f})",
+                        labels={"x": _pv_target},
+                    )
+                    _pv_fig_before.update_layout(
+                        template="plotly_white", height=280, showlegend=False,
+                        yaxis_title="Count", margin=dict(l=10, r=10, t=45, b=10),
+                    )
+                    st.plotly_chart(_pv_fig_before, key="target_transform_preview_before")
+                with _pv_col2:
+                    _pv_fig_after = _pv_px.histogram(
+                        x=_pv_after, nbins=40,
+                        title=f"After — {_pv_label} (skew {_pv_skew_after:+.2f})",
+                        labels={"x": f"transformed {_pv_target}"},
+                    )
+                    _pv_fig_after.update_layout(
+                        template="plotly_white", height=280, showlegend=False,
+                        yaxis_title="Count", margin=dict(l=10, r=10, t=45, b=10),
+                    )
+                    st.plotly_chart(_pv_fig_after, key="target_transform_preview_after")
+
+                _pv_verdict = (
+                    f"Skew {_pv_skew_before:+.2f} → {_pv_skew_after:+.2f}: closer to symmetric."
+                    if abs(_pv_skew_after) < abs(_pv_skew_before) - 0.1 else
+                    f"Skew {_pv_skew_before:+.2f} → {_pv_skew_after:+.2f}: no material gain in symmetry, "
+                    f"so the extra back-transform step may not be earning its keep."
+                )
+                st.caption(
+                    f"{_pv_verdict} Preview is fitted on "
+                    f"{'a 50,000-row sample of the ' if _pv_sampled else 'all '}"
+                    f"{_pv_n_full:,} target values"
+                    f"{' after trimming' if trim_enabled else ''}; at training time the transform is "
+                    f"fitted on training rows only, so the fitted parameter may differ slightly."
+                )
+
 st.session_state.split_config = split_config
 
 # Cross-validation option - read from session_state
@@ -1234,9 +1346,12 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                             f"without them. Re-run Preprocess to reconfigure intentionally."
                         )
 
-                # Fit preprocessing on training data only
-                model_pipeline.fit(X_train)
-                X_train_model = model_pipeline.transform(X_train)
+                # Fit preprocessing on training data only. y is required by
+                # Target Encoding and ignored by every other step. It must be
+                # fit_transform, not fit-then-transform: only fit_transform
+                # gives the training rows their cross-fitted encodings instead
+                # of ones computed from their own target values.
+                X_train_model = model_pipeline.fit_transform(X_train, y_train)
                 X_val_model = model_pipeline.transform(X_val)
                 X_test_model = model_pipeline.transform(X_test)
                 if hasattr(X_train_model, 'toarray'):

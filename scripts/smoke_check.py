@@ -559,37 +559,48 @@ def test_stats_tests():
     assert "chi" in n3.lower()
 
 
-@test("EDA: narrative helpers + data_sufficiency_check")
+@test("EDA: narrative helpers + the four promoted diagnostics")
 def test_eda_narratives_and_actions():
+    """Smoke the diagnostics the EDA page can actually dispatch.
+
+    This used to exercise data_sufficiency_check and linearity_scatter, both of
+    which were delisted — so it stayed green while covering code no user could
+    reach, and the four surviving diagnostics had no smoke coverage at all.
+    """
+    import numpy as np
     import pandas as pd
     from ml.plot_narrative import (
-        narrative_eda_linearity,
         narrative_eda_influence,
         narrative_eda_normality,
-        narrative_eda_sufficiency,
         narrative_eda_multicollinearity,
     )
-    from ml.eda_actions import data_sufficiency_check, linearity_scatter
+    from ml.eda_actions import multicollinearity_vif, normality_residuals, influence_diagnostics
     from ml.eda_recommender import DatasetSignals
 
-    assert isinstance(narrative_eda_linearity({}), str)
     assert isinstance(narrative_eda_influence({}), str)
     assert isinstance(narrative_eda_normality({}), str)
-    assert isinstance(narrative_eda_sufficiency({"ratio": 25, "n_rows": 100, "n_features": 4}), str)
     assert isinstance(narrative_eda_multicollinearity({"vif": [("x", 5.0)]}), str)
 
-    df = pd.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
+    rng = np.random.default_rng(0)
+    n = 60
+    x1 = rng.normal(0, 1, n)
+    df = pd.DataFrame({"x1": x1, "x2": x1 * 2 + rng.normal(0, 0.01, n), "y": x1 * 3 + rng.normal(0, 1, n)})
     signals = DatasetSignals(
-        n_rows=3, n_cols=2, numeric_cols=["x", "y"],
+        n_rows=n, n_cols=3, numeric_cols=["x1", "x2", "y"],
         task_type_final="regression", target_name="y",
     )
     session = {}
-    out = data_sufficiency_check(df, "y", ["x"], signals, session)
-    assert "findings" in out and "figures" in out and "stats" in out
-    assert out["stats"].get("n_rows") == 3 and out["stats"].get("n_features") == 1
 
-    out2 = linearity_scatter(df, "y", ["x"], signals, session)
-    assert "findings" in out2 and "figures" in out2 and "stats" in out2
+    vif = multicollinearity_vif(df, "y", ["x1", "x2"], signals, session)
+    assert "findings" in vif and "figures" in vif and "stats" in vif
+    assert vif["stats"].get("vif"), "VIF produced no variance-inflation values"
+
+    norm = normality_residuals(df, "y", ["x1", "x2"], signals, session)
+    assert "shapiro_p" in norm["stats"] and "shapiro_stat" in norm["stats"]
+
+    infl = influence_diagnostics(df, "y", ["x1", "x2"], signals, session)
+    for key in ("max_leverage", "max_cooks", "n_high_leverage", "n_high_cooks"):
+        assert key in infl["stats"], f"influence diagnostics lost {key}"
 
 
 @test("Data: prepare_data with categorical target")
