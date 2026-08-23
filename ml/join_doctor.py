@@ -56,7 +56,9 @@ _KEY_MISSING_TOKENS = {"", "nan", "none", "null", "na", "n/a", "n.a.", ".", "-",
 _CODED_MISSING_TOKENS = frozenset({"na", ".", "-", "--", "?"})
 
 # float64 carries 53 bits of mantissa. Above this, consecutive whole numbers are
-# no longer distinguishable and two IDs have already become one.
+# no longer distinguishable and two IDs have already become one. Narrower floats
+# stop counting far sooner — float32 at 2**24, which an ordinary MRN clears —
+# so the limit is read from the value's own storage, not assumed.
 _EXACT_INT_LIMIT = 2 ** 53
 
 # Hidden column carrying the user's ORIGINAL key values through the merge,
@@ -65,6 +67,8 @@ _ORIGINAL_KEY = "__original_key__"
 
 _INT_RE = re.compile(r"^[+-]?\d+$")
 _DECIMAL_RE = re.compile(r"^[+-]?\d+\.\d*$")
+# A value written as a plain number, however it is stored.
+_NUMERIC_TEXT_RE = re.compile(r"^[+-]?\d+(\.\d*)?$")
 
 
 def _canon_scalar(v: Any, keep_tokens: frozenset = frozenset()) -> Optional[str]:
@@ -118,6 +122,36 @@ def _value_shape(s: str) -> str:
     return re.sub(r"[0-9]", "9", re.sub(r"[A-Za-z]", "A", str(s)))
 
 
+def _key_vocabulary(s: pd.Series) -> Optional[pd.Series]:
+    """This column's distinct key spellings, stripped — or None if it has none.
+
+    Distinct values only: every question asked of them is about the column's
+    vocabulary, and a full pass costs as much as the canonicalization these
+    decisions are meant to precede.
+    """
+    try:
+        if s is None or isinstance(s, pd.DataFrame):
+            return None
+        if pd.api.types.is_numeric_dtype(s) or pd.api.types.is_bool_dtype(s):
+            return None
+        raw = s.dropna().drop_duplicates().astype(str).str.strip()
+        return None if raw.empty else raw
+    except Exception:
+        return None
+
+
+def _written_as_numbers(raw: pd.Series) -> bool:
+    """Are this column's real values all written as plain numbers?
+
+    A column of subject numbers has no coding scheme for a blank-looking token
+    to belong to, so 'NA' there is R's blank and must stay one however often it
+    appears. This is the guard that keeps the evidence rules below from fusing
+    every unreadable subject number into one participant.
+    """
+    others = [v for v in raw.unique() if v.lower() not in _KEY_MISSING_TOKENS]
+    return bool(others) and all(_NUMERIC_TEXT_RE.match(v) for v in others)
+
+
 def _coded_key_tokens(s: pd.Series) -> frozenset:
     """Blank-looking spellings this column is actually using as CODES.
 
@@ -125,34 +159,55 @@ def _coded_key_tokens(s: pd.Series) -> frozenset:
     column of centre codes. Deleting the second deletes a whole stratum, and
     the app then reports the row as having had no ID — a false reason for a
     value it refused to read. So ask the column: a token that matches the SHAPE
-    of the column's other values belongs to their coding scheme; one that does
-    not is a blank. A numeric column has no coding scheme to belong to.
+    of one of the column's other values belongs to their coding scheme; one
+    that matches nothing is a blank. A numeric column has no coding scheme to
+    belong to.
+
+    Requiring HALF the column to share the token's shape was the wrong bar, and
+    it failed exactly where real coding schemes live: 'NA' among EU, APAC and
+    LATAM matches one code in three, and a two-centre study (NA, NB) was
+    refused outright for having "nothing to be consistent with". One other
+    value of the same shape is a coding scheme; the pair rule below carries the
+    cases where even that is missing.
     """
+    raw = _key_vocabulary(s)
+    if raw is None:
+        return frozenset()
     try:
-        if s is None or isinstance(s, pd.DataFrame):
-            return frozenset()
-        if pd.api.types.is_numeric_dtype(s) or pd.api.types.is_bool_dtype(s):
-            return frozenset()
-        # Distinct values only: every question below is about the column's
-        # vocabulary, and a full pass costs as much as the canonicalization
-        # this decision is meant to precede.
-        raw = s.dropna().drop_duplicates().astype(str).str.strip()
-        if raw.empty:
-            return frozenset()
         low = raw.str.lower()
         present = {t for t in _CODED_MISSING_TOKENS if bool((low == t).any())}
-        if not present:
+        if not present or _written_as_numbers(raw):
             return frozenset()
         shapes = [_value_shape(v) for v in raw.unique()
                   if v.lower() not in _KEY_MISSING_TOKENS]
-        if len(shapes) < 2:
-            return frozenset()      # nothing to be consistent WITH
-        keep = set()
-        for t in present:
-            shape = _value_shape(raw[low == t].iloc[0])
-            if sum(1 for sh in shapes if sh == shape) >= 0.5 * len(shapes):
-                keep.add(t)
+        keep = {t for t in present
+                if _value_shape(raw[low == t].iloc[0]) in shapes}
         return frozenset(keep)
+    except Exception:
+        return frozenset()
+
+
+def _paired_key_tokens(left: pd.Series, right: pd.Series) -> frozenset:
+    """Blank-looking spellings BOTH files use in the columns being joined.
+
+    Evidence from the pair beats a fixed name list. A value that appears in
+    both files' key columns is doing an identifier's job whatever it spells —
+    two files that both carry centre 'NA' are describing the same centre, not
+    independently failing to record one — and deleting it drops a whole stratum
+    and then reports those rows as having had no ID at all.
+
+    Prose blanks are still never admitted (they are not in the candidate set):
+    fusing every subject whose ID reads 'unknown' into one participant is the
+    opposite failure and the worse one. Neither is a column written as numbers.
+    """
+    lraw, rraw = _key_vocabulary(left), _key_vocabulary(right)
+    if lraw is None or rraw is None:
+        return frozenset()
+    try:
+        if _written_as_numbers(lraw) or _written_as_numbers(rraw):
+            return frozenset()
+        llow, rlow = set(lraw.str.lower()), set(rraw.str.lower())
+        return frozenset(_CODED_MISSING_TOKENS & llow & rlow)
     except Exception:
         return frozenset()
 
@@ -180,45 +235,93 @@ class KeyReading:
 
 def key_reading(left: pd.Series, right: pd.Series) -> KeyReading:
     """The one canonical space both sides of a join must be read into."""
-    keep = _coded_key_tokens(left) | _coded_key_tokens(right)
+    keep = (_coded_key_tokens(left) | _coded_key_tokens(right)
+            | _paired_key_tokens(left, right))
     fold = all(
         _fold_is_safe(s.dropna().drop_duplicates().map(lambda v: _canon_scalar(v, keep)))
         for s in (left, right))
     return KeyReading(fold_case=fold, keep_tokens=keep)
 
 
-def numeric_key_precision_loss(s: pd.Series) -> Optional[Tuple[int, float]]:
-    """(rows at risk, largest magnitude) for an untrustworthy float key, else None.
+def _exact_int_limit(kind: Any) -> int:
+    """Where this float storage stops telling consecutive whole numbers apart.
+
+    2**(mantissa bits + 1): 2**53 for float64, 2**24 for float32, 2**11 for
+    float16. Accepts a dtype, a pandas extension dtype or a scalar type.
+    """
+    try:
+        return int(2 ** (np.finfo(getattr(kind, "numpy_dtype", kind)).nmant + 1))
+    except Exception:
+        return _EXACT_INT_LIMIT
+
+
+def _float_value_limit(v: Any) -> Optional[int]:
+    """The limit this ONE value has already breached, or None if it is safe."""
+    if isinstance(v, bool) or not isinstance(v, (float, np.floating)):
+        return None
+    try:
+        if not np.isfinite(v):
+            return None
+        limit = _exact_int_limit(type(v))
+        return limit if abs(float(v)) >= limit else None
+    except (TypeError, ValueError):
+        return None
+
+
+def numeric_key_precision_loss(s: pd.Series) -> Optional[Tuple[int, float, int]]:
+    """(rows at risk, largest magnitude, the limit passed) for an untrustworthy
+    float key, else None.
 
     _canon_scalar defends against float conversion THIS module performs; it
-    cannot undo one already done. An ID column that arrived as float64 — which
+    cannot undo one already done. An ID column that arrived as a float — which
     happens as soon as one row's ID is blank in any loader — has already lost
-    its low digits above 2^53, and canonicalizing the collapsed digits presents
-    two participants as one row identity. The digits are gone, so the only
-    honest move is to refuse the column and say why, never to canonicalize a
-    collapsed value as though it were exact.
+    its low digits above its storage's exact-integer limit, and canonicalizing
+    the collapsed digits presents two participants as one row identity. The
+    digits are gone, so the only honest move is to refuse the column and say
+    why, never to canonicalize a collapsed value as though it were exact.
+
+    The question is about VALUES, not about the container. Gating on float64
+    and assuming 2^53 let two live shapes through: a float32 key column, which
+    a parquet upload preserves and which collapses at 2^24, and an object
+    column holding python floats, which is what stacking a text ID onto a
+    numeric one produces. Both were then narrated as ordinary fan-out.
     """
     try:
         if s is None or isinstance(s, pd.DataFrame):
             return None
-        if not pd.api.types.is_float_dtype(s):
+        # >=, not >. At exactly the limit the spacing between representable
+        # values is already 2, so a value sitting ON it may itself be a
+        # collapsed limit+1 — which is the very pair the docstring names.
+        if pd.api.types.is_float_dtype(s):
+            limit = _exact_int_limit(s.dtype)
+            v = pd.to_numeric(s, errors="coerce").dropna()
+            v = v[np.abs(v) >= limit]
+            if v.empty:
+                return None
+            return int(len(v)), float(np.abs(v).max()), limit
+        if not pd.api.types.is_object_dtype(s):
             return None
-        v = pd.to_numeric(s, errors="coerce").dropna()
-        # >=, not >. At exactly 2^53 the spacing between representable values
-        # is already 2, so a value sitting ON the limit may itself be a
-        # collapsed 2^53+1 — which is the very pair the docstring names.
-        v = v[np.abs(v) >= _EXACT_INT_LIMIT]
-        if v.empty:
+        # An object column is mixed by definition: only the floats in it have
+        # lost anything, and each carries the limit of its own storage. Asked
+        # of the DISTINCT values first — the scan is per-value python, and a
+        # column of a million IDs holds far fewer spellings than rows.
+        vals = s.dropna()
+        at_risk = [(v, lim) for v, lim in
+                   ((v, _float_value_limit(v)) for v in pd.unique(vals)) if lim]
+        if not at_risk:
             return None
-        return int(len(v)), float(np.abs(v).max())
+        n = int(vals.isin([v for v, _ in at_risk]).sum())
+        return (n, max(abs(float(v)) for v, _ in at_risk),
+                min(lim for _, lim in at_risk))
     except Exception:
         return None
 
 
-def _precision_refusal(col: Any, file_name: str, n_at_risk: int, biggest: float) -> str:
+def _precision_refusal(col: Any, file_name: str, n_at_risk: int, biggest: float,
+                       limit: int = _EXACT_INT_LIMIT) -> str:
     return (
         f"'{col}' in {file_name} is stored as a decimal number, and {n_at_risk:,} of its "
-        f"ID(s) reach {_EXACT_INT_LIMIT:,} or beyond — the point where that storage can no longer "
+        f"ID(s) reach {limit:,} or beyond — the point where that storage can no longer "
         f"tell consecutive whole numbers apart (the largest is about {biggest:,.0f}). Those "
         f"IDs have already lost their last digits, so matching on them would merge "
         f"different people into one participant. Re-import this file with the ID column "
@@ -968,7 +1071,7 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
     for _s, _fname, _col in ((ls, left_name, left_key), (rs, right_name, right_key)):
         _loss = numeric_key_precision_loss(_s)
         if _loss:
-            d.blocking.append(_precision_refusal(_col, _fname, _loss[0], _loss[1]))
+            d.blocking.append(_precision_refusal(_col, _fname, *_loss))
     if d.blocking:
         # Return with the refusal and NOTHING else. Every count below was
         # measured on keys that have already collided, so the fan-out warning
@@ -1082,11 +1185,26 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
                         set(ls.dropna().astype(str).str.strip().unique())
                         | set(rs.dropna().astype(str).str.strip().unique())
                         if v.lower() in reading.keep_tokens})
+        # State the evidence that was actually used. "it matches the shape of
+        # the other codes" is false of a token kept because both files use it,
+        # and a false reason for a right decision still teaches the researcher
+        # something untrue about their own data.
+        _one = len(_kept) == 1
+        _shared = (set(ls.dropna().astype(str).str.strip().str.lower())
+                   & set(rs.dropna().astype(str).str.strip().str.lower()))
+        _on_both = {v for v in _kept if v.lower() in _shared}
+        if len(_on_both) == len(_kept):
+            _why = f"both files use {'it' if _one else 'them'} in the ID column"
+        elif not _on_both:
+            _why = (f"{'it matches' if _one else 'they match'} the shape of the "
+                    f"other codes in these columns")
+        else:
+            _why = (f"these columns are using {'it' if _one else 'them'} as one "
+                    f"of their own codes")
         d.notes.append(
             f"{', '.join(repr(v) for v in _kept)} would normally be read as a blank, but "
-            f"{'it matches' if len(_kept) == 1 else 'they match'} the shape of the other "
-            f"codes in these columns, so {'it is' if len(_kept) == 1 else 'they are'} "
-            f"being matched as {'a real ID' if len(_kept) == 1 else 'real IDs'}."
+            f"{_why}, so {'it is' if _one else 'they are'} "
+            f"being matched as {'a real ID' if _one else 'real IDs'}."
         )
     if dup_left and dup_right:
         d.warnings.append(
@@ -1119,21 +1237,23 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
         if n_missing_right:
             parts.append(f"{n_missing_right:,} in {right_name}")
         kept = how in ("left", "outer") and n_missing_left or how in ("right", "outer") and n_missing_right
-        # Name the spellings and the reason. "no ID at all" is a false account
-        # of a row whose ID the app read as a blank — the researcher then looks
-        # for a gap in their file that is not there.
+        # Name the spellings and the reason IN THE FIRST SENTENCE. "no ID at
+        # all" is a false account of a row whose ID the app read as a blank,
+        # and correcting it further down does not undo it: the researcher acts
+        # on the opening claim and goes looking for a gap in their file that is
+        # not there. When a spelling was refused, the refusal IS the headline.
         unreadable = sorted(set(unreadable_key_spellings(ls, reading.keep_tokens))
                             | set(unreadable_key_spellings(rs, reading.keep_tokens)))
-        why = ""
         if unreadable:
             shown = ", ".join(repr(v) for v in unreadable[:5])
-            why = (f"Their ID is blank, or reads {shown}"
-                   f"{'…' if len(unreadable) > 5 else ''} — "
-                   f"{'a spelling' if len(unreadable) == 1 else 'spellings'} this app "
-                   f"treats as a way of writing 'no value'. ")
+            lead = (f"{' and '.join(parts)} row(s) have no ID this app can read: their ID "
+                    f"is blank, or reads {shown}{'…' if len(unreadable) > 5 else ''} — "
+                    f"{'a spelling' if len(unreadable) == 1 else 'spellings'} this app "
+                    f"treats as a way of writing 'no value'. ")
+        else:
+            lead = f"{' and '.join(parts)} row(s) have no ID at all — the cell is blank. "
         d.warnings.append(
-            f"{' and '.join(parts)} row(s) have no ID at all (blank or 'unknown'). "
-            + why
+            lead
             + ("They are kept but will have no matching information attached."
                if kept else "They cannot be matched and will be dropped.")
         )
@@ -1207,7 +1327,7 @@ def execute_join(left: pd.DataFrame, right: pd.DataFrame,
                              (right[right_key], right_name, right_key)):
         _loss = numeric_key_precision_loss(_s)
         if _loss:
-            raise ValueError(_precision_refusal(_col, _fname, _loss[0], _loss[1]))
+            raise ValueError(_precision_refusal(_col, _fname, *_loss))
     steps: List[str] = []
     l, r = left, right
     if repair:

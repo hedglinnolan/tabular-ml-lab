@@ -200,5 +200,89 @@ def test_utf16_json_loads():
     """PowerShell's ConvertTo-Json | Out-File writes UTF-16 by default."""
     assert load_json(io.BytesIO('[{"a":1},{"a":2}]'.encode("utf-16"))).shape == (2, 1)
 
+
+# ── IMPORT-209: a blank cell must not collide IDs above 2**53 ────────────
+#
+# float64 holds consecutive integers exactly only to 2**53. json.loads parses
+# them exactly, but one null anywhere in the field makes the column float64 and
+# two distinct participants become one value — at LOAD time, upstream of every
+# guard ml/join_doctor.py has. Each case below carries two participants whose
+# IDs differ by one above the limit and one blank cell; each asserts they are
+# still two.
+
+_ID_A = 2 ** 53 + 1          # not representable in float64
+_ID_B = 2 ** 53              # representable — _ID_A rounds onto it
+
+
+def _two_participants(seqn):
+    s = seqn.dropna()
+    return len(s.unique())
+
+
+def test_import209_records_route_keeps_large_ids_distinct():
+    """The route already repaired — pinned so the others cannot be 'fixed' by
+    weakening it."""
+    df = load_json(_b('[{"SEQN":%d,"g":1},{"SEQN":%d,"g":2},{"SEQN":null,"g":3}]'
+                      % (_ID_A, _ID_B)))
+    assert _two_participants(df["SEQN"]) == 2
+    assert df["SEQN"].iloc[0] == _ID_A
+
+
+def test_import209_orient_columns_keeps_large_ids_distinct():
+    """{col: {idx: value}} reached a bare pd.DataFrame() with no repair."""
+    df = load_json(_b('{"SEQN":{"0":%d,"1":%d,"2":null},"g":{"0":1,"1":2,"2":3}}'
+                      % (_ID_A, _ID_B)))
+    assert not pd.api.types.is_float_dtype(df["SEQN"])
+    assert _two_participants(df["SEQN"]) == 2
+    assert df["SEQN"].iloc[0] == _ID_A
+
+
+def test_import209_pandas_default_to_json_round_trips_large_ids():
+    """orient='columns' is what a plain DataFrame.to_json() writes, so this is
+    the likeliest way the shape actually arrives."""
+    src = pd.DataFrame({"SEQN": pd.array([_ID_A, _ID_B, None], dtype="Int64"),
+                        "g": [1, 2, 3]})
+    df = load_json(_b(src.to_json()))
+    assert _two_participants(df["SEQN"]) == 2
+    assert sorted(df["SEQN"].dropna().tolist()) == [_ID_B, _ID_A]
+
+
+def test_import209_orient_index_keeps_large_ids_distinct():
+    """{idx: {col: value}}: the outer keys are row labels, so reading them as
+    columns transposes the table — and a row of that transpose spans columns of
+    different dtypes, which floats the IDs back into a collision."""
+    df = load_json(_b('{"0":{"SEQN":%d,"g":1},"1":{"SEQN":%d,"g":2},'
+                      '"2":{"SEQN":null,"g":3}}' % (_ID_A, _ID_B)))
+    assert "SEQN" in df.columns, f"read transposed: {list(df.columns)}"
+    assert _two_participants(df["SEQN"]) == 2
+    assert df["SEQN"].iloc[0] == _ID_A
+
+
+def test_import209_nested_ids_are_repaired_too():
+    """The scan looked at top-level keys only, so an ID one level down — which
+    json_normalize renames to "pt.SEQN" — escaped the repair entirely."""
+    df = load_json(_b('[{"pt":{"SEQN":%d},"g":1},{"pt":{"SEQN":%d},"g":2},'
+                      '{"pt":{"SEQN":null},"g":3}]' % (_ID_A, _ID_B)))
+    assert _two_participants(df["pt.SEQN"]) == 2
+    assert df["pt.SEQN"].iloc[0] == _ID_A
+
+
+def test_import209_array_of_arrays_keeps_large_ids_distinct():
+    df = load_json(_b("[[%d,1],[%d,2],[null,3]]" % (_ID_A, _ID_B)))
+    assert _two_participants(df[0]) == 2
+
+
+def test_import209_bare_array_of_ids_keeps_them_distinct():
+    df = load_json(_b("[%d,%d,null]" % (_ID_A, _ID_B)))
+    assert _two_participants(df["value"]) == 2
+
+
+def test_import209_named_columns_are_still_read_as_columns():
+    """The orient='index' reading is chosen only when the outer keys read as row
+    labels; named outer keys keep pandas' default columns reading."""
+    df = load_json(_b('{"a":{"0":1,"1":2},"b":{"0":3,"1":4}}'))
+    assert list(df.columns) == ["a", "b"]
+    assert df["a"].tolist() == [1, 2]
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

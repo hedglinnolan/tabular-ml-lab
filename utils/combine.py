@@ -71,11 +71,16 @@ def _dtype_family(s: pd.Series) -> str:
 def _comparison_name(col: Any) -> str:
     """Column name reduced to what stacking should consider the SAME variable.
 
-    Case and surrounding/repeated whitespace only. Deliberately not a fuzzy
-    match: this is used to raise a question, and 'age' vs 'age_years' is a
-    question the app has no business asking.
+    Case, surrounding/repeated whitespace, and underscore-for-space only. The
+    last one is not cosmetic: one export writes 'blood pressure' and the next
+    writes 'blood_pressure' because a tool sanitized its headers, and that pair
+    split a variable in half exactly as 'age'/'Age' did.
+
+    Deliberately not a fuzzy match beyond that: this is used to raise a
+    question, and 'age' vs 'age_years' is a question the app has no business
+    asking.
     """
-    return " ".join(str(col).strip().lower().split())
+    return " ".join(str(col).strip().lower().replace("_", " ").split())
 
 
 def _near_duplicate_names(col_sets: Dict[str, List[Any]]) -> Dict[str, List[str]]:
@@ -166,7 +171,8 @@ def plan_stack(frames: Dict[str, pd.DataFrame]) -> StackPlan:
             for variants in list(plan.name_variants.values())[:4])
         plan.warnings.append(
             f"{len(plan.name_variants)} column name(s) are spelled differently in "
-            f"different files and differ only by capitalization or spacing: {detail}"
+            f"different files and differ only by capitalization or spacing "
+            f"(underscores count as spacing): {detail}"
             f"{'; …' if len(plan.name_variants) > 4 else ''}. If those are the same "
             f"measurement, stacking keeps them as SEPARATE columns, each blank for the "
             f"files that use the other spelling — rename them to match before stacking."

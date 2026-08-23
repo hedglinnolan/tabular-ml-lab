@@ -1304,9 +1304,26 @@ if task_mode == "prediction":
             else:
                 st.session_state['subject_id_declaration'] = _SUBJ_AUTO
         elif st.session_state['subject_id_declaration'] not in _subject_options:
-            # The named column left the data (engineering, a repair). Fall back
-            # rather than let Streamlit raise on a default that is gone.
+            # The named column left the data (engineering, a repair). The
+            # WIDGET has to fall back or Streamlit raises on a default that is
+            # gone — but the ANSWER must not fall back with it. Reverting to
+            # "let the app work it out" turned a declaration the user made into
+            # a `detected cross_sectional` seal: a positive claim that the study
+            # has one row per person, asserted because a column disappeared
+            # (`IMPORT-257`). The name is remembered so `ensure_lockbox` can
+            # record `declared_column_missing` and the chip can name it.
+            st.session_state['_subject_declaration_vanished'] = str(
+                st.session_state['subject_id_declaration'])
             st.session_state['subject_id_declaration'] = _SUBJ_AUTO
+        _vanished_declaration = st.session_state.get('_subject_declaration_vanished')
+        if _vanished_declaration and _vanished_declaration in _subject_options:
+            st.session_state.pop('_subject_declaration_vanished', None)
+            _vanished_declaration = None
+
+        def _clear_vanished_declaration():
+            """The user answered again; the stale name stops standing in."""
+            st.session_state.pop('_subject_declaration_vanished', None)
+
         with st.expander(
                 "👤 Which column identifies a subject/participant?",
                 expanded=_prev_basis == 'undetermined'):
@@ -1323,10 +1340,25 @@ if task_mode == "prediction":
                 options=_subject_options,
                 key='subject_id_declaration',
                 label_visibility="collapsed",
+                on_change=_clear_vanished_declaration,
                 help="Choose the column holding one value per person. Pick the "
                      "second option if every row is a different person.",
             )
-            if _subject_choice == _SUBJ_AUTO:
+            if _subject_choice == _SUBJ_AUTO and _vanished_declaration:
+                # The answer stands, unhonorable. Keeping it on the record is
+                # what makes the seal say `undetermined` and name the column,
+                # instead of claiming a grain nobody stated (`IMPORT-257`).
+                _cohort.entity_id_override_enabled = True
+                _cohort.entity_id_override_value = _vanished_declaration
+                st.warning(
+                    f"⚠️ `{_vanished_declaration}` was named as the subject "
+                    f"column and is no longer in the data. The held-out set "
+                    f"cannot be drawn by subject, and the seal records the "
+                    f"grain as undetermined rather than as one row per person. "
+                    f"Choose again above — or restore the column — before "
+                    f"reporting held-out performance."
+                )
+            elif _subject_choice == _SUBJ_AUTO:
                 _cohort.entity_id_override_enabled = False
                 _cohort.entity_id_override_value = None
                 if _prev_lb and _prev_lb.get('group_col'):
@@ -1337,10 +1369,25 @@ if task_mode == "prediction":
                 _cohort.entity_id_override_value = (
                     None if _subject_choice == _SUBJ_NONE else _subject_choice)
                 if _subject_choice == _SUBJ_NONE:
-                    st.caption(
-                        "Recorded: one row per participant. The held-out set is "
-                        "drawn by row and the seal records that you stated it."
-                    )
+                    # An answer is better evidence than a name list, and it is
+                    # not better evidence than a count. Measured repetition
+                    # under this answer is a CONTRADICTION, shown here as well
+                    # as on the seal (`IMPORT-257`).
+                    from utils.test_lockbox import declaration_contradiction
+                    _contra = declaration_contradiction(df, None)
+                    if _contra:
+                        st.warning(
+                            f"⚠️ **This answer and the data disagree.** "
+                            f"{_contra['message']} Pick that column above if it "
+                            f"identifies a participant; leave this answer if it "
+                            f"does not, and the seal will record the "
+                            f"disagreement as a stated limitation."
+                        )
+                    else:
+                        st.caption(
+                            "Recorded: one row per participant. The held-out set is "
+                            "drawn by row and the seal records that you stated it."
+                        )
                 else:
                     _n_subj = int(df[_subject_choice].nunique(dropna=True))
                     st.caption(

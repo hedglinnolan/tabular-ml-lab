@@ -10,22 +10,82 @@ but it must never assert something false.
 """
 from __future__ import annotations
 
+import ast
+import io
+import pathlib
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from ml.join_doctor import (
     diagnose_join, execute_join, find_key_candidates, key_reading,
-    normalize_key, suggest_best,
+    normalize_key, numeric_key_precision_loss, suggest_best,
 )
 from utils.combine import plan_stack
 
 RNG = np.random.RandomState(0)
 
+REPO = pathlib.Path(__file__).resolve().parent.parent
+PAGE_01 = REPO / "pages" / "01_Upload_and_Audit.py"
+
 
 @pytest.fixture(autouse=True)
 def _deterministic():
     RNG.seed(0)
+
+
+def _first_sentence(text: str) -> str:
+    """What the researcher reads before deciding whether to read on."""
+    head, _, _ = text.partition(". ")
+    return head
+
+
+class _FakeStreamlit:
+    """Enough of the Streamlit surface to RUN a render function in a test.
+
+    The point of these tests is that the real registration site runs, not a
+    copy of it, so the widgets answer deterministically and everything else is
+    recorded and discarded.
+    """
+
+    def __init__(self, press: bool = True, radio_index: int | None = None):
+        self.session_state: dict = {}
+        self.press = press
+        self.radio_index = radio_index
+        self.said: list = []
+
+    def selectbox(self, label, options, index=0, **kw):
+        return list(options)[index or 0]
+
+    def radio(self, label, options, index=0, **kw):
+        return list(options)[self.radio_index if self.radio_index is not None else index]
+
+    def multiselect(self, label, options, default=None, **kw):
+        return list(default if default is not None else options)
+
+    def toggle(self, *a, **kw):
+        return False
+
+    def button(self, *a, **kw):
+        return self.press
+
+    def columns(self, spec, **kw):
+        return [self] * (spec if isinstance(spec, int) else len(spec))
+
+    def expander(self, *a, **kw):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def __getattr__(self, name):
+        def _record(*a, **kw):
+            self.said.append((name, a[0] if a else None))
+        return _record
 
 
 class TestImport233CaseFoldingIsDecidedForThePair:
@@ -120,6 +180,91 @@ class TestImport234Float64IdCollapseIsRefused:
         out, _ = execute_join(left, right, "SEQN", "SEQN", "inner")
         assert len(out) == 2
 
+    # ── the check is about VALUES, not about float64 ─────────────────────
+    # Gating on float64 and hardcoding 2^53 let two live shapes through, and
+    # both were narrated to the researcher as ordinary repeated visits.
+
+    @staticmethod
+    def _float32_frames():
+        """float32 stops counting whole numbers at 2^24 — MRN territory."""
+        left = pd.DataFrame({"SEQN": pd.Series([16777217.0, 16777216.0, 16777219.0],
+                                               dtype="float32"),
+                             "age": [50, 60, 70]})
+        right = pd.DataFrame({"SEQN": pd.Series([16777217.0, 16777219.0], dtype="float32"),
+                              "chol": [4.0, 5.0]})
+        return left, right
+
+    def test_float32_keys_are_refused_at_their_own_limit(self):
+        left, right = self._float32_frames()
+        loss = numeric_key_precision_loss(left["SEQN"])
+        assert loss is not None and loss[2] == 2 ** 24
+        d = diagnose_join(left, right, "SEQN", "SEQN", "inner")
+        assert not d.can_proceed
+        assert any("16,777,216" in b for b in d.blocking)
+        # Never as fan-out: two participants collapsed into one is not a visit.
+        assert not any("several rows per ID" in w for w in d.warnings)
+        with pytest.raises(ValueError, match="lost their last digits"):
+            execute_join(left, right, "SEQN", "SEQN", "inner")
+
+    def test_a_parquet_upload_preserves_float32_and_is_still_refused(self):
+        """The live reach path: parquet round-trips float32 unchanged."""
+        pytest.importorskip("pyarrow")
+        left, right = self._float32_frames()
+        buf = io.BytesIO()
+        left.to_parquet(buf, index=False)
+        back = pd.read_parquet(io.BytesIO(buf.getvalue()))
+        assert back["SEQN"].dtype == np.float32
+        assert not diagnose_join(back, right, "SEQN", "SEQN", "inner").can_proceed
+
+    def test_float16_keys_are_refused_at_2_to_the_11(self):
+        s = pd.Series([2048.0, 2049.0], dtype="float16")
+        loss = numeric_key_precision_loss(s)
+        assert loss is not None and loss[2] == 2 ** 11
+
+    def test_extension_float_dtypes_are_covered(self):
+        for dtype, limit in (("Float32", 2 ** 24), ("Float64", 2 ** 53)):
+            s = pd.Series([float(limit), float(limit) + 4, None], dtype=dtype)
+            loss = numeric_key_precision_loss(s)
+            assert loss is not None and loss[2] == limit, dtype
+
+    def test_an_object_column_of_python_floats_is_checked_not_skipped(self):
+        """object dtype is what the app's own stack path produces."""
+        vals = [9007199254740993.0, 9007199254740992.0, 9007199254740995.0]
+        left = pd.DataFrame({"SEQN": pd.Series(vals, dtype=object), "age": [50, 60, 70]})
+        right = pd.DataFrame({"SEQN": pd.Series([vals[0], vals[2]], dtype=object),
+                              "chol": [4.0, 5.0]})
+        assert numeric_key_precision_loss(left["SEQN"]) is not None
+        d = diagnose_join(left, right, "SEQN", "SEQN", "inner")
+        assert not d.can_proceed
+        assert not any("several rows per ID" in w for w in d.warnings)
+        with pytest.raises(ValueError, match="lost their last digits"):
+            execute_join(left, right, "SEQN", "SEQN", "inner")
+
+    def test_a_text_id_stacked_onto_a_numeric_one_is_caught(self):
+        """pd.concat of a text ID and a float ID gives object holding floats."""
+        a = pd.DataFrame({"SEQN": ["9007199254740993", "9007199254740995"], "x": [1, 2]})
+        b = pd.DataFrame({"SEQN": [9007199254740993.0, 9007199254740995.0], "y": [3, 4]})
+        stacked = pd.concat([a, b], ignore_index=True)
+        assert stacked["SEQN"].dtype == object
+        assert numeric_key_precision_loss(stacked["SEQN"]) is not None
+
+    def test_ids_kept_as_text_are_still_joinable(self):
+        """The refusal's own advice — re-import the ID as text — must work."""
+        left = pd.DataFrame({"SEQN": ["9007199254740993", "9007199254740992"],
+                             "age": [50, 60]})
+        right = pd.DataFrame({"SEQN": ["9007199254740993"], "chol": [4.0]})
+        assert numeric_key_precision_loss(left["SEQN"]) is None
+        out, _ = execute_join(left, right, "SEQN", "SEQN", "inner")
+        assert len(out) == 1
+
+    def test_ordinary_float32_and_object_keys_are_left_alone(self):
+        small = pd.Series([1.0, 2.0, 3.0], dtype="float32")
+        assert numeric_key_precision_loss(small) is None
+        assert numeric_key_precision_loss(pd.Series(["A1", "B2", None], dtype=object)) is None
+        assert numeric_key_precision_loss(pd.Series([1.0, 2.0, np.nan], dtype=object)) is None
+        # Integers are exact at any magnitude — nothing has been lost.
+        assert numeric_key_precision_loss(pd.Series([2 ** 60, 2 ** 60 + 1])) is None
+
 
 class TestImport236IndexPenaltyAppliesWhenEitherSideIsACounter:
     """index_like was `_looks_like_row_index(left) AND ...(right)`.
@@ -206,6 +351,84 @@ class TestImport248RealKeyValuesAreNotDeletedAsMissingTokens:
         out, _ = execute_join(a, b, "id", "id", "inner")
         assert out["id"].astype(str).tolist() == ["A1"]
 
+    # ── evidence from the pair, not a shape quorum ───────────────────────
+    # Keeping a token only when HALF the column shared its shape, and refusing
+    # to decide at all below two other shapes, deleted the centre 'NA' from
+    # exactly the two shapes real coding schemes take.
+
+    @staticmethod
+    def _both_sides(values):
+        a = pd.DataFrame({"region": list(values), "x": range(len(values))})
+        b = pd.DataFrame({"region": list(values), "y": range(len(values))})
+        return a, b
+
+    @pytest.mark.parametrize("values", [
+        ["NA", "EU", "APAC", "LATAM"],      # codes of mixed length
+        ["NA", "EMEA", "APAC"],             # no other code shares its shape
+        ["NA", "NB"],                       # one other value: the old rule bailed
+        ["NA", "Boston", "Seattle"],        # centre names, not codes
+    ])
+    def test_a_region_both_files_name_survives_whatever_its_neighbours_look_like(self, values):
+        a, b = self._both_sides(values)
+        out, _ = execute_join(a, b, "region", "region", "inner")
+        assert sorted(out["region"].astype(str)) == sorted(values)
+        d = diagnose_join(a, b, "region", "region", "inner")
+        assert not any("no ID" in w for w in d.warnings), d.warnings
+
+    def test_a_dash_used_as_a_code_by_both_files_survives(self):
+        a = pd.DataFrame({"sp": ["-", "A", "B", "C"], "x": [1, 2, 3, 4]})
+        b = pd.DataFrame({"sp": ["-", "A", "B", "C"], "y": [5, 6, 7, 8]})
+        out, _ = execute_join(a, b, "sp", "sp", "inner")
+        assert sorted(out["sp"].astype(str)) == ["-", "A", "B", "C"]
+
+    def test_the_note_states_the_evidence_that_was_actually_used(self):
+        """A false reason for a right decision still teaches something untrue."""
+        a, b = self._both_sides(["NA", "Boston", "Seattle"])
+        note = " ".join(diagnose_join(a, b, "region", "region", "inner").notes)
+        assert "'NA'" in note and "real ID" in note
+        # 'NA' shares its shape with nothing here, so the note must not say so.
+        assert "shape of the other codes" not in note
+        assert "both files use it" in note
+
+    def test_a_token_only_one_file_uses_is_not_kept_by_pair_evidence(self):
+        a = pd.DataFrame({"centre": ["NA", "Boston", "Seattle"], "x": [1, 2, 3]})
+        b = pd.DataFrame({"centre": ["Boston", "Seattle"], "y": [4, 5]})
+        assert not key_reading(a["centre"], b["centre"]).keep_tokens
+
+    def test_a_column_of_subject_numbers_still_reads_na_as_a_blank(self):
+        """The guard that stops the pair rule fusing unreadable IDs."""
+        a = pd.DataFrame({"pid": ["1001", "1002", "NA"], "x": [1, 2, 3]})
+        b = pd.DataFrame({"pid": ["1001", "1002", "NA"], "y": [4, 5, 6]})
+        out, _ = execute_join(a, b, "pid", "pid", "inner")
+        assert sorted(out["pid"].astype(str)) == ["1001", "1002"]
+
+    # ── the disclosure has to be true in its FIRST sentence ──────────────
+
+    def test_the_refusal_disclosure_leads_with_the_spelling_not_with_no_id(self):
+        """It led with 'have no ID at all' and corrected itself further down.
+
+        A researcher acts on the opening claim: they go looking for a gap in
+        their file that is not there. Correcting it in sentence two is not a
+        disclosure, it is a retraction nobody reads.
+        """
+        a = pd.DataFrame({"pid": ["1001", "1002", "NA"], "x": [1, 2, 3]})
+        b = pd.DataFrame({"pid": ["1001", "1002", "NA"], "y": [4, 5, 6]})
+        hits = [w for w in diagnose_join(a, b, "pid", "pid", "inner").warnings
+                if "'NA'" in w]
+        assert hits, "the discarded spelling must still be disclosed"
+        lead = _first_sentence(hits[0])
+        assert "no ID at all" not in lead
+        assert "'NA'" in lead and "no value" in lead
+        # And the reason precedes the consequence, not the other way round.
+        assert hits[0].index("'NA'") < hits[0].index("dropped")
+
+    def test_a_genuinely_blank_id_is_still_called_exactly_that(self):
+        a = pd.DataFrame({"pid": ["1001", "1002", None], "x": [1, 2, 3]})
+        b = pd.DataFrame({"pid": ["1001", "1002"], "y": [4, 5]})
+        hits = [w for w in diagnose_join(a, b, "pid", "pid", "inner").warnings
+                if "no ID" in w]
+        assert hits and "no ID at all" in _first_sentence(hits[0])
+
 
 class TestImport254StackNamesThatDifferOnlyByCaseOrSpacing:
     """plan_stack intersected RAW labels, so 'age' and 'Age' stacked into two
@@ -246,6 +469,36 @@ class TestImport254StackNamesThatDifferOnlyByCaseOrSpacing:
         c2 = pd.DataFrame({"SEQN": [3, 4], "age": [30, 40]})
         plan = plan_stack({"c1": c1, "c2": c2})
         assert not plan.name_variants
+
+    def test_underscore_and_space_are_the_same_spelling(self):
+        """One export sanitizes its headers, the next does not."""
+        c1 = pd.DataFrame({"SEQN": [1, 2], "blood pressure": [120, 130]})
+        c2 = pd.DataFrame({"SEQN": [3, 4], "blood_pressure": [140, 150]})
+        plan = plan_stack({"c1": c1, "c2": c2})
+        assert set(plan.name_variants) == {"blood pressure"}
+        text = " ".join(plan.warnings)
+        assert "'blood pressure'" in text and "'blood_pressure'" in text
+
+    def test_the_underscore_variant_fires_at_high_overlap_too(self):
+        base = {f"v{i}": [1, 2] for i in range(18)}
+        w1 = pd.DataFrame({**base, "SEQN": [1, 2], "blood pressure": [1, 2]})
+        w2 = pd.DataFrame({**base, "SEQN": [3, 4], "Blood_Pressure": [3, 4]})
+        plan = plan_stack({"w1": w1, "w2": w2})
+        assert "blood pressure" in plan.name_variants
+        assert any("only by capitalization or spacing" in w for w in plan.warnings)
+
+    def test_the_underscore_variants_are_not_merged_silently(self):
+        c1 = pd.DataFrame({"SEQN": [1, 2], "blood pressure": [120, 130]})
+        c2 = pd.DataFrame({"SEQN": [3, 4], "blood_pressure": [140, 150]})
+        plan = plan_stack({"c1": c1, "c2": c2})
+        assert "blood pressure" in plan.all_columns
+        assert "blood_pressure" in plan.all_columns
+
+    def test_a_different_variable_is_not_reported_as_a_variant(self):
+        """'age' vs 'age_years' is a question the app has no business asking."""
+        c1 = pd.DataFrame({"SEQN": [1, 2], "age": [10, 20]})
+        c2 = pd.DataFrame({"SEQN": [3, 4], "age_years": [30, 40]})
+        assert not plan_stack({"c1": c1, "c2": c2}).name_variants
 
     def test_one_file_holding_both_spellings_meant_two_columns(self):
         c1 = pd.DataFrame({"SEQN": [1, 2], "age": [10, 20], "Age": [1, 2]})
@@ -315,13 +568,78 @@ class TestImport256IdentifiersAreNotOfferedAsPredictors:
         assert not is_reserved_column("age")
         assert not is_reserved_column("glucose")
 
-    def test_the_page_filters_the_feature_pool_with_this_predicate(self):
-        """The pool pages/01 builds is exactly all_cols minus target and reserved."""
+    # ── the REAL page and the REAL registration sites ────────────────────
+    # A test that re-implements the page's filter inline passes whatever the
+    # page does. These run the page's own expression and the app's own
+    # registration call, so deleting either fails the test.
+
+    @staticmethod
+    def _page_tree():
+        return ast.parse(PAGE_01.read_text(encoding="utf-8"))
+
+    def test_the_page_binds_the_filter_to_utils_combines_predicate(self):
+        aliases = {(a.name, a.asname)
+                   for n in ast.walk(self._page_tree())
+                   if isinstance(n, ast.ImportFrom) and n.module == "utils.combine"
+                   for a in n.names}
+        assert ("is_reserved_column", "_is_reserved") in aliases
+
+    def test_the_pages_own_feature_filter_drops_a_registered_join_key(self):
+        """The page's expression is compiled from its source and run here."""
         from utils.combine import (
             SOURCE_COLUMN, is_reserved_column, set_reserved_columns,
         )
-        set_reserved_columns(["SEQN"], "join key", role="join_key")
-        all_cols = ["SEQN", "age", "glucose", SOURCE_COLUMN, "chol"]
-        target = "chol"
-        pool = [c for c in all_cols if c != target and not is_reserved_column(c)]
+        exprs = [n.value for n in ast.walk(self._page_tree())
+                 if isinstance(n, ast.Assign)
+                 and any(isinstance(t, ast.Name) and t.id == "feature_options"
+                         for t in n.targets)
+                 and isinstance(n.value, ast.ListComp)]
+        assert exprs, "pages/01 no longer builds feature_options as a comprehension"
+        code = compile(ast.Expression(body=exprs[0]), str(PAGE_01), "eval")
+        set_reserved_columns(["SEQN"], "the ID these files were merged on",
+                             role="join_key")
+        pool = eval(code, {"all_cols": ["SEQN", "age", "glucose", SOURCE_COLUMN, "chol"],
+                           "target_col": "chol",
+                           "_is_reserved": is_reserved_column})
         assert pool == ["age", "glucose"]
+        assert is_reserved_column("SEQN")
+
+    def test_the_page_registers_the_group_column_where_the_seal_is_drawn(self):
+        """The seal's own call, executed with the real registration function."""
+        from utils.combine import is_reserved_column, register_reserved_column
+        calls = [n for n in ast.walk(self._page_tree())
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                 and n.func.id == "_reserve"]
+        assert calls, "pages/01 no longer registers the lockbox group column"
+        node = ast.Expression(body=calls[0])
+        ast.fix_missing_locations(node)
+        eval(compile(node, str(PAGE_01), "eval"),
+             {"_reserve": register_reserved_column, "_lb": {"group_col": "subject_id"}})
+        assert is_reserved_column("subject_id")
+
+    def test_the_real_combine_step_registers_the_join_key_at_commit(self, monkeypatch):
+        import utils.combine_ui as combine_ui
+        from utils.combine import is_reserved_column, reserved_column_reason
+
+        fake = _FakeStreamlit(press=True)
+        monkeypatch.setattr(combine_ui, "st", fake)
+        demo = pd.DataFrame({"SEQN": [1, 2, 3], "age": [50, 60, 70]})
+        labs = pd.DataFrame({"SEQN": [1, 2, 3], "chol": [4.0, 5.0, 6.0]})
+
+        out = combine_ui.render_combine_step({"demo": demo, "labs": labs})
+        assert out is not None and "chol" in out.columns
+        assert is_reserved_column("SEQN")
+        assert "merged on" in reserved_column_reason("SEQN")
+
+    def test_nothing_is_reserved_until_the_user_commits(self, monkeypatch):
+        """The key of an abandoned preview must not bar a real predictor."""
+        import utils.combine_ui as combine_ui
+        from utils.combine import is_reserved_column
+
+        fake = _FakeStreamlit(press=False)
+        monkeypatch.setattr(combine_ui, "st", fake)
+        demo = pd.DataFrame({"SEQN": [1, 2, 3], "age": [50, 60, 70]})
+        labs = pd.DataFrame({"SEQN": [1, 2, 3], "chol": [4.0, 5.0, 6.0]})
+
+        assert combine_ui.render_combine_step({"demo": demo, "labs": labs}) is None
+        assert not is_reserved_column("SEQN")

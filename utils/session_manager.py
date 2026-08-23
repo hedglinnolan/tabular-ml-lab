@@ -202,6 +202,73 @@ def _df_to_parquet_bytes(df: pd.DataFrame) -> bytes:
     return buf.getvalue()
 
 
+def _row_label_dtype() -> Optional[str]:
+    """The dtype of the index the saved row labels were drawn from, as a string.
+
+    Saved beside every label list so restore can rebuild the labels as the type
+    the index actually holds. Read from the same frame `_check_row_labels`
+    checks against, so the two cannot disagree about which index is authoritative.
+    """
+    frame = _row_identity_reference()
+    if frame is None:
+        return None
+    try:
+        return str(frame.index.dtype)
+    except Exception:
+        return None
+
+
+def _encode_row_labels(labels: Any) -> list:
+    """Row labels as JSON scalars: ints stay ints, everything else is text.
+
+    `json.dumps(default=str)` would turn a numpy int into a string, and a string
+    label no longer matches an integer index on restore — a silent all-False
+    membership. Timestamps become ISO text here and are rebuilt by
+    `_decode_row_labels`, which is where the type is put back.
+    """
+    out = []
+    for x in labels:
+        if isinstance(x, bool):
+            out.append(str(x))
+        elif isinstance(x, int):
+            out.append(x)
+        elif hasattr(x, "item"):            # numpy scalar -> python scalar
+            v = x.item()
+            out.append(v if isinstance(v, int) else str(v))
+        else:
+            out.append(str(x))
+    return out
+
+
+def _decode_row_labels(labels: list, labels_dtype: Optional[str]) -> list:
+    """Saved labels as the type the restored index holds.
+
+    Datetime labels are the case this exists for. They save as text, and a text
+    label passes `_check_row_labels` because pandas compares a string INTO a
+    DatetimeIndex — but `train_row_mask` tests raw membership in a Python set,
+    where `'2020-01-01 00:00:00'` is not `Timestamp('2020-01-01')`. Every sealed
+    row silently became unsealed while the chip went on reporting the original
+    count (`CONTRACT-005`, `MINE-002`). Reconstructing here makes the three
+    functions agree; a reconstruction that fails leaves the labels alone and
+    `_check_row_labels` refuses them loudly, which is the other honest ending.
+    """
+    if not labels_dtype or not labels:
+        return list(labels)
+    try:
+        if "datetime64" in labels_dtype:
+            rebuilt = pd.to_datetime(pd.Index(labels))
+            if rebuilt.isna().any():
+                return list(labels)
+            return list(rebuilt)
+        if labels_dtype.startswith("period") or labels_dtype.startswith("interval"):
+            # Neither round-trips through text faithfully; leave them as saved
+            # so the membership check refuses rather than guessing a type.
+            return list(labels)
+    except Exception:
+        return list(labels)
+    return list(labels)
+
+
 def _encode_dataclass(obj: Any) -> Dict[str, Any]:
     """Convert a dataclass instance to a JSON-safe dict via asdict()."""
     return asdict(obj) if is_dataclass(obj) else dict(obj)
@@ -336,29 +403,32 @@ def _build_archive_members() -> Dict[str, bytes]:
     lockbox = st.session_state.get("test_lockbox")
     if isinstance(lockbox, dict) and lockbox.get("labels") is not None:
         try:
-            def _plain_label(x: Any) -> Any:
-                if isinstance(x, bool):
-                    return str(x)
-                if isinstance(x, int):
-                    return x
-                if hasattr(x, "item"):          # numpy scalar -> python scalar
-                    v = x.item()
-                    return v if isinstance(v, int) else str(v)
-                return str(x)
-
-            encoded = {
-                "labels": [_plain_label(lbl) for lbl in lockbox["labels"]],
+            # THE WHOLE RECORD, not a hand-kept list of its fields. Enumerating
+            # them meant every field added to the seal after this function was
+            # written was dropped on restore: `opened_count`/`opened_at` came
+            # back at zero, so the chip said "not opened yet" and the Methods
+            # sentence re-asserted "accessed only for the final evaluation" at a
+            # true count of four; `seal_basis`/`undetermined_because` came back
+            # absent, so a seal that had disclosed an unreadable grain rendered
+            # as a clean lock over the same leak (`SWEEP-008`). Anything the
+            # seal carries is saved; the fields below are only NORMALIZED.
+            encoded = {k: _json_safe(v) for k, v in lockbox.items()
+                       if k != "labels"}
+            encoded.update({
+                "labels": _encode_row_labels(lockbox["labels"]),
+                # The labels' TYPE, so they come back as the type the index
+                # holds. Without it a DatetimeIndex seal round-tripped as
+                # strings that `_check_row_labels` accepted (a str compares
+                # equal into a DatetimeIndex) and `train_row_mask` never
+                # matched: 10 sealed rows became 0 while the chip went on
+                # reporting 10 (`CONTRACT-005`, `MINE-002`).
+                "labels_dtype": _row_label_dtype(),
                 "fraction": float(lockbox.get("fraction", 0.15)),
                 "seed": int(lockbox.get("seed", 42)),
                 "n_total": int(lockbox.get("n_total", 0)),
                 "n_test": int(lockbox.get("n_test", len(lockbox["labels"]))),
                 "signature": str(lockbox.get("signature", "")),
                 "stratified": bool(lockbox.get("stratified", False)),
-                # Everything the chip reports. Saving only the labels meant a
-                # restored session forgot that the split was drawn by subject,
-                # which outcome it was drawn for, and which strata it had to
-                # drop — so the disclosures on every page went quiet while the
-                # split they describe was still in force.
                 "fraction_requested": float(lockbox.get("fraction_requested",
                                                         lockbox.get("fraction", 0.15))),
                 "target_col": str(lockbox.get("target_col") or ""),
@@ -372,7 +442,9 @@ def _build_archive_members() -> Dict[str, bytes]:
                                if lockbox.get("group_noun") else None),
                 "n_test_groups": (int(lockbox["n_test_groups"])
                                   if lockbox.get("n_test_groups") is not None else None),
-            }
+                "opened_count": int(lockbox.get("opened_count", 0) or 0),
+                "opened_at": [str(x) for x in (lockbox.get("opened_at") or [])],
+            })
             members["lockbox.json"] = json.dumps(encoded, indent=2).encode("utf-8")
             saved_keys.append("test_lockbox")
         except Exception:
@@ -390,7 +462,8 @@ def _build_archive_members() -> Dict[str, bytes]:
                 "column": str(run["column"]),
                 "value": _json_scalar(run.get("value")),
                 "label": str(run["label"]),
-                "labels": [_json_scalar(x) for x in run["labels"]],
+                "labels": _encode_row_labels(run["labels"]),
+                "labels_dtype": _row_label_dtype(),
                 "n_rows": int(run.get("n_rows", len(run["labels"]))),
                 "n_total": int(run.get("n_total", 0)),
                 "position": int(run.get("position", 1)),
@@ -588,7 +661,14 @@ def _check_row_labels(labels: list, index_preserved: bool) -> None:
             "this archive was saved before row identity was persisted, so its "
             "rows came back renumbered 0..n-1 and the saved labels can no "
             "longer be matched to them")
-    missing = [lbl for lbl in labels if lbl not in frame.index]
+    # Membership by exact VALUE, not by `in` against the Index. `in` coerces —
+    # the string '2020-01-01 00:00:00' compares equal into a DatetimeIndex — and
+    # every consumer of these labels (`train_row_mask`, the cohort mask) tests
+    # them in a plain Python set, where it does not. The permissive check passed
+    # labels that then matched nothing at all, which is the one outcome this
+    # function exists to prevent (`CONTRACT-005`).
+    known = set(frame.index)
+    missing = [lbl for lbl in labels if lbl not in known]
     if missing:
         raise ValueError(
             f"{len(missing)} of {len(labels)} saved row labels are absent from "
@@ -790,6 +870,7 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], li
                 labels = data.get("labels")
                 if not isinstance(labels, list) or not labels:
                     raise ValueError("cohort has no rows")
+                labels = _decode_row_labels(labels, data.get("labels_dtype"))
                 # Same row-identity check as the lockbox below: a run whose
                 # labels have been renumbered under it reports one group's name
                 # over another group's rows.
@@ -873,13 +954,22 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], li
                 labels = data.get("labels")
                 if not isinstance(labels, list) or not labels:
                     raise ValueError("lockbox has no labels")
+                labels = _decode_row_labels(labels, data.get("labels_dtype"))
                 # Before the seal is applied to rows: the labels have to name
                 # the same rows they were drawn on. A seal over the wrong rows
                 # is worse than no seal, because the chip goes on reporting the
                 # original n while the held-out metric is scored on rows the
                 # model trained on.
                 _check_row_labels(labels, index_preserved)
-                st.session_state["test_lockbox"] = {
+                # Carried WHOLE, for the same reason the save carries it whole:
+                # a restored seal that has forgotten how often it was opened,
+                # or that its basis was `undetermined`, goes on rendering a
+                # clean lock over the leak it had already disclosed
+                # (`SWEEP-008`). Only the fields consumers index numerically
+                # are normalized; anything else the seal carries survives.
+                _restored_lb = dict(data)
+                _restored_lb.pop("labels_dtype", None)
+                _restored_lb.update({
                     "labels": list(labels),
                     "fraction": float(data.get("fraction", 0.15)),
                     "seed": int(data.get("seed", 42)),
@@ -896,7 +986,10 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], li
                     "group_kind": data.get("group_kind") or None,
                     "group_noun": data.get("group_noun") or None,
                     "n_test_groups": data.get("n_test_groups"),
-                }
+                    "opened_count": int(data.get("opened_count", 0) or 0),
+                    "opened_at": list(data.get("opened_at") or []),
+                })
+                st.session_state["test_lockbox"] = _restored_lb
                 # Keep the fraction key coherent with the restored lockbox even
                 # if config.json predates it or disagrees.
                 st.session_state["test_lockbox_fraction"] = float(

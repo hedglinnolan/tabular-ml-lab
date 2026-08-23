@@ -218,6 +218,29 @@ with _sens_tabs[0]:
         _test_frac = max(0.05, min(0.5, len(X_test) / max(1, len(X_pool))))
         _seed_transformer = st.session_state.get('target_transformer')
 
+        # Pooling puts the SEALED rows back in, and every seed below refits a
+        # model over them. That is an opening of the vault, so it is COUNTED —
+        # once per run, not once per fit — rather than only mentioned in a
+        # caption above (`SWEEP-008`). Disclosure alone was not enough here:
+        # the chip's count is what the Methods sentence reads, and a sweep that
+        # trained on the held-out people while the count stayed at 1 let
+        # "accessed only for the final evaluation" survive an access that had
+        # happened. The count carries its source, so the chip names this page
+        # rather than asserting Train & Compare.
+        from utils.test_lockbox import (record_lockbox_open as _record_open,
+                                        quarantine_is_active as _quarantined)
+        _pooled_sealed = bool(_quarantined())
+        if _pooled_sealed:
+            _record_open("Sensitivity Analysis (seed sweep, re-split over the "
+                         "sealed rows)")
+            st.warning(
+                "⚠️ This sweep pooled the **sealed test rows** back in and "
+                "retrained over them. It is recorded as an opening of the "
+                "held-out set: the spread below measures split sensitivity, not "
+                "held-out performance, and the Methods section will say the "
+                "sealed set was accessed here as well as at Train & Compare."
+            )
+
         _fits_done = 0
         for model_key in models_to_seed:
             model_wrapper = trained_models[model_key]
@@ -343,7 +366,11 @@ with _sens_tabs[0]:
                     'n_seeds_requested': len(seed_list),
                     'n_seeds_succeeded': len(seed_list) - _n_failed,
                     'n_seeds_failed': _n_failed,
-                    'metric': primary_metric
+                    'metric': primary_metric,
+                    # The sealed rows were part of every split above. Recorded
+                    # here as well as on the seal, so a reader of the log does
+                    # not have to reconstruct it from the open count.
+                    'pooled_sealed_test_rows': _pooled_sealed,
                 })
             try:
                 from utils.workflow_provenance import get_provenance
@@ -364,8 +391,20 @@ with _sens_tabs[0]:
             # Display — every model that was re-seeded, then the primary in detail
             _summary = _seed_summary_table(df_seeds, primary_metric, selected_model)
             if not _summary.empty:
+                # ACHIEVED, not requested. `len(seed_list)` is what was asked
+                # for; a seed whose fit raised is not in the spread this header
+                # sits on, and the same number printed as the size of the
+                # analysis is the sentence `MINE-030` closed one line below in
+                # the methodology log and left standing here.
+                _achieved = [len(seed_list) - len(failures_by_model.get(m, []))
+                             for m in models_to_seed] or [len(seed_list)]
+                _lo, _hi = min(_achieved), max(_achieved)
+                _seeds_phrase = (f"{_lo} seeds" if _lo == _hi
+                                 else f"{_lo}–{_hi} seeds by model")
+                if _hi < len(seed_list):
+                    _seeds_phrase += f" of {len(seed_list)} requested"
                 st.markdown(f"**Across-seed {primary_metric.upper()} by model** "
-                            f"({len(seed_list)} seeds, fresh split each)")
+                            f"({_seeds_phrase}, fresh split each)")
                 table(_summary.round(4), key="seed_sensitivity_summary", hide_index=True)
                 if 'nn' in model_keys:
                     st.caption("ℹ️ Neural Network excluded from sensitivity analysis (PyTorch models cannot be cloned for re-seeding).")

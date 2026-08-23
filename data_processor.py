@@ -194,6 +194,30 @@ def _json_lines_to_records(text: str) -> List[Any]:
 _EXACT_INT_LIMIT = 2 ** 53
 
 
+def _flatten_record(row: Any, max_level: int = _JSON_MAX_LEVEL) -> Any:
+    """Flatten one record's nested objects the way `json_normalize` does.
+
+    The repair below matches keys against column names, and `json_normalize`
+    renames a nested key to its dotted path ("pt.SEQN"). Scanning the raw
+    top-level keys therefore never saw a nested identifier, and that column
+    floated unrepaired (`IMPORT-209`).
+    """
+    if not isinstance(row, dict):
+        return row
+    flat: Dict[str, Any] = {}
+
+    def walk(prefix: str, obj: Dict[Any, Any], level: int) -> None:
+        for key, value in obj.items():
+            name = f"{prefix}{key}"
+            if isinstance(value, dict) and value and level < max_level:
+                walk(f"{name}.", value, level + 1)
+            else:
+                flat[name] = value
+
+    walk("", row, 0)
+    return flat
+
+
 def _large_int_fields(records: List[Any]) -> Dict[str, List[Any]]:
     """Top-level keys whose integer values need more precision than float64.
 
@@ -263,8 +287,9 @@ def _repair_large_ints(df: pd.DataFrame, records: List[Any]) -> pd.DataFrame:
 
 def _normalize_records(records: List[Any], max_level: int) -> pd.DataFrame:
     """`json_normalize`, with large integers kept exact."""
-    return _repair_large_ints(pd.json_normalize(records, max_level=max_level),
-                              records)
+    return _repair_large_ints(
+        pd.json_normalize(records, max_level=max_level),
+        [_flatten_record(row, max_level) for row in records])
 
 
 def _stringify_nonscalar_cells(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
@@ -302,6 +327,34 @@ def _stringify_nonscalar_cells(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str
     return out, converted
 
 
+def _reads_as_row_labels(keys: Any) -> bool:
+    """Keys that read as positional row labels rather than as field names."""
+    keys = list(keys)
+    return bool(keys) and all(
+        (isinstance(k, int) and not isinstance(k, bool))
+        or (isinstance(k, str) and k.lstrip("-").isdigit())
+        for k in keys
+    )
+
+
+def _is_index_oriented(obj: Any) -> bool:
+    """Whether a dict of dicts is pandas' orient='index', not orient='columns'.
+
+    The two shapes are mirror images — {outer: {inner: value}} either way — so
+    the only evidence is which side reads as row labels. Numeric outer keys over
+    named inner keys is orient='index'; anything else (named outer keys, or
+    numbers on both sides) keeps the orient='columns' reading, which is what
+    `pandas.read_json` assumes by default. `inspect_json` reports which of the
+    two was read so the choice is visible rather than silent.
+    """
+    if not isinstance(obj, dict) or not obj:
+        return False
+    if not all(isinstance(v, dict) and v for v in obj.values()):
+        return False
+    inner = [k for v in obj.values() for k in v]
+    return _reads_as_row_labels(obj.keys()) and not _reads_as_row_labels(inner)
+
+
 def _json_obj_to_frame(obj: Any, records_key: Optional[str] = None,
                        max_level: int = _JSON_MAX_LEVEL) -> pd.DataFrame:
     """Convert a parsed JSON object into a DataFrame, or explain why it can't.
@@ -323,9 +376,14 @@ def _json_obj_to_frame(obj: Any, records_key: Optional[str] = None,
         if all(isinstance(x, dict) for x in obj):
             return _normalize_records(obj, max_level)
         if all(isinstance(x, (list, tuple)) for x in obj):
-            return pd.DataFrame(obj)
+            df = pd.DataFrame(obj)
+            # Positional columns, so the repair keys on the position — the
+            # collapse is the same one the records route repairs (`IMPORT-209`).
+            return _repair_large_ints(
+                df, [dict(zip(df.columns, row)) for row in obj])
         if all(not isinstance(x, (dict, list, tuple)) for x in obj):
-            return pd.DataFrame({"value": obj})
+            return _repair_large_ints(pd.DataFrame({"value": obj}),
+                                      [{"value": x} for x in obj])
         # Mixed content — normalize what we can rather than fail outright.
         return _normalize_records(
             [x if isinstance(x, dict) else {"value": x} for x in obj], max_level
@@ -392,9 +450,33 @@ def _json_obj_to_frame(obj: Any, records_key: Optional[str] = None,
         if len(list_keys) == 1:
             return _json_obj_to_frame(obj[list_keys[0]], None, max_level)
 
-        # pandas orient='columns'/'index': {"col": {"0": v, "1": v}, ...}
+        # pandas orient='index': {"0": {"col": v, ...}, ...} — the outer keys
+        # are row labels, so reading them as columns transposes the table. A row
+        # of that transpose spans columns of different dtypes, and pandas widens
+        # such a row to float64 on the way out, which collides every ID above
+        # 2**53 again (`IMPORT-209`).
+        if _is_index_oriented(obj):
+            df = _normalize_records(list(obj.values()), max_level)
+            labels = pd.Index(list(obj.keys()))
+            if len(labels) == len(df):
+                df.index = labels
+            return df
+
+        # pandas orient='columns': {"col": {"0": v, "1": v}, ...}
         if obj and all(isinstance(v, dict) for v in obj.values()):
-            return pd.DataFrame(obj)
+            df = pd.DataFrame(obj)
+            # This is what a plain `DataFrame.to_json()` writes, so it is the
+            # most likely shape to arrive, and it reached `pd.DataFrame` with no
+            # repair at all: one null and every ID above 2**53 collapsed into
+            # one value (`IMPORT-209`). pandas maps the outer keys to columns
+            # and the inner keys to the index, so a frame row is one inner label
+            # read across the outer keys — rebuilt here from the PARSED values,
+            # which are still exact.
+            rows = [{col: values.get(label) for col, values in obj.items()}
+                    for label in df.index]
+            if len(rows) == len(df):
+                df = _repair_large_ints(df, rows)
+            return df
 
         # A single flat record -> a one-row table.
         if obj and all(not isinstance(v, (dict, list)) for v in obj.values()):
@@ -436,7 +518,7 @@ class JsonLayout:
     def __init__(self, kind: str, chosen_key: Optional[str] = None,
                  candidates: Optional[List[str]] = None, note: str = "",
                  error: str = ""):
-        self.kind = kind                  # records|wrapped|lines|split|table|columns|single|ambiguous|not_tabular
+        self.kind = kind                  # records|wrapped|lines|split|table|columns|index|single|ambiguous|not_tabular
         self.chosen_key = chosen_key
         self.candidates = candidates or []
         self.note = note
@@ -522,6 +604,9 @@ def inspect_json(file: Union[str, io.BytesIO], lines: bool = False,
                           chosen_key=chosen, candidates=sorted(map(str, list_keys)),
                           note=note)
 
+    if _is_index_oriented(obj):
+        return JsonLayout("index", note="Read as a pandas 'index' export: the "
+                                        "top-level keys are row labels.")
     if obj and all(isinstance(v, dict) for v in obj.values()):
         return JsonLayout("columns", note="Read as a column-keyed object.")
     if obj and all(not isinstance(v, (dict, list)) for v in obj.values()):

@@ -203,3 +203,206 @@ def test_the_manifest_records_that_the_index_travelled(fake_session):
     fake_session["raw_data"] = _gappy_study()
     _, manifest = session_manager._collect_session_data()
     assert manifest[session_manager._INDEX_PRESERVED_FLAG] is True
+
+
+# ── the datetime variant: three functions that had to be made to agree ────
+#
+# `_check_row_labels` used `lbl in frame.index`, which COERCES — the string
+# '2020-01-01 00:00:00' compares equal into a DatetimeIndex — so a stringified
+# datetime label passed the restore check. `train_row_mask` then tested the same
+# label in a plain Python set, where it does not match a Timestamp, and 10
+# sealed rows became 0 with no warning while the chip went on reporting 10.
+
+def _dated_study(n: int = 50) -> pd.DataFrame:
+    rng = np.random.default_rng(0)
+    return pd.DataFrame({"a": rng.normal(size=n),
+                         "b": rng.integers(0, 5, n),
+                         "y": rng.integers(0, 2, n)},
+                        index=pd.date_range("2020-01-01", periods=n))
+
+
+def _sealed_rows_seen_by_the_mask(lockbox, index) -> int:
+    """What `train_row_mask` — the function every page reads — actually seals."""
+    import streamlit as st
+    from utils.test_lockbox import train_row_mask
+    st.session_state.clear()
+    try:
+        st.session_state["test_lockbox"] = dict(lockbox)
+        return int((~train_row_mask(index)).sum())
+    finally:
+        st.session_state.clear()
+
+
+class TestContract005DatetimeLabelsRoundTripOrAreRefused:
+    """No silent path: either the labels come back as Timestamps, or it warns."""
+
+    def _seal(self, state, df, k=10):
+        labels = list(df.index[:k])
+        state["raw_data"] = df
+        state["test_lockbox"] = {
+            "labels": labels, "fraction": 0.2, "seed": 42,
+            "n_total": len(df), "n_test": len(labels),
+            "signature": "sig", "stratified": False,
+        }
+        return labels
+
+    def test_a_datetime_seal_still_seals_the_same_rows_after_a_restore(
+            self, fake_session):
+        df = _dated_study()
+        labels = self._seal(fake_session, df)
+        assert _sealed_rows_seen_by_the_mask(
+            fake_session["test_lockbox"], df.index) == len(labels)
+
+        archive, _ = session_manager._collect_session_data()
+        fake_session.clear()
+        _, _, warnings = session_manager._restore_session_data(archive)
+
+        assert warnings == [], f"a clean round trip must not warn: {warnings}"
+        back = fake_session["raw_data"]
+        restored = fake_session["test_lockbox"]["labels"]
+        assert all(isinstance(x, pd.Timestamp) for x in restored), (
+            "labels came back as text, which no consumer can match")
+        assert restored == labels
+        assert _sealed_rows_seen_by_the_mask(
+            fake_session["test_lockbox"], back.index) == len(labels), (
+            "the seal passed the restore check and then sealed nobody")
+
+    def test_the_saved_record_carries_the_label_type(self, fake_session):
+        """Reconstruction needs the dtype; without it the restore is guessing."""
+        df = _dated_study()
+        self._seal(fake_session, df)
+        archive, _ = session_manager._collect_session_data()
+        with zipfile.ZipFile(io.BytesIO(archive)) as zf:
+            saved = json.loads(zf.read("lockbox.json").decode())
+        assert "datetime64" in str(saved.get("labels_dtype"))
+        assert isinstance(saved["labels"][0], str), (
+            "the labels themselves still travel as JSON scalars")
+
+    def test_a_label_that_cannot_be_rebuilt_is_refused_out_loud(
+            self, fake_session):
+        """The other honest ending. A label the index does not hold must fail
+        the check rather than coerce its way past it."""
+        df = _dated_study()
+        self._seal(fake_session, df)
+        archive, _ = session_manager._collect_session_data()
+        # Corrupt one label into a date the study does not contain.
+        buf = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(archive)) as src, \
+                zipfile.ZipFile(buf, "w") as out:
+            for item in src.infolist():
+                data = src.read(item.filename)
+                if item.filename == "lockbox.json":
+                    payload = json.loads(data.decode())
+                    payload["labels"][0] = "1999-12-31 00:00:00"
+                    data = json.dumps(payload).encode()
+                out.writestr(item, data)
+        fake_session.clear()
+        _, _, warnings = session_manager._restore_session_data(buf.getvalue())
+        assert "test_lockbox" not in fake_session
+        assert any("absent from the restored data" in w for w in warnings), warnings
+
+    def test_a_cohort_run_over_dates_survives_the_same_way(self, fake_session):
+        df = _dated_study()
+        fake_session["raw_data"] = df
+        group = list(df.index[df["b"] < 2])
+        fake_session["cohort_run"] = {
+            "column": "b", "value": 0, "label": "low b", "labels": group,
+            "n_rows": len(group), "n_total": len(df), "position": 1, "of": 2,
+            "order": ["low b", "high b"], "target_col": "y",
+            "dropped_features": [],
+        }
+        archive, _ = session_manager._collect_session_data()
+        fake_session.clear()
+        _, _, warnings = session_manager._restore_session_data(archive)
+        assert warnings == []
+        restored = fake_session["cohort_run"]["labels"]
+        assert restored == group
+        assert (fake_session["raw_data"].loc[restored, "b"] < 2).all()
+
+    def test_an_integer_index_is_unaffected(self, fake_session):
+        """The fix must not change the case that already worked."""
+        df = _gappy_study()
+        labels = _seal(fake_session, df)
+        archive, _ = session_manager._collect_session_data()
+        fake_session.clear()
+        _, _, warnings = session_manager._restore_session_data(archive)
+        assert warnings == []
+        assert fake_session["test_lockbox"]["labels"] == labels
+
+
+class TestSweep008TheArchiveCarriesTheWholeSeal:
+    """Enumerating the saved fields dropped every field added afterwards."""
+
+    def _sealed_session(self, state):
+        rng = np.random.default_rng(4)
+        n = 180
+        df = pd.DataFrame({"SUBJ": np.repeat(range(60), 3),
+                           "age": rng.integers(20, 80, n),
+                           "y": rng.integers(0, 2, n)})
+        state["raw_data"] = df
+        import streamlit as st
+        from utils.test_lockbox import ensure_lockbox, record_lockbox_open
+        st.session_state.clear()
+        try:
+            lb = ensure_lockbox(df, "y", "classification")
+            record_lockbox_open("Train & Compare")
+            record_lockbox_open("Train & Compare")
+            record_lockbox_open("Sensitivity Analysis (seed sweep)")
+            lb = dict(st.session_state["test_lockbox"])
+        finally:
+            st.session_state.clear()
+        state["test_lockbox"] = lb
+        return df, lb
+
+    def test_every_field_the_seal_carries_survives_the_round_trip(
+            self, fake_session):
+        df, before = self._sealed_session(fake_session)
+        archive, _ = session_manager._collect_session_data()
+        fake_session.clear()
+        _, _, warnings = session_manager._restore_session_data(archive)
+        assert warnings == [], warnings
+        after = fake_session["test_lockbox"]
+        missing = sorted(set(before) - set(after))
+        assert not missing, f"the archive dropped {missing} from the seal"
+
+    def test_the_open_count_and_its_timestamps_come_back(self, fake_session):
+        df, before = self._sealed_session(fake_session)
+        assert before["opened_count"] == 3
+        archive, _ = session_manager._collect_session_data()
+        fake_session.clear()
+        session_manager._restore_session_data(archive)
+        after = fake_session["test_lockbox"]
+        assert after["opened_count"] == 3, (
+            "a restored session forgot three openings and the Methods sentence "
+            "went back to 'accessed only for the final evaluation'")
+        assert len(after["opened_at"]) == 3
+
+    def test_a_restored_undetermined_seal_renders_its_warning_again(
+            self, fake_session, monkeypatch):
+        df, before = self._sealed_session(fake_session)
+        assert before["seal_basis"] == "undetermined", "fixture must be undetermined"
+        archive, _ = session_manager._collect_session_data()
+        fake_session.clear()
+        session_manager._restore_session_data(archive)
+        after = fake_session["test_lockbox"]
+        assert after["seal_basis"] == "undetermined"
+        assert after["undetermined_because"], "the record lost WHY"
+
+        import streamlit as st
+        from utils.session_state import DataConfig
+        from utils.test_lockbox import render_lockbox_status
+        warnings_seen: list = []
+        st.session_state.clear()
+        try:
+            st.session_state["test_lockbox"] = after
+            st.session_state["raw_data"] = df
+            st.session_state["data_config"] = DataConfig(
+                target_col="y", feature_cols=["age"], task_type="classification")
+            monkeypatch.setattr(st, "warning",
+                                lambda msg, **kw: warnings_seen.append(str(msg)))
+            monkeypatch.setattr(st, "caption", lambda msg, **kw: None)
+            render_lockbox_status()
+        finally:
+            st.session_state.clear()
+        assert any("Could not tell whether one person" in w for w in warnings_seen), (
+            f"a restored undetermined seal rendered a clean lock: {warnings_seen}")
