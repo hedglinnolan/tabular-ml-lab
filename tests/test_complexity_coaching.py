@@ -208,4 +208,7 @@ def test_no_triggers_when_complex_clearly_wins():
         },
     }
     findings = run_post_training_diagnostics(results, 'regression')
-    assert len(findings) == 0
+    # `train_no_bootstrap_ci` is not a complexity trigger: it fires because this
+    # call passes no bootstrap_results, which is the case it exists to catch —
+    # a point estimate about to be reported with no interval attached.
+    assert {f['id'] for f in findings} <= {'train_no_bootstrap_ci'}

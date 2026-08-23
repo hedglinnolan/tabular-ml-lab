@@ -374,6 +374,28 @@ def _auto_generate_insights():
                 relevant_pages=["04_Feature_Selection", "10_Report_Export"],
             ))
 
+    # `MINE-004`. The scan above is the only leakage detector in the app, and it
+    # used to fail silently — leaving leakage_candidate_cols empty, which is the
+    # same state as "checked and clean". The clean-data opportunity below fires
+    # on an unresolved-issue count of zero and puts "no blocking data-quality
+    # issues (no severe missingness, leakage candidates, or distributional
+    # anomalies)" into the Discussion. A scan that did not run must say so: this
+    # is a warning, so it both discloses the gap and keeps that count non-zero.
+    if getattr(signals, "leakage_scan_error", ""):
+        ledger.upsert(Insight(
+            id="eda_leakage_scan_failed",
+            source_page="02_EDA", category="relationship", severity="warning",
+            finding=f"The target-leakage screen could not run ({signals.leakage_scan_error})",
+            implication="Leakage was not ruled out — no evidence is not evidence of none.",
+            recommended_action="Re-run EDA (or reduce the column count) before reporting a clean data-quality result",
+            manuscript_text=(
+                "the automated target-leakage screen did not complete, so "
+                "near-collinearity between individual predictors and the "
+                "outcome was not ruled out"
+            ),
+            relevant_pages=["02_EDA", "04_Feature_Selection", "10_Report_Export"],
+        ))
+
     # Collinearity — cluster correlated features into groups instead of per-pair
     # (high_corr_pairs already filtered to user's feature_cols at computation time)
     max_corr = signals.collinearity_summary.get("max_corr", 0)

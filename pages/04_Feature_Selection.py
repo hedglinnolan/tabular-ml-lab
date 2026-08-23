@@ -130,8 +130,20 @@ if categorical_excluded:
         f"({', '.join(categorical_excluded[:5])}"
         f"{'...' if len(categorical_excluded) > 5 else ''}) "
         f"are excluded from ranking — selection methods require numeric inputs. "
-        f"These features are retained in your dataset and can still be used for modeling."
+        f"They are carried through into the modeling feature set when you apply "
+        f"a selection below, and the manual selector lets you drop them by hand."
     )
+
+
+# `CONTRACT-014`. The caption above promises the non-ranked columns survive,
+# and both Apply buttons used to write a numeric-only list into
+# `data_config.feature_cols` — the very list pages/05 splits its categorical
+# branch out of, so sex, smoking status and every other categorical predictor
+# left the model by the same click that promised to keep them. Ranking stays
+# numeric-only; APPLYING a ranking unions the non-ranked columns back in.
+def _with_carried_categoricals(selected: List[str]) -> List[str]:
+    """Ranked picks plus the non-ranked columns the caption promised to keep."""
+    return list(selected) + [c for c in categorical_excluded if c not in selected]
 
 # Prepare data: drop missing targets AND quarantine the locked test rows.
 # Running selectors on all rows would let the test set vote on which
@@ -355,8 +367,11 @@ if st.button("🔍 Run Feature Selection", type="primary"):
     status.text("Done!")
     st.session_state["feature_selection_results"] = results
 
-    # Consensus
-    consensus_threshold = max(1, len(results) // 2)
+    # Consensus. `max(1, len(results) // 2)` made the threshold 1 for one, two
+    # or three methods, so "consensus" named the UNION of the methods' picks —
+    # while the success message below and the manuscript both read it as
+    # agreement. Agreement means at least two methods selected the feature.
+    consensus_threshold = max(2, len(results) // 2)
     consensus = consensus_features(results, min_methods=consensus_threshold)
     st.session_state["consensus_features"] = consensus
     
@@ -390,6 +405,12 @@ if st.button("🔍 Run Feature Selection", type="primary"):
     except Exception:
         pass  # Provenance recording should never break the workflow
 
+    if len(results) < 2:
+        st.info(
+            "Only one method completed, so there is no consensus to report — "
+            "two methods must agree before a feature is called a consensus "
+            "predictor. Run a second method, or use manual selection below."
+        )
     st.success(f"Feature selection complete! {len(results)} methods run.")
 
 # ============================================================================
@@ -448,7 +469,7 @@ if results:
                     fig.update_layout(
                         title="LASSO Coefficient Path",
                         xaxis_title="log₁₀(α)",
-                        yaxis_title="Coefficient",
+                        yaxis_title="Standardized coefficient",
                         height=400,
                     )
                     st.plotly_chart(fig)
@@ -520,10 +541,19 @@ if results:
 
         # Apply to data config
         st.markdown("---")
+        if categorical_excluded:
+            st.caption(
+                f"Applying will model on the {len(consensus)} consensus "
+                f"predictor(s) plus the {len(categorical_excluded)} non-ranked "
+                f"feature(s) listed above ({', '.join(categorical_excluded[:5])}"
+                f"{'...' if len(categorical_excluded) > 5 else ''}). Use manual "
+                f"selection below to drop any of them."
+            )
         if st.button("📋 Use consensus features for modeling", type="primary"):
-            data_config.feature_cols = consensus
+            applied_features = _with_carried_categoricals(consensus)
+            data_config.feature_cols = applied_features
             st.session_state['data_config'] = data_config
-            st.session_state['selected_features'] = list(consensus)
+            st.session_state['selected_features'] = list(applied_features)
             # The feature set changed: any preprocessing pipeline, split, or
             # trained model built on the old set is stale and would name dropped
             # columns at train time. Clear them (keeping this selection and its
@@ -538,8 +568,10 @@ if results:
                     break
             log_methodology(step='Feature Selection Applied', action='Applied consensus feature selection', details={
                 'method': 'consensus',
-                'n_features_selected': len(consensus),
-                'features': consensus,
+                'n_features_selected': len(applied_features),
+                'features': list(applied_features),
+                'n_consensus_ranked': len(consensus),
+                'carried_through_unranked': list(categorical_excluded),
                 'consensus_threshold': consensus_threshold_logged,
             })
             try:
@@ -550,23 +582,41 @@ if results:
                 _prov.record_feature_selection(
                     method='consensus',
                     n_before=_n_before,
-                    n_after=len(consensus),
-                    features_kept=list(consensus),
+                    n_after=len(applied_features),
+                    features_kept=list(applied_features),
                     consensus_methods=_methods,
                 )
             except Exception:
                 pass  # Provenance recording should never break the workflow
-            st.success(f"Updated feature set to {len(consensus)} consensus features. Proceed to Preprocessing.")
+            _carried = len(applied_features) - len(consensus)
+            st.success(
+                f"Updated feature set to {len(applied_features)} features: "
+                f"{len(consensus)} consensus predictors"
+                + (f" plus {_carried} non-ranked feature(s) carried through"
+                   if _carried else "")
+                + ". Proceed to Preprocessing."
+            )
     else:
         st.warning("No consensus features found. Try lowering the threshold or running more methods.")
 
     # Option to manually select
     with st.expander("🔧 Manual feature selection", expanded=False):
-        st.caption("Override the automatic selection by manually choosing features.")
+        st.caption(
+            "Override the automatic selection by manually choosing features. "
+            "Non-ranked (non-numeric) features are listed too: they were not "
+            "ranked above, but they are modeling features, so dropping one has "
+            "to be a choice made here rather than a side effect of applying a "
+            "ranking."
+        )
+        # Options include categorical_excluded: with a numeric-only options list
+        # a categorical predictor could not be re-added by hand once dropped.
+        manual_options = numeric_features + [
+            c for c in categorical_excluded if c not in numeric_features
+        ]
         manual_selection = st.multiselect(
             "Select features",
-            options=numeric_features,
-            default=consensus if consensus else numeric_features,
+            options=manual_options,
+            default=_with_carried_categoricals(consensus) if consensus else manual_options,
             key="manual_feature_selection",
         )
         if st.button("Apply manual selection"):

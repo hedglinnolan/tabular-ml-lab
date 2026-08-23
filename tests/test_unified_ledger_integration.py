@@ -18,25 +18,31 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd
 import numpy as np
 
-# Mock streamlit
-class MockSessionState(dict):
-    def __getattr__(self, name):
-        if name in self:
-            return self[name]
-        raise AttributeError(name)
-    def __setattr__(self, name, value):
-        self[name] = value
+# Use the real streamlit in bare mode when it is installed. Installing the
+# mock unconditionally put a plain CLASS at sys.modules['streamlit'] for the
+# rest of the process, so any later-collected file doing
+# `from streamlit.testing.v1 import AppTest` failed with "'streamlit' is not
+# a package" — cross-file pollution that only appeared in multi-file runs.
+try:
+    import streamlit as st
+except ImportError:
+    class MockSessionState(dict):
+        def __getattr__(self, name):
+            if name in self:
+                return self[name]
+            raise AttributeError(name)
+        def __setattr__(self, name, value):
+            self[name] = value
 
-class MockSt:
-    session_state = MockSessionState()
-    @staticmethod
-    def cache_data(*a, **kw):
-        def wrapper(f): return f
-        return wrapper
+    class MockSt:
+        session_state = MockSessionState()
+        @staticmethod
+        def cache_data(*a, **kw):
+            def wrapper(f): return f
+            return wrapper
 
-import unittest.mock as mock
-sys.modules.setdefault('streamlit', MockSt)
-st = MockSt
+    sys.modules['streamlit'] = MockSt
+    st = MockSt
 
 from utils.insight_ledger import (
     Insight, InsightLedger, get_ledger, CATEGORIES, SEVERITIES,

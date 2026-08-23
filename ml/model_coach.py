@@ -784,6 +784,11 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
 
 # ── Preprocessing Coaching (Model-Scoped) ─────────────────────────────────
 
+def _count_word_coach(n: int, noun: str) -> str:
+    """'1 feature' / '3 features' — manuscript prose avoids '(s)'."""
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
 def generate_preprocessing_insights(
     selected_models: List[str],
     profile: Any,
@@ -801,6 +806,17 @@ def generate_preprocessing_insights(
     profile : DatasetProfile or similar
         Must expose: ``highly_skewed_features``, ``features_with_outliers``,
         ``n_features_with_missing``.
+
+    `COACH-007`. Every insight here carries an explicit manuscript disposition,
+    because the ledger's default for an unresolved insight is the manuscript's
+    LIMITATIONS list. Advice that is a reassurance ("the default pipeline
+    already standardizes for you") or a neutral fact is marked
+    ``metadata.audit_only`` with no ``manuscript_text``: it is coaching, and a
+    step the app performed must never be printed to a reviewer as an
+    unaddressed limitation. The two that describe a real data condition carry a
+    manuscript-register sentence that is true whether or not the user acts on
+    it. Each also states whether a control resolves it, so no advice is a
+    promise the app cannot keep.
     """
     from utils.insight_ledger import (
         MODEL_TO_FAMILY, ISSUE_MODEL_RELEVANCE,
@@ -847,7 +863,7 @@ def generate_preprocessing_insights(
                 "category": "preprocessing",
                 "severity": "warning",
                 "finding": (
-                    f"{len(skewed)} feature(s) are highly skewed "
+                    f"{_count_word_coach(len(skewed), 'feature')} are highly skewed "
                     f"({', '.join(skewed[:3])}{'…' if len(skewed) > 3 else ''})."
                 ),
                 "implication": (
@@ -856,7 +872,14 @@ def generate_preprocessing_insights(
                 ),
                 "recommended_action": (
                     f"For your {_family_list(affected)}, {_skew_transform_clause(profile, skewed)}"
-                    f"{immune_msg}"
+                    f"{immune_msg} Configure the transform in this page's numeric "
+                    f"transform setting (or in Feature Engineering); there is no "
+                    f"one-click resolver for this observation."
+                ),
+                "manuscript_text": (
+                    f"{_count_word_coach(len(skewed), 'predictor')} exhibited "
+                    f"strong skewness, which can increase the influence of "
+                    f"extreme values in scale-sensitive models"
                 ),
                 "model_scope": affected,
                 "relevant_pages": ["05_Preprocess"],
@@ -892,7 +915,8 @@ def generate_preprocessing_insights(
                 "category": "preprocessing",
                 "severity": "info",
                 "finding": (
-                    f"{len(outlier_feats)} of {p_total} feature(s) contain outliers "
+                    f"{len(outlier_feats)} of {_count_word_coach(p_total, 'feature')} "
+                    f"contain outliers "
                     f"({', '.join(outlier_feats[:3])}{'…' if len(outlier_feats) > 3 else ''})."
                 ),
                 "implication": (
@@ -900,7 +924,14 @@ def generate_preprocessing_insights(
                 ),
                 "recommended_action": (
                     f"For your {_family_list(affected)}, consider Winsorizing or "
-                    f"robust scaling.{immune_msg}{detector_caveat}"
+                    f"robust scaling.{immune_msg}{detector_caveat} Building the "
+                    f"pipelines below records whichever outlier handling you "
+                    f"configure against this observation."
+                ),
+                "manuscript_text": (
+                    f"{_count_word_coach(len(outlier_feats), 'predictor')} "
+                    f"contained values flagged as outlying by the interquartile "
+                    f"criterion, which can influence scale-sensitive models"
                 ),
                 "model_scope": affected,
                 "relevant_pages": ["05_Preprocess"],
@@ -930,13 +961,17 @@ def generate_preprocessing_insights(
             ),
             "recommended_action": (
                 f"Keep scaling ON for {_family_list(scale_affected)} (the default "
-                f"does this — only verify it if you customize the pipeline).{immune_msg}"
+                f"does this — only verify it if you customize the pipeline).{immune_msg} "
+                f"Nothing to resolve: this states what the pipeline already does."
             ),
             "model_scope": scale_affected,
             "relevant_pages": ["05_Preprocess"],
             # 'scaling' is the key that exists in THEORY_ANCHORS; the demo
             # previously rendered only via an accidental text match
             "theory_anchor": "scaling",
+            # Reassurance about a step the app performs — never a limitation.
+            "manuscript_text": "",
+            "metadata": {"audit_only": True},
         })
 
     # 4. Missing data — native handling differs by family
@@ -949,7 +984,8 @@ def generate_preprocessing_insights(
             "category": "preprocessing",
             "severity": "info",
             "finding": (
-                f"{n_missing} feature(s) have missing values."
+                f"{_count_word_coach(n_missing, 'feature')} have missing values; "
+                f"model families differ in whether they need imputation."
             ),
             "implication": (
                 "HistGradientBoosting, LightGBM, XGBoost, and Random Forest "
@@ -962,12 +998,19 @@ def generate_preprocessing_insights(
                 "downstream explainability sees complete data. "
                 + (f"For your {_family_list(non_tree)}, imputation is required — "
                    f"median is the robust default; use MICE when missingness "
-                   f"exceeds ~5%."
+                   f"exceeds ~5%. "
                    if non_tree else "")
+                + "Nothing to resolve here: the missingness itself is reported "
+                  "by the EDA ledger, and this note only says how each family "
+                  "treats it."
             ),
             "model_scope": [],  # relevant to all, but differentiates
             "relevant_pages": ["05_Preprocess"],
             "theory_anchor": "missing_data",
+            # Neutral fact plus family guidance — the missingness limitation
+            # itself belongs to the EDA insight that measures it, not here.
+            "manuscript_text": "",
+            "metadata": {"audit_only": True},
         })
 
     return insights
@@ -979,6 +1022,40 @@ def _model_display_name_coach(key: str) -> str:
     """Return a human-readable model name from the coach's model info dict."""
     info = _get_model_info()
     return info.get(key, {}).get('name', key.upper())
+
+
+def _resolve_primary_model(
+    model_results: Dict[str, Dict[str, Any]],
+    task_type: str,
+    primary_model: str = "",
+) -> Tuple[str, str]:
+    """Return (model_key, how_it_was_chosen) for a single-model diagnostic.
+
+    `COACH-003`. The caller's `primary_model` is honored when it names a
+    trained model; otherwise the fallback used to be `next(iter(...))` — the
+    first model in dict insertion order, i.e. checkbox order — and the finding
+    it produced named no model at all. Checkbox order is not a defensible
+    basis for a manuscript sentence, so the fallback is now best-by-metric and
+    the basis travels with the key so the text can say which model it is about.
+    """
+    if primary_model and primary_model in model_results:
+        return primary_model, "designated primary model"
+
+    metric = "RMSE" if task_type == "regression" else "Accuracy"
+    higher_better = task_type != "regression"
+    scored = []
+    for key, r in model_results.items():
+        val = (r or {}).get("metrics", {}).get(metric)
+        if val is not None:
+            try:
+                scored.append((key, float(val)))
+            except (TypeError, ValueError):
+                continue
+    if scored:
+        scored.sort(key=lambda kv: kv[1], reverse=higher_better)
+        return scored[0][0], f"best {metric}"
+
+    return next(iter(model_results)), "only model with residuals available"
 
 
 def _detect_prefer_simpler(
@@ -1421,6 +1498,58 @@ def _detect_ci_overlap(
     }]
 
 
+def _detect_no_bootstrap_ci(
+    model_results: Dict[str, Dict[str, Any]],
+    task_type: str,
+    bootstrap_results: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """Before any metric is reported, say that it has no interval yet.
+
+    The coach's only CI check (`_detect_ci_overlap`) runs on intervals that
+    already exist, so the case that matters most — a point estimate about to
+    be written into a manuscript with no uncertainty attached at all — had no
+    detector. This is the one that fires when there are no intervals yet.
+    """
+    if bootstrap_results:
+        return []
+    scored = [k for k, r in model_results.items()
+              if (r or {}).get("metrics")]
+    if not scored:
+        return []
+
+    metric = "RMSE" if task_type == "regression" else "F1"
+    n_txt = "1 model" if len(scored) == 1 else f"{len(scored)} models"
+    rank_clause = (
+        " and the ranking between them rests on point estimates alone"
+        if len(scored) > 1 else ""
+    )
+    return [{
+        'id': 'train_no_bootstrap_ci',
+        'severity': 'info',
+        'finding': (
+            f"{n_txt} trained, and no bootstrap confidence intervals have been "
+            f"computed for the reported metrics{rank_clause}."
+        ),
+        'implication': (
+            f"A single test split gives one draw of {metric}; without an "
+            f"interval the number carries no visible sampling error, and a "
+            f"difference small enough to be noise reads as a real one."
+        ),
+        'recommended_action': (
+            "Run the bootstrap confidence intervals section on this page "
+            "before reporting any metric or model ranking."
+        ),
+        # No manuscript_text, and audit-only: this is a prompt for an action
+        # still available in the app, not a finding about the study. Nothing
+        # re-runs the post-training detectors after the intervals are computed,
+        # so a Discussion sentence saying "no confidence intervals were
+        # computed" could be false by the time the report is exported.
+        'manuscript_text': '',
+        'model_scope': [],
+        'metadata': {'audit_only': True, 'models_without_ci': scored},
+    }]
+
+
 def _detect_heteroscedastic_residuals(
     model_results: Dict[str, Dict[str, Any]],
     task_type: str,
@@ -1432,7 +1561,7 @@ def _detect_heteroscedastic_residuals(
 
     if task_type != "regression" or not model_results:
         return []
-    key = primary_model if primary_model in model_results else next(iter(model_results))
+    key, chosen_by = _resolve_primary_model(model_results, task_type, primary_model)
     r = model_results.get(key) or {}
     y_test, y_pred = r.get("y_test"), r.get("y_test_pred")
     if y_test is None or y_pred is None:
@@ -1454,7 +1583,9 @@ def _detect_heteroscedastic_residuals(
         'severity': 'info',
         'finding': (
             f"{name}'s residual spread {direction} with the predicted value "
-            f"(Spearman \u03c1 = {rho:.2f} between |residual| and prediction)."
+            f"(Spearman \u03c1 = {rho:.2f} between |residual| and prediction). "
+            f"Checked on {name} ({chosen_by}); other trained models are not "
+            f"covered by this check."
         ),
         'implication': (
             "Errors are not uniform across the outcome range: constant-width "
@@ -1465,14 +1596,18 @@ def _detect_heteroscedastic_residuals(
             "Consider a target transform (log / Yeo-Johnson) on the Train page "
             "and inspect the Bland\u2013Altman plot on Explainability."
         ),
+        # The model is named here, not only in the `finding` above: the
+        # manuscript sentence used to assert non-constant residual variance
+        # with no attribution at all, about whichever model came first in
+        # checkbox order (`COACH-003`).
         'manuscript_text': (
-            f"residual variance was not constant across the predicted range "
-            f"(Spearman \u03c1 = {rho:.2f} between absolute residuals and "
-            f"predictions), so uniform-width prediction intervals would be "
-            f"miscalibrated"
+            f"for the {name} model, residual variance was not constant across "
+            f"the predicted range (Spearman \u03c1 = {rho:.2f} between absolute "
+            f"residuals and predictions), so uniform-width prediction intervals "
+            f"would be miscalibrated"
         ),
         'model_scope': [],
-        'metadata': {'rho': float(rho), 'model': key},
+        'metadata': {'rho': float(rho), 'model': key, 'model_chosen_by': chosen_by},
     }]
 
 
@@ -1495,6 +1630,7 @@ def run_post_training_diagnostics(
     findings.extend(_detect_overfit(model_results, task_type))
     findings.extend(_detect_accuracy_vs_nir(model_results, task_type))
     findings.extend(_detect_ci_overlap(model_results, task_type, bootstrap_results))
+    findings.extend(_detect_no_bootstrap_ci(model_results, task_type, bootstrap_results))
     findings.extend(_detect_heteroscedastic_residuals(model_results, task_type, primary_model))
     return findings
 

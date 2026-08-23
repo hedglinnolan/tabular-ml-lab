@@ -34,6 +34,10 @@ class DatasetSignals:
     target_stats: Dict = field(default_factory=dict)
     leakage_flags: List[str] = field(default_factory=list)
     leakage_candidate_cols: List[str] = field(default_factory=list)
+    # `MINE-004`. Empty leakage lists mean "the scan found nothing" ONLY if the
+    # scan ran. This carries the reason it did not, so a failure and a clean
+    # dataset stop being the same downstream signal.
+    leakage_scan_error: str = ""
     collinearity_summary: Dict = field(default_factory=dict)
     physio_plausibility_flags: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
@@ -477,8 +481,17 @@ def compute_dataset_signals(
                     if len(high_corr) > 0:
                         signals.leakage_flags.append(f"{len(high_corr)} columns with >0.95 correlation to target")
                         signals.leakage_candidate_cols = high_corr.index.tolist()
-            except Exception:
-                pass  # Skip leakage detection if correlation fails
+            except Exception as exc:
+                # The scan may fail — the p x p correlation matrix is built
+                # uncapped — but its failure must not read as a clean bill of
+                # health. Nothing downstream can tell an empty
+                # leakage_candidate_cols from a scan that never ran, and the
+                # EDA page's "no blocking data-quality issues" sentence is
+                # emitted on exactly that emptiness.
+                signals.leakage_scan_error = f"{type(exc).__name__}: {exc}"
+                signals.notes.append(
+                    f"Target-leakage screen did not complete: {signals.leakage_scan_error}"
+                )
     
     # Collinearity (sample if too many columns)
     # Filter to truly numeric columns within user's selected features

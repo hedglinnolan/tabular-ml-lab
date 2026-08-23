@@ -1243,6 +1243,13 @@ class InsightLedger:
             if i.resolved:
                 continue
 
+            # COACH-007: an audit-only insight (a reassurance or neutral fact)
+            # must never surface as a study limitation, even after the training
+            # gate auto-acknowledges it — acknowledgement records that the user
+            # saw it, not that it became a finding about the study.
+            if i.metadata.get("audit_only"):
+                continue
+
             if i.acknowledged or self._is_narrative_worthy(i):
                 if text not in seen_limitations:
                     limitations.append(text)
