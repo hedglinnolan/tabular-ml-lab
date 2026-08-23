@@ -682,6 +682,56 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 
+_UNCLAIMED = object()
+
+
+def _claim_pending_widget_restore(key: str):
+    """Pop one deferred widget value from the session-restore dict.
+
+    A restore cannot write a Streamlit widget key directly, so
+    `session_manager` parks the saved values in
+    `_pending_widget_state_restore` and each key's owner claims it before the
+    widget is instantiated. Returns `_UNCLAIMED` when nothing is pending.
+    """
+    pending = st.session_state.get("_pending_widget_state_restore", {})
+    if key not in pending:
+        return _UNCLAIMED
+    value = pending.pop(key)
+    if pending:
+        st.session_state["_pending_widget_state_restore"] = pending
+    else:
+        st.session_state.pop("_pending_widget_state_restore", None)
+    return value
+
+
+def apply_pending_exploratory_mode() -> None:
+    """Claim a restored `exploratory_mode` before any page reads it.
+
+    `exploratory_mode` is page 01's checkbox key, but `is_exploratory()` is read
+    on every page. While page 01 was the only claimant, a restored exploratory
+    session read as QUARANTINED everywhere else until the user happened to open
+    page 01 — the app behaving as though a holdout protected artifacts that were
+    produced without one (STATE-041). Claiming it here, in the function every
+    page calls before its own content, is the mechanism `workflow_mode_selector`
+    already uses, not a bypass of the widget contract: the value is written
+    before page 01's checkbox is instantiated, which is how Streamlit expects a
+    widget key to be seeded.
+    """
+    restored = _claim_pending_widget_restore("exploratory_mode")
+    if restored is _UNCLAIMED:
+        return
+    st.session_state["exploratory_mode"] = bool(restored)
+    if st.session_state["exploratory_mode"]:
+        # Quarantine-off must never arrive silently: the watermark that stains
+        # the manuscript is set with the mode, not on whichever page owns the
+        # checkbox.
+        st.session_state["exploratory_used"] = True
+        st.warning(
+            "🔓 This restored session was saved in **exploratory mode** — "
+            "the test-set quarantine is OFF, as it was when saved."
+        )
+
+
 def render_sidebar_workflow(current_page: str = ""):
     """Render the unified sidebar with branding + workflow checklist.
 
@@ -693,6 +743,8 @@ def render_sidebar_workflow(current_page: str = ""):
     from utils.session_state import get_data
     from utils.llm_ui import render_llm_settings_sidebar
     from utils.session_manager import render_session_controls
+
+    apply_pending_exploratory_mode()
 
     render_llm_settings_sidebar()
 
@@ -716,13 +768,9 @@ def render_sidebar_workflow(current_page: str = ""):
     with st.sidebar:
         st.markdown("---")
 
-        pending_widget_restore = st.session_state.get("_pending_widget_state_restore", {})
-        if "workflow_mode_selector" in pending_widget_restore:
-            st.session_state["workflow_mode"] = pending_widget_restore.pop("workflow_mode_selector")
-            if pending_widget_restore:
-                st.session_state["_pending_widget_state_restore"] = pending_widget_restore
-            else:
-                st.session_state.pop("_pending_widget_state_restore", None)
+        _restored_mode = _claim_pending_widget_restore("workflow_mode_selector")
+        if _restored_mode is not _UNCLAIMED:
+            st.session_state["workflow_mode"] = _restored_mode
 
         workflow_mode = st.radio(
             "Workflow mode",

@@ -33,6 +33,89 @@ from ml.stats_tests import (
 
 logger = logging.getLogger(__name__)
 
+# ── Which family of test the DATA asks for ────────────────────────────────
+# The parametric/non-parametric switch used to default to parametric whatever
+# the distribution looked like, so an unattended run reported a t-test on
+# skewed data. ml/table_one.py already chooses per-variable by Shapiro-Wilk for
+# every Table 1 row; the same rule (and the same statistic, from
+# ml.stats_tests.normality_check) decides the default here.
+_NORMALITY_MIN_N = 8      # ml/table_one._is_normal's floor: below it Shapiro-Wilk decides nothing
+_NORMALITY_ALPHA = 0.05
+
+
+def _parametric_default(samples: Dict[str, np.ndarray]) -> Tuple[bool, str]:
+    """Default the parametric choice from a normality pre-check.
+
+    Parametric only when EVERY sample is compatible with normality at
+    `_NORMALITY_ALPHA`. Too few observations to test is not evidence of
+    normality, so it falls to the non-parametric test and says which sample
+    made it fall.
+
+    Returns (use_parametric, reason) — the reason is shown on screen and
+    recorded with the result.
+    """
+    verdicts: List[str] = []
+    parametric = True
+    for label, values in samples.items():
+        x = np.asarray(values, dtype=float)
+        x = x[~np.isnan(x)]
+        if len(x) < _NORMALITY_MIN_N:
+            parametric = False
+            verdicts.append(f"{label}: n={len(x)}, too few to test normality")
+            continue
+        _, p, test_label = normality_check(x)
+        if np.isnan(p):
+            parametric = False
+            verdicts.append(f"{label}: {test_label} could not be computed")
+            continue
+        if p <= _NORMALITY_ALPHA:
+            parametric = False
+        verdicts.append(f"{label}: {test_label} p={p:.4g}")
+    return parametric, "; ".join(verdicts)
+
+
+def _parametric_choice(
+    samples: Dict[str, np.ndarray],
+    key_prefix: str,
+    scope: str,
+    checkbox_label: str,
+    parametric_name: str,
+    nonparametric_name: str,
+    help_text: str,
+) -> Tuple[bool, bool, str]:
+    """Render the pre-check, its verdict, and the override box.
+
+    The widget key carries `scope` (the columns the pre-check ran on): a key
+    that outlived the selection would answer for the previous columns, which is
+    the failure this replaces.
+
+    Returns (use_parametric, default, reason).
+    """
+    default, reason = _parametric_default(samples)
+    chosen = parametric_name if default else nonparametric_name
+    st.caption(
+        f"**Assumption check:** {reason} → defaulting to **{chosen}** "
+        f"({'normality not rejected' if default else 'normality rejected or untestable'} "
+        f"at α={_NORMALITY_ALPHA}). You can override below; whichever test runs "
+        f"is recorded with the result."
+    )
+    use_parametric = st.checkbox(
+        checkbox_label,
+        value=default,
+        key=f"{key_prefix}::{scope}",
+        help=help_text,
+    )
+    if use_parametric != default:
+        st.warning(
+            f"⚠️ Overriding the assumption check: running the "
+            f"**{parametric_name if use_parametric else nonparametric_name}** "
+            f"where the pre-check selected the "
+            f"**{nonparametric_name if use_parametric else parametric_name}**. "
+            f"The override is recorded with the result."
+        )
+    return use_parametric, default, reason
+
+
 init_session_state()
 
 st.set_page_config(page_title="Statistical Validation", page_icon="📊", layout="wide")
@@ -419,20 +502,23 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
         st.info(f"Groups found: {', '.join(map(str, unique_groups))}")
         st.stop()
     
-    # Parametric vs non-parametric
-    use_parametric = st.checkbox(
-        "Use parametric test (t-test)",
-        value=True,
-        key="two_sample_parametric",
-        help="Uncheck to use Mann-Whitney U (non-parametric). Use parametric if data is normally distributed."
+    # Parametric vs non-parametric — defaulted by the distributions themselves
+    group1_name, group2_name = unique_groups[0], unique_groups[1]
+    group1_data = df[df[group_var] == group1_name][numeric_var].dropna().values
+    group2_data = df[df[group_var] == group2_name][numeric_var].dropna().values
+    use_parametric, parametric_default, assumption_basis = _parametric_choice(
+        {str(group1_name): group1_data, str(group2_name): group2_data},
+        key_prefix="two_sample_parametric",
+        scope=f"{numeric_var}|{group_var}",
+        checkbox_label="Use parametric test (t-test)",
+        parametric_name="t-test",
+        nonparametric_name="Mann-Whitney U",
+        help_text="Uncheck to use Mann-Whitney U (non-parametric). The box is pre-set from the Shapiro-Wilk result above.",
     )
-    
+
     if st.button("Run Two-Sample Test", type="primary", key="run_two_sample"):
         with st.spinner("Running test..."):
-            group1_name, group2_name = unique_groups[0], unique_groups[1]
-            group1_data = df[df[group_var] == group1_name][numeric_var].dropna().values
-            group2_data = df[df[group_var] == group2_name][numeric_var].dropna().values
-            
+
             stat, p, test_name = two_sample_location_test(
                 group1_data, group2_data,
                 parametric=use_parametric
@@ -449,13 +535,19 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
                 'stat': stat,
                 'p': p,
                 'test_name': test_name,
-                'parametric': use_parametric
+                'parametric': use_parametric,
+                'parametric_default': parametric_default,
+                'assumption_basis': assumption_basis,
+                'assumption_overridden': use_parametric != parametric_default,
             }
             log_methodology(step='Statistical Validation', action=test_name, details={
                 'numeric_var': numeric_var,
                 'group_var': group_var,
                 'groups': [str(group1_name), str(group2_name)],
-                'p_value': p
+                'p_value': p,
+                'parametric': use_parametric,
+                'assumption_basis': assumption_basis,
+                'assumption_overridden': use_parametric != parametric_default,
             })
             try:
                 from utils.workflow_provenance import get_provenance
@@ -464,6 +556,9 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
                     variable=f"{numeric_var} by {group_var}",
                     statistic=float(stat) if stat is not None else None,
                     p_value=float(p) if p is not None else None,
+                    details={'parametric': use_parametric,
+                             'assumption_basis': assumption_basis,
+                             'assumption_overridden': use_parametric != parametric_default},
                 )
             except Exception:
                 pass  # Provenance recording should never break the workflow
@@ -491,6 +586,12 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
         - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < alpha_level else 'not statistically significant'} at α={alpha_level})
         - This {'suggests' if results['p'] < alpha_level else 'does not suggest'} a significant difference between {results['group1']} and {results['group2']}
         """)
+        if results.get('assumption_basis'):
+            st.caption(
+                f"Test selection: {results['assumption_basis']} → "
+                f"{'author override' if results.get('assumption_overridden') else 'assumption check'} "
+                f"chose the {'parametric' if results['parametric'] else 'non-parametric'} test."
+            )
         
         # Export to Table 1 button
         if st.button("📋 Add to Table 1", key="export_ttest_table1"):
@@ -562,20 +663,23 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
     
     st.info(f"Groups found: {', '.join(map(str, unique_groups))}")
     
-    use_parametric = st.checkbox(
-        "Use parametric test (ANOVA)",
-        value=True,
-        key="multi_group_parametric",
-        help="Uncheck to use Kruskal-Wallis (non-parametric)."
+    groups_data = [
+        df[df[group_var] == group][numeric_var].dropna().values
+        for group in unique_groups
+    ]
+    use_parametric, parametric_default, assumption_basis = _parametric_choice(
+        {str(g): d for g, d in zip(unique_groups, groups_data)},
+        key_prefix="multi_group_parametric",
+        scope=f"{numeric_var}|{group_var}",
+        checkbox_label="Use parametric test (ANOVA)",
+        parametric_name="ANOVA",
+        nonparametric_name="Kruskal-Wallis",
+        help_text="Uncheck to use Kruskal-Wallis (non-parametric). The box is pre-set from the Shapiro-Wilk results above.",
     )
-    
+
     if st.button("Run Multi-Group Test", type="primary", key="run_multi_group"):
         with st.spinner("Running test..."):
-            groups_data = [
-                df[df[group_var] == group][numeric_var].dropna().values
-                for group in unique_groups
-            ]
-            
+
             stat, p, test_name = k_sample_location_test(
                 groups_data,
                 parametric=use_parametric
@@ -592,13 +696,19 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
                 'stat': stat,
                 'p': p,
                 'test_name': test_name,
-                'parametric': use_parametric
+                'parametric': use_parametric,
+                'parametric_default': parametric_default,
+                'assumption_basis': assumption_basis,
+                'assumption_overridden': use_parametric != parametric_default,
             }
             log_methodology(step='Statistical Validation', action=test_name, details={
                 'numeric_var': numeric_var,
                 'group_var': group_var,
                 'n_groups': len(unique_groups),
-                'p_value': p
+                'p_value': p,
+                'parametric': use_parametric,
+                'assumption_basis': assumption_basis,
+                'assumption_overridden': use_parametric != parametric_default,
             })
             try:
                 from utils.workflow_provenance import get_provenance
@@ -607,6 +717,9 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
                     variable=f"{numeric_var} by {group_var}",
                     statistic=float(stat) if stat is not None else None,
                     p_value=float(p) if p is not None else None,
+                    details={'parametric': use_parametric,
+                             'assumption_basis': assumption_basis,
+                             'assumption_overridden': use_parametric != parametric_default},
                 )
             except Exception:
                 pass  # Provenance recording should never break the workflow
@@ -637,6 +750,12 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
         - This {'suggests' if results['p'] < alpha_level else 'does not suggest'} a significant difference among groups
         - Note: If significant, consider post-hoc tests to identify which groups differ
         """)
+        if results.get('assumption_basis'):
+            st.caption(
+                f"Test selection: {results['assumption_basis']} → "
+                f"{'author override' if results.get('assumption_overridden') else 'assumption check'} "
+                f"chose the {'parametric' if results['parametric'] else 'non-parametric'} test."
+            )
         
         # Export to Table 1 button
         if st.button("📋 Add to Table 1", key="export_anova_table1"):
@@ -894,19 +1013,23 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
     var_before = st.selectbox("Before/Time 1 Variable", options=numeric_cols, key="paired_before")
     var_after = st.selectbox("After/Time 2 Variable", options=[c for c in numeric_cols if c != var_before], key="paired_after")
     
-    use_parametric = st.checkbox(
-        "Use parametric test (paired t-test)",
-        value=True,
-        key="paired_parametric",
-        help="Uncheck to use Wilcoxon signed-rank test (non-parametric)"
+    # The paired t-test's assumption is on the DIFFERENCES, so that is what the
+    # pre-check tests — not the two measurement columns.
+    paired_df = df[[var_before, var_after]].dropna()
+    differences = (paired_df[var_after] - paired_df[var_before]).values
+    use_parametric, parametric_default, assumption_basis = _parametric_choice(
+        {f"{var_after} − {var_before}": differences},
+        key_prefix="paired_parametric",
+        scope=f"{var_before}|{var_after}",
+        checkbox_label="Use parametric test (paired t-test)",
+        parametric_name="paired t-test",
+        nonparametric_name="Wilcoxon signed-rank",
+        help_text="Uncheck to use the Wilcoxon signed-rank test (non-parametric). The box is pre-set from the Shapiro-Wilk result on the paired differences.",
     )
-    
+
     if st.button("Run Paired Test", type="primary", key="run_paired"):
         with st.spinner("Running test..."):
-            # Get paired data (drop rows where either is missing)
-            paired_df = df[[var_before, var_after]].dropna()
-            differences = (paired_df[var_after] - paired_df[var_before]).values
-            
+
             stat, p, test_name = paired_location_test(
                 differences,
                 parametric=use_parametric
@@ -923,13 +1046,19 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
                 'p': p,
                 'test_name': test_name,
                 'n_pairs': len(paired_df),
-                'parametric': use_parametric
+                'parametric': use_parametric,
+                'parametric_default': parametric_default,
+                'assumption_basis': assumption_basis,
+                'assumption_overridden': use_parametric != parametric_default,
             }
             log_methodology(step='Statistical Validation', action=test_name, details={
                 'var_before': var_before,
                 'var_after': var_after,
                 'n_pairs': len(paired_df),
-                'p_value': p
+                'p_value': p,
+                'parametric': use_parametric,
+                'assumption_basis': assumption_basis,
+                'assumption_overridden': use_parametric != parametric_default,
             })
             try:
                 from utils.workflow_provenance import get_provenance
@@ -938,6 +1067,9 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
                     variable=f"{var_before} vs {var_after}",
                     statistic=float(stat) if stat is not None else None,
                     p_value=float(p) if p is not None else None,
+                    details={'parametric': use_parametric,
+                             'assumption_basis': assumption_basis,
+                             'assumption_overridden': use_parametric != parametric_default},
                 )
             except Exception:
                 pass  # Provenance recording should never break the workflow
@@ -966,6 +1098,12 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
         - Number of pairs: **{results['n_pairs']}**
         - This {'suggests' if results['p'] < alpha_level else 'does not suggest'} a significant change from {results['var_before']} to {results['var_after']}
         """)
+        if results.get('assumption_basis'):
+            st.caption(
+                f"Test selection: {results['assumption_basis']} → "
+                f"{'author override' if results.get('assumption_overridden') else 'assumption check'} "
+                f"chose the {'parametric' if results['parametric'] else 'non-parametric'} test."
+            )
         
         # Export to Table 1 button
         if st.button("📋 Add to Table 1", key="export_paired_table1"):

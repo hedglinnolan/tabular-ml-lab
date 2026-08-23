@@ -555,10 +555,15 @@ def _build_reproducibility_manifest() -> Dict[str, Any]:
         pass
 
     _split_cfg = st.session_state.get('split_config')
+    # `SWEEP-023`: `or 42` rewrote seed 0 — a legitimate, common choice — as 42
+    # in the manifest a reviewer re-runs the study from. Absence is the only
+    # thing that falls back; 0 is a value.
+    _seed = getattr(_split_cfg, 'random_state', None)
+    if _seed is None:
+        _seed = st.session_state.get('random_seed')
     out = {
         'software_versions': versions,
-        'random_seed': int(getattr(_split_cfg, 'random_state',
-                                   st.session_state.get('random_seed', 42)) or 42),
+        'random_seed': 42 if _seed is None else int(_seed),
         'data_sha256': data_hash,
         'data_shape': {'rows': n_rows, 'columns': n_cols},
     }
@@ -2340,20 +2345,27 @@ st.header("💾 Export Options")
 with st.expander("Export Configuration"):
     export_models = st.checkbox("Include trained model artifacts (joblib/pickle)", value=True)
     export_predictions = st.checkbox("Include predictions CSV", value=True)
-    export_plots = st.checkbox("Include plots in zip", value=False)
+    # The figures a manuscript needs ship WITH the numbers by default: an
+    # export whose plots were opt-in produced a package of tables whose
+    # diagnostic and calibration figures the author then had to redraw by hand,
+    # from memory, outside the record.
+    export_plots = st.checkbox("Include plots in zip", value=True)
     if export_plots:
-        st.caption("⚠️ Plot export renders images server-side and may be slow with many models. Select only what you need.")
+        st.caption("⚠️ Plot export renders images server-side and may be slow with many models. Uncheck what you do not need.")
         st.caption("💡 Tip: You can also download any individual plot by hovering over it and clicking the 📷 camera icon.")
-        plot_col1, plot_col2, plot_col3 = st.columns(3)
+        plot_col1, plot_col2, plot_col3, plot_col4 = st.columns(4)
         with plot_col1:
             export_plots_train = st.checkbox("Training plots", value=True, help="Predictions, residuals, confusion matrices, ROC/PR curves")
         with plot_col2:
             export_plots_explain = st.checkbox("Explainability plots", value=True, help="Permutation importance bar charts")
         with plot_col3:
+            export_plots_calibration = st.checkbox("Calibration plots", value=True, help="Reliability diagrams for classification models with calibration results")
+        with plot_col4:
             export_plots_sensitivity = st.checkbox("Sensitivity plots", value=False, help="Seed sensitivity charts")
     else:
         export_plots_train = False
         export_plots_explain = False
+        export_plots_calibration = False
         export_plots_sensitivity = False
     include_raw_data = st.checkbox("Include raw data sample (first 100 rows)", value=False)
     st.checkbox("Include LLM interpretations in report", value=False, key="report_include_llm")
@@ -2373,6 +2385,38 @@ def save_plotly_fig(fig, filename: str) -> Optional[bytes]:
         logger.debug("Figure export failed for %s: %s", filename, e)
         st.session_state['_plot_export_failures'] = st.session_state.get('_plot_export_failures', 0) + 1
         return None
+
+
+def calibration_result_for_plot(cal: Any):
+    """Return a plottable CalibrationResult, or None.
+
+    Page 06 stores `CalibrationResult` dataclasses; a restored session carries
+    plain dicts with the bin arrays as lists. Regression calibration has no
+    reliability bins to draw. Anything that does not carry all three bin arrays
+    is skipped rather than drawn from missing edges.
+    """
+    import dataclasses as _dc
+    from ml.calibration import CalibrationResult
+
+    if isinstance(cal, dict):
+        _fields = {f.name for f in _dc.fields(CalibrationResult)}
+        if not {'model_name', 'task_type'} <= set(cal):
+            return None
+        cal = CalibrationResult(**{k: v for k, v in cal.items() if k in _fields})
+    if not isinstance(cal, CalibrationResult):
+        return None
+    if cal.task_type != 'classification':
+        return None
+    if cal.bin_counts is None or cal.bin_pred_mean is None or cal.bin_true_freq is None:
+        return None
+    if cal.brier_score is None or cal.ece is None:
+        return None
+    return _dc.replace(
+        cal,
+        bin_counts=np.asarray(cal.bin_counts),
+        bin_pred_mean=np.asarray(cal.bin_pred_mean),
+        bin_true_freq=np.asarray(cal.bin_true_freq),
+    )
 
 
 def save_matplotlib_fig(fig, filename: str) -> Optional[bytes]:
@@ -2491,66 +2535,75 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         preprocessing_manifest['per_model'][model_key] = entry
     
     # Plots
-    if export_plots and (export_plots_train or export_plots_explain or export_plots_sensitivity):
+    if export_plots and (export_plots_train or export_plots_explain
+                         or export_plots_calibration or export_plots_sensitivity):
         from sklearn.metrics import confusion_matrix as sk_confusion_matrix, roc_curve, precision_recall_curve, auc as sk_auc
 
         if export_plots_train:
             for name, results in model_results.items():
-                y_true = results['y_test']
-                y_pred = results['y_test_pred']
+                # This branch is ON by default and runs on every rerun of the
+                # page, so one model whose figures cannot be built must cost
+                # the export those figures — counted and disclosed below the
+                # download button — and not the whole page.
+                try:
+                    y_true = results['y_test']
+                    y_pred = results['y_test_pred']
 
-                if data_config.task_type == 'regression':
-                    fig = px.scatter(
-                        x=y_true, y=y_pred,
-                        labels={'x': 'Actual', 'y': 'Predicted'},
-                        title=f"{name.upper()} - Predictions vs Actual"
-                    )
-                    fig.add_trace(go.Scatter(
-                        x=[min(y_true), max(y_true)],
-                        y=[min(y_true), max(y_true)],
-                        mode='lines', name='Perfect', line=dict(dash='dash', color='red')
-                    ))
-                    plot_bytes = save_plotly_fig(fig, f"plot_{name}.png")
-                    if plot_bytes:
-                        zip_file.writestr(f"plots/train/{name}_predictions.png", plot_bytes)
+                    if data_config.task_type == 'regression':
+                        fig = px.scatter(
+                            x=y_true, y=y_pred,
+                            labels={'x': 'Actual', 'y': 'Predicted'},
+                            title=f"{name.upper()} - Predictions vs Actual"
+                        )
+                        fig.add_trace(go.Scatter(
+                            x=[min(y_true), max(y_true)],
+                            y=[min(y_true), max(y_true)],
+                            mode='lines', name='Perfect', line=dict(dash='dash', color='red')
+                        ))
+                        plot_bytes = save_plotly_fig(fig, f"plot_{name}.png")
+                        if plot_bytes:
+                            zip_file.writestr(f"plots/train/{name}_predictions.png", plot_bytes)
 
-                    residuals = np.array(y_true) - np.array(y_pred)
-                    fig_res = px.histogram(residuals, nbins=30, title=f"{name.upper()} - Residual Distribution",
-                                           labels={'value': 'Residual', 'count': 'Count'})
-                    plot_bytes = save_plotly_fig(fig_res, f"resid_{name}.png")
-                    if plot_bytes:
-                        zip_file.writestr(f"plots/train/{name}_residuals.png", plot_bytes)
-                else:
-                    cm = sk_confusion_matrix(y_true, y_pred)
-                    fig_cm = px.imshow(cm, text_auto=True, aspect="auto", title=f"{name.upper()} - Confusion Matrix",
-                                       labels=dict(x="Predicted", y="Actual"), color_continuous_scale="Blues")
-                    plot_bytes = save_plotly_fig(fig_cm, f"cm_{name}.png")
-                    if plot_bytes:
-                        zip_file.writestr(f"plots/train/{name}_confusion_matrix.png", plot_bytes)
+                        residuals = np.array(y_true) - np.array(y_pred)
+                        fig_res = px.histogram(residuals, nbins=30, title=f"{name.upper()} - Residual Distribution",
+                                               labels={'value': 'Residual', 'count': 'Count'})
+                        plot_bytes = save_plotly_fig(fig_res, f"resid_{name}.png")
+                        if plot_bytes:
+                            zip_file.writestr(f"plots/train/{name}_residuals.png", plot_bytes)
+                    else:
+                        cm = sk_confusion_matrix(y_true, y_pred)
+                        fig_cm = px.imshow(cm, text_auto=True, aspect="auto", title=f"{name.upper()} - Confusion Matrix",
+                                           labels=dict(x="Predicted", y="Actual"), color_continuous_scale="Blues")
+                        plot_bytes = save_plotly_fig(fig_cm, f"cm_{name}.png")
+                        if plot_bytes:
+                            zip_file.writestr(f"plots/train/{name}_confusion_matrix.png", plot_bytes)
 
-                    y_proba = results.get('y_test_proba')
-                    if y_proba is not None:
-                        try:
-                            unique_classes = np.unique(y_true)
-                            if len(unique_classes) == 2:
-                                proba_pos = y_proba[:, 1] if y_proba.ndim > 1 else y_proba
-                                fpr, tpr, _ = roc_curve(y_true, proba_pos)
-                                roc_auc_val = sk_auc(fpr, tpr)
-                                fig_roc = px.area(x=fpr, y=tpr, labels=dict(x="FPR", y="TPR"),
-                                                  title=f"{name.upper()} - ROC Curve (AUC={roc_auc_val:.3f})")
-                                plot_bytes = save_plotly_fig(fig_roc, f"roc_{name}.png")
-                                if plot_bytes:
-                                    zip_file.writestr(f"plots/train/{name}_roc_curve.png", plot_bytes)
+                        y_proba = results.get('y_test_proba')
+                        if y_proba is not None:
+                            try:
+                                unique_classes = np.unique(y_true)
+                                if len(unique_classes) == 2:
+                                    proba_pos = y_proba[:, 1] if y_proba.ndim > 1 else y_proba
+                                    fpr, tpr, _ = roc_curve(y_true, proba_pos)
+                                    roc_auc_val = sk_auc(fpr, tpr)
+                                    fig_roc = px.area(x=fpr, y=tpr, labels=dict(x="FPR", y="TPR"),
+                                                      title=f"{name.upper()} - ROC Curve (AUC={roc_auc_val:.3f})")
+                                    plot_bytes = save_plotly_fig(fig_roc, f"roc_{name}.png")
+                                    if plot_bytes:
+                                        zip_file.writestr(f"plots/train/{name}_roc_curve.png", plot_bytes)
 
-                                prec, rec, _ = precision_recall_curve(y_true, proba_pos)
-                                pr_auc_val = sk_auc(rec, prec)
-                                fig_pr = px.area(x=rec, y=prec, labels=dict(x="Recall", y="Precision"),
-                                                 title=f"{name.upper()} - PR Curve (AUC={pr_auc_val:.3f})")
-                                plot_bytes = save_plotly_fig(fig_pr, f"pr_{name}.png")
-                                if plot_bytes:
-                                    zip_file.writestr(f"plots/train/{name}_pr_curve.png", plot_bytes)
-                        except Exception as e:
-                            logger.debug("Could not export training plot for %s: %s", name, e)
+                                    prec, rec, _ = precision_recall_curve(y_true, proba_pos)
+                                    pr_auc_val = sk_auc(rec, prec)
+                                    fig_pr = px.area(x=rec, y=prec, labels=dict(x="Recall", y="Precision"),
+                                                     title=f"{name.upper()} - PR Curve (AUC={pr_auc_val:.3f})")
+                                    plot_bytes = save_plotly_fig(fig_pr, f"pr_{name}.png")
+                                    if plot_bytes:
+                                        zip_file.writestr(f"plots/train/{name}_pr_curve.png", plot_bytes)
+                            except Exception as e:
+                                logger.debug("Could not export training plot for %s: %s", name, e)
+                except Exception as e:
+                    logger.debug("Could not export training plots for %s: %s", name, e)
+                    st.session_state['_plot_export_failures'] = st.session_state.get('_plot_export_failures', 0) + 1
 
         if export_plots_explain:
             # Permutation importance (Plotly)
@@ -2580,6 +2633,22 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                         zip_file.writestr(f"plots/explainability/{fig_key}.png", plot_bytes)
                 except Exception:
                     pass
+
+        if export_plots_calibration:
+            # The manuscript quotes Brier/ECE from these results; the reliability
+            # diagram those numbers came from travels with them instead of being
+            # redrawn by the author outside the record.
+            from ml.calibration import plot_calibration_curve as _plot_calibration
+            for name, cal in (st.session_state.get('calibration_results', {}) or {}).items():
+                try:
+                    cal_result = calibration_result_for_plot(cal)
+                    if cal_result is None:
+                        continue
+                    plot_bytes = save_plotly_fig(_plot_calibration(cal_result), f"cal_{name}.png")
+                    if plot_bytes:
+                        zip_file.writestr(f"plots/calibration/{name}_calibration.png", plot_bytes)
+                except Exception as e:
+                    logger.debug("Could not export calibration plot for %s: %s", name, e)
 
         if export_plots_sensitivity:
             seed_df = st.session_state.get('sensitivity_seed_results')

@@ -13,6 +13,7 @@ AUDIT NOTE (Data Flow):
 - Methodology logging: Added for seed sensitivity and feature dropout analyses
 """
 
+import re
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -22,6 +23,55 @@ from utils.theme import inject_custom_css, render_sidebar_workflow
 from utils.table_export import table
 from utils.session_state import init_session_state, log_methodology
 from utils.storyline import render_breadcrumb, render_page_navigation
+
+
+# The seed results of several models live in ONE frame under
+# `sensitivity_seed_results`, because that key is what the reset lists and the
+# manuscript builders know about; a second key would survive invalidation and
+# hand a stale table to the next study. The PRIMARY model keeps the bare metric
+# column names (ml/publication.py and pages/10 read the first metric column and
+# attribute it to the last-logged model), and every other model's columns carry
+# a " [model]" suffix.
+_SEED_MODEL_SUFFIX = " [{model}]"
+
+
+def _seed_col(metric: str, model: str, primary: str) -> str:
+    """Column name for one model's metric in the combined seed frame."""
+    return metric if model == primary else metric + _SEED_MODEL_SUFFIX.format(model=model)
+
+
+def _seed_summary_table(df_seeds: pd.DataFrame, metric: str, primary: str) -> pd.DataFrame:
+    """Per-model mean / SD / range / CV for `metric`, as the paper describes.
+
+    Reads the model names back out of the column names so a restored session
+    (where the frame round-tripped through parquet) summarizes the same way a
+    fresh one does.
+    """
+    pattern = re.compile(rf"^{re.escape(metric)} \[(.+)\]$")
+    columns = [(primary, metric)] if metric in df_seeds.columns else []
+    for col in df_seeds.columns:
+        matched = pattern.match(str(col))
+        if matched:
+            columns.append((matched.group(1), col))
+
+    rows = []
+    for model, col in columns:
+        values = pd.to_numeric(df_seeds[col], errors="coerce").dropna()
+        if len(values) < 2:
+            continue
+        mean, sd = values.mean(), values.std()
+        rows.append({
+            "Model": model.upper(),
+            "Seeds": int(len(values)),
+            "Mean": mean,
+            "SD": sd,
+            "Min": values.min(),
+            "Max": values.max(),
+            "Range": values.max() - values.min(),
+            "CV (%)": (sd / abs(mean) * 100) if mean != 0 else float("nan"),
+        })
+    return pd.DataFrame(rows)
+
 
 init_session_state()
 
@@ -73,10 +123,11 @@ if not _seed_compatible:
 if 'nn' in model_keys and 'nn' not in _seed_compatible:
     st.caption("ℹ️ Neural Network excluded from sensitivity analysis (PyTorch models cannot be cloned for re-seeding).")
 selected_model = st.selectbox(
-    "Select model to analyze",
+    "Primary model",
     _seed_compatible,
     format_func=lambda k: k.upper(),
-    help="Choose the model whose robustness you want to test.",
+    help="The model the feature-dropout tab analyzes, and the one whose seed "
+         "results carry the unprefixed metric columns used by the manuscript.",
 )
 
 primary_metric = "rmse" if task_type == "regression" else "accuracy"
@@ -107,24 +158,50 @@ with _sens_tabs[0]:
     seed_list = [0, 1, 7, 13, 42, 99, 123, 456, 789, 1024, 2048, 3141, 4096, 5555, 6174, 7777, 8888, 9001, 9999, 31337][:n_seeds]
     baseline_seed = st.session_state.get("random_seed", 42)
 
+    # Every trained model is re-seeded by default: a stability claim about one
+    # model says nothing about the others, and the manuscript summarizes all of
+    # them. Restricting to one stays available for speed. (The neural-network
+    # exclusion above is unchanged — PyTorch models cannot be cloned.)
+    _seed_scope = st.radio(
+        "Models to re-seed",
+        options=["all", "primary"],
+        index=0,
+        horizontal=True,
+        format_func=lambda s: (f"All {len(_seed_compatible)} trained models"
+                               if s == "all" else f"{selected_model.upper()} only (faster)"),
+        key="seed_sensitivity_scope",
+        help="Running every model is the default; restrict to the primary model when a full sweep is too slow.",
+    )
+    models_to_seed = list(_seed_compatible) if _seed_scope == "all" else [selected_model]
+    # The primary model goes LAST: it owns the unprefixed metric columns, and
+    # ml/publication.py quotes the most recent methodology entry's model beside
+    # the numbers it reads from those columns.
+    models_to_seed = [m for m in models_to_seed if m != selected_model] + [selected_model]
+    st.caption(
+        f"This run fits {len(models_to_seed) * len(seed_list)} models "
+        f"({len(models_to_seed)} model(s) × {len(seed_list)} seeds)."
+    )
+
     if st.button("▶️ Run Seed Sensitivity", type="primary", key="run_seed"):
         from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, accuracy_score, f1_score, roc_auc_score
         from sklearn.base import clone
 
-        model_wrapper = trained_models[selected_model]
-        # Get the underlying sklearn estimator, not the wrapper
-        model_obj = model_wrapper.get_model() if hasattr(model_wrapper, 'get_model') else model_wrapper
         pipelines = st.session_state.get("fitted_preprocessing_pipelines", {})
-        pipeline = pipelines.get(selected_model)
 
         # Skip NN models — PyTorch models don't support sklearn clone
         if selected_model == 'nn':
             st.warning("⚠️ Seed sensitivity is not supported for Neural Network models (PyTorch doesn't support sklearn clone). Select a different model.")
             st.stop()
 
-        progress = st.progress(0, text=f"Initializing seed sensitivity for {selected_model.upper()}... (re-splitting and retraining {n_seeds} times)")
+        _total_fits = len(models_to_seed) * len(seed_list)
+        progress = st.progress(0, text=f"Initializing seed sensitivity... (re-splitting and retraining {_total_fits} times)")
         status_text = st.empty()
-        results = []
+        results_by_model = {}
+        # `MINE-030`, the live half: a seed whose fit raised is not a seed the
+        # spread was computed over. Counted per model, disclosed on screen, and
+        # logged, so the requested count never travels to the manuscript as the
+        # size of the analysis.
+        failures_by_model = {}
 
         # Pool the stored splits back together so every seed draws a genuinely
         # fresh partition. Re-seeding a model on a FIXED split (the old behavior)
@@ -141,88 +218,133 @@ with _sens_tabs[0]:
         _test_frac = max(0.05, min(0.5, len(X_test) / max(1, len(X_pool))))
         _seed_transformer = st.session_state.get('target_transformer')
 
-        for i, seed in enumerate(seed_list):
-            status_text.text(f"Split + train {selected_model.upper()} with seed {seed} ({i+1}/{len(seed_list)})...")
-            try:
-                # Fresh split for this seed
-                _strat = y_pool if task_type != "regression" else None
+        _fits_done = 0
+        for model_key in models_to_seed:
+            model_wrapper = trained_models[model_key]
+            # Get the underlying sklearn estimator, not the wrapper
+            model_obj = model_wrapper.get_model() if hasattr(model_wrapper, 'get_model') else model_wrapper
+            pipeline = pipelines.get(model_key)
+            results = []
+
+            for i, seed in enumerate(seed_list):
+                status_text.text(f"Split + train {model_key.upper()} with seed {seed} ({i+1}/{len(seed_list)})...")
                 try:
-                    X_tr_raw, X_te_raw, y_tr, y_te = _seed_tts(
-                        X_pool, y_pool, test_size=_test_frac, random_state=seed, stratify=_strat)
-                except ValueError:
-                    X_tr_raw, X_te_raw, y_tr, y_te = _seed_tts(
-                        X_pool, y_pool, test_size=_test_frac, random_state=seed)
+                    # Fresh split for this seed
+                    _strat = y_pool if task_type != "regression" else None
+                    try:
+                        X_tr_raw, X_te_raw, y_tr, y_te = _seed_tts(
+                            X_pool, y_pool, test_size=_test_frac, random_state=seed, stratify=_strat)
+                    except ValueError:
+                        X_tr_raw, X_te_raw, y_tr, y_te = _seed_tts(
+                            X_pool, y_pool, test_size=_test_frac, random_state=seed)
 
-                # Clone model and vary its internal seed too
-                cloned = clone(model_obj)
-                if hasattr(cloned, "random_state"):
-                    cloned.set_params(random_state=seed)
+                    # Clone model and vary its internal seed too
+                    cloned = clone(model_obj)
+                    if hasattr(cloned, "random_state"):
+                        cloned.set_params(random_state=seed)
 
-                # Re-fit the preprocessing on THIS seed's training rows
-                if pipeline is not None:
-                    _pipe_seed = clone(pipeline)
-                    X_tr = _pipe_seed.fit_transform(X_tr_raw, y_tr)
-                    X_te = _pipe_seed.transform(X_te_raw)
-                else:
-                    X_tr = X_tr_raw.values
-                    X_te = X_te_raw.values
-
-                if hasattr(X_tr, "toarray"):
-                    X_tr = X_tr.toarray()
-                    X_te = X_te.toarray()
-
-                cloned.fit(X_tr, y_tr)
-                preds = cloned.predict(X_te)
-
-                # Evaluate on the original target scale when a transform is active
-                y_eval = y_te
-                if task_type == "regression" and _seed_transformer is not None:
-                    if _seed_transformer == 'log1p':
-                        preds = np.expm1(preds)
-                        y_eval = np.expm1(np.asarray(y_te, dtype=float))
+                    # Re-fit the preprocessing on THIS seed's training rows
+                    if pipeline is not None:
+                        _pipe_seed = clone(pipeline)
+                        X_tr = _pipe_seed.fit_transform(X_tr_raw, y_tr)
+                        X_te = _pipe_seed.transform(X_te_raw)
                     else:
-                        preds = _seed_transformer.inverse_transform(preds.reshape(-1, 1)).ravel()
-                        y_eval = _seed_transformer.inverse_transform(
-                            np.asarray(y_te, dtype=float).reshape(-1, 1)).ravel()
+                        X_tr = X_tr_raw.values
+                        X_te = X_te_raw.values
 
-                metrics = {}
-                if task_type == "regression":
-                    metrics["rmse"] = np.sqrt(mean_squared_error(y_eval, preds))
-                    metrics["mae"] = mean_absolute_error(y_eval, preds)
-                    metrics["r2"] = r2_score(y_eval, preds)
-                else:
-                    metrics["accuracy"] = accuracy_score(y_te, preds)
-                    try:
-                        metrics["f1"] = f1_score(y_te, preds, average="weighted")
-                    except:
-                        metrics["f1"] = float("nan")
-                    try:
-                        if hasattr(cloned, "predict_proba"):
-                            proba = cloned.predict_proba(X_te)
-                            if proba.shape[1] == 2:
-                                metrics["roc_auc"] = roc_auc_score(y_te, proba[:, 1])
-                            else:
-                                metrics["roc_auc"] = roc_auc_score(y_te, proba, multi_class="ovr", average="weighted")
-                    except:
-                        metrics["roc_auc"] = float("nan")
+                    if hasattr(X_tr, "toarray"):
+                        X_tr = X_tr.toarray()
+                        X_te = X_te.toarray()
 
-                results.append({"seed": seed, **metrics})
-            except Exception as e:
-                results.append({"seed": seed, primary_metric: float("nan"), "_error": str(e)})
+                    cloned.fit(X_tr, y_tr)
+                    preds = cloned.predict(X_te)
 
-            progress.progress((i + 1) / len(seed_list), text=f"Seed {seed} ({i+1}/{len(seed_list)})")
+                    # Evaluate on the original target scale when a transform is active
+                    y_eval = y_te
+                    if task_type == "regression" and _seed_transformer is not None:
+                        if _seed_transformer == 'log1p':
+                            preds = np.expm1(preds)
+                            y_eval = np.expm1(np.asarray(y_te, dtype=float))
+                        else:
+                            preds = _seed_transformer.inverse_transform(preds.reshape(-1, 1)).ravel()
+                            y_eval = _seed_transformer.inverse_transform(
+                                np.asarray(y_te, dtype=float).reshape(-1, 1)).ravel()
+
+                    metrics = {}
+                    if task_type == "regression":
+                        metrics["rmse"] = np.sqrt(mean_squared_error(y_eval, preds))
+                        metrics["mae"] = mean_absolute_error(y_eval, preds)
+                        metrics["r2"] = r2_score(y_eval, preds)
+                    else:
+                        metrics["accuracy"] = accuracy_score(y_te, preds)
+                        try:
+                            metrics["f1"] = f1_score(y_te, preds, average="weighted")
+                        except:
+                            metrics["f1"] = float("nan")
+                        try:
+                            if hasattr(cloned, "predict_proba"):
+                                proba = cloned.predict_proba(X_te)
+                                if proba.shape[1] == 2:
+                                    metrics["roc_auc"] = roc_auc_score(y_te, proba[:, 1])
+                                else:
+                                    metrics["roc_auc"] = roc_auc_score(y_te, proba, multi_class="ovr", average="weighted")
+                        except:
+                            metrics["roc_auc"] = float("nan")
+
+                    results.append({"seed": seed, **metrics})
+                except Exception as e:
+                    results.append({"seed": seed, primary_metric: float("nan"), "_error": str(e)})
+
+                _fits_done += 1
+                progress.progress(_fits_done / _total_fits,
+                                  text=f"{model_key.upper()} — seed {seed} ({_fits_done}/{_total_fits})")
+
+            results_by_model[model_key] = pd.DataFrame(results)
+            failures_by_model[model_key] = [(r["seed"], r["_error"]) for r in results if r.get("_error")]
 
         progress.empty()
         status_text.empty()
 
-        if results:
-            df_seeds = pd.DataFrame(results)
+        for _model_key, _fails in failures_by_model.items():
+            if not _fails:
+                continue
+            st.warning(
+                f"{len(_fails)}/{len(seed_list)} seeds failed for "
+                f"**{_model_key.upper()}** (seeds "
+                f"{', '.join(str(s) for s, _ in _fails)}) — they are not in the "
+                f"spread below, which describes the "
+                f"{len(seed_list) - len(_fails)} seed(s) that ran. "
+                f"First error: {_fails[0][1]}"
+            )
+
+        if results_by_model:
+            # One frame, primary model unsuffixed (see _seed_col above).
+            df_seeds = None
+            for model_key, model_df in results_by_model.items():
+                renamed = model_df.rename(columns={
+                    c: _seed_col(str(c), model_key, selected_model)
+                    for c in model_df.columns if c != "seed"
+                })
+                df_seeds = renamed if df_seeds is None else df_seeds.merge(renamed, on="seed", how="outer")
+            df_seeds = df_seeds.sort_values("seed").reset_index(drop=True)
             st.session_state["sensitivity_seed_results"] = df_seeds
-            log_methodology(step='Sensitivity Analysis', action='Ran seed stability analysis', details={
-                'model': selected_model,
-                'n_seeds': n_seeds,
-                'metric': primary_metric
-            })
+            # One entry per model, primary last: ml/publication.py collects every
+            # entry for its Methods sentence and quotes the LAST one's model
+            # beside the numbers it reads from the unsuffixed columns.
+            for model_key in models_to_seed:
+                _n_failed = len(failures_by_model.get(model_key, []))
+                log_methodology(step='Sensitivity Analysis', action='Ran seed stability analysis', details={
+                    'model': model_key,
+                    # ml/publication.py prints `n_seeds` as the size of the
+                    # analysis, so it carries the ACHIEVED count: seeds whose
+                    # fit raised are not in the spread and must not be counted
+                    # in the sentence that describes it.
+                    'n_seeds': len(seed_list) - _n_failed,
+                    'n_seeds_requested': len(seed_list),
+                    'n_seeds_succeeded': len(seed_list) - _n_failed,
+                    'n_seeds_failed': _n_failed,
+                    'metric': primary_metric
+                })
             try:
                 from utils.workflow_provenance import get_provenance
                 _cv_pct = None
@@ -239,7 +361,16 @@ with _sens_tabs[0]:
             except Exception:
                 pass  # Provenance recording should never break the workflow
 
-            # Display
+            # Display — every model that was re-seeded, then the primary in detail
+            _summary = _seed_summary_table(df_seeds, primary_metric, selected_model)
+            if not _summary.empty:
+                st.markdown(f"**Across-seed {primary_metric.upper()} by model** "
+                            f"({len(seed_list)} seeds, fresh split each)")
+                table(_summary.round(4), key="seed_sensitivity_summary", hide_index=True)
+                if 'nn' in model_keys:
+                    st.caption("ℹ️ Neural Network excluded from sensitivity analysis (PyTorch models cannot be cloned for re-seeding).")
+
+            st.markdown(f"**{selected_model.upper()}** (primary model)")
             valid = df_seeds[primary_metric].dropna()
             if len(valid) > 1:
                 col1, col2, col3, col4 = st.columns(4)
@@ -265,7 +396,12 @@ with _sens_tabs[0]:
     # Show cached results if they exist
     elif "sensitivity_seed_results" in st.session_state:
         df_seeds = st.session_state["sensitivity_seed_results"]
-        valid = df_seeds[primary_metric].dropna()
+        _summary = _seed_summary_table(df_seeds, primary_metric, selected_model)
+        if not _summary.empty:
+            st.markdown(f"**Across-seed {primary_metric.upper()} by model** (from the last run)")
+            table(_summary.round(4), key="seed_sensitivity_summary_cached", hide_index=True)
+        valid = (df_seeds[primary_metric].dropna() if primary_metric in df_seeds.columns
+                 else pd.Series(dtype=float))
         if len(valid) > 1:
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Mean", f"{valid.mean():.4f}")
@@ -293,7 +429,7 @@ with _sens_tabs[0]:
                 metric_mean = np.mean(metric_values)
             
                 st.markdown(f"""
-            **Your Results:**
+            **Your Results ({selected_model.upper()}, the primary model — the table above covers every model re-seeded):**
             - {metric_col.upper()} range: {min(metric_values):.3f} to {max(metric_values):.3f}
             - Range width: {metric_range:.3f}
             - Mean: {metric_mean:.3f}
