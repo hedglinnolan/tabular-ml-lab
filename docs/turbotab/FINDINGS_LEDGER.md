@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**452 of 1010 closed.**
+**452 of 1011 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 474 |
+| `OPEN` | 475 |
 | `PARTIAL` | 84 |
 | `FIXED` | 442 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 474
+## OPEN — 475
 
 
 ### Guided-door drive feedback — 76
@@ -517,7 +517,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-113` | medium | The instability engine plots the wrong quantity on a multiclass target and does not refuse: _predict takes predict_proba's second column, which is the positive class of a binary problem and one class… | `turbotab/instability.py _predict returns proba[:, 1] for any classification task; no fixture in the…` · **re-verified:** `turbotab/instability.py _predict returns proba[:, 1] for any classification task; no fixture in the…` | FOUND WHILE WRITING THE FIXTURE RULE'S not-covered list, which is the list doing its job. A multiclass project would get a prediction instability plot about ONE class's… |
 | `GUIDED-235` | medium | The model shelf is ranked on the row count under a recorded repeated-measures design, so every threshold the coach applies is applied to an inflated sample size | `L55-B, and the number is now on screen rather than only in the code. ml/model_coach.model_viability reads…` | WHAT LANDED INSTEAD IS THE NUMBER. The shelf's design statement says the order was computed from N rows, which are M people, and states that every model here treats rows as… |
 
-### Other — 16
+### Other — 17
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -534,6 +534,7 @@ Nothing is closed without a regression test named after it.
 | `MISC-090` | medium | quick_probe_baselines survived the main merge but lost its only UI entry point: main deleted the recommendation panel that reached it, TurboTab fixed its lockbox leak at the caller. Kept in code with… | `ml/eda_actions.py:1385 (MERGE NOTE); pages/02_EDA.py:149 (_TRAIN_ONLY_ACTIONS)` |  |
 | `MISC-091` | medium | AUDIT-032's diagnostic-disclosure mechanism is dead UI on the EDA page: three of four surviving diagnostics are not in _ACTION_TO_INSIGHT_MAP so they disclose nothing, and VIF resolves its mapped set… | `pages/02_EDA.py:2280-2306; ml/eda_actions.py (_ACTION_TO_INSIGHT_MAP, diagnostic_disclosure)` |  |
 | `MISC-094` | medium | TRANSITION_PLAN.md section 05 asserts 'Classic is frozen as engine-move-only', which merges from main do not honor and do not announce - false at HEAD (main's diagnostics dedup moved Classic's… | `docs/turbotab/TRANSITION_PLAN.md section 05; docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L66 entry)` |  |
+| `MISC-095` | medium | models/nn_whuber.py imports torch unguarded at module top, so the module cannot import in the deliberately-torchless environment - the one standing red in… | `models/nn_whuber.py:5-6; tests/test_engine_is_headless.py:143; ml/model_registry.py:25-45 (the standard…` |  |
 | `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
 | `MISC-092` | low | VIF's post-run disclosure says it 'changes nothing. No open observation is waiting on it' after just closing N collinearity clusters - not false about the data, but silent exactly where the AUDIT-032… | `pages/02_EDA.py:2280-2306 (upsert -> VIF resolve -> record ordering)` |  |
 | `MISC-093` | low | leakage_scan is still mapped in _ACTION_TO_INSIGHT_MAP / DIAGNOSTIC_ONLY_ACTIONS but has no UI on any page after main's diagnostics dedup - dead registration; the automatic >0.95 scan and sign-off… | `ml/eda_actions.py (_ACTION_TO_INSIGHT_MAP); pages/02_EDA.py (no leakage_scan widget at HEAD)` |  |

@@ -57,8 +57,10 @@ EXEMPT: dict = {}
 
 #: What the resolver could not compute a destination for, at the commit this
 #: was written. Not a budget to spend — the list is printed on failure so a new
-#: entry has to be looked at rather than absorbed.
-UNRESOLVED_CEILING = 32
+#: entry has to be looked at rather than absorbed. Ratcheted 32 → 30 when the
+#: resolver learned that an io.BytesIO/StringIO destination is not a
+#: filesystem write at all (three `.to_parquet(buf)` sites resolved away).
+UNRESOLVED_CEILING = 30
 
 
 def _relative(sites):

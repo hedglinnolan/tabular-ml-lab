@@ -100,6 +100,14 @@ def _under(value) -> bool:
     return isinstance(value, tuple) and len(value) == 2 and value[0] == "under"
 
 
+#: An in-memory buffer (io.BytesIO / io.StringIO). A write whose destination
+#: is one of these never touches the filesystem at all, so it is neither a
+#: repo write nor a blind spot — counting it as unresolved would let the
+#: ceiling fill up with sites that cannot be moved to `tmp_path` because
+#: there is no path involved.
+_BUFFER = ("buffer",)
+
+
 def _destination(value) -> Tuple[Optional[Path], bool]:
     """`(where it lands, whether the leaf is known)`."""
     if isinstance(value, Path):
@@ -179,6 +187,12 @@ def _eval(node, env: Dict[str, object], here: Path):
         return None
     if isinstance(node, ast.Call):
         func = node.func
+        if isinstance(func, ast.Name) and func.id in ("BytesIO", "StringIO"):
+            return _BUFFER
+        if isinstance(func, ast.Attribute) and \
+                func.attr in ("BytesIO", "StringIO") and \
+                isinstance(func.value, ast.Name) and func.value.id == "io":
+            return _BUFFER
         if isinstance(func, ast.Name) and func.id in ("Path", "str") and node.args:
             inner = _eval(node.args[0], env, here)
             if func.id == "Path":
@@ -256,6 +270,8 @@ def analyze(rel: str, follow: int = 1,
     spawns: List[Site] = []
 
     def record(node, call: str, value, via: str = "") -> None:
+        if value is _BUFFER:
+            return
         dest, exact = _destination(value)
         site = Site(rel, node.lineno, call, dest, exact, via)
         if site.dest is None:
@@ -290,7 +306,7 @@ def analyze(rel: str, follow: int = 1,
             if isinstance(node, ast.Assign) and len(node.targets) == 1 and \
                     isinstance(node.targets[0], ast.Name):
                 value = _eval(node.value, env, here)
-                if isinstance(value, Path):
+                if isinstance(value, Path) or value is _BUFFER:
                     env[node.targets[0].id] = value
             if not isinstance(node, ast.Call):
                 continue

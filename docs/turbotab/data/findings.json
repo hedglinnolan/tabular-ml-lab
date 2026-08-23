@@ -13378,5 +13378,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "docs/turbotab/TRANSITION_PLAN.md section 05; docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L66 entry)"
+ },
+ {
+  "id": "MISC-095",
+  "area": "MISC",
+  "sev": "medium",
+  "item": "models/nn_whuber.py imports torch unguarded at module top, so the module cannot import in the deliberately-torchless environment - the one standing red in tests/test_engine_is_headless.py::test_core_modules_import_for_any_reason. TEST-038/utils/seed.py already set the standard: torch is optional, guarded with try/except and an honest unavailable message at use. Pre-existing on TurboTab before the L66 merge (identical import at 6dbdc79).",
+  "detail": "",
+  "ev": "models/nn_whuber.py:5-6; tests/test_engine_is_headless.py:143; ml/model_registry.py:25-45 (the standard, written down)",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "models/nn_whuber.py:5-6; tests/test_engine_is_headless.py:143; ml/model_registry.py:25-45 (the standard, written down)"
  }
 ]
