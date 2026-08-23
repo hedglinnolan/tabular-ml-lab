@@ -1168,16 +1168,26 @@ class InsightLedger:
         return True
 
     def narrative_for_report(self) -> str:
-        """Generate a concise methods-section narrative."""
-        s = self.summary()
+        """Generate a concise methods-section narrative.
+
+        `AUDIT-042`: the counts and the lists beneath them must come from ONE
+        filter. They used to come from two — summary(), which counts every
+        insight including the pre-resolved bridge entry that log_methodology
+        writes on each button press, and _is_narrative_worthy, which excludes
+        exactly those. So the sentence could report observations "addressed
+        during the modeling workflow" above an empty Addressed list, with both
+        numbers inflated by page visits.
+        """
+        worthy = [i for i in self._insights if self._is_narrative_worthy(i)]
         resolved = [i for i in self.get_resolved() if self._is_narrative_worthy(i)]
-        unresolved = self.get_unresolved()
+        unresolved = [i for i in self.get_unresolved()
+                      if self._is_narrative_worthy(i)]
 
         lines = []
         lines.append(
-            f"Exploratory analysis identified {s['total']} "
-            f"data observations. {s['resolved']} were addressed during the "
-            f"modeling workflow; {s['unresolved']} were documented and accepted."
+            f"Exploratory analysis identified {len(worthy)} "
+            f"data observations. {len(resolved)} were addressed during the "
+            f"modeling workflow; {len(unresolved)} were documented and accepted."
         )
 
         if resolved:

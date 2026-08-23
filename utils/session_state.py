@@ -297,15 +297,40 @@ def get_split_rows(part: str = "test",
     return resolve_split_rows(df, labels, part=part)
 
 
+def _hashable_cell(value: Any) -> Any:
+    """Render one cell in a form pandas can hash, preserving its content."""
+    if isinstance(value, np.ndarray):
+        return repr(value.tolist())
+    if isinstance(value, (set, frozenset)):
+        return repr(sorted(map(repr, value)))
+    if isinstance(value, (list, tuple, dict)):
+        return repr(value)
+    return value
+
+
 def _content_fingerprint(df: pd.DataFrame) -> Optional[int]:
     """Cheap deterministic fingerprint of a DataFrame's contents.
 
-    Stable across .copy() (hashes values, not identity). Returns None when the
-    frame contains unhashable cells — callers treat None as 'unknown' and fall
-    back to schema-only invalidation.
+    Stable across .copy() (hashes values, not identity).
+
+    `MINE-010`/`STATE-044`: this used to return None for any frame pandas could
+    not hash — a parquet upload with a list/array column is enough — and the
+    caller read None as 'unchanged', so a corrected re-upload with the same
+    schema kept every stale model, metric and figure. Unhashable cells are now
+    stringified for hashing instead. None is reserved for a frame we genuinely
+    cannot fingerprint, and callers must treat it as CHANGED, never as clean.
     """
     try:
         return hash((df.shape, int(pd.util.hash_pandas_object(df, index=False).sum())))
+    except Exception:
+        pass
+    try:
+        coerced = df.copy(deep=False)
+        for col in coerced.columns:
+            if coerced[col].dtype == object:
+                coerced[col] = coerced[col].map(_hashable_cell)
+        return hash((df.shape,
+                     int(pd.util.hash_pandas_object(coerced, index=False).sum())))
     except Exception:
         return None
 
@@ -337,6 +362,11 @@ def set_data(df: pd.DataFrame, is_schema_change: Optional[bool] = None):
     new_cols = frozenset(df.columns)
 
     old_fp = st.session_state.get('_raw_data_fingerprint')
+    if old_fp is None and old_df is not None:
+        # A restored session carries the frame but not the fingerprint. Recompute
+        # it rather than let 'unknown' mean 'changed' below, which would clear the
+        # analysis on the benign page-01 revisit that re-sets the same table.
+        old_fp = _content_fingerprint(old_df)
     new_fp = _content_fingerprint(df)
 
     st.session_state.raw_data = df
@@ -353,8 +383,15 @@ def set_data(df: pd.DataFrame, is_schema_change: Optional[bool] = None):
     # would end the run the moment the researcher looked at the upload page.
     if is_schema_change:
         reset_data_dependent_state()      # clears the cohort itself
-    elif (old_df is not None and old_fp is not None and new_fp is not None
-          and old_fp != new_fp):
+    elif (old_df is not None
+          and (old_fp is None or new_fp is None or old_fp != new_fp)):
+        # `MINE-010`: 'we could not fingerprint this frame' is not evidence that
+        # nothing changed. Both fingerprints had to be non-None to reach here,
+        # so an unhashable frame took NEITHER branch and every model, metric and
+        # figure from the previous values survived under the new dataset's name.
+        # Unknown now means changed: the reset is the safe answer, a stale
+        # manuscript number is not.
+        #
         # Results are stale — they were computed from different values. But the
         # RUN is a set of row labels, and a cleaning action (impute, clip,
         # recode) changes values without changing who the rows are. Clearing it
@@ -373,6 +410,62 @@ def set_data(df: pd.DataFrame, is_schema_change: Optional[bool] = None):
         reset_downstream_results()
 
 
+# ---------------------------------------------------------------------------
+# The downstream result registry
+# ---------------------------------------------------------------------------
+# `STATE-038`: every key below is a RESULT computed from the current data, and
+# the only thing standing between a superseded result and the exported
+# manuscript is its membership here. The lists used to live inline inside
+# reset_downstream_results, where a key added on a page was simply never added
+# here — pdp_results survived while `partial_dependence` beside it was cleared,
+# and the dropout-sensitivity keys survived to let ml/publication.py assert a
+# sensitivity analysis on a model the same reset had destroyed. A new result
+# key goes in one of these tuples; nothing else clears them.
+
+# Splits and the objects that describe one partition of them.
+_SPLIT_KEYS: tuple = (
+    "train_indices", "val_indices", "test_indices",
+    # Row LABELS alongside the positions. Added with the split extraction (L6);
+    # they describe the same partition, so they go stale with it.
+    "train_row_labels", "val_row_labels", "test_row_labels",
+    "split_config",
+    "target_transformer", "target_label_encoder",
+    "y_train_original", "y_val_original", "y_test_original",
+    "cv_strategy", "cv_groups_train",
+)
+
+# Analysis results from pages 02–09.
+_ANALYSIS_KEYS: tuple = (
+    "shap_results", "shap_matplotlib_figs", "bootstrap_results",
+    "baseline_results", "calibration_results",
+    "sensitivity_seed_results",
+    # Written by pages/08 and read by ml/publication.py to state that a
+    # feature-dropout sensitivity analysis was performed.
+    "sensitivity_dropout_results", "sensitivity_dropout_baseline",
+    "hypothesis_test_results",
+    "table1_df", "table1_metadata", "custom_table1_tests",
+    "table1_custom_test_footnotes",
+    "dataset_profile",
+    # Written by pages/07 next to `partial_dependence`, read by pages/10.
+    "pdp_results",
+    "bland_altman_results", "preprocessing_summary",
+)
+
+_FEATURE_SELECTION_KEYS: tuple = ("feature_selection_results", "consensus_features")
+
+# Report artifacts.
+_REPORT_KEYS: tuple = (
+    "methods_section", "flow_diagram", "tripod_tracker", "latex_report",
+    "report_best_model", "report_model_selection", "report_explain_selection",
+    "report_include_results", "report_include_llm", "manuscript_context",
+    # A stale manuscript_export_context WINS over rebuilding (pages/10 only
+    # rebuilds `if manuscript_context is None`), so it is the most dangerous
+    # survivor in this tuple, not the least.
+    "manuscript_export_context", "compiled_pdf",
+    "manuscript_table1_df", "manuscript_table1_metadata",
+)
+
+
 def reset_downstream_results(clear_feature_engineering: bool = True,
                              restore_pre_fe_features: bool = True,
                              clear_feature_selection: bool = True):
@@ -381,7 +474,8 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     Single source of truth for downstream invalidation — used by
     reset_data_dependent_state() (full data change), set_data() (same-schema
     content change), and Page 01 (feature/target/task change). Any page that
-    introduces a new result key must add it here.
+    introduces a new result key must register it in the tuples above; the
+    provenance sections it nulls come from the record's own schema.
 
     clear_feature_selection=False preserves the feature-selection results,
     consensus list, and its provenance/ledger entries. Feature Selection uses
@@ -444,17 +538,14 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     st.session_state.y_test = None
     st.session_state.feature_names = None
     st.session_state.feature_names_by_model = {}
-    for key in ("train_indices", "val_indices", "test_indices",
-                # Row LABELS alongside the positions. Added with the split
-                # extraction (L6); they describe the same partition, so they go
-                # stale with it. Registered here because a result key that is
-                # not in this function survives every invalidation silently.
-                "train_row_labels", "val_row_labels", "test_row_labels",
-                "split_config",
-                "target_transformer", "target_label_encoder",
-                "y_train_original", "y_val_original", "y_test_original",
-                "cv_strategy", "cv_groups_train"):
+    for key in _SPLIT_KEYS:
         st.session_state.pop(key, None)
+
+    # A row filter is part of WHO the results were computed on. get_data() masks
+    # every page's frame by filtered_data whenever it exists, so a filter left
+    # over from a superseded preprocessing config keeps shrinking the dataset
+    # across every reset that is not a full data change (`STATE-037`).
+    st.session_state.pop("filtered_data", None)
 
     # Models & metrics
     st.session_state.trained_models = {}
@@ -470,23 +561,15 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     st.session_state.explainability_robustness = {}
     st.session_state.eda_results = {}
     st.session_state.eda_insights = []
-    _analysis_keys = ["shap_results", "shap_matplotlib_figs", "bootstrap_results",
-                      "baseline_results", "calibration_results",
-                      "sensitivity_seed_results", "hypothesis_test_results",
-                      "table1_df", "table1_metadata", "custom_table1_tests",
-                      "dataset_profile"]
+    _analysis_keys = list(_ANALYSIS_KEYS)
     if clear_feature_selection:
-        _analysis_keys += ["feature_selection_results", "consensus_features"]
+        _analysis_keys += list(_FEATURE_SELECTION_KEYS)
     for key in _analysis_keys:
         st.session_state.pop(key, None)
 
     # Report artifacts
     st.session_state.report_data = None
-    for key in (
-        'methods_section', 'flow_diagram', 'tripod_tracker', 'latex_report',
-        'report_best_model', 'report_model_selection', 'report_explain_selection',
-        'report_include_results', 'report_include_llm', 'manuscript_context',
-    ):
+    for key in _REPORT_KEYS:
         st.session_state.pop(key, None)
 
     # Coach evidence describes the data it was measured on — a probe verdict
@@ -497,17 +580,21 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     st.session_state.pop("_coach_applied", None)
 
     # Downstream provenance sections now describe work that no longer exists
+    # — and the list of them is DERIVED from the record's own schema, because a
+    # hand-typed one drifts from it silently. `sensitivity` and
+    # `statistical_validation` were missing from the list this used to carry, so
+    # the Methods draft kept naming the tests and printing the corrected-
+    # significance count while the same reset deleted the results those tests
+    # produced, and get_completeness() went on reporting both stages as done
+    # (`CONTRACT-034`, `STATE-047`).
     prov = st.session_state.get("workflow_provenance")
     if prov is not None:
-        _sections = ["eda", "split", "preprocessing",
-                     "training", "explainability", "coach"]
-        if clear_feature_selection:
-            _sections.append("feature_selection")
-        for section in _sections:
+        from utils.workflow_provenance import downstream_sections
+        for section in downstream_sections(
+                clear_feature_engineering=clear_feature_engineering,
+                clear_feature_selection=clear_feature_selection):
             if hasattr(prov, section):
                 setattr(prov, section, None)
-        if clear_feature_engineering and hasattr(prov, "feature_engineering"):
-            prov.feature_engineering = None
 
     # The ledger must not keep asserting actions that were just invalidated:
     # roll back resolutions earned on the cleared pages (the findings remain),
@@ -533,9 +620,14 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
             })
 
     # A manuscript is only quarantine-clean if EVERY surviving result was
-    # computed with the lockbox on; results computed in exploratory mode are
-    # gone now, so the sticky flag can clear.
-    st.session_state.pop("exploratory_used", None)
+    # computed with the lockbox on. The watermark may therefore be dropped only
+    # by a reset that clears everything it stains — `STATE-040`: this pop used to
+    # be unconditional, so the toggle-off call (clear_feature_engineering=False)
+    # deliberately kept a df_engineered fitted with the test rows in view and
+    # deleted the one flag that would have disclosed it, and the exported
+    # manuscript then claimed an unqualified held-out result.
+    if clear_feature_engineering and clear_feature_selection:
+        st.session_state.pop("exploratory_used", None)
 
 
 def reset_data_dependent_state():

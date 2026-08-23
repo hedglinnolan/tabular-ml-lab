@@ -43,21 +43,36 @@ FULL_RESET_KEYS = [
     # splits and targets
     "X_train", "X_val", "X_test", "y_train", "y_val", "y_test",
     "feature_names", "train_indices", "val_indices", "test_indices",
+    # Row LABELS, added with the split extraction (L6) and pinned here
+    # afterwards: they name the same partition the *_indices keys name, so a
+    # cascade that cleared the positions and kept the labels would leave page 07
+    # resolving the held-out rows of a split that no longer exists.
+    "train_row_labels", "val_row_labels", "test_row_labels",
     "split_config", "target_transformer", "target_label_encoder",
     "y_train_original", "y_val_original", "y_test_original",
     "cv_strategy", "cv_groups_train",
+    # The row FILTER, reclassified from PRESERVED_KEYS — see below.
+    "filtered_data",
     # models and metrics
     "cv_results",
     # analysis results
     "shap_results", "shap_matplotlib_figs", "bootstrap_results",
     "baseline_results", "calibration_results", "sensitivity_seed_results",
     "hypothesis_test_results", "table1_df", "table1_metadata",
-    "custom_table1_tests", "dataset_profile",
+    "custom_table1_tests", "table1_custom_test_footnotes", "dataset_profile",
+    # Manuscript-facing results that used to be in NEITHER of the function's
+    # inline key lists (`STATE-038`): the export read them while the reset that
+    # destroyed the model they came from left them standing. They are now in the
+    # registry the function clears from, and pinned here so a key can only leave
+    # that registry deliberately.
+    "pdp_results", "sensitivity_dropout_results", "sensitivity_dropout_baseline",
+    "bland_altman_results", "preprocessing_summary",
     # report artifacts
     "report_data", "methods_section", "flow_diagram", "tripod_tracker",
     "latex_report", "report_best_model", "report_model_selection",
     "report_explain_selection", "report_include_results", "report_include_llm",
-    "manuscript_context",
+    "manuscript_context", "manuscript_export_context", "compiled_pdf",
+    "manuscript_table1_df", "manuscript_table1_metadata",
     # coach evidence
     "coach_probe_result", "_coach_applied",
 ]
@@ -66,7 +81,17 @@ FULL_RESET_KEYS = [
 FEATURE_SELECTION_KEYS = ["feature_selection_results", "consensus_features"]
 
 # Keys the cascade must NOT touch: configuration, not results.
-PRESERVED_KEYS = ["raw_data", "filtered_data", "data_config", "task_mode",
+#
+# `filtered_data` was on this list and has been RECLASSIFIED into
+# FULL_RESET_KEYS. It was pinned here when it was inert: `get_data()` let
+# `df_engineered` shadow it, so a stale filter changed nothing and leaving it
+# alone was harmless. `STATE-037` changed that — `get_data()` now masks the
+# active frame's ROWS by `filtered_data` whenever it exists, in either page
+# order. A filter left over from a superseded preprocessing config therefore
+# silently changes who every downstream number describes, which makes it
+# data-dependent state and not configuration. Popping it is what keeps the
+# cascade honest; the pin, not the fix, was the stale half.
+PRESERVED_KEYS = ["raw_data", "data_config", "task_mode",
                   "random_seed", "test_lockbox", "exploratory_mode"]
 
 
@@ -123,6 +148,27 @@ def test_the_cascade_leaves_configuration_alone():
     survivors = _run_cascade(PRESERVED_KEYS)
     assert survivors == set(PRESERVED_KEYS), (
         f"the cascade destroyed configuration: {sorted(set(PRESERVED_KEYS) - survivors)}")
+
+
+def test_the_row_filter_is_cleared_under_every_flag():
+    """`filtered_data` is who the results are about, so it goes with them.
+
+    The reclassification out of PRESERVED_KEYS, asserted rather than merely
+    removed. It has to hold under the PARTIAL calls too: page 03's save and page
+    01's exploratory toggle both pass `clear_feature_engineering=False`, and a
+    filter that survived those would keep masking the frame every later stage is
+    computed on while the page that set it is gone.
+    """
+    for flags in ({},
+                  {"clear_feature_engineering": False},
+                  {"clear_feature_selection": False},
+                  {"clear_feature_engineering": False,
+                   "clear_feature_selection": False}):
+        survivors = _run_cascade(["filtered_data"], flags=flags)
+        assert survivors == set(), (
+            f"the row filter survived reset_downstream_results(**{flags}) — "
+            "get_data() masks by it, so every downstream number would describe "
+            "a set of people chosen by a superseded config")
 
 
 # ── partial invalidation is a real call ──────────────────────────────────

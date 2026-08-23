@@ -62,11 +62,15 @@ st.session_state["_survivors"] = sorted(
 """
 
 
-def _production_cleared(flags):
-    """Which of the DAG's keys the real function actually clears."""
+def _production_cleared(flags, seeded=None):
+    """Which of the DAG's keys the real function actually clears.
+
+    `seeded` widens the probe past the DAG's own vocabulary, which is how the
+    coverage gate below can see a key the graph has never heard of.
+    """
     from streamlit.testing.v1 import AppTest
 
-    seeded = sorted(cascade.all_result_keys())
+    seeded = sorted(seeded) if seeded is not None else sorted(cascade.all_result_keys())
     # str.format is unusable here: the probe contains dict and set
     # literals, whose braces it would read as fields.
     at = AppTest.from_string(_PROBE.replace("__ROOT__", repr(ROOT)))
@@ -160,6 +164,64 @@ def test_the_dag_matches_the_production_cascade(flags):
         f"the real cascade clears keys the DAG does not: {sorted(only_production)}")
     assert not only_declared, (
         f"the DAG would clear keys the real cascade leaves: {sorted(only_declared)}")
+
+
+# Keys the production function clears that the DAG does not yet declare on any
+# stage. Naming them is the whole point: the gate above seeds only
+# `cascade.all_result_keys()`, so a key the graph has never heard of cannot fail
+# it — the equivalence reads green while the graph is incomplete, which is the
+# state `STATE-038`'s ledger note describes ("turbotab/cascade.py is that
+# registry; it is not yet authoritative for these keys").
+#
+# Every one of these was found surviving a reset and reaching the manuscript,
+# and was added to the production registry in `utils/session_state.py`:
+#   pdp_results …………………………… pages/07 writes it, pages/10 draws it
+#   sensitivity_dropout_* ………… ml/publication asserts a sensitivity analysis
+#   manuscript_export_context … a stale one WINS over rebuilding
+#   compiled_pdf, manuscript_table1_* … export artifacts of a dead model
+#   bland_altman_results, preprocessing_summary, table1_custom_test_footnotes
+#   filtered_data ……………………… WHO the results are about (`STATE-037`)
+# The DAG has to grow stages for them before it can replace the function.
+_NOT_YET_DECLARED_IN_THE_DAG = {
+    "pdp_results",
+    "sensitivity_dropout_results", "sensitivity_dropout_baseline",
+    "manuscript_export_context", "compiled_pdf",
+    "manuscript_table1_df", "manuscript_table1_metadata",
+    "bland_altman_results", "preprocessing_summary",
+    "table1_custom_test_footnotes",
+    "filtered_data",
+}
+
+
+def test_the_dag_declares_every_key_the_production_cascade_clears():
+    """Coverage, not just agreement.
+
+    The gate above proves the DAG does not DISAGREE with the function about the
+    keys it knows. This one asks the other question — what does the function
+    clear that the DAG has never heard of — by seeding the union of both
+    vocabularies and running the real function over it. A key added to
+    `reset_downstream_results`'s registry without a DAG stage lands here rather
+    than in silence.
+    """
+    from utils import session_state as ss
+
+    registry = (set(ss._SPLIT_KEYS) | set(ss._ANALYSIS_KEYS)
+                | set(ss._FEATURE_SELECTION_KEYS) | set(ss._REPORT_KEYS))
+    seeded = set(cascade.all_result_keys()) | registry | {"filtered_data"}
+
+    cleared = _production_cleared({}, seeded=seeded)
+    undeclared = cleared - set(cascade.all_result_keys()) - _NOT_YET_DECLARED_IN_THE_DAG
+
+    assert not undeclared, (
+        "the production cascade clears keys no DAG stage declares: "
+        f"{sorted(undeclared)}. Give them a stage, or add them to "
+        "_NOT_YET_DECLARED_IN_THE_DAG with the reason.")
+    # And the exclusion list must not outlive its keys: one that the function
+    # no longer clears is a stale excuse hiding a real gap.
+    stale = _NOT_YET_DECLARED_IN_THE_DAG - cleared
+    assert not stale, (
+        f"these are excluded from the coverage gate but the cascade no longer "
+        f"clears them: {sorted(stale)}")
 
 
 def test_keeping_a_stage_does_not_keep_its_descendants():

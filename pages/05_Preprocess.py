@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional
 
 from utils.session_state import (
     init_session_state, get_data, DataConfig, set_preprocessing_pipeline, set_preprocessing_pipelines,
-    TaskTypeDetection, log_methodology,
+    TaskTypeDetection, log_methodology, reset_downstream_results,
 )
 from utils.storyline import render_breadcrumb, render_page_navigation
 from ml.pipeline import (
@@ -914,6 +914,30 @@ if use_smart_defaults and selected_models:
             </div>
             """, unsafe_allow_html=True)
 
+
+def _invalidate_on_row_filter_change(new_index) -> None:
+    """Clear downstream results when the plausibility filter changes WHO is in.
+
+    `STATE-037`: get_data() masks every page's frame by filtered_data whenever
+    it exists, so writing (or dropping) it here changes the row set every
+    downstream stage was computed on. Building pipelines used to write the key
+    with no invalidation, leaving splits, models and metrics describing a
+    different set of people — a divergence page 07 now refuses on, which is
+    better caught before it exists. Only a genuine change fires: rebuilding
+    with the same filter must not destroy a trained model.
+    """
+    prev = st.session_state.get("filtered_data")
+    prev_labels = None if prev is None else frozenset(prev.index)
+    new_labels = None if new_index is None else frozenset(new_index)
+    if new_labels == prev_labels:
+        return
+    # The engineered frame and the feature selection are inputs to this page,
+    # not results of it.
+    reset_downstream_results(clear_feature_engineering=False,
+                             restore_pre_fe_features=False,
+                             clear_feature_selection=False)
+
+
 if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_button"):
     try:
         t0 = time.perf_counter()
@@ -1011,9 +1035,11 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                             f"extreme, that is an eligibility criterion and belongs "
                             f"before the split, on Upload & Audit."
                         )
+                _invalidate_on_row_filter_change(filtered_df.index)
                 st.session_state["filtered_data"] = filtered_df
                 sample_source = filtered_df
             else:
+                _invalidate_on_row_filter_change(None)
                 st.session_state.pop("filtered_data", None)
                 sample_source = df
             X_sample = sample_source[all_features]

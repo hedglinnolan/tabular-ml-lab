@@ -839,6 +839,87 @@ class WorkflowProvenance:
 
 
 # ---------------------------------------------------------------------------
+# Section registry — derived from the dataclass, never typed by hand
+# ---------------------------------------------------------------------------
+
+# Sections a downstream reset must KEEP. `upload` describes the data
+# configuration itself, which the reset preserves by contract; every other
+# section describes work computed FROM it and is therefore stale. Membership
+# here is the only decision the resetter makes — anything not named is cleared,
+# so a section added to WorkflowProvenance cannot be forgotten by it.
+# `CONTRACT-034`/`STATE-047`: sensitivity and statistical_validation were absent
+# from a hand-typed list in utils/session_state.py, so a Methods draft asserted
+# hypothesis tests and seed-stability numbers whose results the same reset had
+# just deleted, and get_completeness() reported both stages as done.
+RESET_PRESERVED_SECTIONS: Tuple[str, ...] = ("upload",)
+
+# Sections whose clearing follows the artifact they describe: the resetter can
+# be asked to keep the engineered frame or the feature selection, and the record
+# of that step must survive exactly when the step's output does.
+_FLAGGED_SECTIONS: Dict[str, str] = {
+    "feature_engineering": "clear_feature_engineering",
+    "feature_selection": "clear_feature_selection",
+}
+
+_SECTION_NAMES_CACHE: Optional[Tuple[str, ...]] = None
+
+
+def section_names() -> Tuple[str, ...]:
+    """Every optional section field declared on WorkflowProvenance.
+
+    Structural, not a list: a field is a section iff it is declared
+    `Optional[<some *Provenance dataclass>]`. The two non-section fields
+    (pending_cleaning_actions, schema_version) fail that test by construction.
+    """
+    global _SECTION_NAMES_CACHE
+    if _SECTION_NAMES_CACHE is not None:
+        return _SECTION_NAMES_CACHE
+
+    import dataclasses as _dc
+    import typing as _t
+
+    try:
+        hints = _t.get_type_hints(WorkflowProvenance)
+    except Exception:
+        hints = {}
+
+    names: List[str] = []
+    for name, fld in WorkflowProvenance.__dataclass_fields__.items():
+        hint = hints.get(name)
+        if hint is not None:
+            args = [a for a in _t.get_args(hint) if a is not type(None)]
+            if (_t.get_origin(hint) is _t.Union and len(args) == 1
+                    and _dc.is_dataclass(args[0])):
+                names.append(name)
+            continue
+        # No resolvable hint (a stringified annotation we could not evaluate):
+        # fall back to the declaration's own text rather than dropping the
+        # field, because a dropped field is a section that never gets cleared.
+        text = fld.type if isinstance(fld.type, str) else str(fld.type)
+        if text.startswith("Optional[") and text.endswith("Provenance]"):
+            names.append(name)
+
+    _SECTION_NAMES_CACHE = tuple(names)
+    return _SECTION_NAMES_CACHE
+
+
+def downstream_sections(clear_feature_engineering: bool = True,
+                        clear_feature_selection: bool = True) -> Tuple[str, ...]:
+    """Sections a downstream reset must null, given what else it is clearing."""
+    flags = {"clear_feature_engineering": clear_feature_engineering,
+             "clear_feature_selection": clear_feature_selection}
+    out: List[str] = []
+    for name in section_names():
+        if name in RESET_PRESERVED_SECTIONS:
+            continue
+        flag = _FLAGGED_SECTIONS.get(name)
+        if flag is not None and not flags[flag]:
+            continue
+        out.append(name)
+    return tuple(out)
+
+
+# ---------------------------------------------------------------------------
 # Session-state accessor
 # ---------------------------------------------------------------------------
 

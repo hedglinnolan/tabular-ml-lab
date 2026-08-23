@@ -127,6 +127,18 @@ _PLAIN_KEYS: Tuple[str, ...] = (
     "pre_fe_feature_cols",         # lets FE Reset/Skip restore the original list
     "preprocess_built_model_keys", # which models had pipelines configured
     "engineered_feature_transforms",  # double-transform guard's map
+    # -- the quarantine watermark (`STATE-041`) --
+    # A methodological fact about the artifacts in the same archive, not a UI
+    # preference: it records that results here were computed with the test-set
+    # quarantine OFF. It was in NEITHER bucket, so a save dropped it, and a
+    # restored session's manuscript suppressed the exploratory disclaimer and
+    # asserted the test set "was frozen at data upload, before any feature
+    # engineering or feature selection" over a feature selection that had seen
+    # it. pages/10 reads `exploratory_mode or exploratory_used`, so persisting
+    # the watermark keeps the disclosure true wherever the restore lands.
+    # (exploratory_mode itself stays a deferred widget key — page 01's checkbox
+    # binds to it and must not be assigned directly.)
+    "exploratory_used",
 )
 
 # Deferred widget keys -- stored separately because Streamlit requires setting
