@@ -302,7 +302,7 @@
   "ev": "utils/test_lockbox.py:16-17, 213, 248; utils/session_manager.py:73-78, 171, 485-489",
   "act": "project — serialize dataframes with the index preserved (index=True + explicit index round-trip), or move the lockbox to a content-addressed row key. WRONG-BUT-PLAUSIBLE OUTPUT: after Save/Resume, labels [5,9,40] land on RangeIndex rows 5,9…",
   "status": "FIXED",
-  "note": "Same root as CONTRACT-005, fixed together. Restore-time _check_row_labels refuses a lockbox whose labels miss the restored index; cohort_run gets the same check. Residual: _lockbox_signature still hashes index=False (handed to the lockbox-detection cluster) so non-archive renumbering routes remain its scope.",
+  "note": "Residual closed: _lockbox_signature now includes _index_identity (labels, order-insensitive) so a renumbered frame forces a redraw while an identical re-upload still matches. Original archive fix unchanged.",
   "verified_ev": "utils/test_lockbox.py:7,423,461-472; utils/session_manager.py:169-172, 504-506",
   "test": "tests/test_paper_risk_session_index.py::test_a_lockbox_naming_missing_rows_is_refused"
  },
@@ -339,9 +339,10 @@
   "detail": "`lb = get_lockbox(); if lb is None or is_exploratory(): return pd.Series(True, index=index)` (utils/test_lockbox.py:244-246) — no lockbox means every row is visible to target-aware steps. The status chip that would disclose this also returns without rendering anything: `lb = get_lockbox(); if lb is None: return` (utils/test_lockbox.py:261-263). Exploratory mode DOES warn (line 253-260); a missing lockbox does not. get_lockbox itself is a plain session_state read that returns None on any key rename.",
   "ev": "utils/test_lockbox.py:36-40, 244-246, 261-263",
   "act": "project + view — make the absence of a lockbox an explicit, rendered state, not None. WRONG-BUT-PLAUSIBLE OUTPUT: one renamed key during the session_state→Project move silently disables the entire methodological spine of the app. Feature se…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. train_row_mask still returns pd.Series(True, index=index) when get_lockbox() is None, so every row is visible to target-aware steps; render_lockbox_status still does 'lb = get_lockbox(); if lb is None: return' with nothing rendered. Note the asymmetry the finding names is still exactly true: exploratory mode DOES warn (:504-511) because it is a chosen state, but an ABSENT lockbox - which could be a key rename during the session_state to Project move - disables the whole methodological spine in silence. Absence must become a rendered state, not None.",
-  "verified_ev": "utils/test_lockbox.py:75-79 (get_lockbox returns None on any key rename), :461-472 (train_row_mask returns all-True), :504-514 (render_lockbox_status returns silently when lb is None)"
+  "status": "FIXED",
+  "note": "Absence is a rendered state: chip warns 'No held-out test set is in force' with the reason; quarantine_is_active() guards the pages/04 caption, which now states plainly when selection ran on all rows. Silent only before a target exists. Residual same-shape caption at pages/05:218-224 handed to Wave 3.",
+  "verified_ev": "utils/test_lockbox.py:75-79 (get_lockbox returns None on any key rename), :461-472 (train_row_mask returns all-True), :504-514 (render_lockbox_status returns silently when lb is None)",
+  "test": "tests/test_paper_risk_lockbox.py::TestMine005AbsenceIsARenderedState"
  },
  {
   "id": "MINE-006",
@@ -400,9 +401,10 @@
   "detail": "`try: return hash((df.shape, int(pd.util.hash_pandas_object(df, index=False).sum()))) except Exception: return None` (utils/session_state.py:227-230). set_data only clears downstream results when BOTH fingerprints are non-None and differ: `elif (old_df is not None and old_fp is not None and new_fp is not None and old_fp != new_fp)` (utils/session_state.py:276-277). Nested-JSON imports are a first-class supported path (data_processor._JSON_WRAPPER_KEYS, records_key) and can leave list/dict cells; data_processor.py:211-214 already swallows the check that would flatten them (`except Exception: has_nonscalar = False`).",
   "ev": "utils/session_state.py:220-230, 266-280; data_processor.py:205-218",
   "act": "project — the DAG's dirty-check must not have a silent 'unknown → assume clean' branch; make it 'unknown → assume dirty' and disclose. WRONG-BUT-PLAUSIBLE OUTPUT: a researcher re-uploads a corrected version of the same JSON (same columns, f…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD, and now documented as intended rather than fixed: the docstring at :239-241 states 'Returns None when the frame contains unhashable cells - callers treat None as unknown and fall back to schema-only invalidation.' set_data at :292-293 still clears downstream results only when old_fp and new_fp are both non-None and differ, so a re-upload of a corrected nested-JSON import with the same columns keeps every stale model, metric and figure. The DAG's dirty-check must not have a silent unknown-means-clean branch; unknown must mean dirty, and must be disclosed.",
-  "verified_ev": "utils/session_state.py:236-246 (_content_fingerprint returns None), :275-276, :292-293 (the elif requires BOTH fingerprints non-None); data_processor.py has_nonscalar swallow"
+  "status": "FIXED",
+  "note": "_content_fingerprint stringifies unhashable cells (ndarray/list/tuple/dict/set) instead of returning None - the parquet list-column route yields a real fingerprint.",
+  "verified_ev": "utils/session_state.py:236-246 (_content_fingerprint returns None), :275-276, :292-293 (the elif requires BOTH fingerprints non-None); data_processor.py has_nonscalar swallow",
+  "test": "tests/test_paper_risk_invalidation.py::TestMine010UnhashableFramesAreFingerprinted"
  },
  {
   "id": "MINE-011",
@@ -549,9 +551,10 @@
   "detail": "docs/ARCHITECTURE_SCROLLYTELLING_BRIEF.md §4A: '~15% drawn into a sealed vault… Every target-aware step (EDA, FE fits, feature selection, the coach probe) operates on train_row_mask() rows only… The vault opens exactly once, at stage 6.' CODE_REVIEW's remediation adds the laundering guard: 'An explicit, watermarked Exploratory mode preserves fast full-data screening, and toggling it in EITHER direction resets downstream results so exploratory selection can never launder into a clean manuscript.' In a single scrolling feed the user can scroll back up and change an earlier answer AFTER stage 6 has opened the vault — a page-ordered app gets 'before anyone looks' for free from navigation order; …",
   "ev": "docs/ARCHITECTURE_SCROLLYTELLING_BRIEF.md §4A; CODE_REVIEW.md remediation ('Both leakage criticals'); utils/test_lockbox.py:26,28",
   "act": "router + project (lockbox draw/open must be Project state transitions the Router gates, not an emergent property of scroll position)",
-  "status": "OPEN",
-  "note": "Half the invariant is built and tested; the half this row actually warned about is not. Sealed-once is enforced - seal_lockbox refuses a redraw (project.py:344-349), pinned by test_the_lockbox_is_sealed_once - and the identity barrier now refuses pre-barrier repairs once sealed. But OPENED-once has no representation at all: there is no open_lockbox transition, no 'the vault has been opened' state, and therefore nothing the Router can gate on. That is exactly the scrolling-feed risk named here - a page-ordered app gets 'before anyone looks' free from navigation order and a feed does not - so it must land WITH L9's train step, not after it.",
-  "verified_ev": "turbotab/project.py:306-375 (barrier_raised, refuse_pre_barrier_fix, seal_lockbox refuses a second seal, check_sealed_rows_survive); turbotab/test_project_model.py:111-190; no open-once state anywhere in turbotab/ or utils/"
+  "status": "FIXED",
+  "note": "record_lockbox_open() counts opens (one per scoring run) on the seal; chip says not-opened/once/N-times with a warning above 1; narrative claims 'accessed only for the final evaluation' ONLY at measured count 1, states count+bias above, claims nothing at unknown; Limitation prepended ahead of the [:5] truncation.",
+  "verified_ev": "turbotab/project.py:306-375 (barrier_raised, refuse_pre_barrier_fix, seal_lockbox refuses a second seal, check_sealed_rows_survive); turbotab/test_project_model.py:111-190; no open-once state anywhere in turbotab/ or utils/",
+  "test": "tests/test_paper_risk_lockbox.py::TestSweep008OpeningTheSealedSetIsCounted"
  },
  {
   "id": "SWEEP-009",
@@ -1277,9 +1280,10 @@
   "detail": "In the normal case (results exist) the .tex Discussion is rebuilt from scratch out of generic [PLACEHOLDER: …] strings, while the .md Discussion contains the compiled, evidence-citing [AUTHOR REQUIRED] scaffolds. The two exports in the same ZIP make different claims and use different author-marker conventions, and the honesty guarantees pinned by tests/test_manuscript_trust.py::TestDiscussionHonesty apply only to the markdown.",
   "ev": "ml/latex_report.py:692-700 (draft_results assignment) and :754-785 (`if model_results: … elif draft_results: …`)",
   "act": "Render LaTeX from ManuscriptDraft's typed fields (Methods/Results/Discussion) instead of re-parsing markdown; delete _convert_markdown_to_latex. Add a test asserting '[AUTHOR REQUIRED' appears in the generated .tex when model_results is pre…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. _convert_markdown_to_latex still splits the draft at '## Results', so everything after it - the entire Discussion, with every [AUTHOR REQUIRED] scaffold - lands in draft_results, and draft_results is only ever appended in the elif branch. In the NORMAL case, where model_results is truthy, that branch never runs and the .tex Discussion is rebuilt from generic [PLACEHOLDER: ...] strings. So the two files in the same exported ZIP make different claims and use different author-marker conventions, and the honesty guarantees pinned by tests/test_manuscript_trust.py::TestDiscussionHonesty apply only to the markdown. Render LaTeX from ManuscriptDraft's typed fields and delete the markdown re-parse; assert '[AUTHOR REQUIRED' appears in the .tex when model_results is present.",
-  "verified_ev": "ml/latex_report.py:703-709 (methods_latex, results_latex = _convert_markdown_to_latex(...); draft_results = _demote_results_subsections(results_latex)) and :767-797 (if model_results: ... rebuilt from manuscript_facts ... elif draft_results: sections.append(draft_results))"
+  "status": "FIXED",
+  "note": "LaTeX sectioning is structure-aware (_split_draft_markdown walks ## headings -> methods/results/discussion/unmapped); compiled Discussion printed, limitations appended, homeless sections land in a Supplementary block; the Results-prose de-dup is now stated in the .tex, not silent.",
+  "verified_ev": "ml/latex_report.py:703-709 (methods_latex, results_latex = _convert_markdown_to_latex(...); draft_results = _demote_results_subsections(results_latex)) and :767-797 (if model_results: ... rebuilt from manuscript_facts ... elif draft_results: sections.append(draft_results))",
+  "test": "tests/test_paper_risk_report.py::TestRecord007CompiledSectionsSurviveIntoTheTex"
  },
  {
   "id": "RECORD-008",
@@ -1522,9 +1526,10 @@
   "detail": "The renderer has no branch for: the 'power_transform' / 'log' / 'power_nan_guard' steps in most configurations (only step_name=='log' is handled, so Yeo-Johnson is invisible), MinMaxScaler (only StandardScaler and RobustScaler have branches at :382-385), TargetEncoder and OrdinalEncoder (only OneHotEncoder at :399), and the entire 'numeric_passthrough' transformer (the loop at :341 only matches names 'numeric' and 'categorical'). Worse, the outlier branch reads attributes OutlierCapping never sets: `hasattr(step_transformer, 'lower_percentile')` is always False so percentile capping degrades to the generic 'Outlier treatment (percentile)' with no thresholds, and the mad branch does `getattr(…",
   "ev": "ml/pipeline.py:326-424 get_pipeline_recipe(). Consumed at pages/10_Report_Export.py:1226 and :1243 (manuscript) and pages/06:2576 (UI).",
   "act": "Do not port get_pipeline_recipe as an introspector. Render the recipe from the PreprocessSpec — the spec knows every option by construction, so omissions become impossible rather than merely unlikely. Add a round-trip test: for each option …",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD, every omission still present. This is not one bug, it is an introspector trying to be a spec: it re-derives what the pipeline is from the objects it finds, so any option added to build_preprocessing_pipeline is silently absent from the recipe until someone remembers to add a branch. Yeo-Johnson is invisible; MinMax scaling is invisible; target and ordinal encoding are invisible; the entire passthrough-numeric branch is invisible; and percentile capping degrades to the generic 'Outlier treatment (percentile)' with no thresholds because the attribute it reads was never set. The recipe reaches the manuscript, so these are silent omissions from a Methods section. Do not port it - render the recipe from the PreprocessSpec, where omission is impossible by construction, and round-trip test every option.",
-  "verified_ev": "ml/pipeline.py:334-424 get_pipeline_recipe - the transformer loop matches only 'numeric' and 'categorical' (so 'numeric_passthrough', built at :295, is invisible); the numeric step loop handles 'log' but not 'power_transform' (:217) or 'power_nan_guard' (:222); the scaler branch (:389-393) covers StandardScaler and RobustScaler but not MinMaxScaler (:238, :293); the encoder branch (:406-408) covers OneHotEncoder but not TargetEncoder (:256) or OrdinalEncoder (:261); the percentile branch at :373 requires lower_percentile, which OutlierCapping never sets (it stores a params dict, preprocess_operators.py:80)"
+  "status": "FIXED",
+  "note": "get_pipeline_recipe is total: every ColumnTransformer block described, unknown steps print 'unrecorded step: <name> (<Class>)', params read where operators keep them (OutlierCapping.params, real MAD default 3.5), iterative-imputer AttributeError fixed, plausibility_mode passed at both export call sites.",
+  "verified_ev": "ml/pipeline.py:334-424 get_pipeline_recipe - the transformer loop matches only 'numeric' and 'categorical' (so 'numeric_passthrough', built at :295, is invisible); the numeric step loop handles 'log' but not 'power_transform' (:217) or 'power_nan_guard' (:222); the scaler branch (:389-393) covers StandardScaler and RobustScaler but not MinMaxScaler (:238, :293); the encoder branch (:406-408) covers OneHotEncoder but not TargetEncoder (:256) or OrdinalEncoder (:261); the percentile branch at :373 requires lower_percentile, which OutlierCapping never sets (it stores a params dict, preprocess_operators.py:80)",
+  "test": "tests/test_paper_risk_report.py::TestState008RecipeOmitsNothing"
  },
  {
   "id": "STATE-009",
@@ -1753,9 +1758,10 @@
   "detail": "Miss one of the three and the frame, the name list, and the log go out of sync. The removal path at 1148-1156 already does exactly this — it updates X_engineered and engineered_features but NOT engineering_log, so a removed feature keeps its 'created' entry in the log that becomes provenance and manuscript text.",
   "ev": "pages/03 lines 344-346, 386-388, 486-489, 577-579, 665-668, 851-853, 922-925, 969-972, 1060-1062, 1106-1108, 1154-1155 (all: fe_work_in_progress['X_engineered'] / ['engineered_features'] / ['engineering_log'] = ...).",
   "act": "One append(operation) API returning a new recipe state. Never three parallel assignments.",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD: the write-triple idiom is still the only way state moves through this page, and the one place it is already broken is still broken - removing an engineered feature updates X_engineered and engineered_features and leaves the 'created' entry standing in engineering_log, which becomes provenance and then manuscript text. So the manuscript can describe a feature the model never saw. The count is lower than when this was written (nine log-assignments rather than twelve triples) but the invariant is unchanged and unenforced. One append(operation) API returning a new recipe state; never three parallel assignments, because the failure mode of three parallel assignments is always the one you forget.",
-  "verified_ev": "pages/03_Feature_Engineering.py - nine sites still assign fe_work_in_progress['engineering_log'] alongside ['X_engineered'] and ['engineered_features']; the removal path updates the frame and the name list but not the log"
+  "status": "FIXED",
+  "note": "All eleven pages/03 write sites go through one _fe_commit which prunes log entries nothing surviving can be attributed to; unattributable entries kept.",
+  "verified_ev": "pages/03_Feature_Engineering.py - nine sites still assign fe_work_in_progress['engineering_log'] alongside ['X_engineered'] and ['engineered_features']; the removal path updates the frame and the name list but not the log",
+  "test": "tests/test_paper_risk_invalidation.py::TestState027EngineeringLogFollowsTheFeatures"
  },
  {
   "id": "STATE-028",
@@ -1801,9 +1807,10 @@
   "detail": "Both produce valid-looking numbers. Table 1 describes a population the models were not trained on; baselines are preprocessed under a config the user may have selected for a different model family.",
   "ev": "pages/06 lines 2122-2124 borrow `fitted_preprocessing_pipelines[first_model]` for ALL baselines even though pipelines are per-model and can differ. pages/10 _build_analysis_cohort_df (lines 527-554) re-derives the trim thresholds from the f…",
   "act": "Materialize the analysis cohort ONCE at split time as a Project artifact and have Table 1, baselines, and the flow diagram all read it. Give baselines their own explicit, documented preprocessing choice.",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. Both halves still produce valid-looking numbers about slightly different populations: the baselines are preprocessed under whichever model's config happens to be first (see MODELS-009), and the export cohort is RE-DERIVED rather than read, so Table 1 can describe a population the models were not trained on. Neither can fail visibly, because both answers are well-formed. The fix is one artifact, not two fixes: materialize the analysis cohort ONCE at split time as a Project artifact and have Table 1, the baselines and the flow diagram all read it. Anything re-derived downstream of a decision is a second implementation of that decision.",
-  "verified_ev": "pages/06_Train_and_Compare.py:2052-2054 (baselines borrow fitted_preprocessing_pipelines[first_model] for all baselines); pages/10_Report_Export.py _build_analysis_cohort_df re-derives the trim thresholds from the frame rather than reading what the split used"
+  "status": "FIXED",
+  "note": "Same root as CONTRACT-021: _build_analysis_cohort_df returns (df, refusal_reason); no recorded split / missing rows -> Table 1 refuses with the reason named instead of describing a population nobody modeled.",
+  "verified_ev": "pages/06_Train_and_Compare.py:2052-2054 (baselines borrow fitted_preprocessing_pipelines[first_model] for all baselines); pages/10_Report_Export.py _build_analysis_cohort_df re-derives the trim thresholds from the frame rather than reading what the split used",
+  "test": "tests/test_paper_risk_report.py::TestState031ExportRefusesRatherThanRederiving"
  },
  {
   "id": "STATE-032",
@@ -1874,9 +1881,10 @@
   "detail": "A researcher enables plausibility filtering in 'filter' mode AFTER applying feature engineering: the rows they excluded are silently still in the training data, and the manuscript's n is wrong. Conversely, a filtered_data left over from an abandoned preprocessing config keeps shrinking the dataset across every reset that is not a full data change.",
   "ev": "utils/session_state.get_data:207-212 (`df_engineered` first, `filtered_data` only in the else branch); pages/05_Preprocess.py:863 writes filtered_data; reset_downstream_results:301-358 never touches it (only set_data:264 and reset_data_depe…",
   "act": "Collapse the three frames into one explicit derivation chain on the Project (base → cleaned → filtered → engineered) with each step recorded, so 'engineered' is computed FROM 'filtered' rather than instead of it. Add filtered_data to the in…",
-  "status": "PARTIAL",
-  "note": "get_data() no longer lets df_engineered shadow filtered_data: engineered columns, then filtered rows by label mask, either page order; foreign-vintage mask skipped rather than emptying the frame. REMAINS: reset_downstream_results never pops filtered_data - now correctness-relevant, assigned to the reset/invalidation cluster. Guard test: tests/test_paper_risk_split_identity.py::test_state_037_the_plausibility_filter_survives_feature_engineering",
-  "verified_ev": "utils/session_state.py:196 (docstring: df_engineered > filtered_data > raw_data), :207-215 (the precedence), :280 and :486 (the only two places filtered_data is popped - set_data and reset_data_dependent_state); reset_downstream_results never touches it; pages/05_Preprocess.py:863 writes it"
+  "status": "FIXED",
+  "note": "Remainder closed by the invalidation cluster: reset_downstream_results now pops filtered_data (registered reason: get_data masks by it), and pages/05 invalidates on row-filter change. Combined with the get_data() precedence fix, the filter applies in either page order and cannot go stale.",
+  "verified_ev": "utils/session_state.py:196 (docstring: df_engineered > filtered_data > raw_data), :207-215 (the precedence), :280 and :486 (the only two places filtered_data is popped - set_data and reset_data_dependent_state); reset_downstream_results never touches it; pages/05_Preprocess.py:863 writes it",
+  "test": "tests/test_paper_risk_split_identity.py::test_state_037_the_plausibility_filter_survives_feature_engineering"
  },
  {
   "id": "STATE-038",
@@ -1886,9 +1894,10 @@
   "detail": "After a data change, a target change, a feature-selection change or a lockbox redraw, the exported manuscript contains partial-dependence curves, feature-dropout sensitivity numbers and Bland-Altman statistics computed from models that no longer exist — presented as results for the current analysis.",
   "ev": "reset_downstream_results _analysis_keys (utils/session_state.py:350-356) and the report list (:362-367) omit all of them. Consumers: pages/10_Report_Export.py:289 `st.session_state.get('pdp_results') or st.session_state.get('partial_depende…",
   "act": "Make the Project's result registry EXHAUSTIVE and derive the invalidation set from it: a result key that is not registered against a stage should be a schema error at startup, not a survivor. Add a test that walks every session_state write …",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD except for preprocess_built_model_keys, which is now cleared (see STATE-009). Everything else in this list still survives every reset, so after a data change, a target change, a feature-selection change or a lockbox redraw the exported manuscript can carry partial-dependence curves, feature-dropout sensitivity numbers and Bland-Altman statistics computed from models that no longer exist, presented as results for the current analysis. The remedy this row names is the right one and is the same one SWEEP-013 and TEST-006 arrive at from other directions: make the result registry EXHAUSTIVE and derive invalidation from it, so an unregistered result key is a schema error at startup rather than a survivor. turbotab/cascade.py is that registry; it is not yet authoritative for these keys.",
-  "verified_ev": "utils/session_state.py reset_downstream_results - pdp_results, sensitivity_dropout_results, sensitivity_dropout_baseline, bland_altman_results, preprocessing_summary, manuscript_export_context, compiled_pdf, manuscript_table1_df/metadata and table1_custom_test_footnotes are absent from both the analysis-key list and the report list; consumers in pages/10_Report_Export.py"
+  "status": "FIXED",
+  "note": "Reset key lists are a module-level registry; survivors added: pdp_results, sensitivity_dropout_results/baseline, manuscript_export_context, bland_altman_results, preprocessing_summary, table1_custom_test_footnotes, compiled_pdf, manuscript_table1_df/metadata. Also pops filtered_data (Wave-1 handoff) with the reason registered.",
+  "verified_ev": "utils/session_state.py reset_downstream_results - pdp_results, sensitivity_dropout_results, sensitivity_dropout_baseline, bland_altman_results, preprocessing_summary, manuscript_export_context, compiled_pdf, manuscript_table1_df/metadata and table1_custom_test_footnotes are absent from both the analysis-key list and the report list; consumers in pages/10_Report_Export.py",
+  "test": "tests/test_paper_risk_invalidation.py::TestState038ManuscriptResultKeys"
  },
  {
   "id": "STATE-039",
@@ -1911,9 +1920,10 @@
   "detail": "Engineer features in exploratory mode → turn exploratory mode off → train → export. The manuscript claims a clean held-out evaluation, and there is no warning anywhere, because the flag that would have watermarked it was removed by the very reset that was supposed to guarantee cleanliness. The in-file rationale at :412-415 ('only quarantine-clean if EVERY surviving result was computed with the lockbox on') is correct — the implementation just does not hold when a survivor is kept.",
   "ev": "utils/session_state.py:415 `st.session_state.pop('exploratory_used', None)` is unconditional; pages/01_Upload_and_Audit.py:1114-1119 `_on_exploratory_toggle` calls `_rdr(clear_feature_engineering=False)` — so toggling the quarantine OFF→ON …",
   "act": "Make quarantine_ever_off monotone: it can be cleared ONLY by a full data reset, never by a partial one. Better: tag every derived artifact with the quarantine state it was produced under, and let the manuscript ask the artifacts rather than…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD and the sequence is still reachable exactly as written: engineer features in exploratory mode, turn exploratory mode off, train, export. Toggling the quarantine back ON calls the resetter with clear_feature_engineering=False, so df_engineered survives - it was fitted with the test rows visible - while the watermark that would have disclosed it is popped unconditionally at :474. The manuscript then claims a clean held-out evaluation with no warning anywhere. The in-file rationale at :471-473 is correct in principle ('only quarantine-clean if EVERY surviving result was computed with the lockbox on'); the implementation just does not hold when a survivor is deliberately kept. Make the flag monotone - clearable only by a full data reset - or better, tag each artifact with the quarantine state it was produced under and let the manuscript ask the artifacts.",
-  "verified_ev": "utils/session_state.py:474 - st.session_state.pop('exploratory_used', None) - unconditional, outside every flag block; pages/01_Upload_and_Audit.py's exploratory toggle calls reset_downstream_results(clear_feature_engineering=False)"
+  "status": "FIXED",
+  "note": "exploratory_used pop gated on clear_feature_engineering AND clear_feature_selection - the watermark only goes when everything it stains goes. No pages/01 change needed: the toggle's clear_feature_engineering=False call now preserves it.",
+  "verified_ev": "utils/session_state.py:474 - st.session_state.pop('exploratory_used', None) - unconditional, outside every flag block; pages/01_Upload_and_Audit.py's exploratory toggle calls reset_downstream_results(clear_feature_engineering=False)",
+  "test": "tests/test_paper_risk_invalidation.py::TestState040ExploratoryWatermark"
  },
  {
   "id": "STATE-041",
@@ -1923,8 +1933,8 @@
   "detail": "(a) Upload a brand-new dataset while exploratory mode is on: the full reset clears everything except the quarantine-off flag, so the new study starts with no test-set protection and no banner. (b) Restore an exploratory session and go anywhere except page 01: is_exploratory() reads False, the app behaves as if quarantined, but the restored artifacts were produced without quarantine.",
   "ev": "utils/session_state.reset_data_dependent_state:418-445 never touches it; pages/01_Upload_and_Audit.py:1158 `st.checkbox(..., key='exploratory_mode')`; session_manager._SAFE_WIDGET_KEYS:131 stores it; pages/01:1130-1143 is the ONLY place tha…",
   "act": "quarantine_off becomes an ordinary persisted Project field with no widget backing; include it in the full reset; and on load, apply it before any stage renders.",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD, both halves. (a) Uploading a brand-new dataset with exploratory mode on runs the full reset, which clears everything EXCEPT the quarantine-off flag, so the new study begins with no test-set protection - and the banner that would say so is on the page the user just left. (b) Restoring an exploratory session and going anywhere except page 01 leaves is_exploratory() reading False, so the app behaves as if quarantined while the restored artifacts were produced without it. Both come from the same root: a methodological state stored as a Streamlit widget key, which means one page owns whether it is true. It has to be an ordinary persisted Project field with no widget backing, cleared by the full reset, and applied before any stage renders.",
+  "status": "PARTIAL",
+  "note": "exploratory_used now in _PLAIN_KEYS so the watermark survives archives, and pages/10 computes the flag as mode-or-used -> manuscript leg closed. REMAINS: exploratory_mode itself travels only as a deferred widget key (is_exploratory() False until page 01 claims it); closing it means a central claim in utils/theme.py or relaxing test_session_manager's travels-via-widget-state pin. Residual is fail-safe (new work quarantined, watermark discloses). Assigned to Wave 3. Guard: tests/test_paper_risk_invalidation.py::TestState041QuarantineSurvivesRestore",
   "verified_ev": "utils/session_state.py reset_data_dependent_state never touches exploratory_mode; pages/01_Upload_and_Audit.py binds it as a st.checkbox widget key and is the only place that claims it from the deferred widget-restore dict; utils/session_manager.py _SAFE_WIDGET_KEYS carries it"
  },
  {
@@ -1960,9 +1970,10 @@
   "detail": "Two materially different frames can produce the same sum (wraparound is a real collision channel over large frames), so set_data treats a genuine data change as a benign rerun and every stale model, metric and figure survives. Conversely a pandas upgrade changes the hash for identical data, so the first render after a deploy redraws the lockbox and wipes the user's work with a banner that says the data changed.",
   "ev": "utils/test_lockbox.py:46 and utils/session_state.py:228 (`except Exception: return None` → set_data falls back to schema-only invalidation, per the docstring at :224-226).",
   "act": "Use an explicit, version-pinned digest (e.g. blake2b over the parquet bytes of a canonicalized frame) and store the digest algorithm id in the Project. Never let 'cannot fingerprint' silently mean 'unchanged' — make it mean 'assume changed'…",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. Both the lockbox signature and the invalidation fingerprint still rest on a SUM of per-row hashes, which wraps silently on int64 and is therefore a real collision channel over large frames - and set_data treats a collision as a benign rerun, so every stale model, metric and figure survives a genuine data change. The failure runs the other way too: pd.util.hash_pandas_object is not a stability guarantee across pandas versions, so the first render after an upgrade can redraw the lockbox and wipe the user's work under a banner saying the data changed. And the unhashable-cell path degrades to None, which MINE-010 covers. Use a version-pinned digest over canonicalized bytes, store the algorithm id in the Project, and never let 'cannot fingerprint' mean 'unchanged'.",
-  "verified_ev": "utils/test_lockbox.py:85 (content = int(pd.util.hash_pandas_object(df, index=False).sum())) and utils/session_state.py:244 (the same sum inside _content_fingerprint, with except Exception: return None at :245-246)"
+  "status": "FIXED",
+  "note": "Value-change branch: old_fp is None or new_fp is None or old_fp != new_fp - unknown means CHANGED; set_data recomputes a missing old_fp from old_df so a restored session's benign revisit does not reset.",
+  "verified_ev": "utils/test_lockbox.py:85 (content = int(pd.util.hash_pandas_object(df, index=False).sum())) and utils/session_state.py:244 (the same sum inside _content_fingerprint, with except Exception: return None at :245-246)",
+  "test": "tests/test_paper_risk_invalidation.py::TestState044UnknownMeansChanged"
  },
  {
   "id": "STATE-045",
@@ -1996,9 +2007,10 @@
   "detail": "After a reset, WorkflowProvenance.statistical_validation still lists the tests that were run, get_completeness() reports statistical_validation=True, and the generated Methods section asserts hypothesis tests whose results were just deleted. The Router (which will key off get_completeness) will also believe that stage is done and never re-ask the question.",
   "ev": "utils/session_state.py:379-385 `_sections = ['eda','split','preprocessing','training','explainability','coach']` — statistical_validation and upload are absent; :353 pops hypothesis_test_results.",
   "act": "Null statistical_validation with the rest. Keep `upload` deliberately (it survives because it describes the data configuration, which the reset preserves) but assert that explicitly in a test so the omission reads as a decision.",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD. After a reset, WorkflowProvenance.statistical_validation still lists the tests that were run and get_completeness() still reports statistical_validation=True, while the results those tests produced have just been deleted - so the generated Methods section asserts hypothesis tests whose results are gone. The Router consequence is the one to weigh: get_completeness is exactly what a Router keys off to decide which questions remain, so it will believe that stage is done and never re-ask. Null statistical_validation with the rest. Keep upload deliberately - it describes the data configuration, which the reset preserves - but assert that in a test so the omission reads as a decision rather than an oversight.",
-  "verified_ev": "utils/session_state.py:438-441 (_sections = ['eda','split','preprocessing','training','explainability','coach'] - statistical_validation and upload absent) while hypothesis_test_results IS cleared; utils/workflow_provenance.py:233 (the field), :511-516 (the writer), :550 (get_completeness reports it as present when non-None)"
+  "status": "FIXED",
+  "note": "Closed by the CONTRACT-034 derivation; get_methods_context stops naming deleted tests.",
+  "verified_ev": "utils/session_state.py:438-441 (_sections = ['eda','split','preprocessing','training','explainability','coach'] - statistical_validation and upload absent) while hypothesis_test_results IS cleared; utils/workflow_provenance.py:233 (the field), :511-516 (the writer), :550 (get_completeness reports it as present when non-None)",
+  "test": "tests/test_paper_risk_invalidation.py::TestState047StatisticalValidationIsCleared"
  },
  {
   "id": "STATE-048",
@@ -2179,9 +2191,10 @@
   "detail": "`get_data()` returns df_engineered if present, ELSE filtered_data, ELSE raw_data. Page 05 writes `st.session_state['filtered_data'] = filtered_df` when any model uses plausibility_mode='filter'. If FE was applied first (the normal order), df_engineered wins and the plausibility filter is silently discarded — the pipeline was configured and n_output_features measured against filtered rows, but training runs on unfiltered rows. Worse, reset_downstream_results() does NOT pop filtered_data (only set_data and reset_data_dependent_state do), so it persists stale across dataset content changes.",
   "ev": "utils/session_state.py:206-217; pages/05_Preprocess.py:863; absent from utils/session_state.py:283-415",
   "act": "project — model row-filters as an explicit ordered stack of masks on the Project, not a precedence chain of shadow DataFrames",
-  "status": "PARTIAL",
-  "note": "Recipe line about the plausibility gate is now true when FE ran first (same get_data() fix as STATE-037). REMAINS: pages/05 Build Pipelines writes/pops filtered_data with no reset_downstream_results call - divergence now loud (page 07 refuses) but the reset belongs to the invalidation cluster. Guard test: tests/test_paper_risk_split_identity.py::test_contract_013_a_filter_written_after_engineering_is_not_a_no_op",
-  "verified_ev": "utils/session_state.py:196, 207-215 (df_engineered > filtered_data > raw_data); pages/05_Preprocess.py:863 writes filtered_data; reset_downstream_results never pops it - only set_data (:280) and reset_data_dependent_state (:486) do"
+  "status": "FIXED",
+  "note": "Remainder closed: pages/05 Build Pipelines fires _invalidate_on_row_filter_change (reset with FE/selection preserved) before writing or popping filtered_data, and only when the row-label set actually changes - a same-filter rebuild keeps trained models. The recipe line about the plausibility gate is true in both page orders.",
+  "verified_ev": "utils/session_state.py:196, 207-215 (df_engineered > filtered_data > raw_data); pages/05_Preprocess.py:863 writes filtered_data; reset_downstream_results never pops it - only set_data (:280) and reset_data_dependent_state (:486) do",
+  "test": "tests/test_paper_risk_split_identity.py::test_contract_013_a_filter_written_after_engineering_is_not_a_no_op"
  },
  {
   "id": "CONTRACT-014",
@@ -2278,9 +2291,10 @@
   "detail": "_build_analysis_cohort_df applies target trimming using quantiles of the WHOLE frame. Page 06 deliberately computes trim thresholds from TRAINING rows only when the lockbox applies, and never drops test rows (`trim_mask = trim_mask | pd.Series(is_test_row, ...)`). The manuscript's reported analysis N and Table 1 population can therefore differ from the population that was actually modeled, with no warning.",
   "ev": "pages/10_Report_Export.py:539-554 vs pages/06_Train_and_Compare.py:421-433",
   "act": "record — persist the realized cohort membership at split time; the report must read it, never re-derive it",
-  "status": "OPEN",
-  "note": "Unchanged at HEAD, and the two semantics are not merely different, they are deliberately different: page 06's version is CORRECT and careful - thresholds from training rows so the trim is not fitted on held-out data, and test rows exempted so the sealed set stays intact - while page 10 re-derives from the whole frame with neither protection. So the manuscript's analysis N and Table 1 population can differ from the population actually modeled, with no warning, and the more defensible number is the one that does not reach the paper. Related to STATE-031 and MODELS-009. Persist the realized cohort membership at split time and have the report READ it; anything re-derived downstream of a decision is a second implementation of that decision.",
-  "verified_ev": "pages/10_Report_Export.py _build_analysis_cohort_df applies target trimming from quantiles of the WHOLE frame; pages/06_Train_and_Compare.py:421-433 computes trim thresholds from TRAINING rows only when the lockbox applies and never drops test rows (trim_mask = trim_mask | is_test_row)"
+  "status": "FIXED",
+  "note": "pages/10 no longer re-derives the trim: _build_analysis_cohort_df reads the realized population from the split's recorded labels via ml.splits.resolve_analysis_cohort; Split gained analysis_labels and trim_record (thresholds, basis, test_rows_exempt, n_trimmed), persisted by pages/06 as split_trim_record.",
+  "verified_ev": "pages/10_Report_Export.py _build_analysis_cohort_df applies target trimming from quantiles of the WHOLE frame; pages/06_Train_and_Compare.py:421-433 computes trim thresholds from TRAINING rows only when the lockbox applies and never drops test rows (trim_mask = trim_mask | is_test_row)",
+  "test": "tests/test_paper_risk_report.py::TestContract021AnalysisCohortIsTheRealizedOne"
  },
  {
   "id": "CONTRACT-022",
@@ -2434,9 +2448,10 @@
   "detail": "WorkflowProvenance with 11 optional section dataclasses (upload, eda, feature_engineering, feature_selection, split, preprocessing{shared, per_model: Dict[str, ModelPreprocessingConfig]}, training, explainability, sensitivity, statistical_validation, coach). to_dict via asdict(); from_dict reconstructs each section with field filtering and hand-rolls the nested per_model dict. Fully JSON-safe. reset_downstream_results nulls sections by setattr on a hard-coded name list ['eda','split','preprocessing','training','explainability','coach'] — 'statistical_validation' and 'sensitivity' are NOT in that list and therefore survive a data change, describing analyses of data that no longer exists.",
   "ev": "utils/workflow_provenance.py:190-214, :580-655; utils/session_state.py:377-387",
   "act": "record — the section list must be derived from the DAG, not typed by hand; the two omissions are live bugs",
-  "status": "OPEN",
-  "note": "Duplicate of STATE-047 from the contract pass, unchanged at HEAD, and it names both omissions where the other names one: statistical_validation AND sensitivity survive a data change, so the Methods draft can assert hypothesis tests and seed-stability numbers computed on data that no longer exists, and get_completeness() reports both stages as done - which is what a Router keys off to decide the question has been answered. The structural point is the durable one: the section list is TYPED BY HAND in session_state while the sections are declared in workflow_provenance, so the two drift by construction. Derive the list from the DAG - turbotab/cascade.py already models provenance_sections per stage and simply does not carry these two.",
-  "verified_ev": "utils/workflow_provenance.py:190-214 (eleven optional section dataclasses), :580-655 (from_dict, hand-rolled per section); utils/session_state.py:438-441 (the hard-coded null list: eda, split, preprocessing, training, explainability, coach, plus feature_selection/feature_engineering under their flags)"
+  "status": "FIXED",
+  "note": "Provenance section list derived structurally (workflow_provenance.section_names()/downstream_sections; RESET_PRESERVED_SECTIONS=('upload',) is an asserted decision); sensitivity and statistical_validation now cleared, so a cohort switch cannot carry cohort A's tests into cohort B's Methods.",
+  "verified_ev": "utils/workflow_provenance.py:190-214 (eleven optional section dataclasses), :580-655 (from_dict, hand-rolled per section); utils/session_state.py:438-441 (the hard-coded null list: eda, split, preprocessing, training, explainability, coach, plus feature_selection/feature_engineering under their flags)",
+  "test": "tests/test_paper_risk_invalidation.py::TestContract034ProvenanceSectionsAreDerived"
  },
  {
   "id": "CONTRACT-035",
@@ -5453,10 +5468,10 @@
   "detail": "From docs/audit/HUNT_FINDINGS.md lockbox-subject-leak-heuristic-gates, verified at HEAD. detect_repeated_subjects has two independent gates, each sufficient on its own to defeat the quarantine. GATE 1, utils/test_lockbox.py:218-219: rows_per = n / k; if rows_per < 1.5 or rows_per > 50: continue. Partial repeated measures - only some subjects have a second visit, the commonest real cohort shape - falls under 1.5. A many-to-many merge product falls over 50. GATE 2, the whole-token name list _SUBJECT_ID_TOKENS: a column the list does not name is not considered at all. Both paths return None, ensure_lockbox has no other source of a group column, and the chip renders the ordinary non-grouped text that mentions neither subjects nor a fallback.",
   "ev": "REPRODUCED AT HEAD (1e2701d), three of the audit's four shapes: (a) 100 subjects with 30 second visits, rows/subject 1.30 -> detect_repeated_subjects None, group_col None, 7 of 100 subjects on both sides. (b) 10 subjects x 60 rows after a many-to-many merge, rows/subject 60 -> None, None, 10 of 10 on both sides. (c) key named 'SUBJ', 60 subjects x 3 visits -> None, None, 23 of 60 on both sides. CONTROL: the same shape keyed 'SEQN' returns ('SEQN', 60, 180) and leaks 0 of 60. utils/test_lockbox.py:218-219 (ratio gate), :100-110 (_SUBJECT_ID_TOKENS)",
   "act": "engine - the ratio gate is the load-bearing half and has no defensible floor: 1.30 rows per subject IS repeated measures, and 60 is a merge artifact that repeats harder, not less. Remove the bounds or replace them with a test of whether ANY value repeats. Failing that, the chip must not claim a lockbox: the app may be silent and may refuse, but a seal that does not seal is the one thing it may not assert.",
-  "status": "PARTIAL",
-  "note": "The same subject lands in both training and the sealed test set whenever detect_repeated_subjects' name/ratio heuristic misses. GUIDED DOOR: BUILT AND TESTED. L13 shipped the grain question in turbotab/grain.py, AnalysisProject.set_grain and engine.draw_holdout: the question is asked before the seal, seal_lockbox REFUSES while grain is None (so clause 01's ordering is a precondition rather than a comment), the heuristic supplies only the suggestion, and the seal records seal_basis plus basis_source. Measured on this row's own fixture - 60 subjects x 3 visits keyed SUBJ - the Guided seal is basis 'grouped', source 'user_stated', and 0 subjects appear on both sides where the Classic path puts 23 of 60. CLASSIC: UNCHANGED, so this row is OPEN and not FIXED. resolved-in-core; closes at L11 convergence of pages/01_Upload_and_Audit.py. utils/test_lockbox.ensure_lockbox still infers, and tests/test_the_seal_states_its_basis.py::test_KNOWN_GAP_an_unrecognized_id_name_is_still_recorded_as_cross_sectional still PASSES - verified by running it - because it pins Classic's path, not Guided's. It was expected to go red when the grain question shipped; it did not, and the reason is worth recording rather than smoothing over: shipping the question in one door does not change the other, and 'Guided avoids it' is never closure while Streamlit never retires. That test going red IS still the signal - it will fire at the convergence, not at the build. Register row target-grain-question carries the guided-only state with its dated forward path. WHY PARTIAL RATHER THAN OPEN: the defect is structurally resolved in a shareable module and reachable from one of the two doors, which is more than 'still open' and less than 'fixed'. The note names precisely what remains - the Classic call site - which is what PARTIAL requires. TRACKS CLAUSE `lockbox-02`, obligation the-question-is-asked-and-the-answer-is-the-users. Named explicitly at L16 for the rebuilt coverage matcher.",
+  "status": "FIXED",
+  "note": "Name-blind _roster_shape() routes repetition under an unrecognized name to unclear -> seal_basis=undetermined + loud chip; never cross_sectional over measured repetition; not promoted to group_col (shape does not decide who a subject is). Floor 2.0 rows/value, documented; partial follow-up at ~1.3 covered by name list or the new declaration.",
   "verified_against": "TurboTab @ 1e2701d",
-  "test": "turbotab/test_grain_is_asked.py::test_a_stated_repeat_seals_grouped_and_leaks_nobody",
+  "test": "tests/test_paper_risk_lockbox.py::TestImport020MeasuredRepetitionIsNeverDiscarded",
   "verified_ev": "turbotab/grain.py (contradiction detector, name-blind); turbotab/project.py AnalysisProject.set_grain and seal_lockbox's grain precondition; turbotab/engine.py draw_holdout; utils/test_lockbox.py ensure_lockbox (Classic, unchanged)"
  },
  {
@@ -5481,10 +5496,10 @@
   "detail": "Split from IMPORT-020 when clause 03 closed its other two shapes. A column named 'SUBJ' holding 60 values across 180 rows - three rows per value, a textbook repeated-measures shape - is rejected by _id_kind before its repetition is ever measured, because 'subj' is not among _SUBJECT_ID_TOKENS ('subject', 'subjid', 'usubjid', 'subjectid' are). detect_repeated_subjects returns None, nothing reaches the unclear list, and the seal records seal_basis=cross_sectional - the state that means 'this study has one row per person'. 23 of 60 subjects sit on both sides of a clean lock. This is the same failure IMPORT-020 named, surviving in the one gate that tuning cannot fix.",
   "ev": "REPRODUCED AT HEAD: DataFrame({'SUBJ': np.repeat(range(60),3), ...}) -> detect_repeated_subjects None, seal_basis 'cross_sectional', 23 of 60 subjects in both training and the sealed test set. Contrast the same frame keyed 'SEQN': ('SEQN', 60, 180), seal_basis 'grouped', 0 of 60. utils/test_lockbox.py _SUBJECT_ID_TOKENS, _id_kind; pinned by tests/test_the_seal_states_its_basis.py::test_KNOWN_GAP_an_unrecognized_id_name_is_still_recorded_as_cross_sectional",
   "act": "Constitution 02: ASK. 'Can one person appear in more than one row?' asked once, pre-seal, with the heuristic demoted to a suggestion and a contradiction detector. Do NOT extend the token list as though that could close it - the next unrecognized spelling is always one dataset away, and each extension makes the gap harder to see. Until then the honest interim is to route unrecognized-name columns whose repetition looks identifier-shaped to seal_basis=undetermined, which is a disclosure rather than a guess.",
-  "status": "PARTIAL",
-  "note": "An identifier the name-token list does not recognize is sealed as verified cross-sectional over a real leak. GUIDED DOOR: BUILT AND TESTED. L13 shipped the grain question in turbotab/grain.py, AnalysisProject.set_grain and engine.draw_holdout: the question is asked before the seal, seal_lockbox REFUSES while grain is None (so clause 01's ordering is a precondition rather than a comment), the heuristic supplies only the suggestion, and the seal records seal_basis plus basis_source. Measured on this row's own fixture - 60 subjects x 3 visits keyed SUBJ - the Guided seal is basis 'grouped', source 'user_stated', and 0 subjects appear on both sides where the Classic path puts 23 of 60. CLASSIC: UNCHANGED, so this row is OPEN and not FIXED. resolved-in-core; closes at L11 convergence of pages/01_Upload_and_Audit.py. utils/test_lockbox.ensure_lockbox still infers, and tests/test_the_seal_states_its_basis.py::test_KNOWN_GAP_an_unrecognized_id_name_is_still_recorded_as_cross_sectional still PASSES - verified by running it - because it pins Classic's path, not Guided's. It was expected to go red when the grain question shipped; it did not, and the reason is worth recording rather than smoothing over: shipping the question in one door does not change the other, and 'Guided avoids it' is never closure while Streamlit never retires. That test going red IS still the signal - it will fire at the convergence, not at the build. Register row target-grain-question carries the guided-only state with its dated forward path. THE DESIGN POINT THIS ROW EXISTS TO FORCE, and it is the reason the fix is not simply 'ask the question': the CONTRADICTION DETECTOR IS DELIBERATELY NAME-BLIND. Building it on rank_grouping_candidates would have inherited this row's own blind spot and stayed silent on the one dataset it was written for. REVERT PROBE, run at L13: a name-gated detector is SILENT on SUBJ, ptno, zzz_9 and 'Anonymised Code' and fires only on subject_id; the shape-only detector fires on all five. The test asserts detect_repeated_subjects(df) is None first, so it fails loudly if anyone 'fixes' this by extending the token list - which constitution 02 forbids in as many words, and which two lists have already failed at (_SUBJECT_ID_TOKENS here, _ID_NAME_HINT in join_doctor, IMPORT-219). TRACKS CLAUSE `lockbox-02`, obligation a-disagreement-earns-an-interruption. Named explicitly at L16 for the rebuilt coverage matcher.",
+  "status": "FIXED",
+  "note": "SUBJ x60x3 seals undetermined with k/n/rows-per named and a pointer at the declaration control; declaring SUBJ seals grouped basis_source=user_stated with 0 subjects straddling. Token list deliberately not extended (constitution 02). tests/test_the_seal_states_its_basis.py KNOWN_GAP test flipped to a regression guard.",
   "verified_against": "TurboTab @ b6106f8",
-  "test": "turbotab/test_grain_is_asked.py::test_the_contradiction_detector_fires_on_an_id_name_the_heuristic_misses",
+  "test": "tests/test_paper_risk_lockbox.py::TestImport022AnUnrecognizedIdIsNotSealedAsCrossSectional",
   "verified_ev": "turbotab/grain.py repetition_evidence and contradiction (shape-only, never name-gated); tests/test_the_seal_states_its_basis.py::test_KNOWN_GAP_an_unrecognized_id_name_is_still_recorded_as_cross_sectional (Classic, still green)"
  },
  {
@@ -6251,10 +6266,10 @@
   "detail": "L12 lens 6 (JSON structure), fresh adversarial pass. data_processor.py:273-274 applies a caller-supplied index from an orient='split' payload whenever its length matches the frame, with no uniqueness check, and load_tabular_data never calls reset_index. TRANSITION_PLAN 02 records that the lockbox stores index LABELS rather than positions (utils/test_lockbox.py:16-17), and train_row_mask at utils/test_lockbox.py:545 decides membership per label with `lbl not in test_set`. A duplicated label therefore cannot be split: sealing it seals every row that carries it.",
   "ev": "data_processor.py:270-277 (orient='split' index applied unchecked); utils/test_lockbox.py:16-17 (labels, not positions), :333 (eligible = df.index[y.notna()]), :545 (train_row_mask tests membership by label)",
   "act": "Row identity is S3 in the sequence and is exactly this question. Whichever convention wins, the loader must not accept an index it cannot guarantee: either reject a non-unique index at load with an explanation, or reset it and keep the original as an ordinary column. Filing rather than fixing because choosing labels-or-positions is the design decision LOOP.md 'What not to hand an unsupervised loop' reserves for a human.",
-  "status": "OPEN",
-  "note": "REPRODUCED AT HEAD, end to end through the real loader. A 40-subject x 3-visit orient='split' payload indexed S000..S039 loads as 120 rows with index.is_unique False and 40 distinct labels. ensure_lockbox then seals 18 labels of which 17 are distinct - one label sealed twice - and train_row_mask reports 69 train / 51 test against a nominal 15% (~18 rows). 33 rows were pulled into the sealed set purely by sharing a label with a sealed row: 42% held out where 15% was promised. Stated fairly: the seal did NOT render a clean lock - seal_basis came back repetition_found_grouping_abandoned, so clause 03's three-state disclosure is working here and the user is told grouping was abandoned. The defect is that the held-out FRACTION is silently wrong and rows move into the test set by label collision. SEAL-CLASS: YES - this is row identity itself, the S3 decision, arriving through a file format. Compare the HUNT entry grouped-lockbox-fraction-mislabel, which is the same misreported fraction reached by a different route.",
+  "status": "FIXED",
+  "note": "Loader installs a caller index only if unique (else it becomes a visible de-collided column); ensure_lockbox refuses duplicate-label indexes and records _lockbox_not_sealed, chip renders the reason - consistent with resolve_split_rows' refusal.",
   "verified_against": "TurboTab @ L12 lens 6",
-  "test": "",
+  "test": "tests/test_paper_risk_lockbox.py::TestImport207ANonUniqueIndexIsNeverInstalled",
   "verified_ev": "data_processor.py:270-277 (orient='split' index applied unchecked); utils/test_lockbox.py:16-17 (labels, not positions), :333 (eligible = df.index[y.notna()]), :545 (train_row_mask tests membership by label)"
  },
  {
@@ -6279,10 +6294,10 @@
   "detail": "L12 lens 7 (JSON encoding), fresh adversarial pass. json.loads parses integers with arbitrary precision, so large IDs survive parsing intact and pd.json_normalize gives an int64 column. But a single null in that field makes the column float64, and float64 cannot represent consecutive integers above 2^53. Two distinct participants therefore become one ID before any join, any grain question or any seal. ml/join_doctor.py:_canon_scalar carries a docstring saying exactly this - 'passing IDs through float64 silently collides values above 2^53 ... which is a false merge - the worst outcome this module can produce' - and canonicalizes with arbitrary-precision arithmetic to prevent it. That defense is bypassed here because the collapse happens in the loader, upstream of everything join_doctor inspects.",
   "ev": "data_processor.py:_json_obj_to_frame:246 (pd.json_normalize over the record list); contrast ml/join_doctor.py:_canon_scalar, whose docstring names this as the worst outcome it can produce",
   "act": "Detect the shape at load: an integer-valued field carrying nulls, whose non-null magnitudes exceed 2**53, must not be materialized as float64. Read it as a nullable Int64 or as text and say so. The check is cheap and the failure is unrecoverable downstream, which is the argument for spending a gate here. Compare the float64-id-collapse HUNT entry (its slug is spelled the British way in docs/audit/, which is the exempt path precisely so a quoted record stays quotable), which is the same collapse reached through the join path - the two share a root cause and neither closes the other.",
-  "status": "OPEN",
-  "note": "REPRODUCED AT HEAD through the real loader. [{SEQN: 9007199254740993, glucose: 95}, {SEQN: 9007199254740992, glucose: 102}, {SEQN: null, glucose: 110}] loads with SEQN dtype float64, and the two IDs compare EQUAL - nunique on the non-null values is 1 where there are 2 real participants. CONTROL, which is what makes the trigger precise: the identical file with the null row removed loads as int64 with 2 distinct values [9007199254740993, 9007199254740992]. One blank ID is the entire difference. SEAL-CLASS: YES. Two participants sharing an ID is corrupted row identity at its root - the grain question, detect_repeated_subjects, group_col and the seal all read a table in which two people are one person, and the seal will happily place 'them' on one side of the split while the data holds two.",
+  "status": "FIXED",
+  "note": "_large_int_fields scans parsed records for int keys >2^53 and _repair_large_ints rebuilds those columns as Int64 (text beyond) before json_normalize can float them; wired into records/mixed/table/split paths; ordinary null-bearing float columns untouched.",
   "verified_against": "TurboTab @ L12 lens 7",
-  "test": "",
+  "test": "tests/test_paper_risk_lockbox.py::TestImport209LargeIdsSurviveABlankCell",
   "verified_ev": "data_processor.py:_json_obj_to_frame:246 (pd.json_normalize over the record list); contrast ml/join_doctor.py:_canon_scalar, whose docstring names this as the worst outcome it can produce"
  },
  {
@@ -6867,10 +6882,10 @@
   "detail": "pages/01 imports detect_cohort_structure and never calls it, and renders no entity-ID selector. Nothing ever populates cohort_structure_detection with a real entity, so ensure_lockbox's group_col argument is always None from that route and the split falls back to whatever the heuristic finds.",
   "ev": "pages/01_Upload_and_Audit.py:38 (detect_cohort_structure imported), :1105 (_entity_col read from a detection object nothing populates), :20 (CohortStructureDetection imported); grep finds exactly one occurrence of each - the import and the read, never a call or a write",
   "act": "This is constitution 02 stated as a missing widget. The grain question - 'Can one person appear in more than one row?' - is asked once, pre-seal, and both the seal and multi-file assembly read the one recorded answer. Building that question is what closes this row, and it closes IMPORT-022 with it. Do not build a selector alone: the constitution says the answer must be ASKED and inherited, not offered as one more optional control.",
-  "status": "OPEN",
-  "note": "REPRODUCES AT HEAD. Confirmed by grep: detect_cohort_structure appears once in pages/01, on the import line at :38, and is never called; entity_id_final appears once, at :1105, being read from a detection object; CohortStructureDetection appears once, on an import. The comment at :1101-1103 says 'A declared subject/entity ID always wins over auto-detection' - which is true of the code and vacuous in practice, because nothing can declare one. SEAL-CLASS: YES, and this is the structural root of the family. IMPORT-022 is the name-gate failing; IMPORT-020 is the detection being unreliable; this row is why neither can be worked around - there is no way for the user to simply say who the subject is. The heuristics are load-bearing because the question is never asked.",
+  "status": "FIXED",
+  "note": "Declaration control shipped on pages/01 (auto / one-row-per-participant / column), writing entity_id_override_* on cohort_structure_detection; ensure_lockbox reads it via declared_subject_col() so every seal site inherits; declared beats heuristic; a vanished declared column is disclosed. RESIDUAL handed to Wave 3: ml/splits lockbox branch still splits remainder by row, so a declared subject can straddle train/val.",
   "verified_against": "TurboTab @ L12 HUNT batch 4",
-  "test": "",
+  "test": "tests/test_paper_risk_lockbox.py::TestImport257TheSubjectColumnCanBeDeclared",
   "verified_ev": "pages/01_Upload_and_Audit.py:38 (detect_cohort_structure imported), :1105 (_entity_col read from a detection object nothing populates), :20 (CohortStructureDetection imported); grep finds exactly one occurrence of each - the import and the read, never a call or a write"
  },
  {
@@ -11329,10 +11344,10 @@
   "detail": "",
   "ev": "L53-C, driven rather than suspected, and it is AUDIT-032's second half reached by a different mechanism. utils/session_state.py::_log_to_ledger writes resolved=True, resolved_by=<action> for EVERY log_methodology() call - that is, for every button press. utils/insight_ledger.py::narrative_for_report then asserts 'Exploratory analysis identified N data observations. R were addressed during the modeling workflow', with R from summary()['resolved'], while the 'Addressed observations:' list beneath it is filtered by _is_narrative_worthy, which excludes exactly those bridge entries. REPRODUCED: a ledger holding two bridge entries ('Generated correlation matrix', 'Ran mutual_info') plus one unresolved leakage blocker reports ' were addressed during the modeling workflow' with an EMPTY Addressed list. An 'N were addressed' count asserting an action was taken where only a page was visited is the governing rule exactly. Repro script: scratchpad/record_sibling032.py.",
   "act": "The count and the list must come from ONE filter. The fix belongs in utils/insight_ledger.py (summary/narrative_for_report), not in the session_state bridge - changing `resolved` there would push activity records into 'Accepted/unresolved observations', which is worse. Decide whether a page visit is an addressed observation at all; if it is not, it should not be resolved=True anywhere.",
-  "status": "OPEN",
-  "note": "Filed rather than fixed because utils/insight_ledger.py was outside the finding chunk's file list. This is the fix-site partition working as intended: the row is found by whoever meets it and closed by whoever owns the file, rather than half-edited by both.",
+  "status": "FIXED",
+  "note": "narrative_for_report derives counts and lists from the same _is_narrative_worthy filter; bridge entries inflate nothing; a count cannot stand above an empty list.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_paper_risk_invalidation.py::TestAudit042CountMatchesList",
   "verified_ev": "L53-C, driven rather than suspected, and it is AUDIT-032's second half reached by a different mechanism. utils/session_state.py::_log_to_ledger writes resolved=True, resolved_by=<action> for EVERY log_methodology() call - that is, for every button press. utils/insight_ledger.py::narrative_for_report then asserts 'Exploratory analysis identified N data observations. R were addressed during the modeling workflow', with R from summary()['resolved'], while the 'Addressed observations:' list beneath it is filtered by _is_narrative_worthy, which excludes exactly those bridge entries. REPRODUCED: a ledger holding two bridge entries ('Generated correlation matrix', 'Ran mutual_info') plus one unresolved leakage blocker reports ' were addressed during the modeling workflow' with an EMPTY Addressed list. An 'N were addressed' count asserting an action was taken where only a page was visited is the governing rule exactly. Repro script: scratchpad/record_sibling032.py."
  },
  {
@@ -13392,5 +13407,47 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "models/nn_whuber.py:5-6; tests/test_engine_is_headless.py:143; ml/model_registry.py:25-45 (the standard, written down)"
+ },
+ {
+  "id": "MISC-096",
+  "area": "MISC",
+  "sev": "low",
+  "item": "turbotab/cascade.py's DAG does not declare 11 keys the production reset clears (filtered_data plus the ten manuscript-facing registry keys from STATE-038) - the gap is pinned per-key in tests/integration/test_cascade_dag_equivalence.py::_NOT_YET_DECLARED_IN_THE_DAG and any new undeclared key now goes red, but the DAG is not yet authoritative for them",
+  "detail": "",
+  "ev": "tests/integration/test_cascade_dag_equivalence.py (_NOT_YET_DECLARED_IN_THE_DAG); turbotab/cascade.py; utils/session_state.py (registry)",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "tests/integration/test_cascade_dag_equivalence.py (_NOT_YET_DECLARED_IN_THE_DAG); turbotab/cascade.py; utils/session_state.py (registry)"
+ },
+ {
+  "id": "MISC-097",
+  "area": "MISC",
+  "sev": "medium",
+  "item": "GUIDED-018's Classic half is live: Classic now asks a constitution-02 question (subject_id_declaration) and the routing harness has no sanctioned way to read a clause off a Streamlit widget, so the question counts as irrelevant and cross-door irrelevant_net comparisons are known-wrong by exactly 1/dataset in Classic's disfavor. Needs a mechanism the harness does not own - a clause declaration on the widget, a registry, or constitution-doc ownership. L16 forbids a hand map in the test; L67 declined to attribute and recorded the reading.",
+  "detail": "",
+  "ev": "docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L67); turbotab/measure.py:129,229-260; ml/router.py:648 (Guided's precedent); pages/01_Upload_and_Audit.py:1310-1327",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L67); turbotab/measure.py:129,229-260; ml/router.py:648 (Guided's precedent); pages/01_Upload_and_Audit.py:1310-1327"
+ },
+ {
+  "id": "MISC-098",
+  "area": "MISC",
+  "sev": "low",
+  "item": "The routing remeasure script stamps --measured-at with a bare commit even when the working tree is dirty: l66's f507ce2 stamp was optimistic (tree dirty, unamendable per the measurement rule; correction lives in the L67 entry, which used an explicit 30f48e4+wt). Class fix: scripts/remeasure_routing_baseline.py should detect a dirty tree and append +wt itself, so a stamp is a claim about reproducibility by construction.",
+  "detail": "",
+  "ev": "scripts/remeasure_routing_baseline.py; docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L67 provenance section)",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "scripts/remeasure_routing_baseline.py; docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L67 provenance section)"
  }
 ]
