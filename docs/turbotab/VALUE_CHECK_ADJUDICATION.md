@@ -940,3 +940,151 @@ pre-registration is unedited.
 
 **The new readings are binding.** Both frozen artifacts are untouched. `TEST-086` closes; the
 branch is unblocked.
+
+---
+
+# L66 · Classic moved, and this time it was not the measuring stick
+
+**Sixth adjudication.** Same procedure: the frozen artifacts are not edited, both readings are
+preserved in data, the ruling is published here. What is different about this one is worth
+saying in the first sentence, because every previous movement on this file was a *denominator*
+movement — the engine learned to find a decision it had been missing, and the thing measured
+stood still. **This time the thing measured moved.** Classic's UI changed and its cost metrics
+fell.
+
+## What happened
+
+`5acd7cd` merged `main` into `TurboTab` — sixteen commits of Classic fixes. Three of them are
+visible to this baseline, because the measured window is Classic's exploration path, pages 01
+and 02, and all three change what widgets those pages render:
+
+| commit | what it did | effect on the count |
+|---|---|---|
+| `7480564` | *"Keep the five diagnostics nothing else computes, and drop the eleven that repeat"* | −9 buttons, 2 re-keyed |
+| `f6ce4ae` / `e6187f5` | added the cluster-structure explorer to EDA | +2 (`eda_km_feats`, `eda_km_run`) |
+| `6d9e49e` | *"Say what the working table is"* — a confirmation checkbox on page 01 | +1 (`wt_confirm_box`) |
+
+`7480564`'s reasoning is on the record and is not in dispute: the Deep Dive tab strip was
+written against an earlier EDA page, and sections 1–5 had since absorbed the target histogram,
+the class bar, the missingness bar, the correlation matrix, the outlier heatmap, the
+feature-versus-target gallery and the interaction detector. Eleven of fifteen buttons were
+re-rendering what the page had already shown. What survives is the classical layer nothing else
+implements — NHANES reference-range checking, Q-Q plus Shapiro-Wilk on residuals, variance
+inflation, leverage and Cook's distance.
+
+## Every difference, enumerated
+
+Not "six fewer questions". The net is −6 on three datasets and **−5 on longitudinal**, and it is
+a net: keys leave, keys arrive, and two keys only change name. Written out per dataset so a
+second drift cannot hide inside this one.
+
+**Gone on all four datasets** (8 dropped deep-dive buttons):
+`run_advanced_interaction_analysis`, `run_advanced_outlier_influence`,
+`run_advanced_quick_probe_baselines`, `run_advanced_target_profile`,
+`run_quality_data_sufficiency_check`, `run_quality_feature_scaling_check`,
+`run_quality_leakage_scan`, `run_readiness_linearity_scatter`.
+
+**Re-keyed, not removed** — the tab strip's key prefix went with the tab strip, so these two
+appear once in each column and net to zero: `run_quality_plausibility_check` →
+`run_plausibility_check` (messy-clinic and longitudinal only, the two datasets with a
+biomedical column match), `run_readiness_multicollinearity_vif` → `run_multicollinearity_vif`
+(all four).
+
+**Gone on three of four** — the recommendation panel's own duplicate of a deep-dive button,
+whose label was the bare word `"Run"`: `rec_run_data_sufficiency_check` on messy-clinic and
+wide-assay, `rec_run_leakage_scan` on leaky-sepsis. Longitudinal raised no recommendation card,
+which is the whole −5-versus-−6 difference.
+
+**Arrived on all four:** `wt_confirm_box`, `eda_km_feats`, `eda_km_run`.
+
+| dataset | keys gone | keys added | of which re-keys | net |
+|---|---:|---:|---:|---:|
+| messy-clinic | 11 | 5 | 2 | **−6** |
+| wide-assay | 10 | 4 | 1 | **−6** |
+| longitudinal | 10 | 5 | 2 | **−5** |
+| leaky-sepsis | 10 | 4 | 1 | **−6** |
+
+## Both readings
+
+| dataset | metric | `l61` reference | `l66` reference |
+|---|---|---:|---:|
+| messy-clinic | questions_asked | 34 | **28** |
+| messy-clinic | irrelevant_questions | 24 | **18** |
+| wide-assay | questions_asked | 31 | **25** |
+| wide-assay | irrelevant_questions | 29 | **23** |
+| longitudinal | questions_asked | 32 | **27** |
+| longitudinal | irrelevant_questions | 30 | **25** |
+| leaky-sepsis | questions_asked | 31 | **25** |
+| leaky-sepsis | irrelevant_questions | 29 | **23** |
+
+**Nothing else moved, on any dataset.** `required_decisions`, `covered`, `coverage`,
+`coverage_ratio`, `findings_driven`, `constitutional`, `irrelevant_net` and `pull_affordances`
+are identical between `l61` and `l66`, and the required-decision *inventories* are identical key
+for key. The engine was not touched by the merge; only Classic's page 01 and 02 chrome was. That
+is the cleanest attribution any movement on this file has had.
+
+**Measured at `f507ce2`**, `venv/bin/python`, 2026-08-23, via
+`scripts/remeasure_routing_baseline.py` (with and without `--leaky`). Written to
+`routing-baseline-l66.json` and `routing-baseline-leaky-l66.json`; `l61`, `l9c`, `l9` and both
+frozen files are unedited and still on disk.
+
+## What this costs the builder, stated plainly
+
+This movement makes Classic **look better**, and it is the first one on this file that does.
+Every previous adjudication could point at a denominator change that cut against the builder;
+this one cannot, and pretending otherwise would be the exact failure the note exists to prevent.
+
+- The prereg's descriptive headline — *"Classic asks a near-constant ~32 questions regardless of
+  the dataset"* — now reads **~26**. The constancy claim survives (28/25/27/25); the number does
+  not.
+- `VALUE_CHECK_PREREG.md` justifies Guided's messy-clinic ceiling as *"≤ 17 — at most half of
+  Classic"*. Half of 34 is 17. Half of 28 is 14. **The ceiling no longer enforces the sentence
+  that justified it** — 17 is 0.61× Classic now.
+- The claim itself is nonetheless still true in fact, which is the only reason this is a note and
+  not a `BLOCKED.md`: Guided's measured `questions_asked` is **9** on messy-clinic (≤ 14) and
+  **5** on each guard (≤ 12), so Guided still asks under half of what Classic asks under the new
+  reading. The margin narrowed; the direction did not reverse.
+- **No pre-registered threshold is touched, and none is missed.** Every threshold binds on
+  *Guided*, and Guided did not move. `docs/turbotab/data/routing-value-check.json` is keyed to
+  `routing-baseline-l9c.json` and reads neither `l61` nor `l66`, so `verdict.passes` is unchanged
+  — and the Classic figures quoted inside it are now stale relative to `HEAD`, which is recorded
+  here rather than quietly refreshed.
+
+## The premise that expired, which is the part worth keeping
+
+`TRANSITION_PLAN.md` §05 freezes Classic as engine-move-only, and every baseline on this file has
+been read as *Classic does not change, so a moved number means the measuring stick moved*. **That
+premise is now false.** Classic is `main`'s product and `main` shipped UI changes to it; the
+freeze was a TurboTab-branch convention that a merge does not honor and does not announce.
+
+This is the same shape as the expiry this file's own test docstring already warns about — *a
+protection that depends on "X does not exist yet" expires the moment X exists, and nothing will
+tell you*. The variant here: **a baseline that depends on "the other branch will not touch this
+code" expires at the first merge.** What made it survivable is that the drift detector is a
+comparison and not a re-measurement, so the merge produced a failing test rather than a silently
+rewritten reference.
+
+## The ruling
+
+**The `l66` readings are binding.** The frozen artifacts and `l61` are untouched; the
+pre-registration is unedited; `main`'s dedup is **accepted**, not reverted — it is a UI decision
+about buttons that duplicated what the page already renders, made on the mainline product, and
+the baseline's job is to record Classic as it is rather than to hold it still.
+
+Two things are ruled *not* settled by this entry, and both belong to a later loop rather than to
+this file:
+
+1. **The prereg's "at most half of Classic" wording.** The ceiling stays at 17. Re-deriving it
+   from the new Classic would be fitting a threshold to a measurement, which is the one thing
+   `VALUE_CHECK_PREREG.md` forbids in its first paragraph. It is recorded as loose, not fixed.
+2. **Whether Classic's freeze is still a premise the value check may rest on.** It is not, at
+   `HEAD`, and every future merge from `main` will move this baseline again.
+
+## Precedent added
+
+- A baseline that assumes another branch will not touch the measured code must say so, and the
+  assumption expires at the first merge. Record the expiry where the assumption is stated, not
+  where it breaks.
+- A movement that flatters the builder gets **more** enumeration than one that does not, not
+  less. This entry lists every key that left, arrived, or was merely renamed, because the
+  temptation to summarize is strongest when the summary is favorable.

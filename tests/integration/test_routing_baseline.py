@@ -60,11 +60,26 @@ LEAKY_BASELINE = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-leaky.j
 # is what `VALUE_CHECK_ADJUDICATION.md` §"The denominator moved" rules. Every
 # difference between the two is enumerated there and asserted below, so a
 # second drift cannot hide inside the first.
-ADJUDICATED = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l61.json"
+#
+# **`L66`: the fifth reading, and the first where CLASSIC moved rather than the
+# measuring stick.** `5acd7cd` merged `main` into `TurboTab`, and main's
+# `7480564` ("Keep the five diagnostics nothing else computes, and drop the
+# eleven that repeat") dropped nine deep-dive buttons from `pages/02_EDA.py`
+# while main's cluster explorer and page-01 confirmation checkbox added three.
+# Every previous movement here was the engine finding a decision it had been
+# missing; this one is Classic's own UI. Ruled in
+# `VALUE_CHECK_ADJUDICATION.md` §"L66 · Classic moved, and this time it was not
+# the measuring stick", enumerated key by key, and accepted.
+ADJUDICATED = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l66.json"
 # The measurements this one superseded, oldest first. Kept named so the chain of
-# re-measurements is readable rather than implied by filenames — l9 → l9c → l61.
-ADJUDICATED_PRIOR = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9c.json"
-ADJUDICATED_PRIOR_PRIOR = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9.json"
+# re-measurements is readable rather than implied by filenames —
+# l9 → l9c → l61 → l66. A list rather than one constant per link because the
+# chain is now four long and `_PRIOR_PRIOR_PRIOR` is not a name.
+ADJUDICATED_SUPERSEDED = [
+    ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9.json",
+    ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9c.json",
+    ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l61.json",
+]
 
 # What the adjudication permits the two references to disagree about, and by
 # how much. Anything else is drift.
@@ -83,15 +98,27 @@ ADJUDICATED_PRIOR_PRIOR = ROOT / "docs" / "turbotab" / "data" / "routing-baselin
 # short form: these entries encode the SAME PURPOSE as the six above rather
 # than a nudged value — same cause, same deltas `(1,2)`, `(30,29)`,
 # `(1.0,0.5)`, and no assertion anywhere is relaxed.
+# **`L66` adds the `questions_asked` rows and moves the `irrelevant_questions`
+# ones.** These are the FIRST entries in this table that are not denominator
+# movements: nine deep-dive buttons left `pages/02_EDA.py` and three widgets
+# arrived, so Classic asks fewer questions and fewer irrelevant ones. Nothing
+# else moved — `required_decisions`, `coverage` and `findings_driven` are
+# identical between `l61` and `l66` on every dataset, and so are the
+# required-decision inventories key for key, which is why `ADJUDICATED_KEY_DELTAS`
+# below is unchanged. The net is −6 on three datasets and −5 on longitudinal;
+# the per-key enumeration is in the adjudication note, not summarized here.
 ADJUDICATED_DELTAS = {
     ("messy-clinic", "required_decisions"): (9, 10),
-    ("messy-clinic", "irrelevant_questions"): (25, 24),
+    ("messy-clinic", "questions_asked"): (34, 28),         # L66
+    ("messy-clinic", "irrelevant_questions"): (25, 18),    # L66 (was (25, 24))
     ("messy-clinic", "coverage"): (0.1111, 0.1),
     ("longitudinal", "required_decisions"): (1, 2),
-    ("longitudinal", "irrelevant_questions"): (31, 30),
+    ("longitudinal", "questions_asked"): (32, 27),         # L66
+    ("longitudinal", "irrelevant_questions"): (31, 25),    # L66 (was (31, 30))
     ("longitudinal", "coverage"): (1.0, 0.5),
     ("wide-assay", "required_decisions"): (1, 2),          # L61
-    ("wide-assay", "irrelevant_questions"): (30, 29),      # L61
+    ("wide-assay", "questions_asked"): (31, 25),           # L66
+    ("wide-assay", "irrelevant_questions"): (30, 23),      # L66 (was (30, 29))
     ("wide-assay", "coverage"): (1.0, 0.5),                # L61
 }
 
@@ -131,11 +158,19 @@ ADJUDICATED_KEY_DELTAS = {
 # second drift cannot hide inside the first* — and it is worth saying plainly
 # that the leaky half did not have it before `L61` and nothing said so.
 LEAKY_ADJUDICATED = (ROOT / "docs" / "turbotab" / "data"
-                     / "routing-baseline-leaky-l61.json")
+                     / "routing-baseline-leaky-l66.json")
+LEAKY_SUPERSEDED = [ROOT / "docs" / "turbotab" / "data"
+                    / "routing-baseline-leaky-l61.json"]
 
+# L66 moves this dataset for the same cause as the three above — main's
+# diagnostics dedup — and it loses one key the others do not: the
+# recommendation panel's `rec_run_leakage_scan`, whose label was the bare word
+# "Run". `test_classic_does_not_ask_about_the_leak` below is the test that
+# feels that one.
 LEAKY_DELTAS = {
     ("leaky-sepsis", "required_decisions"): (1, 2),
-    ("leaky-sepsis", "irrelevant_questions"): (30, 29),
+    ("leaky-sepsis", "questions_asked"): (31, 25),         # L66
+    ("leaky-sepsis", "irrelevant_questions"): (30, 23),    # L66 (was (30, 29))
     ("leaky-sepsis", "coverage"): (1.0, 0.5),
 }
 
@@ -654,7 +689,7 @@ def test_the_leaky_reference_differs_from_the_frozen_one_only_as_ruled():
 def test_the_chain_of_re_measurements_is_readable_rather_than_implied():
     """Every superseded reading is still on disk and still named.
 
-    `l9 → l9c → l61`, and the leaky file's own pair beside it. The rule this
+    `l9 → l9c → l61 → l66`, and the leaky file's own chain beside it. The rule this
     keeps is the one `VALUE_CHECK_ADJUDICATION.md` sets: *the frozen artifact is
     not edited, both readings are preserved in data, the ruling is published.*
     A chain implied by filenames alone is one a later loop can break by writing
@@ -668,9 +703,8 @@ def test_the_chain_of_re_measurements_is_readable_rather_than_implied():
     # first draft of this test did exactly that and this comment is why it
     # does not any more.
     chains = {
-        "pre-registered": [BASELINE, ADJUDICATED_PRIOR_PRIOR,
-                           ADJUDICATED_PRIOR, ADJUDICATED],
-        "leaky": [LEAKY_BASELINE, LEAKY_ADJUDICATED],
+        "pre-registered": [BASELINE, *ADJUDICATED_SUPERSEDED, ADJUDICATED],
+        "leaky": [LEAKY_BASELINE, *LEAKY_SUPERSEDED, LEAKY_ADJUDICATED],
     }
     for label, chain in chains.items():
         for path in chain:
@@ -689,24 +723,76 @@ def test_the_chain_of_re_measurements_is_readable_rather_than_implied():
             f"is indistinguishable from an edit of the predecessor.")
 
 
+def _classic_eda_ledger(csv_path: pathlib.Path, target: str):
+    """The insight ledger `pages/02_EDA.py` builds on Classic's own path.
+
+    The positive control for the test below has to come from somewhere that is
+    not the question list, because the question list is exactly what the test
+    says is empty. This renders the same page `_classic_questions` renders, with
+    the same seeding, and hands back what the page concluded.
+    """
+    from streamlit.testing.v1 import AppTest
+    from tests.integration.conftest import inject_data_state
+
+    df = pd.read_csv(csv_path)
+    at = AppTest.from_file("pages/02_EDA.py")
+    inject_data_state(at, df, target_col=target, task_type="classification")
+    _seed_dataset_roster(at, df, csv_path.name)
+    at.run(timeout=120)
+    assert not at.exception, [str(e.value)[:200] for e in at.exception]
+    return at.session_state["insight_ledger"]
+
+
 def test_classic_does_not_ask_about_the_leak():
-    """The gap, measured rather than asserted.
+    """The gap, measured rather than asserted — and it widened at `L66`.
 
     Classic emits a `blocker`-severity insight for a leaking column and renders
     it in the coaching summary. What it never does is put a question. This
     records that, so closing the gap has a before.
+
+    **What changed.** This test used to hold that Classic *does* offer "Run
+    Leakage Detection" — a recommendation card, rendered as an action — and that
+    the gap was the narrower, worse one of an offer that never names the column.
+    Main's `7480564` delisted that button from `pages/02_EDA.py` along with ten
+    other deep-dive diagnostics that re-rendered what the page already shows, so
+    at `HEAD` **no widget on Classic's exploration path says the word leakage at
+    all**. The gap is now plain absence, and this test measures the wider gap
+    rather than being retired: the `T0-ROUTE-001` before it exists to record did
+    not go away, it got worse.
+
+    **The detection did not go with the button, and that is asserted here rather
+    than assumed.** The automatic >0.95 feature-target scan
+    (`ml/eda_recommender.py`, `pages/02_EDA.py`) still raises the blocker, still
+    names `abx_escalation_score` in the coaching layer, and still gates sign-off.
+    What was removed is a UI duplicate. If that positive control ever fails, the
+    finding is a regression in the app — a silently skippable leakage scan is
+    `MINE-004`'s subject — and not a stale expectation in this file.
     """
     _, path, target = LEAKY
     df, questions = _classic_questions(path, target, "leaky-sepsis")
     labels = " ".join(q.label.lower() for q in questions)
 
-    # Classic DOES offer "Run leakage detection" — that is the recommendation
-    # card, rendered as an action. The gap is narrower and worse than absence:
-    # nothing ever names the column that is actually leaking, so the user has to
-    # already suspect a leak to go looking for one.
-    assert "leakage" in labels, (
-        "Classic lost its leakage recommendation card — this test is now "
-        "measuring something else")
+    # Positive control, on the surface that survived: the leak IS detected.
+    ledger = _classic_eda_ledger(path, target)
+    leak_insights = [i for i in ledger.insights if i.id.startswith("eda_leakage_")]
+    assert leak_insights, (
+        "Classic no longer detects the leak on leaky_sepsis.csv at all, so this "
+        "test is measuring the absence of a question about a problem the app "
+        "never found. That is an app regression, not a test expectation: see "
+        f"MINE-004. insights: {[i.id for i in ledger.insights]}")
+    assert any(i.severity == "blocker" for i in leak_insights), (
+        f"the leakage finding is no longer a blocker: "
+        f"{[(i.id, i.severity) for i in leak_insights]}")
+    assert any("abx_escalation_score" in i.id for i in leak_insights), (
+        f"the leakage blocker no longer names the leaking column: "
+        f"{[i.id for i in leak_insights]}")
+
+    # And the gap: it is told, never asked. Nothing on the path puts the leak to
+    # the user as a decision — not by name, and since L66 not even generically.
+    assert "leakage" not in labels, (
+        "Classic gained a question that says 'leakage' — the T0-ROUTE-001 gap "
+        "may be closing upstream, so re-check what this test measures. Before "
+        f"L66 this was 'Run Leakage Detection', a deep-dive button. labels: {labels}")
     assert "abx_escalation_score" not in labels, (
         "Classic now names the leaking column in a question — the T0-ROUTE-001 "
         "gap may be closed upstream, so re-check what this test measures")
