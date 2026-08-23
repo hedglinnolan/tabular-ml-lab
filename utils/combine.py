@@ -39,6 +39,8 @@ class StackPlan:
     all_columns: List[str]
     partial_columns: Dict[str, List[str]] = field(default_factory=dict)
     type_conflicts: Dict[str, List[str]] = field(default_factory=dict)
+    # comparison form -> the raw spellings of it found across the files
+    name_variants: Dict[str, List[str]] = field(default_factory=dict)
     blocking: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
@@ -64,6 +66,44 @@ def _dtype_family(s: pd.Series) -> str:
     if pd.api.types.is_datetime64_any_dtype(s):
         return "date"
     return "text"
+
+
+def _comparison_name(col: Any) -> str:
+    """Column name reduced to what stacking should consider the SAME variable.
+
+    Case and surrounding/repeated whitespace only. Deliberately not a fuzzy
+    match: this is used to raise a question, and 'age' vs 'age_years' is a
+    question the app has no business asking.
+    """
+    return " ".join(str(col).strip().lower().split())
+
+
+def _near_duplicate_names(col_sets: Dict[str, List[Any]]) -> Dict[str, List[str]]:
+    """Column names that differ across files only by case or whitespace.
+
+    plan_stack compared RAW labels, so 'age' and 'Age' stacked into two
+    half-empty columns that are one variable. The researcher then sees 50%
+    missingness, median-imputes it, and reports a limitation — every statistic
+    about that variable computed on half its values. Nothing named the cause.
+
+    A file that holds two variants ITSELF meant them as different columns, so
+    those groups are left alone.
+    """
+    groups: Dict[str, List[str]] = {}
+    for cols in col_sets.values():
+        for c in cols:
+            variants = groups.setdefault(_comparison_name(c), [])
+            if str(c) not in variants:
+                variants.append(str(c))
+    out: Dict[str, List[str]] = {}
+    for norm, variants in groups.items():
+        if len(variants) < 2:
+            continue
+        if any(sum(1 for c in cols if str(c) in variants) > 1
+               for cols in col_sets.values()):
+            continue
+        out[norm] = variants          # first-seen order: file order, as read
+    return out
 
 
 def plan_stack(frames: Dict[str, pd.DataFrame]) -> StackPlan:
@@ -114,6 +154,23 @@ def plan_stack(frames: Dict[str, pd.DataFrame]) -> StackPlan:
             fams.setdefault(_dtype_family(frames[n][c]), []).append(n)
         if len(fams) > 1:
             plan.type_conflicts[str(c)] = sorted(fams.keys())
+
+    # Reported whatever the overall overlap is. A survey file where two of
+    # twenty headers differ only in capitalization sits at ~90% overlap and
+    # produced no warning at all, while the variable it split in half is
+    # exactly the one the analysis is about.
+    plan.name_variants = _near_duplicate_names(col_sets)
+    if plan.name_variants:
+        detail = "; ".join(
+            " / ".join(repr(v) for v in variants)
+            for variants in list(plan.name_variants.values())[:4])
+        plan.warnings.append(
+            f"{len(plan.name_variants)} column name(s) are spelled differently in "
+            f"different files and differ only by capitalization or spacing: {detail}"
+            f"{'; …' if len(plan.name_variants) > 4 else ''}. If those are the same "
+            f"measurement, stacking keeps them as SEPARATE columns, each blank for the "
+            f"files that use the other spelling — rename them to match before stacking."
+        )
 
     overlap_frac = len(shared) / max(1, len(union))
     if overlap_frac < 0.5:
@@ -191,21 +248,80 @@ def relationship_hint(frames: Dict[str, pd.DataFrame]) -> str:
     return "unclear"
 
 
+# Identifiers the app itself has learned about this table — the column a merge
+# was executed on, the column a grouped test split was drawn by. Neither is a
+# predictor: on a random split a model memorizes row identity from the ID and
+# reports it as held-out performance, and on a grouped split the group column
+# hands the model the membership the split was drawn to hide. Both were known
+# to the code that used them and written nowhere the feature picker reads.
+_RESERVED_STATE_KEY = "_registered_reserved_columns"
+# Used when there is no Streamlit session (tests, scripts). Module-level so the
+# pure functions stay usable without a browser.
+_RESERVED_FALLBACK: Dict[str, Dict[str, str]] = {}
+
+
+def _reserved_store() -> Dict[str, Dict[str, str]]:
+    """name -> {'role', 'reason'} for identifiers registered this session."""
+    try:
+        import streamlit as st
+        if _RESERVED_STATE_KEY not in st.session_state:
+            st.session_state[_RESERVED_STATE_KEY] = {}
+        return st.session_state[_RESERVED_STATE_KEY]
+    except Exception:
+        return _RESERVED_FALLBACK
+
+
+def register_reserved_column(name: Any, reason: str, role: str = "identifier") -> None:
+    """Record that `name` identifies rows and must not be offered as a feature."""
+    if name is None or str(name) == "":
+        return
+    _reserved_store()[str(name)] = {"role": role, "reason": reason}
+
+
+def set_reserved_columns(names: List[Any], reason: str, role: str) -> None:
+    """Replace every column registered under `role` with `names`.
+
+    Replacement, not addition: a user who previews a join on one column and
+    then commits a different one must not leave the first quietly barred from
+    the feature pool.
+    """
+    store = _reserved_store()
+    for existing in [n for n, v in store.items() if v.get("role") == role]:
+        store.pop(existing, None)
+    for n in names:
+        register_reserved_column(n, reason, role)
+
+
+def clear_registered_reserved_columns() -> None:
+    """Forget every registered identifier (a new set of files is a new table)."""
+    _reserved_store().clear()
+
+
+def reserved_column_reason(name: Any) -> str:
+    """Why this column is withheld, in the researcher's language. '' if it is not."""
+    if str(name).startswith(SOURCE_COLUMN):
+        return "records which file the row came from"
+    return _reserved_store().get(str(name), {}).get("reason", "")
+
+
 def reserved_columns() -> List[str]:
     """Columns the modeling feature pool must never offer as predictors."""
-    return [SOURCE_COLUMN]
+    return [SOURCE_COLUMN] + [n for n in _reserved_store()
+                              if not str(n).startswith(SOURCE_COLUMN)]
 
 
 def is_reserved_column(name: Any) -> bool:
-    """True for any bookkeeping column added while combining files.
+    """True for any bookkeeping or identifier column the app knows about.
 
-    Matches on PREFIX, not equality. Stacking two groups and then linking them
-    produces '__source_file_demo' and '__source_file_labs' — the join suffixes
-    the collision — and an exact-match check would let both through into the
-    feature pool. A model that can see which file a row came from will predict
-    the batch, which is leakage wearing a lab coat.
+    The SOURCE_COLUMN match is on PREFIX, not equality. Stacking two groups and
+    then linking them produces '__source_file_demo' and '__source_file_labs' —
+    the join suffixes the collision — and an exact-match check would let both
+    through into the feature pool. A model that can see which file a row came
+    from will predict the batch, which is leakage wearing a lab coat.
     """
-    return str(name).startswith(SOURCE_COLUMN)
+    if str(name).startswith(SOURCE_COLUMN):
+        return True
+    return str(name) in _reserved_store()
 
 
 # ── files that need BOTH operations ──────────────────────────────────────

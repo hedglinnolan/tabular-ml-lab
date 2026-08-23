@@ -55,6 +55,10 @@ def _forget_working_table(reason: str = "") -> None:
     for key in ("working_table", "_combine_signature", "_combine_reopen",
                 "_working_table_source_id", "merge_preview", "merge_config"):
         st.session_state.pop(key, None)
+    # The identifiers registered against the old table describe columns that
+    # may not exist in the next one.
+    from utils.combine import clear_registered_reserved_columns
+    clear_registered_reserved_columns()
     _ledger.clear()
     if reason:
         st.session_state["_working_table_forgotten"] = reason
@@ -1071,16 +1075,47 @@ if task_mode == "prediction":
     
     # Feature selection with "Select All" option
     if target_col:
-        # Bookkeeping columns added when files are combined (e.g. which file a
-        # row came from) must never be offered as predictors: a model would
-        # happily "predict" the source file, which is batch leakage, not science.
-        from utils.combine import is_reserved_column as _is_reserved
+        # Bookkeeping and identifier columns must never be offered as
+        # predictors. The source column is batch leakage — a model would
+        # happily "predict" which file a row came from. The join key and the
+        # column a grouped test split was drawn by are worse: on a random split
+        # the model memorizes row identity from the ID and reports it as
+        # held-out performance, and the ID then tops the importance table as
+        # the manuscript's "most important predictor".
+        from utils.combine import (
+            is_reserved_column as _is_reserved, register_reserved_column,
+            reserved_column_reason,
+        )
+        from utils.test_lockbox import get_lockbox as _get_lockbox
+        _lb_now = _get_lockbox()
+        if _lb_now and _lb_now.get('group_col'):
+            register_reserved_column(
+                _lb_now['group_col'],
+                "the column the held-out set was split by — giving it to the model "
+                "hands it the group membership the split exists to hide",
+                role="group_col")
         feature_options = [c for c in all_cols
                            if c != target_col and not _is_reserved(c)]
         n_available_features = len(feature_options)
-        
+
+        # Withheld silently once, and the researcher cannot tell a column that
+        # was excluded from one they forgot to tick.
+        _withheld = [c for c in all_cols if c != target_col and _is_reserved(c)]
+        if _withheld:
+            st.caption("Held back from the predictors: " + "; ".join(
+                f"`{c}` — {reserved_column_reason(c) or 'bookkeeping added by this app'}"
+                for c in _withheld))
+        # The widget's stored value outlives feature_options. A column reserved
+        # after it was first ticked — the group column, which only exists once
+        # the test set is sealed — stays selected, and Streamlit raises on a
+        # default that is no longer an option.
+        if 'features_multiselect' in st.session_state:
+            _kept = [f for f in st.session_state.features_multiselect if f in feature_options]
+            if len(_kept) != len(st.session_state.features_multiselect):
+                st.session_state.features_multiselect = _kept
+
         st.markdown(f"**Feature Variables** ({n_available_features} available)")
-        
+
         # High-dimensional data warnings
         if n_available_features > 100:
             st.warning(f"""
@@ -1251,6 +1286,13 @@ if task_mode == "prediction":
         _entity_col = getattr(_cohort, 'entity_id_final', None) if _cohort else None
         _lb = ensure_lockbox(df, target_col, task_type_final, group_col=_entity_col)
         if _lb is not None and _lb.get('group_col'):
+            # Registered where the seal is drawn, so the feature picker on the
+            # next render already knows this column identifies groups.
+            from utils.combine import register_reserved_column as _reserve
+            _reserve(_lb['group_col'],
+                     "the column the held-out set was split by — giving it to the "
+                     "model hands it the group membership the split exists to hide",
+                     role="group_col")
             _noun = _lb.get('group_noun') or 'subjects'
             _one = _noun.rstrip('s') if _noun.endswith('s') else _noun
             st.info(

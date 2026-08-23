@@ -48,6 +48,17 @@ _MIN_COVERAGE = 0.05
 _KEY_MISSING_TOKENS = {"", "nan", "none", "null", "na", "n/a", "n.a.", ".", "-",
                        "--", "?", "missing", "unknown", "not available"}
 
+# The subset of that list a real coding scheme also uses: 'NA' is a study centre
+# in North America, '-' is a control specimen, '?' is a category. Prose blanks
+# ('unknown', 'null', 'not available') are never a code and stay out of this
+# set — admitting them would fuse every unknown subject into one person, which
+# is the opposite failure and the worse one.
+_CODED_MISSING_TOKENS = frozenset({"na", ".", "-", "--", "?"})
+
+# float64 carries 53 bits of mantissa. Above this, consecutive whole numbers are
+# no longer distinguishable and two IDs have already become one.
+_EXACT_INT_LIMIT = 2 ** 53
+
 # Hidden column carrying the user's ORIGINAL key values through the merge,
 # so matching can use the canonical form without the output inheriting it.
 _ORIGINAL_KEY = "__original_key__"
@@ -56,13 +67,17 @@ _INT_RE = re.compile(r"^[+-]?\d+$")
 _DECIMAL_RE = re.compile(r"^[+-]?\d+\.\d*$")
 
 
-def _canon_scalar(v: Any) -> Optional[str]:
+def _canon_scalar(v: Any, keep_tokens: frozenset = frozenset()) -> Optional[str]:
     """Canonical token for one key value, or None when it identifies nobody.
 
     Integers are canonicalized with exact arbitrary-precision arithmetic, NOT
     through float: passing IDs through float64 silently collides values above
     2^53 (9007199254740993 and ...992 become the same subject), which is a
     false merge — the worst outcome this module can produce.
+
+    `keep_tokens` names spellings that LOOK like blanks but are this column's
+    own codes; the decision belongs to the column, not to this scalar, so it is
+    made once by _coded_key_tokens and handed down.
     """
     if v is None:
         return None
@@ -80,7 +95,8 @@ def _canon_scalar(v: Any) -> Optional[str]:
         return "true" if v else "false"
 
     s = str(v).strip()
-    if s.lower() in _KEY_MISSING_TOKENS:
+    low = s.lower()
+    if low in _KEY_MISSING_TOKENS and low not in keep_tokens:
         return None
 
     # "007" and 7 are the same subject; 9007199254740993 keeps every digit.
@@ -97,7 +113,121 @@ def _canon_scalar(v: Any) -> Optional[str]:
     return s
 
 
-def normalize_key(s: pd.Series, fold_case: Optional[bool] = None) -> pd.Series:
+def _value_shape(s: str) -> str:
+    """Character-class signature of a value: 'A01' -> 'A99', 'NA' -> 'AA'."""
+    return re.sub(r"[0-9]", "9", re.sub(r"[A-Za-z]", "A", str(s)))
+
+
+def _coded_key_tokens(s: pd.Series) -> frozenset:
+    """Blank-looking spellings this column is actually using as CODES.
+
+    'NA' is R's blank in a column of subject numbers and a study centre in a
+    column of centre codes. Deleting the second deletes a whole stratum, and
+    the app then reports the row as having had no ID — a false reason for a
+    value it refused to read. So ask the column: a token that matches the SHAPE
+    of the column's other values belongs to their coding scheme; one that does
+    not is a blank. A numeric column has no coding scheme to belong to.
+    """
+    try:
+        if s is None or isinstance(s, pd.DataFrame):
+            return frozenset()
+        if pd.api.types.is_numeric_dtype(s) or pd.api.types.is_bool_dtype(s):
+            return frozenset()
+        # Distinct values only: every question below is about the column's
+        # vocabulary, and a full pass costs as much as the canonicalization
+        # this decision is meant to precede.
+        raw = s.dropna().drop_duplicates().astype(str).str.strip()
+        if raw.empty:
+            return frozenset()
+        low = raw.str.lower()
+        present = {t for t in _CODED_MISSING_TOKENS if bool((low == t).any())}
+        if not present:
+            return frozenset()
+        shapes = [_value_shape(v) for v in raw.unique()
+                  if v.lower() not in _KEY_MISSING_TOKENS]
+        if len(shapes) < 2:
+            return frozenset()      # nothing to be consistent WITH
+        keep = set()
+        for t in present:
+            shape = _value_shape(raw[low == t].iloc[0])
+            if sum(1 for sh in shapes if sh == shape) >= 0.5 * len(shapes):
+                keep.add(t)
+        return frozenset(keep)
+    except Exception:
+        return frozenset()
+
+
+def _fold_is_safe(tokens: pd.Series) -> bool:
+    """True when lower-casing these canonical tokens merges no distinct IDs."""
+    text = tokens.dropna().astype(str)
+    return bool(len(text) == 0 or text.str.lower().nunique() == text.nunique())
+
+
+@dataclass(frozen=True)
+class KeyReading:
+    """How BOTH sides of one join read their key column.
+
+    Every decision in here was previously taken per column, by whichever call
+    happened to be normalizing that side. One stray-case duplicate on one side
+    then disabled folding for that side ALONE, so the two files compared in two
+    different canonical spaces: rows vanish, and a surviving row is paired with
+    the wrong partner — a wrong number with nothing on screen to catch it.
+    Decide once for the pair, and hand the same decision to both sides.
+    """
+    fold_case: bool
+    keep_tokens: frozenset = frozenset()
+
+
+def key_reading(left: pd.Series, right: pd.Series) -> KeyReading:
+    """The one canonical space both sides of a join must be read into."""
+    keep = _coded_key_tokens(left) | _coded_key_tokens(right)
+    fold = all(
+        _fold_is_safe(s.dropna().drop_duplicates().map(lambda v: _canon_scalar(v, keep)))
+        for s in (left, right))
+    return KeyReading(fold_case=fold, keep_tokens=keep)
+
+
+def numeric_key_precision_loss(s: pd.Series) -> Optional[Tuple[int, float]]:
+    """(rows at risk, largest magnitude) for an untrustworthy float key, else None.
+
+    _canon_scalar defends against float conversion THIS module performs; it
+    cannot undo one already done. An ID column that arrived as float64 — which
+    happens as soon as one row's ID is blank in any loader — has already lost
+    its low digits above 2^53, and canonicalizing the collapsed digits presents
+    two participants as one row identity. The digits are gone, so the only
+    honest move is to refuse the column and say why, never to canonicalize a
+    collapsed value as though it were exact.
+    """
+    try:
+        if s is None or isinstance(s, pd.DataFrame):
+            return None
+        if not pd.api.types.is_float_dtype(s):
+            return None
+        v = pd.to_numeric(s, errors="coerce").dropna()
+        # >=, not >. At exactly 2^53 the spacing between representable values
+        # is already 2, so a value sitting ON the limit may itself be a
+        # collapsed 2^53+1 — which is the very pair the docstring names.
+        v = v[np.abs(v) >= _EXACT_INT_LIMIT]
+        if v.empty:
+            return None
+        return int(len(v)), float(np.abs(v).max())
+    except Exception:
+        return None
+
+
+def _precision_refusal(col: Any, file_name: str, n_at_risk: int, biggest: float) -> str:
+    return (
+        f"'{col}' in {file_name} is stored as a decimal number, and {n_at_risk:,} of its "
+        f"ID(s) reach {_EXACT_INT_LIMIT:,} or beyond — the point where that storage can no longer "
+        f"tell consecutive whole numbers apart (the largest is about {biggest:,.0f}). Those "
+        f"IDs have already lost their last digits, so matching on them would merge "
+        f"different people into one participant. Re-import this file with the ID column "
+        f"read as text, then join again."
+    )
+
+
+def normalize_key(s: pd.Series, fold_case: Optional[bool] = None,
+                  keep_tokens: Optional[frozenset] = None) -> pd.Series:
     """Canonical comparison form for a key column.
 
     Missing values become NaN and never match anything — two rows with no ID
@@ -106,19 +236,51 @@ def normalize_key(s: pd.Series, fold_case: Optional[bool] = None) -> pd.Series:
 
     Case folding is applied only when it does not itself merge distinct IDs;
     if a column genuinely contains both "abc" and "ABC" they are kept apart.
-    Pass fold_case explicitly to override the automatic choice.
+    Pass fold_case and keep_tokens explicitly — as key_reading computes them —
+    to read two columns into ONE canonical space; deciding either per column
+    puts the two sides of a join in spaces that do not compare.
     """
     if s is None:
         return pd.Series(dtype="object")
-    out = s.map(_canon_scalar)
+    keep = _coded_key_tokens(s) if keep_tokens is None else keep_tokens
+    out = s.map(lambda v: _canon_scalar(v, keep))
 
     if fold_case is None:
-        text = out.dropna().astype(str)
-        # Folding is safe only if it does not reduce the number of distinct IDs.
-        fold_case = bool(len(text) == 0 or text.str.lower().nunique() == text.nunique())
+        fold_case = _fold_is_safe(out)
     if fold_case:
         out = out.map(lambda v: v.lower() if isinstance(v, str) else v)
     return out.astype("object")
+
+
+def _case_collision_example(s: pd.Series,
+                            keep_tokens: frozenset = frozenset()) -> Optional[Tuple[str, str]]:
+    """Two values in this column that differ only in case, if any exist."""
+    try:
+        tokens = s.map(lambda v: _canon_scalar(v, keep_tokens)).dropna().astype(str)
+        seen: Dict[str, str] = {}
+        for t in tokens.unique():
+            low = t.lower()
+            if low in seen and seen[low] != t:
+                return seen[low], t
+            seen.setdefault(low, t)
+    except Exception:
+        pass
+    return None
+
+
+def unreadable_key_spellings(s: pd.Series,
+                             keep_tokens: frozenset = frozenset()) -> List[str]:
+    """Non-blank values this reading discarded, spelled as the user wrote them.
+
+    The disclosure that names them has to be TRUE: "this row had no ID" is a
+    false account of a row whose ID the app refused to read.
+    """
+    try:
+        raw = s.dropna().astype(str).str.strip()
+        return sorted({v for v in raw.unique()
+                       if v and _canon_scalar(v, keep_tokens) is None})
+    except Exception:
+        return []
 
 
 def _name_similarity(a: str, b: str) -> float:
@@ -216,7 +378,7 @@ class KeyCandidate:
     left_has_duplicates: bool = False
     right_has_duplicates: bool = False
     name_similarity: float = 0.0
-    index_like: bool = False    # both sides are plain row counters
+    index_like: bool = False    # EITHER side is a plain row counter
     # True when the key space had to be sampled to stay tractable. The counts
     # are then ESTIMATES, and the app must not assert an estimate as fact.
     sampled: bool = False
@@ -596,7 +758,14 @@ def find_key_candidates(left: pd.DataFrame, right: pd.DataFrame,
                 left_has_duplicates=bool(_n_l < len(left)),
                 right_has_duplicates=bool(_n_r < len(right)),
                 name_similarity=_name_similarity(lc, rc),
-                index_like=_looks_like_row_index(lraw) and _looks_like_row_index(rraw),
+                # OR, not AND. A 1..N counter overlaps anything 1..N by
+                # construction, so ONE counter is enough to make the overlap
+                # meaningless. Under the conjunction only the honest
+                # counter-to-counter pairing was penalized, and a measurement
+                # paired against a counter ('age' <-> 'row') escaped both the
+                # penalty and the confidence downgrade to outrank it at
+                # medium — the penalty made the ranking worse than none.
+                index_like=_looks_like_row_index(lraw) or _looks_like_row_index(rraw),
                 sampled=sampled_pair,
             )
             # At least ONE side must actually identify subjects. This is what
@@ -724,7 +893,11 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
             f"The column '{left_key}' appears more than once in one of these files. "
             f"Rename or remove the duplicate before joining."
         )
-    ln, rn = normalize_key(ls), normalize_key(rs)
+    # ONE canonical space for both sides — see KeyReading. Normalizing each side
+    # in its own call is what silently mis-pairs rows.
+    reading = key_reading(ls, rs)
+    ln = normalize_key(ls, reading.fold_case, reading.keep_tokens)
+    rn = normalize_key(rs, reading.fold_case, reading.keep_tokens)
     n_missing_left, n_missing_right = int(ln.isna().sum()), int(rn.isna().sum())
     lvalid, rvalid = ln.dropna(), rn.dropna()
     lset, rset = set(lvalid.unique()), set(rvalid.unique())
@@ -790,6 +963,18 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
     )
 
     # --- blocking problems -------------------------------------------------
+    # Checked first: a key whose digits have already collapsed makes every
+    # count below an answer to the wrong question.
+    for _s, _fname, _col in ((ls, left_name, left_key), (rs, right_name, right_key)):
+        _loss = numeric_key_precision_loss(_s)
+        if _loss:
+            d.blocking.append(_precision_refusal(_col, _fname, _loss[0], _loss[1]))
+    if d.blocking:
+        # Return with the refusal and NOTHING else. Every count below was
+        # measured on keys that have already collided, so the fan-out warning
+        # would explain the collision as repeated visits — a confident and
+        # false account of corrupted row identity.
+        return d
     if dtype_mismatch:
         d.blocking.append(
             f"'{left_key}' is stored as {'numbers' if _base_is_numeric(ls) else 'text'} "
@@ -873,6 +1058,36 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
             f"stray spaces, or a trailing '.0'. Cleaning them up matches "
             f"{len(matched):,} IDs instead of fewer."
         )
+    # Folding was refused for the PAIR, so say what that costs. Silence here is
+    # how a file that spells one ID two ways quietly shrinks the other file's
+    # cohort as well.
+    if not reading.fold_case:
+        folded = (set(normalize_key(ls, True, reading.keep_tokens).dropna().unique())
+                  & set(normalize_key(rs, True, reading.keep_tokens).dropna().unique()))
+        extra = len(folded) - len(matched)
+        example = (_case_collision_example(ls, reading.keep_tokens)
+                   or _case_collision_example(rs, reading.keep_tokens))
+        d.warnings.append(
+            f"Capitalization is being treated as meaningful in BOTH files, because one "
+            f"of them holds two IDs that differ only in case"
+            + (f" ({example[0]!r} and {example[1]!r})" if example else "")
+            + ". "
+            + (f"{extra:,} more ID(s) would match if capitalization were ignored. "
+               if extra > 0 else "")
+            + "If those are really one subject typed two ways, fix the spelling in your "
+              "source file — otherwise every ID here is matched exactly as written."
+        )
+    if reading.keep_tokens:
+        _kept = sorted({v for v in
+                        set(ls.dropna().astype(str).str.strip().unique())
+                        | set(rs.dropna().astype(str).str.strip().unique())
+                        if v.lower() in reading.keep_tokens})
+        d.notes.append(
+            f"{', '.join(repr(v) for v in _kept)} would normally be read as a blank, but "
+            f"{'it matches' if len(_kept) == 1 else 'they match'} the shape of the other "
+            f"codes in these columns, so {'it is' if len(_kept) == 1 else 'they are'} "
+            f"being matched as {'a real ID' if len(_kept) == 1 else 'real IDs'}."
+        )
     if dup_left and dup_right:
         d.warnings.append(
             f"Both files have several rows per ID, so every combination is produced: "
@@ -904,8 +1119,21 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
         if n_missing_right:
             parts.append(f"{n_missing_right:,} in {right_name}")
         kept = how in ("left", "outer") and n_missing_left or how in ("right", "outer") and n_missing_right
+        # Name the spellings and the reason. "no ID at all" is a false account
+        # of a row whose ID the app read as a blank — the researcher then looks
+        # for a gap in their file that is not there.
+        unreadable = sorted(set(unreadable_key_spellings(ls, reading.keep_tokens))
+                            | set(unreadable_key_spellings(rs, reading.keep_tokens)))
+        why = ""
+        if unreadable:
+            shown = ", ".join(repr(v) for v in unreadable[:5])
+            why = (f"Their ID is blank, or reads {shown}"
+                   f"{'…' if len(unreadable) > 5 else ''} — "
+                   f"{'a spelling' if len(unreadable) == 1 else 'spellings'} this app "
+                   f"treats as a way of writing 'no value'. ")
         d.warnings.append(
             f"{' and '.join(parts)} row(s) have no ID at all (blank or 'unknown'). "
+            + why
             + ("They are kept but will have no matching information attached."
                if kept else "They cannot be matched and will be dropped.")
         )
@@ -940,8 +1168,12 @@ def repair_keys(left: pd.DataFrame, right: pd.DataFrame,
     """
     left_key, right_key = resolve_column(left, left_key), resolve_column(right, right_key)
     l2, r2 = left.copy(), right.copy()
-    l2[left_key] = normalize_key(l2[left_key])
-    r2[right_key] = normalize_key(r2[right_key])
+    # The canonical space is a property of the PAIR, not of either column. Two
+    # separate normalize_key calls put the two files in two different spaces the
+    # moment one of them holds a case collision.
+    reading = key_reading(l2[left_key], r2[right_key])
+    l2[left_key] = normalize_key(l2[left_key], reading.fold_case, reading.keep_tokens)
+    r2[right_key] = normalize_key(r2[right_key], reading.fold_case, reading.keep_tokens)
     l2.loc[l2[left_key] == "", left_key] = np.nan
     r2.loc[r2[right_key] == "", right_key] = np.nan
     return l2, r2, (
@@ -968,6 +1200,14 @@ def execute_join(left: pd.DataFrame, right: pd.DataFrame,
         left_key, right_key = left.columns[li], right.columns[ri]
     left_key = resolve_column(left, left_key)
     right_key = resolve_column(right, right_key)
+    # Refuse rather than merge on digits that are already gone. diagnose_join
+    # blocks this in the UI; the guard is repeated here because execute_join is
+    # reachable without it, and a false merge is not recoverable downstream.
+    for _s, _fname, _col in ((left[left_key], left_name, left_key),
+                             (right[right_key], right_name, right_key)):
+        _loss = numeric_key_precision_loss(_s)
+        if _loss:
+            raise ValueError(_precision_refusal(_col, _fname, _loss[0], _loss[1]))
     steps: List[str] = []
     l, r = left, right
     if repair:
@@ -999,8 +1239,11 @@ def execute_join(left: pd.DataFrame, right: pd.DataFrame,
     # Use the canonical notion of "missing" so an empty string or "unknown"
     # counts as no-ID even when the keys were not repaired — otherwise the
     # diagnosis and the merge disagree about which rows can match.
-    lmask = normalize_key(l[left_key]).isna()
-    rmask = normalize_key(r[right_key]).isna()
+    _blank_reading = key_reading(l[left_key], r[right_key])
+    lmask = normalize_key(l[left_key], _blank_reading.fold_case,
+                          _blank_reading.keep_tokens).isna()
+    rmask = normalize_key(r[right_key], _blank_reading.fold_case,
+                          _blank_reading.keep_tokens).isna()
     l_blank, r_blank = l[lmask], r[rmask]
     merged = l[~lmask].merge(
         r[~rmask], left_on=left_key, right_on=right_key, how=how, suffixes=suffixes
