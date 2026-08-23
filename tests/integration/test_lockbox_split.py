@@ -2,7 +2,8 @@
 upload lockbox as THE test set (Tier 2, AppTest).
 
 This pins the structural leakage fix at the widget level: frozen labels in,
-identical test indices out — not just the unit-level partition math.
+the identical labels out as the stored test set — not just the unit-level
+partition math.
 """
 import numpy as np
 import pandas as pd
@@ -68,21 +69,23 @@ def test_prepare_splits_uses_lockbox_labels(apptest_train_page):
     at.run(timeout=180)
     assert not at.exception, f"Prepare Splits errored: {at.exception}"
 
-    test_indices = at.session_state["test_indices"]
-    assert test_indices is not None and len(test_indices) > 0
+    stored_test = at.session_state["test_row_labels"]
+    assert stored_test is not None and len(stored_test) > 0
 
-    # df has a default RangeIndex, so positional indices == index labels.
-    # Every produced test index must come from the lockbox, and (allowing for
-    # rows dropped by target-NaN masking — none in this fixture) cover it.
-    assert set(test_indices) == set(test_labels), (
+    # The lockbox was always labels and the split is stored as labels now, so
+    # the two compare directly — no assumption that this frame's index happens
+    # to be a RangeIndex. Every produced test row must come from the lockbox
+    # and (allowing for rows dropped by target-NaN masking — none in this
+    # fixture) cover it.
+    assert set(stored_test) == set(test_labels), (
         "Prepare Splits did not use the lockbox labels as the test set"
     )
 
     # Train/val must be disjoint from the lockbox
-    train_indices = set(at.session_state["train_indices"])
-    val_indices = set(at.session_state["val_indices"])
-    assert not (train_indices & set(test_labels))
-    assert not (val_indices & set(test_labels))
+    stored_train = set(at.session_state["train_row_labels"])
+    stored_val = set(at.session_state["val_row_labels"])
+    assert not (stored_train & set(test_labels))
+    assert not (stored_val & set(test_labels))
 
 
 def test_prepare_splits_exploratory_mode_ignores_lockbox(apptest_train_page):
@@ -108,5 +111,5 @@ def test_prepare_splits_exploratory_mode_ignores_lockbox(apptest_train_page):
 
     # With quarantine explicitly off, the page draws its own split; the test
     # set need not (and with this seed, will not) equal the lockbox labels.
-    test_indices = set(at.session_state["test_indices"])
-    assert test_indices != set(df.index[:30])
+    stored_test = set(at.session_state["test_row_labels"])
+    assert stored_test != set(df.index[:30])

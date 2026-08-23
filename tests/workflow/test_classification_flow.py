@@ -98,9 +98,12 @@ def prepare_stratified_splits(df, target_col='condition', train_frac=0.7, val_fr
         'split_config': SplitConfig(),
         'X_train': X_train, 'X_val': X_val, 'X_test': X_test,
         'y_train': y_train, 'y_val': y_val, 'y_test': y_test,
-        'train_indices': idx_train.tolist(),
-        'val_indices': idx_val.tolist(),
-        'test_indices': idx_test.tolist(),
+        # Index LABELS, as `pages/06` stores them — `X_train.index` already is
+        # the label set, so the positional `idx_*` are only used to keep the
+        # split reproducible.
+        'train_row_labels': list(X_train.index),
+        'val_row_labels': list(X_val.index),
+        'test_row_labels': list(X_test.index),
         'feature_names': feature_cols,
     }
 
@@ -183,7 +186,7 @@ class TestClassificationPipeline:
 
         splits = {k: state[k] for k in [
             'X_train', 'X_val', 'X_test', 'y_train', 'y_val', 'y_test',
-            'train_indices', 'val_indices', 'test_indices', 'feature_names',
+            'train_row_labels', 'val_row_labels', 'test_row_labels', 'feature_names',
             'split_config',
         ] if k in state}
 
@@ -315,14 +318,20 @@ class TestClassificationPipeline:
         """Subgroup analysis can stratify by categorical columns (gender, smoking)."""
         state = classification_state
 
-        test_indices = state.get('test_indices')
-        assert test_indices is not None
+        from ml.splits import resolve_split_rows
+
+        test_labels = state.get('test_row_labels')
+        assert test_labels is not None
 
         raw_df = state['raw_data']
+        # The one supported way to read a partition back: resolve the stored
+        # LABELS against the frame in hand. Rows come back in the order the
+        # split recorded them, so they stay aligned with y_test / y_test_pred.
+        test_rows = resolve_split_rows(raw_df, test_labels, part='test')
 
         # Categorical columns accessible from raw data
         for col in ['gender', 'smoking']:
-            values = raw_df.iloc[test_indices][col].values
+            values = test_rows[col].values
             assert len(values) == len(state['X_test']), f"{col} length mismatch"
             assert len(set(values)) >= 2, f"{col} should have multiple values in test set"
 
@@ -330,7 +339,7 @@ class TestClassificationPipeline:
         from sklearn.metrics import accuracy_score
         y_test = state['model_results']['logreg']['y_test']
         y_pred = state['model_results']['logreg']['y_test_pred']
-        gender_labels = raw_df.iloc[test_indices]['gender'].values
+        gender_labels = test_rows['gender'].values
 
         for gender in ['male', 'female']:
             mask = gender_labels == gender

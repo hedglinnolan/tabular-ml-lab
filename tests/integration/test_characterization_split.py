@@ -110,13 +110,21 @@ def _ss(at, key, default=None):
 
 
 def _partition(at):
-    """The golden output: sizes, index sets, and the CV scheme chosen.
+    """The golden output: sizes, row LABEL sets, and the CV scheme chosen.
 
-    Index lists are compared as *sets* only where the branch does not promise an
+    Row identity is the index LABEL, not a position. `pages/06` stores
+    `train_row_labels` / `val_row_labels` / `test_row_labels` — labels into the
+    frame the split was drawn on — and the positional keys it used to store
+    alongside them are deliberately gone: a position dereferenced against a
+    later frame names a different person with no error at all.
+
+    Label lists are compared as *sets* only where the branch does not promise an
     order, and as lists where it does (the chronological branch promises order).
+    Where a test genuinely needs the old positional value, it derives it with
+    `df.index.get_indexer(labels)` against the frame the split was drawn on.
     """
     missing = [k for k in ("X_train", "X_val", "X_test",
-                           "train_indices", "val_indices", "test_indices")
+                           "train_row_labels", "val_row_labels", "test_row_labels")
                if _ss(at, k) is None]
     if missing:
         raise AssertionError(
@@ -127,23 +135,27 @@ def _partition(at):
         "n_train": len(at.session_state["X_train"]),
         "n_val": len(at.session_state["X_val"]),
         "n_test": len(at.session_state["X_test"]),
-        "train_indices": list(at.session_state["train_indices"]),
-        "val_indices": list(at.session_state["val_indices"]),
-        "test_indices": list(at.session_state["test_indices"]),
+        "train_labels": list(at.session_state["train_row_labels"]),
+        "val_labels": list(at.session_state["val_row_labels"]),
+        "test_labels": list(at.session_state["test_row_labels"]),
         "cv_strategy": _ss(at, "cv_strategy"),
         "cv_groups_train": None if groups is None else list(groups),
     }
 
 
-def _assert_partition_is_sane(p, n_rows):
+def _assert_partition_is_sane(p, df):
     """Invariants every branch must satisfy, whatever else it does."""
-    tr, va, te = set(p["train_indices"]), set(p["val_indices"]), set(p["test_indices"])
+    tr, va, te = set(p["train_labels"]), set(p["val_labels"]), set(p["test_labels"])
     assert tr and va and te, "a partition left one side empty"
     assert not (tr & va), "train and validation overlap"
     assert not (tr & te), "train and test overlap — this is the leak"
     assert not (va & te), "validation and test overlap"
     assert len(tr) == p["n_train"] and len(va) == p["n_val"] and len(te) == p["n_test"]
-    assert (tr | va | te) <= set(range(n_rows))
+    # Every partitioned label names a row of the frame the split was drawn on.
+    # The label version of the old `<= set(range(n_rows))`, and stricter: it
+    # also catches a label that was invented rather than merely out of range.
+    assert (tr | va | te) <= set(df.index), (
+        "the split named rows that are not in the frame it was drawn on")
 
 
 # ── branch 4: plain / stratified random ──────────────────────────────────
@@ -155,7 +167,7 @@ def test_plain_random_split_is_stable_and_disjoint(train_page):
     _inject_pipeline(at, df)
     p = _partition(_prepare(at))
 
-    _assert_partition_is_sane(p, len(df))
+    _assert_partition_is_sane(p, df)
     assert p["cv_strategy"] == "standard"
     assert p["cv_groups_train"] is None
     # The whole of the non-missing target is used: nothing is silently dropped.
@@ -174,8 +186,8 @@ def test_plain_random_split_is_reproducible(train_page):
         _inject_pipeline(at, df)
         runs.append(_partition(_prepare(at)))
 
-    assert runs[0]["train_indices"] == runs[1]["train_indices"]
-    assert runs[0]["test_indices"] == runs[1]["test_indices"]
+    assert runs[0]["train_labels"] == runs[1]["train_labels"]
+    assert runs[0]["test_labels"] == runs[1]["test_labels"]
 
 
 def test_stratified_split_preserves_class_balance(train_page):
@@ -190,14 +202,16 @@ def test_stratified_split_preserves_class_balance(train_page):
     # whenever the split is neither grouped nor chronological (:277).
     p = _partition(_prepare(at))
 
-    _assert_partition_is_sane(p, len(df))
+    _assert_partition_is_sane(p, df)
     assert p["cv_strategy"] == "standard"
 
     # Stratification means the partitions carry the population's class mix.
-    y = df[target].reset_index(drop=True)
+    # Addressed by label, so no `reset_index` is needed to make positions line
+    # up — the labels name rows of `df` directly.
+    y = df[target]
     overall = y.value_counts(normalize=True)
-    for key in ("train_indices", "test_indices"):
-        part = y.iloc[p[key]].value_counts(normalize=True)
+    for key in ("train_labels", "test_labels"):
+        part = y.loc[p[key]].value_counts(normalize=True)
         for cls in overall.index:
             assert abs(part.get(cls, 0) - overall[cls]) < 0.12, (
                 f"{key} lost the class balance for {cls!r}")
@@ -232,15 +246,16 @@ def test_lockbox_labels_are_the_test_set(train_page):
     _seal_lockbox(at, df, labels)
     p = _partition(_prepare(at))
 
-    _assert_partition_is_sane(p, len(df))
-    # `train_indices` etc. are POSITIONS into the target-complete frame. Map the
-    # sealed labels through the same mask the page applies.
-    mask = df["glucose"].notna()
-    kept_labels = list(df.index[mask])
-    expected_test_pos = {i for i, lbl in enumerate(kept_labels) if lbl in set(labels)}
-    assert set(p["test_indices"]) == expected_test_pos, (
+    _assert_partition_is_sane(p, df)
+    # The stored partition is labels now, and the lockbox was always labels, so
+    # the two are directly comparable — no mapping through positions in the
+    # target-complete frame. Only the mask still applies: a sealed row whose
+    # target is missing never reaches the split.
+    kept = set(df.index[df["glucose"].notna()])
+    expected_test = set(labels) & kept
+    assert set(p["test_labels"]) == expected_test, (
         "the test set is not exactly the sealed labels")
-    assert not (set(p["train_indices"]) & expected_test_pos)
+    assert not (set(p["train_labels"]) & expected_test)
 
 
 def test_exploratory_mode_ignores_the_lockbox(train_page):
@@ -254,11 +269,10 @@ def test_exploratory_mode_ignores_the_lockbox(train_page):
     at.session_state["exploratory_mode"] = True
     p = _partition(_prepare(at))
 
-    _assert_partition_is_sane(p, len(df))
-    mask = df["glucose"].notna()
-    kept_labels = list(df.index[mask])
-    sealed_pos = {i for i, lbl in enumerate(kept_labels) if lbl in set(labels)}
-    assert set(p["test_indices"]) != sealed_pos, (
+    _assert_partition_is_sane(p, df)
+    kept = set(df.index[df["glucose"].notna()])
+    sealed = set(labels) & kept
+    assert set(p["test_labels"]) != sealed, (
         "exploratory mode still honored the lockbox")
 
 
@@ -283,11 +297,11 @@ def test_grouped_split_keeps_a_subject_on_one_side(train_page):
         "branch and skipping it would leave a quarter of the split logic "
         "unpinned before the extraction")
 
-    _assert_partition_is_sane(p, len(df))
-    subj = df["subject_id"].reset_index(drop=True)
-    tr = set(subj.iloc[p["train_indices"]])
-    va = set(subj.iloc[p["val_indices"]])
-    te = set(subj.iloc[p["test_indices"]])
+    _assert_partition_is_sane(p, df)
+    subj = df["subject_id"]
+    tr = set(subj.loc[p["train_labels"]])
+    va = set(subj.loc[p["val_labels"]])
+    te = set(subj.loc[p["test_labels"]])
     assert not (tr & te), "a subject appears in both train and test"
     assert not (tr & va) and not (va & te), "a subject spans partitions"
     # CV must inherit the grouping or the folds leak too.
@@ -312,10 +326,10 @@ def test_time_split_is_ordered_and_never_trains_on_the_future(train_page):
     assert p["cv_strategy"] == "time", (
         "the page did not route to the chronological branch")
 
-    _assert_partition_is_sane(p, len(df))
-    dates = df["visit_date"].reset_index(drop=True)
-    assert dates.iloc[p["train_indices"]].max() <= dates.iloc[p["val_indices"]].min()
-    assert dates.iloc[p["val_indices"]].max() <= dates.iloc[p["test_indices"]].min()
+    _assert_partition_is_sane(p, df)
+    dates = df["visit_date"]
+    assert dates.loc[p["train_labels"]].max() <= dates.loc[p["val_labels"]].min()
+    assert dates.loc[p["val_labels"]].max() <= dates.loc[p["test_labels"]].min()
 
 
 # ── branch selection itself ──────────────────────────────────────────────

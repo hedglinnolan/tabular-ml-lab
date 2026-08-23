@@ -23,11 +23,13 @@ partitions is the worse leak:
 - ``*_labels`` are index labels — the identity that survives filtering, and the
   convention the lockbox already uses.
 - ``*_positions`` are offsets into the *split frame* (the rows left after
-  dropping a missing target and trimming), preserved because `pages/07` reads
-  them that way today.
+  dropping a missing target and trimming). They are valid only for the frame
+  this call was handed, and must not cross a page boundary.
 
 The two agree only while nothing renumbers the rows in between, which is exactly
-what `T0-ID-001`'s identity barrier exists to guarantee. Prefer the labels.
+what `T0-ID-001`'s identity barrier exists to guarantee. Reading a partition
+back later goes through :func:`resolve_split_rows`, which resolves labels
+against the current frame and refuses when any of them is gone.
 
 **The identity barrier.** Splitting is a post-barrier operation: rows have
 identities by the time they get here, and this module never renumbers them.
@@ -153,6 +155,57 @@ class Split:
                 f"{len(missing)} split label(s) are not in the source frame "
                 f"(e.g. {missing[:5]}). A post-barrier operation renumbered the "
                 "rows, so these labels no longer name the rows they came from.")
+
+
+class SplitIdentityError(SplitError):
+    """The stored split no longer names rows that exist in the current frame."""
+
+
+def resolve_split_rows(df: Optional[pd.DataFrame],
+                       labels: Optional[Sequence[Any]],
+                       part: str = "test") -> pd.DataFrame:
+    """The rows of `df` that a stored split's LABELS name — or a refusal.
+
+    The single way to read a partition back after the split is drawn. Identity
+    across a page boundary is the label, never the position: the frame a later
+    page fetches can gain or lose rows in between, and a position then names a
+    different person with no error at all. A label that is gone means this is
+    not the frame the split was drawn on, and there is no correct answer left
+    to give — only a refusal.
+
+    Rows come back in the order the split recorded them, so a partition's rows
+    stay aligned with the y/y_pred vectors stored beside it.
+    """
+    if labels is None or len(labels) == 0:
+        raise SplitIdentityError(
+            f"No {part} row labels were recorded for this split. Re-run "
+            "Prepare Splits on the Train & Compare page.")
+    if df is None:
+        raise SplitIdentityError(
+            f"There is no active dataset to resolve the {part} rows against.")
+
+    wanted = pd.Index(list(labels))
+    known = wanted.isin(df.index)
+    if not known.all():
+        missing = list(wanted[~known])
+        raise SplitIdentityError(
+            f"{len(missing)} of {len(wanted)} {part} row(s) are no longer in "
+            f"the active dataset (e.g. {missing[:5]}); it now has {len(df)} "
+            "rows. The row set changed after the split was drawn — rebuilding "
+            "pipelines with plausibility filtering, re-applying feature "
+            "engineering, or a row-dropping repair all do this. Re-run Prepare "
+            "Splits on Train & Compare, or undo that change, before reading "
+            "held-out results.")
+
+    # A duplicated label makes `.loc` return more rows than the split had,
+    # which would silently misalign every vector stored beside it.
+    if df.index.has_duplicates and wanted.isin(df.index[df.index.duplicated()]).any():
+        raise SplitIdentityError(
+            f"The active dataset has duplicate row labels among the {part} "
+            "rows, so a label no longer names one row. Re-run Prepare Splits "
+            "on Train & Compare.")
+
+    return df.loc[wanted]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -115,9 +115,13 @@ def prepare_splits(df, target_col='glucose', train_frac=0.7, val_frac=0.15):
         'y_train': y.iloc[idx_train],
         'y_val': y.iloc[idx_val],
         'y_test': y.iloc[idx_test],
-        'train_indices': idx_train.tolist(),
-        'val_indices': idx_val.tolist(),
-        'test_indices': idx_test.tolist(),
+        # Row identity is the index LABEL, as the app stores it: `pages/06`
+        # writes `*_row_labels` and nothing carries positions across a page
+        # boundary any more. `X.index` is the source frame's labels for the
+        # rows that survived the target mask, so these are labels into `df`.
+        'train_row_labels': X.index[idx_train].tolist(),
+        'val_row_labels': X.index[idx_val].tolist(),
+        'test_row_labels': X.index[idx_test].tolist(),
         'feature_names': feature_cols,
     }
 

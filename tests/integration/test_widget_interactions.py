@@ -238,8 +238,12 @@ class TestPrepareSplitsInteraction:
         train_pct = len(X_train) / total
         assert 0.5 < train_pct < 0.9, f"Train fraction {train_pct:.2f} outside expected range"
 
-    def test_prepare_splits_stores_indices(self, reg_df):
-        """Click Prepare Splits → train/val/test indices stored."""
+    def test_prepare_splits_stores_row_labels(self, reg_df):
+        """Click Prepare Splits → train/val/test row LABELS stored, disjoint.
+
+        Row identity crosses a page boundary as an index label, never as a
+        position, so this is the key the downstream pages read.
+        """
         at = AppTest.from_file("pages/06_Train_and_Compare.py", default_timeout=45)
         self._setup_page06(at, reg_df)
         at.run()
@@ -247,22 +251,25 @@ class TestPrepareSplitsInteraction:
         split_buttons = [b for b in at.button if "Prepare Splits" in str(b.label)]
         split_buttons[0].click()
         at.run()
-        assert_no_exception(at, "Train (splits + indices)")
+        assert_no_exception(at, "Train (splits + row labels)")
 
-        train_idx = _ss_get(at, 'train_indices')
-        assert train_idx is not None, "train_indices must be stored"
-        assert len(train_idx) > 0
+        train_labels = _ss_get(at, 'train_row_labels')
+        assert train_labels is not None, "train_row_labels must be stored"
+        assert len(train_labels) > 0
 
-        val_idx = _ss_get(at, 'val_indices')
-        assert val_idx is not None, "val_indices must be stored"
+        val_labels = _ss_get(at, 'val_row_labels')
+        assert val_labels is not None, "val_row_labels must be stored"
 
-        test_idx = _ss_get(at, 'test_indices')
-        assert test_idx is not None, "test_indices must be stored"
+        test_labels = _ss_get(at, 'test_row_labels')
+        assert test_labels is not None, "test_row_labels must be stored"
 
-        # Indices must not overlap
-        assert len(set(train_idx) & set(val_idx)) == 0, "Train and val indices must not overlap"
-        assert len(set(train_idx) & set(test_idx)) == 0, "Train and test indices must not overlap"
-        assert len(set(val_idx) & set(test_idx)) == 0, "Val and test indices must not overlap"
+        # No row may appear in two partitions
+        assert len(set(train_labels) & set(val_labels)) == 0, "Train and val rows must not overlap"
+        assert len(set(train_labels) & set(test_labels)) == 0, "Train and test rows must not overlap"
+        assert len(set(val_labels) & set(test_labels)) == 0, "Val and test rows must not overlap"
+
+        # And every stored label names a row of the frame the split was drawn on.
+        assert set(train_labels) | set(val_labels) | set(test_labels) <= set(reg_df.index)
 
     def test_prepare_splits_classification(self, clf_df):
         """Classification splits work correctly."""

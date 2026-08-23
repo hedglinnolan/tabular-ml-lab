@@ -70,7 +70,7 @@ class TestRegressionPipeline:
         assert total > 0, "No data after split"
         assert len(state['X_train']) > len(state['X_test']), "Train should be larger than test"
         assert 'glucose' not in state['X_train'].columns, "Target leaked into features"
-        assert len(state['test_indices']) == len(state['X_test'])
+        assert len(state['test_row_labels']) == len(state['X_test'])
         assert len(state['y_train']) == len(state['X_train'])
         assert len(state['y_test']) == len(state['X_test'])
 
@@ -81,7 +81,7 @@ class TestRegressionPipeline:
 
         splits = {k: state[k] for k in [
             'X_train', 'X_val', 'X_test', 'y_train', 'y_val', 'y_test',
-            'train_indices', 'val_indices', 'test_indices', 'feature_names',
+            'train_row_labels', 'val_row_labels', 'test_row_labels', 'feature_names',
             'split_config',
         ] if k in state}
 
@@ -116,23 +116,31 @@ class TestRegressionPipeline:
         }
 
     def test_step5_explainability_compatibility(self, regression_df, regression_state):
-        """Step 5: Subgroup analysis can access raw columns via test_indices (#32 fix)."""
+        """Step 5: Subgroup analysis can access raw columns via test_row_labels (#32 fix)."""
+        from ml.splits import resolve_split_rows
+
         df = regression_df
         state = regression_state
 
-        test_indices = state.get('test_indices')
-        assert test_indices is not None, "No test indices"
+        test_labels = state.get('test_row_labels')
+        assert test_labels is not None, "No test row labels"
 
         raw_df = state['raw_data']
         X_test = state['X_test']
 
+        # The stored labels name rows of the raw frame, resolved through the one
+        # supported front door — and in the order the split recorded them.
+        test_rows = resolve_split_rows(raw_df, test_labels, part='test')
+        assert list(test_rows.index) == list(X_test.index), (
+            "the stored labels name different rows than X_test holds")
+
         # Gender shouldn't be in numeric features but should be accessible from raw df
         assert 'gender' not in X_test.columns, "Gender shouldn't be in numeric features"
-        subgroup_labels = raw_df.iloc[test_indices]['gender'].values
+        subgroup_labels = test_rows['gender'].values
         assert len(subgroup_labels) == len(X_test), "Subgroup labels length mismatch"
         assert set(subgroup_labels).issubset({'male', 'female'})
 
-        smoking_labels = raw_df.iloc[test_indices]['smoking'].values
+        smoking_labels = test_rows['smoking'].values
         assert len(smoking_labels) == len(X_test)
 
     def test_step6_publication_output(self, regression_state):

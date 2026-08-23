@@ -219,7 +219,9 @@ def init_session_state():
 
 def get_data(full_study: bool = False) -> Optional[pd.DataFrame]:
     """Get active data from session state.
-    Priority: df_engineered (if feature engineering was applied) > filtered_data > raw_data
+    Columns come from df_engineered (if feature engineering was applied), else
+    raw_data. Rows are then masked by filtered_data (the preprocess row
+    filter) whenever it exists — it is a filter, not a competing frame.
 
     When a cohort run is active ("same question, different people"), the rows of
     that cohort are ALL any page sees — the filter is applied here, once, rather
@@ -231,10 +233,25 @@ def get_data(full_study: bool = False) -> Optional[pd.DataFrame]:
     """
     # Explicitly check for None to avoid DataFrame boolean ambiguity
     df_eng = st.session_state.get('df_engineered')
+    df_filt = st.session_state.get('filtered_data')
     if df_eng is not None:
         df = df_eng
+        if df_filt is not None:
+            # A row filter is a MASK, not a rival frame. df_engineered used to
+            # win outright, so a plausibility filter applied after feature
+            # engineering — the documented page order — was written to
+            # filtered_data and then read by nobody: page 05 said the rows were
+            # removed and they trained the model anyway (CONTRACT-013).
+            # Applying it here keeps that sentence true whichever order the two
+            # steps ran in; when FE ran second, df_engineered is already the
+            # narrower frame and the mask changes nothing.
+            _kept = df.index.isin(df_filt.index)
+            if _kept.any():
+                df = df[_kept]
+            # No overlap at all means the two frames are different vintages,
+            # not a filter — masking would empty the dataset. Only set_data and
+            # a new cohort can produce that, and both pop filtered_data.
     else:
-        df_filt = st.session_state.get('filtered_data')
         df = df_filt if df_filt is not None else st.session_state.get('raw_data')
 
     from utils.cohorts import active_cohort, apply_cohort
@@ -257,6 +274,27 @@ def get_data(full_study: bool = False) -> Optional[pd.DataFrame]:
             return st.session_state.get('raw_data', df)
         return df
     return apply_cohort(df)
+
+
+def get_split_rows(part: str = "test",
+                   df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    """The active frame's rows for a stored split partition, addressed by LABEL.
+
+    The one way any page reads a partition back after Train & Compare drew it.
+    Raises `ml.splits.SplitIdentityError` when the active frame no longer
+    contains every row the split recorded — the split was drawn on a different
+    set of people, and no answer computed here would be about the reported
+    test set. Callers surface the refusal; none of them may fall back to
+    selecting rows by position.
+
+    `part` is "train", "val" or "test". Pass `df` to resolve against a frame
+    already in hand instead of re-fetching.
+    """
+    from ml.splits import resolve_split_rows
+    labels = st.session_state.get(f"{part}_row_labels")
+    if df is None:
+        df = get_data()
+    return resolve_split_rows(df, labels, part=part)
 
 
 def _content_fingerprint(df: pd.DataFrame) -> Optional[int]:

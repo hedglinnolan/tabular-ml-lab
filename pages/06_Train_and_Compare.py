@@ -665,25 +665,23 @@ if st.button("Prepare Splits", type="primary"):
         elapsed = time.perf_counter() - t0
         st.session_state.setdefault("last_timings", {})["Prepare Splits"] = round(elapsed, 2)
 
-        # Store indices for explainability (original df positions).
+        # Store row identity for explainability — LABELS, and only labels.
         #
-        # One expression now, where there used to be a branch per split
-        # strategy — the branches only existed because each one carried its own
-        # index bookkeeping. The split reports LABELS, which are the identity
-        # (T0-ID-001); the positions page 07 still reads are derived from them
-        # here, at the one place that knows which frame they index into.
-        #
-        # `get_indexer` is what makes this exact: it resolves each label's
-        # position in `df`, which is what `original_indices[idx]` computed by
-        # hand before, including when a missing target dropped rows.
-        st.session_state.train_indices = df.index.get_indexer(_split.train_labels).tolist()
-        st.session_state.val_indices = df.index.get_indexer(_split.val_labels).tolist()
-        st.session_state.test_indices = df.index.get_indexer(_split.test_labels).tolist()
-        # The labels themselves, so a consumer that wants identity rather than
-        # position does not have to re-derive it.
+        # One expression per partition now, where there used to be a branch per
+        # split strategy; the branches only existed because each one carried its
+        # own index bookkeeping. Positions used to be stored alongside and were
+        # what page 07 read: offsets into THIS frame, dereferenced later against
+        # whatever get_data() returned then. Any row-set change in between made
+        # them name different people with no error (CONTRACT-001), so they are
+        # gone. Readers go through utils.session_state.get_split_rows, which
+        # resolves these labels against the current frame and refuses when one
+        # of them is missing.
         st.session_state.train_row_labels = list(_split.train_labels)
         st.session_state.val_row_labels = list(_split.val_labels)
         st.session_state.test_row_labels = list(_split.test_labels)
+        # Positions cannot outlive the frame they index into.
+        for _stale in ("train_indices", "val_indices", "test_indices"):
+            st.session_state.pop(_stale, None)
         
         # Record the split in workflow provenance — without this the generated
         # Methods section contains no train/val/test statement and no seed.

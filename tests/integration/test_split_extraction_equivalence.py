@@ -22,7 +22,9 @@ from tests.integration.conftest import (
 from tests.integration.test_characterization_split import (
     _inject_pipeline, _partition, _prepare, _route_grouped, _route_time, _seal_lockbox)
 
-from ml.splits import Split, SplitError, SplitSpec, choose_strategy, make_split
+from ml.splits import (
+    Split, SplitError, SplitIdentityError, SplitSpec, choose_strategy, make_split,
+    resolve_split_rows)
 
 pytestmark = pytest.mark.timeout(300)
 
@@ -48,12 +50,18 @@ def _feature_cols(df, target_col):
 
 
 def _same_partition(page, split, label="partition"):
-    """The page stores POSITIONS into the split frame; so does `Split`."""
-    assert sorted(page["train_indices"]) == sorted(split.train_positions), \
+    """The page stores row LABELS; so does `Split`. Same rows means same labels.
+
+    This used to compare the page's stored positions against `Split.*_positions`
+    — an agreement that held only while nothing renumbered the rows in between.
+    Labels are the identity on both sides now, so the comparison is of the rows
+    themselves and needs no frame to be interpreted against.
+    """
+    assert sorted(page["train_labels"]) == sorted(split.train_labels), \
         f"{label}: train rows differ"
-    assert sorted(page["val_indices"]) == sorted(split.val_positions), \
+    assert sorted(page["val_labels"]) == sorted(split.val_labels), \
         f"{label}: validation rows differ"
-    assert sorted(page["test_indices"]) == sorted(split.test_positions), \
+    assert sorted(page["test_labels"]) == sorted(split.test_labels), \
         f"{label}: test rows differ"
     assert page["cv_strategy"] == split.cv_strategy, f"{label}: cv scheme differs"
 
@@ -134,17 +142,21 @@ def test_chronological_split_matches_the_page():
     assert dates.loc[split.val_labels].max() <= dates.loc[split.test_labels].min()
 
 
-def test_stored_indices_match_the_page_when_rows_are_dropped():
+def test_stored_labels_name_the_same_rows_when_rows_are_dropped():
     """The case where positions and labels genuinely diverge.
 
-    `pages/06` stores `original_indices[idx]` — positions into the **source**
-    frame. `Split.*_positions` are offsets into the **split** frame, the rows
-    left after a missing target is dropped. With nothing dropped the two
-    coincide, which is why the other equivalence tests pass on positions alone;
-    with rows dropped they do not, and the translation has to go through labels.
+    `pages/06` used to store `original_indices[idx]` — positions into the
+    **source** frame — while `Split.*_positions` are offsets into the **split**
+    frame, the rows left after a missing target is dropped. Whenever rows are
+    dropped the two disagree, and the old test pinned the translation between
+    them.
 
-    This pins that translation, so rewiring the page cannot get it subtly wrong
-    for exactly the datasets that have missing values.
+    There is no translation to pin any more: the page stores labels, and a label
+    means the same row in either frame. What is worth pinning instead is what
+    that buys, and it is more than agreement at split time — the stored labels
+    keep naming the same PEOPLE after the row set changes underneath them, and
+    say so loudly when one of those people is gone. Positions do neither: they
+    silently name someone else.
     """
     df = build_test_dataframe(n=200)
     df.loc[df.index[:25], "glucose"] = np.nan
@@ -153,16 +165,42 @@ def test_stored_indices_match_the_page_when_rows_are_dropped():
     split = make_split(df, _feature_cols(df, "glucose"), "glucose", "regression",
                        SplitSpec(random_state=42))
 
-    # Positions in the split frame are NOT what the page stores here.
-    assert sorted(page["train_indices"]) != sorted(split.train_positions), (
+    split_frame = df[df["glucose"].notna()]
+    assert len(split_frame) < len(df), (
         "the fixture no longer drops rows, so this test proves nothing")
+    assert sorted(split.test_positions) != sorted(split.test_labels), (
+        "positions and labels coincide here, so this test proves nothing")
 
-    # Going through the labels reproduces the page exactly.
-    for page_key, labels in (("train_indices", split.train_labels),
-                             ("val_indices", split.val_labels),
-                             ("test_indices", split.test_labels)):
-        expected = sorted(df.index.get_indexer(labels).tolist())
-        assert sorted(page[page_key]) == expected, f"{page_key} did not translate"
+    # Same rows on both sides, stated as labels — no frame needed to read it.
+    _same_partition(page, split, "rows-dropped")
+
+    # A position into the split frame names a different row of the source frame.
+    # This is the mistake labels exist to prevent, shown once.
+    assert list(df.index[split.test_positions]) != list(split.test_labels)
+    assert list(split_frame.index[split.test_positions]) == list(split.test_labels)
+
+    # What the stored labels resolve to, through the one supported front door.
+    rows = resolve_split_rows(df, page["test_labels"], part="test")
+    pd.testing.assert_frame_equal(rows, df.loc[list(split.test_labels)])
+
+    # Now drop ten more rows — rows that are in the split frame but not in the
+    # test set, the everyday case of a filter applied after the split was drawn.
+    narrowed = df.drop(index=list(split.train_labels)[:10])
+    still = resolve_split_rows(narrowed, page["test_labels"], part="test")
+    # Same people, same order — the labels did not move to other rows.
+    pd.testing.assert_frame_equal(still, rows)
+
+    # The same positions, read against the narrowed frame, do not.
+    narrowed_split_frame = narrowed[narrowed["glucose"].notna()]
+    in_range = [p for p in split.test_positions if p < len(narrowed_split_frame)]
+    assert set(narrowed_split_frame.index[in_range]) != set(split.test_labels), (
+        "positions survived a row drop unshifted, so nothing was dropped")
+
+    # And when one of the named people really is gone there is no right answer
+    # left to give, so the read is refused rather than quietly answered.
+    with pytest.raises(SplitIdentityError):
+        resolve_split_rows(df.drop(index=[split.test_labels[0]]),
+                           page["test_labels"], part="test")
 
 
 # ── the priority order ───────────────────────────────────────────────────
@@ -263,8 +301,9 @@ def test_labels_and_positions_disagree_when_the_frame_was_filtered():
     """Why labels are the identity and positions are a convenience.
 
     On a frame whose index is not a clean `RangeIndex`, a stored position and a
-    stored label point at different rows. `pages/07` reads positions today; this
-    records the size of that gap so it is a known cost, not a surprise.
+    stored label point at different rows. Nothing crosses a page boundary on
+    positions any more — `pages/07` resolves the stored labels — and this
+    records how wide the gap was that the migration closed.
     """
     df = build_test_dataframe(n=100)
     df.index = range(1000, 1100)

@@ -13,8 +13,10 @@ from sklearn.inspection import permutation_importance, partial_dependence
 import logging
 
 from utils.session_state import (
-    init_session_state, get_preprocessing_pipeline, DataConfig, get_data
+    init_session_state, get_preprocessing_pipeline, DataConfig, get_data,
+    get_split_rows
 )
+from ml.splits import SplitIdentityError
 from utils.storyline import render_breadcrumb, render_page_navigation
 from ml.estimator_utils import is_estimator_fitted
 from ml.model_registry import get_registry
@@ -164,8 +166,39 @@ if X_test is None or y_test is None:
 registry = _get_registry_cached()
 
 # ────────────────────────────────────────────────────────────────
-# HELPER: Build full pipeline for a model
+# HELPER: the held-out rows, or a refusal
 # ────────────────────────────────────────────────────────────────
+_identity_refusals_shown = set()
+
+
+def _report_split_identity(exc: SplitIdentityError, consequence: str) -> None:
+    """Say that the held-out rows cannot be found, once per rerun per message.
+
+    Everything on this page claims to describe the test set. When the rows it
+    was drawn on are no longer in the active dataset there is nothing here to
+    compute honestly, so the page says so instead of computing something.
+    """
+    key = (str(exc), consequence)
+    if key in _identity_refusals_shown:
+        return
+    _identity_refusals_shown.add(key)
+    st.error(f"**Held-out rows not found.** {exc}\n\n{consequence}")
+
+
+def _held_out_rows(df_raw, consequence: str):
+    """The test rows of `df_raw` by label, or None after reporting a refusal."""
+    if not st.session_state.get("test_row_labels"):
+        # No split drawn in this session — nothing to contradict. The callers'
+        # own fallback is the split's stored X_test, which is the held-out
+        # matrix itself, so silence here asserts nothing.
+        return None
+    try:
+        return get_split_rows("test", df=df_raw)
+    except SplitIdentityError as exc:
+        _report_split_identity(exc, consequence)
+        return None
+
+
 def _get_pipeline_and_data(name):
     """Return (full_pipeline_or_estimator, X_test_for_perm, y_test_for_perm, X_test_raw_or_processed)."""
     estimator = st.session_state.get('fitted_estimators', {}).get(name)
@@ -179,10 +212,18 @@ def _get_pipeline_and_data(name):
         expected_cols = list(feature_names_in) if feature_names_in is not None else []
 
         df_raw = get_data()
-        test_indices = st.session_state.get('test_indices')
-        if df_raw is not None and data_config and test_indices is not None:
+        raw_candidate = None
+        if df_raw is not None and data_config:
+            # By label. The positional read this replaces could not tell "the
+            # same rows" from "the same number of rows", and the bare except
+            # below hid even the IndexError that a shorter frame raised.
+            raw_candidate = _held_out_rows(
+                df_raw,
+                "Permutation importance and SHAP fall back to the feature "
+                "matrix recorded when the split was drawn; raw-column analyses "
+                "are unavailable until the split is re-run.")
+        if raw_candidate is not None:
             try:
-                raw_candidate = df_raw.iloc[test_indices]
                 if expected_cols and all(col in raw_candidate.columns for col in expected_cols):
                     X_raw = raw_candidate.loc[:, expected_cols].copy()
                 elif isinstance(X_test, pd.DataFrame) and expected_cols and all(col in X_test.columns for col in expected_cols):
@@ -193,7 +234,7 @@ def _get_pipeline_and_data(name):
                     fallback_cols = list(st.session_state.get('selected_features') or data_config.feature_cols or feature_names or [])
                     X_raw = raw_candidate.loc[:, [c for c in fallback_cols if c in raw_candidate.columns]].copy()
 
-                y_raw = df_raw[data_config.target_col].iloc[test_indices].values
+                y_raw = raw_candidate[data_config.target_col].values
                 # Encode string labels to match what the model was trained on
                 label_encoder = st.session_state.get('target_label_encoder')
                 if label_encoder is not None and y_raw.dtype == object:
@@ -1177,7 +1218,6 @@ with _explain_tabs[3]:
 
     with st.expander("Run Subgroup Analysis", expanded=False):
         df_raw = get_data()
-        test_indices = st.session_state.get('test_indices')
         if df_raw is not None and st.session_state.get('trained_models'):
             available_cat_cols = [c for c in df_raw.columns if df_raw[c].dtype in ('object', 'category') or df_raw[c].nunique() <= 20]
             subgroup_options = [c for c in available_cat_cols if c != data_config.target_col]
@@ -1188,12 +1228,30 @@ with _explain_tabs[3]:
                 if st.button("Run Subgroup Analysis", type="primary", key="run_subgroup"):
                     from ml.publication import subgroup_analysis, plot_forest_subgroups
 
+                    # y_test/y_pred come from the stored run; the stratum each
+                    # one belongs to must come from the SAME rows. Reading the
+                    # strata positionally paired one person's prediction with
+                    # another person's subgroup, and the N and 95% CI per
+                    # stratum then described nobody (CONTRACT-001). Resolved
+                    # once, before any model is tabulated: if the rows are gone
+                    # the whole table is refused rather than drawn wrong.
+                    test_rows = _held_out_rows(
+                        df_raw,
+                        "Subgroup analysis needs the held-out rows themselves "
+                        "to stratify by, so it cannot be run on this dataset "
+                        "until the split is re-run.")
+                    # The rows were named and could not be found: the fallback
+                    # below would answer a different question, so nothing runs.
+                    refused = test_rows is None and st.session_state.get("test_row_labels")
+
                     for name, results in st.session_state.model_results.items():
+                        if refused:
+                            break
                         y_test_sub = np.array(results["y_test"])
                         y_pred_sub = np.array(results["y_test_pred"])
 
-                        if test_indices is not None:
-                            subgroup_labels = df_raw.iloc[test_indices][subgroup_var].values
+                        if test_rows is not None:
+                            subgroup_labels = test_rows[subgroup_var].values
                         else:
                             X_test_local = st.session_state.get("X_test")
                             if X_test_local is not None and subgroup_var in X_test_local.columns:
@@ -1201,6 +1259,16 @@ with _explain_tabs[3]:
                             else:
                                 st.warning(f"Subgroup variable `{subgroup_var}` not found in test data.")
                                 continue
+
+                        if len(subgroup_labels) != len(y_test_sub):
+                            # Three vectors that must describe one person each,
+                            # in one order. Unequal lengths mean they do not.
+                            st.warning(
+                                f"{name}: {len(y_test_sub)} stored predictions "
+                                f"but {len(subgroup_labels)} subgroup values — "
+                                "the results and the data are from different "
+                                "splits. Re-run Prepare Splits and retrain.")
+                            continue
 
                         st.subheader(f"{name.upper()}")
                         sub_df = subgroup_analysis(
