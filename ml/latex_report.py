@@ -344,20 +344,68 @@ def _build_structured_abstract_sections(
     }
 
 
-def _convert_markdown_to_latex(markdown_text: str) -> Tuple[str, str]:
-    """Convert markdown methods section to LaTeX, separating Methods and Results.
-    
-    Returns:
-        Tuple of (methods_latex, results_latex)
+#: Top-level markdown headings the LaTeX skeleton has a home for. A draft
+#: section whose heading is not one of these is compiled material with nowhere
+#: to go, and it is printed under its own heading rather than dropped.
+_DRAFT_SECTION_ALIASES = {
+    'methods': 'methods',
+    'results': 'results',
+    'discussion': 'discussion',
+}
+
+
+def _draft_section_key(heading: str) -> Optional[str]:
+    """Which manuscript section a `## ` heading names, if any."""
+    normalized = re.sub(r'\(.*?\)', '', heading).strip().strip(':').lower()
+    return _DRAFT_SECTION_ALIASES.get(normalized)
+
+
+def _split_draft_markdown(markdown_text: str) -> List[Tuple[str, str]]:
+    """The draft's top-level sections, in order, as `(heading, body)`.
+
+    The heading is `""` for the text before the first `## ` — the ownership
+    preamble the narrative engine puts there.
     """
+    sections: List[Tuple[str, str]] = []
+    last_heading = ""
+    last_start = 0
+    for match in re.finditer(r'(?m)^##[ \t]+(.+?)[ \t]*$', markdown_text):
+        body = markdown_text[last_start:match.start()]
+        if last_heading or body.strip():
+            sections.append((last_heading, body))
+        last_heading = match.group(1).strip()
+        last_start = match.end()
+    tail = markdown_text[last_start:]
+    if last_heading or tail.strip():
+        sections.append((last_heading, tail))
+    return sections
+
+
+def _convert_markdown_to_latex(markdown_text: str) -> Dict[str, Any]:
+    """Convert the compiled markdown draft to LaTeX, section by section.
+
+    `RECORD-007`: this used to split the draft at the FIRST `## Results` and
+    return two strings — everything after that heading, Discussion included,
+    became `results_latex`, which the caller appended only when there were no
+    model results. In every real run there are model results, so the compiled
+    Discussion, with every `[AUTHOR REQUIRED]` scaffold the workflow generated,
+    was dropped from the .tex while the .md kept it. The two files in one ZIP
+    then made different claims, and the honesty guards the project tests
+    applied to the markdown only.
+
+    Sectioning is now structural: the draft's `## ` headings are matched to the
+    manuscript sections, and a heading with no home comes back under
+    ``unmapped`` so the caller can print it instead of losing it.
+
+    Returns:
+        ``{'methods': str, 'results': str, 'discussion': str,
+           'unmapped': List[Tuple[str, str]]}`` — LaTeX, not markdown.
+    """
+    out: Dict[str, Any] = {'methods': "", 'results': "", 'discussion': "",
+                           'unmapped': []}
     if not markdown_text:
-        return "", ""
-    
-    # Split on ## Results / ## Results (Draft) to separate Methods from Results
-    parts = re.split(r'\n## Results(?:\s*\(Draft\))?.*?\n', markdown_text, maxsplit=1)
-    methods_md = parts[0]
-    results_md = parts[1] if len(parts) > 1 else ""
-    
+        return out
+
     def convert_section(md_text):
         if not md_text:
             return ""
@@ -445,10 +493,21 @@ def _convert_markdown_to_latex(markdown_text: str) -> Tuple[str, str]:
         
         return text
     
-    methods_latex = convert_section(methods_md)
-    results_latex = convert_section(results_md)
-    
-    return methods_latex, results_latex
+    for heading, body in _split_draft_markdown(markdown_text):
+        # The text before the first heading is the draft's ownership preamble;
+        # it introduces the Methods, which is where it already appeared.
+        key = 'methods' if heading == "" else _draft_section_key(heading)
+        latex = convert_section(body)
+        if not latex.strip():
+            continue
+        if key is None:
+            out['unmapped'].append((heading, latex))
+        elif out[key]:
+            out[key] = out[key] + "\n\n" + latex
+        else:
+            out[key] = latex
+
+    return out
 
 
 def _metrics_to_latex_table(
@@ -698,13 +757,19 @@ def generate_latex_report(
     sections.append(r"\section{Methods}")
     sections.append("")
 
+    draft_discussion = ""
+    draft_unmapped: List[Tuple[str, str]] = []
     if methods_section:
         # Convert markdown to LaTeX properly
-        methods_latex, results_latex = _convert_markdown_to_latex(methods_section)
-        if methods_latex:
-            sections.append(_normalize_generated_latex_text(methods_latex))
-        # Store results_latex for later use in Results section
-        draft_results = _demote_results_subsections(results_latex)
+        draft_latex = _convert_markdown_to_latex(methods_section)
+        if draft_latex['methods']:
+            sections.append(_normalize_generated_latex_text(draft_latex['methods']))
+        # Held for the Results and Discussion sections below. Every compiled
+        # section reaches the .tex or is printed as unmapped material — none of
+        # it may be dropped on the way (RECORD-007).
+        draft_results = _demote_results_subsections(draft_latex['results'])
+        draft_discussion = _normalize_generated_latex_text(draft_latex['discussion']).strip()
+        draft_unmapped = draft_latex['unmapped']
     else:
         draft_results = ""
         sections.append(r"""
@@ -793,6 +858,23 @@ def generate_latex_report(
                 "For reference, null and simple baseline models evaluated on the same "
                 "held-out test set achieved: " + "; ".join(b_parts) + "."
             )
+
+        # The table above is generated from the same recorded results, so
+        # reproducing the draft's Results prose would state the numbers twice.
+        # It stays omitted — but the omission is STATED, and any author-input
+        # scaffold the prose carries is reproduced: a compiled passage that
+        # vanishes between the .md and the .tex is what RECORD-007 is about.
+        if draft_results:
+            sections.append(
+                "The compiled draft's Results narrative is not reproduced here; "
+                "it accompanies this manuscript in the exported markdown draft."
+            )
+            outstanding = [p.strip() for p in re.split(r'\n\s*\n', draft_results)
+                           if '[AUTHOR REQUIRED' in p]
+            if outstanding:
+                sections.append(r"\paragraph{Outstanding author input}")
+                sections.extend(outstanding)
+            sections.append("")
     elif draft_results:
         sections.append(draft_results)
         sections.append("\n")
@@ -895,105 +977,127 @@ def generate_latex_report(
 
     # ── Discussion ──
     sections.append(r"""
-\section{Discussion}
+\section{Discussion}""")
 
+    # The compiled Discussion is the one the app vouches for: its Principal
+    # Findings state the metric the way the honesty guards require (a negative
+    # R² as "below a mean-only baseline"), and its Strengths and Limitations
+    # carry the ledger's evidence-cited caveats and [AUTHOR REQUIRED] scaffolds.
+    # It used to be dropped from the .tex in every run that had model results
+    # (RECORD-007), leaving a Discussion rebuilt from generic placeholders while
+    # the .md in the same ZIP said something else. The placeholder scaffold is
+    # now the FALLBACK, printed only when nothing was compiled — the two name
+    # the same subsections, so exactly one of them may appear.
+    if draft_discussion:
+        sections.append(draft_discussion)
+        sections.append("")
+        # A limitations paragraph the caller passed explicitly is a second
+        # source and is appended rather than dropped.
+        if limitations and limitations.strip() != "[Discuss limitations here]":
+            sections.append(r"""
+\paragraph{Limitations}
+""")
+            sections.append(_escape_latex(limitations))
+            sections.append("")
+    else:
+        sections.append(r"""
 \subsection{Principal Findings}""")
-    
-    # Result-specific prompts instead of generic placeholders
-    best_model_key = manuscript_facts.get('manuscript_primary_model') or manuscript_facts.get('best_model_by_metric')
-    if best_model_key and model_results and best_model_key in model_results:
-        best_metrics = model_results[best_model_key].get('metrics', {})
-        if task_type == 'regression':
-            primary_metric = 'RMSE'
-            primary_val = best_metrics.get('RMSE')
-        else:
-            primary_metric = 'F1' if 'F1' in best_metrics else 'Accuracy'
-            primary_val = best_metrics.get(primary_metric)
+
+        # Result-specific prompts instead of generic placeholders
+        best_model_key = manuscript_facts.get('manuscript_primary_model') or manuscript_facts.get('best_model_by_metric')
+        if best_model_key and model_results and best_model_key in model_results:
+            best_metrics = model_results[best_model_key].get('metrics', {})
+            if task_type == 'regression':
+                primary_metric = 'RMSE'
+                primary_val = best_metrics.get('RMSE')
+            else:
+                primary_metric = 'F1' if 'F1' in best_metrics else 'Accuracy'
+                primary_val = best_metrics.get(primary_metric)
         
-        if primary_val is not None:
-            sections.append(
-                f"The {_escape_latex(_model_display_name(best_model_key))} achieved {primary_metric} of {primary_val:.4f} on held-out data. "
-                + _styled_placeholder("[PLACEHOLDER: Interpret this performance in clinical context]")
-            )
+            if primary_val is not None:
+                sections.append(
+                    f"The {_escape_latex(_model_display_name(best_model_key))} achieved {primary_metric} of {primary_val:.4f} on held-out data. "
+                    + _styled_placeholder("[PLACEHOLDER: Interpret this performance in clinical context]")
+                )
+            else:
+                sections.append(_styled_placeholder("[PLACEHOLDER: Summarize the main results in context of the study objectives.]"))
         else:
             sections.append(_styled_placeholder("[PLACEHOLDER: Summarize the main results in context of the study objectives.]"))
-    else:
-        sections.append(_styled_placeholder("[PLACEHOLDER: Summarize the main results in context of the study objectives.]"))
     
-    sections.append("")
-    
-    # Feature importance interpretation prompt
-    if explainability_summary and explainability_summary.get('top_features'):
-        top_feats = explainability_summary['top_features'][:3]
-        feat_str = ", ".join(_escape_latex(f) for f in top_feats)
-        sections.append(f"Key predictors identified were {feat_str}. " + _styled_placeholder("[PLACEHOLDER: Discuss biological plausibility and consistency with prior knowledge]"))
         sections.append("")
     
-    sections.append(r"""
+        # Feature importance interpretation prompt
+        if explainability_summary and explainability_summary.get('top_features'):
+            top_feats = explainability_summary['top_features'][:3]
+            feat_str = ", ".join(_escape_latex(f) for f in top_feats)
+            sections.append(f"Key predictors identified were {feat_str}. " + _styled_placeholder("[PLACEHOLDER: Discuss biological plausibility and consistency with prior knowledge]"))
+            sections.append("")
+    
+        sections.append(r"""
 \subsection{Comparison with Prior Work and Implications}""")
-    if task_type and best_model_key and model_results:
-        task_label = "regression" if task_type == "regression" else "classification"
-        sections.append(_styled_placeholder(
-            f"[PLACEHOLDER: Compare the {primary_metric if 'primary_metric' in locals() else 'performance'} "
-            f"to published benchmarks for {task_label} in this domain and discuss practical or clinical implications.]"
-        ))
-    else:
-        sections.append(_styled_placeholder("[PLACEHOLDER: Compare your results with existing literature and discuss implications.]"))
-    sections.append(r"""
+        if task_type and best_model_key and model_results:
+            task_label = "regression" if task_type == "regression" else "classification"
+            sections.append(_styled_placeholder(
+                f"[PLACEHOLDER: Compare the {primary_metric if 'primary_metric' in locals() else 'performance'} "
+                f"to published benchmarks for {task_label} in this domain and discuss practical or clinical implications.]"
+            ))
+        else:
+            sections.append(_styled_placeholder("[PLACEHOLDER: Compare your results with existing literature and discuss implications.]"))
+        sections.append(r"""
 \subsection{Strengths and Limitations}
 
 \paragraph{Strengths}""")
     
-    # Auto-fill methodological strengths from what we know
-    strength_items = []
-    if analysis_n > 0:
-        from utils.workflow_provenance import get_provenance as _gp
-        try:
-            _up = getattr(_gp(), "upload", None)
-        except Exception:
-            _up = None
-        if _up is not None and getattr(_up, "cohort_column", ""):
-            # Listing a restricted sample as a plain strength invites the reader
-            # to treat it as the study's size. Name the group it is a sample of.
-            strength_items.append(
-                f"Sample size of {analysis_n:,} observations within "
-                f"{_up.cohort_column} = {_up.cohort_value} "
-                f"(the analysis was restricted to this group)")
+        # Auto-fill methodological strengths from what we know
+        strength_items = []
+        if analysis_n > 0:
+            from utils.workflow_provenance import get_provenance as _gp
+            try:
+                _up = getattr(_gp(), "upload", None)
+            except Exception:
+                _up = None
+            if _up is not None and getattr(_up, "cohort_column", ""):
+                # Listing a restricted sample as a plain strength invites the reader
+                # to treat it as the study's size. Name the group it is a sample of.
+                strength_items.append(
+                    f"Sample size of {analysis_n:,} observations within "
+                    f"{_up.cohort_column} = {_up.cohort_value} "
+                    f"(the analysis was restricted to this group)")
+            else:
+                strength_items.append(f"Sample size of {analysis_n:,} observations")
+        if bootstrap_results:
+            strength_items.append("Bootstrap confidence intervals for uncertainty quantification")
+        if explainability_summary:
+            if explainability_summary.get('shap_available'):
+                strength_items.append("Model-agnostic explainability via SHAP analysis")
+            if explainability_summary.get('permutation_importance_available'):
+                strength_items.append("Permutation importance for feature contribution assessment")
+        if sensitivity_summary and sensitivity_summary.get('seed_stability'):
+            strength_items.append("Random seed sensitivity analysis for robustness assessment")
+    
+        strength_items = strength_items[:4]
+        if strength_items:
+            sections.append(r"\begin{itemize}")
+            for item in strength_items:
+                sections.append(f"\\item {item}")
+            sections.append(r"\end{itemize}")
+            sections.append("")
+            sections.append(_styled_placeholder("[PLACEHOLDER: Add study-specific strengths]"))
         else:
-            strength_items.append(f"Sample size of {analysis_n:,} observations")
-    if bootstrap_results:
-        strength_items.append("Bootstrap confidence intervals for uncertainty quantification")
-    if explainability_summary:
-        if explainability_summary.get('shap_available'):
-            strength_items.append("Model-agnostic explainability via SHAP analysis")
-        if explainability_summary.get('permutation_importance_available'):
-            strength_items.append("Permutation importance for feature contribution assessment")
-    if sensitivity_summary and sensitivity_summary.get('seed_stability'):
-        strength_items.append("Random seed sensitivity analysis for robustness assessment")
+            sections.append(_styled_placeholder("[PLACEHOLDER: Discuss methodological strengths]"))
     
-    strength_items = strength_items[:4]
-    if strength_items:
-        sections.append(r"\begin{itemize}")
-        for item in strength_items:
-            sections.append(f"\\item {item}")
-        sections.append(r"\end{itemize}")
-        sections.append("")
-        sections.append(_styled_placeholder("[PLACEHOLDER: Add study-specific strengths]"))
-    else:
-        sections.append(_styled_placeholder("[PLACEHOLDER: Discuss methodological strengths]"))
-    
-    sections.append(r"""
+        sections.append(r"""
 
 \paragraph{Limitations}
 """)
-    sections.append(_escape_latex(limitations))
+        sections.append(_escape_latex(limitations))
     
-    sections.append(r"""
+        sections.append(r"""
 
 \subsection{Conclusion}""")
-    sections.append(_styled_placeholder("[PLACEHOLDER: State the main conclusion and its implications.]"))
-    sections.append("")
-    sections.append("")
+        sections.append(_styled_placeholder("[PLACEHOLDER: State the main conclusion and its implications.]"))
+        sections.append("")
+        sections.append("")
 
     # ── References ──
     sections.append(r"""
@@ -1059,6 +1163,23 @@ This analysis was conducted using Tabular ML Lab (Python). Full reproducibility 
         if in_list:
             sections.append(r"\end{enumerate}")
         sections.append("")
+
+    # Compiled draft sections the manuscript skeleton has no home for. They are
+    # printed here, named, rather than dropped on the way to the .tex: a section
+    # this function does not recognize is a gap in the mapping, and the author
+    # has to be able to see it (RECORD-007).
+    if draft_unmapped:
+        sections.append(r"\subsection{Unmapped Compiled Draft Sections}")
+        sections.append(
+            "The generated draft contained the following section(s), which this "
+            "template has no place for. They are reproduced verbatim so that "
+            "nothing compiled from the workflow is lost."
+        )
+        sections.append("")
+        for _heading, _latex in draft_unmapped:
+            sections.append(rf"\paragraph{{{_escape_latex(_heading)}}}")
+            sections.append(_normalize_generated_latex_text(_latex))
+            sections.append("")
 
     sections.append(r"\end{spacing}")
     sections.append(r"\end{document}")

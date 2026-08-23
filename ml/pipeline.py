@@ -476,90 +476,161 @@ def build_preprocessing_pipeline(
     return Pipeline(steps)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# The recipe  (`STATE-008`)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# This description is printed into the manuscript's Methods section, so the one
+# thing it may never do is leave a transformation out. It used to: the block
+# loop matched only 'numeric' and 'categorical' (the whole passthrough-numeric
+# block was invisible), the step loop knew 'log' but not 'power_transform', the
+# scaler branch knew two of the three scalers, the encoder branch knew one of
+# the three encoders — and the MAD branch read `mad_threshold`/`n_mad`, which
+# `OutlierCapping` never sets, so it printed the literal fallback `3` for a
+# capping that used 3.5. A Methods section is not a place for a default.
+#
+# The rule now: every block and every step produces a line. Parameters are read
+# from where the operator actually keeps them, and a step this function does not
+# recognize is named as `unrecorded step: <name> (<Class>)` rather than dropped.
+# An omission a reader can see is a defect; one they cannot is a false claim.
+
+
+def _describe_imputer(t: Any) -> str:
+    """Imputation, including the imputers that have no `strategy` attribute."""
+    if _HAS_ITERATIVE and isinstance(t, IterativeImputer):
+        desc = f"Iterative imputation (MICE-style, max_iter={getattr(t, 'max_iter', '?')})"
+    else:
+        strategy = getattr(t, 'strategy', None)
+        if strategy is None:
+            return f"Impute ({type(t).__name__})"
+        desc = f"Impute ({strategy})"
+        if strategy == 'constant':
+            desc = f"Impute (constant, fill={getattr(t, 'fill_value', '?')!r})"
+    if getattr(t, 'add_indicator', False):
+        desc += " + missing flags"
+    return desc
+
+
+def _describe_outlier(t: Any) -> str:
+    """Outlier treatment, read from the params the operator actually applies.
+
+    `OutlierCapping` stores a `params` dict and treats every method other than
+    'mad' as percentile capping — so that is what the recipe says happened,
+    including the requested method when it was neither.
+    """
+    method = getattr(t, 'method', None)
+    if method is None:
+        return f"Outlier treatment ({type(t).__name__})"
+    params = getattr(t, 'params', None)
+    if not isinstance(params, dict):
+        return f"Outlier treatment ({method}; parameters not recorded on the fitted step)"
+    if method == 'mad':
+        return f"MAD capping ({float(params.get('threshold', 3.5))}× MAD)"
+    lo = float(params.get('lower_q', 0.01)) * 100
+    hi = float(params.get('upper_q', 0.99)) * 100
+    desc = f"Percentile clip ({lo:g}th–{hi:g}th)"
+    if method != 'percentile':
+        desc += f" [requested '{method}', applied as percentile capping]"
+    return desc
+
+
+def _describe_scaler(t: Any) -> str:
+    if isinstance(t, StandardScaler):
+        return "Standard scaling"
+    if isinstance(t, RobustScaler):
+        return "Robust scaling"
+    if isinstance(t, MinMaxScaler):
+        return "Min-max scaling"
+    return f"Scaling ({type(t).__name__})"
+
+
+def _describe_encoder(t: Any) -> str:
+    if isinstance(t, OneHotEncoder):
+        return "One-hot encoding (sparse)"
+    if isinstance(t, OrdinalEncoder):
+        return "Ordinal encoding"
+    if _HAS_TARGET_ENCODER and isinstance(t, TargetEncoder):
+        return "Target encoding (cross-fitted, smoothed means; uses the outcome)"
+    return f"Encoding ({type(t).__name__})"
+
+
+def _describe_recipe_step(step_name: str, t: Any) -> str:
+    """One column-block step. Never returns empty — see the note above."""
+    if t is None or (isinstance(t, str) and t == 'passthrough'):
+        return "Passed through unchanged"
+    if step_name == 'unit_harmonize':
+        return "Unit harmonization"
+    if step_name == 'plausibility_gate':
+        return "Plausibility gate (NHANES)"
+    if step_name == 'imputer':
+        return _describe_imputer(t)
+    if step_name == 'log':
+        return "Log transform (log1p)"
+    if step_name == 'power_transform':
+        return f"Power transform ({getattr(t, 'method', 'unspecified')})"
+    if step_name == 'power_nan_guard':
+        # Named, because it is a second imputation of values the transform
+        # produced and it changes the data.
+        return f"Post-transform NaN guard ({_describe_imputer(t)})"
+    if step_name == 'outlier':
+        return _describe_outlier(t)
+    if step_name == 'scaler':
+        return _describe_scaler(t)
+    if step_name == 'encoder':
+        return _describe_encoder(t)
+    return f"unrecorded step: {step_name} ({type(t).__name__})"
+
+
+#: Column blocks `build_preprocessing_pipeline` emits. An unlisted block is
+#: still described, under its own transformer name.
+_RECIPE_BLOCK_LABELS = {
+    'numeric': 'Numeric features',
+    'categorical': 'Categorical features',
+    'numeric_passthrough': 'Engineered numeric features (passthrough)',
+}
+
+
 def get_pipeline_recipe(pipeline: Pipeline, plausibility_mode: Optional[str] = None) -> str:
     """
     Get human-readable description of pipeline steps.
-    
+
     Args:
         pipeline: sklearn Pipeline
         plausibility_mode: If 'filter', note that rows were filtered to NHANES range before pipeline.
-        
+
     Returns:
-        String description of pipeline
+        String description of pipeline. Every transformer block and every step
+        inside it is described; nothing is silently omitted.
     """
     steps = []
     if plausibility_mode == "filter":
         steps.append("Plausibility: rows filtered to NHANES range (before pipeline).")
-    if hasattr(pipeline.named_steps['preprocessor'], 'transformers_'):
-        for name, transformer, columns in pipeline.named_steps['preprocessor'].transformers_:
-            if name == 'numeric':
-                # Get numeric pipeline steps
-                numeric_pipe = transformer
-                step_desc = f"Numeric features ({len(columns)}): "
-                step_parts = []
-                for step_name, step_transformer in numeric_pipe.steps:
-                    if step_name == 'unit_harmonize':
-                        step_parts.append("Unit harmonization")
-                    elif step_name == 'plausibility_gate':
-                        step_parts.append("Plausibility gate (NHANES)")
-                    elif step_name == 'imputer':
-                        strategy = step_transformer.strategy
-                        if getattr(step_transformer, 'add_indicator', False):
-                            step_parts.append(f"Impute ({strategy}) + missing flags")
-                        else:
-                            step_parts.append(f"Impute ({strategy})")
-                    elif step_name == 'log':
-                        step_parts.append("Log transform")
-                    elif step_name == 'outlier':
-                        # Extract actual params from the fitted transformer
-                        outlier_desc = "Outlier capping"
-                        if hasattr(step_transformer, 'method'):
-                            method = step_transformer.method
-                            if method == 'percentile' and hasattr(step_transformer, 'lower_percentile'):
-                                lo = getattr(step_transformer, 'lower_percentile', '?')
-                                hi = getattr(step_transformer, 'upper_percentile', '?')
-                                outlier_desc = f"Percentile clip ({lo}th–{hi}th)"
-                            elif method == 'iqr':
-                                mult = getattr(step_transformer, 'iqr_multiplier', getattr(step_transformer, 'multiplier', 1.5))
-                                outlier_desc = f"IQR capping (×{mult})"
-                            elif method == 'zscore':
-                                thresh = getattr(step_transformer, 'threshold', 3)
-                                outlier_desc = f"Z-score filter (|z| > {thresh})"
-                            elif method == 'mad':
-                                thresh = getattr(step_transformer, 'mad_threshold', getattr(step_transformer, 'n_mad', 3))
-                                outlier_desc = f"MAD capping ({thresh}× MAD)"
-                            else:
-                                outlier_desc = f"Outlier treatment ({method})"
-                        step_parts.append(outlier_desc)
-                    elif step_name == 'scaler':
-                        if isinstance(step_transformer, StandardScaler):
-                            step_parts.append("Standard scaling")
-                        elif isinstance(step_transformer, RobustScaler):
-                            step_parts.append("Robust scaling")
-                step_desc += " → ".join(step_parts) if step_parts else "No transformation"
-                steps.append(step_desc)
-            
-            elif name == 'categorical':
-                # Get categorical pipeline steps
-                categorical_pipe = transformer
-                step_desc = f"Categorical features ({len(columns)}): "
-                step_parts = []
-                for step_name, step_transformer in categorical_pipe.steps:
-                    if step_name == 'imputer':
-                        strategy = step_transformer.strategy
-                        step_parts.append(f"Impute ({strategy})")
-                    elif step_name == 'encoder':
-                        if isinstance(step_transformer, OneHotEncoder):
-                            step_parts.append("One-hot encoding (sparse)")
-                        elif isinstance(step_transformer, OrdinalEncoder):
-                            step_parts.append("Ordinal encoding")
-                        elif _HAS_TARGET_ENCODER and isinstance(step_transformer, TargetEncoder):
-                            step_parts.append(
-                                "Target encoding (cross-fitted, smoothed means)"
-                            )
-                step_desc += " → ".join(step_parts) if step_parts else "No transformation"
-                steps.append(step_desc)
-    
+
+    preprocessor = pipeline.named_steps.get('preprocessor')
+    if preprocessor is not None and hasattr(preprocessor, 'transformers_'):
+        for name, transformer, columns in preprocessor.transformers_:
+            n_cols = len(columns) if hasattr(columns, '__len__') else 0
+            if isinstance(transformer, str):
+                # 'drop' / 'passthrough' — the remainder, usually.
+                if transformer == 'drop':
+                    if name == 'remainder' or n_cols == 0:
+                        continue
+                    steps.append(f"Dropped columns ({n_cols}): not passed to the model")
+                else:
+                    steps.append(
+                        f"{_RECIPE_BLOCK_LABELS.get(name, name)} ({n_cols}): "
+                        "Passed through unchanged")
+                continue
+
+            label = _RECIPE_BLOCK_LABELS.get(name, name)
+            block_steps = getattr(transformer, 'steps', None)
+            if block_steps is None:
+                steps.append(f"{label} ({n_cols}): {type(transformer).__name__}")
+                continue
+            parts = [_describe_recipe_step(sn, st_) for sn, st_ in block_steps]
+            steps.append(f"{label} ({n_cols}): "
+                         + (" → ".join(parts) if parts else "No transformation"))
+
     # Add optional feature engineering steps
     if "kmeans_features" in pipeline.named_steps:
         kmeans = pipeline.named_steps["kmeans_features"]
@@ -579,7 +650,13 @@ def get_pipeline_recipe(pipeline: Pipeline, plausibility_mode: Optional[str] = N
             steps.append(f"PCA applied: {n_comp} components (variance threshold)")
         if pca.whiten:
             steps[-1] += ", whitened"
-    
+
+    # Any other top-level step transforms the data too, and the Methods section
+    # may not learn about it only from whoever added the branch.
+    for _sname, _step in pipeline.steps:
+        if _sname not in ('preprocessor', 'kmeans_features', 'pca'):
+            steps.append(f"unrecorded step: {_sname} ({type(_step).__name__})")
+
     return "\n".join(steps) if steps else "No preprocessing steps"
 
 

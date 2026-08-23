@@ -597,40 +597,50 @@ def _summarize_baselines() -> Optional[Dict[str, Dict[str, Any]]]:
     return out or None
 
 
-def _build_analysis_cohort_df() -> pd.DataFrame:
-    """Reconstruct the analysis cohort used for splitting/export."""
+def _build_analysis_cohort_df() -> Tuple[pd.DataFrame, Optional[str]]:
+    """The REALIZED analysis cohort — the rows the split actually used.
+
+    `CONTRACT-021` / `STATE-031`: this used to re-derive the cohort from the
+    frame `get_data()` currently returns — drop a missing target, then recompute
+    the target-trim quantiles over the WHOLE frame and drop both tails. That is
+    a second implementation of a decision `ml/splits.make_split` already made,
+    and the two do not agree: the split computes the trim thresholds from
+    TRAINING rows only when a lockbox applies and never drops a sealed test row,
+    so the re-derived cohort is a different population from the one the models
+    were fitted and evaluated on. Table 1 and the manuscript N described it
+    anyway, with no warning.
+
+    The cohort is now read from the labels the split recorded. When no split has
+    been recorded, or the frame no longer holds those rows, this returns the
+    refusal instead of a plausible number — `(empty frame, reason)`.
+    """
+    from ml.splits import SplitIdentityError, resolve_analysis_cohort
+
     if df is None:
-        return pd.DataFrame()
+        return pd.DataFrame(), 'There is no active dataset to build the analysis cohort from.'
 
-    analysis_df = df.copy()
-    target_col = data_config.target_col if data_config else None
-    if not target_col or target_col not in analysis_df.columns:
-        return analysis_df.reset_index(drop=True)
+    labels: List[Any] = []
+    for _part in ('train', 'val', 'test'):
+        labels.extend(st.session_state.get(f'{_part}_row_labels') or [])
+    if not labels:
+        return pd.DataFrame(), (
+            'No analysis cohort has been recorded: the manuscript population is the '
+            'population the split used, and no split is on record. Run Prepare Splits '
+            'on the Train & Compare page.'
+        )
 
-    analysis_df = analysis_df.loc[analysis_df[target_col].notna()].copy()
-
-    if (
-        (data_config.task_type if data_config else None) == 'regression'
-        and split_config
-        and getattr(split_config, 'target_trim_enabled', False)
-    ):
-        target_numeric = pd.to_numeric(analysis_df[target_col], errors='coerce')
-        valid_mask = target_numeric.notna()
-        analysis_df = analysis_df.loc[valid_mask].copy()
-        target_numeric = target_numeric.loc[valid_mask]
-        if not target_numeric.empty:
-            q_lo = float(target_numeric.quantile(getattr(split_config, 'target_trim_lower', 0.0)))
-            q_hi = float(target_numeric.quantile(getattr(split_config, 'target_trim_upper', 1.0)))
-            trim_mask = (target_numeric >= q_lo) & (target_numeric <= q_hi)
-            analysis_df = analysis_df.loc[trim_mask].copy()
-
-    return analysis_df.reset_index(drop=True)
+    try:
+        return resolve_analysis_cohort(df, labels), None
+    except SplitIdentityError as exc:
+        return pd.DataFrame(), str(exc)
 
 
 def _table1_readiness() -> Tuple[str, str]:
     """Return readiness state for manuscript Table 1 generation."""
     feature_names = st.session_state.get('selected_features') or (data_config.feature_cols if data_config else [])
-    analysis_df = _build_analysis_cohort_df()
+    analysis_df, cohort_refusal = _build_analysis_cohort_df()
+    if cohort_refusal:
+        return 'missing', cohort_refusal
     available_features = [feature for feature in feature_names if feature in analysis_df.columns]
     if analysis_df.empty:
         return 'missing', 'Analysis cohort is unavailable for Table 1 generation.'
@@ -646,8 +656,11 @@ def _build_manuscript_table1(
     manuscript_context: Dict[str, Any],
 ) -> Tuple[Optional[pd.DataFrame], Dict[str, Any], Optional[Any]]:
     """Generate the manuscript Table 1 from the analysis cohort and finalized predictors."""
-    analysis_df = _build_analysis_cohort_df()
+    analysis_df, cohort_refusal = _build_analysis_cohort_df()
     feature_names = list(manuscript_context.get('feature_names_for_manuscript') or [])
+    if cohort_refusal:
+        # No Table 1 rather than a Table 1 about a population nobody modeled.
+        return None, {'cohort_unavailable': cohort_refusal}, None
     if analysis_df.empty or not feature_names:
         return None, {}, None
 
@@ -1314,11 +1327,14 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
         for mk, pl in pipelines_by_model.items():
             report_lines.append(f"### {_export_model_label(mk)}")
             report_lines.append("")
-            recipe = get_pipeline_recipe(pl)
+            cfg = configs_by_model.get(mk, {})
+            # Rows dropped by plausibility filtering are part of the recipe: the
+            # step leaves no transformer behind, so without the mode the Methods
+            # section never mentions that rows were removed (STATE-008).
+            recipe = get_pipeline_recipe(pl, plausibility_mode=cfg.get("plausibility_mode"))
             report_lines.append("```")
             report_lines.append(recipe)
             report_lines.append("```")
-            cfg = configs_by_model.get(mk, {})
             ov = cfg.get("overrides", [])
             if ov:
                 report_lines.append("**Overrides:**")
@@ -1331,7 +1347,10 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     elif pipeline:
         report_lines.append("## Preprocessing Pipeline")
         report_lines.append("")
-        recipe = get_pipeline_recipe(pipeline)
+        recipe = get_pipeline_recipe(
+            pipeline,
+            plausibility_mode=(st.session_state.get('preprocessing_config') or {}).get('plausibility_mode'),
+        )
         report_lines.append("```")
         report_lines.append(recipe)
         report_lines.append("```")
@@ -2044,7 +2063,8 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
 if table1_bundle.get("table1_df_local") is not None:
     with st.expander("📋 Table 1: Study Population", expanded=False):
         st.markdown(
-            "Regenerated at export time from the final analysis cohort and finalized predictor set. "
+            "Built from the rows the split RECORDED as the analysis cohort — the population "
+            "the models were fitted and evaluated on — and the finalized predictor set. "
             "Included automatically in the LaTeX manuscript."
         )
         table1_display = table1_bundle["table1_df_local"].copy()
@@ -2075,6 +2095,13 @@ if table1_bundle.get("table1_df_local") is not None:
                 st.download_button("📥 Download LaTeX", latex_data, "table1_final.tex", "text/plain", key="dl_table1_final_latex")
             except Exception:
                 st.caption("LaTeX export requires standard Table 1 format")
+elif (table1_bundle.get("table1_metadata") or {}).get("cohort_unavailable"):
+    # The refusal is the answer: a Table 1 rebuilt from a re-derived cohort would
+    # describe a population the models were never fitted on (CONTRACT-021).
+    st.warning(
+        "**Table 1 was not generated.** "
+        + str(table1_bundle["table1_metadata"]["cohort_unavailable"])
+    )
 
 # 4d: Pre-export Manuscript Validation
 validation_bundle = _cached_bundle

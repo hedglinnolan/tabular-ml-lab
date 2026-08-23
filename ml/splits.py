@@ -125,10 +125,27 @@ class Split:
     n_trimmed_rows: int = 0
     notes: List[str] = field(default_factory=list)
 
+    # What the target trim ACTUALLY did, if it ran. The thresholds are computed
+    # here, from a basis that depends on the lockbox, so a downstream consumer
+    # that recomputes them from a whole frame gets a different population
+    # (`CONTRACT-021`). Recorded so the report can read the decision instead of
+    # implementing it a second time.
+    trim_record: Optional[Dict[str, Any]] = None
+
     @property
     def sizes(self) -> Dict[str, int]:
         return {"train": len(self.X_train), "val": len(self.X_val),
                 "test": len(self.X_test)}
+
+    @property
+    def analysis_labels(self) -> List[Any]:
+        """The realized analysis population — every row the split kept.
+
+        This is the manuscript's N and the Table 1 denominator: the rows that
+        survived the missing-target drop and the trim, in partition order. It is
+        a record of what happened, not a rule to re-apply.
+        """
+        return list(self.train_labels) + list(self.val_labels) + list(self.test_labels)
 
     def assert_disjoint(self) -> None:
         """No row may appear in two partitions. The leak, checked."""
@@ -206,6 +223,26 @@ def resolve_split_rows(df: Optional[pd.DataFrame],
             "on Train & Compare.")
 
     return df.loc[wanted]
+
+
+def resolve_analysis_cohort(df: Optional[pd.DataFrame],
+                            labels: Optional[Sequence[Any]]) -> pd.DataFrame:
+    """The rows of `df` that the split's REALIZED analysis population names.
+
+    `CONTRACT-021` / `STATE-031`: the analysis cohort is a decision made once,
+    at split time — the missing-target drop and, when it runs, a target trim
+    whose thresholds come from training rows only and whose test rows are
+    exempt. Re-applying that decision downstream is a second implementation of
+    it, and the two disagree (a whole-frame quantile is not a training-row
+    quantile, and a re-applied trim drops sealed test rows the split kept). So
+    the cohort is READ from `Split.analysis_labels`, never re-derived.
+
+    Rows come back in the frame's own order, which is the order Table 1 and the
+    per-feature summaries describe them in. Refuses via `resolve_split_rows`
+    when the frame no longer holds every recorded row.
+    """
+    resolve_split_rows(df, labels, part="analysis cohort")
+    return df.loc[df.index.isin(set(labels))]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -320,6 +357,7 @@ def make_split(
 
     # ── target trimming (regression only, before the split) ───────────────
     n_trimmed = 0
+    trim_record: Optional[Dict[str, Any]] = None
     if task_type == "regression" and spec.target_trim_enabled:
         # With a lockbox, thresholds come from training rows only and test rows
         # are never dropped — otherwise the trim both leaks test-target
@@ -336,6 +374,13 @@ def make_split(
         y = y[keep].reset_index(drop=True)
         kept_labels = [l for l, k in zip(kept_labels, keep) if k]
         is_test_row = is_test_row[keep]
+        trim_record = {
+            "quantiles": [float(spec.target_trim_lower), float(spec.target_trim_upper)],
+            "thresholds": [q_lo, q_hi],
+            "basis": "training rows only" if lockbox_applied else "all rows with a target",
+            "test_rows_exempt": bool(lockbox_applied),
+            "n_trimmed": n_trimmed,
+        }
         notes.append(
             f"Target trimmed before split: {n_trimmed} row(s) removed "
             f"(quantiles [{spec.target_trim_lower:.2f}, {spec.target_trim_upper:.2f}] "
@@ -449,6 +494,7 @@ def make_split(
         lockbox_applied=lockbox_applied,
         n_trimmed_rows=n_trimmed,
         notes=notes,
+        trim_record=trim_record,
     )
     split.assert_disjoint()
     return split
