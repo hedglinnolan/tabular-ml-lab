@@ -91,6 +91,17 @@ BASIS_DETECTED = "detected"
 BASIS_USER_STATED = "user_stated"
 BASIS_INHERITED = "inherited_from_assembly"
 
+# The subject-declaration control's session key and its two non-column answers.
+# They live here rather than in the page because the reservation, the seal and
+# the chip all have to resolve the LIVE answer, and the widget's value is the
+# only copy of it that is readable at the TOP of a render:
+# `cohort_structure_detection` is rewritten further down the page's script, so
+# on the render that withdraws a declaration it still holds the old one
+# (`DRIVE-068`). Changing these strings orphans a restored widget value.
+SUBJECT_DECLARATION_KEY = "subject_id_declaration"
+SUBJECT_DECLARATION_AUTO = "Let the app work it out"
+SUBJECT_DECLARATION_NONE = "No — each row is a different participant"
+
 
 def is_exploratory() -> bool:
     """Explicit, user-chosen escape hatch. Never enabled by default."""
@@ -531,6 +542,104 @@ def declared_subject_col() -> Tuple[bool, Optional[str]]:
     return True, (getattr(cohort, "entity_id_override_value", None) or None)
 
 
+def declared_group_column(columns: Any,
+                          lockbox: Optional[Dict[str, Any]] = None
+                          ) -> Optional[str]:
+    """The column the feature pool must hold back on THIS render, or None.
+
+    The reservation was additive (`register_reserved_column`), so a declaration
+    could only ever be ADDED: withdrawing one left the named column barred from
+    the predictors, with the page still calling it "the column the held-out set
+    was split by" over a seal whose `group_col` was None (`DRIVE-068`).
+    Answering "which column, if any" here is what makes the role-scoped
+    replacement in `utils.combine` usable from the page.
+
+    Order matters. The widget's value is the live answer; the
+    `cohort_structure_detection` record is one render behind it wherever this
+    is called above the declaration control. With no answer at all — a restored
+    session, another page — the record is consulted, and after that only the
+    heuristic's OWN conclusion stands: a group column that got onto the seal
+    because someone declared it is not evidence of anything detected.
+    """
+    cols = {str(c) for c in (columns or [])}
+    answer = _state().get(SUBJECT_DECLARATION_KEY)
+    if answer is not None:
+        if str(answer) in cols:
+            return str(answer)
+        if str(answer) == SUBJECT_DECLARATION_NONE:
+            return None
+    else:
+        declared, declared_col = declared_subject_col()
+        if declared:
+            return str(declared_col) if str(declared_col) in cols else None
+    lb = lockbox if lockbox is not None else get_lockbox()
+    if not lb or lb.get("basis_source") != BASIS_DETECTED:
+        return None
+    group_col = lb.get("group_col")
+    return str(group_col) if str(group_col) in cols else None
+
+
+def grouped_split_statement(lockbox: Optional[Dict[str, Any]]) -> Optional[str]:
+    """What a grouped seal did, in the words its own numbers support.
+
+    The page printed "Rows repeat per subject (`SEQN`)" unconditionally
+    whenever a group column was set — including over a column with a different
+    value on every row, where rows do not repeat and the sentence is simply
+    false (`DRIVE-068`). One row per group is not a contradiction and not a
+    defect: the split is by row and by subject at once, nobody is on both
+    sides, and the honest surface says so.
+
+    `group_rows_per` is the measurement; the test-set counts are the fallback
+    for a seal restored from a save drawn before that field existed.
+    """
+    if not lockbox or not lockbox.get("group_col"):
+        return None
+    col = lockbox["group_col"]
+    noun = lockbox.get("group_noun") or "subjects"
+    one = noun[:-1] if noun.endswith("s") else noun
+    rows_per = lockbox.get("group_rows_per")
+    n_test = int(lockbox.get("n_test") or 0)
+    n_test_groups = lockbox.get("n_test_groups")
+    if rows_per is None and n_test and n_test_groups:
+        rows_per = n_test / float(n_test_groups)
+    if rows_per is not None and rows_per <= 1.0:
+        return (
+            f"🔒 `{col}` has a different value on every row, so each row is its "
+            f"own {one}: the held-out set was drawn by **{one}** and by row at "
+            f"once — {n_test:,} rows, {n_test_groups} {noun}. No {one} is on "
+            f"both sides, and `{col}` is held back from the predictors because "
+            f"a value unique to each row is row identity, not a measurement. If "
+            f"people DO repeat here under some other column, name that one "
+            f"instead."
+        )
+    return (
+        f"🔒 Rows repeat per {one} (`{col}`), so the held-out set was "
+        f"drawn by **{one}**, not by row — {n_test:,} rows from "
+        f"{n_test_groups if n_test_groups is not None else '?'} {noun}. "
+        f"Splitting by row would put the same {one} in both training and testing."
+    )
+
+
+def seal_basis_sentence(lockbox: Optional[Dict[str, Any]]) -> str:
+    """What the RECORD says its basis is, as a clause a warning can quote.
+
+    Written down once because it was written down twice: the contradiction
+    warning asserted "the seal records that the grain is undetermined" on every
+    basis, including a `grouped` record it was rendered beside (`DRIVE-068`).
+    A surface that quotes the record cannot disagree with it.
+    """
+    basis = (lockbox or {}).get("seal_basis")
+    if basis == SEAL_GROUPED:
+        return (f"the seal records a held-out set drawn by "
+                f"`{(lockbox or {}).get('group_col')}`")
+    if basis == SEAL_ABANDONED:
+        return ("the seal records that grouping was abandoned and the split "
+                "drawn by row")
+    if basis == SEAL_CROSS_SECTIONAL:
+        return "the seal records one row per participant"
+    return "the seal records that the grain is undetermined"
+
+
 _DECLARATION_REASONS = frozenset({
     "declared_column_missing", "roster_shaped", "declared_column_is_unique",
 })
@@ -604,9 +713,14 @@ def declaration_contradiction(df: pd.DataFrame,
       a clean `cross_sectional` over 24 subjects sitting on both sides of it
       (`IMPORT-257`). A stated answer is better evidence than a name list, but it
       is not better evidence than a count.
-    - "`col` identifies a participant", over a column with a different value on
-      every row. Grouping by it holds out one row per group, which is the row
-      split the declaration was made to avoid.
+    The mirror — "`col` identifies a participant" over a column with a
+    different value on every row — was filed here as a second contradiction
+    and is not one (`DRIVE-068`). Grouping by such a column holds out one row
+    per group, which is a row split AND a subject split at once: no subject
+    lands on both sides, because no subject has a second row. Nothing about the
+    held-out number is wrong, so there is nothing to disagree with. It is a
+    fact worth STATING — `grouped_split_statement` states it — and the seal
+    that records it is `grouped`, which is what it is.
 
     Escalate on evidence of ERROR, never on the size of the consequence: a
     3-subject leak and a 300-subject leak earn the same interruption, because
@@ -616,31 +730,7 @@ def declaration_contradiction(df: pd.DataFrame,
         return None
 
     if declared_col:
-        if declared_col not in df.columns:
-            return None                   # handled as a missing declaration
-        s = df[declared_col]
-        if isinstance(s, pd.DataFrame):
-            return None
-        try:
-            n_distinct = int(s.nunique(dropna=True))
-            non_null = int(s.notna().sum())
-        except TypeError:
-            return None
-        if not non_null or n_distinct < non_null:
-            return None
-        return {
-            "kind": "stated_repeats_but_column_is_unique",
-            "declared": str(declared_col),
-            "evidence": [{"column": str(declared_col), "n_groups": n_distinct,
-                          "n_rows": non_null, "rows_per": 1.0,
-                          "reason": "declared_column_is_unique"}],
-            "message": (
-                f"`{declared_col}` was named as the participant identifier, but "
-                f"it has a different value on every one of its {non_null:,} "
-                f"rows. Grouping by it holds out one row per group, which is "
-                f"the row-level split that naming a participant column was "
-                f"meant to avoid."),
-        }
+        return None    # nothing measurable disagrees with naming a column
 
     # The answer was "each row is a different participant". Measure anyway.
     n = len(df)
@@ -875,6 +965,11 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
     else:
         group_kind = _id_kind(group_col) or "subject"
         if _declared and _declared_col:
+            # Kept as the one place a named-column declaration is checked
+            # against the data. Nothing measurable disagrees with it today —
+            # see `declaration_contradiction` on why one row per value is not
+            # a contradiction — so this is None, and the grain that WAS
+            # measured travels on `group_rows_per` instead (`DRIVE-068`).
             _contradiction = declaration_contradiction(df, _declared_col)
     _state().pop("_lockbox_declared_missing", None)
     if _declared_missing:
@@ -955,6 +1050,7 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
 
     grouped = False
     test_labels = None
+    n_groups = None
     _state().pop("_lockbox_grouping_abandoned", None)
     # Constitution §03: the seal states its own basis, and there are three
     # states rather than two. `undetermined` is what this is when the detector
@@ -1044,6 +1140,14 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
         "group_col": group_col if grouped else None,
         "n_test_groups": (int(df.loc[test_labels, group_col].nunique())
                           if grouped else None),
+        # WHETHER ROWS ACTUALLY REPEAT, measured over the rows the split was
+        # drawn from. The page asserted that they did on the strength of
+        # `group_col` alone, over a column holding one row per value
+        # (`DRIVE-068`). Recorded so the sentence is derived from a
+        # measurement rather than from the presence of a field.
+        "n_groups": int(n_groups) if grouped and n_groups else None,
+        "group_rows_per": (float(len(eligible)) / float(n_groups)
+                           if grouped and n_groups else None),
         # What the groups ARE. Calling 10 recruitment sites "10 subjects" tells
         # the researcher the holdout is a random sample of people when it is a
         # sample of whole sites — a different, harder test than they asked for.
@@ -1330,10 +1434,21 @@ def render_lockbox_status(context: str = "") -> None:
     _got = [c for c in (lb.get("strata") or [])]
     _dropped = [c for c in _asked if c not in _got]
     if _dropped:
+        # WHY it could not be balanced, and there are two reasons. A grouped
+        # split does not stratify at all — whole groups move together, so the
+        # composite stratum is never built — and saying "too few people in some
+        # combination of those groups" over a grouped seal states a cause that
+        # did not happen (`DRIVE-068`).
+        _why_unbalanced = (
+            f"a held-out set drawn by `{lb['group_col']}` moves whole "
+            f"{lb.get('group_noun') or 'groups'} at a time, and cannot also be "
+            f"balanced"
+            if lb.get("group_col") else
+            "too few people in some combination of those groups to put any in "
+            "both halves")
         st.warning(
             f"⚖️ The held-out set could not be balanced on "
-            f"{', '.join(f'`{c}`' for c in _dropped)} — too few people in some "
-            f"combination of those groups to put any in both halves. It IS "
+            f"{', '.join(f'`{c}`' for c in _dropped)} — {_why_unbalanced}. It IS "
             f"balanced on {', '.join(f'`{c}`' for c in _got) if _got else 'nothing'}. "
             f"Check that the test set still resembles your study before "
             f"reporting performance by subgroup."
@@ -1367,8 +1482,8 @@ def render_lockbox_status(context: str = "") -> None:
             f"⚠️ **The answer recorded and the data disagree.** "
             f"{_contra.get('message', '')} Settle it on **Upload & Audit** "
             f"(*Which column identifies a subject/participant?*): until then "
-            f"the seal records that the grain is undetermined, and held-out "
-            f"performance may read better than it is."
+            f"{seal_basis_sentence(lb)}, and held-out performance may read "
+            f"better than it is."
         )
 
     # A DECLARED COLUMN THAT VANISHED, from the record for the same reason.
@@ -1465,6 +1580,18 @@ def render_lockbox_status(context: str = "") -> None:
             f"{_one} appears on both sides) held out since upload — "
             f"{_open_phrase}.{extra}"
         )
+        _rows_per = lb.get("group_rows_per")
+        if _rows_per is None and lb.get("n_test") and lb.get("n_test_groups"):
+            _rows_per = lb["n_test"] / float(lb["n_test_groups"])
+        if _rows_per is not None and _rows_per <= 1.0:
+            # Same fact page 01 states where the declaration is made, on every
+            # other page that renders the chip: `group_col` alone was being
+            # read as "rows repeat", here and there (`DRIVE-068`).
+            st.caption(
+                f"`{lb['group_col']}` has one row per value, so this is a split "
+                f"by {_one} and by row at once — no {_one} has a second row to "
+                f"land on the other side."
+            )
         if lb.get("group_kind") == "cluster":
             st.caption(
                 f"⚠️ `{lb['group_col']}` groups people, it does not identify them. "

@@ -605,17 +605,28 @@ class TestImport256IdentifiersAreNotOfferedAsPredictors:
         assert is_reserved_column("SEQN")
 
     def test_the_page_registers_the_group_column_where_the_seal_is_drawn(self):
-        """The seal's own call, executed with the real registration function."""
-        from utils.combine import is_reserved_column, register_reserved_column
+        """The seal's own call, executed with the real registration function.
+
+        Role-scoped REPLACEMENT since `DRIVE-068`: the same call has to release
+        the column when the seal has no group column, or a withdrawn subject
+        declaration leaves it barred from the predictors forever. Both
+        directions are driven here, from the page's own source.
+        """
+        from utils.combine import is_reserved_column, set_reserved_columns
         calls = [n for n in ast.walk(self._page_tree())
                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-                 and n.func.id == "_reserve"]
+                 and n.func.id == "_set_reserved"]
         assert calls, "pages/01 no longer registers the lockbox group column"
         node = ast.Expression(body=calls[0])
         ast.fix_missing_locations(node)
-        eval(compile(node, str(PAGE_01), "eval"),
-             {"_reserve": register_reserved_column, "_lb": {"group_col": "subject_id"}})
+        code = compile(node, str(PAGE_01), "eval")
+        env = {"_set_reserved": set_reserved_columns,
+               "_GROUP_COL_RESERVED_REASON": "split by"}
+        eval(code, dict(env, _lb={"group_col": "subject_id"}))
         assert is_reserved_column("subject_id")
+        eval(code, dict(env, _lb=None))
+        assert not is_reserved_column("subject_id"), (
+            "the seal drew no group column and the page kept it reserved")
 
     def test_the_real_combine_step_registers_the_join_key_at_commit(self, monkeypatch):
         import utils.combine_ui as combine_ui

@@ -31,15 +31,19 @@ import pytest
 import streamlit as st
 
 from utils.session_state import CohortStructureDetection, DataConfig
-from utils.test_lockbox import (SEAL_CROSS_SECTIONAL, SEAL_GROUPED,
+from utils.test_lockbox import (SEAL_ABANDONED, SEAL_CROSS_SECTIONAL,
+                                SEAL_GROUPED,
                                 SEAL_UNDETERMINED, BASIS_DETECTED,
-                                BASIS_USER_STATED, _lockbox_signature,
+                                BASIS_USER_STATED, SUBJECT_DECLARATION_AUTO,
+                                SUBJECT_DECLARATION_KEY,
+                                SUBJECT_DECLARATION_NONE, _lockbox_signature,
                                 _roster_shape, declaration_contradiction,
-                                ensure_lockbox, get_lockbox,
+                                declared_group_column, ensure_lockbox,
+                                get_lockbox, grouped_split_statement,
                                 lockbox_absence_reason, lockbox_open_count,
                                 quarantine_is_active, rank_grouping_candidates,
                                 record_lockbox_open, render_lockbox_status,
-                                train_row_mask)
+                                seal_basis_sentence, train_row_mask)
 
 PAGE_01 = "pages/01_Upload_and_Audit.py"
 PAGE_04 = "pages/04_Feature_Selection.py"
@@ -372,11 +376,17 @@ class TestImport257TheSubjectColumnCanBeDeclared:
                            "y": rng.integers(0, 2, n)})
         assert declaration_contradiction(df, None) is None
 
-    def test_declaring_a_column_that_is_unique_per_row_contradicts_too(self):
-        """The mirror case: grouping by it holds out one row per group."""
+    def test_declaring_a_column_that_is_unique_per_row_does_not_contradict(self):
+        """The mirror case, filed as a contradiction and repaired (`DRIVE-068`).
+
+        Grouping by a column with one row per value holds out one row per
+        group. That is a row split AND a subject split at once: no subject can
+        be on both sides, because no subject has a second row. Nothing about
+        the held-out number is wrong, so there is nothing to disagree with —
+        and the seal that records it is `grouped`, which is what it is.
+        """
         df = cohort(range(200), key="row_key")
-        contra = declaration_contradiction(df, "row_key")
-        assert contra and contra["kind"] == "stated_repeats_but_column_is_unique"
+        assert declaration_contradiction(df, "row_key") is None
 
     # ── a declared column that vanished ───────────────────────────────────
 
@@ -484,6 +494,238 @@ class TestImport257TheSubjectColumnCanBeDeclared:
             entity_id_override_enabled=True, entity_id_override_value="SUBJ")
         assert cohort_rec.entity_id_final == "SUBJ"
         assert "entity_id_final" in source(PAGE_06)
+
+
+# ── DRIVE-068 ────────────────────────────────────────────────────────────
+#
+# The row was marked FIXED with a note claiming three things, and Drive 9
+# refuted all three by driving the control (`D9-02`). Nothing in the fix wave
+# had touched the declaration surfaces at all: the only true clause in the note
+# — the cluster carve-out — had landed two sprints earlier, and the reserved
+# column had never been released by anything. One test per refuted claim, each
+# driven on the shape the audit drove: a declared column with one value per row.
+
+
+def unique_per_row(n=400, key="SEQN", seed=7):
+    """The audit's frame: every value of `key` appears exactly once."""
+    rng = np.random.default_rng(seed)
+    return pd.DataFrame({key: range(n),
+                         "age": rng.integers(20, 80, n),
+                         "y": rng.integers(0, 2, n)})
+
+
+def declare(col):
+    st.session_state["cohort_structure_detection"] = CohortStructureDetection(
+        entity_id_override_enabled=True, entity_id_override_value=col)
+    st.session_state[SUBJECT_DECLARATION_KEY] = (
+        col if col is not None else SUBJECT_DECLARATION_NONE)
+
+
+class TestDrive068TheDeclarationSurfacesSayWhatTheRecordSays:
+
+    # ── claim (a): "no false rows-repeat claim" ───────────────────────────
+
+    def test_a_unique_per_row_declared_column_is_not_called_repeating(self):
+        """*"🔒 Rows repeat per subject (`SEQN`)…"* over `rows_per == 1.0`.
+
+        The page printed it whenever `_lb['group_col']` was set, so the one
+        state where the column does NOT repeat got the sentence that says it
+        does — under a lock icon, on the render that answered the question.
+        """
+        df = unique_per_row()
+        declare("SEQN")
+        lb = ensure_lockbox(df, "y", "classification")
+        assert lb["group_col"] == "SEQN"
+        assert lb["group_rows_per"] == 1.0, "the measurement is not on the record"
+        said = grouped_split_statement(lb)
+        assert "Rows repeat" not in said, said
+        assert "different value on every row" in said
+        assert "by row at once" in said
+
+    def test_a_declared_column_that_does_repeat_still_says_so(self):
+        """The repair must not buy silence: the true half stays true."""
+        df = cohort(np.repeat(range(60), 3), key="SUBJ")
+        declare("SUBJ")
+        lb = ensure_lockbox(df, "y", "classification")
+        assert lb["group_rows_per"] == 3.0
+        assert "Rows repeat per subject (`SUBJ`)" in grouped_split_statement(lb)
+
+    def test_the_page_derives_the_sentence_instead_of_composing_it(self):
+        """Composed inline from the presence of a field, not from a count."""
+        text = source(PAGE_01)
+        assert "grouped_split_statement" in text
+        assert "Rows repeat per" not in text, (
+            "pages/01 is asserting repetition again without measuring it")
+
+    def test_an_old_seal_with_no_measurement_is_read_from_its_counts(self):
+        """A record saved before `group_rows_per` existed must not guess high."""
+        said = grouped_split_statement(
+            {"group_col": "SEQN", "group_noun": "subjects",
+             "n_test": 945, "n_test_groups": 945})
+        assert "Rows repeat" not in said, said
+
+    # ── claim (b): "record and sentence agree" ────────────────────────────
+
+    def test_the_sentence_never_says_undetermined_over_a_grouped_record(
+            self, monkeypatch):
+        """*"the seal records that the grain is undetermined"* beside `grouped`.
+
+        The clause was a constant in the warning's f-string, so it described
+        the record on exactly one of the four bases the record can hold.
+        """
+        st.session_state["data_config"] = DataConfig(
+            target_col="y", feature_cols=["age"], task_type="classification")
+        st.session_state["test_lockbox"] = {
+            "labels": [1, 2, 3], "fraction": 0.15, "n_test": 3, "seed": 42,
+            "signature": "s", "seal_basis": SEAL_GROUPED, "group_col": "SEQN",
+            "group_noun": "subjects", "n_test_groups": 3, "group_rows_per": 1.0,
+            "basis_source": BASIS_USER_STATED,
+            "contradiction": {"kind": "x", "message": "M."},
+        }
+        cap = _Captured(monkeypatch)
+        render_lockbox_status()
+        assert not any("grain is undetermined" in w for w in cap.warnings), (
+            cap.warnings)
+        assert any("drawn by `SEQN`" in w for w in cap.warnings), cap.warnings
+
+    def test_the_sentence_still_says_undetermined_when_that_is_the_record(
+            self, monkeypatch):
+        """Quoting the record is the fix; going quiet would not be."""
+        df = cohort(np.repeat(range(60), 3), key="SEQN")
+        st.session_state["data_config"] = DataConfig(
+            target_col="y", feature_cols=["age"], task_type="classification")
+        declare(None)
+        lb = ensure_lockbox(df, "y", "classification")
+        assert lb["seal_basis"] == SEAL_UNDETERMINED
+        cap = _Captured(monkeypatch)
+        render_lockbox_status()
+        assert any("disagree" in w and "grain is undetermined" in w
+                   for w in cap.warnings), cap.warnings
+
+    def test_the_basis_clause_is_written_from_the_record_on_every_basis(self):
+        assert "undetermined" in seal_basis_sentence({"seal_basis": SEAL_UNDETERMINED})
+        assert "one row per participant" in seal_basis_sentence(
+            {"seal_basis": SEAL_CROSS_SECTIONAL})
+        assert "`c`" in seal_basis_sentence(
+            {"seal_basis": SEAL_GROUPED, "group_col": "c"})
+        assert "abandoned" in seal_basis_sentence({"seal_basis": SEAL_ABANDONED})
+
+    def test_a_grouped_seal_does_not_blame_a_stratum_it_never_tried(
+            self, monkeypatch):
+        """"Too few people in some combination" over a split that never
+        stratified: a group split moves whole groups and builds no stratum."""
+        df = unique_per_row()
+        st.session_state["data_config"] = DataConfig(
+            target_col="y", feature_cols=["age"], task_type="classification")
+        declare("SEQN")
+        lb = ensure_lockbox(df, "y", "classification")
+        assert lb["strata_requested"] == ["y"] and lb["strata"] == []
+        cap = _Captured(monkeypatch)
+        render_lockbox_status()
+        unbalanced = [w for w in cap.warnings if "could not be balanced" in w]
+        assert unbalanced, cap.warnings
+        assert "too few people" not in unbalanced[0]
+        assert "moves whole subjects at a time" in unbalanced[0]
+
+    # ── claim (c): "withdrawing releases the reserved column" ─────────────
+
+    def test_withdrawing_the_declaration_releases_the_reserved_column(self):
+        """`register_reserved_column` is additive; nothing ever removed.
+
+        After withdrawal the seal's `group_col` was None and the page still
+        said *"Held back from the predictors: `SEQN` — the column the held-out
+        set was split by"*, offering 27 of 27 features over a 28-column frame.
+        """
+        from utils.combine import (clear_registered_reserved_columns,
+                                   is_reserved_column, set_reserved_columns)
+        clear_registered_reserved_columns()
+        df = unique_per_row()
+        declare("SEQN")
+        lb = ensure_lockbox(df, "y", "classification")
+        hold = declared_group_column(list(df.columns), lb)
+        set_reserved_columns([hold] if hold else [], "split by", role="group_col")
+        assert is_reserved_column("SEQN")
+
+        # The render that withdraws: the widget already holds the new answer
+        # and `cohort_structure_detection` is still one render behind it.
+        st.session_state[SUBJECT_DECLARATION_KEY] = SUBJECT_DECLARATION_AUTO
+        hold = declared_group_column(list(df.columns), get_lockbox())
+        set_reserved_columns([hold] if hold else [], "split by", role="group_col")
+        assert not is_reserved_column("SEQN"), (
+            "the declaration was withdrawn and the column is still barred")
+
+    def test_withdrawal_re_runs_detection_and_the_record_agrees(self):
+        df = unique_per_row()
+        declare("SEQN")
+        assert ensure_lockbox(df, "y", "classification")["seal_basis"] == SEAL_GROUPED
+        st.session_state["cohort_structure_detection"] = CohortStructureDetection(
+            entity_id_override_enabled=False, entity_id_override_value=None)
+        st.session_state[SUBJECT_DECLARATION_KEY] = SUBJECT_DECLARATION_AUTO
+        lb = ensure_lockbox(df, "y", "classification")
+        assert lb["group_col"] is None
+        assert lb["seal_basis"] == SEAL_CROSS_SECTIONAL
+        assert lb["basis_source"] == BASIS_DETECTED
+        assert grouped_split_statement(lb) is None, (
+            "no group column, and the page still had a grouped sentence to print")
+
+    def test_a_detected_group_column_is_still_held_back_with_no_answer(self):
+        """Releasing must not over-release: the heuristic's own conclusion
+        stands until the heuristic itself stops finding it."""
+        from utils.combine import clear_registered_reserved_columns
+        clear_registered_reserved_columns()
+        df = cohort(np.repeat(range(60), 3), key="SEQN")
+        lb = ensure_lockbox(df, "y", "classification")
+        assert lb["group_col"] == "SEQN" and lb["basis_source"] == BASIS_DETECTED
+        st.session_state[SUBJECT_DECLARATION_KEY] = SUBJECT_DECLARATION_AUTO
+        assert declared_group_column(list(df.columns), lb) == "SEQN"
+
+    def test_answering_none_releases_it_too(self):
+        df = cohort(np.repeat(range(60), 3), key="SEQN")
+        lb = ensure_lockbox(df, "y", "classification")
+        assert lb["group_col"] == "SEQN"
+        st.session_state[SUBJECT_DECLARATION_KEY] = SUBJECT_DECLARATION_NONE
+        assert declared_group_column(list(df.columns), lb) is None
+
+    def test_the_page_replaces_the_reservation_rather_than_adding_to_it(self):
+        """Read off the imports: the additive call cannot be reached at all."""
+        import ast
+        names = {a.name
+                 for n in ast.walk(ast.parse(source(PAGE_01)))
+                 if isinstance(n, ast.ImportFrom) and n.module == "utils.combine"
+                 for a in n.names}
+        assert "set_reserved_columns" in names
+        assert "register_reserved_column" not in names, (
+            "the additive registration is back, and nothing releases again")
+
+    # ── the five declaration states, on one rule ──────────────────────────
+
+    def test_every_declaration_state_surfaces_what_its_record_holds(self):
+        """One rule, five states: repetition is claimed only where it was
+        measured, and the basis clause quotes the basis field."""
+        repeating = cohort(np.repeat(range(60), 3), key="SUBJ")
+        unique = unique_per_row(key="SUBJ")
+        states = [
+            ("auto", repeating, False, None),
+            ("declared_and_consistent", repeating, True, "SUBJ"),
+            ("declared_and_contradicted", repeating, True, None),
+            ("declared_column_unique_per_row", unique, True, "SUBJ"),
+            ("withdrawn", unique, False, None),
+        ]
+        for name, df, declared, col in states:
+            st.session_state.clear()
+            if declared:
+                declare(col)
+            else:
+                st.session_state[SUBJECT_DECLARATION_KEY] = SUBJECT_DECLARATION_AUTO
+            lb = ensure_lockbox(df, "y", "classification")
+            said = grouped_split_statement(lb) or ""
+            repeats = (lb.get("group_rows_per") or 0) > 1.0
+            assert ("Rows repeat" in said) == repeats, (name, said)
+            clause = seal_basis_sentence(lb)
+            assert ("undetermined" in clause) == (
+                lb["seal_basis"] == SEAL_UNDETERMINED), (name, clause)
+            if lb["seal_basis"] == SEAL_GROUPED:
+                assert lb["group_col"] and lb["group_col"] in clause, (name, clause)
 
 
 # ── IMPORT-207 ───────────────────────────────────────────────────────────

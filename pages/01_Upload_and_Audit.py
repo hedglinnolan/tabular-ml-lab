@@ -42,6 +42,15 @@ from ml.eda_recommender import compute_dataset_signals
 
 logger = logging.getLogger(__name__)
 
+# Why the split column is withheld from the predictors, in one place: the
+# feature picker and the seal both register it, and the two strings have to
+# match or `set_reserved_columns`'s role-scoped replacement writes a different
+# reason on every render (`DRIVE-068`).
+_GROUP_COL_RESERVED_REASON = (
+    "the column the held-out set was split by — giving it to the model "
+    "hands it the group membership the split exists to hide"
+)
+
 
 def _forget_working_table(reason: str = "") -> None:
     """Drop the working table AND the account of how it was built.
@@ -1208,18 +1217,25 @@ if task_mode == "prediction":
         # the model memorizes row identity from the ID and reports it as
         # held-out performance, and the ID then tops the importance table as
         # the manuscript's "most important predictor".
+        # REPLACEMENT under the role, never addition: `register_reserved_column`
+        # could only add, so withdrawing a subject declaration left the named
+        # column barred from the predictors and described as "the column the
+        # held-out set was split by" over a seal that had no group column at all
+        # (`DRIVE-068`). The answer is resolved from the widget rather than from
+        # the seal, because the seal below is a render behind the withdrawal.
         from utils.combine import (
-            is_reserved_column as _is_reserved, register_reserved_column,
+            is_reserved_column as _is_reserved, set_reserved_columns,
             reserved_column_reason,
         )
-        from utils.test_lockbox import get_lockbox as _get_lockbox
+        from utils.test_lockbox import (
+            declared_group_column as _declared_group_column,
+            get_lockbox as _get_lockbox,
+        )
         _lb_now = _get_lockbox()
-        if _lb_now and _lb_now.get('group_col'):
-            register_reserved_column(
-                _lb_now['group_col'],
-                "the column the held-out set was split by — giving it to the model "
-                "hands it the group membership the split exists to hide",
-                role="group_col")
+        _hold_now = _declared_group_column(all_cols, _lb_now)
+        set_reserved_columns(
+            [_hold_now] if _hold_now else [],
+            _GROUP_COL_RESERVED_REASON, role="group_col")
         feature_options = [c for c in all_cols
                            if c != target_col and not _is_reserved(c)]
         n_available_features = len(feature_options)
@@ -1404,6 +1420,7 @@ if task_mode == "prediction":
         from utils.test_lockbox import (
             ensure_lockbox, render_lockbox_status, get_lockbox,
             DEFAULT_TEST_FRACTION, is_exploratory,
+            SUBJECT_DECLARATION_AUTO, SUBJECT_DECLARATION_NONE,
         )
         # ── who is a subject? ────────────────────────────────────────────
         # The question the heuristics exist to guess at, asked plainly. It was
@@ -1419,8 +1436,10 @@ if task_mode == "prediction":
         if _cohort is None:
             _cohort = CohortStructureDetection()
             st.session_state.cohort_structure_detection = _cohort
-        _SUBJ_AUTO = "Let the app work it out"
-        _SUBJ_NONE = "No — each row is a different participant"
+        # The strings the reservation resolver reads back out of the widget:
+        # one definition, in the module that consumes them (`DRIVE-068`).
+        _SUBJ_AUTO = SUBJECT_DECLARATION_AUTO
+        _SUBJ_NONE = SUBJECT_DECLARATION_NONE
         _subject_options = [_SUBJ_AUTO, _SUBJ_NONE] + [str(c) for c in df.columns]
         if 'subject_id_declaration' not in st.session_state:
             if getattr(_cohort, 'entity_id_override_enabled', False):
@@ -1516,12 +1535,26 @@ if task_mode == "prediction":
                         )
                 else:
                     _n_subj = int(df[_subject_choice].nunique(dropna=True))
+                    if _n_subj >= int(df[_subject_choice].notna().sum()):
+                        # One row per value. Not a contradiction and not a
+                        # defect — the split is by participant and by row at
+                        # once — and the surface that called it a disagreement
+                        # was the one that had to change (`DRIVE-068`).
+                        _grain = (
+                            f"and it has a different value on every one of the "
+                            f"{len(df):,} rows, so each row is its own participant. "
+                            f"The held-out set is drawn by participant and by row at "
+                            f"once, nobody appears on both sides, and this column is "
+                            f"held back from the predictors. If people repeat here "
+                            f"under a different column, name that one instead.")
+                    else:
+                        _grain = (
+                            f"{_n_subj:,} of them across {len(df):,} rows. The held-out "
+                            f"set is drawn by participant, and this column is held back "
+                            f"from the predictors.")
                     st.caption(
                         f"Recorded: `{_subject_choice}` identifies a participant — "
-                        f"{_n_subj:,} of them across {len(df):,} rows. The held-out "
-                        f"set is drawn by participant, and this column is held back "
-                        f"from the predictors."
-                    )
+                        f"{_grain}")
             st.session_state.cohort_structure_detection = _cohort
 
         # A declared subject/entity ID always wins over auto-detection: with
@@ -1529,22 +1562,23 @@ if task_mode == "prediction":
         # lands in both training and the sealed test set.
         _entity_col = getattr(_cohort, 'entity_id_final', None) if _cohort else None
         _lb = ensure_lockbox(df, target_col, task_type_final, group_col=_entity_col)
+        # Registered where the seal is drawn, so the feature picker on the next
+        # render already knows this column identifies groups — and RELEASED
+        # here on the same authority, which the additive registration could
+        # never do: a withdrawn declaration left its column reserved forever
+        # (`DRIVE-068`). Unconditional, so the release runs on the render that
+        # seals without a group column.
+        from utils.combine import set_reserved_columns as _set_reserved
+        _set_reserved(
+            [_lb['group_col']] if _lb is not None and _lb.get('group_col') else [],
+            _GROUP_COL_RESERVED_REASON, role="group_col")
         if _lb is not None and _lb.get('group_col'):
-            # Registered where the seal is drawn, so the feature picker on the
-            # next render already knows this column identifies groups.
-            from utils.combine import register_reserved_column as _reserve
-            _reserve(_lb['group_col'],
-                     "the column the held-out set was split by — giving it to the "
-                     "model hands it the group membership the split exists to hide",
-                     role="group_col")
-            _noun = _lb.get('group_noun') or 'subjects'
-            _one = _noun.rstrip('s') if _noun.endswith('s') else _noun
-            st.info(
-                f"🔒 Rows repeat per {_one} (`{_lb['group_col']}`), so the held-out set was "
-                f"drawn by **{_one}**, not by row — {_lb['n_test']:,} rows from "
-                f"{_lb.get('n_test_groups', '?')} {_noun}. Splitting by row would put the "
-                f"same {_one} in both training and testing."
-            )
+            # The sentence is derived from the measured rows-per-group on the
+            # record, not from the presence of a group column: a column with
+            # one row per value is a split by row and by subject at once, and
+            # "rows repeat" over it is false (`DRIVE-068`).
+            from utils.test_lockbox import grouped_split_statement
+            st.info(grouped_split_statement(_lb))
         if _lb is not None and get_lockbox() is not None:
             _prev_ledger_note = st.session_state.get('_lockbox_ledger_noted')
             if _prev_ledger_note != _lb['signature']:
