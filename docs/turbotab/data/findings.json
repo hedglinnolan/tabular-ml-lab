@@ -13845,5 +13845,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "docs/audit/DRIVE10_GATE_CHECK.md; ml/dataset_profile.py (_profile_scope_fields)"
+ },
+ {
+  "id": "MISC-112",
+  "area": "MISC",
+  "sev": "medium",
+  "item": "Native-layer cross-test pollution: after ~1,300 tests load sklearn's OpenMP and leave AppTest threads behind, torch's third forward pass in tests/test_nn_modernization.py segfaults the interpreter (exit 139) - reproduced locally (macOS) and matching CI's 124-second Tier-1 'failure' (ubuntu). Same family as the MagicMock/sys.modules pollutions fixed earlier, one layer down where the blast radius is a dead process. The tests are sound (22/22 fresh); mitigation shipped in ci.yml: OMP_NUM_THREADS=1 on the main tier + the torch file in its own interpreter step. A root fix (per-file process isolation for native-heavy tests, e.g. pytest-forked) is the open remainder.",
+  "detail": "",
+  "ev": ".github/workflows/ci.yml (Tier 1/1b); tests/test_nn_modernization.py; scratchpad ci_repro.log",
+  "act": "",
+  "status": "PARTIAL",
+  "note": "Mitigated in CI and documented; root isolation mechanism not built.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": ".github/workflows/ci.yml (Tier 1/1b); tests/test_nn_modernization.py; scratchpad ci_repro.log"
  }
 ]
