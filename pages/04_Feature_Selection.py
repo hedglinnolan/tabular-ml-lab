@@ -282,6 +282,29 @@ with st.expander("⚙️ Advanced Settings", expanded=False):
 # Run feature selection
 # ============================================================================
 
+# `DRIVE-064`. Every selector below fails on a target scikit-learn cannot read
+# as labels, and the exception it raises — "Unknown label type: unknown. Maybe
+# you are trying to fit a classifier, which expects discrete classes on a
+# regression target with continuous values" — names a cause that is not the
+# cause (the column is not continuous; it is stored wrong) and a fix that is
+# not the fix. The condition is stated here, above the button, in its own
+# vocabulary, and each method that raises repeats it in place of sklearn's.
+from ml.triage import diagnose_target_dtype as _diagnose_target
+_target_dx = _diagnose_target(df, target_col)
+if not _target_dx.usable:
+    st.error(
+        f"⚠️ **Selection cannot run on `{target_col}` as it is stored.**\n\n"
+        f"{_target_dx.condition}\n\n**What fixes it:** {_target_dx.fix}"
+    )
+
+
+def _explain_method_failure(exc: Exception) -> str:
+    """The method's own error, or the real condition when sklearn misnames it."""
+    if not _target_dx.usable:
+        return f"{_target_dx.condition} {_target_dx.fix}"
+    return str(exc)
+
+
 # Warn about wide datasets
 n_features = len(numeric_features)
 n_samples = len(X)
@@ -329,7 +352,7 @@ if st.button("🔍 Run Feature Selection", type="primary"):
                 )
                 results.append(result)
             except Exception as e:
-                st.warning(f"⚠️ LASSO failed: {e}")
+                st.warning(f"⚠️ LASSO could not run: {_explain_method_failure(e)}")
 
         elif method == "rfe":
             if n_features > 500:
@@ -343,7 +366,7 @@ if st.button("🔍 Run Feature Selection", type="primary"):
                 )
                 results.append(result)
             except Exception as e:
-                st.warning(f"⚠️ RFE failed: {e}")
+                st.warning(f"⚠️ RFE-CV could not run: {_explain_method_failure(e)}")
 
         elif method == "univariate":
             status.text("Running univariate screening with FDR correction...")
@@ -354,7 +377,7 @@ if st.button("🔍 Run Feature Selection", type="primary"):
                 )
                 results.append(result)
             except Exception as e:
-                st.warning(f"⚠️ Univariate screening failed: {e}")
+                st.warning(f"⚠️ Univariate screening could not run: {_explain_method_failure(e)}")
 
         elif method == "stability":
             status.text(f"Running stability selection ({n_stability_bootstrap} bootstraps × {n_features} features)...")
@@ -367,7 +390,7 @@ if st.button("🔍 Run Feature Selection", type="primary"):
                 )
                 results.append(result)
             except Exception as e:
-                st.warning(f"⚠️ Stability selection failed: {e}")
+                st.warning(f"⚠️ Stability selection could not run: {_explain_method_failure(e)}")
 
         if len(results) > _n_results_done:
             methods_completed.append(method)
@@ -386,11 +409,16 @@ if st.button("🔍 Run Feature Selection", type="primary"):
     consensus = consensus_features(results, min_methods=consensus_threshold)
     st.session_state["consensus_features"] = consensus
     
-    # Log methodology action
-    methods_used = ", ".join(methods_to_run)
+    # Log methodology action. `DRIVE-063`: the action sentence named the
+    # REQUESTED methods, so a run where both raised was logged as "Selected 0
+    # features using lasso, rfe" — a claim that two methods ran.
+    methods_used = ", ".join(methods_completed) if methods_completed else "no method"
     log_methodology(
         step='Feature Selection',
-        action=f"Selected {len(consensus)} features using {methods_used}",
+        action=(f"Selected {len(consensus)} features using {methods_used}"
+                if methods_completed else
+                f"No selection method completed; {', '.join(methods_to_run)} "
+                f"were requested and all failed"),
         details={
             'methods': methods_to_run,
             # `MISC-104`. REQUESTED and COMPLETED are different lists whenever a
@@ -405,30 +433,61 @@ if st.button("🔍 Run Feature Selection", type="primary"):
             'consensus_threshold': consensus_threshold,
         }
     )
-    try:
-        from utils.workflow_provenance import get_provenance
-        get_provenance().record_feature_selection(
-            method='consensus',
-            n_before=len(numeric_features),
-            n_after=len(consensus),
-            features_kept=list(consensus),
-            consensus_methods=list(methods_to_run),
-            # `AUDIT-023`. The screened set, by name, recorded at the moment it
-            # is still knowable — the apply buttons below overwrite
-            # `data_config.feature_cols` in place and §A5.4 sizes for what was
-            # screened, not for what survived.
-            candidates_screened=list(numeric_features),
-        )
-    except Exception:
-        pass  # Provenance recording should never break the workflow
+    # `DRIVE-063`. Provenance is what the Methods draft is written from, and it
+    # was handed `methods_to_run` — the REQUESTED list — so a run where both
+    # selectors raised recorded a consensus across "LASSO and RFE-CV" that
+    # never happened, and the draft printed "Consensus feature selection across
+    # LASSO and RFE-CV retained all 27 candidate predictors" over a run that
+    # selected nothing. `methods_completed` is built above for exactly this.
+    #
+    # A NULL run is not a selection either, and recording one is the same false
+    # sentence by a different route: `ml/narrative_engine.py:884` reads the
+    # record's `n_after` through `n_after_sel or n_final`, so a zero reads back
+    # as "all N retained" whether zero methods completed or one completed and
+    # nothing met the agreement threshold. A consensus record is written when
+    # there is a consensus. Nothing was chosen here, so nothing is recorded and
+    # the draft says nothing — silence is available, a false sentence is not.
+    if methods_completed and consensus:
+        try:
+            from utils.workflow_provenance import get_provenance
+            get_provenance().record_feature_selection(
+                method='consensus',
+                n_before=len(numeric_features),
+                n_after=len(consensus),
+                features_kept=list(consensus),
+                consensus_methods=list(methods_completed),
+                # `AUDIT-023`. The screened set, by name, recorded at the moment
+                # it is still knowable — the apply buttons below overwrite
+                # `data_config.feature_cols` in place and §A5.4 sizes for what
+                # was screened, not for what survived.
+                candidates_screened=list(numeric_features),
+            )
+        except Exception:
+            pass  # Provenance recording should never break the workflow
 
-    if len(results) < 2:
+    # `DRIVE-064` finding 5. `len(results) < 2` cannot tell one from zero, so a
+    # run where every method raised said "Only one method completed" and then
+    # bannered green over it. Zero completions is a failure, and it says so.
+    n_completed = len(results)
+    if n_completed == 0:
+        st.error(
+            f"❌ **Feature selection did not run.** All "
+            f"{len(methods_to_run)} requested method(s) "
+            f"({', '.join(methods_to_run)}) failed — see the reason above each. "
+            f"No features were selected, nothing was recorded, and the Methods "
+            f"draft will not report a selection for this run. Fix the cause and "
+            f"run again, or pick features yourself under **Manual feature "
+            f"selection** below."
+        )
+    elif n_completed == 1:
         st.info(
             "Only one method completed, so there is no consensus to report — "
             "two methods must agree before a feature is called a consensus "
             "predictor. Run a second method, or use manual selection below."
         )
-    st.success(f"Feature selection complete! {len(results)} methods run.")
+        st.success(f"Feature selection complete! {n_completed} method run.")
+    else:
+        st.success(f"Feature selection complete! {n_completed} methods run.")
 
 # ============================================================================
 # Display results

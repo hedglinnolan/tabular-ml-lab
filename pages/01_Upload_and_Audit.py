@@ -804,6 +804,47 @@ from utils.cohort_ui import render_cohort_note as _cohort_note
 _cohort_note("The audit below covers the whole study, which is what it should "
              "describe — the run filter applies from the EDA page onward.")
 
+# -------------------------------------------------------------------------
+# STRUCTURAL REVIEW OF THE WORKING TABLE
+#
+# `DRIVE-067`. The Import Doctor ran in exactly one place — the per-file
+# expander under the uploader — so it never saw a dataset that reached the
+# project any other way (a restored project, a built-in dataset, a registry
+# entry) and it never saw a COMBINED table at all. On the drive that meant a
+# boolean-with-blanks outcome column reached the target selector, the
+# selectors and the explainers with nothing anywhere having said so. The
+# working table is what every later page reads, so it is what gets reviewed.
+# -------------------------------------------------------------------------
+_impdoc_key = f"worktable_{st.session_state.get('_working_table_source_id') or 'combined'}"
+# Reviewed and repaired on the WORKING TABLE itself, not on `df` — `df` here is
+# `get_data`, which is the engineered frame once page 03 has run, and writing
+# that back would fold engineered columns into the working table permanently.
+_impdoc_base = st.session_state.get('working_table')
+if _impdoc_base is None:
+    _impdoc_base = df
+_reviewed_df = render_import_doctor(_impdoc_base, _impdoc_key, subject="table")
+if _reviewed_df is not _impdoc_base and not _reviewed_df.equals(_impdoc_base):
+    _impdoc_fixes = applied_fixes(_impdoc_key)
+    _ledger.record(action="Structural repair", kind=_ledger.CLEAN,
+                   before=_impdoc_base, after=_reviewed_df,
+                   detail="; ".join(_impdoc_fixes))
+    for _fix in _impdoc_fixes:
+        log_methodology(step='Data Cleaning', action=_fix,
+                        details={'source': 'import_doctor',
+                                 'stage': 'working_table', 'fix': _fix})
+        try:
+            from utils.workflow_provenance import get_provenance as _get_prov
+            _get_prov().record_cleaning(
+                action=f"Import repair — {_fix}",
+                rows_before=_impdoc_base.shape[0], rows_after=_reviewed_df.shape[0],
+                details={'source': 'import_doctor', 'stage': 'working_table'})
+        except Exception:
+            pass          # recording must never block the repair
+    st.session_state.working_table = _reviewed_df
+    set_data(_reviewed_df, is_schema_change=False)
+    reconcile_state_with_df(_reviewed_df, st.session_state)
+    st.rerun()
+
 # Quick summary metrics at top
 col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
@@ -1072,7 +1113,92 @@ if task_mode == "prediction":
         index=target_idx,
         key="target_selectbox"
     )
-    
+
+    # ── can scikit-learn read this column as labels? ─────────────────────
+    #
+    # `DRIVE-064`. `detect_task_type` below calls an object column of
+    # True/False-with-blanks "Classification" with high confidence, and it is
+    # right about the QUESTION — but `type_of_target` calls that same column
+    # 'unknown', so LASSO, RFE-CV and every explainer raised on it while the
+    # page reported a saved configuration. Nothing between here and there ever
+    # asked. So it is asked here, once, before anything downstream is told the
+    # target exists: an unreadable target is repaired in the open, or the
+    # configuration is refused. It is never passed on silently.
+    if target_col:
+        from ml.triage import diagnose_target_dtype, repair_boolean_target
+        _target_dx = diagnose_target_dtype(df, target_col)
+        _repairs = st.session_state.setdefault('_target_dtype_repairs', {})
+
+        if not _target_dx.usable and _target_dx.repairable:
+            # The WORKING TABLE is the frame to repair. `df` here can be the
+            # engineered frame, and writing that back would fold engineered
+            # columns into the working table permanently.
+            _base = st.session_state.get('working_table')
+            if _base is None or target_col not in _base.columns:
+                _base = df
+            _repaired = _base.copy()
+            _repaired[target_col] = repair_boolean_target(_repaired[target_col])
+            if not diagnose_target_dtype(_repaired, target_col).usable:
+                # The recode did not achieve what it promised. Refusing is the
+                # only honest exit; committing it would rerun into this branch
+                # forever.
+                st.error(
+                    f"⚠️ **This column cannot be used as a target as it is "
+                    f"stored.**\n\n{_target_dx.condition}\n\n"
+                    f"**What fixes it:** {_target_dx.fix}"
+                )
+                st.stop()
+            _n_true = int((_repaired[target_col] == 1).sum())
+            _n_false = int((_repaired[target_col] == 0).sum())
+            _note = (
+                f"`{target_col}` held True/False values in a text column, which "
+                f"scikit-learn cannot read as class labels. It was recoded to "
+                f"**1 (True, {_n_true:,} rows) and 0 (False, {_n_false:,} rows)**, "
+                f"leaving its {_target_dx.n_missing:,} blank rows blank. This is "
+                f"the same repair the structural review in Step 3 offers; without "
+                f"it feature selection and explainability both fail."
+            )
+            _repairs[target_col] = _note
+            _ledger.record(action=f"Recoded '{target_col}' to 1/0",
+                           kind=_ledger.CLEAN, before=_base, after=_repaired,
+                           detail=(f"True → 1 ({_n_true:,} rows), False → 0 "
+                                   f"({_n_false:,} rows), blanks unchanged."))
+            log_methodology(
+                step='Data Cleaning',
+                action=(f"Recoded outcome '{target_col}' from True/False to 1/0 "
+                        f"(True → 1, False → 0); blank values left blank"),
+                details={'source': 'target_dtype_repair', 'column': target_col,
+                         'n_true': _n_true, 'n_false': _n_false,
+                         'n_missing': _target_dx.n_missing})
+            try:
+                from utils.workflow_provenance import get_provenance as _get_prov
+                _get_prov().record_cleaning(
+                    action=f"Recoded outcome '{target_col}' from True/False to 1/0",
+                    rows_before=len(_base), rows_after=len(_repaired),
+                    details={'column': target_col, 'source': 'target_dtype_repair'})
+            except Exception:
+                pass          # recording must never block the repair
+            st.session_state.working_table = _repaired
+            set_data(_repaired, is_schema_change=False)
+            st.rerun()
+
+        elif not _target_dx.usable:
+            _repairs.pop(target_col, None)
+            st.error(
+                f"⚠️ **This column cannot be used as a target as it is stored.**\n\n"
+                f"{_target_dx.condition}\n\n**What fixes it:** {_target_dx.fix}"
+            )
+            st.caption(
+                "The configuration has not been saved. Choosing it anyway would "
+                "let it reach feature selection, training and explainability, "
+                "each of which raises on it — and the error they raise blames "
+                "the outcome for being continuous, which it is not."
+            )
+            st.stop()
+
+        elif target_col in _repairs:
+            st.caption(f"🔧 {_repairs[target_col]}")
+
     # Feature selection with "Select All" option
     if target_col:
         # Bookkeeping and identifier columns must never be offered as

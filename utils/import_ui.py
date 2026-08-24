@@ -113,7 +113,10 @@ def _render_finding(finding: ShapeFinding, current: pd.DataFrame,
     st.markdown(finding.detail)
     st.caption(f"Why this matters: {finding.why_it_matters}")
 
-    note = _CONFIDENCE_NOTE.get(finding.confidence)
+    # A finding that states its own uncertainty wins over the tier default —
+    # the tier sentence is about missing-value sentinels and does not describe
+    # every low-confidence finding (DRIVE8 finding 27).
+    note = getattr(finding, "uncertainty_note", None) or _CONFIDENCE_NOTE.get(finding.confidence)
     if note:
         st.caption(note)
 
@@ -137,12 +140,18 @@ def _render_finding(finding: ShapeFinding, current: pd.DataFrame,
     return None
 
 
-def render_import_doctor(df: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
-    """Render the structural review for one file and return the frame to use.
+def render_import_doctor(df: pd.DataFrame, key_prefix: str,
+                         subject: str = "file") -> pd.DataFrame:
+    """Render the structural review for one frame and return the frame to use.
 
-    `df` is the file exactly as it was read. The return value is that frame
+    `df` is the frame exactly as it was read. The return value is that frame
     with any fixes the user has applied in this session — which is what the
     caller must add to the project.
+
+    `subject` names what is under review in the prose. The uploader reviews a
+    *file*; page 01 also reviews the *working table*, which is what every later
+    page actually reads and which may never have passed through the uploader at
+    all (`DRIVE-067`).
     """
     _, _, sig_key = _state(key_prefix)
     if st.session_state.get(sig_key) != _frame_signature(df):
@@ -164,7 +173,7 @@ def render_import_doctor(df: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
 
     if not findings:
         if not log:
-            st.caption("✅ Structural review: this file reads as a clean table.")
+            st.caption(f"✅ Structural review: this {subject} reads as a clean table.")
         return current
 
     critical = [f for f in findings if f.severity == "critical"]
@@ -172,7 +181,7 @@ def render_import_doctor(df: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
 
     if critical:
         st.markdown(f"**Structural review — {summarize(findings)}**")
-        st.caption("These are worth fixing before the file goes into your "
+        st.caption(f"These are worth fixing before the {subject} goes into your "
                    "analysis. Nothing changes until you press a button, and "
                    "anything you apply can be undone.")
     else:

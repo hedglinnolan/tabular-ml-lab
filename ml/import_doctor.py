@@ -94,6 +94,12 @@ class ShapeFinding:
     confidence: str = "medium"       # 'high' | 'medium' | 'low'
     params: Dict[str, Any] = field(default_factory=dict)
     affected_columns: List[str] = field(default_factory=list)
+    # What a 'low' confidence means FOR THIS FINDING. The UI carried one
+    # sentence for the whole tier — "only apply it if you know these values
+    # really do mean 'missing'" — and printed it under the constant-columns
+    # note, which is not about missing values at all (DRIVE8 finding 27). A
+    # finding whose uncertainty is of a different kind states its own.
+    uncertainty_note: Optional[str] = None
 
     @property
     def auto_suggestable(self) -> bool:
@@ -143,6 +149,17 @@ def _each_column_matching(df: pd.DataFrame, selector) -> Any:
 def _is_text(s: pd.Series) -> bool:
     return s.dtype == object or isinstance(s.dtype, pd.StringDtype) or \
         pd.api.types.is_string_dtype(s)
+
+
+def all_boolean_values(values) -> bool:
+    """Every value is a real True/False, not the strings 'true'/'false'.
+
+    A CSV column of True/False with blanks is read back as `object` holding
+    Python bools and NaN. That is neither text nor a number: sklearn's
+    `type_of_target` calls it 'unknown' and every estimator raises on it.
+    """
+    values = list(values)
+    return bool(values) and all(isinstance(v, (bool, np.bool_)) for v in values)
 
 
 def _is_unnamed(col: Any) -> bool:
@@ -651,8 +668,41 @@ def check_numeric_stored_as_text(df: pd.DataFrame, min_parse: float = 0.8) -> Li
     """Columns typed as text only because of commas, units, or '<0.01'."""
     out: List[ShapeFinding] = []
     for col, s in _each_column_matching(df, _is_text):
+        # Counted here, from the positional Series: `df[col]` collapses to a
+        # DataFrame when two columns share a name, which is the case this
+        # module's `_each_column` exists to handle.
+        n_blank = int(s.isna().sum())
         s = s.dropna()
         if len(s) < 5:
+            continue
+        # Booleans-with-blanks, BEFORE the numeric branch (`DRIVE-067`). Both
+        # sentences that branch produced about this column were false: "Every
+        # value is a plain number (e.g. 'True', 'False')" — booleans are not
+        # numbers — and the confidence tier "nothing is lost: every value
+        # parses", when its own `coerce_numeric` fix stringifies first and
+        # blanked all 6,297 outcomes on the drive's file. This is a distinct
+        # defect with a distinct repair, so it gets its own finding.
+        if all_boolean_values(s.unique()):
+            out.append(ShapeFinding(
+                id=f"boolean_as_text__{col}",
+                severity="warning",
+                title=f"'{col}' holds True/False values in a text column",
+                detail=(f"{len(s):,} value(s), every one of them True or False, "
+                        f"stored as text rather than as a yes/no column"
+                        + (f", with {n_blank:,} blank." if n_blank else ".")),
+                why_it_matters=(
+                    "Stored this way the column is neither a number nor a label. "
+                    "Modeling, correlation and feature selection all refuse it, "
+                    "and the error they raise reads 'Unknown label type: unknown "
+                    "… on a regression target with continuous values' — which "
+                    "blames the column for being continuous when the problem is "
+                    "how it is stored."),
+                fix_label=f"Recode '{col}' to 1 (True) and 0 (False)",
+                fix_kind="coerce_boolean",
+                confidence="high",         # the mapping is exact; blanks stay blank
+                params={"column": col},
+                affected_columns=[str(col)],
+            ))
             continue
         raw_numeric = pd.to_numeric(s, errors="coerce").notna().mean()
         if raw_numeric >= 0.99:
@@ -819,6 +869,12 @@ def check_constant_columns(df: pd.DataFrame) -> List[ShapeFinding]:
         fix_label=f"Drop {len(const)} constant column(s)",
         fix_kind="drop_columns",
         confidence="low",
+        # The tier's default note is about missing-value sentinels and was
+        # printed under this finding verbatim (DRIVE8 finding 27). What is
+        # uncertain HERE is whether a study-level label is worth keeping.
+        uncertainty_note=("This is a question, not a recommendation — a column "
+                          "that is the same for everyone may still be a "
+                          "study-level label you want to keep."),
         params={"columns": const},
         affected_columns=list(map(str, const)),
     )]
@@ -994,6 +1050,23 @@ def apply_fix(df: pd.DataFrame, finding: ShapeFinding) -> Tuple[pd.DataFrame, st
         desc = (f"Converted '{col}' to numeric (removing units, separators and "
                 f"comparison signs)"
                 + (f"; {lost} value(s) could not be read and are now blank." if lost else "."))
+
+    elif kind == "coerce_boolean":
+        col = p["column"]
+        out = df.copy()
+        before = int(out[col].notna().sum())
+        # to_numeric, NOT _clean_numeric_text: the latter stringifies first, so
+        # True becomes the unreadable 'True' and every value in the column is
+        # blanked (`DRIVE-067`). On booleans this mapping is exact.
+        out[col] = pd.to_numeric(out[col], errors="coerce")
+        lost = before - int(out[col].notna().sum())
+        if lost:
+            raise ValueError(
+                f"'{col}' holds {lost} value(s) that are not True or False; "
+                f"recoding it this way would blank them.")
+        n_true = int((out[col] == 1).sum())
+        desc = (f"Recoded '{col}' from True/False to 1/0 (True → 1, {n_true:,} "
+                f"of {before:,} values; False → 0). Blank values stayed blank.")
 
     elif kind == "normalize_categories":
         col = p["column"]

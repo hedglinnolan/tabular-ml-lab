@@ -26,8 +26,125 @@ def _is_integer_like(s) -> bool:
 
 def _is_float_like(s) -> bool:
     return bool(_pdt.is_float_dtype(s))
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Literal
 from datetime import datetime
+
+
+# ── target dtype ─────────────────────────────────────────────────────────────
+#
+# `DRIVE-064`. A CSV column of True/False with blanks reads back as `object`
+# holding Python bools, and sklearn's `type_of_target` calls that 'unknown'.
+# `detect_task_type` above calls it classification — correctly, it IS a binary
+# outcome — and nothing then reconciled the two, so the column flowed into
+# every selector and explainer, each of which raised
+#
+#     Unknown label type: unknown. Maybe you are trying to fit a classifier,
+#     which expects discrete classes on a regression target with continuous
+#     values.
+#
+# a message that names the wrong cause (the column is not continuous) and the
+# wrong fix. The task type was never the problem; the storage was.
+UNUSABLE_TARGET_TYPES = ("unknown", "mixed")
+
+
+@dataclass
+class TargetDtypeDiagnosis:
+    """Whether sklearn can read this target column as labels, and what to do."""
+    column: str
+    dtype: str
+    sklearn_type: str
+    n_present: int
+    n_missing: int
+    usable: bool
+    repairable: bool                 # a safe, lossless recode exists
+    condition: str = ""              # what is actually wrong, in one sentence
+    fix: str = ""                    # what repairs it, naming the control
+    levels: List[str] = field(default_factory=list)
+
+
+def repair_boolean_target(s: pd.Series) -> pd.Series:
+    """True → 1, False → 0, blank → blank. The Import Doctor's own recode.
+
+    `pd.to_numeric`, not a string pass: stringifying first turns True into the
+    unreadable 'True' and blanks the column (`DRIVE-067`).
+    """
+    return pd.to_numeric(s, errors="coerce")
+
+
+def diagnose_target_dtype(df: pd.DataFrame, target: str) -> TargetDtypeDiagnosis:
+    """Can sklearn read `df[target]` as class labels — and if not, what fixes it?
+
+    Judged on the non-missing values, which is what every downstream page hands
+    to an estimator (they all mask on `notna()` first). `type_of_target` itself
+    raises on NaN, so a column is never called unusable merely for having
+    blanks.
+    """
+    if target not in df.columns:
+        return TargetDtypeDiagnosis(
+            column=target, dtype="", sklearn_type="missing", n_present=0,
+            n_missing=0, usable=False, repairable=False,
+            condition=f"Column '{target}' is not in this table.",
+            fix="Choose a target column that exists in the working table.")
+
+    s = df[target]
+    present = s.dropna()
+    n_present, n_missing = int(len(present)), int(s.isna().sum())
+    dtype = str(s.dtype)
+
+    if n_present == 0:
+        return TargetDtypeDiagnosis(
+            column=target, dtype=dtype, sklearn_type="empty", n_present=0,
+            n_missing=n_missing, usable=False, repairable=False,
+            condition=f"'{target}' has no value on any row — every one of its "
+                      f"{n_missing:,} rows is blank.",
+            fix="Choose a different target column, or supply the outcome values.")
+
+    try:
+        from sklearn.utils.multiclass import type_of_target
+        sklearn_type = str(type_of_target(present))
+    except Exception:
+        sklearn_type = "unknown"
+
+    if sklearn_type not in UNUSABLE_TARGET_TYPES:
+        return TargetDtypeDiagnosis(
+            column=target, dtype=dtype, sklearn_type=sklearn_type,
+            n_present=n_present, n_missing=n_missing,
+            usable=True, repairable=False)
+
+    levels = [str(v) for v in present.unique()[:6]]
+    # The Import Doctor owns "what shape is this column in", and its answer must
+    # be the same one, so that the repair this points at is the repair that runs.
+    from ml.import_doctor import all_boolean_values
+    if all_boolean_values(present.unique()):
+        return TargetDtypeDiagnosis(
+            column=target, dtype=dtype, sklearn_type=sklearn_type,
+            n_present=n_present, n_missing=n_missing,
+            usable=False, repairable=True, levels=levels,
+            condition=(
+                f"'{target}' holds True/False values in a text column"
+                + (f", with {n_missing:,} of its {n_present + n_missing:,} rows "
+                   f"blank" if n_missing else "")
+                + ". Stored this way it is neither a number nor a label: "
+                  "scikit-learn reads its type as 'unknown' and every selector, "
+                  "model and explainer raises on it."),
+            fix=(f"Recode '{target}' to 1 (True) and 0 (False), leaving blanks "
+                 f"blank — the Import Doctor's \"Recode '{target}' to 1 (True) "
+                 f"and 0 (False)\" repair in Step 3's structural review does "
+                 f"exactly this."))
+
+    return TargetDtypeDiagnosis(
+        column=target, dtype=dtype, sklearn_type=sklearn_type,
+        n_present=n_present, n_missing=n_missing,
+        usable=False, repairable=False, levels=levels,
+        condition=(
+            f"'{target}' mixes value kinds that scikit-learn cannot read as "
+            f"class labels (its type reads as '{sklearn_type}'; the values "
+            f"include {', '.join(map(repr, levels[:4]))}). This is a storage "
+            f"problem, not a continuous outcome."),
+        fix=("Repair the column in Step 3's structural review (the Import "
+             "Doctor), or in your source file, so that every value is of one "
+             "kind — then choose it as the target again."))
 
 
 def detect_task_type(df: pd.DataFrame, target: str) -> Dict:
@@ -110,7 +227,17 @@ def detect_task_type(df: pd.DataFrame, target: str) -> Dict:
     
     # Float numeric
     elif _is_float_like(target_series):
-        if n_unique <= 10:
+        _float_vals = set(target_series.dropna().unique())
+        if _float_vals == {0.0, 1.0}:
+            # A 0/1 float is a binary outcome with blanks — pandas types a
+            # column with any NaN as float. It is exactly as certain as the
+            # integer 0/1 case below, and the repaired boolean target
+            # (`DRIVE-064`) arrives in precisely this shape, so it must not be
+            # demoted to a hedged "best guess" by the repair that fixed it.
+            detected = 'classification'
+            confidence = 'high'
+            reasons.append("Target is binary (0/1, with blanks) - classification")
+        elif n_unique <= 10:
             detected = 'classification'
             confidence = 'med'
             reasons.append(f"Target has {n_unique} unique float values (≤10) - classification")
