@@ -31,6 +31,24 @@ class CalibrationResult:
     calibration_intercept: Optional[float] = None
     calibration_r2: Optional[float] = None
 
+    # WEAK CALIBRATION, for classification (`GUIDED-051`).
+    #
+    # Van Calster et al.'s hierarchy (J Clin Epidemiol 2016) has four rungs and
+    # this module computed the first and third: mean calibration through the
+    # bins, and moderate calibration through the reliability curve. The second —
+    # the calibration INTERCEPT and SLOPE from a logistic model of the outcome
+    # on the logit of predicted risk — was missing, and it is the pair the
+    # clinical pack calls mandatory. A slope below 1 means predictions that are
+    # too extreme, which is the signature of overfitting and the single most
+    # useful number on a calibration plot.
+    #
+    # Named separately from the regression fields above rather than reusing
+    # them: they are different quantities on different scales, and one pair of
+    # names for two meanings is how a reader comes to trust the wrong number.
+    weak_intercept: Optional[float] = None
+    weak_slope: Optional[float] = None
+    c_statistic: Optional[float] = None
+
 
 def calibration_classification(
     y_true: np.ndarray,
@@ -83,6 +101,7 @@ def calibration_classification(
     ece = np.sum(weights * abs_diffs)
     mce = np.max(abs_diffs) if len(abs_diffs) > 0 else 0.0
 
+    intercept, slope = weak_calibration(y_true, y_proba)
     return CalibrationResult(
         model_name=model_name,
         task_type="classification",
@@ -93,7 +112,104 @@ def calibration_classification(
         bin_true_freq=bin_true_freq,
         bin_pred_mean=bin_pred_mean,
         bin_counts=bin_counts,
+        weak_intercept=intercept,
+        weak_slope=slope,
+        c_statistic=c_statistic(y_true, y_proba),
     )
+
+
+def weak_calibration(y_true: np.ndarray, y_proba: np.ndarray,
+                     max_iter: int = 50) -> tuple:
+    """Calibration intercept and slope — the hierarchy's second rung.
+
+    A logistic regression of the outcome on the **logit of predicted risk**.
+    Perfect calibration is intercept 0, slope 1; a slope below 1 means the
+    predictions are too extreme, which is what overfitting looks like on this
+    figure.
+
+    Fitted by IRLS in numpy rather than by importing a solver, for two reasons
+    that are both about this being a two-parameter problem: it converges in a
+    handful of steps and is deterministic, and adding a dependency to a module
+    that has none would make the calibration figure unavailable anywhere the
+    solver is not installed.
+
+    Returns `(None, None)` where the fit is not defined — one outcome class, or
+    no variation in the predictions. **Not `(0.0, 1.0)`**: those are the values
+    of PERFECT calibration, and returning them for "could not compute" would be
+    the app reporting an ideal result where it has none.
+    """
+    y = np.asarray(y_true, dtype=float)
+    p = np.clip(np.asarray(y_proba, dtype=float), 1e-8, 1 - 1e-8)
+    if len(y) < 3 or len(np.unique(y)) < 2:
+        return None, None
+    x = np.log(p / (1.0 - p))
+    if not np.isfinite(x).all() or np.ptp(x) == 0:
+        return None, None
+
+    X = np.column_stack([np.ones_like(x), x])
+    beta = np.zeros(2)
+    converged = False
+    for _ in range(max_iter):
+        eta = X @ beta
+        mu = 1.0 / (1.0 + np.exp(-eta))
+        w = np.clip(mu * (1.0 - mu), 1e-10, None)
+        # (X'WX) b = X'W z, with z the working response.
+        z = eta + (y - mu) / w
+        XtW = X.T * w
+        try:
+            step = np.linalg.solve(XtW @ X, XtW @ z)
+        except np.linalg.LinAlgError:
+            return None, None
+        if not np.isfinite(step).all():
+            return None, None
+        moved = np.max(np.abs(step - beta))
+        beta = step
+        if moved < 1e-9:
+            converged = True
+            break
+    # NON-CONVERGENCE IS AN UNDEFINED FIT, NOT A SLOW ONE.
+    #
+    # This used to fall out of the loop and return whatever `beta` happened to
+    # hold, with no signal. Under complete or quasi-complete separation — which
+    # is exactly what a very good model on a small sample produces — IRLS does
+    # not converge, it DIVERGES: the coefficients run off toward infinity and
+    # the last iterate is an arbitrary point on that path. It has the type of a
+    # measurement and the meaning of a coordinate in an optimizer's history,
+    # and it would have been printed in the annotation box beside numbers that
+    # are real.
+    #
+    # Returning `(None, None)` puts it with every other undefined case here,
+    # for the reason the `(0.0, 1.0)` comment already gives one line up: the
+    # honest report of "no fit" is silence, and the figure renders the absence.
+    if not converged:
+        return None, None
+    return float(beta[0]), float(beta[1])
+
+
+def c_statistic(y_true: np.ndarray, y_proba: np.ndarray) -> Optional[float]:
+    """The concordance statistic (AUC), by ranks and with ties handled.
+
+    Computed here rather than imported for the same reason as the fit above: a
+    calibration figure that cannot state its C-statistic because a solver is
+    absent is a figure missing an annotation the checklist requires.
+    """
+    y = np.asarray(y_true, dtype=float)
+    p = np.asarray(y_proba, dtype=float)
+    pos, neg = (y == 1).sum(), (y == 0).sum()
+    if not pos or not neg:
+        return None
+    order = np.argsort(p, kind="mergesort")
+    ranks = np.empty(len(p), dtype=float)
+    ranks[order] = np.arange(1, len(p) + 1, dtype=float)
+    # Average ranks within ties, or a model predicting one constant scores 1.0.
+    sorted_p = p[order]
+    start = 0
+    for i in range(1, len(p) + 1):
+        if i == len(p) or sorted_p[i] != sorted_p[start]:
+            if i - start > 1:
+                ranks[order[start:i]] = ranks[order[start:i]].mean()
+            start = i
+    return float((ranks[y == 1].sum() - pos * (pos + 1) / 2.0) / (pos * neg))
 
 
 def calibration_regression(

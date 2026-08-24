@@ -1,0 +1,1779 @@
+<title>TurboTab — the Explore stack, at three bounds</title>
+<style>
+  :root {
+    --ground: #F7F8F6; --surface: #FFFFFF; --surface-2: #EFF3F1;
+    --ink: #1C2B29; --muted: #5B6B68; --faint: #8A9997; --line: #DCE3E0;
+    --line-soft: #E8EDEB;
+    --accent: #0E7368; --accent-ink: #0A5A51; --accent-tint: #E9F2F0;
+    --ok: #2F7D46; --ok-tint: #E9F2EB;
+    --warn: #9A6B0F; --warn-tint: #FBF3DE; --warn-line: #EAD9AC;
+    --stop: #8C2B2B; --stop-tint: #F7ECEA; --stop-line: #E4C3BD;
+    --shadow: 0 1px 2px rgba(28,43,41,.05), 0 4px 14px rgba(28,43,41,.06);
+    --serif: "Charter", "Iowan Old Style", "Source Serif Pro", Georgia, serif;
+    --sans: "Seravek", "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "Consolas", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #111917; --surface: #19231F; --surface-2: #202C28;
+      --ink: #E7EEEB; --muted: #9BABA7; --faint: #6E807C;
+      --line: #2A3733; --line-soft: #232F2B;
+      --accent: #45BFAF; --accent-ink: #6FD4C6; --accent-tint: #1B2E2A;
+      --ok: #5CB877; --ok-tint: #1C2E22;
+      --warn: #E0B45C; --warn-tint: #2B2415; --warn-line: #4A3D1C;
+      --stop: #D97A6C; --stop-tint: #2E1E1B; --stop-line: #573530;
+      --shadow: 0 1px 2px rgba(0,0,0,.25), 0 4px 14px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #F7F8F6; --surface: #FFFFFF; --surface-2: #EFF3F1;
+    --ink: #1C2B29; --muted: #5B6B68; --faint: #8A9997;
+    --line: #DCE3E0; --line-soft: #E8EDEB;
+    --accent: #0E7368; --accent-ink: #0A5A51; --accent-tint: #E9F2F0;
+    --ok: #2F7D46; --ok-tint: #E9F2EB;
+    --warn: #9A6B0F; --warn-tint: #FBF3DE; --warn-line: #EAD9AC;
+    --stop: #8C2B2B; --stop-tint: #F7ECEA; --stop-line: #E4C3BD;
+    --shadow: 0 1px 2px rgba(28,43,41,.05), 0 4px 14px rgba(28,43,41,.06);
+  }
+  :root[data-theme="dark"] {
+    --ground: #111917; --surface: #19231F; --surface-2: #202C28;
+    --ink: #E7EEEB; --muted: #9BABA7; --faint: #6E807C;
+    --line: #2A3733; --line-soft: #232F2B;
+    --accent: #45BFAF; --accent-ink: #6FD4C6; --accent-tint: #1B2E2A;
+    --ok: #5CB877; --ok-tint: #1C2E22;
+    --warn: #E0B45C; --warn-tint: #2B2415; --warn-line: #4A3D1C;
+    --stop: #D97A6C; --stop-tint: #2E1E1B; --stop-line: #573530;
+    --shadow: 0 1px 2px rgba(0,0,0,.25), 0 4px 14px rgba(0,0,0,.28);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--ground); color: var(--ink);
+         font-family: var(--sans); font-size: 14.5px; line-height: 1.55;
+         -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 22px 90px; }
+
+  /* ——— the app speaks serif, the user acts sans, data speaks mono (§03) ——— */
+  h1, h2, h3, .q, .f-title { font-family: var(--serif); text-wrap: balance; }
+  h1 { font-size: 27px; font-weight: 700; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 { font-size: 20px; font-weight: 700; margin: 44px 0 8px; }
+  h3 { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
+  p { margin: 0 0 12px; max-width: 68ch; }
+  .lede { color: var(--muted); font-size: 15px; max-width: 70ch; }
+  .kicker { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase;
+            color: var(--faint); font-weight: 600; margin: 0 0 8px; }
+  .v, code { font-family: var(--mono); font-size: .88em;
+             background: var(--surface-2); border: 1px solid var(--line);
+             border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
+  a { color: var(--accent-ink); }
+
+  /* ——— the bound switch: the one accent moment on this page (§02) ——— */
+  .switch { position: sticky; top: 0; z-index: 5; display: flex; gap: 10px;
+            align-items: baseline; flex-wrap: wrap; margin: 26px 0 8px;
+            padding: 13px 15px; background: var(--surface);
+            border: 1px solid var(--line); border-radius: 12px;
+            box-shadow: var(--shadow); }
+  .switch-lab { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase;
+                color: var(--faint); font-weight: 600; }
+  .bnd { font-family: var(--mono); font-size: 12.5px; border-radius: 20px;
+         padding: 5px 14px; border: 1px dashed var(--line); background: none;
+         color: var(--muted); cursor: pointer; }
+  .bnd:hover { border-style: solid; border-color: var(--accent); color: var(--accent-ink); }
+  .bnd[aria-pressed="true"] { border-style: solid; border-color: var(--accent);
+                              background: var(--accent-tint); color: var(--accent-ink);
+                              font-weight: 600; }
+  .ships { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+
+  /* ——— a panel is one fixture ——— */
+  .panel { background: var(--surface); border: 1px solid var(--line);
+           border-radius: 13px; box-shadow: var(--shadow); padding: 20px 22px;
+           margin: 16px 0; }
+  .panel-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap;
+                border-bottom: 1px solid var(--line-soft); padding-bottom: 11px;
+                margin-bottom: 13px; }
+  .panel-head h3 { flex: 1; min-width: 220px; }
+  .fx { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+  .why { color: var(--muted); font-size: 13px; margin: 0 0 14px; max-width: 74ch; }
+
+  .tally { display: flex; gap: 7px; flex-wrap: wrap; margin: 0 0 14px; }
+  .tally b { font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+             color: var(--muted); background: var(--surface-2);
+             border: 1px solid var(--line); border-radius: 20px; padding: 2px 9px; }
+  .tally b.on { border-color: var(--accent); color: var(--accent-ink);
+                background: var(--accent-tint); }
+
+  /* ——— the cards, as the app renders them ——— */
+  .findlist { display: flex; flex-direction: column; }
+  .find { padding: 14px 0; border-top: 1px solid var(--line-soft); }
+  .findlist > .find:first-child { border-top: none; }
+  /* A `critical` finding gets NO costume, and that is deliberate rather than
+     unfinished. §02 reserves `--stop` for the blocker band and its unresolved
+     recorded artifact — "not error styling, not validation, not emphasis" — and
+     the real page obeys that: `var(--stop)` appears in `index.html` only inside
+     `.blocker*` and `.attested`. A prototype that dressed a critical in the
+     strongest claim in the palette would be showing a treatment the app does not
+     have, which is this project's governing failure wearing a mock-up. What
+     marks the critical here is what marks it in the app: it is card one. */
+  .f-title { font-size: 15px; font-weight: 700; margin: 0 0 3px;
+             display: flex; gap: 7px; align-items: baseline; flex-wrap: wrap; }
+  .f-because { color: var(--muted); font-size: 13px; margin: 0 0 9px;
+               max-width: 74ch; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip { font-family: var(--mono); font-size: 10px; color: var(--muted);
+          background: var(--surface-2); border: 1px solid var(--line);
+          border-radius: 20px; padding: 2px 8px; white-space: nowrap; }
+  .chip.src { color: var(--faint); }
+  .chip.scope { font-family: var(--sans); font-style: italic; letter-spacing: 0;
+                text-transform: none; color: var(--muted);
+                border-color: var(--line-soft); }
+  .badge { font-family: var(--mono); font-size: 9px; letter-spacing: .06em;
+           text-transform: uppercase; border-radius: 4px; padding: 1px 5px;
+           border: 1px solid var(--line); color: var(--muted);
+           background: var(--surface-2); }
+  .badge.settled { color: var(--ok); border-color: var(--ok); background: var(--ok-tint); }
+  .badge.convention { color: var(--warn); border-color: var(--warn-line);
+                      background: var(--warn-tint); }
+
+  /* ——— the counted remainder: a row, never a card (§04) ——— */
+  .more { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+          padding: 13px 0 3px; border-top: 1px solid var(--line-soft);
+          margin-top: 4px; }
+  .pill { border: 1px dashed var(--line); background: none; color: var(--muted);
+          border-radius: 20px; padding: 5px 13px; font-size: 12px;
+          font-weight: 500; font-family: var(--sans); cursor: pointer; }
+  .pill:hover { border-style: solid; border-color: var(--accent); color: var(--accent-ink); }
+  .pill[aria-expanded="true"] { border-style: solid; }
+  .more-detail, .more-all { font-family: var(--mono); font-size: 10px;
+                            color: var(--faint); letter-spacing: .02em; }
+  .more-all { display: block; padding: 13px 0 3px;
+              border-top: 1px solid var(--line-soft); margin-top: 4px; }
+  .is-hidden { display: none; }
+
+  /* ——— the three things a screenshot would hide ——— */
+  .look { border: 1px solid var(--line); border-left: 3px solid var(--accent);
+          background: var(--surface); border-radius: 0 12px 12px 0;
+          padding: 15px 18px; margin: 14px 0; box-shadow: var(--shadow); }
+  .look h3 { margin-bottom: 5px; }
+  .look p:last-child { margin-bottom: 0; }
+  .note { border: 1px solid var(--warn-line); background: var(--warn-tint);
+          border-radius: 11px; padding: 13px 16px; margin: 14px 0;
+          font-size: 13.5px; color: var(--ink); }
+  .note p:last-child { margin-bottom: 0; }
+  .scroller { overflow-x: auto; }
+  table.data { border-collapse: collapse; font-family: var(--mono);
+               font-size: 11.5px; margin: 6px 0 4px; min-width: 520px; }
+  table.data th, table.data td { text-align: left; padding: 5px 13px 5px 0;
+                                 border-bottom: 1px solid var(--line-soft);
+                                 white-space: nowrap; font-variant-numeric: tabular-nums; }
+  table.data th { color: var(--faint); font-weight: 500; font-size: 10px;
+                  letter-spacing: .06em; text-transform: uppercase; }
+  table.data tr.mid td { color: var(--accent-ink); font-weight: 600; }
+  .foot { margin-top: 50px; padding-top: 18px; border-top: 1px solid var(--line);
+          color: var(--faint); font-size: 12.5px; }
+  @media (max-width: 640px) { .wrap { padding: 26px 15px 60px; } }
+</style>
+
+<div class="wrap">
+
+<p class="kicker">GUIDED-149 · L45 Part C · the gate is the look</p>
+<h1>The Explore stack, at three bounds</h1>
+<p class="lede">
+  Every loop before this one was gated by a command. This one is gated by you opening it.
+  <code>ROADMAP.md</code> condition 7 says the engine must be correct, must surface, and must be
+  beautiful — and the third has no automated instrument at all. <code>pageharness.py</code> says so
+  in its own docstring: it proves what the controller renders and cannot prove that anything is
+  <em>visible</em>. So this page is the substitute, and the only question it asks is
+  <strong>how many findings the Explore section should push before it collapses the rest.</strong>
+</p>
+
+<div class="switch" role="group" aria-label="Bound">
+  <span class="switch-lab">Bound</span>
+  <button class="bnd" type="button" data-bound="2" aria-pressed="false">2</button>
+  <button class="bnd" type="button" data-bound="5" aria-pressed="true">5</button>
+  <button class="bnd" type="button" data-bound="8" aria-pressed="false">8</button>
+  <span class="ships" id="shipsLine"></span>
+</div>
+
+<div class="look">
+  <h3>Why two is on this page, and why it is not the answer</h3>
+  <p>
+    <code>PRODUCT_VISION.md</code> §08 asks <em>“how many noticings may a step raise at once?”</em>
+    and answers <strong>two</strong>. That number is right, and it answers a different question.
+    Two is the <strong>interruption</strong> budget — how often the coach may take you off what you
+    were doing. The Explore stack interrupts nothing; it <em>is</em> the section, opening already
+    answered. Press <b>2</b> above and look at the clinical table: <strong>ten of thirteen</strong>
+    findings go behind one affordance, and five of the eight are the ones the clinical lens exists
+    to produce. That is the domain content three loops made reachable, deleted from view by a
+    number borrowed from a different question.
+  </p>
+</div>
+
+<div class="look">
+  <h3>What the bound is, and what it is not allowed to do</h3>
+  <p id="becauseLine"></p>
+  <p style="margin-bottom:0">
+    Three things it may never do, all ruled elsewhere. <strong>Nothing that gates a decision is
+    collapsed</strong> — <code>ROADMAP.md</code> Decision B, <em>“a blocker that only offers is not
+    gating”</em>, and criticals sit outside the bound entirely. <strong>The shelf is never
+    shortened</strong> — everything served is still here, one press away, in the same payload.
+    <strong>The remainder is counted and typed</strong> — <em>“7 more — 3 warnings, 4 cautions”</em>
+    is an answer; a fade-out is a truncation wearing an affordance’s clothes.
+  </p>
+</div>
+
+<h2>The five tables</h2>
+<p class="lede" style="margin-bottom:20px">
+  Real payloads, captured by driving the API against the fixtures in
+  <code>turbotab/sample_data/</code> and partitioned by the real
+  <code>turbotab/attention.py</code>. Nothing here is typed by hand. Each stack renders exactly as
+  the Guided page renders it; press the affordance to open the remainder, which is what the app
+  does — <strong>instantly, with no fetch and no animation</strong>
+  (<code>DESIGN_LANGUAGE.md</code> §05.2: an expand is disclosure, not consequence).
+</p>
+
+<div id="panels"></div>
+
+<h2>The three things a screenshot would hide</h2>
+
+<div class="look">
+  <h3>1 · Where the critical sits</h3>
+  <p id="lookCritical"></p>
+</div>
+
+<div class="look">
+  <h3>2 · What the collapsed remainder says</h3>
+  <p id="lookRemainder"></p>
+</div>
+
+<div class="look">
+  <h3>3 · One card short of collapsing</h3>
+  <p id="lookEdge"></p>
+</div>
+
+<div class="note">
+  <p><strong>The case this page exists to have you rule on.</strong> At a bound of five,
+  <code>nhanes_kilojoules.csv</code> has six findings, so the affordance hides <em>one</em> card and
+  costs one row. That is mildly silly and it is not wrong. The obvious fix — <em>collapse unless the
+  overflow is one</em> — is a second tuned parameter, and <code>DESIGN_LANGUAGE.md</code> §05 has
+  already paid for that shape once: the scroll rule was revised to a size-dependent condition, was
+  correct at one dataset size and wrong at the next, and the lesson written down is
+  <em>“prefer a rule with no free parameter over a rule with a tuned one.”</em> So it ships without
+  the special case, and this panel is here so the decision is yours rather than the builder’s.</p>
+</div>
+
+<div class="note">
+  <p><strong>What is not on this page.</strong> <span id="notCaptured"></span></p>
+  <p style="margin-bottom:0">And the honest limit on the whole argument: the bound is the median of
+  <em>this repository’s</em> sixteen fixtures, which are synthetic.
+  <code>DESIGN_LANGUAGE.md</code> §05 is explicit that a lesson learned on synthetic data is a
+  hypothesis until a real dataset has seen it. The number is therefore a stated parameter with a
+  stated reason, not a constant — <code>turbotab/attention.py</code>’s <code>BOUND</code>, and every
+  caller may pass another.</p>
+</div>
+
+<h2>The population the bound was measured on</h2>
+<div class="scroller" id="popTable"></div>
+
+<p class="foot">
+  Static HTML. No build step, no network, no server — open it from the filesystem.
+  Regenerate the numbers with
+  <code>venv/bin/python docs/turbotab/prototypes/capture_explore_stack.py</code>.
+  Companions: <code>interview-feed.html</code> (the whole arc),
+  <code>design-language.html</code> (the written system).
+</p>
+
+</div>
+
+<script>
+/* ⟦CAPTURE-BEGIN⟧ */
+var CAPTURE = {
+ "bounds": [
+  2,
+  5,
+  8
+ ],
+ "ships": 5,
+ "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+ "not_captured": "No fixture in turbotab/sample_data/ produces exactly two Explore findings; the small end of the population is 1 · 3 · 3 · 3 · 3. The one-finding and three-finding tables are shown instead, and the probe drives a synthetic two.",
+ "cases": [
+  {
+   "fixture": "clinical_labs.csv",
+   "lens": "clinical",
+   "target": "readmitted",
+   "n_served_total": 21,
+   "cards": [
+    {
+     "id": "pack::clinical::mixed_units",
+     "title": "`glucose` holds two populations a factor of 18 apart",
+     "detail": "Its values split into 102 around 6.1 and 186 around 116.5 — an observed ratio of 19.10 against the mmol/L-to-mg/dL conversion factor of 18. That almost always means two sites or two eras reported different units into the same field. **TurboTab has not converted anything and will not.** Conversion depends on molecular weight for many analy",
+     "severity": "critical",
+     "confidence": "high",
+     "source_label": "clinical lens",
+     "subject": "glucose",
+     "has_chips": true,
+     "columns": [
+      "glucose"
+     ],
+     "badge": "SETTLED"
+    },
+    {
+     "id": "pack::clinical::censored_values",
+     "title": "2 analytes carry censored values",
+     "detail": "`hs_crp` records 19.1% of its values as below 0.3 — left-censored at the assay's limit of detection. TurboTab has not substituted a number for them. The same reading applies to `ferritin`; the table below carries each analyte's fraction and limit separately, because a detection limit is a property of an assay and not of a study. `qns`, `t",
+     "severity": "warning",
+     "confidence": "high",
+     "source_label": "clinical lens",
+     "subject": "hs_crp, ferritin, wbc",
+     "has_chips": true,
+     "columns": [
+      "hs_crp",
+      "ferritin",
+      "wbc"
+     ],
+     "badge": "SETTLED"
+    },
+    {
+     "id": "pack::clinical::impossible_vs_extreme",
+     "title": "`sbp` holds impossible values and abnormal ones, and they are different categories",
+     "detail": "4 values in `sbp` are outside 40–300 mmHg — physiologically impossible in a living outpatient, and almost certainly entry errors. TurboTab recommends setting them to missing and reporting the count. **This is different from the 31 values outside 90–200 mmHg, which are abnormal but real and must be kept**: excluding abnormal-but-possible v",
+     "severity": "warning",
+     "confidence": "high",
+     "source_label": "clinical lens",
+     "subject": "sbp",
+     "has_chips": true,
+     "columns": [
+      "sbp"
+     ],
+     "badge": "SETTLED"
+    },
+    {
+     "id": "pack::clinical::mixed_result_type",
+     "title": "`troponin` records both a measured value and a verdict",
+     "detail": "247 of its rows carry a number and 41 carry `negative`, `positive`. Those are two different kinds of result in one field — a quantitative assay and a qualitative one — and they cannot be compared on any scale.",
+     "severity": "warning",
+     "confidence": "high",
+     "source_label": "clinical lens",
+     "subject": "troponin",
+     "has_chips": true,
+     "columns": [
+      "troponin"
+     ],
+     "badge": "SETTLED"
+    },
+    {
+     "id": "pack::clinical::number_format",
+     "title": "2 columns write numbers in a format that does not parse",
+     "detail": "`creatinine` carries a decimal comma, which parses as text in an English locale and as a thousands separator in the ambiguous cases (`0,90`); `platelets` carries a thousands separator, so every value parses as text (`221,000`). `creatinine` is the one to check first: `0,90` is one value in a decimal-comma locale and a hundred times that i",
+     "severity": "warning",
+     "confidence": "high",
+     "source_label": "clinical lens",
+     "subject": "creatinine, platelets",
+     "has_chips": true,
+     "columns": [
+      "creatinine",
+      "platelets"
+     ],
+     "badge": "SETTLED"
+    },
+    {
+     "id": "pack::clinical::temporal_implausibility",
+     "title": "2 trajectories are not believable",
+     "detail": "1 adult change height by more than 5 cm between visits — the largest is 9 cm, from 167.6 to 176.6; 1 weight change exceed 30% inside 30 days — the largest is -34% over 21 days, from 67.9 to 44.7.",
+     "severity": "warning",
+     "confidence": "high",
+     "source_label": "clinical lens",
+     "subject": "height_cm, weight_kg",
+     "has_chips": true,
+     "columns": [
+      "height_cm",
+      "weight_kg"
+     ],
+     "badge": "CONVENTION"
+    },
+    {
+     "id": "pack::clinical::text_numeric",
+     "title": "4 columns arrived as text and are mostly numbers",
+     "detail": "`wbc` parses as a number in 95.1% of its rows. The 2 values that stop it are `QNS`, `TNTC`. A column above 80% numeric-parseable is near-certain evidence of a qualifier embedded in the result rather than a genuinely categorical measurement. The same reading applies to `ferritin`, `troponin`, `hs_crp`.",
+     "severity": "warning",
+     "confidence": "high",
+     "source_label": "clinical lens",
+     "subject": "wbc, ferritin, troponin, hs_crp",
+     "has_chips": true,
+     "columns": [
+      "wbc",
+      "ferritin",
+      "troponin",
+      "hs_crp"
+     ],
+     "badge": "SETTLED"
+    },
+    {
+     "id": "pack::clinical::default_value_mass",
+     "title": "`dbp` piles up on 80",
+     "detail": "15.3% of its values are exactly 80, against 5.6% for the next most common reading. That is a documented EHR artifact — value preference and manual entry rather than measurement. The same spike appears at 98.6 in `temp_f`, 120 in `sbp`. TurboTab has not removed or replaced any of them: a genuine 120/80 and a transcribed one are the same nu",
+     "severity": "warning",
+     "confidence": "medium",
+     "source_label": "clinical lens",
+     "subject": "dbp, sbp, temp_f",
+     "has_chips": true,
+     "columns": [
+      "dbp",
+      "sbp",
+      "temp_f"
+     ],
+     "badge": "CONVENTION"
+    },
+    {
+     "id": "profile_sample_size_0",
+     "title": "Small sample",
+     "detail": "With 288 samples, some models may overfit. Regularization and validation are important.",
+     "severity": "warning",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "About this study as a whole, not about any one column",
+     "has_chips": false,
+     "columns": [],
+     "badge": ""
+    },
+    {
+     "id": "profile_cardinality_2",
+     "title": "8 high-cardinality features",
+     "detail": "Features patient_id, visit_date, hs_crp and 5 more have many unique values. One-hot encoding will create many columns.",
+     "severity": "caution",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "patient_id, visit_date, hs_crp, ferritin, wbc, troponin, platelets, creatinine",
+     "has_chips": true,
+     "columns": [
+      "patient_id",
+      "visit_date",
+      "hs_crp",
+      "ferritin",
+      "wbc"
+     ],
+     "badge": ""
+    },
+    {
+     "id": "profile_imbalance_1",
+     "title": "Mild imbalance",
+     "detail": "Class imbalance ratio is 3.4:1. The minority class has only 65 samples. Accuracy can be misleading; use F1, PR-AUC, or balanced accuracy instead.",
+     "severity": "caution",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "About this study as a whole, not about any one column",
+     "has_chips": false,
+     "columns": [],
+     "badge": ""
+    },
+    {
+     "id": "profile_outliers_3",
+     "title": "4 features with outliers",
+     "detail": "4 numeric features have significant outliers. This can affect model performance, especially for distance-based and linear models.",
+     "severity": "caution",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "sbp, dbp, temp_f, bnp",
+     "has_chips": true,
+     "columns": [
+      "sbp",
+      "dbp",
+      "temp_f",
+      "bnp"
+     ],
+     "badge": ""
+    },
+    {
+     "id": "profile_physiologic_plausibility_4",
+     "title": "2 physiologic flags",
+     "detail": "Empirical plausibility checks found values outside the NHANES improbability band (p01–p99), which is not a reference interval. These checks are based on population distributions, not clinical guidance.",
+     "severity": "caution",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "sbp, glucose, dbp",
+     "has_chips": true,
+     "columns": [
+      "sbp",
+      "glucose",
+      "dbp"
+     ],
+     "badge": ""
+    }
+   ],
+   "notes": [],
+   "stacks": {
+    "2": {
+     "bound": 2,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 13,
+     "pushed": [
+      "pack::clinical::mixed_units",
+      "pack::clinical::censored_values",
+      "pack::clinical::impossible_vs_extreme"
+     ],
+     "collapsed": [
+      "pack::clinical::mixed_result_type",
+      "pack::clinical::number_format",
+      "pack::clinical::temporal_implausibility",
+      "pack::clinical::text_numeric",
+      "pack::clinical::default_value_mass",
+      "profile_sample_size_0",
+      "profile_cardinality_2",
+      "profile_imbalance_1",
+      "profile_outliers_3",
+      "profile_physiologic_plausibility_4"
+     ],
+     "outside_bound": 1,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::clinical::mixed_units",
+      "pack::clinical::censored_values",
+      "pack::clinical::impossible_vs_extreme"
+     ],
+     "cleared": [],
+     "complete": false,
+     "remainder": {
+      "n": 10,
+      "by_severity": [
+       {
+        "key": "warning",
+        "n": 6,
+        "label": "warnings"
+       },
+       {
+        "key": "caution",
+        "n": 4,
+        "label": "cautions"
+       }
+      ],
+      "by_source": [
+       {
+        "key": "clinical lens",
+        "n": 5,
+        "label": "from the clinical lens"
+       },
+       {
+        "key": "this table",
+        "n": 5,
+        "label": "about this table"
+       }
+      ]
+     },
+     "affordance": "10 more — 6 warnings, 4 cautions",
+     "affordance_detail": "5 from the clinical lens · 5 about this table",
+     "affordance_open": "Fold those 10 back",
+     "affordance_title": "Adds 10 more findings to this list. They ranked below the top 2; nothing is out of the record either way."
+    },
+    "5": {
+     "bound": 5,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 13,
+     "pushed": [
+      "pack::clinical::mixed_units",
+      "pack::clinical::censored_values",
+      "pack::clinical::impossible_vs_extreme",
+      "pack::clinical::mixed_result_type",
+      "pack::clinical::number_format",
+      "pack::clinical::temporal_implausibility"
+     ],
+     "collapsed": [
+      "pack::clinical::text_numeric",
+      "pack::clinical::default_value_mass",
+      "profile_sample_size_0",
+      "profile_cardinality_2",
+      "profile_imbalance_1",
+      "profile_outliers_3",
+      "profile_physiologic_plausibility_4"
+     ],
+     "outside_bound": 1,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::clinical::mixed_units",
+      "pack::clinical::censored_values",
+      "pack::clinical::impossible_vs_extreme",
+      "pack::clinical::mixed_result_type",
+      "pack::clinical::number_format",
+      "pack::clinical::temporal_implausibility"
+     ],
+     "cleared": [],
+     "complete": false,
+     "remainder": {
+      "n": 7,
+      "by_severity": [
+       {
+        "key": "warning",
+        "n": 3,
+        "label": "warnings"
+       },
+       {
+        "key": "caution",
+        "n": 4,
+        "label": "cautions"
+       }
+      ],
+      "by_source": [
+       {
+        "key": "clinical lens",
+        "n": 2,
+        "label": "from the clinical lens"
+       },
+       {
+        "key": "this table",
+        "n": 5,
+        "label": "about this table"
+       }
+      ]
+     },
+     "affordance": "7 more — 3 warnings, 4 cautions",
+     "affordance_detail": "2 from the clinical lens · 5 about this table",
+     "affordance_open": "Fold those 7 back",
+     "affordance_title": "Adds 7 more findings to this list. They ranked below the top 5; nothing is out of the record either way."
+    },
+    "8": {
+     "bound": 8,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 13,
+     "pushed": [
+      "pack::clinical::mixed_units",
+      "pack::clinical::censored_values",
+      "pack::clinical::impossible_vs_extreme",
+      "pack::clinical::mixed_result_type",
+      "pack::clinical::number_format",
+      "pack::clinical::temporal_implausibility",
+      "pack::clinical::text_numeric",
+      "pack::clinical::default_value_mass",
+      "profile_sample_size_0"
+     ],
+     "collapsed": [
+      "profile_cardinality_2",
+      "profile_imbalance_1",
+      "profile_outliers_3",
+      "profile_physiologic_plausibility_4"
+     ],
+     "outside_bound": 1,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::clinical::mixed_units",
+      "pack::clinical::censored_values",
+      "pack::clinical::impossible_vs_extreme",
+      "pack::clinical::mixed_result_type",
+      "pack::clinical::number_format",
+      "pack::clinical::temporal_implausibility",
+      "pack::clinical::text_numeric",
+      "pack::clinical::default_value_mass",
+      "profile_sample_size_0"
+     ],
+     "cleared": [],
+     "complete": false,
+     "remainder": {
+      "n": 4,
+      "by_severity": [
+       {
+        "key": "caution",
+        "n": 4,
+        "label": "cautions"
+       }
+      ],
+      "by_source": [
+       {
+        "key": "this table",
+        "n": 4,
+        "label": "about this table"
+       }
+      ]
+     },
+     "affordance": "4 more — 4 cautions",
+     "affordance_detail": "4 about this table",
+     "affordance_open": "Fold those 4 back",
+     "affordance_title": "Adds 4 more findings to this list. They ranked below the top 8; nothing is out of the record either way."
+    }
+   },
+   "why": "The table that produced the finding. 21 served, 13 in the Explore stack, one of them the only critical."
+  },
+  {
+   "fixture": "metabolomics_untargeted.csv",
+   "lens": "metabolomics",
+   "target": "responder",
+   "n_served_total": 12,
+   "cards": [
+    {
+     "id": "pack::metabolomics::pooled_qc",
+     "title": "8 rows look like pooled quality-control injections",
+     "detail": "The 8 rows where `sample_type` is 'pooled_qc' vary far less across the 396 features than the 72 rows where it is 'participant' — a median relative standard deviation of 25% against 59%. That is one sample injected repeatedly, not 8 different people.",
+     "severity": "critical",
+     "confidence": "high",
+     "source_label": "metabolomics lens",
+     "subject": "sample_type",
+     "has_chips": true,
+     "columns": [
+      "sample_type"
+     ],
+     "badge": "SETTLED"
+    },
+    {
+     "id": "profile_dimensionality_1",
+     "title": "High dimensionality",
+     "detail": "Feature-to-sample ratio is 4.99 (399 features, 80 samples). This can cause overfitting and unstable estimates.",
+     "severity": "critical",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "About this study as a whole, not about any one column",
+     "has_chips": false,
+     "columns": [],
+     "badge": ""
+    },
+    {
+     "id": "profile_missingness_2",
+     "title": "165 features with high missingness",
+     "detail": "165 features have >10% missing values, and 11 have >50% missing. Missing data can bias results if not handled properly.",
+     "severity": "critical",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "age, sex, bmi, mz_0002, mz_0003, mz_0004, mz_0005, mz_0007, mz_0009, mz_0010, mz_0011, mz_0012, mz_0013, mz_0015, mz_0016, mz_0017, mz_0018, mz_0019, mz_0020, mz_0021, mz_0022, mz_0023, mz_0026, mz_0027, mz_0028, mz_0029, mz_0031, mz_0034, mz_0037, mz_0038, mz_0039, mz_0041, mz_0042, mz_0043, mz_0045, mz_0046, mz_0047, mz_0048, mz_0049, mz_0050, mz_0055, mz_0056, mz_0057, mz_0058, mz_0059, mz_0060, mz_0062, mz_0063, mz_0065, mz_0066, mz_0067, mz_0068, mz_0069, mz_0070, mz_0071, mz_0073, mz_0074, mz_0076, mz_0078, mz_0079, mz_0080, mz_0081, mz_0083, mz_0084, mz_0085, mz_0086, mz_0088, mz_0089, mz_0091, mz_0092, mz_0093, mz_0094, mz_0095, mz_0096, mz_0097, mz_0098, mz_0100, mz_0101, mz_0103, mz_0104, mz_0105, mz_0106, mz_0107, mz_0108, mz_0109, mz_0110, mz_0111, mz_0112, mz_0113, mz_0116, mz_0117, mz_0118, mz_0119, mz_0120, mz_0121, mz_0122, mz_0123, mz_0124, mz_0126, mz_0127, mz_0128, mz_0130, mz_0131, mz_0132, mz_0134, mz_0135, mz_0136, mz_0137, mz_0138, mz_0139, mz_0141, mz_0143, mz_0144, mz_0145, mz_0146, mz_0147, mz_0148, mz_0152, mz_0153, mz_0154, mz_0155, mz_0157, mz_0158, mz_0160, mz_0161, mz_0163, mz_0164, mz_0165, mz_0166, mz_0167, mz_0168, mz_0170, mz_0171, mz_0172, mz_0173, mz_0175, mz_0176, mz_0177, mz_0178, mz_0179, mz_0180, mz_0181, mz_0182, mz_0183, mz_0185, mz_0186, mz_0187, mz_0188, mz_0190, mz_0191, mz_0192, mz_0193, mz_0195, mz_0196, mz_0198, mz_0199, mz_0201, mz_0202, mz_0203, mz_0205, mz_0207, mz_0208, mz_0209, mz_0210, mz_0211, mz_0213, mz_0214, mz_0216, mz_0217, mz_0218, mz_0222, mz_0223, mz_0224, mz_0225, mz_0228, mz_0229, mz_0230, mz_0232, mz_0233, mz_0234, mz_0235, mz_0236, mz_0237, mz_0238, mz_0239, mz_0241, mz_0242, mz_0243, mz_0244, mz_0246, mz_0248, mz_0250, mz_0251, mz_0252, mz_0254, mz_0255, mz_0256, mz_0257, mz_0260, mz_0261, mz_0262, mz_0263, mz_0264, mz_0265, mz_0266, mz_0267, mz_0268, mz_0269, mz_0270, mz_0271, mz_0274, mz_0275, mz_0276, mz_0277, mz_0278, mz_0279, mz_0283, mz_0284, mz_0285, mz_0286, mz_0287, mz_0288, mz_0289, mz_0290, mz_0292, mz_0293, mz_0294, mz_0296, mz_0297, mz_0298, mz_0301, mz_0302, mz_0303, mz_0304, mz_0305, mz_0306, mz_0307, mz_0309, mz_0310, mz_0311, mz_0312, mz_0313, mz_0314, mz_0315, mz_0316, mz_0317, mz_0318, mz_0319, mz_0320, mz_0321, mz_0322, mz_0324, mz_0325, mz_0326, mz_0327, mz_0328, mz_0329, mz_0331, mz_0333, mz_0336, mz_0337, mz_0338, mz_0339, mz_0340, mz_0341, mz_0342, mz_0343, mz_0344, mz_0345, mz_0346, mz_0348, mz_0350, mz_0351, mz_0352, mz_0354, mz_0355, mz_0356, mz_0358, mz_0360, mz_0361, mz_0362, mz_0363, mz_0364, mz_0365, mz_0366, mz_0369, mz_0370, mz_0371, mz_0372, mz_0373, mz_0374, mz_0375, mz_0377, mz_0378, mz_0379, mz_0380, mz_0381, mz_0382, mz_0383, mz_0384, mz_0385, mz_0386, mz_0388, mz_0389, mz_0390, mz_0391, mz_0392, responder",
+     "has_chips": true,
+     "columns": [
+      "age",
+      "sex",
+      "bmi",
+      "mz_0002",
+      "mz_0003"
+     ],
+     "badge": ""
+    },
+    {
+     "id": "profile_sample_size_0",
+     "title": "Very small sample",
+     "detail": "With only 80 samples, model training is highly constrained. Use strong regularization, cross-validation, and simple models. Results may not generalize well.",
+     "severity": "critical",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "About this study as a whole, not about any one column",
+     "has_chips": false,
+     "columns": [],
+     "badge": ""
+    },
+    {
+     "id": "pack::metabolomics::left_censored",
+     "title": "Your missing values cluster in the lowest-abundance features",
+     "detail": "Across 396 features, a feature's missing rate tracks its abundance rank at a rank correlation of -0.97. 307 features have blanks; the highest rate is 55%, on one of the least abundant.",
+     "severity": "warning",
+     "confidence": "high",
+     "source_label": "metabolomics lens",
+     "subject": "mz_0022, mz_0121, mz_0068, mz_0267, mz_0322, mz_0003, mz_0124, mz_0195",
+     "has_chips": true,
+     "columns": [
+      "mz_0022",
+      "mz_0121",
+      "mz_0068",
+      "mz_0267",
+      "mz_0322"
+     ],
+     "badge": "SETTLED"
+    },
+    {
+     "id": "pack::metabolomics::run_order",
+     "title": "There is a run-order column, and intensity tracks it",
+     "detail": "`run_order` runs 1 to 80 with every position used exactly once. 237 of 395 features (60%) correlate with it above 0.3 in absolute value.",
+     "severity": "warning",
+     "confidence": "high",
+     "source_label": "metabolomics lens",
+     "subject": "run_order, mz_0001, mz_0002, mz_0004, mz_0006, mz_0008, mz_0009",
+     "has_chips": true,
+     "columns": [
+      "run_order",
+      "mz_0001",
+      "mz_0002",
+      "mz_0004",
+      "mz_0006"
+     ],
+     "badge": "SETTLED"
+    },
+    {
+     "id": "profile_cardinality_3",
+     "title": "1 high-cardinality features",
+     "detail": "Features sample_id have many unique values. One-hot encoding will create many columns.",
+     "severity": "caution",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "sample_id",
+     "has_chips": true,
+     "columns": [
+      "sample_id"
+     ],
+     "badge": ""
+    },
+    {
+     "id": "profile_outliers_4",
+     "title": "374 features with outliers",
+     "detail": "374 numeric features have significant outliers. This can affect model performance, especially for distance-based and linear models.",
+     "severity": "caution",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "bmi, mz_0001, mz_0002, mz_0004, mz_0005, mz_0006, mz_0007, mz_0008, mz_0009, mz_0010, mz_0011, mz_0012, mz_0014, mz_0015, mz_0016, mz_0017, mz_0018, mz_0019, mz_0020, mz_0021, mz_0022, mz_0023, mz_0024, mz_0025, mz_0026, mz_0027, mz_0028, mz_0029, mz_0030, mz_0031, mz_0032, mz_0033, mz_0034, mz_0035, mz_0036, mz_0037, mz_0038, mz_0039, mz_0040, mz_0041, mz_0042, mz_0043, mz_0044, mz_0045, mz_0046, mz_0047, mz_0048, mz_0049, mz_0050, mz_0051, mz_0052, mz_0053, mz_0055, mz_0056, mz_0057, mz_0059, mz_0060, mz_0061, mz_0062, mz_0063, mz_0064, mz_0065, mz_0066, mz_0067, mz_0068, mz_0069, mz_0070, mz_0071, mz_0072, mz_0073, mz_0074, mz_0075, mz_0077, mz_0078, mz_0079, mz_0080, mz_0081, mz_0082, mz_0083, mz_0084, mz_0085, mz_0086, mz_0087, mz_0088, mz_0089, mz_0090, mz_0091, mz_0092, mz_0093, mz_0094, mz_0095, mz_0096, mz_0097, mz_0098, mz_0099, mz_0100, mz_0101, mz_0102, mz_0103, mz_0104, mz_0105, mz_0106, mz_0107, mz_0108, mz_0109, mz_0110, mz_0111, mz_0112, mz_0113, mz_0114, mz_0115, mz_0116, mz_0117, mz_0118, mz_0119, mz_0120, mz_0121, mz_0122, mz_0123, mz_0124, mz_0125, mz_0127, mz_0128, mz_0129, mz_0130, mz_0131, mz_0132, mz_0133, mz_0134, mz_0135, mz_0136, mz_0137, mz_0139, mz_0140, mz_0141, mz_0142, mz_0143, mz_0144, mz_0145, mz_0146, mz_0147, mz_0148, mz_0149, mz_0150, mz_0151, mz_0152, mz_0153, mz_0154, mz_0155, mz_0156, mz_0157, mz_0158, mz_0159, mz_0160, mz_0161, mz_0162, mz_0163, mz_0164, mz_0165, mz_0166, mz_0167, mz_0169, mz_0170, mz_0171, mz_0172, mz_0173, mz_0174, mz_0175, mz_0176, mz_0177, mz_0178, mz_0179, mz_0180, mz_0181, mz_0182, mz_0183, mz_0184, mz_0185, mz_0186, mz_0187, mz_0188, mz_0189, mz_0190, mz_0191, mz_0192, mz_0193, mz_0194, mz_0195, mz_0196, mz_0197, mz_0198, mz_0199, mz_0200, mz_0201, mz_0202, mz_0204, mz_0205, mz_0206, mz_0207, mz_0208, mz_0209, mz_0210, mz_0211, mz_0212, mz_0213, mz_0214, mz_0216, mz_0219, mz_0220, mz_0221, mz_0222, mz_0223, mz_0224, mz_0225, mz_0226, mz_0227, mz_0228, mz_0229, mz_0230, mz_0231, mz_0232, mz_0233, mz_0234, mz_0235, mz_0236, mz_0237, mz_0238, mz_0239, mz_0240, mz_0241, mz_0242, mz_0243, mz_0244, mz_0245, mz_0246, mz_0247, mz_0248, mz_0249, mz_0250, mz_0251, mz_0252, mz_0253, mz_0254, mz_0255, mz_0256, mz_0257, mz_0258, mz_0259, mz_0260, mz_0261, mz_0262, mz_0263, mz_0264, mz_0265, mz_0266, mz_0267, mz_0268, mz_0269, mz_0270, mz_0271, mz_0272, mz_0273, mz_0274, mz_0276, mz_0277, mz_0279, mz_0280, mz_0281, mz_0282, mz_0283, mz_0284, mz_0285, mz_0286, mz_0287, mz_0288, mz_0289, mz_0290, mz_0291, mz_0292, mz_0293, mz_0294, mz_0295, mz_0297, mz_0298, mz_0299, mz_0301, mz_0302, mz_0303, mz_0304, mz_0305, mz_0306, mz_0307, mz_0308, mz_0309, mz_0310, mz_0311, mz_0312, mz_0313, mz_0314, mz_0315, mz_0316, mz_0317, mz_0318, mz_0319, mz_0320, mz_0321, mz_0322, mz_0323, mz_0324, mz_0325, mz_0326, mz_0327, mz_0328, mz_0329, mz_0330, mz_0331, mz_0332, mz_0333, mz_0334, mz_0335, mz_0336, mz_0337, mz_0338, mz_0339, mz_0340, mz_0341, mz_0342, mz_0343, mz_0344, mz_0346, mz_0347, mz_0348, mz_0349, mz_0350, mz_0351, mz_0352, mz_0353, mz_0354, mz_0355, mz_0356, mz_0357, mz_0358, mz_0361, mz_0362, mz_0363, mz_0364, mz_0365, mz_0366, mz_0367, mz_0368, mz_0369, mz_0370, mz_0371, mz_0372, mz_0373, mz_0374, mz_0375, mz_0376, mz_0377, mz_0378, mz_0379, mz_0380, mz_0381, mz_0382, mz_0383, mz_0384, mz_0385, mz_0386, mz_0387, mz_0388, mz_0389, mz_0390, mz_0391, mz_0392",
+     "has_chips": true,
+     "columns": [
+      "bmi",
+      "mz_0001",
+      "mz_0002",
+      "mz_0004",
+      "mz_0005"
+     ],
+     "badge": ""
+    }
+   ],
+   "notes": [],
+   "stacks": {
+    "2": {
+     "bound": 2,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 8,
+     "pushed": [
+      "pack::metabolomics::pooled_qc",
+      "profile_dimensionality_1",
+      "profile_missingness_2",
+      "profile_sample_size_0",
+      "pack::metabolomics::left_censored",
+      "pack::metabolomics::run_order"
+     ],
+     "collapsed": [
+      "profile_cardinality_3",
+      "profile_outliers_4"
+     ],
+     "outside_bound": 4,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::metabolomics::pooled_qc",
+      "profile_dimensionality_1",
+      "profile_missingness_2",
+      "profile_sample_size_0",
+      "pack::metabolomics::left_censored",
+      "pack::metabolomics::run_order"
+     ],
+     "cleared": [],
+     "complete": false,
+     "remainder": {
+      "n": 2,
+      "by_severity": [
+       {
+        "key": "caution",
+        "n": 2,
+        "label": "cautions"
+       }
+      ],
+      "by_source": [
+       {
+        "key": "this table",
+        "n": 2,
+        "label": "about this table"
+       }
+      ]
+     },
+     "affordance": "2 more — 2 cautions",
+     "affordance_detail": "2 about this table",
+     "affordance_open": "Fold those 2 back",
+     "affordance_title": "Adds 2 more findings to this list. They ranked below the top 2; nothing is out of the record either way."
+    },
+    "5": {
+     "bound": 5,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 8,
+     "pushed": [
+      "pack::metabolomics::pooled_qc",
+      "profile_dimensionality_1",
+      "profile_missingness_2",
+      "profile_sample_size_0",
+      "pack::metabolomics::left_censored",
+      "pack::metabolomics::run_order",
+      "profile_cardinality_3",
+      "profile_outliers_4"
+     ],
+     "collapsed": [],
+     "outside_bound": 4,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::metabolomics::pooled_qc",
+      "profile_dimensionality_1",
+      "profile_missingness_2",
+      "profile_sample_size_0",
+      "pack::metabolomics::left_censored",
+      "pack::metabolomics::run_order",
+      "profile_cardinality_3",
+      "profile_outliers_4"
+     ],
+     "cleared": [],
+     "complete": true,
+     "remainder": {
+      "n": 0,
+      "by_severity": [],
+      "by_source": []
+     },
+     "affordance": "All 8 shown.",
+     "affordance_detail": "",
+     "affordance_open": "",
+     "affordance_title": ""
+    },
+    "8": {
+     "bound": 8,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 8,
+     "pushed": [
+      "pack::metabolomics::pooled_qc",
+      "profile_dimensionality_1",
+      "profile_missingness_2",
+      "profile_sample_size_0",
+      "pack::metabolomics::left_censored",
+      "pack::metabolomics::run_order",
+      "profile_cardinality_3",
+      "profile_outliers_4"
+     ],
+     "collapsed": [],
+     "outside_bound": 4,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::metabolomics::pooled_qc",
+      "profile_dimensionality_1",
+      "profile_missingness_2",
+      "profile_sample_size_0",
+      "pack::metabolomics::left_censored",
+      "pack::metabolomics::run_order",
+      "profile_cardinality_3",
+      "profile_outliers_4"
+     ],
+     "cleared": [],
+     "complete": true,
+     "remainder": {
+      "n": 0,
+      "by_severity": [],
+      "by_source": []
+     },
+     "affordance": "All 8 shown.",
+     "affordance_detail": "",
+     "affordance_open": "",
+     "affordance_title": ""
+    }
+   },
+   "why": "Four criticals. The case where the bound does not decide the size of the stack, because nothing that gates a decision may be collapsed."
+  },
+  {
+   "fixture": "nhanes_kilojoules.csv",
+   "lens": "dietary",
+   "target": "DR1TKCAL",
+   "n_served_total": 6,
+   "cards": [
+    {
+     "id": "pack::dietary::atwater",
+     "title": "The energy column is in kilojoules",
+     "detail": "Declared energy is about 4.18× the reconstruction, which is the kilojoule factor (4.184 kJ per kcal). The energy column is in kJ while the macronutrients are in grams.",
+     "severity": "warning",
+     "confidence": "high",
+     "source_label": "dietary lens",
+     "subject": "DR1TKCAL, DR1TPROT, DR1TCARB, DR1TTFAT, DR1TALCO",
+     "has_chips": true,
+     "columns": [
+      "DR1TKCAL",
+      "DR1TPROT",
+      "DR1TCARB",
+      "DR1TTFAT",
+      "DR1TALCO"
+     ],
+     "badge": "SETTLED"
+    },
+    {
+     "id": "pack::dietary::energy_adjustment",
+     "title": "Nutrient associations need energy adjustment",
+     "detail": "`DR1TKCAL` is total energy, and 9 other numeric columns are candidate nutrients.",
+     "severity": "warning",
+     "confidence": "high",
+     "source_label": "dietary lens",
+     "subject": "DR1TKCAL",
+     "has_chips": true,
+     "columns": [
+      "DR1TKCAL"
+     ],
+     "badge": "SETTLED"
+    },
+    {
+     "id": "pack::dietary::survey_weights",
+     "title": "Use the dietary weights, not the examination weight",
+     "detail": "This table carries `WTDRD1` and `WTMEC2YR`. Dietary analyses take the dietary weights: `WTDRD1` for day-1 analyses and `WTDR2D` for anything using both days. They add adjustments for recall non-response and for the deliberate weekday/weekend allocation of recall days that the examination weight does not carry. `WTMEC2YR` is the examinatio",
+     "severity": "warning",
+     "confidence": "high",
+     "source_label": "dietary lens",
+     "subject": "WTDRD1",
+     "has_chips": true,
+     "columns": [
+      "WTDRD1"
+     ],
+     "badge": "SETTLED"
+    },
+    {
+     "id": "profile_sample_size_0",
+     "title": "Small sample",
+     "detail": "With 120 samples, some models may overfit. Regularization and validation are important.",
+     "severity": "warning",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "About this study as a whole, not about any one column",
+     "has_chips": false,
+     "columns": [],
+     "badge": ""
+    },
+    {
+     "id": "profile_outliers_1",
+     "title": "4 features with outliers",
+     "detail": "4 numeric features have significant outliers. This can affect model performance, especially for distance-based and linear models.",
+     "severity": "caution",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "DR1TTFAT, DR1TALCO, WTDRD1, WTMEC2YR",
+     "has_chips": true,
+     "columns": [
+      "DR1TTFAT",
+      "DR1TALCO",
+      "WTDRD1",
+      "WTMEC2YR"
+     ],
+     "badge": ""
+    },
+    {
+     "id": "pack::dietary::implausible_intake",
+     "title": "118 records report an implausible daily intake",
+     "detail": "`DR1TKCAL` is below 500 on 0 record(s) and above 5000 on 118. Observed range 4,399 to 12,861.",
+     "severity": "info",
+     "confidence": "medium",
+     "source_label": "dietary lens",
+     "subject": "DR1TKCAL",
+     "has_chips": true,
+     "columns": [
+      "DR1TKCAL"
+     ],
+     "badge": "CONVENTION"
+    }
+   ],
+   "notes": [],
+   "stacks": {
+    "2": {
+     "bound": 2,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 6,
+     "pushed": [
+      "pack::dietary::atwater",
+      "pack::dietary::energy_adjustment"
+     ],
+     "collapsed": [
+      "pack::dietary::survey_weights",
+      "profile_sample_size_0",
+      "profile_outliers_1",
+      "pack::dietary::implausible_intake"
+     ],
+     "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::dietary::atwater",
+      "pack::dietary::energy_adjustment"
+     ],
+     "cleared": [],
+     "complete": false,
+     "remainder": {
+      "n": 4,
+      "by_severity": [
+       {
+        "key": "warning",
+        "n": 2,
+        "label": "warnings"
+       },
+       {
+        "key": "caution",
+        "n": 1,
+        "label": "caution"
+       },
+       {
+        "key": "info",
+        "n": 1,
+        "label": "info"
+       }
+      ],
+      "by_source": [
+       {
+        "key": "dietary lens",
+        "n": 2,
+        "label": "from the dietary lens"
+       },
+       {
+        "key": "this table",
+        "n": 2,
+        "label": "about this table"
+       }
+      ]
+     },
+     "affordance": "4 more — 2 warnings, 1 caution, 1 info",
+     "affordance_detail": "2 from the dietary lens · 2 about this table",
+     "affordance_open": "Fold those 4 back",
+     "affordance_title": "Adds 4 more findings to this list. They ranked below the top 2; nothing is out of the record either way."
+    },
+    "5": {
+     "bound": 5,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 6,
+     "pushed": [
+      "pack::dietary::atwater",
+      "pack::dietary::energy_adjustment",
+      "pack::dietary::survey_weights",
+      "profile_sample_size_0",
+      "profile_outliers_1",
+      "pack::dietary::implausible_intake"
+     ],
+     "collapsed": [],
+     "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::dietary::atwater",
+      "pack::dietary::energy_adjustment",
+      "pack::dietary::survey_weights",
+      "profile_sample_size_0",
+      "profile_outliers_1",
+      "pack::dietary::implausible_intake"
+     ],
+     "cleared": [],
+     "complete": true,
+     "remainder": {
+      "n": 0,
+      "by_severity": [],
+      "by_source": []
+     },
+     "affordance": "All 6 shown.",
+     "affordance_detail": "",
+     "affordance_open": "",
+     "affordance_title": ""
+    },
+    "8": {
+     "bound": 8,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 6,
+     "pushed": [
+      "pack::dietary::atwater",
+      "pack::dietary::energy_adjustment",
+      "pack::dietary::survey_weights",
+      "profile_sample_size_0",
+      "profile_outliers_1",
+      "pack::dietary::implausible_intake"
+     ],
+     "collapsed": [],
+     "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::dietary::atwater",
+      "pack::dietary::energy_adjustment",
+      "pack::dietary::survey_weights",
+      "profile_sample_size_0",
+      "profile_outliers_1",
+      "pack::dietary::implausible_intake"
+     ],
+     "cleared": [],
+     "complete": true,
+     "remainder": {
+      "n": 0,
+      "by_severity": [],
+      "by_source": []
+     },
+     "affordance": "All 6 shown.",
+     "affordance_detail": "",
+     "affordance_open": "",
+     "affordance_title": ""
+    }
+   },
+   "why": "Six findings and no critical — one over a bound of five. This is the panel where a bound reads as arbitrary if it is going to."
+  },
+  {
+   "fixture": "survey_instrument.csv",
+   "lens": "survey",
+   "target": "",
+   "n_served_total": 5,
+   "cards": [
+    {
+     "id": "profile_sample_size_0",
+     "title": "Small sample",
+     "detail": "With 300 samples, some models may overfit. Regularization and validation are important.",
+     "severity": "warning",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "About this study as a whole, not about any one column",
+     "has_chips": false,
+     "columns": [],
+     "badge": ""
+    },
+    {
+     "id": "profile_cardinality_1",
+     "title": "1 high-cardinality features",
+     "detail": "Features respondent_id have many unique values. One-hot encoding will create many columns.",
+     "severity": "caution",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "respondent_id",
+     "has_chips": true,
+     "columns": [
+      "respondent_id"
+     ],
+     "badge": ""
+    },
+    {
+     "id": "pack::survey::ordinal_declared",
+     "title": "40 columns share one 5-point response scale",
+     "detail": "Every value in them is one of [1, 2, 3, 4, 5]. The block runs `item_01` … `item_40`.",
+     "severity": "info",
+     "confidence": "high",
+     "source_label": "survey lens",
+     "subject": "item_01, item_02, item_03, item_04, item_05, item_06, item_07, item_08, item_09, item_10",
+     "has_chips": true,
+     "columns": [
+      "item_01",
+      "item_02",
+      "item_03",
+      "item_04",
+      "item_05"
+     ],
+     "badge": "SETTLED"
+    }
+   ],
+   "notes": [],
+   "stacks": {
+    "2": {
+     "bound": 2,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 3,
+     "pushed": [
+      "profile_sample_size_0",
+      "profile_cardinality_1",
+      "pack::survey::ordinal_declared"
+     ],
+     "collapsed": [],
+     "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "profile_sample_size_0",
+      "profile_cardinality_1",
+      "pack::survey::ordinal_declared"
+     ],
+     "cleared": [],
+     "complete": true,
+     "remainder": {
+      "n": 0,
+      "by_severity": [],
+      "by_source": []
+     },
+     "affordance": "All 3 shown.",
+     "affordance_detail": "",
+     "affordance_open": "",
+     "affordance_title": ""
+    },
+    "5": {
+     "bound": 5,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 3,
+     "pushed": [
+      "profile_sample_size_0",
+      "profile_cardinality_1",
+      "pack::survey::ordinal_declared"
+     ],
+     "collapsed": [],
+     "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "profile_sample_size_0",
+      "profile_cardinality_1",
+      "pack::survey::ordinal_declared"
+     ],
+     "cleared": [],
+     "complete": true,
+     "remainder": {
+      "n": 0,
+      "by_severity": [],
+      "by_source": []
+     },
+     "affordance": "All 3 shown.",
+     "affordance_detail": "",
+     "affordance_open": "",
+     "affordance_title": ""
+    },
+    "8": {
+     "bound": 8,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 3,
+     "pushed": [
+      "profile_sample_size_0",
+      "profile_cardinality_1",
+      "pack::survey::ordinal_declared"
+     ],
+     "collapsed": [],
+     "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "profile_sample_size_0",
+      "profile_cardinality_1",
+      "pack::survey::ordinal_declared"
+     ],
+     "cleared": [],
+     "complete": true,
+     "remainder": {
+      "n": 0,
+      "by_severity": [],
+      "by_source": []
+     },
+     "affordance": "All 3 shown.",
+     "affordance_detail": "",
+     "affordance_open": "",
+     "affordance_title": ""
+    }
+   },
+   "why": "Three findings. Under every bound here, so the stack is complete and says so."
+  },
+  {
+   "fixture": "longitudinal_visits.csv",
+   "lens": "",
+   "target": "",
+   "n_served_total": 2,
+   "cards": [
+    {
+     "id": "profile_sample_size_0",
+     "title": "Small sample",
+     "detail": "With 135 samples, some models may overfit. Regularization and validation are important.",
+     "severity": "warning",
+     "confidence": "",
+     "source_label": "this table",
+     "subject": "About this study as a whole, not about any one column",
+     "has_chips": false,
+     "columns": [],
+     "badge": ""
+    }
+   ],
+   "notes": [],
+   "stacks": {
+    "2": {
+     "bound": 2,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 1,
+     "pushed": [
+      "profile_sample_size_0"
+     ],
+     "collapsed": [],
+     "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "profile_sample_size_0"
+     ],
+     "cleared": [],
+     "complete": true,
+     "remainder": {
+      "n": 0,
+      "by_severity": [],
+      "by_source": []
+     },
+     "affordance": "All 1 shown.",
+     "affordance_detail": "",
+     "affordance_open": "",
+     "affordance_title": ""
+    },
+    "5": {
+     "bound": 5,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 1,
+     "pushed": [
+      "profile_sample_size_0"
+     ],
+     "collapsed": [],
+     "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "profile_sample_size_0"
+     ],
+     "cleared": [],
+     "complete": true,
+     "remainder": {
+      "n": 0,
+      "by_severity": [],
+      "by_source": []
+     },
+     "affordance": "All 1 shown.",
+     "affordance_detail": "",
+     "affordance_open": "",
+     "affordance_title": ""
+    },
+    "8": {
+     "bound": 8,
+     "bound_because": "Five, and the argument is that it FIRES ON THE TAIL rather than on the typical table - a collapse that fires on every dataset has stopped being judgment and become a cap. Across the sixteen tables in turbotab/sample_data/ the Explore stack runs 1-3-3-3-3-4-4-5-5-5-5-6-6-6-8-13 and a bound of five collapses something on ONE of them. On the real NHANES export the product owner drove - 21,849 rows, 29 columns, nine pooled cycles - it collapses NOTHING: 14 findings, 5 pushed, 0 collapsed. IT IS NO LONGER JUSTIFIED BY THE MEDIAN, and that is a ruling rather than a restatement. The median was the L45 argument; L46's MIN_COLLAPSE moved the count it rested on from three of sixteen to one, and at one in sixteen a median is not doing work. What survives is the tail argument, which one-in-sixteen strengthens. It is not the prototype's two either: two is the interruption budget, and a stack is not an interruption. AND THE FIXTURE POPULATION HAS BEEN SUPERSEDED AS EVIDENCE. DESIGN_LANGUAGE.md section 05 says a lesson learned on synthetic data is a hypothesis until a real dataset has seen it. One has now seen it. The sixteen stay re-derivable by docs/turbotab/prototypes/capture_explore_stack.py rather than quoted, and test_the_prototype_cannot_disagree_with_the_build is what stops the prototype from showing an older version of this sentence.",
+     "served": 1,
+     "pushed": [
+      "profile_sample_size_0"
+     ],
+     "collapsed": [],
+     "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "profile_sample_size_0"
+     ],
+     "cleared": [],
+     "complete": true,
+     "remainder": {
+      "n": 0,
+      "by_severity": [],
+      "by_source": []
+     },
+     "affordance": "All 1 shown.",
+     "affordance_detail": "",
+     "affordance_open": "",
+     "affordance_title": ""
+    }
+   },
+   "why": "One finding, and no lens answered. The smallest stack any fixture in this repository produces."
+  }
+ ],
+ "population": [
+  {
+   "fixture": "clinical_labs.csv",
+   "lens": "clinical",
+   "n": 13,
+   "n_gating": 1,
+   "collapsed_at_ships": 7
+  },
+  {
+   "fixture": "clinic_visits.csv",
+   "lens": "clinical",
+   "n": 6,
+   "n_gating": 1,
+   "collapsed_at_ships": 0
+  },
+  {
+   "fixture": "clinical_risk.csv",
+   "lens": "clinical",
+   "n": 3,
+   "n_gating": 0,
+   "collapsed_at_ships": 0
+  },
+  {
+   "fixture": "clinical_longitudinal.csv",
+   "lens": "clinical",
+   "n": 4,
+   "n_gating": 0,
+   "collapsed_at_ships": 0
+  },
+  {
+   "fixture": "leaky_sepsis.csv",
+   "lens": "clinical",
+   "n": 3,
+   "n_gating": 0,
+   "collapsed_at_ships": 0
+  },
+  {
+   "fixture": "nhanes_kilojoules.csv",
+   "lens": "dietary",
+   "n": 6,
+   "n_gating": 0,
+   "collapsed_at_ships": 0
+  },
+  {
+   "fixture": "nhanes_dietary.csv",
+   "lens": "dietary",
+   "n": 5,
+   "n_gating": 1,
+   "collapsed_at_ships": 0
+  },
+  {
+   "fixture": "nhanes_partial_design.csv",
+   "lens": "dietary",
+   "n": 5,
+   "n_gating": 0,
+   "collapsed_at_ships": 0
+  },
+  {
+   "fixture": "dietary_recalls.csv",
+   "lens": "dietary",
+   "n": 6,
+   "n_gating": 0,
+   "collapsed_at_ships": 0
+  },
+  {
+   "fixture": "metabolomics_untargeted.csv",
+   "lens": "metabolomics",
+   "n": 8,
+   "n_gating": 4,
+   "collapsed_at_ships": 0
+  },
+  {
+   "fixture": "survey_sentinels.csv",
+   "lens": "survey",
+   "n": 5,
+   "n_gating": 1,
+   "collapsed_at_ships": 0
+  },
+  {
+   "fixture": "survey_instrument.csv",
+   "lens": "survey",
+   "n": 3,
+   "n_gating": 0,
+   "collapsed_at_ships": 0
+  },
+  {
+   "fixture": "genomics_expression.csv",
+   "lens": "genomics",
+   "n": 5,
+   "n_gating": 2,
+   "collapsed_at_ships": 0
+  },
+  {
+   "fixture": "multiclass_stage.csv",
+   "lens": "",
+   "n": 3,
+   "n_gating": 0,
+   "collapsed_at_ships": 0
+  },
+  {
+   "fixture": "wide_assay.csv",
+   "lens": "",
+   "n": 4,
+   "n_gating": 1,
+   "collapsed_at_ships": 0
+  },
+  {
+   "fixture": "longitudinal_visits.csv",
+   "lens": "",
+   "n": 1,
+   "n_gating": 0,
+   "collapsed_at_ships": 0
+  }
+ ],
+ "median": 5,
+ "sizes": [
+  1,
+  3,
+  3,
+  3,
+  3,
+  4,
+  4,
+  5,
+  5,
+  5,
+  5,
+  6,
+  6,
+  6,
+  8,
+  13
+ ],
+ "n_collapsing": 1
+};
+/* ⟦CAPTURE-END⟧ */
+
+(function () {
+  "use strict";
+
+  var BOUND = String(CAPTURE.ships);
+  var OPEN = {};          /* which panels the reader has expanded */
+
+  function esc(s) {
+    return String(s === null || s === undefined ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  function el(id) { return document.getElementById(id); }
+  function byId(cards, id) {
+    for (var i = 0; i < cards.length; i++) if (cards[i].id === id) return cards[i];
+    return null;
+  }
+
+  /* The card, in the same order and with the same chips the page builds. The
+     provenance chip comes FIRST and in a fixed position: this list merges two
+     streams, and a chip that moves with the length of the severity word cannot
+     be scanned down a column. */
+  function card(f) {
+    var h = '<article class="find">';
+    h += '<p class="f-title">' + esc(f.title);
+    if (f.badge) h += '<span class="badge ' + esc(f.badge.toLowerCase()) + '">' +
+                      esc(f.badge) + "</span>";
+    h += "</p>";
+    h += '<p class="f-because">' + esc(f.detail) + "</p>";
+    h += '<div class="chips">';
+    if (f.source_label) h += '<span class="chip src">' + esc(f.source_label) + "</span>";
+    h += '<span class="chip">' + esc(f.severity) + "</span>";
+    if (f.confidence) h += '<span class="chip">confidence: ' + esc(f.confidence) + "</span>";
+    if (f.has_chips) {
+      f.columns.forEach(function (c) { h += '<span class="chip">' + esc(c) + "</span>"; });
+    } else {
+      h += '<span class="chip scope">' + esc(f.subject) + "</span>";
+    }
+    h += "</div></article>";
+    return h;
+  }
+
+  function stackOf(c) { return c.stacks[BOUND]; }
+
+  function panel(c, i) {
+    var st = stackOf(c);
+    var open = !!OPEN[i];
+    var h = '<section class="panel">';
+    h += '<div class="panel-head"><h3>' + esc(c.fixture) + "</h3>" +
+         '<span class="fx">lens ' + esc(c.lens || "—") +
+         "  ·  " + c.n_served_total + " served  ·  " +
+         c.cards.length + " in the stack</span></div>";
+    h += '<p class="why">' + esc(c.why) + "</p>";
+    h += '<div class="tally">' +
+         '<b class="on">bound ' + esc(st.bound) + "</b>" +
+         "<b>" + st.pushed.length + " pushed</b>" +
+         "<b>" + st.collapsed.length + " collapsed</b>" +
+         (st.outside_bound
+            ? "<b>" + st.outside_bound + " outside the bound — gates a decision</b>" : "") +
+         "<b>" + st.pushed.length + " + " + st.collapsed.length + " = " +
+         st.served + "</b></div>";
+
+    h += '<div class="findlist">';
+    st.pushed.forEach(function (id) { var f = byId(c.cards, id); if (f) h += card(f); });
+    h += "</div>";
+
+    if (st.complete) {
+      h += '<span class="more-all">' + esc(st.affordance) + "</span>";
+    } else {
+      h += '<div class="more">' +
+           '<button class="pill" type="button" data-open="' + i + '" ' +
+           'aria-expanded="' + (open ? "true" : "false") + '" ' +
+           'title="' + esc(st.affordance_title) + '">' +
+           esc(open ? st.affordance_open : st.affordance) + "</button>" +
+           '<span class="more-detail">' + esc(st.affordance_detail) + "</span></div>";
+      h += '<div class="findlist' + (open ? "" : " is-hidden") + '">';
+      if (open) {
+        st.collapsed.forEach(function (id) { var f = byId(c.cards, id); if (f) h += card(f); });
+      }
+      h += "</div>";
+    }
+    h += "</section>";
+    return h;
+  }
+
+  /* ——— the three things a screenshot would hide, stated from the data ——— */
+
+  function critLine() {
+    var out = [];
+    CAPTURE.cases.forEach(function (c) {
+      var st = stackOf(c);
+      var crits = c.cards.filter(function (f) { return f.severity === "critical"; });
+      if (!crits.length) return;
+      var pos = st.pushed.indexOf(crits[0].id);
+      out.push(esc(c.fixture) + ": " + crits.length + " critical, first at card " +
+               (pos + 1) + " of " + st.pushed.length + " pushed");
+    });
+    return "Before this loop the page rendered <code>bySource(&quot;profile&quot;)" +
+      ".concat(bySource(&quot;pack&quot;))</code> and sorted nothing, so on the clinical table the " +
+      "only <code>critical</code> — <code>glucose</code> holds two populations a factor of 18 " +
+      "apart — landed at <strong>card six of thirteen</strong>, under five profile findings the " +
+      "server had ranked 13, 17, 18, 19 and 20. At every bound on this page it is card one. " +
+      "Measured across the five tables: " + out.join(" · ") + ". " +
+      "No bound can move it, because a finding that gates a decision is never collapsed and is " +
+      "ordered ahead of the rest regardless of the rank the engine gave it.";
+  }
+
+  function remainderLine() {
+    var lines = [];
+    CAPTURE.cases.forEach(function (c) {
+      var st = stackOf(c);
+      lines.push("<code>" + esc(c.fixture) + "</code> → “" + esc(st.affordance) +
+                 (st.affordance_detail ? "”, and beneath it “" + esc(st.affordance_detail) : "") +
+                 "”");
+    });
+    return "The count is exact and it is typed, so a reader can decide whether to press it " +
+      "without pressing it. At this bound: " + lines.join("; ") + ". Where nothing is " +
+      "collapsed the slot still answers — <em>“All 3 shown.”</em> — because a reader who sees no " +
+      "affordance cannot otherwise tell <em>this is everything</em> from <em>this is the top " +
+      "few</em>, and those are two different claims rendering as one " +
+      "(<code>DESIGN_LANGUAGE.md</code> §09’s recorded-absence rule).";
+  }
+
+  function edgeLine() {
+    var lines = [];
+    CAPTURE.cases.forEach(function (c) {
+      var st = stackOf(c);
+      if (st.collapsed.length === 1) {
+        lines.push("<code>" + esc(c.fixture) + "</code> collapses exactly one");
+      } else if (st.complete && c.cards.length === st.bound) {
+        lines.push("<code>" + esc(c.fixture) + "</code> sits exactly on the bound");
+      }
+    });
+    return "This is where a bound reads as arbitrary if it is going to. At this bound: " +
+      (lines.length ? lines.join("; ") + "." :
+       "no table in this set sits on the edge — press another bound.") +
+      " The one-card remainder is the case worth arguing about, and the box below says why it " +
+      "ships without a special case.";
+  }
+
+  /* THE MEASUREMENT, not a quotation of it. The bound is the median of these
+     sixteen, so the sixteen are here — sorted by stack size, with the two
+     middle rows marked, so the median can be counted off the page rather than
+     taken on trust. */
+  function popTable() {
+    var pop = CAPTURE.population.slice().sort(function (a, b) {
+      return a.n - b.n || (a.fixture < b.fixture ? -1 : 1);
+    });
+    var mid = [Math.floor((pop.length - 1) / 2), Math.floor(pop.length / 2)];
+    var rows = pop.map(function (r, i) {
+      var isMid = mid.indexOf(i) !== -1;
+      return "<tr" + (isMid ? ' class="mid"' : "") + "><td>" + esc(r.fixture) +
+        "</td><td>" + esc(r.lens || "—") + "</td><td>" + r.n +
+        "</td><td>" + (r.n_gating || "") + "</td><td>" +
+        (r.collapsed_at_ships ? r.collapsed_at_ships : "—") +
+        "</td><td>" + (isMid ? "median" : "") + "</td></tr>";
+    }).join("");
+    return "<p class=\"why\">Sixteen tables, driven the same way — the lens each " +
+      "companion names where there is one, no lens where there is not. Sizes " +
+      esc(CAPTURE.sizes.join(" · ")) + ", median <b>" + esc(CAPTURE.median) +
+      "</b>. At the shipping bound, <b>" + CAPTURE.n_collapsing + " of " +
+      pop.length + "</b> collapse anything at all.</p>" +
+      '<table class="data"><thead><tr><th>fixture</th><th>lens</th>' +
+      "<th>stack</th><th>gating</th><th>collapsed at bound " +
+      esc(CAPTURE.ships) + "</th><th></th></tr></thead><tbody>" + rows +
+      "</tbody></table>";
+  }
+
+  function render() {
+    el("panels").innerHTML = CAPTURE.cases.map(panel).join("");
+    el("lookCritical").innerHTML = critLine();
+    el("lookRemainder").innerHTML = remainderLine();
+    el("lookEdge").innerHTML = edgeLine();
+    el("popTable").innerHTML = popTable();
+    el("shipsLine").textContent = "the build ships bound = " + CAPTURE.ships;
+    el("becauseLine").textContent = CAPTURE.bound_because;
+    el("notCaptured").textContent = CAPTURE.not_captured;
+    Array.prototype.forEach.call(document.querySelectorAll(".bnd"), function (b) {
+      b.setAttribute("aria-pressed", b.dataset.bound === BOUND ? "true" : "false");
+    });
+  }
+
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest ? e.target.closest("[data-bound],[data-open]") : null;
+    if (!t) return;
+    if (t.hasAttribute("data-bound")) {
+      BOUND = t.dataset.bound;
+      OPEN = {};                    /* a new bound is a new partition */
+      render();
+      return;
+    }
+    /* Instant. No fetch, no motion — the remainder is already here. */
+    var i = t.dataset.open;
+    OPEN[i] = !OPEN[i];
+    render();
+  });
+
+  render();
+})();
+</script>

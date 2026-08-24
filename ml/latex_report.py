@@ -5,6 +5,7 @@ Generates a complete LaTeX manuscript template populated with actual results
 from the modeling workflow. Ready to compile with pdflatex.
 """
 import logging
+import math
 import os
 import re
 import shutil
@@ -13,6 +14,8 @@ import tempfile
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Any, Tuple
+
+from ml.table_one import format_pvalue
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -32,7 +35,7 @@ def compile_latex_to_pdf(latex_source: str, timeout: int = 30) -> Optional[bytes
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             tex_path = os.path.join(tmpdir, "manuscript.tex")
-            with open(tex_path, "w") as f:
+            with open(tex_path, "w", encoding="utf-8") as f:
                 f.write(latex_source)
             for _ in range(2):
                 subprocess.run(
@@ -113,6 +116,12 @@ def _resolve_latex_manuscript_context(
         'best_metric_name': context.get('best_metric_name'),
         'feature_counts': dict(context.get('feature_counts') or {}),
         'population_counts': dict(context.get('population_counts') or {}),
+        # `MODELS-009`: the Results section reads `manuscript_facts` for the
+        # baseline comparison and this resolver never put it there, so the
+        # "null and simple baselines on the same held-out test set" sentence —
+        # the anchor for "is the model better than trivial?" — was composed from
+        # an empty dict in every run and never printed at all.
+        'baseline_results': dict(context.get('baseline_results') or {}),
     }
 
 
@@ -175,7 +184,12 @@ def _format_abstract_predictor_sentence(feature_counts: Dict[str, Any], feature_
     original_count = feature_counts.get('original')
     candidate_count = feature_counts.get('candidate')
 
-    if original_count and candidate_count and selected_count and candidate_count != original_count and selected_count != candidate_count:
+    # `DRIVE8-21`: the FE clause is written only where the record holds
+    # engineered columns. `candidate != original` alone is not that evidence.
+    from ml.publication import feature_engineering_ran
+    if (original_count and candidate_count and selected_count
+            and candidate_count != original_count and selected_count != candidate_count
+            and feature_engineering_ran(feature_counts)):
         return (
             f"The raw dataset contained {original_count} predictor variables, "
             f"feature engineering yielded {candidate_count} candidates, and "
@@ -187,6 +201,52 @@ def _format_abstract_predictor_sentence(feature_counts: Dict[str, Any], feature_
             f"{selected_count} predictors for final modeling."
         )
     return f"The final modeling set contained {selected_count or 'N'} predictors."
+
+
+_CALIBRATION_METRIC_LABELS = (
+    ('brier_score', 'Brier score', 4),
+    ('ece', 'expected calibration error', 4),
+    ('mce', 'maximum calibration error', 4),
+    ('c_statistic', 'c-statistic', 3),
+    ('weak_slope', 'weak calibration slope', 3),
+    ('weak_intercept', 'weak calibration intercept', 3),
+    ('calibration_slope', 'calibration slope', 3),
+    ('calibration_intercept', 'calibration intercept', 3),
+    ('calibration_r2', r'calibration $R^2$', 3),
+)
+
+
+def _calibration_prose_by_model(
+    calibration_by_model: Optional[Dict[str, Dict[str, float]]],
+) -> List[str]:
+    """One Calibration sentence per model that has computed artifacts.
+
+    `MISC-102`. Only the metrics present on a record are named — the
+    classification and regression records carry different quantities, and the
+    weak-calibration pair keeps its own name so it is not read as the
+    observed-on-predicted regression slope.
+    """
+    if not calibration_by_model:
+        return []
+    lines: List[str] = []
+    for model_key, metrics in calibration_by_model.items():
+        if not isinstance(metrics, dict):
+            continue
+        parts = []
+        for field_name, label, digits in _CALIBRATION_METRIC_LABELS:
+            value = metrics.get(field_name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            if not math.isfinite(float(value)):
+                continue
+            parts.append(f"{label} = {float(value):.{digits}f}")
+        if not parts:
+            continue
+        lines.append(
+            f"For \\textbf{{{_escape_latex(_model_display_name(model_key))}}}, "
+            f"{'; '.join(parts)}."
+        )
+    return lines
 
 
 def _model_display_name(key: Optional[str]) -> str:
@@ -344,20 +404,68 @@ def _build_structured_abstract_sections(
     }
 
 
-def _convert_markdown_to_latex(markdown_text: str) -> Tuple[str, str]:
-    """Convert markdown methods section to LaTeX, separating Methods and Results.
-    
-    Returns:
-        Tuple of (methods_latex, results_latex)
+#: Top-level markdown headings the LaTeX skeleton has a home for. A draft
+#: section whose heading is not one of these is compiled material with nowhere
+#: to go, and it is printed under its own heading rather than dropped.
+_DRAFT_SECTION_ALIASES = {
+    'methods': 'methods',
+    'results': 'results',
+    'discussion': 'discussion',
+}
+
+
+def _draft_section_key(heading: str) -> Optional[str]:
+    """Which manuscript section a `## ` heading names, if any."""
+    normalized = re.sub(r'\(.*?\)', '', heading).strip().strip(':').lower()
+    return _DRAFT_SECTION_ALIASES.get(normalized)
+
+
+def _split_draft_markdown(markdown_text: str) -> List[Tuple[str, str]]:
+    """The draft's top-level sections, in order, as `(heading, body)`.
+
+    The heading is `""` for the text before the first `## ` — the ownership
+    preamble the narrative engine puts there.
     """
+    sections: List[Tuple[str, str]] = []
+    last_heading = ""
+    last_start = 0
+    for match in re.finditer(r'(?m)^##[ \t]+(.+?)[ \t]*$', markdown_text):
+        body = markdown_text[last_start:match.start()]
+        if last_heading or body.strip():
+            sections.append((last_heading, body))
+        last_heading = match.group(1).strip()
+        last_start = match.end()
+    tail = markdown_text[last_start:]
+    if last_heading or tail.strip():
+        sections.append((last_heading, tail))
+    return sections
+
+
+def _convert_markdown_to_latex(markdown_text: str) -> Dict[str, Any]:
+    """Convert the compiled markdown draft to LaTeX, section by section.
+
+    `RECORD-007`: this used to split the draft at the FIRST `## Results` and
+    return two strings — everything after that heading, Discussion included,
+    became `results_latex`, which the caller appended only when there were no
+    model results. In every real run there are model results, so the compiled
+    Discussion, with every `[AUTHOR REQUIRED]` scaffold the workflow generated,
+    was dropped from the .tex while the .md kept it. The two files in one ZIP
+    then made different claims, and the honesty guards the project tests
+    applied to the markdown only.
+
+    Sectioning is now structural: the draft's `## ` headings are matched to the
+    manuscript sections, and a heading with no home comes back under
+    ``unmapped`` so the caller can print it instead of losing it.
+
+    Returns:
+        ``{'methods': str, 'results': str, 'discussion': str,
+           'unmapped': List[Tuple[str, str]]}`` — LaTeX, not markdown.
+    """
+    out: Dict[str, Any] = {'methods': "", 'results': "", 'discussion': "",
+                           'unmapped': []}
     if not markdown_text:
-        return "", ""
-    
-    # Split on ## Results / ## Results (Draft) to separate Methods from Results
-    parts = re.split(r'\n## Results(?:\s*\(Draft\))?.*?\n', markdown_text, maxsplit=1)
-    methods_md = parts[0]
-    results_md = parts[1] if len(parts) > 1 else ""
-    
+        return out
+
     def convert_section(md_text):
         if not md_text:
             return ""
@@ -445,10 +553,21 @@ def _convert_markdown_to_latex(markdown_text: str) -> Tuple[str, str]:
         
         return text
     
-    methods_latex = convert_section(methods_md)
-    results_latex = convert_section(results_md)
-    
-    return methods_latex, results_latex
+    for heading, body in _split_draft_markdown(markdown_text):
+        # The text before the first heading is the draft's ownership preamble;
+        # it introduces the Methods, which is where it already appeared.
+        key = 'methods' if heading == "" else _draft_section_key(heading)
+        latex = convert_section(body)
+        if not latex.strip():
+            continue
+        if key is None:
+            out['unmapped'].append((heading, latex))
+        elif out[key]:
+            out[key] = out[key] + "\n\n" + latex
+        else:
+            out[key] = latex
+
+    return out
 
 
 def _metrics_to_latex_table(
@@ -525,14 +644,88 @@ def _metrics_to_latex_table(
     lines.append(r"\bottomrule")
     lines.append(r"\end{tabular}")
     lines.append(r"\end{adjustbox}")
+
+    # `MINE-027`: a cell in this table is not the held-out score unless the N it
+    # was computed on is the held-out N. When a degenerate target back-transform
+    # made some predictions non-finite, those pairs were dropped before scoring
+    # and the truncation reached a Streamlit warning and nothing else — least of
+    # all the table a reviewer reads. The count is NOT a metric column (it was,
+    # briefly, and rendered as a model score); it is a footnote to the numbers
+    # it qualifies.
+    notes = []
+    for name, res in model_results.items():
+        disclosure = res.get("test_scoring") or {}
+        if disclosure.get("n_dropped_nonfinite"):
+            notes.append(
+                f"{_escape_latex(_model_display_name(name))}: computed on "
+                f"{disclosure['n_scored']} of {disclosure.get('n_pairs', '?')} "
+                f"pairs; {disclosure['n_dropped_nonfinite']} non-finite "
+                f"pair(s) excluded")
+    if notes:
+        lines.append(r"\vspace{2pt}")
+        lines.append(r"{\footnotesize \textit{Note:} " + "; ".join(notes) + ".}")
+
     lines.append(r"\end{spacing}")
     lines.append(r"\end{table}")
 
     return "\n".join(lines)
 
 
-def _table1_to_latex(table1_df: pd.DataFrame) -> str:
-    """Convert Table 1 DataFrame to LaTeX with width containment."""
+def _seed_stability_table_latex(by_model: List[Dict[str, Any]]) -> str:
+    """The per-model seed spread page 08 shows on screen, as a LaTeX table.
+
+    `MISC-104`. Page 08 sweeps every eligible model and renders mean / SD /
+    range / CV per model; the export carried one model's numbers and named no
+    model. Emitted only when more than one model was swept — for a single model
+    the sentence above already says it.
+    """
+    rows = [row for row in (by_model or []) if isinstance(row, dict)]
+    if len(rows) < 2:
+        return ""
+
+    metric = str(rows[0].get('metric') or 'the primary metric')
+    lines = [
+        r"\begin{table}[htbp]",
+        r"\begin{spacing}{1.0}",
+        r"\centering",
+        r"\caption{Across-seed " + _escape_latex(metric)
+        + " by model (fresh split per seed).}",
+        r"\label{tab:seed-stability}",
+        r"\begin{tabular}{lrrrrr}",
+        r"\toprule",
+        r"Model & Seeds & Mean & SD & Range & CV (\%) \\",
+        r"\midrule",
+    ]
+    for row in rows:
+        lines.append(
+            " & ".join([
+                _escape_latex(_model_display_name(str(row.get('model') or ''))),
+                str(int(row.get('n_seeds') or 0)),
+                f"{float(row.get('mean', 0.0)):.4f}",
+                f"{float(row.get('sd', 0.0)):.4f}",
+                f"{float(row.get('min', 0.0)):.4f}--{float(row.get('max', 0.0)):.4f}",
+                f"{float(row.get('cv_percent', 0.0)):.1f}",
+            ]) + r" \\"
+        )
+    lines.extend([
+        r"\bottomrule",
+        r"\end{tabular}",
+        r"\end{spacing}",
+        r"\end{table}",
+    ])
+    return "\n".join(lines)
+
+
+def _table1_to_latex(
+    table1_df: pd.DataFrame,
+    footnotes: Optional[List[str]] = None,
+) -> str:
+    """Convert Table 1 DataFrame to LaTeX with width containment.
+
+    `MISC-104`: `footnotes` are the custom-test notes pages/10 writes when it
+    appends `^N` markers to row labels. Without them the markers were dangling
+    superscripts — a reference to a note the manuscript did not contain.
+    """
     if table1_df is None or table1_df.empty:
         return ""
 
@@ -574,6 +767,15 @@ def _table1_to_latex(table1_df: pd.DataFrame) -> str:
     lines.append(r"\bottomrule")
     lines.append(r"\end{tabular}")
     lines.append(r"\end{adjustbox}")
+
+    clean_footnotes = [str(note).strip() for note in (footnotes or []) if str(note).strip()]
+    if clean_footnotes:
+        lines.append(r"\begin{flushleft}")
+        lines.append(r"\footnotesize")
+        for note in clean_footnotes:
+            lines.append(_escape_latex(note) + r" \\")
+        lines.append(r"\end{flushleft}")
+
     lines.append(r"\end{spacing}")
     lines.append(r"\end{table}")
 
@@ -587,6 +789,7 @@ def generate_latex_report(
     abstract: str = "[ABSTRACT PLACEHOLDER]",
     methods_section: str = "",
     table1_df: Optional[pd.DataFrame] = None,
+    table1_footnotes: Optional[List[str]] = None,
     model_results: Optional[Dict[str, Dict]] = None,
     bootstrap_results: Optional[Dict] = None,
     task_type: str = "regression",
@@ -698,13 +901,19 @@ def generate_latex_report(
     sections.append(r"\section{Methods}")
     sections.append("")
 
+    draft_discussion = ""
+    draft_unmapped: List[Tuple[str, str]] = []
     if methods_section:
         # Convert markdown to LaTeX properly
-        methods_latex, results_latex = _convert_markdown_to_latex(methods_section)
-        if methods_latex:
-            sections.append(_normalize_generated_latex_text(methods_latex))
-        # Store results_latex for later use in Results section
-        draft_results = _demote_results_subsections(results_latex)
+        draft_latex = _convert_markdown_to_latex(methods_section)
+        if draft_latex['methods']:
+            sections.append(_normalize_generated_latex_text(draft_latex['methods']))
+        # Held for the Results and Discussion sections below. Every compiled
+        # section reaches the .tex or is printed as unmapped material — none of
+        # it may be dropped on the way (RECORD-007).
+        draft_results = _demote_results_subsections(draft_latex['results'])
+        draft_discussion = _normalize_generated_latex_text(draft_latex['discussion']).strip()
+        draft_unmapped = draft_latex['unmapped']
     else:
         draft_results = ""
         sections.append(r"""
@@ -756,7 +965,7 @@ def generate_latex_report(
 
     # Table 1
     if table1_df is not None and not table1_df.empty:
-        sections.append(_table1_to_latex(table1_df))
+        sections.append(_table1_to_latex(table1_df, table1_footnotes))
     else:
         sections.append(_styled_placeholder("[INSERT TABLE 1: Characteristics of the study population]"))
 
@@ -785,14 +994,45 @@ def generate_latex_report(
         baselines = manuscript_facts.get('baseline_results') or {}
         if baselines:
             b_parts = []
+            b_recipes = []
             for bname, bdata in baselines.items():
                 metrics = (bdata or {}).get('metrics', {})
                 m_txt = ", ".join(f"{_escape_latex(str(k))} = {v:.4f}" for k, v in metrics.items())
                 b_parts.append(f"{_escape_latex(str(bname))} ({m_txt})")
+                recipe = (bdata or {}).get('preprocessing')
+                if recipe and recipe not in b_recipes:
+                    b_recipes.append(recipe)
             sections.append(
                 "For reference, null and simple baseline models evaluated on the same "
                 "held-out test set achieved: " + "; ".join(b_parts) + "."
             )
+            # `MODELS-009`: "the same held-out test set" is true and "the same
+            # preprocessing" is not — the baselines have their own fixed recipe.
+            # A comparison whose recipe is unstated invites the reader to assume
+            # the models' one.
+            if b_recipes:
+                sections.append(
+                    "The baseline features went through their own fixed recipe ("
+                    + "; ".join(_escape_latex(str(r)) for r in b_recipes)
+                    + "), not the per-model preprocessing pipelines above."
+                )
+
+        # The table above is generated from the same recorded results, so
+        # reproducing the draft's Results prose would state the numbers twice.
+        # It stays omitted — but the omission is STATED, and any author-input
+        # scaffold the prose carries is reproduced: a compiled passage that
+        # vanishes between the .md and the .tex is what RECORD-007 is about.
+        if draft_results:
+            sections.append(
+                "The compiled draft's Results narrative is not reproduced here; "
+                "it accompanies this manuscript in the exported markdown draft."
+            )
+            outstanding = [p.strip() for p in re.split(r'\n\s*\n', draft_results)
+                           if '[AUTHOR REQUIRED' in p]
+            if outstanding:
+                sections.append(r"\paragraph{Outstanding author input}")
+                sections.extend(outstanding)
+            sections.append("")
     elif draft_results:
         sections.append(draft_results)
         sections.append("\n")
@@ -800,10 +1040,21 @@ def generate_latex_report(
         sections.append(_styled_placeholder(r"[INSERT TABLE: Model performance metrics with 95\% CIs]"))
 
     # Calibration
+    calibration_prose = _calibration_prose_by_model(
+        (explainability_summary or {}).get('calibration_by_model'))
     if calibration_text:
         sections.append(r"""
 \subsection{Calibration}""")
         sections.append(_escape_latex(calibration_text))
+    elif calibration_prose:
+        # `MISC-102`: the placeholder used to stand even when page 06 had
+        # calibrated every model, so the export asked its own author to supply
+        # numbers the session already held. The placeholder still stands when
+        # nothing was computed — that is a real absence.
+        sections.append(r"""
+\subsection{Calibration}""")
+        sections.extend(calibration_prose)
+        sections.append("")
     else:
         if task_type == "regression":
             sections.append(r"""
@@ -840,7 +1091,7 @@ def generate_latex_report(
         
         # Calibration metrics (if not already reported above)
         calibration_metrics = explainability_summary.get('calibration_metrics')
-        if calibration_metrics and not calibration_text:
+        if calibration_metrics and not calibration_text and not calibration_prose:
             sections.append(r"\paragraph{Calibration Metrics}")
             for metric_name, metric_val in calibration_metrics.items():
                 sections.append(f"{_escape_latex(metric_name)}: {metric_val:.4f}. ")
@@ -856,11 +1107,32 @@ def generate_latex_report(
         if seed_stability:
             cv_pct = seed_stability.get('cv_percent')
             metric_range = seed_stability.get('range')
+            # `MISC-104`: whose coefficient of variation, of what. Page 08
+            # re-seeds every eligible model; a bare percentage in a manuscript
+            # that reports five models reads as a statement about all of them.
+            # The model and metric are named when the export knows them, and
+            # the sentence stays as it was when it does not.
+            seed_model = seed_stability.get('model')
+            seed_metric = seed_stability.get('metric')
+            subject = "Random seed sensitivity analysis"
+            if seed_model:
+                subject += f" of \\textbf{{{_escape_latex(_model_display_name(seed_model))}}}"
+            if seed_metric:
+                subject += f" ({_escape_latex(str(seed_metric))})"
             if cv_pct is not None:
-                sections.append(f"Random seed sensitivity analysis showed a coefficient of variation of {cv_pct:.1f}\\% across seeds.")
+                n_seeds = seed_stability.get('n_seeds')
+                seeds_clause = f" across {n_seeds} seeds" if n_seeds else " across seeds"
+                sections.append(
+                    f"{subject} showed a coefficient of variation of "
+                    f"{cv_pct:.1f}\\%{seeds_clause}.")
             if metric_range:
                 sections.append(f"Performance range: {metric_range}.")
             sections.append("")
+
+            by_model = seed_stability.get('by_model')
+            if by_model:
+                sections.append(_seed_stability_table_latex(by_model))
+                sections.append("")
         
         # Feature dropout
         if sensitivity_summary.get('feature_dropout_conducted'):
@@ -881,11 +1153,18 @@ def generate_latex_report(
             p_value = entry.get('p_value')
             
             if statistic is not None and p_value is not None:
-                sections.append(f"{test_name} was performed on {variable}: statistic = {statistic:.4f}, $p$ = {p_value:.4f}.")
+                # `DRIVE8-32`: `:.4f` renders anything below 5e-5 as "0.0000",
+                # which asserts p = 0. The floor is stated as an inequality.
+                _p = format_pvalue(p_value)
+                _p_clause = (f"$p$ {_p}" if _p.startswith("<")
+                             else f"$p$ = {_p}")
+                sections.append(f"{test_name} was performed on {variable}: statistic = {statistic:.4f}, {_p_clause}.")
                 sections.append("")
-        
-        # Multiple testing caveat if >3 tests
-        if len(stat_validation_summary) > 3:
+
+        # Multiple testing caveat if >3 distinct comparisons. `DRIVE8-20`: an
+        # override re-run of one comparison is not a second test.
+        from ml.narrative_engine import _distinct_comparisons
+        if len(_distinct_comparisons(stat_validation_summary)) > 3:
             sections.append(
                 r"Note: Multiple statistical tests were performed; "
                 r"readers should consider the increased risk of Type I error "
@@ -895,105 +1174,127 @@ def generate_latex_report(
 
     # ── Discussion ──
     sections.append(r"""
-\section{Discussion}
+\section{Discussion}""")
 
+    # The compiled Discussion is the one the app vouches for: its Principal
+    # Findings state the metric the way the honesty guards require (a negative
+    # R² as "below a mean-only baseline"), and its Strengths and Limitations
+    # carry the ledger's evidence-cited caveats and [AUTHOR REQUIRED] scaffolds.
+    # It used to be dropped from the .tex in every run that had model results
+    # (RECORD-007), leaving a Discussion rebuilt from generic placeholders while
+    # the .md in the same ZIP said something else. The placeholder scaffold is
+    # now the FALLBACK, printed only when nothing was compiled — the two name
+    # the same subsections, so exactly one of them may appear.
+    if draft_discussion:
+        sections.append(draft_discussion)
+        sections.append("")
+        # A limitations paragraph the caller passed explicitly is a second
+        # source and is appended rather than dropped.
+        if limitations and limitations.strip() != "[Discuss limitations here]":
+            sections.append(r"""
+\paragraph{Limitations}
+""")
+            sections.append(_escape_latex(limitations))
+            sections.append("")
+    else:
+        sections.append(r"""
 \subsection{Principal Findings}""")
-    
-    # Result-specific prompts instead of generic placeholders
-    best_model_key = manuscript_facts.get('manuscript_primary_model') or manuscript_facts.get('best_model_by_metric')
-    if best_model_key and model_results and best_model_key in model_results:
-        best_metrics = model_results[best_model_key].get('metrics', {})
-        if task_type == 'regression':
-            primary_metric = 'RMSE'
-            primary_val = best_metrics.get('RMSE')
-        else:
-            primary_metric = 'F1' if 'F1' in best_metrics else 'Accuracy'
-            primary_val = best_metrics.get(primary_metric)
+
+        # Result-specific prompts instead of generic placeholders
+        best_model_key = manuscript_facts.get('manuscript_primary_model') or manuscript_facts.get('best_model_by_metric')
+        if best_model_key and model_results and best_model_key in model_results:
+            best_metrics = model_results[best_model_key].get('metrics', {})
+            if task_type == 'regression':
+                primary_metric = 'RMSE'
+                primary_val = best_metrics.get('RMSE')
+            else:
+                primary_metric = 'F1' if 'F1' in best_metrics else 'Accuracy'
+                primary_val = best_metrics.get(primary_metric)
         
-        if primary_val is not None:
-            sections.append(
-                f"The {_escape_latex(_model_display_name(best_model_key))} achieved {primary_metric} of {primary_val:.4f} on held-out data. "
-                + _styled_placeholder("[PLACEHOLDER: Interpret this performance in clinical context]")
-            )
+            if primary_val is not None:
+                sections.append(
+                    f"The {_escape_latex(_model_display_name(best_model_key))} achieved {primary_metric} of {primary_val:.4f} on held-out data. "
+                    + _styled_placeholder("[PLACEHOLDER: Interpret this performance in clinical context]")
+                )
+            else:
+                sections.append(_styled_placeholder("[PLACEHOLDER: Summarize the main results in context of the study objectives.]"))
         else:
             sections.append(_styled_placeholder("[PLACEHOLDER: Summarize the main results in context of the study objectives.]"))
-    else:
-        sections.append(_styled_placeholder("[PLACEHOLDER: Summarize the main results in context of the study objectives.]"))
     
-    sections.append("")
-    
-    # Feature importance interpretation prompt
-    if explainability_summary and explainability_summary.get('top_features'):
-        top_feats = explainability_summary['top_features'][:3]
-        feat_str = ", ".join(_escape_latex(f) for f in top_feats)
-        sections.append(f"Key predictors identified were {feat_str}. " + _styled_placeholder("[PLACEHOLDER: Discuss biological plausibility and consistency with prior knowledge]"))
         sections.append("")
     
-    sections.append(r"""
+        # Feature importance interpretation prompt
+        if explainability_summary and explainability_summary.get('top_features'):
+            top_feats = explainability_summary['top_features'][:3]
+            feat_str = ", ".join(_escape_latex(f) for f in top_feats)
+            sections.append(f"Key predictors identified were {feat_str}. " + _styled_placeholder("[PLACEHOLDER: Discuss biological plausibility and consistency with prior knowledge]"))
+            sections.append("")
+    
+        sections.append(r"""
 \subsection{Comparison with Prior Work and Implications}""")
-    if task_type and best_model_key and model_results:
-        task_label = "regression" if task_type == "regression" else "classification"
-        sections.append(_styled_placeholder(
-            f"[PLACEHOLDER: Compare the {primary_metric if 'primary_metric' in locals() else 'performance'} "
-            f"to published benchmarks for {task_label} in this domain and discuss practical or clinical implications.]"
-        ))
-    else:
-        sections.append(_styled_placeholder("[PLACEHOLDER: Compare your results with existing literature and discuss implications.]"))
-    sections.append(r"""
+        if task_type and best_model_key and model_results:
+            task_label = "regression" if task_type == "regression" else "classification"
+            sections.append(_styled_placeholder(
+                f"[PLACEHOLDER: Compare the {primary_metric if 'primary_metric' in locals() else 'performance'} "
+                f"to published benchmarks for {task_label} in this domain and discuss practical or clinical implications.]"
+            ))
+        else:
+            sections.append(_styled_placeholder("[PLACEHOLDER: Compare your results with existing literature and discuss implications.]"))
+        sections.append(r"""
 \subsection{Strengths and Limitations}
 
 \paragraph{Strengths}""")
     
-    # Auto-fill methodological strengths from what we know
-    strength_items = []
-    if analysis_n > 0:
-        from utils.workflow_provenance import get_provenance as _gp
-        try:
-            _up = getattr(_gp(), "upload", None)
-        except Exception:
-            _up = None
-        if _up is not None and getattr(_up, "cohort_column", ""):
-            # Listing a restricted sample as a plain strength invites the reader
-            # to treat it as the study's size. Name the group it is a sample of.
-            strength_items.append(
-                f"Sample size of {analysis_n:,} observations within "
-                f"{_up.cohort_column} = {_up.cohort_value} "
-                f"(the analysis was restricted to this group)")
+        # Auto-fill methodological strengths from what we know
+        strength_items = []
+        if analysis_n > 0:
+            from utils.workflow_provenance import get_provenance as _gp
+            try:
+                _up = getattr(_gp(), "upload", None)
+            except Exception:
+                _up = None
+            if _up is not None and getattr(_up, "cohort_column", ""):
+                # Listing a restricted sample as a plain strength invites the reader
+                # to treat it as the study's size. Name the group it is a sample of.
+                strength_items.append(
+                    f"Sample size of {analysis_n:,} observations within "
+                    f"{_up.cohort_column} = {_up.cohort_value} "
+                    f"(the analysis was restricted to this group)")
+            else:
+                strength_items.append(f"Sample size of {analysis_n:,} observations")
+        if bootstrap_results:
+            strength_items.append("Bootstrap confidence intervals for uncertainty quantification")
+        if explainability_summary:
+            if explainability_summary.get('shap_available'):
+                strength_items.append("Model-agnostic explainability via SHAP analysis")
+            if explainability_summary.get('permutation_importance_available'):
+                strength_items.append("Permutation importance for feature contribution assessment")
+        if sensitivity_summary and sensitivity_summary.get('seed_stability'):
+            strength_items.append("Random seed sensitivity analysis for robustness assessment")
+    
+        strength_items = strength_items[:4]
+        if strength_items:
+            sections.append(r"\begin{itemize}")
+            for item in strength_items:
+                sections.append(f"\\item {item}")
+            sections.append(r"\end{itemize}")
+            sections.append("")
+            sections.append(_styled_placeholder("[PLACEHOLDER: Add study-specific strengths]"))
         else:
-            strength_items.append(f"Sample size of {analysis_n:,} observations")
-    if bootstrap_results:
-        strength_items.append("Bootstrap confidence intervals for uncertainty quantification")
-    if explainability_summary:
-        if explainability_summary.get('shap_available'):
-            strength_items.append("Model-agnostic explainability via SHAP analysis")
-        if explainability_summary.get('permutation_importance_available'):
-            strength_items.append("Permutation importance for feature contribution assessment")
-    if sensitivity_summary and sensitivity_summary.get('seed_stability'):
-        strength_items.append("Random seed sensitivity analysis for robustness assessment")
+            sections.append(_styled_placeholder("[PLACEHOLDER: Discuss methodological strengths]"))
     
-    strength_items = strength_items[:4]
-    if strength_items:
-        sections.append(r"\begin{itemize}")
-        for item in strength_items:
-            sections.append(f"\\item {item}")
-        sections.append(r"\end{itemize}")
-        sections.append("")
-        sections.append(_styled_placeholder("[PLACEHOLDER: Add study-specific strengths]"))
-    else:
-        sections.append(_styled_placeholder("[PLACEHOLDER: Discuss methodological strengths]"))
-    
-    sections.append(r"""
+        sections.append(r"""
 
 \paragraph{Limitations}
 """)
-    sections.append(_escape_latex(limitations))
+        sections.append(_escape_latex(limitations))
     
-    sections.append(r"""
+        sections.append(r"""
 
 \subsection{Conclusion}""")
-    sections.append(_styled_placeholder("[PLACEHOLDER: State the main conclusion and its implications.]"))
-    sections.append("")
-    sections.append("")
+        sections.append(_styled_placeholder("[PLACEHOLDER: State the main conclusion and its implications.]"))
+        sections.append("")
+        sections.append("")
 
     # ── References ──
     sections.append(r"""
@@ -1059,6 +1360,23 @@ This analysis was conducted using Tabular ML Lab (Python). Full reproducibility 
         if in_list:
             sections.append(r"\end{enumerate}")
         sections.append("")
+
+    # Compiled draft sections the manuscript skeleton has no home for. They are
+    # printed here, named, rather than dropped on the way to the .tex: a section
+    # this function does not recognize is a gap in the mapping, and the author
+    # has to be able to see it (RECORD-007).
+    if draft_unmapped:
+        sections.append(r"\subsection{Unmapped Compiled Draft Sections}")
+        sections.append(
+            "The generated draft contained the following section(s), which this "
+            "template has no place for. They are reproduced verbatim so that "
+            "nothing compiled from the workflow is lost."
+        )
+        sections.append("")
+        for _heading, _latex in draft_unmapped:
+            sections.append(rf"\paragraph{{{_escape_latex(_heading)}}}")
+            sections.append(_normalize_generated_latex_text(_latex))
+            sections.append("")
 
     sections.append(r"\end{spacing}")
     sections.append(r"\end{document}")

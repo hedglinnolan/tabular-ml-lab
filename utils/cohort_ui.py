@@ -207,10 +207,10 @@ def _switch_to(payload) -> None:
     """
     from utils.session_state import reset_downstream_results
     # filtered_data is a row subset of the PREVIOUS cohort. reset_downstream_results
-    # does not clear it (a row filter is not a fitted result), so after switching
-    # to Male it still held the Female frame — apply_cohort found no Male labels
-    # in it, fell through to the column path, and returned an EMPTY frame with no
-    # broken flag set, because the fallback had "worked".
+    # clears it too now, but only after apply_cohort has already run on it — pop it
+    # here first so the switch cannot read the previous cohort's frame: apply_cohort
+    # would find no Male labels in the Female frame, fall through to the column
+    # path, and return an EMPTY frame with no broken flag set.
     import streamlit as _st
     from utils import replay as _replay
     _st.session_state.pop("filtered_data", None)

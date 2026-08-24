@@ -22,6 +22,7 @@ from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
 from utils.table_export import table
 from data_processor import get_numeric_columns, get_categorical_columns
+from ml.table_one import format_pvalue
 from ml.stats_tests import (
     correlation_test,
     two_sample_location_test,
@@ -32,6 +33,89 @@ from ml.stats_tests import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ── Which family of test the DATA asks for ────────────────────────────────
+# The parametric/non-parametric switch used to default to parametric whatever
+# the distribution looked like, so an unattended run reported a t-test on
+# skewed data. ml/table_one.py already chooses per-variable by Shapiro-Wilk for
+# every Table 1 row; the same rule (and the same statistic, from
+# ml.stats_tests.normality_check) decides the default here.
+_NORMALITY_MIN_N = 8      # ml/table_one._is_normal's floor: below it Shapiro-Wilk decides nothing
+_NORMALITY_ALPHA = 0.05
+
+
+def _parametric_default(samples: Dict[str, np.ndarray]) -> Tuple[bool, str]:
+    """Default the parametric choice from a normality pre-check.
+
+    Parametric only when EVERY sample is compatible with normality at
+    `_NORMALITY_ALPHA`. Too few observations to test is not evidence of
+    normality, so it falls to the non-parametric test and says which sample
+    made it fall.
+
+    Returns (use_parametric, reason) — the reason is shown on screen and
+    recorded with the result.
+    """
+    verdicts: List[str] = []
+    parametric = True
+    for label, values in samples.items():
+        x = np.asarray(values, dtype=float)
+        x = x[~np.isnan(x)]
+        if len(x) < _NORMALITY_MIN_N:
+            parametric = False
+            verdicts.append(f"{label}: n={len(x)}, too few to test normality")
+            continue
+        _, p, test_label = normality_check(x)
+        if np.isnan(p):
+            parametric = False
+            verdicts.append(f"{label}: {test_label} could not be computed")
+            continue
+        if p <= _NORMALITY_ALPHA:
+            parametric = False
+        verdicts.append(f"{label}: {test_label} p={p:.4g}")
+    return parametric, "; ".join(verdicts)
+
+
+def _parametric_choice(
+    samples: Dict[str, np.ndarray],
+    key_prefix: str,
+    scope: str,
+    checkbox_label: str,
+    parametric_name: str,
+    nonparametric_name: str,
+    help_text: str,
+) -> Tuple[bool, bool, str]:
+    """Render the pre-check, its verdict, and the override box.
+
+    The widget key carries `scope` (the columns the pre-check ran on): a key
+    that outlived the selection would answer for the previous columns, which is
+    the failure this replaces.
+
+    Returns (use_parametric, default, reason).
+    """
+    default, reason = _parametric_default(samples)
+    chosen = parametric_name if default else nonparametric_name
+    st.caption(
+        f"**Assumption check:** {reason} → defaulting to **{chosen}** "
+        f"({'normality not rejected' if default else 'normality rejected or untestable'} "
+        f"at α={_NORMALITY_ALPHA}). You can override below; whichever test runs "
+        f"is recorded with the result."
+    )
+    use_parametric = st.checkbox(
+        checkbox_label,
+        value=default,
+        key=f"{key_prefix}::{scope}",
+        help=help_text,
+    )
+    if use_parametric != default:
+        st.warning(
+            f"⚠️ Overriding the assumption check: running the "
+            f"**{parametric_name if use_parametric else nonparametric_name}** "
+            f"where the pre-check selected the "
+            f"**{nonparametric_name if use_parametric else parametric_name}**. "
+            f"The override is recorded with the result."
+        )
+    return use_parametric, default, reason
+
 
 init_session_state()
 
@@ -299,7 +383,7 @@ if test_type == "Correlation (two numeric variables)":
         with col1:
             st.metric("Correlation (r)", f"{results['r']:.4f}")
         with col2:
-            st.metric("p-value", f"{results['p']:.4f}")
+            st.metric("p-value", format_pvalue(results['p']))
         with col3:
             sig = "Significant" if is_significant else "Not significant"
             st.metric(f"At α={alpha_level}", sig)
@@ -327,7 +411,7 @@ if test_type == "Correlation (two numeric variables)":
             **Summary:**
             - {results['method']} correlation: **r = {results['r']:.4f}**
             - This indicates a **{strength} {direction}** relationship
-            - **Statistically significant** (p = {results['p']:.4f} < α = {alpha_level})
+            - **Statistically significant** (p = {format_pvalue(results['p'])} < α = {alpha_level})
             - R² = {results['r_squared']:.4f} ({results['r_squared']*100:.1f}% of variance explained)
             - Sample size: n = {results['n']}
             """)
@@ -336,7 +420,7 @@ if test_type == "Correlation (two numeric variables)":
             **Summary:**
             - {results['method']} correlation: **r = {results['r']:.4f}**
             - This indicates a **{strength} {direction}** relationship
-            - **Not statistically significant** (p = {results['p']:.4f} ≥ α = {alpha_level})
+            - **Not statistically significant** (p = {format_pvalue(results['p'])} ≥ α = {alpha_level})
             - Sample size: n = {results['n']}
             """)
         
@@ -368,7 +452,7 @@ if test_type == "Correlation (two numeric variables)":
                 title=f"Scatter Plot: {var1} vs {var2}"
             )
         fig.add_annotation(
-            text=f"r = {results['r']:.3f}, p = {results['p']:.4f}, n = {results['n']}",
+            text=f"r = {results['r']:.3f}, p = {format_pvalue(results['p'])}, n = {results['n']}",
             xref="paper", yref="paper",
             x=0.02, y=0.98,
             showarrow=False,
@@ -380,7 +464,7 @@ if test_type == "Correlation (two numeric variables)":
         # LLM interpretation for correlation
         from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
         _bg_corr = gather_session_context()
-        _corr_summary = (f"method={results['method']}; r={results['r']:.4f}; p={results['p']:.4f}; "
+        _corr_summary = (f"method={results['method']}; r={results['r']:.4f}; p={results['p']:.3e}; "
                          f"r_squared={results['r_squared']:.4f}; n={results['n']}; "
                          f"alpha={alpha_level}; significant={'yes' if is_significant else 'no'}; "
                          f"strength={strength}; direction={direction}")
@@ -419,20 +503,23 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
         st.info(f"Groups found: {', '.join(map(str, unique_groups))}")
         st.stop()
     
-    # Parametric vs non-parametric
-    use_parametric = st.checkbox(
-        "Use parametric test (t-test)",
-        value=True,
-        key="two_sample_parametric",
-        help="Uncheck to use Mann-Whitney U (non-parametric). Use parametric if data is normally distributed."
+    # Parametric vs non-parametric — defaulted by the distributions themselves
+    group1_name, group2_name = unique_groups[0], unique_groups[1]
+    group1_data = df[df[group_var] == group1_name][numeric_var].dropna().values
+    group2_data = df[df[group_var] == group2_name][numeric_var].dropna().values
+    use_parametric, parametric_default, assumption_basis = _parametric_choice(
+        {str(group1_name): group1_data, str(group2_name): group2_data},
+        key_prefix="two_sample_parametric",
+        scope=f"{numeric_var}|{group_var}",
+        checkbox_label="Use parametric test (t-test)",
+        parametric_name="t-test",
+        nonparametric_name="Mann-Whitney U",
+        help_text="Uncheck to use Mann-Whitney U (non-parametric). The box is pre-set from the Shapiro-Wilk result above.",
     )
-    
+
     if st.button("Run Two-Sample Test", type="primary", key="run_two_sample"):
         with st.spinner("Running test..."):
-            group1_name, group2_name = unique_groups[0], unique_groups[1]
-            group1_data = df[df[group_var] == group1_name][numeric_var].dropna().values
-            group2_data = df[df[group_var] == group2_name][numeric_var].dropna().values
-            
+
             stat, p, test_name = two_sample_location_test(
                 group1_data, group2_data,
                 parametric=use_parametric
@@ -449,13 +536,19 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
                 'stat': stat,
                 'p': p,
                 'test_name': test_name,
-                'parametric': use_parametric
+                'parametric': use_parametric,
+                'parametric_default': parametric_default,
+                'assumption_basis': assumption_basis,
+                'assumption_overridden': use_parametric != parametric_default,
             }
             log_methodology(step='Statistical Validation', action=test_name, details={
                 'numeric_var': numeric_var,
                 'group_var': group_var,
                 'groups': [str(group1_name), str(group2_name)],
-                'p_value': p
+                'p_value': p,
+                'parametric': use_parametric,
+                'assumption_basis': assumption_basis,
+                'assumption_overridden': use_parametric != parametric_default,
             })
             try:
                 from utils.workflow_provenance import get_provenance
@@ -464,6 +557,9 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
                     variable=f"{numeric_var} by {group_var}",
                     statistic=float(stat) if stat is not None else None,
                     p_value=float(p) if p is not None else None,
+                    details={'parametric': use_parametric,
+                             'assumption_basis': assumption_basis,
+                             'assumption_overridden': use_parametric != parametric_default},
                 )
             except Exception:
                 pass  # Provenance recording should never break the workflow
@@ -482,15 +578,21 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
         with col3:
             st.metric("Test Statistic", f"{results['stat']:.4f}")
         with col4:
-            st.metric("p-value", f"{results['p']:.4f}")
+            st.metric("p-value", format_pvalue(results['p']))
         
         st.info(f"""
         **Summary:**
         - Test: **{results['test_name']}**
         - Mean difference: **{results['group1_mean'] - results['group2_mean']:.4f}**
-        - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < alpha_level else 'not statistically significant'} at α={alpha_level})
+        - p-value: **{format_pvalue(results['p'])}** ({'statistically significant' if results['p'] < alpha_level else 'not statistically significant'} at α={alpha_level})
         - This {'suggests' if results['p'] < alpha_level else 'does not suggest'} a significant difference between {results['group1']} and {results['group2']}
         """)
+        if results.get('assumption_basis'):
+            st.caption(
+                f"Test selection: {results['assumption_basis']} → "
+                f"{'author override' if results.get('assumption_overridden') else 'assumption check'} "
+                f"chose the {'parametric' if results['parametric'] else 'non-parametric'} test."
+            )
         
         # Export to Table 1 button
         if st.button("📋 Add to Table 1", key="export_ttest_table1"):
@@ -522,7 +624,7 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
         from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
         _bg_ts = gather_session_context()
         _mean_diff = results['group1_mean'] - results['group2_mean']
-        _ts_summary = (f"test={results['test_name']}; stat={results['stat']:.4f}; p={results['p']:.4f}; "
+        _ts_summary = (f"test={results['test_name']}; stat={results['stat']:.4f}; p={results['p']:.3e}; "
                        f"mean_{results['group1']}={results['group1_mean']:.4f}; "
                        f"mean_{results['group2']}={results['group2_mean']:.4f}; "
                        f"mean_diff={_mean_diff:.4f}; n1={results.get('n1', '?')}; n2={results.get('n2', '?')}")
@@ -562,20 +664,23 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
     
     st.info(f"Groups found: {', '.join(map(str, unique_groups))}")
     
-    use_parametric = st.checkbox(
-        "Use parametric test (ANOVA)",
-        value=True,
-        key="multi_group_parametric",
-        help="Uncheck to use Kruskal-Wallis (non-parametric)."
+    groups_data = [
+        df[df[group_var] == group][numeric_var].dropna().values
+        for group in unique_groups
+    ]
+    use_parametric, parametric_default, assumption_basis = _parametric_choice(
+        {str(g): d for g, d in zip(unique_groups, groups_data)},
+        key_prefix="multi_group_parametric",
+        scope=f"{numeric_var}|{group_var}",
+        checkbox_label="Use parametric test (ANOVA)",
+        parametric_name="ANOVA",
+        nonparametric_name="Kruskal-Wallis",
+        help_text="Uncheck to use Kruskal-Wallis (non-parametric). The box is pre-set from the Shapiro-Wilk results above.",
     )
-    
+
     if st.button("Run Multi-Group Test", type="primary", key="run_multi_group"):
         with st.spinner("Running test..."):
-            groups_data = [
-                df[df[group_var] == group][numeric_var].dropna().values
-                for group in unique_groups
-            ]
-            
+
             stat, p, test_name = k_sample_location_test(
                 groups_data,
                 parametric=use_parametric
@@ -592,13 +697,19 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
                 'stat': stat,
                 'p': p,
                 'test_name': test_name,
-                'parametric': use_parametric
+                'parametric': use_parametric,
+                'parametric_default': parametric_default,
+                'assumption_basis': assumption_basis,
+                'assumption_overridden': use_parametric != parametric_default,
             }
             log_methodology(step='Statistical Validation', action=test_name, details={
                 'numeric_var': numeric_var,
                 'group_var': group_var,
                 'n_groups': len(unique_groups),
-                'p_value': p
+                'p_value': p,
+                'parametric': use_parametric,
+                'assumption_basis': assumption_basis,
+                'assumption_overridden': use_parametric != parametric_default,
             })
             try:
                 from utils.workflow_provenance import get_provenance
@@ -607,6 +718,9 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
                     variable=f"{numeric_var} by {group_var}",
                     statistic=float(stat) if stat is not None else None,
                     p_value=float(p) if p is not None else None,
+                    details={'parametric': use_parametric,
+                             'assumption_basis': assumption_basis,
+                             'assumption_overridden': use_parametric != parametric_default},
                 )
             except Exception:
                 pass  # Provenance recording should never break the workflow
@@ -621,7 +735,7 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
         with col1:
             st.metric("Test Statistic", f"{results['stat']:.4f}")
         with col2:
-            st.metric("p-value", f"{results['p']:.4f}")
+            st.metric("p-value", format_pvalue(results['p']))
         
         st.write("**Group Means:**")
         means_df = pd.DataFrame([
@@ -633,10 +747,16 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
         st.info(f"""
         **Summary:**
         - Test: **{results['test_name']}**
-        - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < alpha_level else 'not statistically significant'} at α={alpha_level})
+        - p-value: **{format_pvalue(results['p'])}** ({'statistically significant' if results['p'] < alpha_level else 'not statistically significant'} at α={alpha_level})
         - This {'suggests' if results['p'] < alpha_level else 'does not suggest'} a significant difference among groups
         - Note: If significant, consider post-hoc tests to identify which groups differ
         """)
+        if results.get('assumption_basis'):
+            st.caption(
+                f"Test selection: {results['assumption_basis']} → "
+                f"{'author override' if results.get('assumption_overridden') else 'assumption check'} "
+                f"chose the {'parametric' if results['parametric'] else 'non-parametric'} test."
+            )
         
         # Export to Table 1 button
         if st.button("📋 Add to Table 1", key="export_anova_table1"):
@@ -661,7 +781,7 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
         from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
         _bg_mg = gather_session_context()
         _group_means_str = "; ".join(f"{g}={m:.4f}" for g, m in results.get('group_means', {}).items())
-        _mg_summary = (f"test={results['test_name']}; stat={results['stat']:.4f}; p={results['p']:.4f}; "
+        _mg_summary = (f"test={results['test_name']}; stat={results['stat']:.4f}; p={results['p']:.3e}; "
                        f"n_groups={len(results.get('group_means', {}))}; group_means: {_group_means_str}")
         ctx_mg = build_llm_context(
             "multi_group_comparison", _mg_summary,
@@ -744,12 +864,12 @@ elif test_type == "Categorical association (two categorical variables)":
         with col1:
             st.metric("Test Statistic", f"{results['stat']:.4f}")
         with col2:
-            st.metric("p-value", f"{results['p']:.4f}")
+            st.metric("p-value", format_pvalue(results['p']))
         
         st.info(f"""
         **Summary:**
         - Test: **{results['test_name']}**
-        - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < alpha_level else 'not statistically significant'} at α={alpha_level})
+        - p-value: **{format_pvalue(results['p'])}** ({'statistically significant' if results['p'] < alpha_level else 'not statistically significant'} at α={alpha_level})
         - This {'suggests' if results['p'] < alpha_level else 'does not suggest'} an association between {var1} and {var2}
         """)
         
@@ -782,7 +902,7 @@ elif test_type == "Categorical association (two categorical variables)":
         # LLM interpretation for chi-squared
         from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
         _bg_chi = gather_session_context()
-        _chi_summary = (f"test={results['test_name']}; chi2={results['stat']:.4f}; p={results['p']:.4f}; "
+        _chi_summary = (f"test={results['test_name']}; chi2={results['stat']:.4f}; p={results['p']:.3e}; "
                         f"df={results.get('dof', '?')}; cramers_v={results.get('cramers_v', 'N/A')}; "
                         f"min_expected_count={results.get('min_expected', 'N/A')}")
         ctx_chi = build_llm_context(
@@ -852,7 +972,7 @@ elif test_type == "Normality test (one numeric variable)":
         with col1:
             st.metric("Test Statistic", f"{results['stat']:.4f}")
         with col2:
-            st.metric("p-value", f"{results['p']:.4f}")
+            st.metric("p-value", format_pvalue(results['p']))
         with col3:
             st.metric("Mean", f"{results['mean']:.4f}")
         with col4:
@@ -862,7 +982,7 @@ elif test_type == "Normality test (one numeric variable)":
         st.info(f"""
         **Summary:**
         - Test: **{results['test_name']}**
-        - p-value: **{results['p']:.4f}**
+        - p-value: **{format_pvalue(results['p'])}**
         - The data appears to be {'normally distributed' if is_normal else 'NOT normally distributed'} (p {'≥' if is_normal else '<'} 0.05)
         - Sample size: **{results['n']}**
         """)
@@ -894,19 +1014,23 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
     var_before = st.selectbox("Before/Time 1 Variable", options=numeric_cols, key="paired_before")
     var_after = st.selectbox("After/Time 2 Variable", options=[c for c in numeric_cols if c != var_before], key="paired_after")
     
-    use_parametric = st.checkbox(
-        "Use parametric test (paired t-test)",
-        value=True,
-        key="paired_parametric",
-        help="Uncheck to use Wilcoxon signed-rank test (non-parametric)"
+    # The paired t-test's assumption is on the DIFFERENCES, so that is what the
+    # pre-check tests — not the two measurement columns.
+    paired_df = df[[var_before, var_after]].dropna()
+    differences = (paired_df[var_after] - paired_df[var_before]).values
+    use_parametric, parametric_default, assumption_basis = _parametric_choice(
+        {f"{var_after} − {var_before}": differences},
+        key_prefix="paired_parametric",
+        scope=f"{var_before}|{var_after}",
+        checkbox_label="Use parametric test (paired t-test)",
+        parametric_name="paired t-test",
+        nonparametric_name="Wilcoxon signed-rank",
+        help_text="Uncheck to use the Wilcoxon signed-rank test (non-parametric). The box is pre-set from the Shapiro-Wilk result on the paired differences.",
     )
-    
+
     if st.button("Run Paired Test", type="primary", key="run_paired"):
         with st.spinner("Running test..."):
-            # Get paired data (drop rows where either is missing)
-            paired_df = df[[var_before, var_after]].dropna()
-            differences = (paired_df[var_after] - paired_df[var_before]).values
-            
+
             stat, p, test_name = paired_location_test(
                 differences,
                 parametric=use_parametric
@@ -923,13 +1047,19 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
                 'p': p,
                 'test_name': test_name,
                 'n_pairs': len(paired_df),
-                'parametric': use_parametric
+                'parametric': use_parametric,
+                'parametric_default': parametric_default,
+                'assumption_basis': assumption_basis,
+                'assumption_overridden': use_parametric != parametric_default,
             }
             log_methodology(step='Statistical Validation', action=test_name, details={
                 'var_before': var_before,
                 'var_after': var_after,
                 'n_pairs': len(paired_df),
-                'p_value': p
+                'p_value': p,
+                'parametric': use_parametric,
+                'assumption_basis': assumption_basis,
+                'assumption_overridden': use_parametric != parametric_default,
             })
             try:
                 from utils.workflow_provenance import get_provenance
@@ -938,6 +1068,9 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
                     variable=f"{var_before} vs {var_after}",
                     statistic=float(stat) if stat is not None else None,
                     p_value=float(p) if p is not None else None,
+                    details={'parametric': use_parametric,
+                             'assumption_basis': assumption_basis,
+                             'assumption_overridden': use_parametric != parametric_default},
                 )
             except Exception:
                 pass  # Provenance recording should never break the workflow
@@ -956,16 +1089,22 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
         with col3:
             st.metric("Mean Difference", f"{results['mean_diff']:.4f}")
         with col4:
-            st.metric("p-value", f"{results['p']:.4f}")
+            st.metric("p-value", format_pvalue(results['p']))
         
         st.info(f"""
         **Summary:**
         - Test: **{results['test_name']}**
         - Mean difference: **{results['mean_diff']:.4f}**
-        - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < alpha_level else 'not statistically significant'} at α={alpha_level})
+        - p-value: **{format_pvalue(results['p'])}** ({'statistically significant' if results['p'] < alpha_level else 'not statistically significant'} at α={alpha_level})
         - Number of pairs: **{results['n_pairs']}**
         - This {'suggests' if results['p'] < alpha_level else 'does not suggest'} a significant change from {results['var_before']} to {results['var_after']}
         """)
+        if results.get('assumption_basis'):
+            st.caption(
+                f"Test selection: {results['assumption_basis']} → "
+                f"{'author override' if results.get('assumption_overridden') else 'assumption check'} "
+                f"chose the {'parametric' if results['parametric'] else 'non-parametric'} test."
+            )
         
         # Export to Table 1 button
         if st.button("📋 Add to Table 1", key="export_paired_table1"):
@@ -994,19 +1133,61 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
         st.plotly_chart(fig, width="stretch")
 
 # Family-wise error rate warning
+#
+# `DRIVE8-20`. The burden is the number of QUESTIONS asked of the data, and a
+# comparison re-run under an author override is the same question with a
+# different estimator. Counting rows counted the override twice, and the same
+# double-count reached the Methods draft's multiplicity sentence. The identity
+# of a comparison is the variables it is about, not the test that answered it.
 _custom_tests = st.session_state.get('custom_table1_tests', [])
-if len(_custom_tests) > 1:
-    _n = len(_custom_tests)
+_comparisons = {(str(t.get('variable', '')), str(t.get('note', ''))): t
+                for t in _custom_tests if isinstance(t, dict)}
+if len(_comparisons) > 1:
+    _n = len(_comparisons)
     _fwer = 1 - (1 - 0.05) ** _n
     _bonf = 0.05 / _n
     st.markdown("---")
     st.warning(
-        f"⚠️ **Multiple comparisons:** You have run **{_n} tests** in this session. "
+        f"⚠️ **Multiple comparisons:** You have run **{_n} distinct comparisons** in this session. "
         f"Without correction, the probability of at least one false positive is approximately "
         f"**{_fwer:.0%}** (family-wise error rate). "
         f"Consider Bonferroni-adjusted α = 0.05/{_n} = **{_bonf:.4f}** when interpreting results, "
         f"or use FDR correction if you have many planned comparisons."
     )
+
+    # AUDIT-001. The warning above has been here all along and the MANUSCRIPT
+    # did not carry it: the draft reported how many tests reached a raw
+    # p < 0.05 with no correction named. The draft now declines to count an
+    # uncorrected family — which is right, and it leaves the author no way to
+    # get a corrected count either. This is that way.
+    #
+    # An ACT rather than a default, because Benjamini-Hochberg over "every test
+    # I ran today" is a decision about what the family IS, and the app does not
+    # get to make it silently. Pressing it records the correction against the
+    # family, and the Methods draft then reports the corrected count naming the
+    # method and the threshold.
+    from utils.workflow_provenance import get_provenance
+    _recorded = getattr(get_provenance().statistical_validation, "tests_run", []) \
+        if get_provenance().statistical_validation else []
+    if _recorded:
+        if st.button("Apply Benjamini–Hochberg FDR correction to these tests",
+                     key="apply_fdr_correction"):
+            _summary = get_provenance().apply_multiplicity_correction(
+                method="fdr_bh", alpha=0.05)
+            st.success(
+                f"Corrected {_summary['n_adjusted']} test(s): "
+                f"**{_summary['n_significant']}** remain significant at "
+                f"q < 0.05. At an uncorrected α = 0.05 about "
+                f"{_summary['expected_by_chance']:.0f} of "
+                f"{_summary['n_adjusted']} would clear the line by chance "
+                f"alone. The Methods draft now reports the corrected count."
+            )
+        st.caption(
+            "Until a correction is applied, the Methods draft states that these "
+            "tests are uncorrected and does not report a count of significant "
+            "ones — an uncorrected count on a wide table is the number a "
+            "reviewer would object to."
+        )
 
 # Export results
 if st.session_state.get('hypothesis_test_results'):

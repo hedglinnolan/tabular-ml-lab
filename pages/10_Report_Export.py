@@ -7,6 +7,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from typing import Dict, Optional, Any, List, Tuple
+import os
+import subprocess
 import io
 import zipfile
 import json
@@ -16,7 +18,7 @@ import logging
 
 from utils.session_state import (
     init_session_state, get_data, get_preprocessing_pipeline,
-    DataConfig, SplitConfig, ModelConfig
+    DataConfig, SplitConfig, ModelConfig, ensure_dataset_profile
 )
 from ml.pipeline import get_pipeline_recipe
 from utils.storyline import render_breadcrumb, render_page_navigation
@@ -29,6 +31,8 @@ init_session_state()
 from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_sidebar_workflow
 from utils.table_export import table
 from utils.insight_ledger import get_ledger as _get_report_ledger
+from utils.insight_ledger import name_empty_slots, resolution_text
+from ml.table_one import format_pvalue
 
 # Module-level ledger — used by generate_report(), TRIPOD section, and debug panel
 _report_ledger = _get_report_ledger()
@@ -83,7 +87,10 @@ pipeline = get_preprocessing_pipeline()
 trained_models = st.session_state.get('trained_models', {})
 model_results = st.session_state.get('model_results', {})
 data_audit = st.session_state.get('data_audit')
-profile = st.session_state.get('dataset_profile')
+# `DRIVE-073`. The manifest states whether a profile exists and the missing-data
+# summary is built from one; a selection applied on page 04 cleared it, so the
+# export reported "Dataset profile: Not computed" on a session that had one.
+profile = ensure_dataset_profile()
 # coach_output removed — now derived from unified ledger
 
 if not data_config:
@@ -142,9 +149,85 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+#: Marks a commit stamp taken from a tree with uncommitted changes. The L67
+#: adjudication's convention (`docs/turbotab/VALUE_CHECK_ADJUDICATION.md`): the
+#: suffix is deliberately not a valid revision, so a stamp that `git show`
+#: cannot resolve announces its own limitation instead of quietly failing to
+#: honor a reproducibility claim it cannot support.
+_WORKING_TREE_SUFFIX = '+wt'
+
+
+def _git_commit() -> Optional[str]:
+    """The commit this export was produced at, or None outside a repository.
+
+    `DRIVE8-31`. The reproducibility manifest reported `'commit': 'n/a'` — a
+    record whose one job is to say which code produced these numbers, declining
+    to say it while the answer was two subprocess calls away. Absence is still
+    a legitimate answer (an installed copy, a downloaded zip), and it stays
+    None rather than becoming a guess.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        head = subprocess.run(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            cwd=root, capture_output=True, text=True, timeout=5,
+        )
+        if head.returncode != 0:
+            return None
+        commit = head.stdout.strip()
+        if not commit:
+            return None
+        dirty = subprocess.run(
+            ['git', 'status', '--porcelain'],
+            cwd=root, capture_output=True, text=True, timeout=5,
+        )
+        # A stamp is a claim about reproducibility: if the tree the export was
+        # taken from is not the tree a reader can check out, the stamp says so.
+        if dirty.returncode == 0 and dirty.stdout.strip():
+            commit += _WORKING_TREE_SUFFIX
+        return commit
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def get_git_info() -> Dict[str, str]:
     """Get app version info for export metadata. Excludes branch name to avoid leaking deployment details."""
-    return {'app_version': '1.0.0', 'commit': 'n/a'}
+    commit = _git_commit()
+    return {'app_version': '1.0.0',
+            'commit': commit if commit else 'not a git checkout'}
+
+
+def _profile_scope_fields() -> Dict[str, Any]:
+    """Which rows `dataset_profile` describes, for anything that exports it.
+
+    Page 02 quarantines the sealed test rows out of the profile, because the
+    profile drives the model coach and a coach that has seen the held-out people
+    is choosing models with them (`CONTRACT-017`). That makes the profile's
+    p/n ratio, missing rate and sufficiency verdict statements about the
+    *training* rows — and this page copies those numbers into the exported
+    record and into the Methods section.
+
+    An exported number whose population is unstated is read as being about
+    everyone, which is the one thing the app must never let a document do. When
+    page 02 has not run, or nothing is sealed, the scope is unknown or `all` and
+    that is said too rather than assumed.
+    """
+    scope = st.session_state.get('dataset_profile_scope')
+    if not isinstance(scope, dict):
+        return {'row_scope': 'unknown', 'row_scope_n': None,
+                'row_scope_note': 'the rows this profile describes were not recorded'}
+    rows = scope.get('rows', 'unknown')
+    n = scope.get('n_rows')
+    total = scope.get('n_rows_total')
+    if rows == 'training' and n is not None:
+        note = f"training rows only, n={n:,}"
+        if total:
+            note += f" of {total:,}; {scope.get('reason', '')}".rstrip('; ')
+    elif rows == 'all' and n is not None:
+        note = f"all rows, n={n:,}"
+    else:
+        note = 'the rows this profile describes were not recorded'
+    return {'row_scope': rows, 'row_scope_n': n, 'row_scope_note': note}
 
 
 def generate_metadata() -> Dict[str, Any]:
@@ -175,6 +258,12 @@ def generate_metadata() -> Dict[str, Any]:
             'target_trim_lower': getattr(split_config, 'target_trim_lower', 0.0),
             'target_trim_upper': getattr(split_config, 'target_trim_upper', 1.0),
             'target_transform': getattr(split_config, 'target_transform', 'none'),
+            # The three above are the trim that was ASKED FOR. This is the trim
+            # that RAN — thresholds, the rows they were computed from, whether
+            # sealed test rows were exempt, and how many rows went
+            # (`CONTRACT-021`). pages/06 records it from the Split itself; None
+            # when no trim ran.
+            'target_trim_realized': st.session_state.get('split_trim_record'),
         },
         'preprocessing': st.session_state.get('preprocessing_config', {}),
         'models_trained': list(trained_models.keys())
@@ -189,9 +278,15 @@ def generate_metadata() -> Dict[str, Any]:
             'p_n_ratio': profile.p_n_ratio,
             'total_missing_rate': profile.total_missing_rate,
             'n_features_with_outliers': len(profile.features_with_outliers),
-            'warnings': [w.short_message for w in profile.warnings]
+            'warnings': [w.short_message for w in profile.warnings],
+            # Which rows these numbers describe. Page 02 computes the profile on
+            # training rows only when a lockbox is sealed, so p/n, the missing
+            # rate and the sufficiency verdict are about the training set — and
+            # an exported number whose population is unstated will be read as
+            # being about everyone.
+            **_profile_scope_fields(),
         }
-    
+
     return metadata
 
 
@@ -450,12 +545,27 @@ def _build_manuscript_context(
         'best_model_by_metric': scoped_best_model_by_metric,
         'best_metric_name': scoped_best_metric_name,
         'explainability_methods': list(selected_explain),
+        # MISC-028. THE THIRD PRODUCER, AND IT SAYS SO NOW. `analysis_total` is
+        # the literal sum on the line below the three terms the validator's
+        # split check adds up, so *Split counts reconcile to analysis
+        # population* is an identity on this door and always was — the same
+        # defect the Guided producer carried, reached by a different route.
+        #
+        # It is ANNOTATED rather than repaired: there is no second count of
+        # this cohort anywhere in the Classic session to reconcile against, and
+        # inventing one here would be a number the validator then confirms
+        # against the arithmetic it came from. Naming the derivation lets the
+        # check declare itself instead of reporting scrutiny it did not apply.
+        # Nothing user-facing moves — `validation_report.passed` and therefore
+        # `exports_blocked` read `status`, which is untouched.
         'population_counts': {
             'upload_total': len(df) if df is not None else 0,
             'analysis_total': train_n + val_n + test_n,
             'train_n': train_n,
             'val_n': val_n,
             'test_n': test_n,
+            'analysis_total_source': 'split',
+            'split_source': 'split',
         },
         'dataset_descriptor': dataset_descriptor,
         'cohort_type': cohort_type,
@@ -501,10 +611,15 @@ def _build_reproducibility_manifest() -> Dict[str, Any]:
         pass
 
     _split_cfg = st.session_state.get('split_config')
+    # `SWEEP-023`: `or 42` rewrote seed 0 — a legitimate, common choice — as 42
+    # in the manifest a reviewer re-runs the study from. Absence is the only
+    # thing that falls back; 0 is a value.
+    _seed = getattr(_split_cfg, 'random_state', None)
+    if _seed is None:
+        _seed = st.session_state.get('random_seed')
     out = {
         'software_versions': versions,
-        'random_seed': int(getattr(_split_cfg, 'random_state',
-                                   st.session_state.get('random_seed', 42)) or 42),
+        'random_seed': 42 if _seed is None else int(_seed),
         'data_sha256': data_hash,
         'data_shape': {'rows': n_rows, 'columns': n_cols},
     }
@@ -539,44 +654,63 @@ def _summarize_baselines() -> Optional[Dict[str, Dict[str, Any]]]:
         metrics = bres.get('metrics') or {}
         summary = {k: float(v) for k, v in metrics.items() if isinstance(v, (int, float))}
         if summary:
-            out[bname] = {'metrics': summary, 'description': bres.get('description', '')}
+            out[bname] = {
+                'metrics': summary,
+                'description': bres.get('description', ''),
+                # `MODELS-009`: the comparator's preprocessing travels with the
+                # comparator's numbers. This summary dropped it, so the LaTeX
+                # sentence claiming the baselines were evaluated "on the same
+                # held-out test set" could never name the recipe they went
+                # through — a different recipe from the models they anchor.
+                'preprocessing': bres.get('preprocessing', ''),
+            }
     return out or None
 
 
-def _build_analysis_cohort_df() -> pd.DataFrame:
-    """Reconstruct the analysis cohort used for splitting/export."""
+def _build_analysis_cohort_df() -> Tuple[pd.DataFrame, Optional[str]]:
+    """The REALIZED analysis cohort — the rows the split actually used.
+
+    `CONTRACT-021` / `STATE-031`: this used to re-derive the cohort from the
+    frame `get_data()` currently returns — drop a missing target, then recompute
+    the target-trim quantiles over the WHOLE frame and drop both tails. That is
+    a second implementation of a decision `ml/splits.make_split` already made,
+    and the two do not agree: the split computes the trim thresholds from
+    TRAINING rows only when a lockbox applies and never drops a sealed test row,
+    so the re-derived cohort is a different population from the one the models
+    were fitted and evaluated on. Table 1 and the manuscript N described it
+    anyway, with no warning.
+
+    The cohort is now read from the labels the split recorded. When no split has
+    been recorded, or the frame no longer holds those rows, this returns the
+    refusal instead of a plausible number — `(empty frame, reason)`.
+    """
+    from ml.splits import SplitIdentityError, resolve_analysis_cohort
+
     if df is None:
-        return pd.DataFrame()
+        return pd.DataFrame(), 'There is no active dataset to build the analysis cohort from.'
 
-    analysis_df = df.copy()
-    target_col = data_config.target_col if data_config else None
-    if not target_col or target_col not in analysis_df.columns:
-        return analysis_df.reset_index(drop=True)
+    labels: List[Any] = []
+    for _part in ('train', 'val', 'test'):
+        labels.extend(st.session_state.get(f'{_part}_row_labels') or [])
+    if not labels:
+        return pd.DataFrame(), (
+            'No analysis cohort has been recorded: the manuscript population is the '
+            'population the split used, and no split is on record. Run Prepare Splits '
+            'on the Train & Compare page.'
+        )
 
-    analysis_df = analysis_df.loc[analysis_df[target_col].notna()].copy()
-
-    if (
-        (data_config.task_type if data_config else None) == 'regression'
-        and split_config
-        and getattr(split_config, 'target_trim_enabled', False)
-    ):
-        target_numeric = pd.to_numeric(analysis_df[target_col], errors='coerce')
-        valid_mask = target_numeric.notna()
-        analysis_df = analysis_df.loc[valid_mask].copy()
-        target_numeric = target_numeric.loc[valid_mask]
-        if not target_numeric.empty:
-            q_lo = float(target_numeric.quantile(getattr(split_config, 'target_trim_lower', 0.0)))
-            q_hi = float(target_numeric.quantile(getattr(split_config, 'target_trim_upper', 1.0)))
-            trim_mask = (target_numeric >= q_lo) & (target_numeric <= q_hi)
-            analysis_df = analysis_df.loc[trim_mask].copy()
-
-    return analysis_df.reset_index(drop=True)
+    try:
+        return resolve_analysis_cohort(df, labels), None
+    except SplitIdentityError as exc:
+        return pd.DataFrame(), str(exc)
 
 
 def _table1_readiness() -> Tuple[str, str]:
     """Return readiness state for manuscript Table 1 generation."""
     feature_names = st.session_state.get('selected_features') or (data_config.feature_cols if data_config else [])
-    analysis_df = _build_analysis_cohort_df()
+    analysis_df, cohort_refusal = _build_analysis_cohort_df()
+    if cohort_refusal:
+        return 'missing', cohort_refusal
     available_features = [feature for feature in feature_names if feature in analysis_df.columns]
     if analysis_df.empty:
         return 'missing', 'Analysis cohort is unavailable for Table 1 generation.'
@@ -592,8 +726,11 @@ def _build_manuscript_table1(
     manuscript_context: Dict[str, Any],
 ) -> Tuple[Optional[pd.DataFrame], Dict[str, Any], Optional[Any]]:
     """Generate the manuscript Table 1 from the analysis cohort and finalized predictors."""
-    analysis_df = _build_analysis_cohort_df()
+    analysis_df, cohort_refusal = _build_analysis_cohort_df()
     feature_names = list(manuscript_context.get('feature_names_for_manuscript') or [])
+    if cohort_refusal:
+        # No Table 1 rather than a Table 1 about a population nobody modeled.
+        return None, {'cohort_unavailable': cohort_refusal}, None
     if analysis_df.empty or not feature_names:
         return None, {}, None
 
@@ -614,6 +751,53 @@ def _build_manuscript_table1(
     if table1_df is None or table1_df.empty:
         return None, table1_metadata, table1_config
     return table1_df, table1_metadata, table1_config
+
+
+def _calibration_records_for_manuscript(
+    included_models: List[str],
+) -> Dict[str, Any]:
+    """Per-model calibration artifacts for the models the manuscript includes.
+
+    `MISC-102`. Session state is the only source: nothing writes calibration
+    into workflow provenance, so there is no provenance record to prefer here
+    the way `external_validation_record` prefers one. Models the author excluded
+    from the report are dropped HERE rather than in the composer — a manuscript
+    may not carry a calibration number for a model it does not report.
+    """
+    stored = st.session_state.get('calibration_results') or {}
+    if not isinstance(stored, dict):
+        return {}
+    if not included_models:
+        return {}
+    included = set(included_models)
+    return {k: v for k, v in stored.items() if k in included}
+
+
+def _calibration_metrics_as_dict(cal: Any) -> Dict[str, float]:
+    """The finite scalar calibration metrics on a record, whatever its type.
+
+    Page 06 stores `CalibrationResult` dataclasses; a restored session may hand
+    back plain dicts. Both must reach the manuscript, and neither may contribute
+    an array or a name to a numeric table.
+    """
+    if cal is None:
+        return {}
+    if not isinstance(cal, dict):
+        import dataclasses
+        if dataclasses.is_dataclass(cal):
+            cal = dataclasses.asdict(cal)
+        else:
+            cal = vars(cal) if hasattr(cal, '__dict__') else {}
+    out: Dict[str, float] = {}
+    for key, value in cal.items():
+        if key in ('model_name', 'model', 'task_type', 'timestamp'):
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float, np.floating, np.integer)):
+            continue
+        if not np.isfinite(float(value)):
+            continue
+        out[key] = float(value)
+    return out
 
 
 def _build_methods_section_for_export(
@@ -760,11 +944,20 @@ def _build_methods_section_for_export(
                         'total_features': total_features,
                         'min_missing_rate': min_rate,
                         'max_missing_rate': max_rate,
+                        # The feature COUNT comes from the profile, which page 02
+                        # computes on training rows only when a lockbox exists;
+                        # the RATES come from data_audit over the whole frame.
+                        # Two populations in one sentence, so the sentence has to
+                        # say which is which.
+                        **_profile_scope_fields(),
+                        'rates_row_scope': 'all',
+                        'rates_n_rows': int(n_rows),
                     }
                 else:
                     missing_data_summary = {
                         'n_features_with_missing': profile.n_features_with_missing,
                         'total_features': total_features,
+                        **_profile_scope_fields(),
                     }
     
     # Fallback: check data_audit directly
@@ -816,6 +1009,15 @@ def _build_methods_section_for_export(
         model_configs={name: {} for name in selected_for_report},
         split_config=split_config if split_config else {},
         cv_folds=st.session_state.get('cv_folds', 5) if st.session_state.get('use_cv', False) else None,
+        # AUDIT-026. Passed explicitly rather than left to be derived from
+        # `selected_results`, which is None whenever the user excluded results
+        # from the report — the CV question would then be unanswerable for a
+        # reason that has nothing to do with CV. `model_results` is the full
+        # trained set and is present either way.
+        cv_models_run=[
+            name for name, res in (model_results or {}).items()
+            if isinstance(res, dict) and res.get('cv_results')
+        ] if model_results else None,
         n_total=len(df),
         n_train=train_n,
         n_val=val_n,
@@ -829,6 +1031,10 @@ def _build_methods_section_for_export(
         bootstrap_results=selected_bootstrap,
         best_model_name=manuscript_context.get('manuscript_primary_model'),
         explainability_methods=manuscript_context.get('explainability_methods'),
+        # `MISC-102`: the composer has carried a Calibration block since it was
+        # written; nothing ever passed it the results, so the block was dead and
+        # calibration numbers computed on page 06 never reached the draft.
+        calibration_results=_calibration_records_for_manuscript(selected_for_report),
         random_seed=st.session_state.get("random_seed", 42),
         manuscript_context=manuscript_context,
         model_hyperparameters=model_hyperparameters,
@@ -865,17 +1071,90 @@ def _build_explainability_summary_for_export(manuscript_context: Dict[str, Any])
     if calibration_results:
         best_model_key = manuscript_context.get('manuscript_primary_model') or manuscript_context.get('best_model_by_metric')
         if best_model_key and best_model_key in calibration_results:
-            cal_data = calibration_results[best_model_key]
-            if not isinstance(cal_data, dict):
-                # Page 06 stores CalibrationResult dataclasses
-                import dataclasses
-                cal_data = dataclasses.asdict(cal_data) if dataclasses.is_dataclass(cal_data) else vars(cal_data)
-            explainability_summary['calibration_metrics'] = {
-                k: v for k, v in cal_data.items()
-                if isinstance(v, (int, float)) and k not in ('model', 'timestamp')
-            }
+            explainability_summary['calibration_metrics'] = _calibration_metrics_as_dict(
+                calibration_results[best_model_key])
+        # `MISC-102`: page 06 calibrates every eligible model, and the LaTeX
+        # export reported the primary one only — a Calibration subsection that
+        # names one model while the Results table names five reads as a claim
+        # about all of them. Restricted to the included models for the same
+        # reason the methods composer's records are.
+        included = set(manuscript_context.get('included_models') or [])
+        by_model = {
+            name: _calibration_metrics_as_dict(cal)
+            for name, cal in calibration_results.items()
+            if not included or name in included
+        }
+        by_model = {name: m for name, m in by_model.items() if m}
+        if by_model:
+            explainability_summary['calibration_by_model'] = by_model
 
     return explainability_summary or None
+
+
+def _seed_stability_records() -> List[Dict[str, Any]]:
+    """What page 08 logged about the seed sweep: one record per model.
+
+    `MISC-104`. The frame under `sensitivity_seed_results` holds every re-seeded
+    model in one table — the primary model keeps the bare metric column and the
+    others carry a `" [key]"` suffix (pages/08:37) — and the column names are
+    the only record of which model a column belongs to once it is stored. The
+    log says which model was primary and which metric was swept; without it the
+    export cannot name either, and an unnamed number is what this finding is
+    about.
+    """
+    log = _report_ledger.get_methodology_log() or st.session_state.get('methodology_log', [])
+    records = []
+    for entry in log:
+        if entry.get('step') != 'Sensitivity Analysis':
+            continue
+        if 'seed' not in str(entry.get('action', '')).lower():
+            continue
+        details = entry.get('details', {}) or {}
+        if details.get('model'):
+            records.append(details)
+    return records
+
+
+def _seed_stability_by_model(
+    df_seeds: pd.DataFrame,
+    metric: str,
+    primary_model: str,
+) -> List[Dict[str, Any]]:
+    """Per-model spread for `metric`, read back out of the combined frame.
+
+    The same decomposition page 08 renders on screen (`_seed_summary_table`),
+    rebuilt here because a page module cannot be imported. A model whose column
+    holds fewer than two finite values is omitted: a coefficient of variation
+    over one seed is not a spread.
+    """
+    import re as _re
+
+    pattern = _re.compile(rf"^{_re.escape(metric)} \[(.+)\]$")
+    columns: List[Tuple[str, str]] = []
+    if metric in df_seeds.columns:
+        columns.append((primary_model, metric))
+    for col in df_seeds.columns:
+        matched = pattern.match(str(col))
+        if matched:
+            columns.append((matched.group(1), str(col)))
+
+    rows = []
+    for model_key, col in columns:
+        values = pd.to_numeric(df_seeds[col], errors='coerce').dropna()
+        if len(values) < 2:
+            continue
+        mean = float(values.mean())
+        rows.append({
+            'model': model_key,
+            'metric': metric,
+            'n_seeds': int(len(values)),
+            'mean': mean,
+            'sd': float(values.std()),
+            'min': float(values.min()),
+            'max': float(values.max()),
+            'cv_percent': (float(values.std()) / abs(mean) * 100) if mean != 0 else 0.0,
+        })
+    return rows
 
 
 def _build_sensitivity_summary_for_export() -> Optional[Dict[str, Any]]:
@@ -883,15 +1162,38 @@ def _build_sensitivity_summary_for_export() -> Optional[Dict[str, Any]]:
     sensitivity_summary: Dict[str, Any] = {}
     seed_sensitivity = st.session_state.get('sensitivity_seed_results')
     if seed_sensitivity is not None and not seed_sensitivity.empty:
+        # `MISC-104`. The headline number used to be whichever metric column
+        # sorted first, attributed to no model at all — page 08 sweeps every
+        # eligible model, so "a coefficient of variation of 3.1% across seeds"
+        # named neither the model it describes nor the metric it varies. The
+        # log's LAST seed record is the primary model (pages/08 writes the
+        # primary last, deliberately).
+        records = _seed_stability_records()
+        primary_model = str(records[-1].get('model')) if records else ''
+        metric = str(records[-1].get('metric') or '') if records else ''
         metric_cols = [c for c in seed_sensitivity.columns if c not in ('seed', '_error')]
-        if metric_cols:
-            metric_vals = seed_sensitivity[metric_cols[0]].dropna()
+        if metric not in seed_sensitivity.columns:
+            # No usable record: fall back to the first metric column and stay
+            # silent about whose it is rather than guessing a model.
+            metric = metric_cols[0] if metric_cols else ''
+            primary_model = ''
+        if metric:
+            metric_vals = pd.to_numeric(seed_sensitivity[metric], errors='coerce').dropna()
             if len(metric_vals) > 1:
                 cv_pct = (metric_vals.std() / metric_vals.mean() * 100) if metric_vals.mean() != 0 else 0
-                sensitivity_summary['seed_stability'] = {
+                seed_stability: Dict[str, Any] = {
                     'cv_percent': cv_pct,
                     'range': f"{metric_vals.min():.4f} to {metric_vals.max():.4f}",
+                    'metric': metric,
+                    'n_seeds': int(len(metric_vals)),
                 }
+                if primary_model:
+                    seed_stability['model'] = primary_model
+                    by_model = _seed_stability_by_model(
+                        seed_sensitivity, metric, primary_model)
+                    if len(by_model) > 1:
+                        seed_stability['by_model'] = by_model
+                sensitivity_summary['seed_stability'] = seed_stability
 
     feature_dropout = st.session_state.get('sensitivity_feature_dropout')
     if feature_dropout is not None:
@@ -937,7 +1239,7 @@ def _prepare_table1_for_latex_export(table1_df: Optional[pd.DataFrame]) -> Optio
             first_match_idx = table1_df_local.index[mask][0]
             current_label = str(first_match_idx)
             table1_df_local = table1_df_local.rename(index={first_match_idx: f"{current_label}^{idx}"})
-            p_str = f"{test['p_value']:.4f}" if test['p_value'] >= 0.001 else "<0.001"
+            p_str = format_pvalue(test['p_value'])
             footnotes.append(f"^{idx} {test['test']}: {test['statistic']}, p={p_str} ({test['note']})")
 
     if footnotes:
@@ -1049,7 +1351,10 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     report_lines.append(f"# {title}")
     report_lines.append("")
     report_lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    report_lines.append(f"**App Version:** {git_info.get('app_version', git_info.get('commit', 'unknown'))}")
+    report_lines.append(f"**App Version:** {git_info.get('app_version', 'unknown')}")
+    # The commit is the half of the version that identifies the CODE; the
+    # app_version string moves once a release (`DRIVE8-31`).
+    report_lines.append(f"**Code Version:** {git_info.get('commit', 'unknown')}")
     report_lines.append(f"**Random Seed:** {st.session_state.get('random_seed', 42)}")
     report_lines.append("")
     report_lines.append("---")
@@ -1073,6 +1378,20 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
                 report_lines.append(f"**Test RMSE:** {best_model_result['metrics']['RMSE']:.4f}")
             if best_model_result['metrics'].get('R2') is not None:
                 report_lines.append(f"**Test R²:** {best_model_result['metrics']['R2']:.4f}")
+            # `MINE-027`: the manuscript half. A truncated denominator that
+            # reached only a Streamlit warning on the training page is not
+            # disclosed to the reader of the export — and these two numbers are
+            # what gets quoted.
+            _best_scoring = best_model_result.get('test_scoring')
+            if _best_scoring:
+                report_lines.append(
+                    f"**Test-set scoring:** computed on "
+                    f"{_best_scoring['n_scored']:,} of {_best_scoring['n_pairs']:,} "
+                    f"held-out rows; {_best_scoring['n_dropped_nonfinite']:,} "
+                    f"non-finite prediction pair(s) were excluded (usually a "
+                    f"degenerate target back-transform). The metrics above are "
+                    f"not computed on the full held-out set."
+                )
         else:
             if best_model_result['metrics'].get('Accuracy') is not None:
                 report_lines.append(f"**Test Accuracy:** {best_model_result['metrics']['Accuracy']:.4f}")
@@ -1235,18 +1554,24 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
                         report_lines.append(f"- {_prov_insight.finding} → {prose}")
                     elif prose:
                         report_lines.append(f"- {prose}")
-                elif _prov_insight.resolved_by and _prov_insight.finding:
-                    report_lines.append(f"- {_prov_insight.finding} → {_prov_insight.resolved_by}")
+                elif _prov_insight.finding:
+                    # An echo resolution is not a resolution (`DRIVE8-29`).
+                    _res = resolution_text(_prov_insight)
+                    _find = name_empty_slots(_prov_insight.finding)
+                    report_lines.append(f"- {_find} → {_res}" if _res else f"- {_find}")
             report_lines.append("")
 
         for mk, pl in pipelines_by_model.items():
             report_lines.append(f"### {_export_model_label(mk)}")
             report_lines.append("")
-            recipe = get_pipeline_recipe(pl)
+            cfg = configs_by_model.get(mk, {})
+            # Rows dropped by plausibility filtering are part of the recipe: the
+            # step leaves no transformer behind, so without the mode the Methods
+            # section never mentions that rows were removed (STATE-008).
+            recipe = get_pipeline_recipe(pl, plausibility_mode=cfg.get("plausibility_mode"))
             report_lines.append("```")
             report_lines.append(recipe)
             report_lines.append("```")
-            cfg = configs_by_model.get(mk, {})
             ov = cfg.get("overrides", [])
             if ov:
                 report_lines.append("**Overrides:**")
@@ -1259,7 +1584,10 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     elif pipeline:
         report_lines.append("## Preprocessing Pipeline")
         report_lines.append("")
-        recipe = get_pipeline_recipe(pipeline)
+        recipe = get_pipeline_recipe(
+            pipeline,
+            plausibility_mode=(st.session_state.get('preprocessing_config') or {}).get('plausibility_mode'),
+        )
         report_lines.append("```")
         report_lines.append(recipe)
         report_lines.append("```")
@@ -1343,10 +1671,8 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
                 tname = v["test_name"]
                 p = v["p"]
                 sig = "Yes" if (p is not None and np.isfinite(p) and p < 0.05) else "No"
-                if p is not None and np.isfinite(p):
-                    p_str = "<0.001" if p < 0.001 else f"{p:.4f}"
-                else:
-                    p_str = "—"
+                p_str = (format_pvalue(p)
+                         if p is not None and np.isfinite(p) else "—")
                 report_lines.append(
                     f"| {_export_model_label(ma)} | {_export_model_label(mb)} | {mean_d:.4f} | {tname} | {p_str} | {sig} |"
                 )
@@ -1657,29 +1983,50 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     # Auto-fill methodological strengths
     strength_items = []
     analysis_total = manuscript_context.get('population_counts', {}).get('analysis_total') or len(df)
-    if analysis_total > 0:
-        from utils.workflow_provenance import get_provenance as _gp
-        try:
-            _up = getattr(_gp(), "upload", None)
-        except Exception:
-            _up = None
-        if _up is not None and getattr(_up, "cohort_column", ""):
-            # Listing a restricted sample as a plain strength invites the reader
-            # to treat it as the study's size. Name the group it is a sample of.
-            strength_items.append(
-                f"Sample size of {analysis_total:,} observations within "
-                f"{_up.cohort_column} = {_up.cohort_value} "
-                f"(the analysis was restricted to this group)")
-        else:
-            strength_items.append(f"Sample size of {analysis_total:,} observations")
+    # `AUDIT-022`. THE GATE WAS `analysis_total > 0`, so forty rows and forty
+    # thousand earned the same bullet under a heading that asserts the item is a
+    # methodological STRENGTH — and the limitations half, drawn from the EDA
+    # ledger, could print "Sample size may be insufficient (40 rows...)" in the
+    # same document. A list that says the same thing regardless of the number is
+    # not a claim about this study.
+    #
+    # `ml.sample_size_claim` decides where the sentence may be printed. It does
+    # not produce a better verdict — it states WHICH CHECK RAN, and the count is
+    # reported either way, so the shelf is not shortened: a study that fails the
+    # sufficiency check still has its N in the document, just not under
+    # "Strengths".
+    from utils.workflow_provenance import get_provenance as _gp
+    try:
+        _prov10 = _gp()
+    except Exception:
+        _prov10 = None
+    _up = getattr(_prov10, "upload", None)
+    from ml.candidate_predictors import candidate_count as _cand_count10
+    from ml.sample_size_claim import sample_size_claim as _size_claim
+    _scope10 = _profile_scope_fields()
+    _claim = _size_claim(
+        analysis_total,
+        sufficiency=getattr(getattr(profile, "data_sufficiency", None), "value", None),
+        n_candidate_predictors=_cand_count10(
+            (data_config.feature_cols if data_config else None) or [], _prov10).screened,
+        cohort_column=getattr(_up, "cohort_column", "") or "",
+        cohort_value=getattr(_up, "cohort_value", "") or "",
+        verdict_scope_note=_scope10.get("row_scope_note", "") or "")
+    if _claim is not None and _claim.is_strength:
+        strength_items.append(_claim.text)
     if export_ctx.get('bootstrap_results'):
         strength_items.append("Bootstrap confidence intervals for uncertainty quantification")
     if export_ctx.get('shap_results'):
         strength_items.append("Model-agnostic explainability via SHAP analysis")
     if perm_imp:
         strength_items.append("Permutation importance for feature contribution assessment")
-    # Ledger-sourced strengths: resolved issues = methodological rigor
-    _resolved_count = _report_ledger.summary()["resolved"]
+    # Ledger-sourced strengths: resolved issues = methodological rigor.
+    # `AUDIT-042` second producer: this read summary()["resolved"], the
+    # UNFILTERED ledger count, and printed it as observations "identified and
+    # addressed" three lines from a narrative built with _is_narrative_worthy —
+    # six button presses, "6 observation(s) identified and addressed", narrative
+    # says 0. One filter feeds both.
+    _resolved_count = _report_ledger.narrative_summary()["resolved"]
     if _resolved_count > 0:
         strength_items.append(
             f"Systematic data quality audit: {_resolved_count} observation(s) "
@@ -1698,11 +2045,28 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     report_lines.append("")
     
     # Auto-fill limitations from unresolved ledger insights
-    _unresolved_for_limitations = _report_ledger.get_unresolved()
     limitation_items = []
-    for _ui in _unresolved_for_limitations:
-        if _ui.severity in ("blocker", "warning"):
-            limitation_items.append(f"{_ui.finding}: {_ui.implication}")
+    # `AUDIT-022`, THE OTHER HALF, AND IT IS WHY THIS IS A CORRECTION RATHER
+    # THAN A DELETION. When the sufficiency check did not rate the data
+    # favorably — or never ran — the count does not disappear from the
+    # document; it moves to where it belongs and says which check it rests on.
+    # §08 check 6: the shelf is never shortened. `sample_size_claim` composed
+    # this sentence and it is QUOTED, not re-composed, so there is one copy of
+    # the claim in the codebase and this page is not a second author of it.
+    if _claim is not None and not _claim.is_strength:
+        limitation_items.append(_claim.text)
+    # `DRIVE-074` / D9-06. COACH REGISTER STAYS OUT OF THE LIMITATIONS LIST.
+    # This spliced a card's `finding` onto its `implication` with ": ", so the
+    # document carried "…the more complex model was selected.: When models
+    # perform comparably, parsimony favors…" — a full stop followed by a colon,
+    # and a sentence addressed to the analyst printed as a study limitation.
+    # `discussion_points_for_manuscript()` is the COACH-007 discipline in one
+    # place: `manuscript_text` where the producer wrote one, the cleaned finding
+    # otherwise, and `audit_only` reassurances dropped rather than promoted.
+    _discussion_points = _report_ledger.discussion_points_for_manuscript()
+    for _limitation in _discussion_points.get("limitations", []):
+        if _limitation not in limitation_items:
+            limitation_items.append(_limitation)
     
     if limitation_items:
         report_lines.append("**Limitations:**")
@@ -1847,7 +2211,10 @@ from ml.manuscript_validator import validate_manuscript_bundle
 # Auto-generate LaTeX — cache with invalidation when inputs change
 _latex_cache_key = (paper_title, authors, affiliation,
                     tuple(selected_for_report), tuple(selected_explain),
-                    include_results, best_model)
+                    include_results, best_model,
+                    # The footnotes are part of the rendered table now, so a
+                    # changed custom test must rebuild the LaTeX.
+                    tuple(st.session_state.get('table1_custom_test_footnotes') or ()))
 if st.session_state.get("_latex_cache_key") != _latex_cache_key or not st.session_state.get("latex_report"):
     st.session_state["latex_report"] = _generate_latex(
         title=paper_title,
@@ -1855,6 +2222,12 @@ if st.session_state.get("_latex_cache_key") != _latex_cache_key or not st.sessio
         affiliation=affiliation,
         methods_section=_cached_bundle['methods_text'],
         table1_df=_cached_bundle['table1_df_local'],
+        # `MISC-104`: `_prepare_table1_for_latex_export` appends `^N` markers to
+        # the row labels and stores the notes they point at. The notes never
+        # reached the export, so the manuscript carried superscripts referring
+        # to nothing. Carrying the notes is the honest direction — stripping the
+        # markers would delete the disclosure that a custom test was applied.
+        table1_footnotes=st.session_state.get('table1_custom_test_footnotes'),
         model_results=_cached_bundle['manuscript_context'].get('selected_model_results'),
         bootstrap_results=_cached_bundle['bootstrap_results'],
         task_type=data_config.task_type or "regression",
@@ -1898,16 +2271,20 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
 
     tracker = TRIPODTracker()
 
-    # Auto-mark from ledger resolutions
-    _tripod_from_ledger = _report_ledger.get_tripod_status()
-    for auto_key, completed in _tripod_from_ledger.items():
-        if completed:
-            note = ""
-            for _ins in _report_ledger.get_resolved():
-                if auto_key in _ins.tripod_keys:
-                    note = _ins.resolved_by
-                    break
-            tracker.mark_complete(auto_key, note or "Auto-detected from analysis", "Ledger")
+    # Auto-mark from ledger resolutions. `DRIVE-074`: the note and the page
+    # reference come from the entry that CERTIFIED the item, not from the first
+    # resolved entry that happened to carry its key — a tick that cannot name
+    # its own evidence is a tick no reader can check.
+    from utils.insight_ledger import _page_to_step_name as _tripod_step_name
+    for auto_key, _ins in _report_ledger.get_tripod_evidence().items():
+        # "Ran  on 3 models" ticked two TRIPOD items with the analysis name
+        # missing; the gap is named, not hidden.
+        note = name_empty_slots(_ins.resolved_by)
+        tracker.mark_complete(
+            auto_key,
+            note or "Auto-detected from analysis",
+            _tripod_step_name(_ins.resolved_on_page or _ins.source_page) or "Ledger",
+        )
 
     # Auto-mark from workflow state
     if data_config and data_config.target_col:
@@ -1926,8 +2303,22 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
     prep_config = st.session_state.get('preprocessing_config', {})
     if prep_config:
         tracker.mark_complete("predictor_handling", "Preprocessing configured", "Preprocess")
-        if prep_config.get("numeric_imputation", "none") != "none":
-            tracker.mark_complete("missing_data", f"Imputation: {prep_config.get('numeric_imputation')}", "Preprocess")
+        # `DRIVE-074`. Item 9 is *how missing data were handled*, and this read a
+        # `numeric_imputation` key `preprocessing_config` has not carried since
+        # preprocessing became per-model — so the branch never fired and the tick
+        # came from whatever else held the key, which was a target dtype recode.
+        # The strategy is read where it lives, and the note names it.
+        _imputations = sorted({
+            str(cfg.get("numeric_imputation"))
+            for cfg in (st.session_state.get('preprocessing_config_by_model') or {}).values()
+            if isinstance(cfg, dict)
+            and str(cfg.get("numeric_imputation", "none")).lower() != "none"
+        })
+        if not _imputations and prep_config.get("numeric_imputation", "none") != "none":
+            _imputations = [str(prep_config["numeric_imputation"])]
+        if _imputations:
+            tracker.mark_complete(
+                "missing_data", f"Imputation: {', '.join(_imputations)}", "Preprocess")
 
     done, total = tracker.get_progress()
     st.progress(done / total)
@@ -1947,13 +2338,16 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
 if table1_bundle.get("table1_df_local") is not None:
     with st.expander("📋 Table 1: Study Population", expanded=False):
         st.markdown(
-            "Regenerated at export time from the final analysis cohort and finalized predictor set. "
+            "Built from the rows the split RECORDED as the analysis cohort — the population "
+            "the models were fitted and evaluated on — and the finalized predictor set. "
             "Included automatically in the LaTeX manuscript."
         )
         table1_display = table1_bundle["table1_df_local"].copy()
         table1_metadata = table1_bundle.get("table1_metadata", {})
         custom_tests = st.session_state.get('custom_table1_tests', [])
 
+        if table1_metadata.get("denominator_note"):
+            st.caption(table1_metadata["denominator_note"])
         if table1_metadata.get("tests_used"):
             st.caption("**Automatic tests used:** " + ", ".join(
                 f"{var}: {test}" for var, test in table1_metadata["tests_used"].items()
@@ -1961,7 +2355,7 @@ if table1_bundle.get("table1_df_local") is not None:
         if custom_tests:
             st.info(f"✅ {len(custom_tests)} custom statistical test(s) attached")
             for test in custom_tests:
-                p_str = f"{test['p_value']:.4f}" if test['p_value'] >= 0.001 else "<0.001"
+                p_str = format_pvalue(test['p_value'])
                 note = f" ({test['note']})" if test.get('note') else ""
                 st.caption(f"{test['variable']}: {test['test']} {test['statistic']}, p={p_str}{note}")
 
@@ -1978,6 +2372,13 @@ if table1_bundle.get("table1_df_local") is not None:
                 st.download_button("📥 Download LaTeX", latex_data, "table1_final.tex", "text/plain", key="dl_table1_final_latex")
             except Exception:
                 st.caption("LaTeX export requires standard Table 1 format")
+elif (table1_bundle.get("table1_metadata") or {}).get("cohort_unavailable"):
+    # The refusal is the answer: a Table 1 rebuilt from a re-derived cohort would
+    # describe a population the models were never fitted on (CONTRACT-021).
+    st.warning(
+        "**Table 1 was not generated.** "
+        + str(table1_bundle["table1_metadata"]["cohort_unavailable"])
+    )
 
 # 4d: Pre-export Manuscript Validation
 validation_bundle = _cached_bundle
@@ -1995,7 +2396,27 @@ validation_report = validate_manuscript_bundle(
     task_type=data_config.task_type or "regression",
     table1_df=validation_bundle['table1_df_local'],
 )
-validation_df = pd.DataFrame(validation_report.to_rows())
+# MISC-029. THE COLUMNS ARE SELECTED EXPLICITLY, and that is a decision.
+# `to_rows()` grew `scored` and `declared_because` so the Guided panel can stop
+# asserting more scrutiny than it applied; without this line those two would
+# land in the Classic table with no code change and no test covering them.
+#
+# They are dropped here rather than rendered because CLASSIC IS THE HEALTHIER
+# DOOR and the two must not get the same treatment.
+# `_build_manuscript_context` writes every context key whose absence declares a
+# check on the Guided path — `feature_names_for_manuscript`, `feature_counts`
+# with its `original`, `manuscript_primary_model`, `best_metric_name` — so
+# Classic's thirteen are thirteen LIVE checks and a `scored` column would be
+# thirteen `True`s. Measured: driven with identical needles, Classic dissents
+# 13/13 where the Guided context lets only 11/13.
+#
+# What is NOT built here, and it is filed rather than assumed away: if a
+# Classic session ever loses one of those keys the declaration would be real
+# and this table would not show it. That is MISC-032's neighbour and it waits
+# on the same ruling — `exports_blocked` below reads `validation_report.passed`
+# and must gate on exactly the set it gates on today.
+validation_df = pd.DataFrame(validation_report.to_rows())[
+    ["Status", "Check", "Location", "Detail"]]
 
 with st.expander("🔍 Pre-export Manuscript Validation", expanded=not validation_report.passed):
     if validation_report.passed:
@@ -2196,20 +2617,27 @@ st.header("💾 Export Options")
 with st.expander("Export Configuration"):
     export_models = st.checkbox("Include trained model artifacts (joblib/pickle)", value=True)
     export_predictions = st.checkbox("Include predictions CSV", value=True)
-    export_plots = st.checkbox("Include plots in zip", value=False)
+    # The figures a manuscript needs ship WITH the numbers by default: an
+    # export whose plots were opt-in produced a package of tables whose
+    # diagnostic and calibration figures the author then had to redraw by hand,
+    # from memory, outside the record.
+    export_plots = st.checkbox("Include plots in zip", value=True)
     if export_plots:
-        st.caption("⚠️ Plot export renders images server-side and may be slow with many models. Select only what you need.")
+        st.caption("⚠️ Plot export renders images server-side and may be slow with many models. Uncheck what you do not need.")
         st.caption("💡 Tip: You can also download any individual plot by hovering over it and clicking the 📷 camera icon.")
-        plot_col1, plot_col2, plot_col3 = st.columns(3)
+        plot_col1, plot_col2, plot_col3, plot_col4 = st.columns(4)
         with plot_col1:
             export_plots_train = st.checkbox("Training plots", value=True, help="Predictions, residuals, confusion matrices, ROC/PR curves")
         with plot_col2:
             export_plots_explain = st.checkbox("Explainability plots", value=True, help="Permutation importance bar charts")
         with plot_col3:
+            export_plots_calibration = st.checkbox("Calibration plots", value=True, help="Reliability diagrams for classification models with calibration results")
+        with plot_col4:
             export_plots_sensitivity = st.checkbox("Sensitivity plots", value=False, help="Seed sensitivity charts")
     else:
         export_plots_train = False
         export_plots_explain = False
+        export_plots_calibration = False
         export_plots_sensitivity = False
     include_raw_data = st.checkbox("Include raw data sample (first 100 rows)", value=False)
     st.checkbox("Include LLM interpretations in report", value=False, key="report_include_llm")
@@ -2229,6 +2657,38 @@ def save_plotly_fig(fig, filename: str) -> Optional[bytes]:
         logger.debug("Figure export failed for %s: %s", filename, e)
         st.session_state['_plot_export_failures'] = st.session_state.get('_plot_export_failures', 0) + 1
         return None
+
+
+def calibration_result_for_plot(cal: Any):
+    """Return a plottable CalibrationResult, or None.
+
+    Page 06 stores `CalibrationResult` dataclasses; a restored session carries
+    plain dicts with the bin arrays as lists. Regression calibration has no
+    reliability bins to draw. Anything that does not carry all three bin arrays
+    is skipped rather than drawn from missing edges.
+    """
+    import dataclasses as _dc
+    from ml.calibration import CalibrationResult
+
+    if isinstance(cal, dict):
+        _fields = {f.name for f in _dc.fields(CalibrationResult)}
+        if not {'model_name', 'task_type'} <= set(cal):
+            return None
+        cal = CalibrationResult(**{k: v for k, v in cal.items() if k in _fields})
+    if not isinstance(cal, CalibrationResult):
+        return None
+    if cal.task_type != 'classification':
+        return None
+    if cal.bin_counts is None or cal.bin_pred_mean is None or cal.bin_true_freq is None:
+        return None
+    if cal.brier_score is None or cal.ece is None:
+        return None
+    return _dc.replace(
+        cal,
+        bin_counts=np.asarray(cal.bin_counts),
+        bin_pred_mean=np.asarray(cal.bin_pred_mean),
+        bin_true_freq=np.asarray(cal.bin_true_freq),
+    )
 
 
 def save_matplotlib_fig(fig, filename: str) -> Optional[bytes]:
@@ -2347,66 +2807,75 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         preprocessing_manifest['per_model'][model_key] = entry
     
     # Plots
-    if export_plots and (export_plots_train or export_plots_explain or export_plots_sensitivity):
+    if export_plots and (export_plots_train or export_plots_explain
+                         or export_plots_calibration or export_plots_sensitivity):
         from sklearn.metrics import confusion_matrix as sk_confusion_matrix, roc_curve, precision_recall_curve, auc as sk_auc
 
         if export_plots_train:
             for name, results in model_results.items():
-                y_true = results['y_test']
-                y_pred = results['y_test_pred']
+                # This branch is ON by default and runs on every rerun of the
+                # page, so one model whose figures cannot be built must cost
+                # the export those figures — counted and disclosed below the
+                # download button — and not the whole page.
+                try:
+                    y_true = results['y_test']
+                    y_pred = results['y_test_pred']
 
-                if data_config.task_type == 'regression':
-                    fig = px.scatter(
-                        x=y_true, y=y_pred,
-                        labels={'x': 'Actual', 'y': 'Predicted'},
-                        title=f"{name.upper()} - Predictions vs Actual"
-                    )
-                    fig.add_trace(go.Scatter(
-                        x=[min(y_true), max(y_true)],
-                        y=[min(y_true), max(y_true)],
-                        mode='lines', name='Perfect', line=dict(dash='dash', color='red')
-                    ))
-                    plot_bytes = save_plotly_fig(fig, f"plot_{name}.png")
-                    if plot_bytes:
-                        zip_file.writestr(f"plots/train/{name}_predictions.png", plot_bytes)
+                    if data_config.task_type == 'regression':
+                        fig = px.scatter(
+                            x=y_true, y=y_pred,
+                            labels={'x': 'Actual', 'y': 'Predicted'},
+                            title=f"{name.upper()} - Predictions vs Actual"
+                        )
+                        fig.add_trace(go.Scatter(
+                            x=[min(y_true), max(y_true)],
+                            y=[min(y_true), max(y_true)],
+                            mode='lines', name='Perfect', line=dict(dash='dash', color='red')
+                        ))
+                        plot_bytes = save_plotly_fig(fig, f"plot_{name}.png")
+                        if plot_bytes:
+                            zip_file.writestr(f"plots/train/{name}_predictions.png", plot_bytes)
 
-                    residuals = np.array(y_true) - np.array(y_pred)
-                    fig_res = px.histogram(residuals, nbins=30, title=f"{name.upper()} - Residual Distribution",
-                                           labels={'value': 'Residual', 'count': 'Count'})
-                    plot_bytes = save_plotly_fig(fig_res, f"resid_{name}.png")
-                    if plot_bytes:
-                        zip_file.writestr(f"plots/train/{name}_residuals.png", plot_bytes)
-                else:
-                    cm = sk_confusion_matrix(y_true, y_pred)
-                    fig_cm = px.imshow(cm, text_auto=True, aspect="auto", title=f"{name.upper()} - Confusion Matrix",
-                                       labels=dict(x="Predicted", y="Actual"), color_continuous_scale="Blues")
-                    plot_bytes = save_plotly_fig(fig_cm, f"cm_{name}.png")
-                    if plot_bytes:
-                        zip_file.writestr(f"plots/train/{name}_confusion_matrix.png", plot_bytes)
+                        residuals = np.array(y_true) - np.array(y_pred)
+                        fig_res = px.histogram(residuals, nbins=30, title=f"{name.upper()} - Residual Distribution",
+                                               labels={'value': 'Residual', 'count': 'Count'})
+                        plot_bytes = save_plotly_fig(fig_res, f"resid_{name}.png")
+                        if plot_bytes:
+                            zip_file.writestr(f"plots/train/{name}_residuals.png", plot_bytes)
+                    else:
+                        cm = sk_confusion_matrix(y_true, y_pred)
+                        fig_cm = px.imshow(cm, text_auto=True, aspect="auto", title=f"{name.upper()} - Confusion Matrix",
+                                           labels=dict(x="Predicted", y="Actual"), color_continuous_scale="Blues")
+                        plot_bytes = save_plotly_fig(fig_cm, f"cm_{name}.png")
+                        if plot_bytes:
+                            zip_file.writestr(f"plots/train/{name}_confusion_matrix.png", plot_bytes)
 
-                    y_proba = results.get('y_test_proba')
-                    if y_proba is not None:
-                        try:
-                            unique_classes = np.unique(y_true)
-                            if len(unique_classes) == 2:
-                                proba_pos = y_proba[:, 1] if y_proba.ndim > 1 else y_proba
-                                fpr, tpr, _ = roc_curve(y_true, proba_pos)
-                                roc_auc_val = sk_auc(fpr, tpr)
-                                fig_roc = px.area(x=fpr, y=tpr, labels=dict(x="FPR", y="TPR"),
-                                                  title=f"{name.upper()} - ROC Curve (AUC={roc_auc_val:.3f})")
-                                plot_bytes = save_plotly_fig(fig_roc, f"roc_{name}.png")
-                                if plot_bytes:
-                                    zip_file.writestr(f"plots/train/{name}_roc_curve.png", plot_bytes)
+                        y_proba = results.get('y_test_proba')
+                        if y_proba is not None:
+                            try:
+                                unique_classes = np.unique(y_true)
+                                if len(unique_classes) == 2:
+                                    proba_pos = y_proba[:, 1] if y_proba.ndim > 1 else y_proba
+                                    fpr, tpr, _ = roc_curve(y_true, proba_pos)
+                                    roc_auc_val = sk_auc(fpr, tpr)
+                                    fig_roc = px.area(x=fpr, y=tpr, labels=dict(x="FPR", y="TPR"),
+                                                      title=f"{name.upper()} - ROC Curve (AUC={roc_auc_val:.3f})")
+                                    plot_bytes = save_plotly_fig(fig_roc, f"roc_{name}.png")
+                                    if plot_bytes:
+                                        zip_file.writestr(f"plots/train/{name}_roc_curve.png", plot_bytes)
 
-                                prec, rec, _ = precision_recall_curve(y_true, proba_pos)
-                                pr_auc_val = sk_auc(rec, prec)
-                                fig_pr = px.area(x=rec, y=prec, labels=dict(x="Recall", y="Precision"),
-                                                 title=f"{name.upper()} - PR Curve (AUC={pr_auc_val:.3f})")
-                                plot_bytes = save_plotly_fig(fig_pr, f"pr_{name}.png")
-                                if plot_bytes:
-                                    zip_file.writestr(f"plots/train/{name}_pr_curve.png", plot_bytes)
-                        except Exception as e:
-                            logger.debug("Could not export training plot for %s: %s", name, e)
+                                    prec, rec, _ = precision_recall_curve(y_true, proba_pos)
+                                    pr_auc_val = sk_auc(rec, prec)
+                                    fig_pr = px.area(x=rec, y=prec, labels=dict(x="Recall", y="Precision"),
+                                                     title=f"{name.upper()} - PR Curve (AUC={pr_auc_val:.3f})")
+                                    plot_bytes = save_plotly_fig(fig_pr, f"pr_{name}.png")
+                                    if plot_bytes:
+                                        zip_file.writestr(f"plots/train/{name}_pr_curve.png", plot_bytes)
+                            except Exception as e:
+                                logger.debug("Could not export training plot for %s: %s", name, e)
+                except Exception as e:
+                    logger.debug("Could not export training plots for %s: %s", name, e)
+                    st.session_state['_plot_export_failures'] = st.session_state.get('_plot_export_failures', 0) + 1
 
         if export_plots_explain:
             # Permutation importance (Plotly)
@@ -2436,6 +2905,22 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                         zip_file.writestr(f"plots/explainability/{fig_key}.png", plot_bytes)
                 except Exception:
                     pass
+
+        if export_plots_calibration:
+            # The manuscript quotes Brier/ECE from these results; the reliability
+            # diagram those numbers came from travels with them instead of being
+            # redrawn by the author outside the record.
+            from ml.calibration import plot_calibration_curve as _plot_calibration
+            for name, cal in (st.session_state.get('calibration_results', {}) or {}).items():
+                try:
+                    cal_result = calibration_result_for_plot(cal)
+                    if cal_result is None:
+                        continue
+                    plot_bytes = save_plotly_fig(_plot_calibration(cal_result), f"cal_{name}.png")
+                    if plot_bytes:
+                        zip_file.writestr(f"plots/calibration/{name}_calibration.png", plot_bytes)
+                except Exception as e:
+                    logger.debug("Could not export calibration plot for %s: %s", name, e)
 
         if export_plots_sensitivity:
             seed_df = st.session_state.get('sensitivity_seed_results')
@@ -2578,5 +3063,12 @@ with st.expander("Advanced / State Debug", expanded=False):
     st.write(f"• Features: {len(st.session_state.get('selected_features') or (data_config.feature_cols if data_config else []))}")
     st.write(f"• Trained models: {len(trained_models)}")
     st.write(f"• Dataset profile: {'Available' if profile else 'Not computed'}")
-    st.write(f"• Insight ledger: {len(_report_ledger)} entries ({_report_ledger.summary()['resolved']} resolved)")
+    # Both counts, both labeled: the ledger's own total is a debug fact, but
+    # the resolved count on its own reads as the manuscript's addressed count
+    # and is not one (`AUDIT-042`).
+    st.write(
+        f"• Insight ledger: {len(_report_ledger)} entries "
+        f"({_report_ledger.summary()['resolved']} resolved, of which "
+        f"{_report_ledger.narrative_summary()['resolved']} are narrative-worthy "
+        f"— the rest are activity records)")
     st.write(f"• Git info: {get_git_info()}")

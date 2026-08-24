@@ -156,7 +156,7 @@ class TestNarrativeEngineGeneration:
         # Should mention per-model differences using human-readable names
         assert "Ridge Regression" in draft.data_preprocessing
         assert "Random Forest" in draft.data_preprocessing
-        assert "Histogram Gradient Boosting (Regressor)" in draft.data_preprocessing
+        assert "Histogram Gradient Boosting (Regression)" in draft.data_preprocessing
 
         # Ridge gets scaling + transform
         assert "z-score" in draft.data_preprocessing.lower() or "standardization" in draft.data_preprocessing.lower()
@@ -184,7 +184,7 @@ class TestNarrativeEngineGeneration:
 
         assert "Ridge Regression" in draft.model_development
         assert "Random Forest" in draft.model_development
-        assert "Histogram Gradient Boosting (Regressor)" in draft.model_development
+        assert "Histogram Gradient Boosting (Regression)" in draft.model_development
         assert "5-fold" in draft.model_development
         assert "Random Forest" in draft.model_development  # primary model
 
@@ -215,9 +215,25 @@ class TestNarrativeEngineGeneration:
         )
         draft = engine.generate()
 
+        # THE NAME'S PROPERTY, unchanged: a metric winner is not a primary model.
         assert "selected as the primary model" not in draft.model_development
-        assert "best held-out performance on validation RMSE" in draft.model_development
         assert "no manuscript-primary model was explicitly selected" in draft.model_development
+
+        # AND THE ASSERTION THAT WAS WRONG. `AUDIT-030`, and `LOOP.md` trap #3c
+        # in its clearest form: this line read
+        #
+        #     assert "best held-out performance on validation RMSE" in ...
+        #
+        # It was green, it was about real behavior, and **the behavior it
+        # protected was false.** `_get_export_best_model` ranks
+        # `results['metrics']`, which is the test dict; no per-model validation
+        # score is stored anywhere. So the fix had to make a passing assertion
+        # fail, and the question was never how to make it pass again — it was
+        # what the assertion claimed and whether that claim was true.
+        assert "validation" not in draft.model_development.lower(), (
+            "the Methods section still calls the held-out comparison a "
+            f"validation one: {draft.model_development!r}")
+        assert "scored best on the held-out set by RMSE" in draft.model_development
 
     def test_manuscript_context_overrides_population_and_feature_counts_when_provenance_is_sparse(self):
         prov = WorkflowProvenance()
@@ -368,12 +384,34 @@ class TestNarrativeEngineGeneration:
         assert "feature dropout" in draft.sensitivity_analysis.lower()
 
     def test_statistical_validation(self, full_provenance):
+        """`AUDIT-001`. This test asserted `"1 of 2" in ...` — it was pinning
+        the defect.
+
+        The old sentence was *"1 of 2 tests yielded statistically significant
+        results (p < 0.05)"*: an uncorrected count with no correction named,
+        written into the manuscript. `METABOLOMICS_PACK.md` §06.3 calls the
+        general case an anti-pattern that would be flagged in review. A test
+        asserting the substring was asserting that the app kept doing it.
+        """
         engine = NarrativeEngine(full_provenance)
         draft = engine.generate()
 
         assert "Shapiro-Wilk" in draft.statistical_validation
         assert "Breusch-Pagan" in draft.statistical_validation
-        assert "1 of 2" in draft.statistical_validation  # 1 significant at p<0.05
+        assert "1 of 2" not in draft.statistical_validation
+        assert "No correction for multiple comparisons" in draft.statistical_validation
+        assert "not interpretable as a count" in draft.statistical_validation
+
+    def test_statistical_validation_after_a_correction_is_recorded(
+            self, full_provenance):
+        """The other branch: a corrected count IS a result, and it names the
+        method and the threshold."""
+        summary = full_provenance.apply_multiplicity_correction()
+        assert summary["n_adjusted"] == 2
+        draft = NarrativeEngine(full_provenance).generate()
+        assert "Benjamini-Hochberg FDR" in draft.statistical_validation
+        assert "remained significant at q < 0.05" in draft.statistical_validation
+        assert "not interpretable" not in draft.statistical_validation
 
     def test_data_observations_from_ledger(self, full_provenance, full_ledger):
         engine = NarrativeEngine(full_provenance, full_ledger)

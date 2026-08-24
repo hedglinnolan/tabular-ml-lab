@@ -83,15 +83,10 @@ class RFWrapper(BaseModelWrapper):
     def supports_proba(self) -> bool:
         """Check if model supports probability predictions."""
         return self.task_type == 'classification'
-    
-    def predict_proba(self, X: np.ndarray) -> Optional[np.ndarray]:
-        """Predict class probabilities (for classification)."""
-        if not self.is_fitted:
-            raise ValueError("Model not fitted. Call fit() first.")
-        if self.task_type == 'classification' and hasattr(self.model, 'predict_proba'):
-            return self.model.predict_proba(X)
-        return None
-    
-    def supports_proba(self) -> bool:
-        """Check if model supports probability predictions."""
-        return self.task_type == 'classification'
+
+    # `L64-A5`. A SECOND, BYTE-IDENTICAL COPY of `predict_proba` and
+    # `supports_proba` stood here and was deleted. The duplication was inert —
+    # the two copies matched character for character, so the later binding
+    # shadowed the earlier with the same behavior — but editing the first copy
+    # would have had no effect, which is the trap: a reader fixes the method
+    # they find and the class keeps the one they did not.

@@ -29,6 +29,19 @@ class SensitivityAnalysis:
     variations: List[SensitivityResult]
     description: str
 
+    # `MINE-030`: attempts and failures are counted SEPARATELY, because the
+    # number that reaches the manuscript has to carry the denominator it was
+    # actually computed over. Six failures out of eight seeds used to become a
+    # two-seed study described as an eight-seed one, its coefficient of
+    # variation computed across two points, with the failures swallowed by an
+    # `except Exception: pass`.
+    n_attempted: int = 0
+    failures: List[Dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def n_failed(self) -> int:
+        return len(self.failures)
+
     def to_dataframe(self) -> pd.DataFrame:
         rows = [{
             "Variation": "Baseline",
@@ -78,9 +91,12 @@ def sensitivity_random_seeds(
     baseline_metrics = eval_fn(baseline_model)
 
     variations = []
+    failures: List[Dict[str, Any]] = []
+    attempted = 0
     for seed in seeds:
         if seed == baseline_seed:
             continue
+        attempted += 1
         try:
             model = train_fn(seed)
             metrics = eval_fn(model)
@@ -89,15 +105,23 @@ def sensitivity_random_seeds(
                 variation_value=seed,
                 metrics=metrics,
             ))
-        except Exception:
-            pass
+        except Exception as exc:
+            failures.append({"seed": seed, "error": f"{type(exc).__name__}: {exc}"})
+
+    description = (f"Results across {len(variations)} of {attempted} attempted "
+                   f"random seeds (baseline seed={baseline_seed}).")
+    if failures:
+        description += (f" {len(failures)} seed(s) failed and are not in the "
+                        f"spread: "
+                        + ", ".join(str(f["seed"]) for f in failures) + ".")
 
     return SensitivityAnalysis(
         analysis_type="random_seed",
         baseline_metrics=baseline_metrics,
         variations=variations,
-        description=f"Results across {len(variations)} different random seeds "
-                    f"(baseline seed={baseline_seed}).",
+        description=description,
+        n_attempted=attempted,
+        failures=failures,
     )
 
 
@@ -126,6 +150,9 @@ def sensitivity_summary_table(analyses: List[SensitivityAnalysis], primary_metri
             "Std": f"{std_val:.4f}",
             "Range": f"[{min_val:.4f}, {max_val:.4f}]",
             "N variations": len(analysis.variations),
+            # The denominator travels with the spread (`MINE-030`).
+            "N attempted": analysis.n_attempted or len(analysis.variations),
+            "N failed": analysis.n_failed,
             "Robust (10%)": "✅" if analysis.is_robust(primary_metric, 0.1) else "⚠️",
         })
 

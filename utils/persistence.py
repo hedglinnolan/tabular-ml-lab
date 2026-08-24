@@ -31,7 +31,10 @@ def save_dataframe(df: pd.DataFrame, name: str, session_id: Optional[str] = None
     """
     session_dir = _get_session_dir(session_id)
     path = session_dir / f"{name}.parquet"
-    df.to_parquet(path, index=False)
+    # index=True, as in session_manager: rows are identified by index LABEL
+    # (the test-set lockbox and cohort runs hold labels), so a frame reloaded
+    # with a fresh 0..n-1 RangeIndex hands those labels to different rows.
+    df.to_parquet(path, index=True)
     return str(path)
 
 
@@ -76,7 +79,7 @@ def save_session_metadata(metadata: Dict[str, Any], session_id: Optional[str] = 
     """Save session metadata (config, choices, etc.)."""
     session_dir = _get_session_dir(session_id)
     path = session_dir / "metadata.json"
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2, default=str)
 
 
@@ -85,7 +88,7 @@ def load_session_metadata(session_id: Optional[str] = None) -> Optional[Dict[str
     session_dir = _get_session_dir(session_id)
     path = session_dir / "metadata.json"
     if path.exists():
-        with open(path) as f:
+        with open(path, encoding='utf-8') as f:
             return json.load(f)
     return None
 

@@ -94,7 +94,7 @@ def _add_all_loop(tree):
 
 
 def test_the_multi_file_loop_binds_every_name_before_it_reads_it():
-    src = open("pages/01_Upload_and_Audit.py").read()
+    src = open("pages/01_Upload_and_Audit.py", encoding='utf-8').read()
     loop = _add_all_loop(ast.parse(src))
 
     # ast.walk is breadth-first, so take the minimum line rather than the first

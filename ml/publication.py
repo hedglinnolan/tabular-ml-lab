@@ -7,7 +7,7 @@ import sys
 import json
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Sequence, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -89,6 +89,54 @@ def _fmt_param_value(value: Any) -> str:
     return str(value)
 
 
+def _calibration_field(cal: Any, name: str) -> Optional[float]:
+    """One finite scalar off a calibration record, or None.
+
+    `ml.calibration.CalibrationResult` is a dataclass, but a restored session
+    hands back plain dicts; a record type this reader does not recognize must
+    contribute nothing rather than a formatted `None`.
+    """
+    value = cal.get(name) if isinstance(cal, dict) else getattr(cal, name, None)
+    if isinstance(value, bool):
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return value if np.isfinite(value) else None
+
+
+def _calibration_sentence(model_name: Any, cal: Any) -> Optional[str]:
+    """One manuscript line per model, naming only the metrics that were computed.
+
+    The classification and regression records carry different quantities on
+    different scales (`AUDIT-017`), and the weak-calibration pair is named as
+    such: one word for two meanings is how a reader trusts the wrong number.
+    """
+    parts: List[str] = []
+
+    brier = _calibration_field(cal, 'brier_score')
+    if brier is not None:
+        parts.append(f"Brier score = {brier:.4f}")
+    ece = _calibration_field(cal, 'ece')
+    if ece is not None:
+        parts.append(f"ECE = {ece:.4f}")
+    weak_slope = _calibration_field(cal, 'weak_slope')
+    weak_intercept = _calibration_field(cal, 'weak_intercept')
+    if weak_slope is not None and weak_intercept is not None:
+        parts.append(
+            f"weak calibration slope = {weak_slope:.3f}, intercept = {weak_intercept:.3f}")
+    slope = _calibration_field(cal, 'calibration_slope')
+    intercept = _calibration_field(cal, 'calibration_intercept')
+    if slope is not None and intercept is not None:
+        parts.append(
+            f"calibration slope = {slope:.3f}, intercept = {intercept:.3f}")
+
+    if not parts:
+        return None
+    return f"**{_publication_model_label(model_name)}:** {'; '.join(parts)}.\n\n"
+
+
 def _publication_model_label(model_key: Any) -> str:
     """Return a manuscript-friendly model label."""
     if model_key is None:
@@ -140,6 +188,45 @@ def _describe_outlier_handling(method: str, params: Optional[Dict[str, Any]] = N
         return "outliers addressed using IQR-based outlier removal"
 
     return None
+
+
+def pca_technique_sentence(pca_details: Dict[Any, Dict[str, Any]]) -> str:
+    """The Methods clause for PCA, over the PER-MODEL preprocessing configs.
+
+    `MINE-025`: this used to be `next(iter(pca_details.values()))` under the
+    comment "use the first PCA config as representative". The dict is
+    insertion-ordered by the Preprocess page's build sequence — checkbox order —
+    so the component count the Methods stated as the study's belonged to
+    whichever model the analyst happened to tick first. Per-model pipelines are
+    the product's differentiator precisely BECAUSE they differ, which makes
+    'representative' the one thing a member of that dict is not.
+
+    Collapse only when the configs agree; name them per model when they do not.
+    The clause also says where the number comes from: these are PREPROCESSING
+    PCA settings, and the sentence they annotate sits in the feature-engineering
+    subsection.
+    """
+    def _detail(d: Dict[str, Any]) -> str:
+        mode, n_comp = d.get('mode'), d.get('n_components')
+        if mode == "Fixed Components" and n_comp:
+            return f"{int(n_comp)} components"
+        if mode == "Variance Threshold" and n_comp:
+            return f"{int(n_comp * 100)}% of variance retained"
+        return "unspecified"
+
+    if not pca_details:
+        return "PCA dimensionality reduction"
+
+    details = list(pca_details.values())
+    if len({(d.get('mode'), d.get('n_components')) for d in details}) == 1:
+        described = _detail(details[0])
+        if described == "unspecified":
+            return "PCA dimensionality reduction"
+        return (f"PCA dimensionality reduction ({described} in each model's "
+                f"preprocessing pipeline)")
+    per_model = "; ".join(f"{key}: {_detail(d)}" for key, d in pca_details.items())
+    return (f"PCA dimensionality reduction, configured per model "
+            f"({per_model})")
 
 
 def generate_methods_from_log() -> Dict[str, List[Dict[str, Any]]]:
@@ -197,16 +284,59 @@ def _resolve_workflow_feature_counts(
     if base_features:
         original_count = len(base_features)
 
-    fs_entries = logged_steps.get('Feature Selection', [])
-    if fs_entries:
-        last_fs = fs_entries[-1].get('details', {})
-        candidate_count = last_fs.get('n_features_before') or candidate_count
-        selected_count = last_fs.get('n_features_after') or selected_count
+    # `DRIVE-072`. THE SCREENING RUN AND THE APPLY ARE TWO RECORDS, AND STEP
+    # NAME CANNOT TELL THEM APART. `utils.insight_ledger._page_to_step_name`
+    # maps both back through page `04_Feature_Selection`, so both arrive under
+    # `Feature Selection` and `Feature Selection Applied` is empty; `[-1]` was
+    # therefore the APPLY entry, which carries no `n_features_before` /
+    # `n_features_after`. Both counts fell through to `len(selected_features)`
+    # and the Methods draft read "all 14 candidate predictors were retained"
+    # over a selection that went 27 → 14. Entries are identified by the fields
+    # they carry, which is what actually distinguishes them.
+    fs_entries = list(logged_steps.get('Feature Selection', [])) + \
+        list(logged_steps.get('Feature Selection Applied', []))
+    screening_details: Dict[str, Any] = {}
+    applied_details: Dict[str, Any] = {}
+    for entry in fs_entries:
+        details = entry.get('details') or {}
+        if details.get('n_features_before') is not None or details.get('n_features_after') is not None:
+            screening_details = details
+        if details.get('n_features_selected') is not None:
+            applied_details = details
 
-    applied_entries = logged_steps.get('Feature Selection Applied', [])
-    if applied_entries:
-        last_applied = applied_entries[-1].get('details', {})
-        selected_count = last_applied.get('n_features_selected') or selected_count
+    # ZERO IS A REAL COUNT; ABSENCE IS None. `x or y` swallowed a recorded
+    # zero here exactly as it did in `ml/narrative_engine.py`, and a selection
+    # that retained nothing then read back as the pre-selection list.
+    if screening_details.get('n_features_before') is not None:
+        candidate_count = screening_details['n_features_before']
+    if screening_details.get('n_features_after') is not None:
+        selected_count = screening_details['n_features_after']
+    if applied_details.get('n_features_selected') is not None:
+        selected_count = applied_details['n_features_selected']
+
+    # THE SELECTION RECORD IS THE AUTHORITY (`CONTRACT-034`). Provenance holds
+    # the screened set and the retained set as two separate facts, and page 04's
+    # apply updates it in place, so it survives `data_config.feature_cols` being
+    # overwritten with the post-apply list. The ledger scrape above is the
+    # fallback for a session that never wrote a provenance record.
+    _prov_fs = None
+    _prov_upload = None
+    try:
+        from utils.workflow_provenance import get_provenance
+        _provenance = get_provenance()
+        _prov_fs = getattr(_provenance, 'feature_selection', None)
+        _prov_upload = getattr(_provenance, 'upload', None)
+    except Exception:
+        pass
+    if _prov_fs is not None:
+        if getattr(_prov_fs, 'n_features_before', None) is not None:
+            candidate_count = _prov_fs.n_features_before
+        if getattr(_prov_fs, 'n_features_after', None) is not None:
+            selected_count = _prov_fs.n_features_after
+    if _prov_upload is not None and getattr(_prov_upload, 'n_features', None):
+        # The predictor count as OFFERED, which `data_config.feature_cols` no
+        # longer holds once a selection has been applied over it.
+        original_count = _prov_upload.n_features
 
     try:
         import streamlit as st
@@ -236,12 +366,60 @@ def _resolve_workflow_feature_counts(
     if engineered_count is None and original_count is not None and candidate_count is not None:
         engineered_count = max(candidate_count - original_count, 0)
 
+    # The SCREENING step's own two numbers, kept separate from the applied set
+    # they are routinely confused with (`DRIVE-072`): the methods ranked
+    # `ranked` columns and agreed on `ranked_kept` of them, while
+    # `carried_unranked` predictors reached the modeling set without being
+    # ranked at all. `selected` is the modeling set; these three explain how it
+    # was arrived at, and a section that cannot use them omits them.
+    _ranked = screening_details.get('n_features_before')
+    _ranked_kept = screening_details.get('n_features_after')
+    _carried = applied_details.get('carried_through_unranked')
     return {
         'original': original_count,
         'candidate': candidate_count,
         'selected': selected_count,
         'engineered': engineered_count,
+        'ranked': _ranked,
+        'ranked_kept': (applied_details.get('n_consensus_ranked')
+                        if applied_details.get('n_consensus_ranked') is not None
+                        else _ranked_kept),
+        'carried_unranked': len(_carried) if isinstance(_carried, (list, tuple)) else None,
     }
+
+
+def feature_engineering_ran(feature_counts: Optional[Dict[str, Any]]) -> bool:
+    """Did the provenance record a feature-engineering stage that CREATED columns?
+
+    `DRIVE8-21`. `candidate` is resolved from the feature-selection record's
+    `n_features_before`, which is the count of columns selection could *rank* —
+    on a classification run with eight non-numeric predictors that is smaller
+    than the original set and has nothing to do with engineering. Every
+    manuscript surface then read `candidate != original` as evidence of a
+    stage, and the abstract asserted *"feature engineering yielded 19
+    candidates"* on a session where page 03 was never opened.
+
+    The only evidence that engineering happened is columns it created. With
+    none recorded the FE clause is not written — the funnel sentence states the
+    counts the record supports and claims no stage.
+
+    Where no engineered count was resolved at all, the direction of the two
+    counts still settles it: engineering only ADDS columns, so `candidate >
+    original` is evidence of a stage and `candidate < original` — the drive's
+    19 against 27 — never is.
+    """
+    counts = feature_counts or {}
+    engineered = counts.get('engineered')
+    if engineered is not None:
+        try:
+            return int(engineered) > 0
+        except (TypeError, ValueError):
+            return False
+    original, candidate = counts.get('original'), counts.get('candidate')
+    try:
+        return bool(original and candidate and int(candidate) > int(original))
+    except (TypeError, ValueError):
+        return False
 
 
 def _oxford_join(items: List[str]) -> str:
@@ -271,6 +449,34 @@ def _feature_selection_method_label(method: str) -> str:
     }
     key = str(method or '').strip().lower()
     return labels.get(key, str(method or '').strip())
+
+
+def _consensus_threshold_clause(
+    threshold: Optional[int],
+    n_completed: Optional[int],
+    n_requested: Optional[int],
+) -> str:
+    """The "at least T of N methods" clause, over ONE universe of methods.
+
+    `MISC-104`. The threshold pages/04 computes is a count of the methods that
+    COMPLETED (`max(2, len(results) // 2)`); the denominator printed here was
+    the count of the methods that were REQUESTED. With a method that raised,
+    the sentence described an agreement rule the run never applied. The
+    denominator is now the completed set, and the shortfall is stated rather
+    than absorbed. With no record of what completed, the clause names the
+    threshold and no denominator — an unknown universe is not a universe.
+    """
+    if not threshold:
+        return ""
+    if not n_completed:
+        return (f" Features were retained if selected by at least {threshold} "
+                f"of the methods that completed.")
+    clause = (f" Features were retained if selected by at least {threshold} of "
+              f"the {n_completed} method(s) that completed")
+    if n_requested and n_requested != n_completed:
+        clause += (f" ({n_requested} were requested; "
+                   f"{n_requested - n_completed} did not complete)")
+    return clause + "."
 
 
 def _dedupe_latest_by(entries: List[Dict[str, Any]], key_fields: Tuple[str, ...]) -> List[Dict[str, Any]]:
@@ -355,6 +561,143 @@ def _resolve_manuscript_context(
     }
 
 
+#: The exploratory limitation, verbatim. `ml/narrative_engine.py` opens its
+#: limitation list with the same clause and `ml/manuscript_validator.py` looks
+#: for it in the finished draft — one sentence, three readers, so the wording
+#: does not drift out from under the check that gates the export.
+EXPLORATORY_LIMITATION_SENTENCE = (
+    "The analysis was run in exploratory mode: the held-out test set was not "
+    "quarantined from feature engineering and selection, so reported "
+    "performance may be optimistically biased and should not be presented as "
+    "validated held-out performance."
+)
+
+
+def _exploratory_watermark(manuscript_context: Optional[Dict[str, Any]]) -> bool:
+    """Whether this study carries the exploratory watermark.
+
+    `MISC-103`. Frozen export context first, session state second — the same
+    precedence `external_validation_record` uses, and for the same reason: the
+    context is what the export froze, and a draft composed from it must not be
+    re-decided by live state.
+
+    The session read is mode-OR-used, matching pages/10: `exploratory_used` is
+    set when the mode is enabled and cleared only by the downstream reset, so
+    toggling the mode off cannot launder results computed with it on.
+    """
+    context = manuscript_context or {}
+    if 'exploratory_mode' in context:
+        return bool(context.get('exploratory_mode'))
+    try:
+        import streamlit as st
+    except ImportError:
+        return False
+    try:
+        return bool(st.session_state.get('exploratory_mode', False)
+                    or st.session_state.get('exploratory_used', False))
+    except Exception:
+        return False
+
+
+def external_validation_record() -> Optional[Dict[str, Any]]:
+    """What page 07 recorded about an external cohort, or None.
+
+    Provenance first, session state second: the provenance record is what
+    survives an export and what a downstream reset nulls, so a manuscript
+    composed after the data changed cannot claim an external validation whose
+    results the same reset deleted.
+    """
+    try:
+        import streamlit as st
+    except ImportError:
+        return None
+    try:
+        prov = st.session_state.get('workflow_provenance')
+        ev = getattr(prov, 'external_validation', None) if prov is not None else None
+        if ev is not None:
+            return {
+                'dataset_name': getattr(ev, 'dataset_name', ''),
+                'n_rows': int(getattr(ev, 'n_rows', 0) or 0),
+                'models': list(getattr(ev, 'models_validated', []) or []),
+                'n_bootstrap': int(getattr(ev, 'n_bootstrap', 0) or 0),
+                'repairs': list(getattr(ev, 'import_repairs', []) or []),
+                'metrics': dict(getattr(ev, 'metrics', {}) or {}),
+            }
+        stored = st.session_state.get('external_validation_results')
+        if isinstance(stored, dict) and stored.get('per_model'):
+            return {
+                'dataset_name': stored.get('dataset_name', ''),
+                'n_rows': int(stored.get('n_rows', 0) or 0),
+                'models': list(stored.get('per_model', {}).keys()),
+                'n_bootstrap': int(stored.get('n_bootstrap', 0) or 0),
+                'repairs': list(stored.get('import_repairs', []) or []),
+            }
+    except Exception:
+        return None
+    return None
+
+
+def external_validation_sentence(record: Optional[Dict[str, Any]]) -> str:
+    """The Performance Evaluation sentence for an external cohort.
+
+    Says only what the record holds. With no record the wording stays the
+    unqualified one the caller's own flag used to produce — a caller that
+    passes external_validation=True is asserting it, not this function.
+    """
+    if not record:
+        return "External validation was performed on an independent dataset. "
+
+    n_rows = record.get('n_rows') or 0
+    name = str(record.get('dataset_name') or "").strip()
+    models = [m for m in (record.get('models') or [])]
+    parts = ["External validation was performed on an independent dataset"]
+    if n_rows:
+        parts.append(f" of {n_rows:,} rows")
+    if name:
+        parts.append(f" ({name})")
+    parts.append(".")
+    if models:
+        parts.append(
+            f" {_oxford_join([_publication_model_label(m) for m in models])} "
+            f"{'were' if len(models) != 1 else 'was'} scored on that cohort")
+        n_boot = record.get('n_bootstrap') or 0
+        if n_boot:
+            parts.append(
+                f", with 95% confidence intervals from {int(n_boot):,} "
+                f"bootstrap resamples")
+        parts.append(".")
+    # The numbers themselves, when the record carries them: an external
+    # validation the manuscript only ASSERTS happened is the same omission this
+    # sentence exists to close.
+    metrics = record.get('metrics') or {}
+    for model_key, per_metric in metrics.items():
+        if not isinstance(per_metric, dict):
+            continue
+        rendered = []
+        for metric_name, vals in per_metric.items():
+            if not isinstance(vals, dict) or vals.get('estimate') is None:
+                continue
+            lo, hi = vals.get('ci_lower'), vals.get('ci_upper')
+            if lo is not None and hi is not None:
+                rendered.append(f"{metric_name} {float(vals['estimate']):.3f} "
+                                f"(95% CI {float(lo):.3f}–{float(hi):.3f})")
+            else:
+                rendered.append(f"{metric_name} {float(vals['estimate']):.3f}")
+        if rendered:
+            parts.append(f" On the external cohort, "
+                         f"{_publication_model_label(model_key)} achieved "
+                         f"{_oxford_join(rendered)}.")
+
+    repairs = record.get('repairs') or []
+    if repairs:
+        parts.append(
+            f" Before validation the external file required "
+            f"{len(repairs)} structural repair{'s' if len(repairs) != 1 else ''} "
+            f"at import: {'; '.join(str(r) for r in repairs)}.")
+    parts.append(" ")
+    return "".join(parts)
+
+
 def generate_methods_section(
     data_config: Dict[str, Any],
     preprocessing_config: Dict[str, Any],
@@ -386,6 +729,20 @@ def generate_methods_section(
     split_strategy: Optional[str] = None,
     missing_data_summary: Optional[Dict] = None,
     ledger_narratives: Optional[Dict[str, str]] = None,
+    # Which models actually produced cross-validation results. `AUDIT-026`.
+    #
+    # `use_cv`/`cv_folds` are the CHECKBOX. `model_results[*]['cv_results']` is
+    # the only object that records that a fold loop RAN, and the two are
+    # routinely different: pages/06:1455 skips CV for the neural network
+    # outright, and :1489 catches a CV exception, warns, and leaves
+    # `cv_results=None`. A Methods section composed from the checkbox therefore
+    # asserts an internal validation design the run never performed.
+    #
+    # Three states on purpose, and `None` is not `[]` (trap 9): a list — even an
+    # empty one — is a caller who KNOWS which models were cross-validated;
+    # `None` is a caller who did not say, and ignorance must not be reported as
+    # either outcome.
+    cv_models_run: Optional[Sequence[str]] = None,
 ) -> str:
     """Generate a draft methods section for a publication.
 
@@ -404,10 +761,31 @@ def generate_methods_section(
     selected_model_results = manuscript_facts['selected_model_results']
     bootstrap_results = manuscript_facts['selected_bootstrap_results']
 
+    # `AUDIT-026`. Resolve "did cross-validation actually run, and for what?"
+    # once, here, so every CV sentence below reads the same answer.
+    #
+    # An explicit `cv_models_run` wins. Otherwise derive it from the per-model
+    # results, which carry `cv_results` for every trained model — pages/06:1502
+    # writes the key unconditionally, `None` when no fold loop ran, so a
+    # non-empty results dict is a POSITIVE record either way and not an absence.
+    # With neither, the answer is unknown and stays unknown.
+    if cv_models_run is not None:
+        cv_models_run = [str(m) for m in cv_models_run]
+    elif selected_model_results:
+        cv_models_run = [
+            str(name) for name, res in selected_model_results.items()
+            if isinstance(res, dict) and res.get('cv_results')
+        ]
+    else:
+        cv_models_run = None
+    cv_scope_known = cv_models_run is not None
+
     # Feature counts: derive once so manuscript text stays internally consistent.
     logged_steps = generate_methods_from_log()
     feature_counts = manuscript_facts['feature_counts'] or _resolve_workflow_feature_counts(feature_names, logged_steps, data_config)
-    predictor_count = feature_counts.get('selected') or len(feature_names)
+    _selected_count = feature_counts.get('selected')
+    predictor_count = (_selected_count if _selected_count is not None
+                       else len(feature_names))
 
     # Study design
     sections.append("### Study Design and Participants\n")
@@ -451,12 +829,24 @@ def generate_methods_section(
 
     # Predictors
     sections.append("\n\n### Predictor Variables\n")
-    if feature_counts.get('original') and feature_counts.get('selected') and feature_counts['original'] != feature_counts['selected']:
+    if _selected_count == 0:
+        # A recorded zero is a RESULT. Falling through to the branches below
+        # would list the predictors the workflow started with as though they
+        # were the ones selection kept.
+        _screened = feature_counts.get('candidate') or feature_counts.get('original')
+        sections.append(
+            (f"Feature selection retained none of the {_screened} candidate "
+             f"predictors it screened, so no selected predictor set was produced."
+             ) if _screened else
+            "Feature selection retained no predictors, so no selected "
+            "predictor set was produced."
+        )
+    elif feature_counts.get('original') and feature_counts.get('selected') and feature_counts['original'] != feature_counts['selected']:
         original_count = feature_counts['original']
         candidate_count = feature_counts.get('candidate')
         engineered_count = feature_counts.get('engineered')
         selected_count = feature_counts['selected']
-        if candidate_count and candidate_count != original_count:
+        if candidate_count and candidate_count != original_count and feature_engineering_ran(feature_counts):
             sections.append(
                 f"The workflow began with {original_count} original predictors. "
                 f"Feature engineering added {engineered_count if engineered_count is not None else max(candidate_count - original_count, 0)} predictors, yielding {candidate_count} candidate predictors. "
@@ -495,13 +885,21 @@ def generate_methods_section(
         
         # Get the methods used from the analysis step (lasso, rfe, etc.)
         analysis_methods = []
+        analysis_methods_completed = None
         n_original = None
         for ae in analysis_entries:
             ad = ae.get('details', {})
             analysis_methods = ad.get('methods', analysis_methods)
+            if ad.get('methods_completed') is not None:
+                analysis_methods_completed = ad['methods_completed']
             if ad.get('n_features_before'):
                 n_original = ad['n_features_before']
-        methods_str = _oxford_join(_feature_selection_method_label(method_name) for method_name in analysis_methods)
+        # `MISC-104`: the methods that RAN are the ones the sentence names. A
+        # method that raised is not part of a consensus it never voted in.
+        methods_named = (analysis_methods_completed
+                         if analysis_methods_completed is not None
+                         else analysis_methods)
+        methods_str = _oxford_join(_feature_selection_method_label(method_name) for method_name in methods_named)
 
         if method == 'manual' and n_selected is not None:
             # Manual override — report it as such
@@ -518,16 +916,41 @@ def generate_methods_section(
         elif method == 'consensus' and n_selected is not None:
             # Consensus selection
             n_before = feature_counts.get('candidate') or n_original or details.get('n_features_before')
-            
+
             # Check for consensus threshold in details
             consensus_threshold = details.get('consensus_threshold') or details.get('threshold')
-            n_methods = len(analysis_methods) if analysis_methods else None
-            
-            if n_before and n_before == n_selected:
+            threshold_clause = _consensus_threshold_clause(
+                consensus_threshold,
+                len(analysis_methods_completed) if analysis_methods_completed is not None else None,
+                len(analysis_methods) if analysis_methods else None,
+            )
+
+            # `MISC-104`. TWO UNIVERSES, AND THE SENTENCE USED TO MIX THEM.
+            # `n_before` counts the NUMERIC candidates that were ranked
+            # (pages/04:385); `n_selected` counts what was APPLIED — the ranked
+            # survivors PLUS the non-ranked features carried through unchanged
+            # (pages/04:571). "reduced the feature set from 10 to 5" was
+            # therefore a ratio between two different populations. Both are
+            # stated when the log records the split.
+            n_ranked = details.get('n_consensus_ranked')
+            carried = list(details.get('carried_through_unranked') or [])
+
+            if n_ranked is not None and carried:
+                lead = (f" Consensus feature selection across {methods_str}"
+                        if methods_str else " Consensus feature selection")
+                if n_before:
+                    ranking_clause = (f"{lead} ranked {n_before} numeric candidate "
+                                      f"predictors and retained {n_ranked} of them")
+                else:
+                    ranking_clause = f"{lead} retained {n_ranked} ranked predictors"
+                sections.append(
+                    f"{ranking_clause}; {len(carried)} non-ranked feature(s) "
+                    f"({_oxford_join(carried)}) were carried through unranked, "
+                    f"giving {n_selected} predictors in the final modeling set."
+                    f"{threshold_clause}"
+                )
+            elif n_before and n_before == n_selected:
                 if methods_str:
-                    threshold_clause = ""
-                    if consensus_threshold and n_methods:
-                        threshold_clause = f" Features were retained if selected by at least {consensus_threshold} of {n_methods} methods."
                     sections.append(
                         f" Consensus feature selection across {methods_str} retained all {n_selected} candidate predictors."
                         f"{threshold_clause}"
@@ -537,9 +960,6 @@ def generate_methods_section(
                         f" Feature selection was performed; all {n_selected} features were retained."
                     )
             elif n_before:
-                threshold_clause = ""
-                if consensus_threshold and n_methods:
-                    threshold_clause = f" Features were retained if selected by at least {consensus_threshold} of {n_methods} methods."
                 if methods_str:
                     sections.append(
                         f" Consensus feature selection across {methods_str} reduced the feature set "
@@ -552,9 +972,6 @@ def generate_methods_section(
                         f"{threshold_clause}"
                     )
             else:
-                threshold_clause = ""
-                if consensus_threshold and n_methods:
-                    threshold_clause = f" Features were retained if selected by at least {consensus_threshold} of {n_methods} methods."
                 if methods_str:
                     sections.append(f" Consensus feature selection across {methods_str} retained {n_selected} features.{threshold_clause}")
                 else:
@@ -624,16 +1041,7 @@ def generate_methods_section(
                         
                         # FIX 2: Specific parsing by transform type
                         if 'PCA' in technique_name.upper() and pca_details:
-                            # Use the first PCA config as representative
-                            first_pca = next(iter(pca_details.values()))
-                            mode = first_pca.get('mode')
-                            n_comp = first_pca.get('n_components')
-                            if mode == "Fixed Components" and n_comp:
-                                techniques.append(f"PCA dimensionality reduction ({int(n_comp)} components)")
-                            elif mode == "Variance Threshold" and n_comp:
-                                techniques.append(f"PCA dimensionality reduction (retaining {int(n_comp*100)}% of variance)")
-                            else:
-                                techniques.append(f"PCA dimensionality reduction")
+                            techniques.append(pca_technique_sentence(pca_details))
                         elif 'Polynomial' in technique_name:
                             # Extract degree and mode from "Polynomial degree 2 (full)" or "Polynomial degree 2 (interaction-only)"
                             import re
@@ -711,16 +1119,34 @@ def generate_methods_section(
         total_features = missing_data_summary.get('total_features')
         min_missing_rate = missing_data_summary.get('min_missing_rate')
         max_missing_rate = missing_data_summary.get('max_missing_rate')
-        
+
+        # Which participants this counted. The feature count comes from the
+        # dataset profile, which is computed on training rows only once a test
+        # set is sealed, while the per-feature rates are computed over the whole
+        # frame. Two populations in one sentence: state them, or the reader
+        # takes both as the whole study.
+        _scope = missing_data_summary.get('row_scope')
+        _scope_n = missing_data_summary.get('row_scope_n')
+        _counted_in = ""
+        if _scope == 'training' and _scope_n:
+            _counted_in = f", counted on the {_scope_n:,} training rows"
+        _rates_over = ""
+        if (missing_data_summary.get('rates_row_scope') == 'all'
+                and missing_data_summary.get('rates_n_rows')):
+            _rates_over = (f" over all {missing_data_summary['rates_n_rows']:,} "
+                           f"records")
+
         if n_features_with_missing is not None and total_features is not None:
             if min_missing_rate is not None and max_missing_rate is not None:
                 sections.append(
-                    f" {n_features_with_missing} of {total_features} features had missing values "
-                    f"(missing rates ranging from {min_missing_rate*100:.1f}% to {max_missing_rate*100:.1f}%)."
+                    f" {n_features_with_missing} of {total_features} features had missing values"
+                    f"{_counted_in} (missing rates ranging from {min_missing_rate*100:.1f}% "
+                    f"to {max_missing_rate*100:.1f}%{_rates_over})."
                 )
             else:
                 sections.append(
-                    f" {n_features_with_missing} of {total_features} features had missing values."
+                    f" {n_features_with_missing} of {total_features} features had missing values"
+                    f"{_counted_in}."
                 )
 
     sections.append("\n\n### Data Preprocessing\n")
@@ -1014,10 +1440,23 @@ def generate_methods_section(
                 break
 
     if _class_weight_used:
-        sections.append(
-            " To address class imbalance, class_weight='balanced' was applied to supported classifiers, "
-            "weighting each class inversely proportional to its frequency in the training data."
-        )
+        # `GUIDED-049`, and this is the SECOND methods generator — the one its
+        # fix did not reach. `ml/narrative_engine.py` was corrected; this file
+        # kept shipping the removed sentence verbatim, and
+        # `pages/10_Report_Export.py` falls through to here whenever the
+        # provenance singleton is empty. So the app went on endorsing
+        # rebalancing in the artifact that *is* the product, by a second route.
+        #
+        # One sentence, one owner. `imbalance_advice.manuscript_sentence`
+        # still says what was done — the reader has to know — and says it
+        # without approval, with the limitation and the citation attached.
+        # `model_purpose` is the key `narrative_engine` reads for the same
+        # call, so the two generators resolve the purpose identically. Absent,
+        # `manuscript_sentence` returns the unqualified-purpose form, which
+        # still carries the limitation — the sentence is never approving.
+        from ml import imbalance_advice as _imbalance
+        sections.append(" " + _imbalance.manuscript_sentence(
+            (manuscript_context or {}).get("model_purpose")))
 
     # Add hyperparameter details if available
     if model_hyperparameters:
@@ -1149,8 +1588,42 @@ def generate_methods_section(
     if cv_to_use is None and cv_folds:
         cv_to_use = cv_folds
     
+    # `AUDIT-026`. This said "{n}-fold cross-validation was used for internal
+    # validation." on the strength of the checkbox alone. The sentence is not
+    # deleted — it is made to say what the run did, which is the honest
+    # replacement and the only one that keeps the Methods section complete.
     if cv_to_use:
-        sections.append(f" {cv_to_use}-fold cross-validation was used for internal validation.")
+        if not cv_scope_known:
+            sections.append(
+                f" {cv_to_use}-fold cross-validation was enabled in the training "
+                f"configuration. This draft was assembled without per-model "
+                f"results, so it does not report whether cross-validation "
+                f"produced scores for any model; the internal validation this "
+                f"draft can attest to is the train/validation/test split "
+                f"described above."
+            )
+        elif not cv_models_run:
+            # Requested and ran for nothing — pages/06:1455 (the neural network
+            # is excluded from CV) or :1489 (CV raised and was swallowed).
+            sections.append(
+                f" {cv_to_use}-fold cross-validation was requested but produced "
+                f"results for no model, so no cross-validated estimate is "
+                f"reported: internal validation rests on the single "
+                f"train/validation/test split described above."
+            )
+        else:
+            _cv_names = _oxford_join([_publication_model_label(m) for m in cv_models_run])
+            sections.append(
+                f" {cv_to_use}-fold cross-validation was used for internal "
+                f"validation of {_cv_names}."
+            )
+            _not_cv = [m for m in (selected_model_results or {}) if m not in set(cv_models_run)]
+            if _not_cv:
+                sections.append(
+                    f" It was not run for "
+                    f"{_oxford_join([_publication_model_label(m) for m in _not_cv])}, "
+                    f"whose reported performance comes from the held-out split alone."
+                )
 
     # Performance evaluation
     sections.append("\n\n### Performance Evaluation\n")
@@ -1158,10 +1631,16 @@ def generate_methods_section(
         f"Model performance was evaluated on the workflow's held-out data using {', '.join(metrics_used)}. "
         f"When available, 95% confidence intervals were computed from 1,000 BCa bootstrap resamples. "
     )
+    # The parameter was never passed by anything: page 10 assembles this call
+    # from session state, and page 07 computed external metrics, displayed them
+    # and dropped them, so the flag stayed False no matter what the researcher
+    # had actually done. The record is now written when the validation runs, and
+    # it is what this section reads when the caller does not say.
+    ext_record = external_validation_record() if not external_validation else None
+    if ext_record:
+        external_validation = True
     if external_validation:
-        sections.append(
-            "External validation was performed on an independent dataset. "
-        )
+        sections.append(external_validation_sentence(ext_record))
 
     # Explainability - check both parameter and session state
     explainability_to_mention = set(explainability_methods or [])
@@ -1195,7 +1674,18 @@ def generate_methods_section(
             "permutation_importance": "Permutation importance was computed to assess feature contributions by measuring the decrease in model performance when each feature was randomly shuffled.",
             "shap": "SHapley Additive exPlanations (SHAP) values were computed to quantify the contribution of each feature to individual predictions.",
             "partial_dependence": "Partial dependence plots were generated to visualize the marginal effect of individual features on the predicted outcome.",
-            "calibration": "Model calibration was assessed using reliability diagrams, Brier score, and expected calibration error (ECE).",
+            "calibration": (
+                "Model calibration was assessed using reliability diagrams, "
+                "Brier score, and expected calibration error (ECE)."
+                if str(task_type).lower().startswith("classif") else
+                "Model calibration was assessed by regressing the observed "
+                "outcome on the predicted value; the calibration slope (1.0 "
+                "indicates perfect calibration), the calibration intercept "
+                "(0.0 indicates no systematic bias) and R² are reported. "
+                "Reliability diagrams, the Brier score and the expected "
+                "calibration error are defined for predicted probabilities "
+                "and were not computed for this continuous outcome."
+            ),
             "subgroup": "Subgroup analysis was performed to evaluate model performance across clinically relevant subgroups.",
             "decision_curve": "Decision curve analysis was performed to assess the clinical utility of the model at various probability thresholds.",
             "bland_altman": "Bland-Altman analysis was performed to assess agreement between model predictions.",
@@ -1341,39 +1831,59 @@ def generate_methods_section(
         "for transparency and reproducibility.\n\n"
     )
 
-    # 1. CV on pre-transformed data
-    if cv_folds or cv_to_use:
-        _has_pca = False
+    # 0. The exploratory watermark, FIRST. `MISC-103`.
+    #
+    # This limitation reached the manuscript only through NarrativeEngine. When
+    # the engine raises — or when provenance is empty — pages/10 falls back to
+    # this composer, which said nothing about it, so the one caveat that is
+    # about the whole study rather than one column vanished on exactly the path
+    # a failure takes. It goes first here for the same reason it goes first
+    # there: a study-wide caveat outranks a per-column one.
+    if _exploratory_watermark(manuscript_context):
+        sections.append(f"**Exploratory mode:** {EXPLORATORY_LIMITATION_SENTENCE}\n\n")
+
+    # 1. What the cross-validation loop enclosed. `AUDIT-029`.
+    #
+    # This paragraph told the reader CV was "performed on data that had already
+    # been preprocessed using the full training set", and hung an optimistic-bias
+    # rider on PCA. Both have been false since STATE-059:
+    # pages/06_Train_and_Compare.py:1481-1487 passes make_cv_pipeline the RAW
+    # training partition, and ml/eval.py:182-197 clones the preprocessing into
+    # the composite, so imputer, scaler, encoder AND PCA are re-fit inside every
+    # fold. The manuscript is the one artifact where the description IS the
+    # deliverable; it was describing a leak the code structurally prevents, and
+    # in doing so it left the real out-of-loop steps undisclosed.
+    #
+    # §A5.5 asks for the ENTIRE pipeline inside the loop. Preprocessing is;
+    # feature selection (page 04, before training) and hyperparameter tuning
+    # (pages/06:1260/:1318, on a separate validation split) are not, and no
+    # optimism correction is applied. That is the caveat this paragraph owes.
+    #
+    # Gated on cv_models_run (AUDIT-026): a paragraph describing a fold
+    # structure must not print for a run that cross-validated nothing.
+    if (cv_folds or cv_to_use) and cv_models_run:
         _has_feature_selection = feature_selection_logged or feature_selection_method is not None
-        try:
-            import streamlit as st
-            _preproc_configs = st.session_state.get('preprocessing_config_by_model', {})
-            for _mc in _preproc_configs.values():
-                if isinstance(_mc, dict) and _mc.get('use_pca'):
-                    _has_pca = True
-                    break
-        except ImportError:
-            pass
 
         cv_num = cv_to_use if cv_to_use else cv_folds
         sections.append(
-            f"**Cross-validation and preprocessing:** {cv_num}-fold cross-validation was performed "
-            f"on data that had already been preprocessed using the full training set. "
-            f"In a strict nested cross-validation framework, preprocessing would be re-fit within "
-            f"each fold to avoid information leakage. For scale-invariant models (tree-based ensembles), "
-            f"this has no practical effect. For scale-sensitive models (linear, SVM, neural networks), "
-            f"the impact of this choice on reported cross-validation metrics is expected to be minimal "
-            f"for imputation and scaling operations"
+            f"**What the cross-validation loop enclosed:** {cv_num}-fold cross-validation was "
+            f"performed on the raw training partition, with the preprocessing pipeline "
+            f"(imputation, scaling, encoding, and any dimensionality reduction) re-fit inside "
+            f"each fold, so no fold's held-out rows contributed to the statistics used to "
+            f"transform it. The loop did not enclose the entire model-building procedure: "
+            f"feature selection and hyperparameter tuning, where used, were performed before it "
+            f"rather than inside it, and no optimism correction (bootstrap or nested resampling) "
+            f"was applied, so the cross-validated estimates are not corrected for the optimism "
+            f"those steps introduce"
         )
-        if _has_pca or _has_feature_selection:
+        if _has_feature_selection:
             sections.append(
-                f", though it may introduce optimistic bias for dimensionality reduction "
-                f"{'(PCA was applied)' if _has_pca else ''}"
-                f"{' (feature selection was applied)' if _has_feature_selection else ''}"
+                " — feature selection was applied in this workflow, on the training "
+                "partition, before cross-validation began"
             )
         sections.append(
-            ". Held-out test set performance, which uses a strict train/test separation "
-            "for preprocessing, remains unaffected by this consideration.\n\n"
+            ". Held-out test set performance is computed with preprocessing fit on the training "
+            "partition only and is unaffected by the fold structure described here.\n\n"
         )
 
     # 2. Feature dropout methodology
@@ -1466,21 +1976,22 @@ def generate_methods_section(
                     metric_strs.append(f"{m}: {v:.4f}")
             sections.append(f"**{_publication_model_label(name)}:** {'; '.join(metric_strs)}\n\n")
 
-        # Calibration
+        # Calibration. `MISC-102`: this block was unreachable — no caller passed
+        # `calibration_results` — so every calibration number page 06 computed
+        # stopped at the app. The header is emitted only when at least one model
+        # produced a readable sentence, so a records dict of empty artifacts
+        # cannot open a Calibration section that then says nothing.
         if calibration_results:
-            sections.append("\n### Calibration\n")
-            sections.append("Calibration outputs are reported only for models with computed calibration artifacts.\n\n")
-            for model_name, cal in calibration_results.items():
-                if hasattr(cal, 'brier_score') and cal.brier_score is not None:
-                    sections.append(
-                        f"**{_publication_model_label(model_name)}:** Brier score = {cal.brier_score:.4f}, "
-                        f"ECE = {cal.ece:.4f}.\n\n"
-                    )
-                elif hasattr(cal, 'calibration_slope') and cal.calibration_slope is not None:
-                    sections.append(
-                        f"**{_publication_model_label(model_name)}:** Calibration slope = {cal.calibration_slope:.3f}, "
-                        f"intercept = {cal.calibration_intercept:.3f}.\n\n"
-                    )
+            cal_sentences = [
+                s for s in (
+                    _calibration_sentence(name, cal)
+                    for name, cal in calibration_results.items()
+                ) if s
+            ]
+            if cal_sentences:
+                sections.append("\n### Calibration\n")
+                sections.append("Calibration outputs are reported only for models with computed calibration artifacts.\n\n")
+                sections.extend(cal_sentences)
 
         # FIX 4: Statistical Validation Results
         stat_val_entries = logged_steps.get('Statistical Validation', [])
@@ -1745,16 +2256,24 @@ def _clean_audit_text(text: Any) -> str:
 
 
 def _format_audit_timestamp(timestamp: str) -> str:
-    """Format timestamps consistently for the audit appendix."""
+    """Format timestamps consistently for the audit appendix.
+
+    `RECORD-017`: a NAIVE timestamp is not UTC. Every entry in the Record and
+    the Ledger is `datetime.now().isoformat()` — local wall clock, no tzinfo —
+    and this used to stamp each one 'UTC', so every line of the exported
+    Decision Audit Trail was off by the machine's offset (and near midnight, off
+    by a day) with nothing to explain the skew to a reviewer reconciling it
+    against lab notes or a commit log. A naive stamp is now rendered without a
+    zone label: silent about a fact this function does not know, rather than
+    asserting one it does not. Aware stamps are still converted and labeled.
+    """
     if not timestamp:
         return "Timestamp unavailable"
     try:
         dt = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
-        return dt.strftime("%Y-%m-%d %H:%M UTC")
+            return dt.strftime("%Y-%m-%d %H:%M")
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     except Exception:
         return _clean_audit_text(timestamp)
 

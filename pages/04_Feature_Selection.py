@@ -66,10 +66,24 @@ Feature selection helps you:
 
 1. **Remove redundant features** (e.g., BMI and Weight are highly correlated — keep one)
 2. **Identify the most predictive variables** (focus your analysis)  
-3. **Reduce overfitting** (fewer features = simpler, more generalizable models)
+3. **Reduce model complexity** (fewer features = simpler models — though choosing them from these same rows adds optimism of its own, which is why selection belongs inside the validation loop)
 4. **Improve interpretability** (explain 5 key predictors vs. explaining 50)
 
 This step uses multiple methods (LASSO, RFE-CV, Stability Selection) to find consensus features.
+
+**What the clinical-prediction literature says about selecting predictors from your own data.**
+Univariable pre-screening by p-value is contraindicated: it is one of PROBAST's explicit
+high-risk-of-bias signals, it discards variables that matter only in combination, and it
+invalidates the p-values of the model you fit on the survivors. Stepwise selection draws the same
+objection — unstable variable sets, biased coefficients, and confidence intervals with wrong
+coverage. The preferred routes are pre-specifying predictors on clinical grounds, or a penalized
+fit (LASSO, ridge, elastic net) that shrinks rather than testing and dropping — and LASSO is
+itself unstable in small samples, which is what Stability Selection is here to show you.
+(PROBAST: Wolff et al., *Ann Intern Med* 2019. Harrell, *Regression Modeling Strategies*, 2nd ed.)
+
+Nothing here is taken away by that: these methods are the right tool for high-dimensional
+discovery, where what survives is a set of hypotheses rather than a final predictor set. What
+changed is that univariate screening is no longer ticked for you.
 """)
 
 # ============================================================================
@@ -116,22 +130,48 @@ if categorical_excluded:
         f"({', '.join(categorical_excluded[:5])}"
         f"{'...' if len(categorical_excluded) > 5 else ''}) "
         f"are excluded from ranking — selection methods require numeric inputs. "
-        f"These features are retained in your dataset and can still be used for modeling."
+        f"They are carried through into the modeling feature set when you apply "
+        f"a selection below, and the manual selector lets you drop them by hand."
     )
+
+
+# `CONTRACT-014`. The caption above promises the non-ranked columns survive,
+# and both Apply buttons used to write a numeric-only list into
+# `data_config.feature_cols` — the very list pages/05 splits its categorical
+# branch out of, so sex, smoking status and every other categorical predictor
+# left the model by the same click that promised to keep them. Ranking stays
+# numeric-only; APPLYING a ranking unions the non-ranked columns back in.
+def _with_carried_categoricals(selected: List[str]) -> List[str]:
+    """Ranked picks plus the non-ranked columns the caption promised to keep."""
+    return list(selected) + [c for c in categorical_excluded if c not in selected]
 
 # Prepare data: drop missing targets AND quarantine the locked test rows.
 # Running selectors on all rows would let the test set vote on which
 # predictors enter the model — the classic feature-selection leakage
 # (Ambroise & McLachlan 2002; ESL §7.10.2).
-from utils.test_lockbox import train_row_mask, is_exploratory
+from utils.test_lockbox import train_row_mask, is_exploratory, quarantine_is_active
 
 mask = df[target_col].notna() & train_row_mask(df.index)
 X = df.loc[mask, numeric_features].values
 y = df.loc[mask, target_col].values
-if not is_exploratory():
+# The caption states what the MASK did, which is not the same question as
+# whether exploratory mode is off. With no lockbox `train_row_mask` returns
+# all-True and this said "held-out test rows are excluded" over a selection
+# that had just voted with every row in the study (`MINE-005`). The chip
+# rendered above says why there is no lockbox; this says what it cost here.
+if quarantine_is_active():
     st.caption(
         f"Selection methods see n={int(mask.sum())} training rows; "
         f"held-out test rows are excluded to prevent selection leakage."
+    )
+elif not is_exploratory():
+    st.warning(
+        f"⚠️ No held-out test set is in force, so selection ran on all "
+        f"n={int(mask.sum())} rows with a value for the outcome — including any "
+        f"rows you later evaluate on. Predictors chosen this way carry selection "
+        f"leakage (Ambroise & McLachlan 2002), and performance measured on those "
+        f"rows afterwards is not held-out performance. Seal a test set on "
+        f"**Upload & Audit** and re-run selection before reporting."
     )
 
 # Handle NaN in features (simple imputation for feature selection)
@@ -141,15 +181,35 @@ imputer = SimpleImputer(strategy='median')
 X = imputer.fit_transform(X)
 
 # Disclose imputation
+# `AUDIT-007` · CLINICAL_SURVEY_PACK.md §A2 anti-patterns 2 and 3, both
+# [SETTLED]. The fill above is median, and the outcome `y` is not in the
+# imputation model. BEFORE, the two captions here said only "Results may be
+# affected" and "(does not affect modeling data)" — true, and silent about
+# what the fill costs the ranking a user is about to read. AFTER names the
+# cost: §A2.2 "Understates variance, destroys the distribution" and §A2.3
+# "Imputing with the outcome excluded from the imputation model. Biases
+# associations toward the null." Nothing is removed; the scope disclaimer
+# that was already true is kept beside it.
 _high_missing = [f for f in numeric_features if df[f].isna().mean() > 0.2]
+_IMPUTATION_COST = (
+    "Filling with the median shrinks that column's variance and its association "
+    "with the target is biased toward the null, because the outcome is not in "
+    "this fill — so a column with many blanks can rank lower here than it "
+    "deserves."
+)
 if _high_missing:
     st.caption(
         f"⚠️ Missing values temporarily filled with column medians for selection. "
         f"Features with >20% missing: {', '.join(_high_missing[:5])}. "
-        f"Results may be affected — preprocessing handles imputation separately during training."
+        f"{_IMPUTATION_COST} Preprocessing handles imputation separately during "
+        f"training, where multiple imputation (MICE) is available under Advanced "
+        f"(full control)."
     )
 elif df.loc[mask, numeric_features].isna().any().any():
-    st.caption("Missing values temporarily filled with column medians for selection (does not affect modeling data).")
+    st.caption(
+        f"Missing values temporarily filled with column medians for selection "
+        f"(does not affect modeling data). {_IMPUTATION_COST}"
+    )
 
 # ============================================================================
 # Method selection
@@ -157,6 +217,18 @@ elif df.loc[mask, numeric_features].isna().any().any():
 
 st.header("Select Methods")
 st.caption("Run multiple methods and compare which features are consistently selected.")
+# `AUDIT-024` · CLINICAL_SURVEY_PACK.md §A5.5 [SETTLED]. Every method on this
+# panel is data-driven selection, and the panel used to state only what that is
+# good for. The objection is stated here once, beside the controls.
+st.caption(
+    "All of these choose predictors from your rows, so the set they return is unstable across "
+    "resamples and the p-values and confidence intervals of a model refitted on it are not valid "
+    "as printed. For a clinical prediction or association model the literature's preference is "
+    "pre-specification on clinical grounds, or a penalized fit that shrinks rather than selecting "
+    "abruptly; stepwise selection in particular produces unstable variable sets, biased "
+    "coefficients and confidence intervals with wrong coverage (Harrell, *Regression Modeling "
+    "Strategies*, 2nd ed.)."
+)
 
 # RFE with step=1 fits ~p models over shrinking feature sets — measured
 # ~80s at 3000 features on this hardware, so default it off on wide data.
@@ -174,8 +246,27 @@ with col1:
                    "— recursive elimination takes minutes at this width. "
                    "Enable it if you need it.")
 with col2:
-    run_univariate = st.checkbox("Univariate Screening (FDR-corrected)", value=True,
-                                 help="Tests each feature individually against the target. FDR correction controls false discovery rate.")
+    # `AUDIT-024` · CLINICAL_SURVEY_PACK.md §A5.5 [SETTLED]: "Avoid univariable
+    # pre-screening of predictors by p-value. It is one of PROBAST's explicit
+    # high-risk-of-bias signals." The method is NOT removed — it is offered with
+    # the objection stated and is no longer pre-ticked, on the `GUIDED-049`
+    # pattern (`ml/imbalance_advice.py`): keep it, stop recommending it, say what
+    # the literature says. It stays the right tool for high-dimensional
+    # discovery, and `ml.feature_selection.univariate_screening` is untouched.
+    run_univariate = st.checkbox("Univariate Screening (FDR-corrected)", value=False,
+                                 help="Tests each feature individually against the target and keeps those surviving "
+                                      "Benjamini-Hochberg FDR correction. Off by default: univariable pre-screening by "
+                                      "p-value is one of PROBAST's explicit high-risk-of-bias signals for a clinical "
+                                      "prediction or association model — it discards variables that matter only in "
+                                      "combination, and it invalidates the p-values of the model fitted on the survivors.")
+    st.caption(
+        "⚠️ Univariable pre-screening by p-value is a PROBAST high-risk-of-bias signal: it discards "
+        "variables that matter only in combination, and it invalidates the p-values of the model you "
+        "fit afterwards. Instead: pre-specify predictors on clinical grounds, or use a penalized fit "
+        "(LASSO, ridge, elastic net). It is kept here — and it is the standard tool for "
+        "high-dimensional discovery, where the survivors are hypotheses rather than a predictor set — "
+        "so tick it if that is what you are doing (Wolff et al., *Ann Intern Med* 2019)."
+    )
     run_stability = st.checkbox("Stability Selection", value=False,
                                 help="Runs LASSO on many random subsamples. Features selected consistently are most robust. Slower but very reliable.")
 
@@ -190,6 +281,29 @@ with st.expander("⚙️ Advanced Settings", expanded=False):
 # ============================================================================
 # Run feature selection
 # ============================================================================
+
+# `DRIVE-064`. Every selector below fails on a target scikit-learn cannot read
+# as labels, and the exception it raises — "Unknown label type: unknown. Maybe
+# you are trying to fit a classifier, which expects discrete classes on a
+# regression target with continuous values" — names a cause that is not the
+# cause (the column is not continuous; it is stored wrong) and a fix that is
+# not the fix. The condition is stated here, above the button, in its own
+# vocabulary, and each method that raises repeats it in place of sklearn's.
+from ml.triage import diagnose_target_dtype as _diagnose_target
+_target_dx = _diagnose_target(df, target_col)
+if not _target_dx.usable:
+    st.error(
+        f"⚠️ **Selection cannot run on `{target_col}` as it is stored.**\n\n"
+        f"{_target_dx.condition}\n\n**What fixes it:** {_target_dx.fix}"
+    )
+
+
+def _explain_method_failure(exc: Exception) -> str:
+    """The method's own error, or the real condition when sklearn misnames it."""
+    if not _target_dx.usable:
+        return f"{_target_dx.condition} {_target_dx.fix}"
+    return str(exc)
+
 
 # Warn about wide datasets
 n_features = len(numeric_features)
@@ -219,6 +333,13 @@ if st.button("🔍 Run Feature Selection", type="primary"):
     if run_stability:
         methods_to_run.append("stability")
 
+    # `MISC-104`. Which methods COMPLETED, in the same vocabulary as
+    # `methods_to_run`: every branch below catches its own failure and warns,
+    # so a method that raised leaves `methods_to_run` unchanged and the
+    # manuscript could not tell the two lists apart.
+    methods_completed = []
+    _n_results_done = 0
+
     for i, method in enumerate(methods_to_run):
         pct = (i + 1) / len(methods_to_run)
 
@@ -231,7 +352,7 @@ if st.button("🔍 Run Feature Selection", type="primary"):
                 )
                 results.append(result)
             except Exception as e:
-                st.warning(f"⚠️ LASSO failed: {e}")
+                st.warning(f"⚠️ LASSO could not run: {_explain_method_failure(e)}")
 
         elif method == "rfe":
             if n_features > 500:
@@ -245,7 +366,7 @@ if st.button("🔍 Run Feature Selection", type="primary"):
                 )
                 results.append(result)
             except Exception as e:
-                st.warning(f"⚠️ RFE failed: {e}")
+                st.warning(f"⚠️ RFE-CV could not run: {_explain_method_failure(e)}")
 
         elif method == "univariate":
             status.text("Running univariate screening with FDR correction...")
@@ -256,7 +377,7 @@ if st.button("🔍 Run Feature Selection", type="primary"):
                 )
                 results.append(result)
             except Exception as e:
-                st.warning(f"⚠️ Univariate screening failed: {e}")
+                st.warning(f"⚠️ Univariate screening could not run: {_explain_method_failure(e)}")
 
         elif method == "stability":
             status.text(f"Running stability selection ({n_stability_bootstrap} bootstraps × {n_features} features)...")
@@ -269,44 +390,111 @@ if st.button("🔍 Run Feature Selection", type="primary"):
                 )
                 results.append(result)
             except Exception as e:
-                st.warning(f"⚠️ Stability selection failed: {e}")
+                st.warning(f"⚠️ Stability selection could not run: {_explain_method_failure(e)}")
+
+        if len(results) > _n_results_done:
+            methods_completed.append(method)
+        _n_results_done = len(results)
 
         progress.progress(pct)
 
     status.text("Done!")
     st.session_state["feature_selection_results"] = results
 
-    # Consensus
-    consensus_threshold = max(1, len(results) // 2)
+    # Consensus. `max(1, len(results) // 2)` made the threshold 1 for one, two
+    # or three methods, so "consensus" named the UNION of the methods' picks —
+    # while the success message below and the manuscript both read it as
+    # agreement. Agreement means at least two methods selected the feature.
+    consensus_threshold = max(2, len(results) // 2)
     consensus = consensus_features(results, min_methods=consensus_threshold)
     st.session_state["consensus_features"] = consensus
     
-    # Log methodology action
-    methods_used = ", ".join(methods_to_run)
+    # Log methodology action. `DRIVE-063`: the action sentence named the
+    # REQUESTED methods, so a run where both raised was logged as "Selected 0
+    # features using lasso, rfe" — a claim that two methods ran.
+    # `DRIVE-075` / D9-10. Written with the SELECTION-METHOD labels, not the raw
+    # keys: `lasso` is also a model key, so the manuscript cleaner rewrote it to
+    # the model name "Lasso Regression" and left "rfe" untouched beside it —
+    # one display label and one internal key in the same audit-trail sentence.
+    from utils.insight_ledger import feature_selection_method_label
+    methods_used = (", ".join(feature_selection_method_label(m) for m in methods_completed)
+                    if methods_completed else "no method")
     log_methodology(
         step='Feature Selection',
-        action=f"Selected {len(consensus)} features using {methods_used}",
+        action=(f"Selected {len(consensus)} features using {methods_used}"
+                if methods_completed else
+                f"No selection method completed; "
+                f"{', '.join(feature_selection_method_label(m) for m in methods_to_run)} "
+                f"were requested and all failed"),
         details={
             'methods': methods_to_run,
+            # `MISC-104`. REQUESTED and COMPLETED are different lists whenever a
+            # method raises, and the consensus threshold is computed from the
+            # COMPLETED ones (`len(results)` above). The Methods sentence said
+            # "at least T of N methods" with T from one universe and N from the
+            # other; it can only be written honestly if both are recorded.
+            'methods_completed': list(methods_completed),
             'n_features_before': len(numeric_features),
             'n_features_after': len(consensus),
             'selected': list(consensus),
             'consensus_threshold': consensus_threshold,
         }
     )
-    try:
-        from utils.workflow_provenance import get_provenance
-        get_provenance().record_feature_selection(
-            method='consensus',
-            n_before=len(numeric_features),
-            n_after=len(consensus),
-            features_kept=list(consensus),
-            consensus_methods=list(methods_to_run),
-        )
-    except Exception:
-        pass  # Provenance recording should never break the workflow
+    # `DRIVE-063`. Provenance is what the Methods draft is written from, and it
+    # was handed `methods_to_run` — the REQUESTED list — so a run where both
+    # selectors raised recorded a consensus across "LASSO and RFE-CV" that
+    # never happened, and the draft printed "Consensus feature selection across
+    # LASSO and RFE-CV retained all 27 candidate predictors" over a run that
+    # selected nothing. `methods_completed` is built above for exactly this.
+    #
+    # A NULL run is not a selection either, and recording one is the same false
+    # sentence by a different route: `ml/narrative_engine.py:884` reads the
+    # record's `n_after` through `n_after_sel or n_final`, so a zero reads back
+    # as "all N retained" whether zero methods completed or one completed and
+    # nothing met the agreement threshold. A consensus record is written when
+    # there is a consensus. Nothing was chosen here, so nothing is recorded and
+    # the draft says nothing — silence is available, a false sentence is not.
+    if methods_completed and consensus:
+        try:
+            from utils.workflow_provenance import get_provenance
+            get_provenance().record_feature_selection(
+                method='consensus',
+                n_before=len(numeric_features),
+                n_after=len(consensus),
+                features_kept=list(consensus),
+                consensus_methods=list(methods_completed),
+                # `AUDIT-023`. The screened set, by name, recorded at the moment
+                # it is still knowable — the apply buttons below overwrite
+                # `data_config.feature_cols` in place and §A5.4 sizes for what
+                # was screened, not for what survived.
+                candidates_screened=list(numeric_features),
+            )
+        except Exception:
+            pass  # Provenance recording should never break the workflow
 
-    st.success(f"Feature selection complete! {len(results)} methods run.")
+    # `DRIVE-064` finding 5. `len(results) < 2` cannot tell one from zero, so a
+    # run where every method raised said "Only one method completed" and then
+    # bannered green over it. Zero completions is a failure, and it says so.
+    n_completed = len(results)
+    if n_completed == 0:
+        st.error(
+            f"❌ **Feature selection did not run.** All "
+            f"{len(methods_to_run)} requested method(s) "
+            f"({', '.join(methods_to_run)}) failed — see the reason above each. "
+            f"No features were selected, nothing was recorded, and the Methods "
+            f"draft will not report a selection for this run. Fix the cause and "
+            f"run again, or pick features yourself under **Manual feature "
+            f"selection** below."
+        )
+    elif n_completed == 1:
+        st.info(
+            "Only one method completed, so there is no consensus to report — "
+            "two methods must agree before a feature is called a consensus "
+            "predictor. Run a second method, or use manual selection below."
+        )
+        st.success(f"Feature selection complete! {n_completed} method run.")
+    else:
+        st.success(f"Feature selection complete! {n_completed} methods run.")
 
 # ============================================================================
 # Display results
@@ -364,7 +552,7 @@ if results:
                     fig.update_layout(
                         title="LASSO Coefficient Path",
                         xaxis_title="log₁₀(α)",
-                        yaxis_title="Coefficient",
+                        yaxis_title="Standardized coefficient",
                         height=400,
                     )
                     st.plotly_chart(fig)
@@ -436,10 +624,19 @@ if results:
 
         # Apply to data config
         st.markdown("---")
+        if categorical_excluded:
+            st.caption(
+                f"Applying will model on the {len(consensus)} consensus "
+                f"predictor(s) plus the {len(categorical_excluded)} non-ranked "
+                f"feature(s) listed above ({', '.join(categorical_excluded[:5])}"
+                f"{'...' if len(categorical_excluded) > 5 else ''}). Use manual "
+                f"selection below to drop any of them."
+            )
         if st.button("📋 Use consensus features for modeling", type="primary"):
-            data_config.feature_cols = consensus
+            applied_features = _with_carried_categoricals(consensus)
+            data_config.feature_cols = applied_features
             st.session_state['data_config'] = data_config
-            st.session_state['selected_features'] = list(consensus)
+            st.session_state['selected_features'] = list(applied_features)
             # The feature set changed: any preprocessing pipeline, split, or
             # trained model built on the old set is stale and would name dropped
             # columns at train time. Clear them (keeping this selection and its
@@ -454,8 +651,10 @@ if results:
                     break
             log_methodology(step='Feature Selection Applied', action='Applied consensus feature selection', details={
                 'method': 'consensus',
-                'n_features_selected': len(consensus),
-                'features': consensus,
+                'n_features_selected': len(applied_features),
+                'features': list(applied_features),
+                'n_consensus_ranked': len(consensus),
+                'carried_through_unranked': list(categorical_excluded),
                 'consensus_threshold': consensus_threshold_logged,
             })
             try:
@@ -466,23 +665,48 @@ if results:
                 _prov.record_feature_selection(
                     method='consensus',
                     n_before=_n_before,
-                    n_after=len(consensus),
-                    features_kept=list(consensus),
+                    n_after=len(applied_features),
+                    features_kept=list(applied_features),
                     consensus_methods=_methods,
                 )
             except Exception:
                 pass  # Provenance recording should never break the workflow
-            st.success(f"Updated feature set to {len(consensus)} consensus features. Proceed to Preprocessing.")
+            _carried = len(applied_features) - len(consensus)
+            st.success(
+                f"Updated feature set to {len(applied_features)} features: "
+                f"{len(consensus)} consensus predictors"
+                + (f" plus {_carried} non-ranked feature(s) carried through"
+                   if _carried else "")
+                + ". Proceed to Preprocessing."
+            )
     else:
-        st.warning("No consensus features found. Try lowering the threshold or running more methods.")
+        # `MISC-105`: the threshold has a floor of 2 (agreement means two methods
+        # agreed) and no control lowers it, so "try lowering the threshold" named
+        # an action the page does not offer.
+        st.warning(
+            "No consensus features found — no feature was selected by at least "
+            "two of the methods that ran. Run another selection method above, or "
+            "pick features yourself under **Manual feature selection** below."
+        )
 
     # Option to manually select
     with st.expander("🔧 Manual feature selection", expanded=False):
-        st.caption("Override the automatic selection by manually choosing features.")
+        st.caption(
+            "Override the automatic selection by manually choosing features. "
+            "Non-ranked (non-numeric) features are listed too: they were not "
+            "ranked above, but they are modeling features, so dropping one has "
+            "to be a choice made here rather than a side effect of applying a "
+            "ranking."
+        )
+        # Options include categorical_excluded: with a numeric-only options list
+        # a categorical predictor could not be re-added by hand once dropped.
+        manual_options = numeric_features + [
+            c for c in categorical_excluded if c not in numeric_features
+        ]
         manual_selection = st.multiselect(
             "Select features",
-            options=numeric_features,
-            default=consensus if consensus else numeric_features,
+            options=manual_options,
+            default=_with_carried_categoricals(consensus) if consensus else manual_options,
             key="manual_feature_selection",
         )
         if st.button("Apply manual selection"):

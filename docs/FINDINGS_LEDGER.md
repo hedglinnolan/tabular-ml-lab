@@ -44,28 +44,77 @@ published.
 
 ---
 
-## Still open
+## Still open — now tracked in the live ledger
 
-Populated from the two audit runs in flight:
+**Correction, L11.** This section said the two audit runs were "in flight". They
+were not: both landed, and their output has been committed in `docs/audit/` the
+whole time — `ORIGINAL_48_FINDINGS.md` (all 48 verbatim, with severity, verifier
+reasoning and repros), `HUNT_FINDINGS.md` (run `wf_70254f26-494`), and
+`ADJUDICATION.md` (run `wf_5446c57b-3f6`). `TRANSITION_PLAN.md` §05 points at
+them two lines above the freeze rule.
 
-- `wf_70254f26-494` — fresh exhaustive hunt, ten lenses over the multi-file
-  path and JSON, every finding independently reproduced and adversarially
-  judged twice.
-- `wf_5446c57b-3f6` — all 48 recovered findings re-run against current HEAD,
-  every verdict adversarially rechecked in both directions.
+What was gone was only the *scratchpad* copy this file pointed at
+(`scratchpad/audit/orig48/`, now empty) — ephemeral storage standing in for a
+durable artifact that already existed. A ledger asserting something false about
+itself is the governing rule's own failure in the document that states the rule,
+and it cost a loop of rediscovering findings that were already written down. The
+process rule that came out of it is in `FEATURE_PARITY.md`: *a record that points
+at ephemeral storage will eventually lie, and it lies toward "the work is gone."*
 
-Nothing is closed on a verdict alone. Each surviving finding gets a repro, a
-fix, and a named test here.
+The tail now lives in `docs/turbotab/data/findings.json` as the `IMPORT-*` rows,
+worked through `docs/turbotab/tools/ledger.py` like everything else:
+
+```bash
+python docs/turbotab/tools/ledger.py stats
+python docs/turbotab/tools/ledger.py check     # schema guard, before every commit
+```
+
+Recovered and reconciled across L10 and L11, in three passes:
+
+- **All 48 originals** are filed as `IMPORT-101` … `IMPORT-148`, keyed to the
+  original numbering, each carrying the verifier's title and severity verbatim
+  and a disposition against HEAD.
+- **Thirteen recovered from the tests that guard them** (`IMPORT-001` …
+  `IMPORT-013`) before `docs/audit/` was rediscovered. That work was not wasted:
+  it is independent corroboration, and the test names turned out to be
+  reconstructible statements of the findings — which is now a policy, not an
+  accident (`FEATURE_PARITY.md`).
+- **Nine re-derived by fresh adversarial probes** (`IMPORT-014` …
+  `IMPORT-022`), each with a runnable reproduction. `IMPORT-014` turned out to
+  duplicate a hunt finding, which is corroboration rather than waste;
+  `IMPORT-020` and `IMPORT-022` are lockbox findings and drove constitution §03.
+
+`docs/audit/HUNT_FINDINGS.md` is explicitly **unverified** — its adversarial
+stage never ran — and `docs/audit/ADJUDICATION.md` measured against `413671a`,
+before this branch's fixes. Per `docs/audit/RESUME.md`, treat that file as leads
+and never as status: findings 5, 7, 11, 13 and 27 read cold will send you to
+re-fix already-fixed code.
+
+## The freeze, and what lifts it
+
+**Defined once, in `TRANSITION_PLAN.md` §05.** Not restated here — the earlier
+version of this section carried its own wording, `LOOP.md` carried a third, and
+the three did not agree about what the freeze permitted.
+
+In short: the freeze is **lifted for repair** — that is what this audit was for —
+and new construction waits on three gates, all evaluable: every recorded finding
+dispositioned against HEAD; all ten lenses run with no `critical` or `landmine`
+`IMPORT-*` row left `OPEN`; and the seven guided-assembly requirements carrying
+named tests. §05 has the list.
+
+An earlier condition — *"no un-dispositioned rows"* — is superseded: it measured
+what got filed rather than whether the audit was complete.
 
 ---
 
 ## Where the original 48 live
 
-Recovered from the stress-test run's journal and written to
-`scratchpad/audit/orig48/finding_NN.md` (title, confirmed severity, verifier
-reasoning, and the repro as recorded). The raw journal is at:
+**`docs/audit/ORIGINAL_48_FINDINGS.md`** — all 48, verbatim, with the title, the
+severity as confirmed, the verifier's reasoning and the repro as recorded. In
+the repository, committed.
 
-    subagents/workflows/wf_e5abb4fe-e32/journal.jsonl
-
-102 raw findings across 8 families; 48 survived verification
-(11 critical, 30 major, 7 minor).
+This section previously named `scratchpad/audit/orig48/` and a journal under
+`subagents/`, both since deleted, and concluded that the findings were gone. The
+durable copy already existed; only the pointer was ephemeral. 102 raw findings
+across 8 families; 48 survived verification (11 critical, 30 major, 7 minor),
+and every one of them is now an `IMPORT-1NN` row.

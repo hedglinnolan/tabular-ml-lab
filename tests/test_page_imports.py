@@ -119,7 +119,7 @@ class TestNavigationConsistency:
         ]
         
         for page_file in pages_requiring_storyline:
-            with open(page_file, 'r') as f:
+            with open(page_file, 'r', encoding='utf-8') as f:
                 tree = ast.parse(f.read())
             
             # Check imports

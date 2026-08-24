@@ -42,6 +42,15 @@ from ml.eda_recommender import compute_dataset_signals
 
 logger = logging.getLogger(__name__)
 
+# Why the split column is withheld from the predictors, in one place: the
+# feature picker and the seal both register it, and the two strings have to
+# match or `set_reserved_columns`'s role-scoped replacement writes a different
+# reason on every render (`DRIVE-068`).
+_GROUP_COL_RESERVED_REASON = (
+    "the column the held-out set was split by — giving it to the model "
+    "hands it the group membership the split exists to hide"
+)
+
 
 def _forget_working_table(reason: str = "") -> None:
     """Drop the working table AND the account of how it was built.
@@ -55,6 +64,10 @@ def _forget_working_table(reason: str = "") -> None:
     for key in ("working_table", "_combine_signature", "_combine_reopen",
                 "_working_table_source_id", "merge_preview", "merge_config"):
         st.session_state.pop(key, None)
+    # The identifiers registered against the old table describe columns that
+    # may not exist in the next one.
+    from utils.combine import clear_registered_reserved_columns
+    clear_registered_reserved_columns()
     _ledger.clear()
     if reason:
         st.session_state["_working_table_forgotten"] = reason
@@ -800,6 +813,47 @@ from utils.cohort_ui import render_cohort_note as _cohort_note
 _cohort_note("The audit below covers the whole study, which is what it should "
              "describe — the run filter applies from the EDA page onward.")
 
+# -------------------------------------------------------------------------
+# STRUCTURAL REVIEW OF THE WORKING TABLE
+#
+# `DRIVE-067`. The Import Doctor ran in exactly one place — the per-file
+# expander under the uploader — so it never saw a dataset that reached the
+# project any other way (a restored project, a built-in dataset, a registry
+# entry) and it never saw a COMBINED table at all. On the drive that meant a
+# boolean-with-blanks outcome column reached the target selector, the
+# selectors and the explainers with nothing anywhere having said so. The
+# working table is what every later page reads, so it is what gets reviewed.
+# -------------------------------------------------------------------------
+_impdoc_key = f"worktable_{st.session_state.get('_working_table_source_id') or 'combined'}"
+# Reviewed and repaired on the WORKING TABLE itself, not on `df` — `df` here is
+# `get_data`, which is the engineered frame once page 03 has run, and writing
+# that back would fold engineered columns into the working table permanently.
+_impdoc_base = st.session_state.get('working_table')
+if _impdoc_base is None:
+    _impdoc_base = df
+_reviewed_df = render_import_doctor(_impdoc_base, _impdoc_key, subject="table")
+if _reviewed_df is not _impdoc_base and not _reviewed_df.equals(_impdoc_base):
+    _impdoc_fixes = applied_fixes(_impdoc_key)
+    _ledger.record(action="Structural repair", kind=_ledger.CLEAN,
+                   before=_impdoc_base, after=_reviewed_df,
+                   detail="; ".join(_impdoc_fixes))
+    for _fix in _impdoc_fixes:
+        log_methodology(step='Data Cleaning', action=_fix,
+                        details={'source': 'import_doctor',
+                                 'stage': 'working_table', 'fix': _fix})
+        try:
+            from utils.workflow_provenance import get_provenance as _get_prov
+            _get_prov().record_cleaning(
+                action=f"Import repair — {_fix}",
+                rows_before=_impdoc_base.shape[0], rows_after=_reviewed_df.shape[0],
+                details={'source': 'import_doctor', 'stage': 'working_table'})
+        except Exception:
+            pass          # recording must never block the repair
+    st.session_state.working_table = _reviewed_df
+    set_data(_reviewed_df, is_schema_change=False)
+    reconcile_state_with_df(_reviewed_df, st.session_state)
+    st.rerun()
+
 # Quick summary metrics at top
 col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
@@ -1068,19 +1122,142 @@ if task_mode == "prediction":
         index=target_idx,
         key="target_selectbox"
     )
-    
+
+    # ── can scikit-learn read this column as labels? ─────────────────────
+    #
+    # `DRIVE-064`. `detect_task_type` below calls an object column of
+    # True/False-with-blanks "Classification" with high confidence, and it is
+    # right about the QUESTION — but `type_of_target` calls that same column
+    # 'unknown', so LASSO, RFE-CV and every explainer raised on it while the
+    # page reported a saved configuration. Nothing between here and there ever
+    # asked. So it is asked here, once, before anything downstream is told the
+    # target exists: an unreadable target is repaired in the open, or the
+    # configuration is refused. It is never passed on silently.
+    if target_col:
+        from ml.triage import diagnose_target_dtype, repair_boolean_target
+        _target_dx = diagnose_target_dtype(df, target_col)
+        _repairs = st.session_state.setdefault('_target_dtype_repairs', {})
+
+        if not _target_dx.usable and _target_dx.repairable:
+            # The WORKING TABLE is the frame to repair. `df` here can be the
+            # engineered frame, and writing that back would fold engineered
+            # columns into the working table permanently.
+            _base = st.session_state.get('working_table')
+            if _base is None or target_col not in _base.columns:
+                _base = df
+            _repaired = _base.copy()
+            _repaired[target_col] = repair_boolean_target(_repaired[target_col])
+            if not diagnose_target_dtype(_repaired, target_col).usable:
+                # The recode did not achieve what it promised. Refusing is the
+                # only honest exit; committing it would rerun into this branch
+                # forever.
+                st.error(
+                    f"⚠️ **This column cannot be used as a target as it is "
+                    f"stored.**\n\n{_target_dx.condition}\n\n"
+                    f"**What fixes it:** {_target_dx.fix}"
+                )
+                st.stop()
+            _n_true = int((_repaired[target_col] == 1).sum())
+            _n_false = int((_repaired[target_col] == 0).sum())
+            _note = (
+                f"`{target_col}` held True/False values in a text column, which "
+                f"scikit-learn cannot read as class labels. It was recoded to "
+                f"**1 (True, {_n_true:,} rows) and 0 (False, {_n_false:,} rows)**, "
+                f"leaving its {_target_dx.n_missing:,} blank rows blank. This is "
+                f"the same repair the structural review in Step 3 offers; without "
+                f"it feature selection and explainability both fail."
+            )
+            _repairs[target_col] = _note
+            _ledger.record(action=f"Recoded '{target_col}' to 1/0",
+                           kind=_ledger.CLEAN, before=_base, after=_repaired,
+                           detail=(f"True → 1 ({_n_true:,} rows), False → 0 "
+                                   f"({_n_false:,} rows), blanks unchanged."))
+            log_methodology(
+                step='Data Cleaning',
+                action=(f"Recoded outcome '{target_col}' from True/False to 1/0 "
+                        f"(True → 1, False → 0); blank values left blank"),
+                details={'source': 'target_dtype_repair', 'column': target_col,
+                         'n_true': _n_true, 'n_false': _n_false,
+                         'n_missing': _target_dx.n_missing})
+            try:
+                from utils.workflow_provenance import get_provenance as _get_prov
+                _get_prov().record_cleaning(
+                    action=f"Recoded outcome '{target_col}' from True/False to 1/0",
+                    rows_before=len(_base), rows_after=len(_repaired),
+                    details={'column': target_col, 'source': 'target_dtype_repair'})
+            except Exception:
+                pass          # recording must never block the repair
+            st.session_state.working_table = _repaired
+            set_data(_repaired, is_schema_change=False)
+            st.rerun()
+
+        elif not _target_dx.usable:
+            _repairs.pop(target_col, None)
+            st.error(
+                f"⚠️ **This column cannot be used as a target as it is stored.**\n\n"
+                f"{_target_dx.condition}\n\n**What fixes it:** {_target_dx.fix}"
+            )
+            st.caption(
+                "The configuration has not been saved. Choosing it anyway would "
+                "let it reach feature selection, training and explainability, "
+                "each of which raises on it — and the error they raise blames "
+                "the outcome for being continuous, which it is not."
+            )
+            st.stop()
+
+        elif target_col in _repairs:
+            st.caption(f"🔧 {_repairs[target_col]}")
+
     # Feature selection with "Select All" option
     if target_col:
-        # Bookkeeping columns added when files are combined (e.g. which file a
-        # row came from) must never be offered as predictors: a model would
-        # happily "predict" the source file, which is batch leakage, not science.
-        from utils.combine import is_reserved_column as _is_reserved
+        # Bookkeeping and identifier columns must never be offered as
+        # predictors. The source column is batch leakage — a model would
+        # happily "predict" which file a row came from. The join key and the
+        # column a grouped test split was drawn by are worse: on a random split
+        # the model memorizes row identity from the ID and reports it as
+        # held-out performance, and the ID then tops the importance table as
+        # the manuscript's "most important predictor".
+        # REPLACEMENT under the role, never addition: `register_reserved_column`
+        # could only add, so withdrawing a subject declaration left the named
+        # column barred from the predictors and described as "the column the
+        # held-out set was split by" over a seal that had no group column at all
+        # (`DRIVE-068`). The answer is resolved from the widget rather than from
+        # the seal, because the seal below is a render behind the withdrawal.
+        from utils.combine import (
+            is_reserved_column as _is_reserved, set_reserved_columns,
+            reserved_column_reason,
+        )
+        from utils.test_lockbox import (
+            declared_group_column as _declared_group_column,
+            get_lockbox as _get_lockbox,
+        )
+        _lb_now = _get_lockbox()
+        _hold_now = _declared_group_column(all_cols, _lb_now)
+        set_reserved_columns(
+            [_hold_now] if _hold_now else [],
+            _GROUP_COL_RESERVED_REASON, role="group_col")
         feature_options = [c for c in all_cols
                            if c != target_col and not _is_reserved(c)]
         n_available_features = len(feature_options)
-        
+
+        # Withheld silently once, and the researcher cannot tell a column that
+        # was excluded from one they forgot to tick.
+        _withheld = [c for c in all_cols if c != target_col and _is_reserved(c)]
+        if _withheld:
+            st.caption("Held back from the predictors: " + "; ".join(
+                f"`{c}` — {reserved_column_reason(c) or 'bookkeeping added by this app'}"
+                for c in _withheld))
+        # The widget's stored value outlives feature_options. A column reserved
+        # after it was first ticked — the group column, which only exists once
+        # the test set is sealed — stays selected, and Streamlit raises on a
+        # default that is no longer an option.
+        if 'features_multiselect' in st.session_state:
+            _kept = [f for f in st.session_state.features_multiselect if f in feature_options]
+            if len(_kept) != len(st.session_state.features_multiselect):
+                st.session_state.features_multiselect = _kept
+
         st.markdown(f"**Feature Variables** ({n_available_features} available)")
-        
+
         # High-dimensional data warnings
         if n_available_features > 100:
             st.warning(f"""
@@ -1243,22 +1420,165 @@ if task_mode == "prediction":
         from utils.test_lockbox import (
             ensure_lockbox, render_lockbox_status, get_lockbox,
             DEFAULT_TEST_FRACTION, is_exploratory,
+            SUBJECT_DECLARATION_AUTO, SUBJECT_DECLARATION_NONE,
         )
+        # ── who is a subject? ────────────────────────────────────────────
+        # The question the heuristics exist to guess at, asked plainly. It was
+        # never asked: `detect_cohort_structure` was imported and never called,
+        # nothing wrote `entity_id_override_value`, so the declared-entity path
+        # below — and `use_group_split` on Train & Compare — were dead code and
+        # a name the token list did not recognize had no way to be corrected
+        # (`IMPORT-257`). The heuristic is now the SUGGESTION and this is the
+        # answer.
+        _prev_lb = get_lockbox()
+        _prev_basis = (_prev_lb or {}).get('seal_basis')
+        _cohort = st.session_state.get('cohort_structure_detection')
+        if _cohort is None:
+            _cohort = CohortStructureDetection()
+            st.session_state.cohort_structure_detection = _cohort
+        # The strings the reservation resolver reads back out of the widget:
+        # one definition, in the module that consumes them (`DRIVE-068`).
+        _SUBJ_AUTO = SUBJECT_DECLARATION_AUTO
+        _SUBJ_NONE = SUBJECT_DECLARATION_NONE
+        _subject_options = [_SUBJ_AUTO, _SUBJ_NONE] + [str(c) for c in df.columns]
+        if 'subject_id_declaration' not in st.session_state:
+            if getattr(_cohort, 'entity_id_override_enabled', False):
+                _declared_now = getattr(_cohort, 'entity_id_override_value', None)
+                st.session_state['subject_id_declaration'] = (
+                    str(_declared_now) if _declared_now in list(df.columns) else _SUBJ_NONE)
+            else:
+                st.session_state['subject_id_declaration'] = _SUBJ_AUTO
+        elif st.session_state['subject_id_declaration'] not in _subject_options:
+            # The named column left the data (engineering, a repair). The
+            # WIDGET has to fall back or Streamlit raises on a default that is
+            # gone — but the ANSWER must not fall back with it. Reverting to
+            # "let the app work it out" turned a declaration the user made into
+            # a `detected cross_sectional` seal: a positive claim that the study
+            # has one row per person, asserted because a column disappeared
+            # (`IMPORT-257`). The name is remembered so `ensure_lockbox` can
+            # record `declared_column_missing` and the chip can name it.
+            st.session_state['_subject_declaration_vanished'] = str(
+                st.session_state['subject_id_declaration'])
+            st.session_state['subject_id_declaration'] = _SUBJ_AUTO
+        _vanished_declaration = st.session_state.get('_subject_declaration_vanished')
+        if _vanished_declaration and _vanished_declaration in _subject_options:
+            st.session_state.pop('_subject_declaration_vanished', None)
+            _vanished_declaration = None
+
+        def _clear_vanished_declaration():
+            """The user answered again; the stale name stops standing in."""
+            st.session_state.pop('_subject_declaration_vanished', None)
+
+        with st.expander(
+                "👤 Which column identifies a subject/participant?",
+                expanded=_prev_basis == 'undetermined'):
+            st.caption(
+                "If one person can appear in more than one row (repeated visits, "
+                "several samples per participant), the held-out set must be drawn "
+                "by PERSON — otherwise the same person is in training and in the "
+                "test set and held-out performance reads better than it is. The "
+                "app guesses from column names, and a name it does not recognize "
+                "is why this control exists."
+            )
+            _subject_choice = st.selectbox(
+                "Which column identifies a subject/participant?",
+                options=_subject_options,
+                key='subject_id_declaration',
+                label_visibility="collapsed",
+                on_change=_clear_vanished_declaration,
+                help="Choose the column holding one value per person. Pick the "
+                     "second option if every row is a different person.",
+            )
+            if _subject_choice == _SUBJ_AUTO and _vanished_declaration:
+                # The answer stands, unhonorable. Keeping it on the record is
+                # what makes the seal say `undetermined` and name the column,
+                # instead of claiming a grain nobody stated (`IMPORT-257`).
+                _cohort.entity_id_override_enabled = True
+                _cohort.entity_id_override_value = _vanished_declaration
+                st.warning(
+                    f"⚠️ `{_vanished_declaration}` was named as the subject "
+                    f"column and is no longer in the data. The held-out set "
+                    f"cannot be drawn by subject, and the seal records the "
+                    f"grain as undetermined rather than as one row per person. "
+                    f"Choose again above — or restore the column — before "
+                    f"reporting held-out performance."
+                )
+            elif _subject_choice == _SUBJ_AUTO:
+                _cohort.entity_id_override_enabled = False
+                _cohort.entity_id_override_value = None
+                if _prev_lb and _prev_lb.get('group_col'):
+                    st.caption(f"Currently splitting by `{_prev_lb['group_col']}` "
+                               f"(detected from its name).")
+            else:
+                _cohort.entity_id_override_enabled = True
+                _cohort.entity_id_override_value = (
+                    None if _subject_choice == _SUBJ_NONE else _subject_choice)
+                if _subject_choice == _SUBJ_NONE:
+                    # An answer is better evidence than a name list, and it is
+                    # not better evidence than a count. Measured repetition
+                    # under this answer is a CONTRADICTION, shown here as well
+                    # as on the seal (`IMPORT-257`).
+                    from utils.test_lockbox import declaration_contradiction
+                    _contra = declaration_contradiction(df, None)
+                    if _contra:
+                        st.warning(
+                            f"⚠️ **This answer and the data disagree.** "
+                            f"{_contra['message']} Pick that column above if it "
+                            f"identifies a participant; leave this answer if it "
+                            f"does not, and the seal will record the "
+                            f"disagreement as a stated limitation."
+                        )
+                    else:
+                        st.caption(
+                            "Recorded: one row per participant. The held-out set is "
+                            "drawn by row and the seal records that you stated it."
+                        )
+                else:
+                    _n_subj = int(df[_subject_choice].nunique(dropna=True))
+                    if _n_subj >= int(df[_subject_choice].notna().sum()):
+                        # One row per value. Not a contradiction and not a
+                        # defect — the split is by participant and by row at
+                        # once — and the surface that called it a disagreement
+                        # was the one that had to change (`DRIVE-068`).
+                        _grain = (
+                            f"and it has a different value on every one of the "
+                            f"{len(df):,} rows, so each row is its own participant. "
+                            f"The held-out set is drawn by participant and by row at "
+                            f"once, nobody appears on both sides, and this column is "
+                            f"held back from the predictors. If people repeat here "
+                            f"under a different column, name that one instead.")
+                    else:
+                        _grain = (
+                            f"{_n_subj:,} of them across {len(df):,} rows. The held-out "
+                            f"set is drawn by participant, and this column is held back "
+                            f"from the predictors.")
+                    st.caption(
+                        f"Recorded: `{_subject_choice}` identifies a participant — "
+                        f"{_grain}")
+            st.session_state.cohort_structure_detection = _cohort
+
         # A declared subject/entity ID always wins over auto-detection: with
         # repeated measures the split must be by SUBJECT, or the same person
         # lands in both training and the sealed test set.
-        _cohort = st.session_state.get('cohort_structure_detection')
         _entity_col = getattr(_cohort, 'entity_id_final', None) if _cohort else None
         _lb = ensure_lockbox(df, target_col, task_type_final, group_col=_entity_col)
+        # Registered where the seal is drawn, so the feature picker on the next
+        # render already knows this column identifies groups — and RELEASED
+        # here on the same authority, which the additive registration could
+        # never do: a withdrawn declaration left its column reserved forever
+        # (`DRIVE-068`). Unconditional, so the release runs on the render that
+        # seals without a group column.
+        from utils.combine import set_reserved_columns as _set_reserved
+        _set_reserved(
+            [_lb['group_col']] if _lb is not None and _lb.get('group_col') else [],
+            _GROUP_COL_RESERVED_REASON, role="group_col")
         if _lb is not None and _lb.get('group_col'):
-            _noun = _lb.get('group_noun') or 'subjects'
-            _one = _noun.rstrip('s') if _noun.endswith('s') else _noun
-            st.info(
-                f"🔒 Rows repeat per {_one} (`{_lb['group_col']}`), so the held-out set was "
-                f"drawn by **{_one}**, not by row — {_lb['n_test']:,} rows from "
-                f"{_lb.get('n_test_groups', '?')} {_noun}. Splitting by row would put the "
-                f"same {_one} in both training and testing."
-            )
+            # The sentence is derived from the measured rows-per-group on the
+            # record, not from the presence of a group column: a column with
+            # one row per value is a split by row and by subject at once, and
+            # "rows repeat" over it is false (`DRIVE-068`).
+            from utils.test_lockbox import grouped_split_statement
+            st.info(grouped_split_statement(_lb))
         if _lb is not None and get_lockbox() is not None:
             _prev_ledger_note = st.session_state.get('_lockbox_ledger_noted')
             if _prev_ledger_note != _lb['signature']:

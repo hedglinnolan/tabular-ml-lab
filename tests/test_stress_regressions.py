@@ -759,7 +759,10 @@ class TestDtypeMismatchIsJudgedOnTheUnderlyingType:
 class TestBlowUpIsRefused:
     """Finding 23. A predicted 25,000,000-row many-to-many was allowed through
     with only a warning. On the laptop this app runs on that exhausts memory
-    and the tab stops responding, which reads as 'the app is broken'."""
+    and the tab stops responding, which reads as 'the app is broken'.
+
+    Clause: `assembly-07`
+    """
 
     def test_a_cartesian_blow_up_blocks(self):
         from ml.join_doctor import diagnose_join
@@ -823,7 +826,10 @@ class TestBlankFillIsDisclosed:
 class TestChangeMapMatchesReality:
     """The map is only worth showing if it is true. Every field is checked
     against the frame the engine actually produces — a map that disagrees with
-    the result would be worse than no map at all."""
+    the result would be worse than no map at all.
+
+    Clause: `assembly-07`
+    """
 
     def _frames(self):
         return (pd.DataFrame({"SEQN": range(1000, 1200), "age": RNG.randint(18, 80, 200),
@@ -880,7 +886,10 @@ class TestChangeMapMatchesReality:
 
 class TestConsequencesAreAboutTheStudy:
     """The point of the map. A row count is mechanically true and analytically
-    useless; these say what the merge does to the ANALYSIS."""
+    useless; these say what the merge does to the ANALYSIS.
+
+    Clause: `assembly-07`
+    """
 
     def test_fanout_says_n_is_no_longer_people(self):
         from utils.combine_preview import describe_join
@@ -923,7 +932,10 @@ class TestSamePeopleDecidesGrouping:
     """Column-name overlap was the only signal, so two cycles that both gained
     a column (0.67 overlap, under the 0.8 threshold) were classed as different
     measurements on the same people — and the app proposed linking two cycles
-    that share no participants at all."""
+    that share no participants at all.
+
+    Clause: `assembly-07`
+    """
 
     AGE = staticmethod(lambda n: RNG.randint(18, 80, n))
 
@@ -962,7 +974,10 @@ class TestBlankCellsAreToldApart:
     """The preview claimed to distinguish "we never measured this person" from
     "this person was not in that file". It did not — the mask flagged every
     NaN, and the renderer never called it at all. Two things that look
-    identical on screen and mean opposite things."""
+    identical on screen and mean opposite things.
+
+    Clause: `assembly-07`
+    """
 
     def test_a_pre_existing_gap_is_not_blamed_on_the_merge(self):
         from ml.join_doctor import execute_join

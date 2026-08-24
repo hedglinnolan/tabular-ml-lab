@@ -682,6 +682,56 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 
+_UNCLAIMED = object()
+
+
+def _claim_pending_widget_restore(key: str):
+    """Pop one deferred widget value from the session-restore dict.
+
+    A restore cannot write a Streamlit widget key directly, so
+    `session_manager` parks the saved values in
+    `_pending_widget_state_restore` and each key's owner claims it before the
+    widget is instantiated. Returns `_UNCLAIMED` when nothing is pending.
+    """
+    pending = st.session_state.get("_pending_widget_state_restore", {})
+    if key not in pending:
+        return _UNCLAIMED
+    value = pending.pop(key)
+    if pending:
+        st.session_state["_pending_widget_state_restore"] = pending
+    else:
+        st.session_state.pop("_pending_widget_state_restore", None)
+    return value
+
+
+def apply_pending_exploratory_mode() -> None:
+    """Claim a restored `exploratory_mode` before any page reads it.
+
+    `exploratory_mode` is page 01's checkbox key, but `is_exploratory()` is read
+    on every page. While page 01 was the only claimant, a restored exploratory
+    session read as QUARANTINED everywhere else until the user happened to open
+    page 01 — the app behaving as though a holdout protected artifacts that were
+    produced without one (STATE-041). Claiming it here, in the function every
+    page calls before its own content, is the mechanism `workflow_mode_selector`
+    already uses, not a bypass of the widget contract: the value is written
+    before page 01's checkbox is instantiated, which is how Streamlit expects a
+    widget key to be seeded.
+    """
+    restored = _claim_pending_widget_restore("exploratory_mode")
+    if restored is _UNCLAIMED:
+        return
+    st.session_state["exploratory_mode"] = bool(restored)
+    if st.session_state["exploratory_mode"]:
+        # Quarantine-off must never arrive silently: the watermark that stains
+        # the manuscript is set with the mode, not on whichever page owns the
+        # checkbox.
+        st.session_state["exploratory_used"] = True
+        st.warning(
+            "🔓 This restored session was saved in **exploratory mode** — "
+            "the test-set quarantine is OFF, as it was when saved."
+        )
+
+
 def render_sidebar_workflow(current_page: str = ""):
     """Render the unified sidebar with branding + workflow checklist.
 
@@ -693,6 +743,8 @@ def render_sidebar_workflow(current_page: str = ""):
     from utils.session_state import get_data
     from utils.llm_ui import render_llm_settings_sidebar
     from utils.session_manager import render_session_controls
+
+    apply_pending_exploratory_mode()
 
     render_llm_settings_sidebar()
 
@@ -716,13 +768,9 @@ def render_sidebar_workflow(current_page: str = ""):
     with st.sidebar:
         st.markdown("---")
 
-        pending_widget_restore = st.session_state.get("_pending_widget_state_restore", {})
-        if "workflow_mode_selector" in pending_widget_restore:
-            st.session_state["workflow_mode"] = pending_widget_restore.pop("workflow_mode_selector")
-            if pending_widget_restore:
-                st.session_state["_pending_widget_state_restore"] = pending_widget_restore
-            else:
-                st.session_state.pop("_pending_widget_state_restore", None)
+        _restored_mode = _claim_pending_widget_restore("workflow_mode_selector")
+        if _restored_mode is not _UNCLAIMED:
+            st.session_state["workflow_mode"] = _restored_mode
 
         workflow_mode = st.radio(
             "Workflow mode",
@@ -740,37 +788,35 @@ def render_sidebar_workflow(current_page: str = ""):
         )
         st.markdown("<div style='margin-top: 0.4rem;'></div>", unsafe_allow_html=True)
 
-        data_uploaded = get_data() is not None
-        data_configured = (st.session_state.get('data_config') is not None
-                           and getattr(st.session_state.get('data_config'), 'target_col', None) is not None)
-        features_selected = st.session_state.get('feature_selection_results') is not None
-        pipeline_built = st.session_state.get('preprocessing_pipeline') is not None
-        models_trained = bool(st.session_state.get('trained_models'))
-        explainability_run = len(st.session_state.get('permutation_importance', {})) > 0 or len(st.session_state.get('shap_results', {})) > 0
-        sensitivity_run = st.session_state.get('sensitivity_seed_results') is not None
-        report_generated = st.session_state.get('report_data') is not None
-        stat_validation_run = (
-            st.session_state.get('hypothesis_test_results') is not None
-            or len(st.session_state.get('custom_table1_tests', [])) > 0
-        )
+        # The step-completion model lives in turbotab/readiness.py, not here.
+        # It is the Router's readiness function (ARCHITECTURE.md §05) and it had
+        # been sitting in a styling module between two blocks of HTML, where
+        # deleting theme.py as "just CSS" would have taken it along.
+        #
+        # Both doors ask the same predicates. Computing them separately is the
+        # failure Decision C names — not two UIs, but two implementations that
+        # drift until they disagree about which step comes next.
+        from turbotab import readiness as _readiness
 
-        # Check if feature engineering was applied
-        feature_engineering_applied = st.session_state.get('feature_engineering_applied', False)
+        _pages = {
+            "upload": "01_Upload_and_Audit", "eda": "02_EDA",
+            "features": "04_Feature_Selection", "preprocess": "05_Preprocess",
+            "train": "06_Train_and_Compare", "explain": "07_Explainability",
+            "report": "10_Report_Export", "engineering": "03_Feature_Engineering",
+            "sensitivity": "08_Sensitivity_Analysis", "stats": "09_Hypothesis_Testing",
+        }
+        # `get_data()` applies the active cohort filter; the shared predicate
+        # reads whatever the host calls the working table.
+        _state = dict(st.session_state)
+        _state["working_data"] = get_data()
+        _ready = _readiness.assess(_state, workflow_mode)
 
-        core_items = [
-            ("Upload & Configure", data_uploaded, "01", "01_Upload_and_Audit"),
-            ("Explore (EDA)", data_configured, "02", "02_EDA"),
-            ("Select Features", features_selected, "04", "04_Feature_Selection"),
-            ("Preprocess", pipeline_built, "05", "05_Preprocess"),
-            ("Train Models", models_trained, "06", "06_Train_and_Compare"),
-            ("Explain & Validate", explainability_run, "07", "07_Explainability"),
-            ("Export Report", report_generated, "10", "10_Report_Export"),
-        ]
-        advanced_items = [
-            ("Feature Engineering", feature_engineering_applied, "03", "03_Feature_Engineering"),
-            ("Sensitivity Analysis", sensitivity_run, "08", "08_Sensitivity_Analysis"),
-            ("Statistical Validation", stat_validation_run, "09", "09_Hypothesis_Testing"),
-        ]
+        def _items(steps):
+            return [(s.label, _ready.is_done(s.key), s.page_id, _pages[s.key])
+                    for s in steps]
+
+        core_items = _items(_readiness.CORE_STEPS)
+        advanced_items = _items(_readiness.ADVANCED_STEPS)
 
         def _render_sidebar_items(items):
             for item, completed, page_id, page_file in items:

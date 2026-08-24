@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from ml.join_doctor import normalize_key
+from ml.join_doctor import key_reading, normalize_key
 from utils.combine import SOURCE_COLUMN
 
 # Where a column in the result came from. Used for color and for the legend.
@@ -112,8 +112,12 @@ def describe_join(left: pd.DataFrame, right: pd.DataFrame,
                   left_key: Any, right_key: Any, how: str,
                   left_name: str, right_name: str) -> ChangeMap:
     """What linking these two files does, row by row and column by column."""
-    ln = normalize_key(left[left_key])
-    rn = normalize_key(right[right_key])
+    # The same canonical space the merge itself will use. Reading each side on
+    # its own terms let the change map account for rows the join then paired
+    # differently — the picture and the table disagreeing about the same merge.
+    _reading = key_reading(left[left_key], right[right_key])
+    ln = normalize_key(left[left_key], _reading.fold_case, _reading.keep_tokens)
+    rn = normalize_key(right[right_key], _reading.fold_case, _reading.keep_tokens)
     lset = set(ln.dropna().unique())
     rset = set(rn.dropna().unique())
     matched = lset & rset
@@ -154,8 +158,8 @@ def describe_join(left: pd.DataFrame, right: pd.DataFrame,
             groups.append(RowGroup(
                 label=f"no ID in {side.strip()}", n=n_missing,
                 outcome="blanked" if keeps else "dropped",
-                detail=("a blank ID matches nobody — these are never paired with "
-                        f"{other}")))
+                detail=("an ID that is blank, or written as one of the words meaning "
+                        f"'no value', matches nobody — never paired with {other}")))
 
     # Columns, in the order the merge produces them.
     overlap = {str(c) for c in left.columns} & {str(c) for c in right.columns}

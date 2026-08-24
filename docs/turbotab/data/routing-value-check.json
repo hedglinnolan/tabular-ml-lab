@@ -1,0 +1,170 @@
+{
+ "schema_version": "1.0",
+ "prereg": "VALUE_CHECK_PREREG.md",
+ "adjudication": "VALUE_CHECK_ADJUDICATION.md",
+ "measured_at": null,
+ "classic_reference": "routing-baseline-l9c.json",
+ "classic_frozen_reference": "routing-baseline.json",
+ "rows": [
+  {
+   "dataset": "messy-clinic",
+   "classic": {
+    "required_decisions": 10,
+    "questions_asked": 34,
+    "irrelevant_questions": 24,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 0.1,
+    "covered": 1,
+    "coverage_ratio": "1/10 @ 23a9123",
+    "measured_at": "23a9123",
+    "pull_affordances": 0
+   },
+   "classic_frozen": {
+    "required_decisions": 9,
+    "questions_asked": 34,
+    "irrelevant_questions": 25,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 0.1111,
+    "pull_affordances": 0,
+    "coverage_ratio": "1/9 @ 6bfe598"
+   },
+   "guided": {
+    "required_decisions": 10,
+    "questions_asked": 9,
+    "irrelevant_questions": 0,
+    "constitutional": 3,
+    "irrelevant_net": 0,
+    "findings_driven": 0.5556,
+    "deferral_closes": 1.0,
+    "coverage": 1.0,
+    "covered": 10,
+    "coverage_ratio": "10/10",
+    "measured_at": null,
+    "pull_affordances": 7,
+    "surfaced_coverage": 1.0,
+    "asked_coverage": 1.0,
+    "surfaced_ratio": "10/10 @ 23a9123",
+    "asked_ratio": "10/10 @ 23a9123"
+   },
+   "guided_under_frozen_denominator": {
+    "n_required": 9,
+    "surfaced_coverage": 0.3333,
+    "asked_coverage": 0.3333,
+    "surfaced_ratio": "3/9 @ 6bfe598",
+    "asked_ratio": "3/9 @ 6bfe598"
+   }
+  },
+  {
+   "dataset": "wide-assay",
+   "classic": {
+    "required_decisions": 1,
+    "questions_asked": 31,
+    "irrelevant_questions": 30,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 1.0,
+    "covered": 1,
+    "coverage_ratio": "1/1 @ 23a9123",
+    "measured_at": "23a9123",
+    "pull_affordances": 0
+   },
+   "classic_frozen": {
+    "required_decisions": 1,
+    "questions_asked": 31,
+    "irrelevant_questions": 30,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 1.0,
+    "pull_affordances": 0,
+    "coverage_ratio": "1/1 @ 6bfe598"
+   },
+   "guided": {
+    "required_decisions": 2,
+    "questions_asked": 5,
+    "irrelevant_questions": 3,
+    "constitutional": 3,
+    "irrelevant_net": 0,
+    "findings_driven": 0.2,
+    "deferral_closes": null,
+    "coverage": 1.0,
+    "covered": 2,
+    "coverage_ratio": "2/2",
+    "measured_at": null,
+    "pull_affordances": 3,
+    "surfaced_coverage": 1.0,
+    "asked_coverage": 1.0,
+    "surfaced_ratio": "2/2 @ 23a9123",
+    "asked_ratio": "2/2 @ 23a9123"
+   },
+   "guided_under_frozen_denominator": {
+    "n_required": 1,
+    "surfaced_coverage": 1.0,
+    "asked_coverage": 1.0,
+    "surfaced_ratio": "1/1 @ 6bfe598",
+    "asked_ratio": "1/1 @ 6bfe598"
+   }
+  },
+  {
+   "dataset": "longitudinal",
+   "classic": {
+    "required_decisions": 2,
+    "questions_asked": 32,
+    "irrelevant_questions": 30,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 0.5,
+    "covered": 1,
+    "coverage_ratio": "1/2 @ 23a9123",
+    "measured_at": "23a9123",
+    "pull_affordances": 0
+   },
+   "classic_frozen": {
+    "required_decisions": 1,
+    "questions_asked": 32,
+    "irrelevant_questions": 31,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 1.0,
+    "pull_affordances": 0,
+    "coverage_ratio": "1/1 @ 6bfe598"
+   },
+   "guided": {
+    "required_decisions": 2,
+    "questions_asked": 5,
+    "irrelevant_questions": 3,
+    "constitutional": 3,
+    "irrelevant_net": 0,
+    "findings_driven": 0.2,
+    "deferral_closes": null,
+    "coverage": 1.0,
+    "covered": 2,
+    "coverage_ratio": "2/2",
+    "measured_at": null,
+    "pull_affordances": 5,
+    "surfaced_coverage": 1.0,
+    "asked_coverage": 1.0,
+    "surfaced_ratio": "2/2 @ 23a9123",
+    "asked_ratio": "2/2 @ 23a9123"
+   },
+   "guided_under_frozen_denominator": {
+    "n_required": 1,
+    "surfaced_coverage": 1.0,
+    "asked_coverage": 1.0,
+    "surfaced_ratio": "1/1 @ 6bfe598",
+    "asked_ratio": "1/1 @ 6bfe598"
+   }
+  }
+ ],
+ "verdict": {
+  "passes": true,
+  "failures": [],
+  "literal_reading_only_failures": [
+   "wide-assay: deferral_closes = None (nothing deferrable on this dataset; fails only under the literal reading of the prereg)",
+   "longitudinal: deferral_closes = None (nothing deferrable on this dataset; fails only under the literal reading of the prereg)"
+  ],
+  "passes_under_literal_reading": false
+ },
+ "replaced_because": "adjudicated in VALUE_CHECK_ADJUDICATION.md, L60 (DRIVE-032, the positive-class question): wide_assay.csv's target 'responder' is int64 0/1, so L60-A's dtype-agnostic trigger raises positive_class__responder on a fixture the loop never touched. questions_asked 4 to 5 is the constitutional question arriving; findings_driven 0.0 to 0.2 is the first observed RISE of a metric whose recorded failure direction is downward. verdict.passes unchanged, no threshold moved, prereg unedited."
+}

@@ -79,6 +79,14 @@ class TestManuscriptRegister:
         assert findings, "diagnostics should fire on this fixture"
         import re
         for f in findings:
+            # `COACH-007`: the contract is an explicit DISPOSITION, not a
+            # sentence in every case. A finding marked audit_only is coaching
+            # the app owes the analyst, not a claim about the study, and it
+            # must carry no manuscript sentence at all.
+            if f.get('metadata', {}).get('audit_only'):
+                assert not f.get('manuscript_text'), (
+                    f"{f['id']} is audit_only yet carries manuscript text")
+                continue
             assert f.get('manuscript_text'), f"{f['id']} lacks manuscript_text"
             # coach voice must not leak into the manuscript register:
             # no addressing a hypothetical reviewer, no imperative advice

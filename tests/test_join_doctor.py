@@ -191,6 +191,103 @@ def test_low_cardinality_column_is_never_a_key():
     assert not [c for c in find_key_candidates(a, b) if c.left_col == "sex"]
 
 
+@pytest.mark.parametrize("per_subject", [2, 3, 4, 10])
+def test_a_long_format_file_keeps_its_subject_key(per_subject):
+    """The commonest longitudinal shape must stay joinable.
+
+    A per-column uniqueness floor rejects any file averaging more than two rows
+    per subject, which is most of repeated-measures research: at three visits
+    uniqueness is 0.33. The rule that matters -- at least ONE side identifies
+    subjects -- needs both files, so it belongs per-pair in find_key_candidates
+    and not per-column in _key_tokens.
+    """
+    n = 100
+    demo = pd.DataFrame({"SEQN": np.arange(1, n + 1),
+                         "age": RNG.randint(20, 80, n)})
+    long = pd.DataFrame({"SEQN": np.repeat(np.arange(1, n + 1), per_subject),
+                         "bp": RNG.normal(120, 10, n * per_subject)})
+    seqn = [c for c in find_key_candidates(demo, long)
+            if c.left_col == "SEQN" == c.right_col]
+    assert seqn, (
+        f"the true key was discarded at {per_subject} rows per subject "
+        f"(uniqueness {1 / per_subject:.2f}) -- every repeated-measures design "
+        f"becomes unjoinable")
+    assert seqn[0].confidence != "low", "combine_ui drops 'low' from the dropdown"
+    best = suggest_best(demo, long)
+    assert best is not None and (best.left_col, best.right_col) == ("SEQN", "SEQN")
+
+
+def test_a_chained_join_does_not_invent_its_own_dtype_mismatch():
+    """repair_keys writes canonical STRINGS into the key column. If the frame
+    handed back by execute_join carried those, the next attachment would compare
+    an app-normalized text key against an untouched numeric one and block on a
+    mismatch the app created one step earlier."""
+    demo = pd.DataFrame({"SEQN": [1, 2, 3], "age": [40, 55, 61]})
+    labs = pd.DataFrame({"SEQN": [1, 2, 3], "glucose": [95, 102, 110]})
+    diet = pd.DataFrame({"SEQN": [1, 2, 3], "kcal": [2000, 2100, 1900]})
+
+    step1, _ = execute_join(demo, labs, "SEQN", "SEQN", "inner", "demo", "labs")
+    assert pd.api.types.is_numeric_dtype(step1["SEQN"]), (
+        f"the merged frame came back with a {step1['SEQN'].dtype} key; the next "
+        f"leg will read it as text")
+    d2 = diagnose_join(step1, diet, "SEQN", "SEQN", "inner", "demo", "diet")
+    assert not d2.dtype_mismatch, (
+        "leg 2 reports a type mismatch between three files whose SEQN is int64")
+    assert not d2.blocking, f"self-inflicted blocker: {d2.blocking}"
+
+
+def test_blank_ids_survive_a_right_side_column_named_like_the_left_key():
+    """The blank-ID re-attachment renames the right key to the left key's name.
+    If the right frame ALSO carries a column literally called the left key, and
+    that column was not pre-suffixed, the rename produces two identically named
+    columns and pandas raises 'Reindexing only valid with uniquely valued
+    Index objects' from inside execute_join."""
+    demo = pd.DataFrame({"SEQN": [1, 2, None], "age": [40, 55, 61]})
+    labs = pd.DataFrame({"patient_id": [1, 2, None], "SEQN": ["x", "y", "z"],
+                         "glucose": [95, 102, 110]})
+    out, _ = execute_join(demo, labs, "SEQN", "patient_id", "outer", "demo", "labs")
+    assert not pd.Index(out.columns).duplicated().any(), (
+        f"duplicate labels in the result: {list(out.columns)}")
+    assert len(out) >= 3
+
+
+def test_a_key_in_the_last_column_of_a_wide_file_is_still_found():
+    """A 71-column lab export with SEQN appended last. Slicing the column list
+    before doing any work meant the key was never inspected, and the join
+    failed on a study whose key was sitting right there."""
+    wide = {f"lab{i:03d}": np.arange(30, dtype=float) for i in range(70)}
+    wide["SEQN"] = np.arange(1, 31)
+    labs = pd.DataFrame(wide)
+    demo = pd.DataFrame({"SEQN": np.arange(1, 31), "age": RNG.randint(20, 80, 30)})
+
+    seqn = [c for c in find_key_candidates(labs, demo)
+            if c.left_col == "SEQN" == c.right_col]
+    assert seqn, (
+        f"SEQN sits at position {list(labs.columns).index('SEQN')} of "
+        f"{labs.shape[1]} and was never inspected")
+    assert seqn[0].confidence != "low"
+
+
+@pytest.mark.parametrize("how", ["right", "outer"])
+def test_a_right_only_participant_keeps_an_identifier(how):
+    """pandas keeps both key columns on left_on/right_on, and rows that exist
+    only on the right carry their ID in the RIGHT one. Dropping that column
+    unconditionally deletes the only surviving copy, so 'keep everyone from
+    every file' returns rows whose participant is anonymous."""
+    demo = pd.DataFrame({"SEQN": [1, 2, 3], "age": [40, 55, 61]})
+    labs = pd.DataFrame({"patient_id": [3, 4, 5], "glucose": [95, 102, 110]})
+    out, _ = execute_join(demo, labs, "SEQN", "patient_id", how, "demo", "labs")
+    id_cols = [c for c in out.columns if c in ("SEQN", "patient_id")
+               or str(c).startswith(("SEQN", "patient_id"))]
+    assert id_cols, f"no identifier column survived a {how} join: {list(out.columns)}"
+    right_only = out[out["glucose"].notna() & out["age"].isna()]
+    assert len(right_only) == 2, f"expected 2 right-only rows, got {len(right_only)}"
+    has_id = right_only[id_cols].notna().any(axis=1)
+    assert has_id.all(), (
+        f"{(~has_id).sum()} right-only participant(s) came back with no ID at all:\n"
+        f"{right_only.to_string()}")
+
+
 # ── plumbing that keeps the merge honest ─────────────────────────────────
 
 def test_colliding_columns_are_preserved_with_suffixes():

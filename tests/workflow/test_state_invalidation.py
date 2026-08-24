@@ -28,7 +28,7 @@ CASCADE_KEYS = [
     'trained_models', 'model_results', 'fitted_estimators',
     'fitted_preprocessing_pipelines', 'feature_names_by_model',
     'X_train', 'X_val', 'X_test', 'y_train', 'y_val', 'y_test',
-    'train_indices', 'val_indices', 'test_indices',
+    'train_row_labels', 'val_row_labels', 'test_row_labels',
     'permutation_importance', 'partial_dependence', 'shap_results',
     'sensitivity_seed_results', 'report_data',
     'feature_selection_results', 'consensus_features',
@@ -146,15 +146,22 @@ class TestStateInvalidation:
         """Phase 5: Subgroup analysis can access all raw columns after retrain."""
         state = invalidation_state
 
-        test_indices = state.get('test_indices')
-        assert test_indices is not None, "No test indices (phase 3 must run first)"
+        from ml.splits import resolve_split_rows
+
+        test_labels = state.get('test_row_labels')
+        assert test_labels is not None, "No test row labels (phase 3 must run first)"
 
         raw_df = state['raw_data']
         X_test = state['X_test']
 
+        # Resolve the stored LABELS against the raw frame — the rows come back
+        # in the split's own order, so they line up with X_test row for row.
+        test_rows = resolve_split_rows(raw_df, test_labels, part='test')
+        assert list(test_rows.index) == list(X_test.index)
+
         for col in ['gender', 'smoking', 'age', 'bmi']:
-            values = raw_df.iloc[test_indices][col].values
+            values = test_rows[col].values
             assert len(values) == len(X_test), f"{col} length mismatch"
 
-        gender_labels = raw_df.iloc[test_indices]['gender'].values
+        gender_labels = test_rows['gender'].values
         assert len(set(gender_labels)) >= 2, f"Expected 2 gender values, got {set(gender_labels)}"

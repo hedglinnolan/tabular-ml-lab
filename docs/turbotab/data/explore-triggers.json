@@ -1,0 +1,257 @@
+{
+ "schema_version": "1.0",
+ "source": {
+  "triggers": "pages/02_EDA.py::_auto_generate_insights (page code \u2014 must be lifted)",
+  "recommendations": "ml/eda_recommender.py::recommend_eda (already engine \u2014 shared)"
+ },
+ "note": "The register pre-list for the explore step (L9). Every row here has to be dispositioned as core / both / classic-only / guided-only before the step is called built. Insight triggers live in the page and are the Router's raw material; recommendation cards are already engine code and are shared today.",
+ "n_triggers": 16,
+ "n_recommendations": 11,
+ "triggers": [
+  {
+   "kind": "insight",
+   "id": "eda_sufficiency_insufficient",
+   "severity": "blocker",
+   "finding": "Sample size may be insufficient ( rows,  features,  samples per feature)<var>",
+   "implication": "Complex models will likely overfit. Prefer simple baselines.",
+   "recommended_action": "Reduce features or gather more data",
+   "line": 245
+  },
+  {
+   "kind": "insight",
+   "id": "eda_sufficiency_borderline",
+   "severity": "warning",
+   "finding": "Data sufficiency is  ( rows,  features)<var>",
+   "implication": "Prefer simpler models and tighter regularization.",
+   "recommended_action": "Consider feature reduction before complex modeling",
+   "line": 261
+  },
+  {
+   "kind": "insight",
+   "id": "eda_leakage_<var>",
+   "severity": "blocker",
+   "finding": "Potential target leakage:  has >0.95 correlation with target<var>",
+   "implication": "Model performance will be artificially inflated",
+   "recommended_action": "Remove  from feature set<var>",
+   "line": 279
+  },
+  {
+   "kind": "insight",
+   "id": "eda_corr_cluster_<var>",
+   "severity": "warning",
+   "finding": "Collinearity cluster:  features are intercorrelated (max r=): <var>",
+   "implication": "Keeping all  may inflate variance in linear models. Consider retaining 1-2 representatives.<var>",
+   "recommended_action": "Review in Feature Selection \u2014 consider dropping  of <var>",
+   "line": 338
+  },
+  {
+   "kind": "insight",
+   "id": "eda_missing_severe",
+   "severity": "warning",
+   "finding": " feature(s) with >30% missing: <var>",
+   "implication": "High missingness may require column removal or advanced imputation (MICE, kNN). Simple mean imputation may distort distributions.",
+   "recommended_action": "Review in Preprocessing \u2014 consider dropping or advanced imputation",
+   "line": 363
+  },
+  {
+   "kind": "insight",
+   "id": "eda_missing_moderate",
+   "severity": "info",
+   "finding": " feature(s) with 5-30% missing: <var>",
+   "implication": "Standard imputation (median/mode) should be sufficient. Consider adding missingness indicator features.",
+   "recommended_action": "Address in Preprocessing",
+   "line": 380
+  },
+  {
+   "kind": "insight",
+   "id": "eda_target_skew",
+   "severity": "warning",
+   "finding": "Target is skewed (skew=)<var>",
+   "implication": "May affect loss function choice and prediction intervals",
+   "recommended_action": "Apply a target transformation on the Train & Compare page (Log, Yeo-Johnson, or Box-Cox). Predictions are automatically back-transformed and metrics reported on the original scale. Tree-based models and Huber regression are also robust to target skew.",
+   "line": 395
+  },
+  {
+   "kind": "insight",
+   "id": "eda_class_imbalance",
+   "severity": "warning",
+   "finding": "Class imbalance detected (ratio=)<var>",
+   "implication": "Accuracy alone may be misleading. Use F1, balanced accuracy, or AUROC.",
+   "recommended_action": "Use class weighting or stratified sampling",
+   "line": 415
+  },
+  {
+   "kind": "insight",
+   "id": "eda_skew_group",
+   "severity": "info",
+   "finding": " feature(s) heavily skewed (|skew| > 2): <var>",
+   "implication": "Log or power transforms may improve linear model performance and reduce outlier influence",
+   "recommended_action": "Consider transforms in Feature Engineering or Preprocessing",
+   "line": 451
+  },
+  {
+   "kind": "insight",
+   "id": "eda_opportunity_clean_data",
+   "severity": "opportunity",
+   "finding": "Dataset has no blockers or warnings \u2014 unusually clean",
+   "implication": "You can lean into interpretable models (GLM, GAM) where coefficient interpretation is meaningful, rather than defaulting to black-box approaches",
+   "recommended_action": "Consider GLM or GAM baselines in Train & Compare",
+   "line": 475
+  },
+  {
+   "kind": "insight",
+   "id": "eda_opportunity_strong_signal",
+   "severity": "opportunity",
+   "finding": "Strong linear signal detected (max |r| with target = )<var>",
+   "implication": "Linear models may perform surprisingly well. Establish a strong OLS baseline before trying complex models.",
+   "recommended_action": "Run GLM baseline first in Train & Compare",
+   "line": 503
+  },
+  {
+   "kind": "insight",
+   "id": "eda_opportunity_nonlinear",
+   "severity": "opportunity",
+   "finding": "Features show non-linear relationships with target (avg Spearman-Pearson gap = )<var>",
+   "implication": "Tree-based models (RF, XGBoost) or GAMs may capture structure that linear models miss",
+   "recommended_action": "Include tree-based models in Train & Compare",
+   "line": 525
+  },
+  {
+   "kind": "insight",
+   "id": "eda_opportunity_high_np",
+   "severity": "opportunity",
+   "finding": "Large sample-to-feature ratio (:1) \u2014 plenty of data relative to complexity<var>",
+   "implication": "You can afford more complex models (deep trees, neural nets) without overfitting. Cross-validation will be reliable.",
+   "recommended_action": "Consider full model suite in Train & Compare",
+   "line": 544
+  },
+  {
+   "kind": "insight",
+   "id": "eda_opportunity_balanced",
+   "severity": "opportunity",
+   "finding": "Classes are well-balanced (ratio = )<var>",
+   "implication": "Accuracy is a valid metric. No need for class weighting or oversampling.",
+   "recommended_action": "Standard metrics will be reliable in Train & Compare",
+   "line": 563
+  },
+  {
+   "kind": "insight",
+   "id": "eda_low_dimensionality",
+   "severity": "opportunity",
+   "finding": "Data is effectively -dimensional despite  features<var>",
+   "implication": "Dimensionality reduction (PCA) could simplify models with minimal information loss",
+   "recommended_action": "Consider PCA preprocessing or feature selection",
+   "line": 1228
+  },
+  {
+   "kind": "insight",
+   "id": "eda_tda_loops",
+   "severity": "opportunity",
+   "finding": "Persistent loops detected in data manifold (H\u2081 max persistence = )<var>",
+   "implication": "Data has non-trivial topological structure that linear models cannot capture",
+   "recommended_action": "Consider TDA features in Feature Engineering",
+   "line": 1300
+  }
+ ],
+ "recommendations": [
+  {
+   "id": "r1_plausibility",
+   "title": "Physiologic Plausibility Check",
+   "priority": 1,
+   "cost": "low",
+   "run_action": "plausibility_check",
+   "kind": "recommendation",
+   "line": 267
+  },
+  {
+   "id": "r2_missingness",
+   "title": "Missingness Pattern Analysis",
+   "priority": 2,
+   "cost": "low",
+   "run_action": "missingness_scan",
+   "kind": "recommendation",
+   "line": 290
+  },
+  {
+   "id": "r3_cohort_structure",
+   "title": "Longitudinal Data Split Guidance",
+   "priority": 2,
+   "cost": "low",
+   "run_action": "cohort_split_guidance",
+   "kind": "recommendation",
+   "line": 322
+  },
+  {
+   "id": "r4_leakage",
+   "title": "Target Leakage Risk Assessment",
+   "priority": 3,
+   "cost": "low",
+   "run_action": "leakage_scan",
+   "kind": "recommendation",
+   "line": 345
+  },
+  {
+   "id": "r5_target_regression",
+   "title": "Target Distribution & Outliers",
+   "priority": 3,
+   "cost": "low",
+   "run_action": "target_profile",
+   "kind": "recommendation",
+   "line": 378
+  },
+  {
+   "id": "r5_target_classification",
+   "title": "Class Balance & Baseline",
+   "priority": 3,
+   "cost": "low",
+   "run_action": "target_profile",
+   "kind": "recommendation",
+   "line": 403
+  },
+  {
+   "id": "r6_dose_response",
+   "title": "Dose-Response Trends",
+   "priority": 4,
+   "cost": "medium",
+   "run_action": "dose_response_trends",
+   "kind": "recommendation",
+   "line": 428
+  },
+  {
+   "id": "r7_interactions",
+   "title": "Stratified Trends by Demographics",
+   "priority": 5,
+   "cost": "medium",
+   "run_action": "interaction_analysis",
+   "kind": "recommendation",
+   "line": 458
+  },
+  {
+   "id": "r8_collinearity",
+   "title": "Collinearity Heatmap",
+   "priority": 4,
+   "cost": "low",
+   "run_action": "collinearity_map",
+   "kind": "recommendation",
+   "line": 483
+  },
+  {
+   "id": "r9_outlier_influence",
+   "title": "Outlier Influence Analysis",
+   "priority": 5,
+   "cost": "medium",
+   "run_action": "outlier_influence",
+   "kind": "recommendation",
+   "line": 517
+  },
+  {
+   "id": "r10_baselines",
+   "title": "Quick Baseline Models",
+   "priority": 6,
+   "cost": "low",
+   "run_action": "quick_probe_baselines",
+   "kind": "recommendation",
+   "line": 541
+  }
+ ]
+}

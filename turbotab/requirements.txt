@@ -1,0 +1,30 @@
+# The walking skeleton's dependencies — deliberately not the app's.
+#
+# The whole diagnose → profile → detect path needs pandas and numpy and nothing
+# else: no scikit-learn, no scipy, no statsmodels, and none of the 1.1 GB of
+# torch the Streamlit app installs. That is a finding in itself, and it is why
+# this file exists rather than a line pointing at ../requirements.txt.
+#
+# Streamlit is absent on purpose. If it ever becomes necessary to install it to
+# make this run, the portability claim in docs/turbotab/ARCHITECTURE.md has
+# stopped being true and the test that says so should be failing.
+
+# ── engine ───────────────────────────────────────────────────────────────────
+# Capped below 3.0 for a reason worth knowing: pandas 3 makes `str` the default
+# dtype for text columns, and ml/triage.py's detect_task_type tests
+# `dtype in ['object', 'category', 'bool']`. Under pandas 3 a text target misses
+# every branch and falls through to "defaulting to regression" — so a
+# responder/non-responder column is silently read as a regression problem. The
+# repo's own requirements.txt says `pandas>=2.0.0` with no ceiling, so a fresh
+# install today picks 3.x and gets that behavior.
+pandas>=2.2,<3
+numpy>=1.24
+
+# ── server ───────────────────────────────────────────────────────────────────
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9
+
+# ── tests ────────────────────────────────────────────────────────────────────
+pytest>=8.0
+httpx>=0.27

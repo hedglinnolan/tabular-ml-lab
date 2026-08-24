@@ -22,7 +22,20 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from utils.workflow_provenance import WorkflowProvenance
-from utils.insight_ledger import InsightLedger, MODEL_DISPLAY_NAMES
+from utils.insight_ledger import (
+    InsightLedger, MODEL_DISPLAY_NAMES, _clean_for_manuscript,
+    feature_selection_method_label,
+)
+
+
+#: How many ledger strengths / limitations the Discussion prints inline.
+#:
+#: These were bare `[:3]` and `[:5]` slices inside `_gen_discussion`. They are
+#: named here because they are the app's own editorial caps and not a property
+#: of the ledger — and because whatever is cut off is now COUNTED and disclosed
+#: in the manuscript rather than dropped (`AUDIT-032`'s sibling).
+_MAX_LEDGER_STRENGTHS = 3
+_MAX_LEDGER_LIMITATIONS = 5
 
 
 # ---------------------------------------------------------------------------
@@ -230,8 +243,11 @@ class ManuscriptDraft:
 # ---------------------------------------------------------------------------
 
 _MODEL_NAMES: dict = {
+    # `MODEL_DISPLAY_NAMES` now DERIVES from `ml.model_registry` (`GUIDED-124`),
+    # so the aliases below must not re-override a key the registry carries —
+    # `"lasso": "LASSO"` sat here and put this table back into disagreement
+    # with the shelf for one model after the other twelve were reconciled.
     **MODEL_DISPLAY_NAMES,
-    "lasso": "LASSO",
     "xgb": "XGBoost (Gradient Boosting)",
     "lgbm": "LightGBM",
     "svm": "Support Vector Machine",
@@ -284,6 +300,65 @@ def _count_phrase(count: int, singular: str, plural: Optional[str] = None) -> st
     return f"{count} {noun}"
 
 
+def _lockbox_open_count(ctx: Dict[str, Any]) -> Optional[int]:
+    """How many times the sealed test set was scored against — or None.
+
+    None means the question could not be answered here (a draft regenerated
+    outside the session that produced it). None is not zero and is not one: a
+    sentence claiming a single access must not be written from an absence.
+    """
+    value = ctx.get("lockbox_open_count")
+    if value is None:
+        try:
+            from utils.test_lockbox import get_lockbox
+            lb = get_lockbox()
+            value = lb.get("opened_count") if lb else None
+        except Exception:
+            return None
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+#: Keys a hypothesis-test record carries when the parametric/non-parametric
+#: choice was made for it. Their presence is what marks two records of one
+#: comparison — the assumption check's run and the author's override re-run.
+_ASSUMPTION_CHOICE_KEYS = ("assumption_overridden", "assumption_basis", "parametric")
+
+
+def _distinct_comparisons(tests: Any) -> List[Dict[str, Any]]:
+    """One record per COMPARISON, not per test record written.
+
+    `DRIVE8-20`. Page 09 records a test each time one is run, and re-running
+    the same comparison under an author override writes a second record. The
+    multiplicity sentence counted records, so *"No correction for multiple
+    comparisons was applied across the 2 tests reported here"* described one
+    comparison — glucose by gender — run two ways as if it were two findings.
+    A multiplicity burden is the number of questions asked of the data; asking
+    the same question with a different estimator does not add one.
+
+    A record that carries the assumption-choice keys is identified by the
+    comparison it is about, and the LAST such record wins — that is the one the
+    page reports and the one whose p-value the author sees. Records without
+    them keep their own identity: Shapiro-Wilk and Breusch-Pagan on the same
+    residuals are two different nulls, not one comparison run twice.
+    """
+    if not tests:
+        return []
+    by_identity: Dict[Any, Dict[str, Any]] = {}
+    for test in tests:
+        if not isinstance(test, dict):
+            continue
+        variable = str(test.get("variable", "") or "")
+        if variable and any(key in test for key in _ASSUMPTION_CHOICE_KEYS):
+            identity: Any = ("comparison", variable)
+        else:
+            identity = ("test", str(test.get("test_name", "") or ""), variable)
+        by_identity[identity] = test
+    return list(by_identity.values())
+
+
 def _oxford_join(items: List[str]) -> str:
     """Join a list for manuscript prose."""
     cleaned = [str(item).strip() for item in items if str(item).strip()]
@@ -297,20 +372,12 @@ def _oxford_join(items: List[str]) -> str:
 
 
 def _feature_selection_method_label(method: str) -> str:
-    """Render feature-selection methods with manuscript-friendly names."""
-    labels = {
-        "lasso": "LASSO",
-        "rfe": "RFE-CV",
-        "rfe-cv": "RFE-CV",
-        "rfecv": "RFE-CV",
-        "univariate": "univariate screening",
-        "f_regression": "univariate screening",
-        "mutual_info": "mutual information screening",
-        "stability": "stability selection",
-        "stability_selection": "stability selection",
-    }
-    key = str(method or "").strip().lower()
-    return labels.get(key, str(method or "").strip())
+    """Render feature-selection methods with manuscript-friendly names.
+
+    One naming rule, held in `utils.insight_ledger` beside the model-key rule
+    that used to overwrite it (`DRIVE-075`).
+    """
+    return feature_selection_method_label(method)
 
 
 def _polish_data_observations_text(text: str) -> str:
@@ -517,8 +584,17 @@ class NarrativeEngine:
             rows.append(("Sensitivity Analysis", "sensitivity record",
                          "seed stability / feature dropout as recorded"))
         if comp.get("statistical_validation"):
+            # `DRIVE-074` / D9-05. TWO UNIVERSES, BOTH NAMED. The multiplicity
+            # sentence counts distinct COMPARISONS (`_distinct_comparisons`) —
+            # a comparison re-run under an author override is one question asked
+            # once — while this row counted RECORDS, so the draft said "the 1
+            # test reported here" beside an evidence row reading "2 test(s)" and
+            # neither said which it meant.
+            _recorded_tests = ctx.get('statistical_tests') or []
+            _comparisons = _distinct_comparisons(_recorded_tests)
             rows.append(("Statistical Validation", "statistical-test record",
-                         f"{len(ctx.get('statistical_tests') or [])} test(s)"))
+                         f"{_count_phrase(len(_recorded_tests), 'recorded test run')} over "
+                         f"{_count_phrase(len(_comparisons), 'distinct comparison')}"))
 
         if self.ledger is not None and len(self.ledger) > 0:
             contributing = sorted(
@@ -565,6 +641,44 @@ class NarrativeEngine:
             if frozen_metrics:
                 self.ctx["metrics_by_model"] = frozen_metrics
                 self.ctx["models_trained"] = list(frozen_metrics.keys())
+            # `MINE-027`: kept OUT of metrics_by_model on purpose — that dict is
+            # iterated as scores. The N the metrics were computed on travels in
+            # its own slot and is stated in prose.
+            _disclosures = {
+                key: payload["test_scoring"]
+                for key, payload in selected_results.items()
+                if isinstance(payload, dict) and payload.get("test_scoring")
+            }
+            if _disclosures:
+                self.ctx["scoring_disclosure_by_model"] = _disclosures
+            # `AUDIT-026`, the primary export path's second source of the same
+            # fact. `record_training` carries `cv_models_run` only for runs
+            # trained after that field existed; every other run reaches this
+            # composer with the CHECKBOX (`use_cv`, `cv_folds`) and nothing
+            # else, and the Methods section then either asserts a fold loop
+            # that may never have run or declines to say anything about it.
+            #
+            # The frozen export results answer it: `pages/06:1502` writes
+            # `cv_results` for every trained model — the scores when a fold
+            # loop ran, `None` when it did not (`:1455` excludes the neural
+            # network; `:1489` swallows a CV exception) — and `pages/10:484`
+            # hands those same dicts here as `selected_model_results`.
+            #
+            # KEY PRESENCE, not truthiness, is the gate. A payload that never
+            # mentions `cv_results` has said nothing about cross-validation,
+            # and reading "no model was cross-validated" out of that would be
+            # the row's own mistake pointed the other way — an assertion built
+            # from a silence. `None` survives instead, and the composer's
+            # unknown branch states the silence.
+            _spoke_about_cv = [
+                key for key, payload in selected_results.items()
+                if isinstance(payload, dict) and "cv_results" in payload
+            ]
+            if self.ctx.get("cv_models_run") is None and _spoke_about_cv:
+                self.ctx["cv_models_run"] = [
+                    key for key in _spoke_about_cv
+                    if selected_results[key].get("cv_results")
+                ]
 
         manuscript_primary = (
             self.manuscript_context.get("manuscript_primary_model")
@@ -580,8 +694,17 @@ class NarrativeEngine:
 
         best_metric_name = self.manuscript_context.get("best_metric_name")
         if best_metric_name:
+            from ml.holdout_selection import criterion_phrase
+
             self.ctx["best_metric_name"] = best_metric_name
-            self.ctx["selection_criteria"] = f"validation {best_metric_name}"
+            # `AUDIT-030`. This said "validation <metric>" and there is no
+            # validation split behind it: `_get_export_best_model` ranks the
+            # models on `results['metrics']`, which is the TEST dict.
+            self.ctx["selection_criteria"] = criterion_phrase(best_metric_name)
+            # A `best_model_by_metric` IS the argmax over held-out scores — the
+            # export path computed it that way — so the fact is known here rather
+            # than guessed.
+            self.ctx["selected_on_holdout"] = True
 
         population_counts = self.manuscript_context.get("population_counts") or {}
         if population_counts:
@@ -603,6 +726,15 @@ class NarrativeEngine:
                 self.ctx["n_features_after_selection"] = feature_counts.get("selected")
             if feature_counts.get("engineered") is not None:
                 self.ctx["n_engineered"] = feature_counts.get("engineered")
+            # `DRIVE-072`. The screening step's own denominator and its result,
+            # which are NOT the modeling set: the methods ranked `n_ranked`
+            # columns, agreed on `n_ranked_kept`, and `n_carried_unranked`
+            # predictors reached the model without being ranked at all.
+            for _key, _ctx_key in (("ranked", "n_ranked"),
+                                   ("ranked_kept", "n_ranked_kept"),
+                                   ("carried_unranked", "n_carried_unranked")):
+                if feature_counts.get(_key) is not None:
+                    self.ctx[_ctx_key] = feature_counts.get(_key)
 
         frozen_feature_names = self.manuscript_context.get("feature_names_for_manuscript") or []
         if frozen_feature_names:
@@ -754,13 +886,35 @@ class NarrativeEngine:
             if _lb_ins is not None and _lb_ins.resolved:
                 _p = (_lb_ins.resolution_details or {}).get("params", {})
                 _frac = _p.get("fraction")
-                parts.append(
+                _frozen = (
                     "The held-out test set"
                     + (f" ({_frac:.0%} of eligible observations)" if _frac else "")
                     + " was frozen at data upload, before any feature engineering "
-                    "or feature selection, and was accessed only for the final "
-                    "evaluation."
+                    "or feature selection"
                 )
+                # "Accessed only for the final evaluation" is a claim about a
+                # COUNT, and it was generated from a resolution recorded at
+                # upload — before anything had been accessed at all. The count
+                # is now measured; the sentence may only make the claim the
+                # count supports (`SWEEP-008`).
+                _opens = _lockbox_open_count(self.ctx)
+                if _opens is not None and _opens > 1:
+                    parts.append(
+                        _frozen + f", and was accessed {_opens} times during "
+                        "model development. Because model, preprocessing or "
+                        "feature choices could follow each access, the reported "
+                        "held-out performance is not a single untouched "
+                        "evaluation and may be optimistically biased."
+                    )
+                elif _opens == 1:
+                    parts.append(_frozen + ", and was accessed only for the "
+                                           "final evaluation.")
+                else:
+                    # No count available (a draft regenerated outside the
+                    # session that produced it), or nothing scored yet. State
+                    # the freeze, which is recorded, and claim nothing about
+                    # how often it was opened.
+                    parts.append(_frozen + ".")
 
         return " ".join(parts)
 
@@ -772,13 +926,19 @@ class NarrativeEngine:
         features = self.ctx.get("features_kept") or self.ctx.get("feature_cols", [])
         n_final = len(features) if features else 0
         n_before_sel = self.ctx.get("n_features_before_selection", 0)
-        n_after_sel = self.ctx.get("n_features_after_selection", 0)
+        # ZERO IS A REAL COUNT; ABSENCE IS None. `n_features_after_selection`
+        # was read with a `0` default and then `n_after_sel or n_final` — so a
+        # selection that retained NOTHING fell through to the pre-selection list
+        # and the paragraph drafted "All 27 candidate predictors were retained
+        # for final modeling", the false-consensus sentence by a second route.
+        # Same discipline as `_lockbox_open_count` above (`DRIVE8-21`).
+        n_after_sel = self.ctx.get("n_features_after_selection")
         n_engineered = self.ctx.get("n_engineered", 0)
         engineered_candidate_count = (n_original + n_engineered) if n_original else 0
         candidate_count = max(n_before_sel or 0, engineered_candidate_count or 0)
         if not candidate_count:
             candidate_count = engineered_candidate_count or n_before_sel or 0
-        final_count = n_after_sel or n_final
+        final_count = n_after_sel if n_after_sel is not None else n_final
 
         # Feature engineering
         transforms = self.ctx.get("engineering_transforms", [])
@@ -796,15 +956,42 @@ class NarrativeEngine:
         ]
         consensus_phrase = _oxford_join(consensus_methods)
 
+        # A RECORDED ZERO IS A RESULT, and it is stated rather than routed
+        # around. Every sentence below describes a predictor set that exists;
+        # with none, the funnel, the selection detail and the final list would
+        # all be about a set the run never produced.
+        if n_after_sel == 0:
+            # The denominator is the SELECTION step's own — the columns it
+            # screened — not the study-wide candidate count.
+            _screened = n_before_sel or candidate_count or n_original
+            parts.append(
+                f"Feature selection retained none of the "
+                f"{_count_phrase(_screened, 'candidate predictor')} it screened, "
+                f"so no selected predictor set was produced."
+            )
+            return " ".join(parts)
+
         # Feature funnel narrative
+        #
+        # `DRIVE8-21`. The two FE branches used to fire on `candidate_count !=
+        # n_original`, and `candidate_count` comes from the SELECTION record's
+        # `n_features_before` — the columns selection could rank, not columns
+        # engineering made. On a run where page 03 was skipped that asserted a
+        # stage the provenance has no record of. An engineered count is the
+        # only evidence of one.
+        from ml.publication import feature_engineering_ran
+        _fe_ran = (bool(transforms) or (n_engineered or 0) > 0
+                   or feature_engineering_ran(
+                       self.manuscript_context.get("feature_counts")))
         if n_original and final_count:
-            if candidate_count and candidate_count != n_original and final_count != candidate_count:
+            if (candidate_count and candidate_count != n_original
+                    and final_count != candidate_count and _fe_ran):
                 added_count = max(candidate_count - n_original, 0)
                 parts.append(
                     f"The raw dataset contained {n_original} predictor variables. "
                     f"Feature engineering added {added_count} predictor variables, yielding {candidate_count} candidate predictors."
                 )
-            elif candidate_count and candidate_count != n_original:
+            elif candidate_count and candidate_count != n_original and _fe_ran:
                 parts.append(
                     f"The raw dataset contained {n_original} predictor variables. "
                     f"Feature engineering yielded {candidate_count} candidate predictors, "
@@ -819,8 +1006,35 @@ class NarrativeEngine:
                 parts.append(f"All {final_count} candidate predictors were retained for final modeling.")
 
         # Feature selection detail
+        #
+        # `DRIVE-072`. THE SCREENING AND THE APPLY ARE TWO FACTS. The methods
+        # rank the columns they can rank — on a classification run the numeric
+        # ones — and the applied set is that agreement plus whatever was carried
+        # through unranked. Where the record holds both, the sentence states
+        # both, so the reduction it reports is the one a reader can reconcile
+        # against the selection page and the Evidence Map.
+        _ranked = self.ctx.get("n_ranked")
+        _ranked_kept = self.ctx.get("n_ranked_kept")
+        _carried = self.ctx.get("n_carried_unranked")
+        _screening_reconciles = (
+            _ranked is not None and _ranked_kept is not None
+            and _carried is not None
+            and (_ranked_kept + _carried) == final_count
+        )
         if fs_method and final_count:
-            if candidate_count == final_count:
+            if _screening_reconciles and candidate_count and candidate_count != final_count:
+                _lead = (f"Consensus feature selection across {consensus_phrase}"
+                         if fs_method == "consensus" and consensus_phrase
+                         else f"Feature selection using {fs_method}")
+                parts.append(
+                    f"{_lead} ranked "
+                    f"{_count_phrase(_ranked, 'candidate predictor')} and retained "
+                    f"{_ranked_kept}; with "
+                    f"{_count_phrase(_carried, 'non-ranked predictor')} carried "
+                    f"through, the predictor set was reduced from "
+                    f"{candidate_count} to {final_count} for final modeling."
+                )
+            elif candidate_count == final_count:
                 parts.append(
                     (
                         f"Consensus feature selection across {consensus_phrase} retained all {final_count} candidate predictors."
@@ -1029,13 +1243,54 @@ class NarrativeEngine:
             if hp_sentences:
                 parts.extend(hp_sentences)
 
-        # Cross-validation
+        # Cross-validation. `AUDIT-026`.
+        #
+        # This read the CHECKBOX — `use_cv and cv_folds` — and asserted that
+        # k-fold cross-validation was the internal validation. The checkbox is
+        # not the event: pages/06:1455 excludes the neural network from CV
+        # outright, and :1489 catches a CV failure, warns, and continues with
+        # `cv_results=None`. Train only the neural network with the box ticked
+        # and this sentence claimed a design the run never performed — §A5.5
+        # calls repeated k-fold acceptable and a single split "the weakest
+        # option ... discouraged", so the false sentence described the
+        # acceptable design and shipped the discouraged one.
+        #
+        # `cv_models_run` is recorded by `record_training` from the per-model
+        # `cv_results`. `None` means the provenance predates that record and the
+        # answer is genuinely unknown; it is NOT the same as the empty list,
+        # which is a positive record that nothing was cross-validated.
         use_cv = self.ctx.get("use_cv", False)
         cv_folds = self.ctx.get("cv_folds")
+        cv_models_run = self.ctx.get("cv_models_run")
         if use_cv and cv_folds:
-            parts.append(
-                f"{cv_folds}-fold cross-validation was used for model evaluation."
-            )
+            if cv_models_run is None:
+                parts.append(
+                    f"{cv_folds}-fold cross-validation was enabled in the "
+                    f"training configuration; this record does not state "
+                    f"whether it produced scores, so the internal validation "
+                    f"reported here is the train/validation/test split above."
+                )
+            elif not cv_models_run:
+                parts.append(
+                    f"{cv_folds}-fold cross-validation was requested but "
+                    f"produced results for no model, so model evaluation rests "
+                    f"on the held-out split alone."
+                )
+            else:
+                _ran = _oxford_join(
+                    [self._model_name(m) for m in cv_models_run])
+                parts.append(
+                    f"{cv_folds}-fold cross-validation was used for evaluation "
+                    f"of {_ran}."
+                )
+                _skipped = [m for m in models if m not in set(cv_models_run)]
+                if _skipped:
+                    parts.append(
+                        f"It was not run for "
+                        f"{_oxford_join([self._model_name(m) for m in _skipped])}, "
+                        f"whose reported performance comes from the held-out "
+                        f"split alone."
+                    )
 
         # Hyperparameter optimization
         if self.ctx.get("use_hyperopt"):
@@ -1060,15 +1315,30 @@ class NarrativeEngine:
                     f"recommendations, with manual adjustments to: {mod_names}."
                 )
 
-        # Class weighting
+        # Class weighting. `GUIDED-049`.
+        #
+        # This said "To address class imbalance, class_weight='balanced' was
+        # applied…" — unconditionally, and approvingly, in the artifact that IS
+        # the product. Van den Goorbergh et al. (JAMIA 2022;29:1525) and
+        # Carriero et al. (Stat Med 2025) show rebalancing overestimates
+        # minority-class probability without improving discrimination.
+        #
+        # What was done is still reported — a reader has to know — but it is no
+        # longer reported as a remedy, and it carries the limitation.
         if self.ctx.get("class_weight_balanced"):
-            parts.append(
-                "To address class imbalance, class_weight='balanced' was applied "
-                "to supported classifiers, weighting each class inversely proportional "
-                "to its frequency in the training data."
-            )
+            from ml.imbalance_advice import manuscript_sentence
+            parts.append(manuscript_sentence(self.ctx.get("model_purpose")))
 
-        # Primary model selection
+        # PRIMARY MODEL SELECTION, AND WHAT SELECTING ON THE HELD-OUT SET COSTS.
+        #
+        # `AUDIT-030`, ruled at L45. This said "based on validation <metric>"
+        # while no per-model validation score is stored anywhere: the ranking
+        # that names the primary model reads the TEST dict. So the section now
+        # says two things — what was compared, and what that comparison costs —
+        # and `ml/holdout_selection.py` owns both sentences because the false
+        # word was composed in five places and the row named two.
+        from ml.holdout_selection import optimism_sentence
+
         primary = self.ctx.get("primary_model", "")
         best_by_metric = self.ctx.get("best_model_by_metric", "")
         criteria = self.ctx.get("selection_criteria", "")
@@ -1078,13 +1348,14 @@ class NarrativeEngine:
                 f"{f', based on {criteria}' if criteria else ''}."
             )
         elif best_by_metric:
-            metric_phrase = criteria or (
-                f"validation {self.ctx.get('best_metric_name')}"
-                if self.ctx.get('best_metric_name') else ""
-            )
+            # The bare metric name here, not `criterion_phrase`: this branch
+            # already names the held-out set in its own words, and "scored best
+            # on the held-out set by the held-out RMSE" is the surface saying it
+            # twice.
+            metric = str(self.ctx.get("best_metric_name") or "").strip()
             parts.append(
-                f"{self._model_name(best_by_metric)} achieved the best held-out performance"
-                f"{f' on {metric_phrase}' if metric_phrase else ''}, "
+                f"{self._model_name(best_by_metric)} scored best on the held-out "
+                f"set{f' by {metric}' if metric else ''}, "
                 "but no manuscript-primary model was explicitly selected."
             )
         elif models:
@@ -1093,16 +1364,28 @@ class NarrativeEngine:
                 "metric was selected for reporting."
             )
 
+        # WHAT THE COMPARISON COSTS. Fired off a RECORDED fact rather than off a
+        # substring of the criterion prose — `selected_on_holdout` defaults to
+        # False, so a run that selected some other way never has this attached.
+        # `optimism_sentence` returns "" below two models, because one model is
+        # not a selection and a caveat that fires on every manuscript is the
+        # uncalibrated second layer of caution this project forbids.
+        if self.ctx.get("selected_on_holdout"):
+            said = optimism_sentence(len(models) if models else 0)
+            if said:
+                parts.append(said)
+
         return " ".join(parts)
 
     def _gen_model_evaluation(self) -> str:
         """Model evaluation: metrics by model, including confidence intervals when available."""
         metrics = self.ctx.get("metrics_by_model", {})
-        if not metrics:
+        if not metrics and not self.ctx.get("external_validation"):
             return ""
 
         parts = []
-        parts.append("Model performance was evaluated using the following metrics:")
+        if metrics:
+            parts.append("Model performance was evaluated using the following metrics:")
 
         for model_name, model_metrics in metrics.items():
             if not model_metrics:
@@ -1134,6 +1417,37 @@ class NarrativeEngine:
             if metric_strs:
                 parts.append(f"**{self._model_name(model_name)}**: {', '.join(metric_strs)}.")
 
+        # `MINE-027`: how many held-out pairs the numbers above could NOT be
+        # computed on. It used to ride the metrics dict, so the loop above
+        # printed `n_dropped_nonfinite=30` as if it were a model score. A
+        # disclosure is a sentence, not a metric.
+        for model_name, disclosure in (
+                self.ctx.get("scoring_disclosure_by_model") or {}).items():
+            if not disclosure or not disclosure.get("n_dropped_nonfinite"):
+                continue
+            parts.append(
+                f"For {self._model_name(model_name)}, "
+                f"{disclosure['n_dropped_nonfinite']} of "
+                f"{disclosure.get('n_pairs', '?')} held-out prediction pairs "
+                f"were non-finite and could not be scored; the metrics above "
+                f"are computed on the remaining {disclosure['n_scored']}, not "
+                f"on the full held-out set."
+            )
+
+        # External validation is a Methods claim of its own, and the record now
+        # exists to make it. The sentence is composed where the fallback path
+        # composes it so the two drafts cannot disagree.
+        if self.ctx.get("external_validation"):
+            from ml.publication import external_validation_sentence
+            parts.append(external_validation_sentence({
+                "dataset_name": self.ctx.get("external_validation_dataset", ""),
+                "n_rows": self.ctx.get("external_validation_n", 0),
+                "models": self.ctx.get("external_validation_models", []),
+                "n_bootstrap": self.ctx.get("external_validation_bootstrap", 0),
+                "repairs": self.ctx.get("external_validation_repairs", []),
+                "metrics": self.ctx.get("external_validation_metrics", {}),
+            }).strip())
+
         return " ".join(parts)
 
     def _gen_sensitivity_analysis(self) -> str:
@@ -1155,27 +1469,93 @@ class NarrativeEngine:
         return " ".join(parts)
 
     def _gen_statistical_validation(self) -> str:
-        """Statistical validation tests."""
+        """Statistical validation tests, and what may be said about how many hit.
+
+        `AUDIT-001`. This paragraph used to end with *"N of M tests yielded
+        statistically significant results (p < 0.05)"* — an uncorrected count,
+        with no correction named and none applied, written into the artifact
+        that is the product. `research/METABOLOMICS_PACK.md` §06.3: *plotting
+        raw p-values with a line at p = 0.05 on a 3,000-feature untargeted
+        dataset is an anti-pattern and would be flagged in review*, and §10
+        lists *asterisks without the test or correction*.
+
+        Two branches now, and the second is the one that matters:
+
+        * **A correction was recorded** — report the corrected count, naming
+          the method and the threshold, because that IS a result.
+        * **No correction was recorded** — report NO count. The number of tests
+          reaching a raw p < 0.05 is the quantity the anti-pattern is made of,
+          and printing it beside the word "significant" is the assertion.
+
+        Silence was the other option offered and it is the weaker one: a
+        paragraph that simply stops is indistinguishable from a family in which
+        nothing was significant, and `DESIGN_LANGUAGE.md` §09's recorded-absence
+        rule is exactly about that confusion. So the absence is stated — the
+        tests are uncorrected, the count is not interpretable, and here is how
+        many would be expected to clear the line with nothing going on. That
+        last number is the pack's own coaching, and it is the sentence that
+        turns an omission into information a reviewer can use.
+        """
+        from ml import multiplicity
+
         tests = self.ctx.get("statistical_tests", [])
         if not tests:
             return ""
+        # The names are every test that was performed; the multiplicity burden
+        # is the number of distinct comparisons those tests asked (`DRIVE8-20`).
+        comparisons = _distinct_comparisons(tests)
 
         parts = []
-        test_names = list(set(t.get("test_name", "") for t in tests if t.get("test_name")))
+        # SORTED, not `list(set(...))`. Set iteration order is not stable
+        # across runs, so the same analysis produced a manuscript whose test
+        # list was in a different order each time it was drafted. A record that
+        # changes when nothing changed is not a record.
+        test_names = sorted({t.get("test_name", "") for t in tests
+                             if t.get("test_name")})
         if test_names:
             parts.append(
                 f"Statistical validation was performed using: {', '.join(test_names)}."
             )
 
-        # Summarize significant findings
-        significant = [
-            t for t in tests
-            if t.get("p_value") is not None and t["p_value"] < 0.05
-        ]
-        if significant:
+        with_p = [t for t in comparisons
+                  if isinstance(t.get("p_value"), (int, float))
+                  and t.get("p_value") is not None]
+        correction = multiplicity.correction_of(tests)
+
+        # NAMED UNIVERSE (`DRIVE-074` / D9-05). The count below is DISTINCT
+        # COMPARISONS; the Evidence Map row beside it counts recorded test runs,
+        # and with two records of one comparison the draft's "1 test" read as a
+        # miscount of the map's "2". Where the two universes differ the sentence
+        # says which one it is counting and why the other is larger.
+        _universe_note = ""
+        if with_p and len(tests) != len(comparisons):
+            _universe_note = (
+                f" ({_count_phrase(len(tests), 'test run')} recorded: a "
+                f"comparison re-run under an author override is one comparison, "
+                f"not two)"
+            )
+
+        if correction and with_p:
+            alpha = next((float(t.get("correction_alpha")) for t in tests
+                          if t.get("correction_alpha") is not None), 0.05)
+            corrected = [t for t in with_p
+                         if t.get("significant_after_correction")]
             parts.append(
-                f"{len(significant)} of {len(tests)} tests yielded statistically "
-                f"significant results (p < 0.05)."
+                f"P-values were adjusted for multiple comparisons using the "
+                f"{multiplicity.method_label(correction)} method across the "
+                f"{_count_phrase(len(with_p), 'test')} reported here"
+                f"{_universe_note}; "
+                f"{len(corrected)} remained significant at q < {alpha:g}."
+            )
+        elif with_p:
+            expected = multiplicity.expected_by_chance(len(with_p))
+            parts.append(
+                f"No correction for multiple comparisons was applied across "
+                f"the {_count_phrase(len(with_p), 'test')} reported here"
+                f"{_universe_note}, so the number reaching "
+                f"p < 0.05 is not interpretable as a count of findings: at "
+                f"alpha = 0.05 roughly {expected:.0f} of {len(with_p)} would be "
+                f"expected to do so by chance alone."
             )
 
         return " ".join(parts)
@@ -1516,25 +1896,70 @@ class NarrativeEngine:
             strengths = discussion_points.get("strengths", [])
             limitations = discussion_points.get("limitations", [])
 
+            # `AUDIT-032`'s sibling, found one surface over and living here.
+            #
+            # These two lists used to be printed as `strengths[:3]` and
+            # `limitations[:5]` with no mark of any kind, under headings that
+            # say the list came from the analysis ledger. On a busy ledger the
+            # manuscript therefore asserted a COMPLETE set of limitations and
+            # printed five of them, and the reader had no way to know. A caveat
+            # the app authored and then dropped in the export is the same
+            # failure `AUDIT-032` names, one module downstream.
+            #
+            # The cap stays — a Discussion is not a log — and the omission is
+            # STATED instead, with the count, as an author gap rather than as a
+            # note the app writes in the researcher's name.
             if strengths:
                 parts.append("**Strengths (auto-generated from analysis ledger):** ")
-                strength_strs = strengths[:3]
+                strength_strs = strengths[:_MAX_LEDGER_STRENGTHS]
                 parts.append("; ".join(strength_strs) + ". ")
-            
+                if len(strengths) > len(strength_strs):
+                    parts.append(
+                        f"[AUTHOR REQUIRED — {len(strengths) - len(strength_strs)} "
+                        f"further ledger strength(s) are not printed here; the "
+                        f"analysis ledger records {len(strengths)} in total.] "
+                    )
+
+            # THE EXPLORATORY CAVEAT GOES FIRST, and that is the load-bearing
+            # half of this correction. Appended last, it was the first thing
+            # `[:5]` removed — so the one limitation that is about the whole
+            # study rather than about a single column disappeared from exactly
+            # the manuscripts that had the most to disclose.
             if self.ctx.get("exploratory_mode"):
-                limitations = list(limitations) + [
+                limitations = [
                     "the analysis was run in exploratory mode: the held-out test "
                     "set was not quarantined from feature engineering and "
                     "selection, so reported performance may be optimistically "
                     "biased and should not be presented as validated held-out "
                     "performance"
-                ]
+                ] + list(limitations)
+            else:
+                # Same shape, same reason: a study-wide caveat goes first
+                # because `[:5]` removes the last one, and this one is about
+                # the whole evaluation rather than one column (`SWEEP-008`).
+                _opens = _lockbox_open_count(self.ctx)
+                if _opens is not None and _opens > 1:
+                    limitations = [
+                        f"the held-out test set was accessed {_opens} times "
+                        f"during model development rather than once at the end, "
+                        f"so the reported held-out performance is not a single "
+                        f"untouched evaluation and may be optimistically biased"
+                    ] + list(limitations)
 
             if limitations:
                 parts.append("**Limitations (auto-generated from analysis ledger):** ")
-                limitation_strs = limitations[:5]
+                limitation_strs = limitations[:_MAX_LEDGER_LIMITATIONS]
                 parts.append("; ".join(limitation_strs) + ". ")
-            
+                if len(limitations) > len(limitation_strs):
+                    parts.append(
+                        f"[AUTHOR REQUIRED — "
+                        f"{len(limitations) - len(limitation_strs)} further "
+                        f"limitation(s) recorded in the analysis ledger are not "
+                        f"printed here; the ledger records {len(limitations)} in "
+                        f"total. Review them and state the ones that bear on the "
+                        f"interpretation.] "
+                    )
+
             if not strengths and not limitations:
                 parts.append(
                     "[AUTHOR REQUIRED — No acknowledged strengths or limitations "
@@ -1716,8 +2141,20 @@ class NarrativeEngine:
             try:
                 prefer_simpler = self.ledger.get("train_prefer_simpler")
                 if prefer_simpler and not prefer_simpler.resolved:
+                    # `DRIVE-074` / D9-06. THE CARD'S `finding` IS COACH VOICE —
+                    # "A reviewer would question why the more complex model was
+                    # selected." is addressed to the analyst, and it reached the
+                    # Discussion of the exported manuscript verbatim. COACH-007
+                    # gives every such card a `manuscript_text` written in the
+                    # register a paper uses; it is spliced mid-paragraph, so it
+                    # starts lowercase and is capitalized here.
+                    _observation = (prefer_simpler.manuscript_text or "").strip()
+                    if _observation:
+                        _observation = (_observation[0].upper() + _observation[1:]).rstrip(".") + "."
+                    else:
+                        _observation = _clean_for_manuscript(prefer_simpler.finding)
                     return (
-                        f"{prefer_simpler.finding} "
+                        f"{_observation} "
                         "This pattern suggests that the available predictive signal is largely "
                         "captured by linear effects, favoring the simpler model on grounds of "
                         "parsimony and interpretability."

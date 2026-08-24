@@ -32,7 +32,41 @@ An interactive research workbench for scientists who work with tabular data and 
 
 **Built for researchers, not ML engineers.** The app does the mechanical work of writing a prediction model paper. Your only edits are domain-specific context no tool can provide.
 
+## 🚪 One engine, two interfaces
+
+This repository ships one analysis engine behind two front doors:
+
+| | **Classic** (Streamlit) | **TurboTab** *(preview)* |
+|---|---|---|
+| What it is | The complete 10-step workbench described below — upload to LaTeX manuscript | A faster, more interactive guided interface being built on the same engine |
+| Status | Stable — the recommended way to run a real analysis today | 🚧 **Under active development** — screens, behavior, and saved state may change without notice |
+| How to start | The desktop starter below, or `streamlit run app.py` | `make turbotab` from a developer setup (see below) |
+
+> **⚠️ TurboTab is a work in progress.** It shares the Classic engine's tested core, but its interface is not feature-complete and is not yet covered by the guarantees this README makes about the Classic app. Use it to preview where the project is going; use Classic for analyses you intend to publish.
+
+<details>
+<summary><b>Running TurboTab</b> (developer setup — terminal required)</summary>
+
+TurboTab is not part of the desktop starter yet. From a clone of this repository
+with the full environment installed (`python -m venv venv && venv/bin/pip install -r requirements.txt`):
+
+```bash
+make turbotab
+# or, equivalently:
+venv/bin/python scripts/serve_turbotab.py --port 8777
+```
+
+Then open http://127.0.0.1:8777. The launcher checks its own interpreter before
+serving and refuses with an explanation rather than starting a server that
+would fail mid-workflow — if it refuses, it tells you exactly which package and
+which interpreter to fix. `make turbotab-check` runs that environment check on
+its own.
+
+</details>
+
 ## ⬇️ Download the App (no coding, no terminal)
+
+The download and the double-click starters launch the **Classic** app.
 
 Run Tabular ML Lab on your own computer like a normal desktop app — **your data
 never leaves your machine.**

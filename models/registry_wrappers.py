@@ -2,6 +2,7 @@
 Wrapper adapters for registry models to work with existing training infrastructure.
 """
 import numpy as np
+from pandas.api import types as _pdt
 from typing import Dict, Optional, Any
 from models.base import BaseModelWrapper
 
@@ -41,7 +42,9 @@ class RegistryModelWrapper(BaseModelWrapper):
         if X_val is not None and y_val is not None:
             y_val_pred = self.model.predict(X_val)
             # Determine task type from y
-            if len(np.unique(y_train)) < 20 and y_train.dtype in [np.int64, np.int32, 'int64', 'int32', 'int']:
+            if (len(np.unique(y_train)) < 20
+                    and _pdt.is_integer_dtype(y_train)
+                    and not _pdt.is_bool_dtype(y_train)):
                 # Classification
                 val_metric = np.mean(y_val_pred == y_val)  # Accuracy
             else:

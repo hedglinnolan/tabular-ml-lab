@@ -626,7 +626,7 @@ def test_generate_latex_report_uses_analysis_population_and_human_model_labels()
     )
 
     assert "A total of 950 participants were included in the analysis." in latex
-    assert "Histogram Gradient Boosting (Regressor)" in latex
+    assert "Histogram Gradient Boosting (Regression)" in latex
     assert "Neural Network (MLP)" in latex
     assert "HISTGB_REG" not in latex
     assert r"\#\# Methods" not in latex
@@ -854,7 +854,7 @@ def test_generate_decision_audit_trail_cleans_internal_keys_and_coaching_languag
 
         assert 'HISTGB_REG' not in audit_trail
         assert 'no action needed' not in audit_trail.lower()
-        assert 'Histogram Gradient Boosting (Regressor)' in audit_trail
+        assert 'Histogram Gradient Boosting (Regression)' in audit_trail
     finally:
         if saved_ledger is None:
             st.session_state.pop('insight_ledger', None)

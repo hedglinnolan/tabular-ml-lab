@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -91,6 +91,13 @@ class FeatureSelectionProvenance:
     features_kept: List[str] = field(default_factory=list)
     consensus_methods: List[str] = field(default_factory=list)
     timestamp: str = ""
+    #: The columns that were SCREENED, including every one selection dropped.
+    #: `AUDIT-023` — §A5.4 sizes for the screened set, and applying a selection
+    #: overwrites `data_config.feature_cols` in place, so without this list the
+    #: number of candidate predictors is unrecoverable the moment the button is
+    #: pressed. `n_features_before` carried the count already; the names are
+    #: here because the EDA insight and the manuscript both name columns.
+    candidates_screened: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -142,9 +149,32 @@ class TrainingProvenance:
     models_trained: List[str] = field(default_factory=list)
     hyperparameters: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     primary_model: str = ""
-    selection_criteria: str = ""  # "validation RMSE", "validation F1", etc.
+    # "the held-out RMSE", "the held-out F1", etc. NEVER "validation <metric>":
+    # nothing stores a per-model validation score, so that word named a split the
+    # ranking never saw (`AUDIT-030`). `ml/holdout_selection.criterion_phrase`
+    # composes it.
+    selection_criteria: str = ""
+    # Whether the primary model was chosen by comparing the trained models'
+    # HELD-OUT scores — the thing that makes the reported number optimistic.
+    # Recorded rather than inferred from the criterion string, and defaulting to
+    # False, so a caller who selected some other way never has the caveat
+    # attached to their manuscript on the strength of a substring match.
+    selected_on_holdout: bool = False
     use_cv: bool = False
     cv_folds: Optional[int] = None
+    # WHICH models a fold loop actually scored. `AUDIT-026`.
+    #
+    # `use_cv` above is the checkbox and was the only thing the Methods section
+    # read, so a run that cross-validated nothing still asserted k-fold internal
+    # validation. pages/06 skips CV for the neural network (:1455) and swallows
+    # a CV exception (:1489), so "requested" and "ran" come apart routinely.
+    #
+    # `None` rather than `[]` as the default, and the distinction is load-
+    # bearing: `None` is a record written before this field existed and the
+    # answer is unknown; `[]` is a caller who looked and found nothing
+    # cross-validated. Reporting the first as the second would assert a fact
+    # about a run nobody recorded.
+    cv_models_run: Optional[List[str]] = None
     use_hyperopt: bool = False
     class_weight_balanced: bool = False
     metrics_by_model: Dict[str, Dict[str, Any]] = field(default_factory=dict)
@@ -177,6 +207,32 @@ class ExplainabilityProvenance:
     """Recorded when explainability analyses are run."""
     methods_used: List[str] = field(default_factory=list)
     models_explained: List[str] = field(default_factory=list)
+    timestamp: str = ""
+
+
+@dataclass
+class ExternalValidationProvenance:
+    """Recorded when trained models are scored on an independent cohort.
+
+    The page used to display external metrics and drop them, so the one result
+    a reviewer weighs most heavily never reached the manuscript
+    (`ml/publication.py`'s `external_validation` flag was never set by anything).
+    The numbers themselves live in `session_state['external_validation_results']`;
+    what belongs in the record is the account a Methods section has to make —
+    which file, how many rows, which models, and what the import review had to
+    repair before the file was believed.
+    """
+    dataset_name: str = ""
+    n_rows: int = 0
+    n_features: int = 0
+    models_validated: List[str] = field(default_factory=list)
+    metrics: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    n_bootstrap: int = 0
+    # What the front door found and what the user applied — an external cohort
+    # that needed repairs is a cohort the Methods section must say was repaired.
+    import_repairs: List[str] = field(default_factory=list)
+    structural_findings: str = ""
+    records_key: str = ""
     timestamp: str = ""
 
 
@@ -229,6 +285,7 @@ class WorkflowProvenance:
     preprocessing: Optional[PreprocessingProvenance] = None
     training: Optional[TrainingProvenance] = None
     explainability: Optional[ExplainabilityProvenance] = None
+    external_validation: Optional[ExternalValidationProvenance] = None
     sensitivity: Optional[SensitivityProvenance] = None
     statistical_validation: Optional[StatisticalValidationProvenance] = None
     coach: Optional[CoachProvenance] = None
@@ -261,7 +318,7 @@ class WorkflowProvenance:
             n_samples=n_samples,
             n_features=len(feature_cols),
             data_source=data_source,
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             # Repairs applied at import happen before this record exists. A
             # fresh UploadProvenance with cleaning_actions=[] used to erase them.
             cleaning_actions=list(self.pending_cleaning_actions),
@@ -315,7 +372,7 @@ class WorkflowProvenance:
             "rows_before": rows_before,
             "rows_after": rows_after,
             "details": details or {},
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         if self.upload is None:
             self.pending_cleaning_actions.append(entry)
@@ -327,14 +384,14 @@ class WorkflowProvenance:
     def record_eda_analysis(self, analysis_name: str) -> None:
         """Called by EDA page for each analysis run."""
         if self.eda is None:
-            self.eda = EDAProvenance(timestamp=datetime.now().isoformat())
+            self.eda = EDAProvenance(timestamp=datetime.now(timezone.utc).isoformat())
         if analysis_name not in self.eda.analyses_run:
             self.eda.analyses_run.append(analysis_name)
 
     def record_table1(self) -> None:
         """Called by EDA when Table 1 is generated."""
         if self.eda is None:
-            self.eda = EDAProvenance(timestamp=datetime.now().isoformat())
+            self.eda = EDAProvenance(timestamp=datetime.now(timezone.utc).isoformat())
         self.eda.table1_generated = True
 
     def record_feature_engineering(
@@ -350,7 +407,7 @@ class WorkflowProvenance:
             n_features_created=n_created,
             n_features_before=n_before,
             n_features_after=n_after,
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def record_feature_selection(
@@ -360,15 +417,39 @@ class WorkflowProvenance:
         n_after: int,
         features_kept: List[str],
         consensus_methods: Optional[List[str]] = None,
+        candidates_screened: Optional[List[str]] = None,
     ) -> None:
-        """Called by Feature Selection when selection is applied."""
+        """Called by Feature Selection when selection is applied.
+
+        **The screened set accumulates and never shrinks** (`AUDIT-023`).
+        Screening 40 and keeping 8, then re-opening the page and keeping 5, is
+        still a study that must be sized for 40 — §A5.4's ⚠ clause is about the
+        degrees of freedom a data-driven choice consumes, and consuming them
+        twice does not give any back. So this merges with whatever was recorded
+        before rather than replacing it, and `n_features_before` is the size of
+        the merged set rather than of this press alone.
+        """
+        prior = self.feature_selection
+        merged: List[str] = []
+        seen = set()
+        for column in (list(getattr(prior, "candidates_screened", None) or [])
+                       + list(candidates_screened or [])
+                       + list(features_kept or [])):
+            name = str(column)
+            if name not in seen:
+                merged.append(name)
+                seen.add(name)
+        n_before = max(int(n_before or 0),
+                       int(getattr(prior, "n_features_before", 0) or 0),
+                       len(merged))
         self.feature_selection = FeatureSelectionProvenance(
             method=method,
             n_features_before=n_before,
             n_features_after=n_after,
             features_kept=list(features_kept),
             consensus_methods=list(consensus_methods or []),
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            candidates_screened=merged,
         )
 
     def record_split(
@@ -398,7 +479,7 @@ class WorkflowProvenance:
             target_trim_enabled=target_trim_enabled,
             target_trim_lower=target_trim_lower,
             target_trim_upper=target_trim_upper,
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def record_preprocessing(
@@ -438,7 +519,7 @@ class WorkflowProvenance:
             shared=shared,
             per_model=per_model,
             models_configured=list(configs_by_model.keys()),
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def record_training(
@@ -446,8 +527,10 @@ class WorkflowProvenance:
         models_trained: List[str],
         primary_model: str = "",
         selection_criteria: str = "",
+        selected_on_holdout: bool = False,
         use_cv: bool = False,
         cv_folds: Optional[int] = None,
+        cv_models_run: Optional[List[str]] = None,
         use_hyperopt: bool = False,
         class_weight_balanced: bool = False,
         hyperparameters: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -462,15 +545,18 @@ class WorkflowProvenance:
             hyperparameters=dict(hyperparameters or {}),
             primary_model=primary_model,
             selection_criteria=selection_criteria,
+            selected_on_holdout=selected_on_holdout,
             use_cv=use_cv,
             cv_folds=cv_folds,
+            cv_models_run=(list(cv_models_run)
+                           if cv_models_run is not None else None),
             use_hyperopt=use_hyperopt,
             class_weight_balanced=class_weight_balanced,
             metrics_by_model=dict(metrics_by_model or {}),
             nn_config_source=nn_config_source,
             nn_config_reasoning=dict(nn_config_reasoning or {}),
             nn_config_modifications=dict(nn_config_modifications or {}),
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def record_explainability(
@@ -482,7 +568,33 @@ class WorkflowProvenance:
         self.explainability = ExplainabilityProvenance(
             methods_used=list(methods),
             models_explained=list(models),
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+
+    def record_external_validation(
+        self,
+        dataset_name: str,
+        n_rows: int,
+        n_features: int,
+        models_validated: List[str],
+        metrics: Optional[Dict[str, Dict[str, Any]]] = None,
+        n_bootstrap: int = 0,
+        import_repairs: Optional[List[str]] = None,
+        structural_findings: str = "",
+        records_key: str = "",
+    ) -> None:
+        """Called by Explainability when an external cohort has been scored."""
+        self.external_validation = ExternalValidationProvenance(
+            dataset_name=str(dataset_name or ""),
+            n_rows=int(n_rows),
+            n_features=int(n_features),
+            models_validated=list(models_validated),
+            metrics=dict(metrics or {}),
+            n_bootstrap=int(n_bootstrap),
+            import_repairs=list(import_repairs or []),
+            structural_findings=str(structural_findings or ""),
+            records_key=str(records_key or ""),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def record_sensitivity(
@@ -496,7 +608,7 @@ class WorkflowProvenance:
             seed_stability=seed_stability,
             seed_stability_cv=seed_stability_cv,
             feature_dropout=feature_dropout,
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def record_statistical_test(
@@ -507,10 +619,16 @@ class WorkflowProvenance:
         p_value: Optional[float] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Called by Hypothesis Testing for each test run."""
+        """Called by Hypothesis Testing for each test run.
+
+        A test is recorded UNCORRECTED, because a multiple-comparison
+        correction is a property of the family and the family is not complete
+        until the last test has been run. `apply_multiplicity_correction` is
+        the act that closes it.
+        """
         if self.statistical_validation is None:
             self.statistical_validation = StatisticalValidationProvenance(
-                timestamp=datetime.now().isoformat(),
+                timestamp=datetime.now(timezone.utc).isoformat(),
             )
         self.statistical_validation.tests_run.append({
             "test_name": test_name,
@@ -519,6 +637,35 @@ class WorkflowProvenance:
             "p_value": p_value,
             **(details or {}),
         })
+
+    def apply_multiplicity_correction(
+        self,
+        method: str = "fdr_bh",
+        alpha: float = 0.05,
+    ) -> Dict[str, Any]:
+        """Correct the recorded family of tests, and record that it happened.
+
+        `AUDIT-001`. The manuscript used to report how many tests reached a raw
+        p < 0.05, which on a wide table is the count the literature names an
+        anti-pattern. The correction itself is `statsmodels.multipletests`
+        through `ml.multiplicity` — the same call `ml/feature_selection.py`
+        already makes, not a second one.
+
+        **It is a recorded ACT rather than something the draft does on the
+        author's way past.** Benjamini-Hochberg over *"every test run in this
+        session"* is a decision about what the family is, and the app does not
+        get to make it silently. Until this is called, the draft says the tests
+        are uncorrected and declines to count them.
+        """
+        from ml import multiplicity
+
+        if self.statistical_validation is None:
+            return {"tests": [], "n_tests": 0, "n_significant": 0,
+                    "method": method, "alpha": float(alpha)}
+        summary = multiplicity.adjust(
+            self.statistical_validation.tests_run, method=method, alpha=alpha)
+        self.statistical_validation.tests_run = summary["tests"]
+        return summary
 
     # --- Reader methods (for consumers) ---
 
@@ -529,25 +676,24 @@ class WorkflowProvenance:
             headline=headline or "",
             picks=list(picks or []),
             probe_summary=probe_summary or "",
-            timestamp=datetime.now().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
+
+    #: Sections that are provenance but not reporting stages: the coach records
+    #: advice given, and advice is not a TRIPOD-checkable step of the study.
+    COMPLETENESS_EXCLUDED = ("coach",)
 
     def get_completeness(self) -> Dict[str, bool]:
         """Returns which workflow stages have been recorded.
 
-        Useful for TRIPOD compliance checking.
+        Useful for TRIPOD compliance checking. Derived from the record's own
+        schema (like the reset's section list), so a new section cannot be
+        forgotten here; exclusions are named, not implicit.
         """
         return {
-            "upload": self.upload is not None,
-            "eda": self.eda is not None,
-            "feature_engineering": self.feature_engineering is not None,
-            "feature_selection": self.feature_selection is not None,
-            "split": self.split is not None,
-            "preprocessing": self.preprocessing is not None,
-            "training": self.training is not None,
-            "explainability": self.explainability is not None,
-            "sensitivity": self.sensitivity is not None,
-            "statistical_validation": self.statistical_validation is not None,
+            name: getattr(self, name) is not None
+            for name in section_names()
+            if name not in self.COMPLETENESS_EXCLUDED
         }
 
     def get_methods_context(self) -> Dict[str, Any]:
@@ -614,17 +760,32 @@ class WorkflowProvenance:
         if self.training:
             ctx["models_trained"] = self.training.models_trained
             ctx["primary_model"] = self.training.primary_model
-            # Provide task-appropriate default if selection_criteria is empty
+            # Provide task-appropriate default if selection_criteria is empty.
+            #
+            # `AUDIT-030`, and THESE TWO LINES ARE THE PART THE ROW MISSED. It
+            # named `pages/06:1580` and `narrative_engine:587`; the same false
+            # word was also the DEFAULT here, so a record that never got a
+            # criterion written to it acquired the claim on the way out. A sweep
+            # that stops at the sites the finding cited stops one surface early.
+            from ml.holdout_selection import criterion_phrase
+
             selection_criteria = self.training.selection_criteria
             if not selection_criteria and self.upload:
                 task_type = self.upload.task_type
                 if task_type == "regression":
-                    selection_criteria = "validation RMSE"
+                    selection_criteria = criterion_phrase("RMSE")
                 elif task_type == "classification":
-                    selection_criteria = "validation F1"
+                    selection_criteria = criterion_phrase("F1")
             ctx["selection_criteria"] = selection_criteria
+            ctx["selected_on_holdout"] = self.training.selected_on_holdout
             ctx["use_cv"] = self.training.use_cv
             ctx["cv_folds"] = self.training.cv_folds
+            # `AUDIT-026`. Carried onto the methods context so the narrative
+            # reads what RAN rather than what was ticked. Stays `None` when the
+            # record does not know.
+            ctx["cv_models_run"] = (list(self.training.cv_models_run)
+                                    if self.training.cv_models_run is not None
+                                    else None)
             ctx["use_hyperopt"] = self.training.use_hyperopt
             ctx["class_weight_balanced"] = self.training.class_weight_balanced
             ctx["hyperparameters"] = self.training.hyperparameters
@@ -636,6 +797,16 @@ class WorkflowProvenance:
         if self.explainability:
             ctx["explainability_methods"] = self.explainability.methods_used
             ctx["models_explained"] = self.explainability.models_explained
+
+        if self.external_validation:
+            ev = self.external_validation
+            ctx["external_validation"] = True
+            ctx["external_validation_dataset"] = ev.dataset_name
+            ctx["external_validation_n"] = ev.n_rows
+            ctx["external_validation_models"] = list(ev.models_validated)
+            ctx["external_validation_metrics"] = dict(ev.metrics)
+            ctx["external_validation_bootstrap"] = ev.n_bootstrap
+            ctx["external_validation_repairs"] = list(ev.import_repairs)
 
         if self.sensitivity:
             ctx["seed_stability"] = self.sensitivity.seed_stability
@@ -710,6 +881,11 @@ class WorkflowProvenance:
                 k: v for k, v in data["explainability"].items()
                 if k in ExplainabilityProvenance.__dataclass_fields__
             })
+        if data.get("external_validation"):
+            prov.external_validation = ExternalValidationProvenance(**{
+                k: v for k, v in data["external_validation"].items()
+                if k in ExternalValidationProvenance.__dataclass_fields__
+            })
         if data.get("sensitivity"):
             prov.sensitivity = SensitivityProvenance(**{
                 k: v for k, v in data["sensitivity"].items()
@@ -727,6 +903,87 @@ class WorkflowProvenance:
             })
 
         return prov
+
+
+# ---------------------------------------------------------------------------
+# Section registry — derived from the dataclass, never typed by hand
+# ---------------------------------------------------------------------------
+
+# Sections a downstream reset must KEEP. `upload` describes the data
+# configuration itself, which the reset preserves by contract; every other
+# section describes work computed FROM it and is therefore stale. Membership
+# here is the only decision the resetter makes — anything not named is cleared,
+# so a section added to WorkflowProvenance cannot be forgotten by it.
+# `CONTRACT-034`/`STATE-047`: sensitivity and statistical_validation were absent
+# from a hand-typed list in utils/session_state.py, so a Methods draft asserted
+# hypothesis tests and seed-stability numbers whose results the same reset had
+# just deleted, and get_completeness() reported both stages as done.
+RESET_PRESERVED_SECTIONS: Tuple[str, ...] = ("upload",)
+
+# Sections whose clearing follows the artifact they describe: the resetter can
+# be asked to keep the engineered frame or the feature selection, and the record
+# of that step must survive exactly when the step's output does.
+_FLAGGED_SECTIONS: Dict[str, str] = {
+    "feature_engineering": "clear_feature_engineering",
+    "feature_selection": "clear_feature_selection",
+}
+
+_SECTION_NAMES_CACHE: Optional[Tuple[str, ...]] = None
+
+
+def section_names() -> Tuple[str, ...]:
+    """Every optional section field declared on WorkflowProvenance.
+
+    Structural, not a list: a field is a section iff it is declared
+    `Optional[<some *Provenance dataclass>]`. The two non-section fields
+    (pending_cleaning_actions, schema_version) fail that test by construction.
+    """
+    global _SECTION_NAMES_CACHE
+    if _SECTION_NAMES_CACHE is not None:
+        return _SECTION_NAMES_CACHE
+
+    import dataclasses as _dc
+    import typing as _t
+
+    try:
+        hints = _t.get_type_hints(WorkflowProvenance)
+    except Exception:
+        hints = {}
+
+    names: List[str] = []
+    for name, fld in WorkflowProvenance.__dataclass_fields__.items():
+        hint = hints.get(name)
+        if hint is not None:
+            args = [a for a in _t.get_args(hint) if a is not type(None)]
+            if (_t.get_origin(hint) is _t.Union and len(args) == 1
+                    and _dc.is_dataclass(args[0])):
+                names.append(name)
+            continue
+        # No resolvable hint (a stringified annotation we could not evaluate):
+        # fall back to the declaration's own text rather than dropping the
+        # field, because a dropped field is a section that never gets cleared.
+        text = fld.type if isinstance(fld.type, str) else str(fld.type)
+        if text.startswith("Optional[") and text.endswith("Provenance]"):
+            names.append(name)
+
+    _SECTION_NAMES_CACHE = tuple(names)
+    return _SECTION_NAMES_CACHE
+
+
+def downstream_sections(clear_feature_engineering: bool = True,
+                        clear_feature_selection: bool = True) -> Tuple[str, ...]:
+    """Sections a downstream reset must null, given what else it is clearing."""
+    flags = {"clear_feature_engineering": clear_feature_engineering,
+             "clear_feature_selection": clear_feature_selection}
+    out: List[str] = []
+    for name in section_names():
+        if name in RESET_PRESERVED_SECTIONS:
+            continue
+        flag = _FLAGGED_SECTIONS.get(name)
+        if flag is not None and not flags[flag]:
+            continue
+        out.append(name)
+    return tuple(out)
 
 
 # ---------------------------------------------------------------------------

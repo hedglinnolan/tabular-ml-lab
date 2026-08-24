@@ -131,5 +131,28 @@ def test_stacked_frame_is_hashable_for_invalidation():
     pd.util.hash_pandas_object(out, index=False)
 
 
+def test_a_users_own_source_file_column_is_not_overwritten():
+    """`__source_file` is a legal column name, and a table exported from this
+    app carries one. Re-stacking that export must not rewrite its provenance
+    labels, and the promised column count must match what is delivered."""
+    a = pd.DataFrame({"SEQN": [1, 2], SOURCE_COLUMN: ["orig_1999", "orig_1999"],
+                      "age": [40, 55]})
+    b = pd.DataFrame({"SEQN": [3, 4], SOURCE_COLUMN: ["orig_2001", "orig_2001"],
+                      "age": [61, 33]})
+    plan = plan_stack({"exportA": a, "exportB": b})
+    out, _ = execute_stack({"exportA": a, "exportB": b})
+
+    kept = [c for c in out.columns if c != SOURCE_COLUMN and SOURCE_COLUMN in str(c)]
+    assert kept, (
+        f"the user's own '{SOURCE_COLUMN}' column is gone: {list(out.columns)}")
+    assert sorted(out[kept[0]].dropna().unique()) == ["orig_1999", "orig_2001"], (
+        "the user's provenance labels were rewritten")
+    assert out[SOURCE_COLUMN].tolist() == ["exportA", "exportA", "exportB", "exportB"]
+    assert f"{out.shape[1]} column" in plan.summary() or \
+        f"and {out.shape[1]} columns" in plan.summary(), (
+        f"summary promises a different width than delivered "
+        f"({out.shape[1]} cols): {plan.summary()}")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

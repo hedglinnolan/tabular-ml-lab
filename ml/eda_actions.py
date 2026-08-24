@@ -12,11 +12,12 @@ from sklearn.feature_selection import mutual_info_regression, mutual_info_classi
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, f1_score
-import streamlit as st
+# No module-level Streamlit import: every use in this file is already a
+# function-level import (the host is only needed when an action renders).
 
 from ml.eval import calculate_regression_metrics, calculate_classification_metrics
 from ml.clinical_units import infer_unit
-from ml.physiology_reference import load_reference_bundle, match_variable_key, get_reference_interval
+from ml.physiology_reference import load_reference_bundle, match_variable_key, get_improbability_band
 from ml.outliers import detect_outliers
 from ml.stats_tests import (
     correlation_test,
@@ -96,20 +97,20 @@ def plausibility_check(
                 
                 # Add fasting note if applicable
                 if inferred_unit_info.get('fasting_note'):
-                    unit_row['Note'] = 'Fasting assumption (reference ranges assume fasting state)'
+                    unit_row['Note'] = 'Fasting assumption (the improbability band assumes a fasting state)'
                 else:
                     unit_row['Note'] = ''
                 
                 unit_inferences.append(unit_row)
                 
                 # Empirical plausibility from NHANES reference (percentile-based)
-                ref_interval = get_reference_interval(nhanes_ref, var_key)
-                if inferred_unit_info.get('conversion_factor') and ref_interval:
-                    ref_low, ref_high, ref_unit = ref_interval
+                improbability = get_improbability_band(nhanes_ref, var_key)
+                if inferred_unit_info.get('conversion_factor') and improbability:
+                    improbable_low, improbable_high, improbable_unit = improbability
                     converted = col_data * inferred_unit_info['conversion_factor']
 
-                    below_min = (converted < ref_low).sum()
-                    above_max = (converted > ref_high).sum()
+                    below_min = (converted < improbable_low).sum()
+                    above_max = (converted > improbable_high).sum()
                     total_out = below_min + above_max
                     out_rate = total_out / len(col_data)
 
@@ -118,7 +119,11 @@ def plausibility_check(
 
                     empirical_ranges.append({
                         'Column': col,
-                        'Reference Interval (NHANES p01–p99)': f"{ref_low}-{ref_high} {ref_unit}",
+                        # `MISC-018`. Was 'Reference Interval (NHANES p01–p99)',
+                        # which names the central 95% and then prints the
+                        # central 98% beside it. The label was the defect and
+                        # the parenthesis was the proof.
+                        'Improbability band (NHANES p01–p99)': f"{improbable_low}-{improbable_high} {improbable_unit}",
                         'Min (canonical)': f"{converted.min():.1f}",
                         'Max (canonical)': f"{converted.max():.1f}",
                         'Out of Range %': f"{out_rate:.1%}" if total_out > 0 else "0%"
@@ -126,8 +131,8 @@ def plausibility_check(
 
                     if out_rate > 0.05:
                         warnings.append(
-                            f"{col}: {out_rate:.1%} values outside NHANES reference interval "
-                            f"({ref_low}-{ref_high} {ref_unit}) after conversion from {inferred_unit_info['inferred_unit']}"
+                            f"{col}: {out_rate:.1%} values outside the NHANES improbability band "
+                            f"({improbable_low}-{improbable_high} {improbable_unit}) after conversion from {inferred_unit_info['inferred_unit']}"
                         )
 
                 # Clinical guideline comparison (informational only)
@@ -184,10 +189,15 @@ def plausibility_check(
     else:
         findings.append("All checked columns within plausible ranges")
     
-    # Add unit sanity flags from signals
+    # Add unit sanity flags from signals — minus the bands this action already
+    # reported above (D9-08: the recommender writes the same sentence without
+    # the "after conversion from <unit>" clause, and both used to print).
     if signals.physio_plausibility_flags:
-        warnings.extend(signals.physio_plausibility_flags)
-        findings.append(f"Found {len(signals.physio_plausibility_flags)} empirical plausibility flags")
+        _already = {w.split(" after conversion from ")[0] for w in warnings}
+        _fresh = [f for f in signals.physio_plausibility_flags if f not in _already]
+        warnings.extend(_fresh)
+        if _fresh:
+            findings.append(f"Found {len(_fresh)} empirical plausibility flags")
     
     # Add note about unit overrides
     if unit_overrides:
@@ -198,6 +208,13 @@ def plausibility_check(
     # catch it. This observation has to reach the ledger.
     if signals.physio_plausibility_flags or out_of_range:
         num_flags = len(signals.physio_plausibility_flags) if signals.physio_plausibility_flags else 0
+        # MERGE NOTE: main carries the observation on the returned `Insight`
+        # (utils.storyline.add_insight was deleted in the ledger migration, and
+        # the old call here was swallowed by a bare `except`, so the finding
+        # went nowhere). TurboTab's contribution to this block was the
+        # vocabulary, `MISC-018`: p01-p99 is an *improbability band*, not a
+        # reference interval, which names the central 95% of a healthy
+        # population. Both are kept - main's carrier, TurboTab's wording.
         num_out_of_range = len(out_of_range)
         cols_str = ", ".join(out_of_range[:6])
         if num_out_of_range > 6:
@@ -205,16 +222,17 @@ def plausibility_check(
         if out_of_range:
             manuscript = (
                 f"{num_out_of_range} {'variable' if num_out_of_range == 1 else 'variables'} "
-                f"contained values outside the NHANES p01-p99 reference interval for the "
-                f"inferred unit ({cols_str}), which may reflect unit inconsistency or "
+                f"contained values outside the NHANES p01\u2013p99 improbability band for "
+                f"the inferred unit ({cols_str}), which may reflect unit inconsistency or "
                 f"measurement error rather than true physiological extremes"
             )
         else:
             manuscript = (
                 f"{num_flags} empirical plausibility "
-                f"{'flag was' if num_flags == 1 else 'flags were'} raised against published "
-                f"reference ranges, which may reflect unit inconsistency or measurement "
-                f"error rather than true physiological extremes"
+                f"{'flag was' if num_flags == 1 else 'flags were'} raised against the "
+                f"NHANES p01–p99 improbability band, which may reflect unit "
+                f"inconsistency or measurement error rather than true physiological "
+                f"extremes"
             )
         insights.append(Insight(
             id="eda_plausibility_out_of_range",
@@ -222,15 +240,18 @@ def plausibility_check(
             category="data_quality",
             severity="warning",
             finding=(
-                f"Physiologic plausibility: {num_out_of_range} column(s) outside NHANES "
-                f"reference intervals"
+                f"Physiologic plausibility: {num_out_of_range} column(s) outside the "
+                f"NHANES improbability band (p01\u2013p99)"
                 + (f" ({cols_str})" if cols_str else "")
                 + f", {num_flags} empirical plausibility flag(s)"
             ),
             implication=(
-                "Values outside a reference interval are more often a unit mismatch or a "
-                "data-entry error than real physiology, and every downstream model inherits "
-                "the error unchallenged."
+                "Values outside the improbability band are more often a unit mismatch "
+                "or a data-entry error than real physiology, and every downstream model "
+                "inherits the error unchallenged. That band is not a reference interval "
+                "\u2014 a reference interval is the central 95% of a healthy reference "
+                "population, and a value outside this one is unusual rather than "
+                "abnormal. Clinical thresholds are informational only."
             ),
             recommended_action=(
                 "Confirm the inferred units in Upload & Audit (unit overrides), then correct "
@@ -242,7 +263,7 @@ def plausibility_check(
             # Explicit: the category default for data_quality is TRIPOD 9
             # (missing data), and a units check does not satisfy that item.
             tripod_keys=["predictors_defined"],
-            # model_scope omitted → implausible values affect every model family.
+            # model_scope omitted -> implausible values affect every model family.
             metadata={
                 "n_columns_checked": len(checked_cols),
                 "n_out_of_range_columns": num_out_of_range,
@@ -637,7 +658,15 @@ def target_profile(
             
             imbalance_ratio = signals.target_stats.get('class_imbalance_ratio', 1.0)
             if imbalance_ratio < 0.5:
-                warnings.append(f"Class imbalance detected (ratio: {imbalance_ratio:.2f}) - consider class weighting")
+                # `GUIDED-049`. Was "consider class weighting", which is the
+                # step the registry says damages the property clinical
+                # prediction cares about most.
+                warnings.append(
+                    f"Class imbalance detected (ratio: {imbalance_ratio:.2f})"
+                    f" - report PR-AUC and calibration alongside accuracy, and"
+                    f" choose the decision threshold explicitly. Rebalancing is"
+                    f" contraindicated for a risk model"
+                )
     
     return {
         'findings': findings,
@@ -1358,3 +1387,443 @@ def feature_scaling_check(
             'n_numeric': len(numeric),
         },
     }
+
+
+# MERGE NOTE (TurboTab <- main): main's e24a534 DELETED quick_probe_baselines,
+# because it "split the full frame and never consulted the lockbox, so its
+# held-out-looking scores were fit partly on sealed rows". TurboTab fixed that
+# same defect at the caller instead: pages/02_EDA.py lists this function in
+# _TRAIN_ONLY_ACTIONS and hands it train_row_mask()-scoped rows only, saying so
+# on screen. Three TurboTab test files import it by name
+# (test_the_quick_baseline_does_not_leak.py,
+# test_eda_does_not_model_on_sealed_rows.py,
+# test_the_manuscript_does_not_assert_an_uncorrected_count.py), so it is kept.
+# It no longer has a UI entry point: main removed the recommendation-card panel
+# that offered it. HUMAN REVIEW: either re-list it from a section on the page or
+# take main's deletion and retire the three test files with it.
+
+
+def quick_probe_baselines(
+    df: pd.DataFrame,
+    target: Optional[str],
+    features: List[str],
+    signals: Any,
+    session_state: Any
+) -> Dict[str, Any]:
+    """Run quick baseline models (constant, simple GLM, shallow RF)."""
+    findings = []
+    warnings = []
+    figures = []
+    
+    if not target or target not in df.columns:
+        return {
+            'findings': ["Target not available"],
+            'warnings': [],
+            'figures': []
+        }
+    
+    if len(features) == 0:
+        return {
+            'findings': ["No features selected"],
+            'warnings': [],
+            'figures': []
+        }
+    
+    # Prepare data
+    X = df[features].select_dtypes(include=[np.number])
+    y = df[target]
+
+    # THE N CASCADE, REPORTED (`AUDIT-004`). This mask deletes every row with a
+    # missing value in the target OR in any one of the features, and the
+    # numbers below used to be presented with no statement of what they were
+    # about. `research/NUTRITION_PACK.md` §06 lists *silent listwise deletion
+    # with no N cascade* first among its anti-patterns, and this project
+    # already has the vocabulary: an exclusion that changes N is reported in
+    # participant flow, because a reported n that is not the n the reader
+    # assumes is the same defect as an uncorrected count.
+    #
+    # On a wide table with scattered missingness listwise deletion can remove
+    # most of the rows, and an MAE computed on whoever happened to be complete
+    # is a number about a subset nobody named.
+    n_supplied = int(len(df))
+    n_features_requested = len(features)
+    n_features_numeric = int(X.shape[1])
+    valid_mask = ~(y.isnull() | X.isnull().any(axis=1))
+    n_used = int(valid_mask.sum())
+    n_dropped = n_supplied - n_used
+    X = X[valid_mask]
+    y = y[valid_mask]
+
+    if n_dropped:
+        findings.append(
+            f"Baselines were fitted on {n_used:,} of {n_supplied:,} rows — "
+            f"{n_dropped:,} were removed for a missing value in the target or "
+            f"in one of the {n_features_numeric} features. Every number below "
+            f"is about those {n_used:,} rows."
+        )
+    if n_features_numeric < n_features_requested:
+        findings.append(
+            f"{n_features_numeric} of {n_features_requested} selected features "
+            f"are numeric and were used; the rest were left out of these "
+            f"probes rather than encoded."
+        )
+
+    if len(X) < 10:
+        return {
+            'findings': findings + ["Insufficient data for baseline models"],
+            'warnings': warnings,
+            'figures': []
+        }
+
+    # THE SPLIT, THROUGH THE VETTED SPLITTER (`AUDIT-002`).
+    #
+    # This was `train_test_split(X, y, test_size=0.2, random_state=42)` — rows
+    # divided at random with no group awareness. On a table with repeated
+    # measures one person's rows land on both sides and the MAE below is
+    # optimistic. `research/NUTRITION_PACK.md` §03 states it as a
+    # TurboTab-specific item: *if a person contributes multiple recalls, rows
+    # from the same person must never be split across train and test folds —
+    # use participant-level splitting.* `METABOLOMICS_PACK.md` §10 lists
+    # *repeated measures treated as independent* under Structural.
+    #
+    # **The answer was already recorded and this path was not reading it.**
+    # `DatasetSignals` carries `cohort_type_final` and `entity_id_final` — the
+    # app asked whether the cohort is longitudinal and what identifies an
+    # entity, and the user answered. `ml/splits.py` has implemented the grouped
+    # basis the whole time, with GroupShuffleSplit and the priority order that
+    # puts grouping first because a subject spanning partitions is the worse
+    # leak. Both existed; this function used neither.
+    #
+    # 0.70/0.10/0.20 through `make_split` and then train ∪ val as the fitting
+    # set, so the 80/20 shape is unchanged and nothing here reimplements a
+    # partition. **Expect these numbers to be WORSE than the leaking ones on a
+    # longitudinal table.** That is the app becoming correct.
+    from ml.splits import SplitError, SplitSpec, make_split
+
+    entity_col = getattr(signals, 'entity_id_final', None)
+    longitudinal = getattr(signals, 'cohort_type_final', None) == 'longitudinal'
+    grouped = bool(longitudinal and entity_col and entity_col in df.columns)
+
+    probe_frame = df.loc[valid_mask, list(X.columns)].copy()
+    probe_frame[target] = y
+    if grouped:
+        probe_frame[entity_col] = df.loc[valid_mask, entity_col]
+
+    spec = SplitSpec(train_size=0.70, val_size=0.10, test_size=0.20,
+                     random_state=42, use_group_split=grouped,
+                     entity_id_col=entity_col if grouped else None)
+    try:
+        split = make_split(probe_frame, list(X.columns), target,
+                           signals.task_type_final or 'regression', spec)
+    except SplitError as exc:
+        return {
+            'findings': findings,
+            'warnings': warnings + [f"Baselines were not run: {exc}"],
+            'figures': []
+        }
+
+    X_train = pd.concat([split.X_train, split.X_val])
+    y_train = pd.Series(np.concatenate([split.y_train, split.y_val]))
+    X_test, y_test = split.X_test, pd.Series(split.y_test)
+
+    if grouped:
+        findings.append(
+            f"Rows were split by `{entity_col}` rather than at random, so no "
+            f"{entity_col} appears in both the fitting and the held-out set. "
+            f"On a table with repeated measures a random split puts one "
+            f"person's rows on both sides and the numbers below come out "
+            f"better than they are."
+        )
+    elif entity_col and entity_col in df.columns:
+        findings.append(
+            f"Rows were split at random. `{entity_col}` identifies entities in "
+            f"this table but the cohort is not recorded as longitudinal, so "
+            f"nothing here says a row repeats — if it does, answer that "
+            f"question and these numbers will change."
+        )
+
+    results = []
+
+    if signals.task_type_final == 'regression':
+        # Constant predictor (mean)
+        constant_pred = np.full(len(y_test), y_train.mean())
+        mae_const = mean_absolute_error(y_test, constant_pred)
+        rmse_const = np.sqrt(mean_squared_error(y_test, constant_pred))
+        r2_const = r2_score(y_test, constant_pred)
+        results.append({
+            'Model': 'Constant (Mean)',
+            'MAE': f"{mae_const:.3f}",
+            'RMSE': f"{rmse_const:.3f}",
+            'R²': f"{r2_const:.3f}"
+        })
+        
+        # Simple GLM
+        try:
+            glm = LinearRegression()
+            glm.fit(X_train, y_train)
+            y_pred_glm = glm.predict(X_test)
+            mae_glm = mean_absolute_error(y_test, y_pred_glm)
+            rmse_glm = np.sqrt(mean_squared_error(y_test, y_pred_glm))
+            r2_glm = r2_score(y_test, y_pred_glm)
+            results.append({
+                'Model': 'GLM (OLS)',
+                'MAE': f"{mae_glm:.3f}",
+                'RMSE': f"{rmse_glm:.3f}",
+                'R²': f"{r2_glm:.3f}"
+            })
+        except Exception as e:
+            warnings.append(f"GLM failed: {str(e)}")
+        
+        # Shallow RF
+        try:
+            rf = RandomForestRegressor(n_estimators=10, max_depth=3, random_state=42, n_jobs=-1)
+            rf.fit(X_train, y_train)
+            y_pred_rf = rf.predict(X_test)
+            mae_rf = mean_absolute_error(y_test, y_pred_rf)
+            rmse_rf = np.sqrt(mean_squared_error(y_test, y_pred_rf))
+            r2_rf = r2_score(y_test, y_pred_rf)
+            results.append({
+                'Model': 'RF (10 trees, depth=3)',
+                'MAE': f"{mae_rf:.3f}",
+                'RMSE': f"{rmse_rf:.3f}",
+                'R²': f"{r2_rf:.3f}"
+            })
+        except Exception as e:
+            warnings.append(f"RF failed: {str(e)}")
+    
+    else:  # classification
+        # Constant predictor (majority class)
+        majority_class = y_train.mode()[0] if len(y_train.mode()) > 0 else y_train.iloc[0]
+        constant_pred = np.full(len(y_test), majority_class)
+        acc_const = accuracy_score(y_test, constant_pred)
+        f1_const = f1_score(y_test, constant_pred, average='weighted')
+        results.append({
+            'Model': 'Constant (Majority)',
+            'Accuracy': f"{acc_const:.3f}",
+            'F1 (weighted)': f"{f1_const:.3f}"
+        })
+        
+        # Simple Logistic
+        try:
+            logreg = LogisticRegression(max_iter=500, random_state=42)
+            logreg.fit(X_train, y_train)
+            y_pred_log = logreg.predict(X_test)
+            acc_log = accuracy_score(y_test, y_pred_log)
+            f1_log = f1_score(y_test, y_pred_log, average='weighted')
+            results.append({
+                'Model': 'Logistic Regression',
+                'Accuracy': f"{acc_log:.3f}",
+                'F1 (weighted)': f"{f1_log:.3f}"
+            })
+        except Exception as e:
+            warnings.append(f"Logistic regression failed: {str(e)}")
+        
+        # Shallow RF
+        try:
+            rf = RandomForestClassifier(n_estimators=10, max_depth=3, random_state=42, n_jobs=-1)
+            rf.fit(X_train, y_train)
+            y_pred_rf = rf.predict(X_test)
+            acc_rf = accuracy_score(y_test, y_pred_rf)
+            f1_rf = f1_score(y_test, y_pred_rf, average='weighted')
+            results.append({
+                'Model': 'RF (10 trees, depth=3)',
+                'Accuracy': f"{acc_rf:.3f}",
+                'F1 (weighted)': f"{f1_rf:.3f}"
+            })
+        except Exception as e:
+            warnings.append(f"RF failed: {str(e)}")
+    
+    if results:
+        results_df = pd.DataFrame(results)
+        figures.append(('table', results_df))
+        findings.append(f"Ran {len(results)} baseline models")
+        findings.append("These are quick probes only - not saved as trained models")
+
+    # THE BASIS, INSPECTABLE RATHER THAN ASSERTED. `overlap` is the number of
+    # entities with rows on both sides — zero is the guarantee, and it is
+    # counted here rather than promised in a comment, because a promise nobody
+    # can check is what `AUDIT-002` was.
+    split_basis = {
+        'strategy': split.strategy,
+        'entity_column': entity_col if grouped else None,
+        'n_fitted': int(len(X_train)),
+        'n_held_out': int(len(X_test)),
+        'entity_overlap': None,
+    }
+    if entity_col and entity_col in df.columns:
+        entities = df.loc[valid_mask, entity_col]
+        fitted = set(entities.loc[list(split.train_labels)
+                                  + list(split.val_labels)])
+        held = set(entities.loc[list(split.test_labels)])
+        split_basis['entity_overlap'] = int(len(fitted & held))
+
+    return {
+        'findings': findings,
+        'warnings': warnings,
+        'figures': figures,
+        'split_basis': split_basis,
+    }
+
+
+# =============================================================================
+# Recommendation panel → InsightLedger  (`AUDIT-032`)
+# =============================================================================
+#
+# `AUDIT-032`, corrected in the shape `AUDIT-021` uses — the claim narrowed to
+# the one the surface can keep, not deleted and not blurred.
+#
+# BEFORE: `pages/02_EDA.py::_resolve_insights_from_eda_result` called
+#   `ledger.resolve(...)` for every insight matching the action, with
+#   `resolution_details={"action_type": "diagnostic_analysis", ...}`. A resolved
+#   insight is counted by `InsightLedger.narrative_for_report` under *"N were
+#   addressed during the modeling workflow"* and printed under *"Addressed
+#   observations:"*, and `discussion_points_for_manuscript` skips it outright
+#   (`utils/insight_ledger.py:1233` — `if i.resolved: continue`). So pressing
+#   **Run Leakage Detection** made the report assert the leakage blocker had
+#   been addressed and dropped the caveat the app itself had authored
+#   (*"…raising the possibility of information leakage; results including this
+#   predictor should be interpreted with caution"*) — while the column was
+#   still a model feature.
+#
+# AFTER: the run is recorded as what it was. The findings are attached to the
+#   insight, the insight stays open, and the page says so out loud. Nothing is
+#   removed: the diagnostic still reaches the ledger, it just no longer claims
+#   an action it did not take.
+#
+# THE CLASS, not only the instance (`AGENT_ONBOARD.md` §08 check 1): **a
+# read-only diagnostic recorded as a resolution.** All five actions below are
+# read-only — `leakage_scan` re-reads `signals.leakage_candidate_cols` and
+# returns a string, `multicollinearity_vif` computes VIFs, `missingness_scan`
+# tabulates rates, `target_profile` describes a distribution,
+# `data_sufficiency_check` divides n by p. Not one of them drops a column,
+# fills a value or transforms a variable, so not one of them can resolve
+# anything. The row named leakage; the same lens over the same function found
+# the other four, which is why the whole map moved rather than one key.
+#
+# The map lives here rather than in `pages/02_EDA.py` because
+# `tests/test_eda_ledger_bridge.py` had to keep a hand-copy of both the map and
+# the function — a Streamlit page is not importable — and that copy is now the
+# only place the old behavior is asserted. One importable definition is the
+# fix for that class as well. `ml/` is inside `SCAN_DIRS` in
+# `tests/test_insight_id_integrity.py`, and the name is unchanged, so the id
+# scanner still sees these prefixes as referenced.
+
+_ACTION_TO_INSIGHT_MAP = {
+    "multicollinearity_vif": {"prefix": "eda_corr_cluster_", "category": "collinearity"},
+    "leakage_scan": {"prefix": "eda_leakage_", "category": "leakage"},
+    "missingness_scan": {"prefix": "eda_missing_", "category": "missing_data"},
+    "target_profile": {"exact": ["eda_target_skew"], "category": "target"},
+    "data_sufficiency_check": {"exact": ["eda_sufficiency_insufficient", "eda_sufficiency_borderline"], "category": "sufficiency"},
+}
+
+# Every key above. Kept as its own name so that adding an action which DOES
+# change the data is a deliberate act: it must be added to the map and left out
+# of this set, and `record_diagnostic_on_insights` will then refuse it rather
+# than silently record it as read-only.
+DIAGNOSTIC_ONLY_ACTIONS = frozenset(_ACTION_TO_INSIGHT_MAP)
+
+
+def diagnostic_disclosure(title: str, n_open: int, n_closed: int = 0) -> str:
+    """The sentence the EDA page shows after a recommended analysis has run.
+
+    States the silence rather than leaving it (`AUDIT-028`): a person who has
+    just watched a scan report a leakage column would otherwise reasonably read
+    the green result as the problem having been handled.
+
+    `n_closed` is the CARVE-OUT (`MISC-092`, `DRIVE-069` finding 13). One of
+    these actions does answer the observations it speaks to: running VIF is the
+    answer to the pairwise-correlation clusters this page raised, and
+    `pages/02_EDA.py` resolves `eda_corr_cluster_*` on that run. The disclosure
+    kept saying "it changes nothing. No open observation is waiting on it" —
+    true about the DATA, and contradicted two pages later by a coaching panel
+    crediting VIF with resolving two observations. When something was closed,
+    the sentence says so and says what was closed.
+    """
+    if n_closed > 0:
+        _cnoun = "observation" if n_closed == 1 else "observations"
+        closed_clause = (
+            f"{title} reads the data and reports — it removed, filled and "
+            f"transformed nothing in your dataset. It IS the answer to "
+            f"{n_closed} {_cnoun} this page raised, and {'that one is' if n_closed == 1 else 'those are'} "
+            f"now recorded as addressed by it."
+        )
+        if n_open <= 0:
+            return closed_clause + " Nothing else is waiting on it."
+        _onoun, _overb, _othem = (
+            ("observation", "stays", "it") if n_open == 1
+            else ("observations", "stay", "them")
+        )
+        return (
+            closed_clause +
+            f" A further {n_open} {_onoun} it speaks to {_overb} **open** in "
+            f"the report until an action on a later page addresses {_othem}."
+        )
+    if n_open <= 0:
+        return (
+            f"{title} reads the data and reports; it changes nothing. "
+            f"No open observation is waiting on it."
+        )
+    noun, verb, them = (
+        ("observation", "stays", "it") if n_open == 1
+        else ("observations", "stay", "them")
+    )
+    return (
+        f"{title} reads the data and reports — it removed, filled and "
+        f"transformed nothing. The {n_open} {noun} it speaks to {verb} "
+        f"**open** in the report until an action on a later page addresses "
+        f"{them}."
+    )
+
+
+def record_diagnostic_on_insights(ledger, action_id: str, result: dict,
+                                  title: str) -> List[str]:
+    """Attach a completed diagnostic to the ledger insights it speaks to.
+
+    Returns the ids of the insights that were annotated and left OPEN. The
+    return value is the count the page discloses, so a caller cannot render the
+    sentence without having done the recording.
+
+    Does not resolve, does not acknowledge and does not touch severity: running
+    a diagnostic is evidence about an observation, never an action on it.
+    """
+    mapping = _ACTION_TO_INSIGHT_MAP.get(action_id)
+    if not mapping:
+        return []
+    if action_id not in DIAGNOSTIC_ONLY_ACTIONS:
+        raise ValueError(
+            f"{action_id!r} is mapped to insights but is not declared "
+            f"read-only; route it through whatever actually performs the "
+            f"action rather than through this recorder."
+        )
+
+    findings = result.get("findings", []) or []
+    warnings = result.get("warnings", []) or []
+    stats_ = result.get("stats", {}) or {}
+
+    record = {
+        "action_type": "diagnostic_analysis",
+        "method": action_id,
+        "title": title,
+        "findings": list(findings),
+        "warnings": list(warnings),
+        "changed_the_data": False,
+    }
+    if stats_:
+        record["stats"] = stats_
+
+    exact_ids = mapping.get("exact", [])
+    prefix = mapping.get("prefix", "")
+
+    touched: List[str] = []
+    for insight in ledger.insights:
+        if insight.resolved:
+            continue
+        if not (insight.id in exact_ids or (prefix and insight.id.startswith(prefix))):
+            continue
+        # `metadata` is carried by `to_dict`/`from_dict` and by `upsert`, so the
+        # record survives a session round-trip and a later re-scan.
+        history = insight.metadata.setdefault("diagnostics_run", [])
+        if not any(h.get("method") == action_id for h in history):
+            history.append(record)
+        touched.append(insight.id)
+    return touched

@@ -3,8 +3,148 @@ Triage and detection logic for task type and cohort structure.
 """
 import pandas as pd
 import numpy as np
+
+# Dtype questions are asked through pd.api.types, never by comparing a dtype
+# object to a string. pandas 3 makes `str` the default dtype for text columns,
+# so `dtype in ['object', ...]` stops matching a text column and every branch
+# keyed on it silently takes the wrong path (T0-LIVE-004). The predicates below
+# answer the question that was actually meant, on both majors.
+from pandas.api import types as _pdt
+
+from ml import name_registry as _name_registry
+
+
+def _is_categorical_like(s) -> bool:
+    """Text, category or boolean — anything whose values are labels."""
+    return bool(_pdt.is_object_dtype(s) or _pdt.is_string_dtype(s)
+                or isinstance(s.dtype, pd.CategoricalDtype) or _pdt.is_bool_dtype(s))
+
+
+def _is_integer_like(s) -> bool:
+    return bool(_pdt.is_integer_dtype(s) and not _pdt.is_bool_dtype(s))
+
+
+def _is_float_like(s) -> bool:
+    return bool(_pdt.is_float_dtype(s))
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Literal
 from datetime import datetime
+
+
+# ── target dtype ─────────────────────────────────────────────────────────────
+#
+# `DRIVE-064`. A CSV column of True/False with blanks reads back as `object`
+# holding Python bools, and sklearn's `type_of_target` calls that 'unknown'.
+# `detect_task_type` above calls it classification — correctly, it IS a binary
+# outcome — and nothing then reconciled the two, so the column flowed into
+# every selector and explainer, each of which raised
+#
+#     Unknown label type: unknown. Maybe you are trying to fit a classifier,
+#     which expects discrete classes on a regression target with continuous
+#     values.
+#
+# a message that names the wrong cause (the column is not continuous) and the
+# wrong fix. The task type was never the problem; the storage was.
+UNUSABLE_TARGET_TYPES = ("unknown", "mixed")
+
+
+@dataclass
+class TargetDtypeDiagnosis:
+    """Whether sklearn can read this target column as labels, and what to do."""
+    column: str
+    dtype: str
+    sklearn_type: str
+    n_present: int
+    n_missing: int
+    usable: bool
+    repairable: bool                 # a safe, lossless recode exists
+    condition: str = ""              # what is actually wrong, in one sentence
+    fix: str = ""                    # what repairs it, naming the control
+    levels: List[str] = field(default_factory=list)
+
+
+def repair_boolean_target(s: pd.Series) -> pd.Series:
+    """True → 1, False → 0, blank → blank. The Import Doctor's own recode.
+
+    `pd.to_numeric`, not a string pass: stringifying first turns True into the
+    unreadable 'True' and blanks the column (`DRIVE-067`).
+    """
+    return pd.to_numeric(s, errors="coerce")
+
+
+def diagnose_target_dtype(df: pd.DataFrame, target: str) -> TargetDtypeDiagnosis:
+    """Can sklearn read `df[target]` as class labels — and if not, what fixes it?
+
+    Judged on the non-missing values, which is what every downstream page hands
+    to an estimator (they all mask on `notna()` first). `type_of_target` itself
+    raises on NaN, so a column is never called unusable merely for having
+    blanks.
+    """
+    if target not in df.columns:
+        return TargetDtypeDiagnosis(
+            column=target, dtype="", sklearn_type="missing", n_present=0,
+            n_missing=0, usable=False, repairable=False,
+            condition=f"Column '{target}' is not in this table.",
+            fix="Choose a target column that exists in the working table.")
+
+    s = df[target]
+    present = s.dropna()
+    n_present, n_missing = int(len(present)), int(s.isna().sum())
+    dtype = str(s.dtype)
+
+    if n_present == 0:
+        return TargetDtypeDiagnosis(
+            column=target, dtype=dtype, sklearn_type="empty", n_present=0,
+            n_missing=n_missing, usable=False, repairable=False,
+            condition=f"'{target}' has no value on any row — every one of its "
+                      f"{n_missing:,} rows is blank.",
+            fix="Choose a different target column, or supply the outcome values.")
+
+    try:
+        from sklearn.utils.multiclass import type_of_target
+        sklearn_type = str(type_of_target(present))
+    except Exception:
+        sklearn_type = "unknown"
+
+    if sklearn_type not in UNUSABLE_TARGET_TYPES:
+        return TargetDtypeDiagnosis(
+            column=target, dtype=dtype, sklearn_type=sklearn_type,
+            n_present=n_present, n_missing=n_missing,
+            usable=True, repairable=False)
+
+    levels = [str(v) for v in present.unique()[:6]]
+    # The Import Doctor owns "what shape is this column in", and its answer must
+    # be the same one, so that the repair this points at is the repair that runs.
+    from ml.import_doctor import all_boolean_values
+    if all_boolean_values(present.unique()):
+        return TargetDtypeDiagnosis(
+            column=target, dtype=dtype, sklearn_type=sklearn_type,
+            n_present=n_present, n_missing=n_missing,
+            usable=False, repairable=True, levels=levels,
+            condition=(
+                f"'{target}' holds True/False values in a text column"
+                + (f", with {n_missing:,} of its {n_present + n_missing:,} rows "
+                   f"blank" if n_missing else "")
+                + ". Stored this way it is neither a number nor a label: "
+                  "scikit-learn reads its type as 'unknown' and every selector, "
+                  "model and explainer raises on it."),
+            fix=(f"Recode '{target}' to 1 (True) and 0 (False), leaving blanks "
+                 f"blank — the Import Doctor's \"Recode '{target}' to 1 (True) "
+                 f"and 0 (False)\" repair in Step 3's structural review does "
+                 f"exactly this."))
+
+    return TargetDtypeDiagnosis(
+        column=target, dtype=dtype, sklearn_type=sklearn_type,
+        n_present=n_present, n_missing=n_missing,
+        usable=False, repairable=False, levels=levels,
+        condition=(
+            f"'{target}' mixes value kinds that scikit-learn cannot read as "
+            f"class labels (its type reads as '{sklearn_type}'; the values "
+            f"include {', '.join(map(repr, levels[:4]))}). This is a storage "
+            f"problem, not a continuous outcome."),
+        fix=("Repair the column in Step 3's structural review (the Import "
+             "Doctor), or in your source file, so that every value is of one "
+             "kind — then choose it as the target again."))
 
 
 def detect_task_type(df: pd.DataFrame, target: str) -> Dict:
@@ -38,13 +178,13 @@ def detect_task_type(df: pd.DataFrame, target: str) -> Dict:
     confidence = "low"
     
     # Check dtype first
-    if target_series.dtype in ['object', 'category', 'bool']:
+    if _is_categorical_like(target_series):
         detected = 'classification'
         confidence = 'high'
         reasons.append(f"Target is {target_series.dtype} type (categorical/binary)")
     
     # Check for boolean-like (0/1) numeric
-    elif target_series.dtype in [np.int64, np.int32, 'int64', 'int32', 'int']:
+    elif _is_integer_like(target_series):
         unique_vals = sorted(target_series.dropna().unique())
         if len(unique_vals) == 2 and set(unique_vals) == {0, 1}:
             detected = 'classification'
@@ -52,15 +192,29 @@ def detect_task_type(df: pd.DataFrame, target: str) -> Dict:
             reasons.append("Target is binary (0/1) - classification")
         elif n_unique <= 10:
             # Low-cardinality integers are AMBIGUOUS: class codes read this
-            # way, but so do counts and 0-10 ratings, which are regression
-            # targets. Never assert this confidently — the UI prompts the
-            # user to verify or override when confidence is not 'high'.
+            # way, and so do counts and ordinal scores. AUDIT-033: this branch
+            # used to say ordinal scores "should be treated as regression",
+            # which is the one thing §B6 marks SETTLED against — an ordered
+            # outcome wants a cumulative link (proportional odds) model, and
+            # `ml/model_registry.py` has no such family. So the reason names
+            # the method, says the app does not fit it, states how EACH offered
+            # family is wrong, and recommends neither. The ≤10 gate keeps this
+            # out of §B4's genuinely disputed regime: a summated multi-item
+            # scale score has far more than ten distinct values, and §B4's
+            # "metric defensible" row is about those.
             detected = 'classification'
             confidence = 'low'
             reasons.append(
-                f"Target has {n_unique} unique integer values (≤10) — this often means "
-                f"classification, but counts or ordinal scores should be treated as "
-                f"regression. Verify or override below."
+                f"Target has {n_unique} unique integer values (≤10). Class codes, "
+                f"a count, and an ordinal score (a 0–5 mRS, a 1–5 Likert item, a "
+                f"0–10 rating) all look like this, and the numbers cannot tell them "
+                f"apart. If it is an ordinal score, neither offer here is the right "
+                f"one: an ordered outcome wants a cumulative link (proportional "
+                f"odds) model, which this app does not fit — statsmodels' "
+                f"OrderedModel or R's ordinal::clm does. Regression treats the gaps "
+                f"between the categories as equal and can report the ordering of "
+                f"group means backwards; classification discards the ordering "
+                f"altogether. Verify or override below."
             )
         elif unique_ratio < 0.02:
             detected = 'classification'
@@ -72,8 +226,18 @@ def detect_task_type(df: pd.DataFrame, target: str) -> Dict:
             reasons.append(f"Target is numeric with {n_unique} unique values ({unique_ratio:.1%} ratio) - regression")
     
     # Float numeric
-    elif target_series.dtype in [np.float64, np.float32, 'float64', 'float32', 'float']:
-        if n_unique <= 10:
+    elif _is_float_like(target_series):
+        _float_vals = set(target_series.dropna().unique())
+        if _float_vals == {0.0, 1.0}:
+            # A 0/1 float is a binary outcome with blanks — pandas types a
+            # column with any NaN as float. It is exactly as certain as the
+            # integer 0/1 case below, and the repaired boolean target
+            # (`DRIVE-064`) arrives in precisely this shape, so it must not be
+            # demoted to a hedged "best guess" by the repair that fixed it.
+            detected = 'classification'
+            confidence = 'high'
+            reasons.append("Target is binary (0/1, with blanks) - classification")
+        elif n_unique <= 10:
             detected = 'classification'
             confidence = 'med'
             reasons.append(f"Target has {n_unique} unique float values (≤10) - classification")
@@ -122,27 +286,67 @@ def detect_cohort_structure(df: pd.DataFrame, sample_size: int = 1000) -> Dict:
     detected = 'cross_sectional'
     confidence = 'med'
     
-    # Pattern matching for entity ID columns (case-insensitive)
-    entity_id_patterns = [
-        'patient', 'subject', 'person', 'respondent', 'participant',
-        'member', 'mrn', 'subject_id', 'patient_id', 'person_id',
-        'respondent_id', 'participant_id', 'member_id', 'record', 'encounter'
-    ]
-    
-    # Exclude clinical measurement patterns (NOT entity IDs)
-    clinical_measurement_patterns = [
-        'glucose', 'triglyceride', 'cholesterol', 'bmi', 'waist', 
-        'weight', 'height', 'bp', 'blood_pressure', 'kcal', 'hba1c',
-        'insulin', 'ldl', 'hdl', 'creatinine', 'albumin'
-    ]
-    
-    # Pattern matching for time columns (case-insensitive)
-    time_patterns = [
-        'date', 'time', 'visit', 'wave', 'year', 'month', 'day',
-        'timestamp', 'visit_date', 'visit_time', 'assessment_date',
-        'baseline', 'followup', 'follow_up'
-    ]
-    
+    # EXACT KEY OR DECLARED ALIAS; AN UNKNOWN NAME YIELDS SILENCE.
+    #
+    # These three were substring lists, and the class of error is the one
+    # `ml/name_registry.py` records five instances of: `subjective_wellbeing`
+    # contains `subject`, so a wellbeing score was a patient identifier;
+    # `yearly_income` contains `year`, so it was a time column;
+    # `membership_fee`, `encounter_cost` and `recordkeeping_score` were all
+    # entity IDs. Each of those then reaches a real decision — whether the data
+    # is longitudinal, and therefore how the held-out rows are chosen.
+    #
+    # Silence is the correct answer for a name nobody declared. `SEQN`,
+    # `USUBJID` and `study_id` are real identifiers this will not recognize
+    # until somebody adds them, and that is the cost the remedy is paid for:
+    # a gap is visible to the user and costs a question, a wrong claim is
+    # invisible and licenses a split.
+    _ENTITY_ID = _name_registry.build({
+        'patient': ['patient_id', 'patientid', 'pat_id', 'ptid'],
+        'subject': ['subject_id', 'subjectid', 'subj', 'subj_id', 'usubjid'],
+        'person': ['person_id', 'personid'],
+        'respondent': ['respondent_id', 'respondentid'],
+        'participant': ['participant_id', 'participantid', 'pid'],
+        'member': ['member_id', 'memberid'],
+        'mrn': ['medical_record_number'],
+        'record': ['record_id', 'recordid'],
+        'encounter': ['encounter_id', 'encounterid'],
+        'seqn': [],
+        'study_id': ['studyid'],
+    })
+
+    # Names that are measurements rather than identifiers. Kept as an explicit
+    # exclusion rather than trusted to fall through, because a measurement that
+    # is ALSO a declared identifier spelling is a genuine collision and the
+    # registry should say so rather than pick.
+    _CLINICAL_MEASUREMENT = _name_registry.build({
+        'glucose': ['blood_glucose', 'serum_glucose', 'plasma_glucose'],
+        'triglyceride': ['triglycerides'],
+        'cholesterol': ['total_cholesterol'],
+        'bmi': ['body_mass_index'],
+        'waist': ['waist_circumference'],
+        'weight': ['weight_kg', 'body_weight'],
+        'height': ['height_cm', 'standing_height'],
+        'bp': ['blood_pressure', 'bp_sys', 'bp_dia', 'sbp', 'dbp'],
+        'kcal': ['energy_kcal', 'calories'],
+        'hba1c': ['a1c', 'hemoglobin_a1c'],
+        'insulin': [], 'ldl': [], 'hdl': [],
+        'creatinine': [], 'albumin': [],
+    })
+
+    _TIME = _name_registry.build({
+        'date': ['visit_date', 'assessment_date', 'exam_date', 'obs_date'],
+        'time': ['visit_time', 'timestamp'],
+        'visit': ['visit_number', 'visit_no', 'visitnum'],
+        'wave': ['wave_number'],
+        'year': ['study_year'],
+        'month': ['study_month'],
+        'day': ['study_day'],
+        'baseline': [],
+        'followup': ['follow_up'],
+        'timepoint': ['time_point'],
+    })
+
     # Find candidate entity ID columns with stricter criteria
     for col in df.columns:
         col_lower = col.lower()
@@ -151,23 +355,23 @@ def detect_cohort_structure(df: pd.DataFrame, sample_size: int = 1000) -> Dict:
             continue
         
         # Exclude if it matches clinical measurement patterns
-        if any(pattern in col_lower for pattern in clinical_measurement_patterns):
+        if _name_registry.match(col, _CLINICAL_MEASUREMENT) is not None:
             continue
         
         # Check for entity ID patterns
-        if any(pattern in col_lower for pattern in entity_id_patterns):
+        if _name_registry.match(col, _ENTITY_ID) is not None:
             # Additional checks: must be high cardinality and discrete
             n_unique = df[col].nunique()
             unique_ratio = n_unique / len(df) if len(df) > 0 else 0
             
             # Require high cardinality (>= 0.5) and discrete-looking
             is_discrete = (
-                df[col].dtype in [np.int64, np.int32, 'int64', 'int32', 'int'] or
-                (df[col].dtype == 'object' and unique_ratio > 0.5)
+                _is_integer_like(df[col]) or
+                (_is_categorical_like(df[col]) and unique_ratio > 0.5)
             )
             
             # Exclude float continuous columns unless integer-like
-            if df[col].dtype in [np.float64, np.float32, 'float64', 'float32', 'float']:
+            if _is_float_like(df[col]):
                 # Check if values are integer-like (small decimal variance)
                 sample = df[col].dropna().head(100)
                 if len(sample) > 0:
@@ -181,12 +385,12 @@ def detect_cohort_structure(df: pd.DataFrame, sample_size: int = 1000) -> Dict:
     # Find candidate time columns
     for col in df.columns:
         col_lower = col.lower()
-        if any(pattern in col_lower for pattern in time_patterns):
+        if _name_registry.match(col, _TIME) is not None:
             time_column_candidates.append(col)
         # Also check if column is datetime type or can be parsed as datetime
         elif df[col].dtype == 'datetime64[ns]':
             time_column_candidates.append(col)
-        elif df[col].dtype == 'object':
+        elif _is_categorical_like(df[col]):
             # Try to parse a sample
             sample = df[col].dropna().head(min(sample_size, len(df)))
             if len(sample) > 0:

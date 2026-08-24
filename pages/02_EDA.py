@@ -115,10 +115,136 @@ feature_cols = (
 )
 _has_target = target_col is not None and target_col in df.columns
 
-# Lightweight fingerprint for @st.cache_data invalidation when dataset changes.
-# Streamlit skips hashing _-prefixed params (like _df), so we pass this as a
-# non-prefixed param to ensure cache misses on dataset switch.
-_data_fingerprint = (len(df), len(df.columns), tuple(sorted(df.columns)))
+# ── ONE counting rule for "numeric" and "categorical" (`DRIVE-069` sibling) ──
+# This page stated the split three ways on one screen — tiles "Numeric 19 ·
+# Categorical 8", the distribution filter "Numeric (25) · Categorical (2)", and
+# Macro Shape "across 25 features (computed on 19 of 25)" — because the tiles
+# read `regime` (select_dtypes(np.number): a bool column is categorical) and
+# everything else called `pd.api.types.is_numeric_dtype`, which calls bool
+# numeric. THE RULE THAT DECIDES IS THE PIPELINE'S: pages/05 splits the columns
+# with `data_processor.get_numeric_columns`, so a bool column really is one-hot
+# encoded. That rule is applied once, here, and every surface below reads these
+# two lists.
+from data_processor import get_numeric_columns as _get_numeric_columns
+
+_numeric_cols_in_df = set(_get_numeric_columns(df))
+numeric_features = [c for c in feature_cols
+                    if c in df.columns and c in _numeric_cols_in_df]
+cat_features = [c for c in feature_cols
+                if c in df.columns and c not in _numeric_cols_in_df]
+_TYPE_COUNT_RULE = (
+    "Counted the way the preprocessing pipeline splits the columns: numeric "
+    "means a numeric dtype with at least one value; everything else — text, "
+    "category, boolean, date — is categorical and gets one-hot encoded."
+)
+
+# ── The population every "observations per predictor" claim describes ─────
+# `regime.n_rows` counts every uploaded row. Rows with no outcome value are in
+# no analysis cohort — the split drops them, and page 10's Table 1 is built on
+# what survives — so a ratio computed over them reported a study that does not
+# exist: 809:1 (21,849/27) inside a draft whose own first sentence said 6,297
+# observations (`DRIVE-066`). Every sentence below that quotes this number also
+# names its denominator.
+_analysis_n = (int(df[target_col].notna().sum()) if _has_target else int(len(df)))
+_analysis_n_is_subset = _analysis_n < len(df)
+_ANALYSIS_POP_PHRASE = (
+    f"{_analysis_n:,} rows with a value for `{target_col}`"
+    if _analysis_n_is_subset else f"{_analysis_n:,} rows"
+)
+_ANALYSIS_POP_PROSE = (
+    f"{_analysis_n:,} observations with a recorded outcome"
+    if _analysis_n_is_subset else f"{_analysis_n:,} observations"
+)
+
+# ── Sealed rows, quarantined from the paths that model ───────────────────
+# `utils/test_lockbox.py`'s contract: "Every target-aware step upstream of
+# Train & Compare — feature-engineering fits, feature selection,
+# target-association views — operates on training rows only, via
+# train_row_mask()." This page did not call it. The two paths where that costs
+# something real are quarantined here, the same way pages/04 does it:
+#
+#   - the dataset profile, because it drives the model coach's picks, and a
+#     profile computed on held-out people lets the test set choose the models;
+#   - quick_probe_baselines, which runs its own 80/20 split and FITS models —
+#     a modeling step wearing an EDA costume, reporting a score for rows it
+#     has already been shown.
+#
+# Descriptive views elsewhere on this page still cover every row, which is what
+# the lockbox status line above states. See CONTRACT-017 for the remainder.
+from utils.test_lockbox import train_row_mask
+
+# train_row_mask already returns all-True in exploratory mode and with no
+# lockbox, so the scoping claim below follows from the mask rather than from a
+# second reading of the same state.
+_train_mask = train_row_mask(df.index)
+_train_df = df.loc[_train_mask]
+# A lockbox that sealed everything would leave nothing to profile; fall back
+# rather than crash, and do not claim a scoping that did not happen.
+if _train_df.empty:
+    _train_df = df
+    _train_mask = pd.Series(True, index=df.index)
+_lockbox_scoped = bool((~_train_mask).any())
+
+# quick_probe_baselines is the one EDA action that fits models. Anything added
+# here gets the masked frame and says so on screen.
+_TRAIN_ONLY_ACTIONS = {"quick_probe_baselines"}
+
+
+def _frame_for_action(run_action: str) -> pd.DataFrame:
+    """The rows an EDA action may see: training rows only if it models."""
+    return _train_df if run_action in _TRAIN_ONLY_ACTIONS else df
+
+
+_TRAIN_SCOPE_CAPTION = (
+    "held-out test rows are excluded to prevent selection leakage."
+)
+
+
+def _content_fingerprint(d):
+    """Cache key for every cached computation on this page.
+
+    Streamlit skips hashing `_`-prefixed params (like `_df`), so the key has to
+    be passed as a separate non-prefixed argument. What that argument *contains*
+    is the whole question.
+
+    **Shape and column names are not enough** (`T0-LIVE-005`). Two cohort runs
+    of the same study have identical row counts and identical columns and
+    different rows — a median split, a 1:1 matched case-control, a balanced sex
+    split. Under a shape-only key those two runs collide, and cohort A's
+    correlation matrix, skew list, outlier heatmap and interaction ranking are
+    served to cohort B. Cohort runs are the newest subsystem in the app, so the
+    collision lands exactly where it is least expected.
+
+    The digest makes the key follow the values. Cheap: `hash_pandas_object` is
+    a vectorised row hash, and it runs once per rerun rather than per cache
+    lookup.
+    """
+    import hashlib
+    try:
+        digest = int(pd.util.hash_pandas_object(d, index=True).sum())
+    except Exception:
+        # Unhashable cells (a list from nested JSON) must not collapse the key
+        # to something stable — that would stop every cache from ever missing.
+        digest = hashlib.md5(repr(d.head(50).values.tobytes()).encode()).hexdigest()
+    return (len(d), len(d.columns), tuple(map(str, d.columns)), str(digest))
+
+
+# One fingerprint, used by every cache on this page. There used to be two: a
+# shape-only tuple for the eight older caches and a content digest for the four
+# macro-shape ones added with T0-LIVE-001. Having both meant the principle was
+# written down in one place and applied in the other.
+_data_fingerprint = _content_fingerprint(df)
+# The profile is computed on a different frame, so it needs its own key. Reusing
+# the full-frame fingerprint would serve the all-rows profile to the masked call
+# and put the leak straight back.
+_train_fingerprint = (
+    _data_fingerprint if _train_df is df else _content_fingerprint(_train_df)
+)
+
+
+def _macro_fp(d):
+    """Kept as the name the macro-shape wrappers call; same function now."""
+    return _content_fingerprint(d)
 
 # Detection values
 task_type_detection: TaskTypeDetection = st.session_state.get(
@@ -155,11 +281,28 @@ with st.sidebar:
         )
 
 profile = _compute_profile(
-    df, target_col or feature_cols[0],
+    _train_df, target_col or feature_cols[0],
     feature_cols, task_type_final or "regression", outlier_method,
-    data_id=_data_fingerprint,
+    data_id=_train_fingerprint,
 )
 st.session_state["dataset_profile"] = profile
+# Which rows the profile describes, recorded beside it. Pages 05, 06 and 10 read
+# `dataset_profile` and cannot otherwise tell: since the lockbox mask above, its
+# p/n ratio, missingness rate and data-sufficiency verdict describe the training
+# rows, and page 10 copies those numbers into the exported record. A number whose
+# population is not stated is a number the reader will assume is about everyone.
+st.session_state["dataset_profile_scope"] = {
+    "rows": "training" if _lockbox_scoped else "all",
+    "n_rows": int(_train_mask.sum()),
+    "n_rows_total": int(len(df)),
+    "reason": ("held-out test rows are excluded to prevent selection leakage"
+               if _lockbox_scoped else "no rows are sealed in this analysis"),
+}
+if _lockbox_scoped:
+    st.caption(
+        f"The dataset profile and quick baselines see n={int(_train_mask.sum())} "
+        f"training rows; {_TRAIN_SCOPE_CAPTION}"
+    )
 
 # Signals (cached)
 @st.cache_data(show_spinner="Scanning statistical signals (one-time per dataset)…")
@@ -200,20 +343,43 @@ def _auto_generate_insights():
     # matched nothing, so these insights never fired even on p >> n data.
     # Insight ids are kept for downstream resolution mappings.
     sufficiency = getattr(getattr(profile, "data_sufficiency", None), "value", "adequate")
-    _suff_ratio = regime.n_rows / max(regime.n_features, 1)
+    # `AUDIT-023`. THE DENOMINATOR IS THE SCREENED SET, NOT THE KEPT ONE.
+    # `regime.n_features` counts the columns currently in `feature_cols`, which
+    # after a selection on page 04 is what SURVIVED — and the sentences below
+    # call them *candidate predictors*. §A5.4's ⚠ clause is explicit that a
+    # predictor counts toward sample size even when it is later dropped,
+    # because it was looked at. So a 40-candidate study that kept 8 was
+    # reporting a 5x better ratio than it earned, under the word "candidate".
+    #
+    # `ml.candidate_predictors` is the one place that arithmetic lives; the
+    # phrase it returns is quoted rather than re-composed here, and where no
+    # selection was recorded it is the plain count so a reader is not sent
+    # looking for a screening step that did not happen.
+    from ml.candidate_predictors import candidate_count as _cand_count
+    from ml.candidate_predictors import candidate_phrase as _cand_phrase
+    from utils.workflow_provenance import get_provenance as _get_prov
+    try:
+        _prov = _get_prov()
+    except Exception:
+        _prov = None
+    _cands = _cand_count(feature_cols, _prov)
+    _cand_text = _cand_phrase(_cands)
+    # Same denominator correction as the n/p opportunity below (`DRIVE-066`):
+    # an observation with no outcome value is not an observation this study
+    # has, so it may not raise the observations-per-candidate ratio.
+    _suff_ratio = _analysis_n / max(_cands.screened, 1)
     _suff_ratio_str = f"{_suff_ratio:.2f}:1" if _suff_ratio < 10 else f"{_suff_ratio:.0f}:1"
     if sufficiency == "critical":
         ledger.upsert(Insight(
             id="eda_sufficiency_insufficient",
             source_page="02_EDA", category="sufficiency", severity="blocker",
-            finding=f"Sample size may be insufficient ({regime.n_rows:,} rows, {regime.n_features} features, {_suff_ratio_str} samples per feature)",
+            finding=f"Sample size may be insufficient ({_ANALYSIS_POP_PHRASE}, {_cands.screened} candidate predictors, {_suff_ratio_str} observations per candidate)",
             implication="Complex models will likely overfit. Prefer simple baselines.",
             recommended_action="Reduce features or gather more data",
             manuscript_text=(
                 f"the sample size was small relative to the number of candidate "
-                f"predictors ({regime.n_rows:,} observations, {regime.n_features} "
-                f"predictors), which limits statistical power and increases "
-                f"overfitting risk"
+                f"predictors ({_ANALYSIS_POP_PROSE}, {_cand_text}), "
+                f"which limits statistical power and increases overfitting risk"
             ),
             relevant_pages=["04_Feature_Selection", "06_Train_and_Compare", "10_Report_Export"],
             model_scope=[MODEL_FAMILY_NEURAL],  # most affected by low sample size
@@ -222,13 +388,13 @@ def _auto_generate_insights():
         ledger.upsert(Insight(
             id="eda_sufficiency_borderline",
             source_page="02_EDA", category="sufficiency", severity="warning",
-            finding=f"Data sufficiency is {sufficiency} ({regime.n_rows:,} rows, {regime.n_features} features)",
+            finding=f"Data sufficiency is {sufficiency} ({_ANALYSIS_POP_PHRASE}, {_cands.screened} candidate predictors)",
             implication="Prefer simpler models and tighter regularization.",
             recommended_action="Consider feature reduction before complex modeling",
             manuscript_text=(
                 f"the modest ratio of observations to candidate predictors "
-                f"({regime.n_rows:,} observations, {regime.n_features} predictors) "
-                f"constrained the model complexity that could be reliably supported"
+                f"({_ANALYSIS_POP_PROSE}, {_cand_text}) constrained the "
+                f"model complexity that could be reliably supported"
             ),
             relevant_pages=["04_Feature_Selection", "06_Train_and_Compare"],
             model_scope=[MODEL_FAMILY_NEURAL],  # most affected by low sample size
@@ -251,6 +417,28 @@ def _auto_generate_insights():
                 ),
                 relevant_pages=["04_Feature_Selection", "10_Report_Export"],
             ))
+
+    # `MINE-004`. The scan above is the only leakage detector in the app, and it
+    # used to fail silently — leaving leakage_candidate_cols empty, which is the
+    # same state as "checked and clean". The clean-data opportunity below fires
+    # on an unresolved-issue count of zero and puts "no blocking data-quality
+    # issues (no severe missingness, leakage candidates, or distributional
+    # anomalies)" into the Discussion. A scan that did not run must say so: this
+    # is a warning, so it both discloses the gap and keeps that count non-zero.
+    if getattr(signals, "leakage_scan_error", ""):
+        ledger.upsert(Insight(
+            id="eda_leakage_scan_failed",
+            source_page="02_EDA", category="relationship", severity="warning",
+            finding=f"The target-leakage screen could not run ({signals.leakage_scan_error})",
+            implication="Leakage was not ruled out — no evidence is not evidence of none.",
+            recommended_action="Re-run EDA (or reduce the column count) before reporting a clean data-quality result",
+            manuscript_text=(
+                "the automated target-leakage screen did not complete, so "
+                "near-collinearity between individual predictors and the "
+                "outcome was not ruled out"
+            ),
+            relevant_pages=["02_EDA", "04_Feature_Selection", "10_Report_Export"],
+        ))
 
     # Collinearity — cluster correlated features into groups instead of per-pair
     # (high_corr_pairs already filtered to user's feature_cols at computation time)
@@ -314,10 +502,22 @@ def _auto_generate_insights():
                 metadata={"max_correlation": cluster_max, "cluster_size": n_feats},
             ))
 
-    # Missing data — synthesize into severity tiers, not per-column
-    if signals.high_missing_cols:
-        severe_missing = [(c, signals.missing_rate_by_col.get(c, 0)) for c in signals.high_missing_cols if signals.missing_rate_by_col.get(c, 0) > 0.3]
-        moderate_missing = [(c, signals.missing_rate_by_col.get(c, 0)) for c in signals.high_missing_cols if 0.05 < signals.missing_rate_by_col.get(c, 0) <= 0.3]
+    # Missing data — synthesize into severity tiers, not per-column.
+    #
+    # THE OUTCOME IS NOT A FEATURE (`DRIVE-070`). `signals.high_missing_cols`
+    # is computed over every column, and the target went into a card headed
+    # "N feature(s) with >30% missing" whose recommended action is "consider
+    # dropping or advanced imputation" — advice to drop or impute the study's
+    # own outcome, which then reached the exported report as an addressed
+    # observation ("Missing values were handled with median imputation"). A
+    # missing outcome removes the row from the analysis cohort; it is not an
+    # imputation problem, and the cohort size that follows from it is stated
+    # by the sufficiency and n/p sentences above.
+    _missing_candidates = [c for c in signals.high_missing_cols
+                           if not (_has_target and c == target_col)]
+    if _missing_candidates:
+        severe_missing = [(c, signals.missing_rate_by_col.get(c, 0)) for c in _missing_candidates if signals.missing_rate_by_col.get(c, 0) > 0.3]
+        moderate_missing = [(c, signals.missing_rate_by_col.get(c, 0)) for c in _missing_candidates if 0.05 < signals.missing_rate_by_col.get(c, 0) <= 0.3]
 
         if severe_missing:
             cols_str = ", ".join(f"{c} ({r:.0%})" for c, r in severe_missing[:5])
@@ -342,7 +542,36 @@ def _auto_generate_insights():
                 id="eda_missing_moderate",
                 source_page="02_EDA", category="data_quality", severity="info",
                 finding=f"{len(moderate_missing)} feature(s) with 5-30% missing: {cols_str}",
-                implication="Standard imputation (median/mode) should be sufficient. Consider adding missingness indicator features.",
+                # `AUDIT-007` · CLINICAL_SURVEY_PACK.md §A2 anti-pattern 2
+                # [SETTLED as bad] and Cross-cutting 11. BEFORE, this read:
+                # "Standard imputation (median/mode) should be sufficient.
+                #  Consider adding missingness indicator features."
+                # That asserted the sufficiency of the one method the registry
+                # settles against — "Mean/median imputation. Understates
+                # variance, destroys the distribution, indefensible in a
+                # manuscript" — and recommended an indicator unconditionally,
+                # where §A2 splits it: legitimate for prediction, biased and
+                # not to be used for an unbiased association estimate.
+                # AFTER says less and is true: it states what the method costs
+                # and names the alternative that is actually on the shelf
+                # ("iterative (MICE)", pages/05_Preprocess.py:600). The method
+                # is not withdrawn and nothing is blurred — the same subject,
+                # a weaker claim, checkable against §A2.
+                #
+                # The route is named because MICE is NOT on the default path:
+                # pages/05_Preprocess.py:580 skips the whole per-model
+                # configuration block while "Smart Defaults" is selected, so
+                # the option exists only under "Advanced (full control)".
+                # "MICE is offered in Preprocessing" would have been the second
+                # false claim in the same sentence that corrected the first.
+                implication=(
+                    "Median/mode imputation understates the variance of the imputed column "
+                    "and distorts its distribution — the filled values carry none of the "
+                    "uncertainty of the values they replace. Multiple imputation (MICE) is "
+                    "available in Preprocessing under Advanced (full control). A missingness "
+                    "indicator is legitimate for a prediction model and is contraindicated "
+                    "for an unbiased association estimate."
+                ),
                 affected_features=[c for c, _ in moderate_missing],
                 recommended_action="Address in Preprocessing",
                 relevant_pages=["05_Preprocess"],
@@ -409,7 +638,14 @@ def _auto_generate_insights():
                     f"should be interpreted alongside AUROC and F1"
                 ),
                 affected_features=[target_col],
-                recommended_action="Use class weighting or stratified sampling",
+                # `GUIDED-049`. Was "Use class weighting or stratified sampling" —
+            # the one field that tells the user what to DO named the
+            # contraindicated step, and pointed at the two pages that do it.
+            recommended_action=(
+                "Report PR-AUC and calibration alongside discrimination, and "
+                "choose the decision threshold from the costs of the two "
+                "errors. Rebalancing is contraindicated for a risk model"
+            ),
                 relevant_pages=["05_Preprocess", "06_Train_and_Compare"],
                 # model_scope=[] → all models affected
                 metadata={"imbalance_ratio": float(imbalance)},
@@ -524,20 +760,30 @@ def _auto_generate_insights():
                         resolved_on_page="02_EDA", auto_generated=True,
                     ))
 
-    # High n/p ratio opportunity
-    n_p_ratio = regime.n_rows / max(regime.n_features, 1)
+    # High n/p ratio opportunity. The numerator is the ANALYSIS POPULATION, not
+    # the uploaded row count (`DRIVE-066`), and both sentences name it.
+    n_p_ratio = _analysis_n / max(regime.n_features, 1)
     if n_p_ratio > 100:
         ledger.upsert(Insight(
             id="eda_opportunity_high_np",
             source_page="02_EDA", category="sufficiency", severity="opportunity",
-            finding=f"Large sample-to-feature ratio ({n_p_ratio:.0f}:1) — plenty of data relative to complexity",
+            # The denominator goes INSIDE the parentheses on purpose:
+            # `ml/narrative_engine.py` rewrites this exact sentence into
+            # manuscript prose by capturing what is between them, so the
+            # ratio and its population travel together into the draft.
+            finding=(f"Large sample-to-feature ratio ({n_p_ratio:.0f}:1 — "
+                     f"{_ANALYSIS_POP_PROSE} over {regime.n_features} "
+                     f"predictors) — plenty of data relative to complexity"),
             implication="You can afford more complex models (deep trees, neural nets) without overfitting. Cross-validation will be reliable.",
             manuscript_text=(f"the sample size was large relative to the number of "
                              f"predictors ({n_p_ratio:.0f}:1 observations per "
-                             f"predictor), supporting stable model estimation"),
+                             f"predictor, computed on the {_ANALYSIS_POP_PROSE}), "
+                             f"supporting stable model estimation"),
             recommended_action="Consider full model suite in Train & Compare",
             relevant_pages=["06_Train_and_Compare"],
-            metadata={"n_p_ratio": float(n_p_ratio)},
+            metadata={"n_p_ratio": float(n_p_ratio),
+                      "n_analysis_rows": int(_analysis_n),
+                      "n_uploaded_rows": int(len(df))},
             resolved=True, resolved_by="Positive signal — no action needed",
             resolved_on_page="02_EDA", auto_generated=True,
         ))
@@ -582,9 +828,9 @@ with cols[0]:
 with cols[1]:
     st.metric("Features", f"{regime.n_features}")
 with cols[2]:
-    st.metric("Numeric", f"{regime.n_numeric}")
+    st.metric("Numeric", f"{len(numeric_features)}", help=_TYPE_COUNT_RULE)
 with cols[3]:
-    st.metric("Categorical", f"{regime.n_categorical}")
+    st.metric("Categorical", f"{len(cat_features)}", help=_TYPE_COUNT_RULE)
 with cols[4]:
     _missing_by_col = df[feature_cols].isnull().mean()
     missing_pct = _missing_by_col.mean() * 100
@@ -635,10 +881,12 @@ with _eda_tabs[0]:
     )
 
     # Type filter pills and column inspector
-    type_label = f"{regime.n_numeric} numeric · {regime.n_categorical} categorical"
+    type_label = f"{len(numeric_features)} numeric · {len(cat_features)} categorical"
     if regime.n_datetime > 0:
-        type_label += f" · {regime.n_datetime} datetime"
-    st.caption(type_label)
+        # Datetime columns are inside the categorical count, not beside it —
+        # that is where the pipeline puts them.
+        type_label += f" ({regime.n_datetime} of them datetime)"
+    st.caption(type_label + f" — {_TYPE_COUNT_RULE[0].lower()}{_TYPE_COUNT_RULE[1:]}")
 
     # Column inspector
     with st.expander("🔍 Column Inspector", expanded=False):
@@ -733,8 +981,10 @@ with _eda_tabs[1]:
     # -- Feature Distribution Gallery -----------------------------------------
     st.subheader("Feature Distributions")
 
-    numeric_features = [f for f in feature_cols if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
-    cat_features = [f for f in feature_cols if f in df.columns and not pd.api.types.is_numeric_dtype(df[f])]
+    # `numeric_features` / `cat_features` are the page-level lists built once
+    # near the top under the pipeline's own counting rule. They used to be
+    # recomputed here with `is_numeric_dtype`, which is why this filter offered
+    # "Numeric (25)" beside a tile reading 19.
 
     if regime.distribution_mode == "summary":
         # Ultra-wide: summary-of-summaries view
@@ -1275,7 +1525,19 @@ with _eda_tabs[2]:
                 else:
                     st.caption("No strong interaction effects detected.")
             except Exception as e:
-                st.caption(f"Interaction detection skipped: {str(e)[:80]}")
+                # `DRIVE8-15`. `str(e)[:80]` printed sklearn's message as
+                # guidance, cut mid-word — "…which exp" — and the sentence it
+                # truncated blames the target for being continuous when it is a
+                # binary flag. A raw exception is not advice: the CAPTION names
+                # the operation that did not run and what that costs, and the
+                # exception is kept WHOLE for whoever can act on it.
+                st.caption(
+                    "Interaction detection did not run — the mutual-information "
+                    "screen raised an error. No interaction pairs are reported "
+                    "for this run; nothing else on this page is affected."
+                )
+                with st.expander("Why interaction detection did not run", expanded=False):
+                    st.code(f"{type(e).__name__}: {e}")
 
     # -- Cluster Structure (k-means) -------------------------------------------
     st.markdown("---")
@@ -1713,10 +1975,10 @@ if regime.show_macro_shape and numeric_features:
     st.caption("How your data looks in reduced dimensions. Each view reveals something the others hide.")
 
     from ml.macro_shape import (
-        compute_pca, plot_scree, plot_pca_biplot,
-        compute_umap, plot_umap,
-        compute_persistence, plot_persistence_diagram, plot_persistence_barcode,
-        compute_mapper, plot_mapper,
+        compute_pca as _compute_pca, plot_scree, plot_pca_biplot,
+        compute_umap as _compute_umap, plot_umap,
+        compute_persistence as _compute_persistence, plot_persistence_diagram, plot_persistence_barcode,
+        compute_mapper as _compute_mapper, plot_mapper,
     )
 
     df_numeric = df[numeric_features].dropna()
@@ -1742,6 +2004,21 @@ if regime.show_macro_shape and numeric_features:
 
     # Variance profile (always first)
     st.subheader("Variance Profile")
+    # Cached here rather than in ml/macro_shape.py. The engine's caches keyed on
+    # nothing — their only argument is underscore-prefixed, which Streamlit does
+    # not hash, so one dataset's PCA was served to every later dataset and, in
+    # the shared deployment, to every later user (T0-LIVE-001). The host is what
+    # knows when the dataset changed, so the host is what caches.
+    @st.cache_data(show_spinner=False)
+    def _macro_cached(_kind: str, _df: pd.DataFrame, fingerprint):
+        return {"pca": _compute_pca, "umap": _compute_umap,
+                "persistence": _compute_persistence, "mapper": _compute_mapper}[_kind](_df)
+
+    def compute_pca(d):          return _macro_cached("pca", d, _macro_fp(d))
+    def compute_umap(d):         return _macro_cached("umap", d, _macro_fp(d))
+    def compute_persistence(d):  return _macro_cached("persistence", d, _macro_fp(d))
+    def compute_mapper(d):       return _macro_cached("mapper", d, _macro_fp(d))
+
     pca_result = compute_pca(df_numeric)
     if "error" not in pca_result:
         fig_scree = plot_scree(pca_result)
@@ -2007,11 +2284,63 @@ if "eda_results" not in st.session_state:
     st.session_state.eda_results = {}
 
 
+# Map recommendation panel action IDs to the ledger insight IDs they speak to.
+# `AUDIT-032`: the map and the recorder both live in `ml/eda_actions.py` now —
+# a Streamlit page is not importable, so the only test of this wiring had to
+# keep a hand-copy of both, and the copy is where the pre-fix behavior was
+# still asserted. The comment there carries the before/after.
+from ml.eda_actions import (
+    _ACTION_TO_INSIGHT_MAP,
+    diagnostic_disclosure,
+    record_diagnostic_on_insights,
+)
+
+
+def _resolve_insights_from_eda_result(action_id: str, result: dict, title: str,
+                                      n_closed: int = 0) -> str:
+    """Record a completed recommended analysis against the insights it speaks to.
+
+    `AUDIT-032`. BEFORE this resolved every matching insight, so pressing **Run
+    Leakage Detection** — which re-reads `signals.leakage_candidate_cols` and
+    removes nothing — moved a `blocker` into the report's *"N were addressed
+    during the modeling workflow"* count and dropped its manuscript caveat.
+    AFTER it attaches the findings and leaves the observation open, and returns
+    the sentence the page shows so the user is told which of the two happened.
+
+    Returns "" when nothing was recorded. Never raises: the workflow must not
+    break on a bookkeeping step.
+    """
+    try:
+        touched = record_diagnostic_on_insights(ledger, action_id, result, title)
+        if not _ACTION_TO_INSIGHT_MAP.get(action_id):
+            return ""
+        return diagnostic_disclosure(title, len(touched), n_closed)
+    except Exception:
+        return ""  # Never break the workflow
+
+
 ACTION_NEXT_STEPS = {
     'multicollinearity_vif': '→ **Next:** Go to Feature Selection to use LASSO/RFE to resolve collinearity, or apply Ridge/ElasticNet regularization in training.',
     'influence_diagnostics': '→ **Next:** Review flagged high-influence points. Consider target trimming on the Train page, or use robust regression (Huber).',
-    'plausibility_check': '→ **Next:** Review flagged implausible values. Apply target trimming or filter rows in Upload & Audit.',
     'normality_residuals': '→ **Next:** If residuals depart from normality, prefer bootstrap confidence intervals over parametric ones, or use a robust loss on the Train page.',
+    # `sibling-of: AUDIT-025` · found by the §08 check-5 sweep ("what would the
+    # same lens find one surface over?") while AUDIT-025 was blocked on a file
+    # this chunk does not own. Same defect: a page names a capability on a page
+    # that does not have it. BEFORE this read "Apply target trimming or filter
+    # rows in Upload & Audit." — `pages/01_Upload_and_Audit.py` contains zero
+    # occurrences of "trim" and zero of "plausib", so NEITHER control is there.
+    # Target trimming is `pages/06_Train_and_Compare.py:296` ("Enable target
+    # trimming before split") and plausibility filtering is
+    # `pages/05_Preprocess.py:744` — inside the per-model block that :580 skips
+    # while Smart Defaults is selected, hence the mode is named. The app's own
+    # `influence_diagnostics` entry above already said "on the Train page",
+    # which is how the wrong destination here was visible at all.
+    #
+    # MERGE NOTE: main's restructure delisted leakage_scan, target_profile,
+    # feature_scaling_check and linearity_scatter from this page, so their
+    # entries are dropped with them; the AUDIT-025 sibling correction to the
+    # plausibility_check line is kept, since that section survived.
+    'plausibility_check': '→ **Next:** Review flagged implausible values. Neither control is on Upload & Audit: target trimming is on Train & Compare, applied before the split, and plausibility filtering is on Preprocess under Advanced (full control).',
 }
 
 
@@ -2019,14 +2348,35 @@ def _run_and_show(action_id: str, title: str, run_action: str):
     """Run a diagnostic and display its figures, narrative, and next step."""
     from utils.llm_ui import build_llm_context, build_eda_full_results_context, render_interpretation_with_llm_button, gather_session_context
 
+    # MERGE NOTE: `tab_key` went with main's tab strip, so the key prefix is
+    # just the action id now. The lockbox scoping below is TurboTab's and is
+    # load-bearing: `_action_df` is what the action is actually run on.
+    _action_df = _frame_for_action(run_action)
+    if _lockbox_scoped and run_action in _TRAIN_ONLY_ACTIONS:
+        st.caption(
+            f"Fits models, so it sees n={len(_action_df)} training rows; "
+            f"{_TRAIN_SCOPE_CAPTION}"
+        )
     if st.button(f"Run {title}", key=f"run_{action_id}", type="primary"):
         try:
             action_func = getattr(eda_actions, run_action, None)
             if action_func:
                 with st.spinner(f"Running {title}..."):
-                    result = action_func(df, target_col, feature_cols, signals, st.session_state)
+                    result = action_func(_action_df, target_col, feature_cols, signals, st.session_state)
                     st.session_state.eda_results[action_id] = result
                     log_methodology(step="EDA", action=f"Ran {title}", details={"analysis": run_action})
+                    # MERGE NOTE: three things happen here and all three are
+                    # fixes. (1) main's upsert — actions now RETURN their
+                    # insights (utils.storyline.add_insight is gone), and
+                    # without this the plausibility finding reaches nothing.
+                    # (2) main's VIF resolver — VIF is the answer to the
+                    # pairwise-correlation clusters the page itself raised,
+                    # and nothing else in the app closes eda_corr_cluster_*.
+                    # (3) TurboTab's AUDIT-032 recorder — a diagnostic is
+                    # evidence, not an action, so it annotates and discloses
+                    # rather than resolving. (2) runs BEFORE (3) so the
+                    # disclosure counts only what is still open; the recorder
+                    # skips resolved insights.
                     for _insight in result.get("insights", []) or []:
                         try:
                             ledger.upsert(_insight)
@@ -2037,6 +2387,11 @@ def _run_and_show(action_id: str, title: str, run_action: str):
                     # Nothing else in the app resolves eda_corr_cluster_*, and
                     # left open they reach the manuscript as a limitation the
                     # user has in fact already investigated.
+                    # The count is carried into the disclosure below: a
+                    # sentence saying "it changes nothing. No open observation
+                    # is waiting on it" over a run that just closed two of them
+                    # is the one thing this surface may not say (`MISC-092`).
+                    _n_closed_here = 0
                     if action_id == "multicollinearity_vif":
                         _vif_summary = (result.get("findings") or [title])[0]
                         for _ins in list(ledger.insights):
@@ -2053,8 +2408,17 @@ def _run_and_show(action_id: str, title: str, run_action: str):
                                         "stats": result.get("stats", {}),
                                     },
                                 )
+                                _n_closed_here += 1
                             except Exception:
                                 pass
+                    # Stored rather than written straight out: `st.rerun()`
+                    # below discards everything this block renders, which is
+                    # `AGENT_ONBOARD.md` §07 trap 6 in its purest form — the
+                    # server composes the sentence and nobody ever sees it.
+                    _disclosure = _resolve_insights_from_eda_result(
+                        action_id, result, title, _n_closed_here)
+                    if _disclosure:
+                        st.session_state.setdefault("eda_diagnostic_disclosure", {})[action_id] = _disclosure
                     try:
                         from utils.workflow_provenance import get_provenance
                         get_provenance().record_eda_analysis(title)
@@ -2068,6 +2432,9 @@ def _run_and_show(action_id: str, title: str, run_action: str):
 
     if action_id in st.session_state.eda_results:
         result = st.session_state.eda_results[action_id]
+        _disclosure = (st.session_state.get("eda_diagnostic_disclosure") or {}).get(action_id)
+        if _disclosure:
+            st.info(_disclosure, icon="🔎")
         for w in result.get("warnings", []):
             st.warning(w)
 
@@ -2113,7 +2480,8 @@ def _run_and_show(action_id: str, title: str, run_action: str):
 st.markdown("---")
 st.header("Physiologic Plausibility")
 st.caption(
-    "Reads each column against NHANES reference ranges and clinical guideline bands, "
+    "Reads each column against the NHANES p01–p99 improbability band and clinical "
+    "guideline thresholds, "
     "after inferring its units. This is the check that catches a glucose column recorded "
     "in mmol/L being read as mg/dL — a mix-up that produces no statistical outliers at all."
 )

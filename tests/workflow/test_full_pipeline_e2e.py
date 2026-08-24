@@ -195,7 +195,10 @@ class TestFullPipelineE2E:
         state["y_train"] = y.iloc[indices[:n_train]]
         state["y_val"] = y.iloc[indices[n_train:n_train + n_val]]
         state["y_test"] = y.iloc[indices[n_train + n_val:]]
-        state["test_indices"] = indices[n_train + n_val:].tolist()
+        # Row identity as the app stores it: index LABELS, not positions.
+        state["train_row_labels"] = list(state["X_train"].index)
+        state["val_row_labels"] = list(state["X_val"].index)
+        state["test_row_labels"] = list(state["X_test"].index)
 
         # Record split provenance
         state["provenance"].record_split(

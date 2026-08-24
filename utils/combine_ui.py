@@ -33,6 +33,7 @@ import streamlit as st
 
 from utils.combine import (
     SOURCE_COLUMN, execute_stack, plan_combination, plan_stack, relationship_hint,
+    set_reserved_columns,
 )
 from ml.join_doctor import (
     KeyCandidate, _slug, diagnose_join, execute_join, find_key_candidates,
@@ -66,6 +67,9 @@ _ORIGIN_COLOR = {
 }
 _OUTCOME_COLOR = {"kept": "#22c55e", "blanked": "#f59e0b", "dropped": "#cbd5e1"}
 _MAX_PREVIEW_COLS = 12
+
+_JOIN_KEY_REASON = ("the ID these files were merged on — it identifies a row, "
+                    "it does not explain the outcome")
 
 
 def _row_ledger(cm: ChangeMap) -> None:
@@ -254,6 +258,10 @@ def _render_link(frames: Dict[str, pd.DataFrame],
     # "your data so far (600 rows) + labs (480 rows)".
     running = running_label or base_name
     steps: List[str] = []
+    # The columns this link actually joined on. They identify rows, so the
+    # feature picker must not offer them — but only once the user commits, so
+    # the key of an abandoned preview never bars a real predictor.
+    join_keys: List[str] = []
     blocked = False
 
     for other in others:
@@ -286,13 +294,13 @@ def _render_link(frames: Dict[str, pd.DataFrame],
                              how, running, other)
         for b in diag.blocking:
             st.error(f"🛑 {b}")
-        # The change map below accounts for every row visually and states the
-        # consequence for the analysis, so repeating the engine's row-counting
-        # warnings here would say the same thing twice in weaker words. Warnings
-        # the map does NOT cover — capitalization, spacing — still surface.
+        # Every warning, including the row-counting ones. Suppressing "have no
+        # match" and "have no ID at all" as redundant with the change map was
+        # wrong twice over: the map states row COUNTS, not which columns failed
+        # to line up, and those two warnings are the only place a junk key or a
+        # deleted stratum announces itself in words. Saying it twice is a
+        # smaller cost than a wrongly merged table nobody was told about.
         for w in diag.warnings:
-            if "have no match" in w or "have no ID at all" in w:
-                continue
             st.warning(f"⚠️ {w}")
         for n in diag.notes:
             st.caption(f"ℹ️ {n}")
@@ -315,6 +323,9 @@ def _render_link(frames: Dict[str, pd.DataFrame],
             render_change_map(change, preview)
             result = preview
             steps.append(desc)
+            for k in (chosen.left_col, chosen.right_col):
+                if k in preview.columns and k not in join_keys:
+                    join_keys.append(str(k))
         except Exception as exc:
             st.error(f"Could not attach **{other}**: {exc}")
             blocked = True
@@ -322,6 +333,7 @@ def _render_link(frames: Dict[str, pd.DataFrame],
     if blocked:
         st.info("Fix the issues above, or choose different columns, and this will update.")
         return None
+    st.session_state["_combine_join_keys"] = join_keys
     return result, " ".join(steps)
 
 
@@ -444,6 +456,9 @@ def render_combine_step(frames: Dict[str, pd.DataFrame]) -> Optional[pd.DataFram
 
     _file_cards(frames)
     st.markdown("---")
+    # Decided afresh on every render: a key left over from a different relation
+    # choice must not end up registered against this table.
+    st.session_state["_combine_join_keys"] = []
 
     # The app groups the files by how much their columns overlap and proposes
     # a shape. Its guess picks the default answer; the user always decides.
@@ -487,6 +502,7 @@ def render_combine_step(frames: Dict[str, pd.DataFrame]) -> Optional[pd.DataFram
         st.caption(f"{len(frames[pick]):,} rows × {frames[pick].shape[1]} columns")
         if st.button("Use this file", type="primary", key="combine_use_single"):
             st.session_state["_combine_description"] = f"Used '{pick}' without combining."
+            set_reserved_columns([], _JOIN_KEY_REASON, role="join_key")
             return frames[pick]
         return None
 
@@ -503,6 +519,10 @@ def render_combine_step(frames: Dict[str, pd.DataFrame]) -> Optional[pd.DataFram
     st.markdown("---")
     if st.button("Combine files", type="primary", key="combine_confirm"):
         st.session_state["_combine_description"] = description
+        # Registered at the moment the merge is COMMITTED, which is the only
+        # moment the app knows which column identifies a row in this table.
+        set_reserved_columns(st.session_state.get("_combine_join_keys", []),
+                             _JOIN_KEY_REASON, role="join_key")
         return combined
     st.caption("Nothing has changed yet — press **Combine files** when the result above "
                "looks right.")

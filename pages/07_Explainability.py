@@ -13,8 +13,10 @@ from sklearn.inspection import permutation_importance, partial_dependence
 import logging
 
 from utils.session_state import (
-    init_session_state, get_preprocessing_pipeline, DataConfig, get_data
+    init_session_state, get_preprocessing_pipeline, DataConfig, get_data,
+    get_split_rows
 )
+from ml.splits import SplitIdentityError
 from utils.storyline import render_breadcrumb, render_page_navigation
 from ml.estimator_utils import is_estimator_fitted
 from ml.model_registry import get_registry
@@ -164,8 +166,39 @@ if X_test is None or y_test is None:
 registry = _get_registry_cached()
 
 # ────────────────────────────────────────────────────────────────
-# HELPER: Build full pipeline for a model
+# HELPER: the held-out rows, or a refusal
 # ────────────────────────────────────────────────────────────────
+_identity_refusals_shown = set()
+
+
+def _report_split_identity(exc: SplitIdentityError, consequence: str) -> None:
+    """Say that the held-out rows cannot be found, once per rerun per message.
+
+    Everything on this page claims to describe the test set. When the rows it
+    was drawn on are no longer in the active dataset there is nothing here to
+    compute honestly, so the page says so instead of computing something.
+    """
+    key = (str(exc), consequence)
+    if key in _identity_refusals_shown:
+        return
+    _identity_refusals_shown.add(key)
+    st.error(f"**Held-out rows not found.** {exc}\n\n{consequence}")
+
+
+def _held_out_rows(df_raw, consequence: str):
+    """The test rows of `df_raw` by label, or None after reporting a refusal."""
+    if not st.session_state.get("test_row_labels"):
+        # No split drawn in this session — nothing to contradict. The callers'
+        # own fallback is the split's stored X_test, which is the held-out
+        # matrix itself, so silence here asserts nothing.
+        return None
+    try:
+        return get_split_rows("test", df=df_raw)
+    except SplitIdentityError as exc:
+        _report_split_identity(exc, consequence)
+        return None
+
+
 def _get_pipeline_and_data(name):
     """Return (full_pipeline_or_estimator, X_test_for_perm, y_test_for_perm, X_test_raw_or_processed)."""
     estimator = st.session_state.get('fitted_estimators', {}).get(name)
@@ -179,10 +212,18 @@ def _get_pipeline_and_data(name):
         expected_cols = list(feature_names_in) if feature_names_in is not None else []
 
         df_raw = get_data()
-        test_indices = st.session_state.get('test_indices')
-        if df_raw is not None and data_config and test_indices is not None:
+        raw_candidate = None
+        if df_raw is not None and data_config:
+            # By label. The positional read this replaces could not tell "the
+            # same rows" from "the same number of rows", and the bare except
+            # below hid even the IndexError that a shorter frame raised.
+            raw_candidate = _held_out_rows(
+                df_raw,
+                "Permutation importance and SHAP fall back to the feature "
+                "matrix recorded when the split was drawn; raw-column analyses "
+                "are unavailable until the split is re-run.")
+        if raw_candidate is not None:
             try:
-                raw_candidate = df_raw.iloc[test_indices]
                 if expected_cols and all(col in raw_candidate.columns for col in expected_cols):
                     X_raw = raw_candidate.loc[:, expected_cols].copy()
                 elif isinstance(X_test, pd.DataFrame) and expected_cols and all(col in X_test.columns for col in expected_cols):
@@ -193,7 +234,7 @@ def _get_pipeline_and_data(name):
                     fallback_cols = list(st.session_state.get('selected_features') or data_config.feature_cols or feature_names or [])
                     X_raw = raw_candidate.loc[:, [c for c in fallback_cols if c in raw_candidate.columns]].copy()
 
-                y_raw = df_raw[data_config.target_col].iloc[test_indices].values
+                y_raw = raw_candidate[data_config.target_col].values
                 # Encode string labels to match what the model was trained on
                 label_encoder = st.session_state.get('target_label_encoder')
                 if label_encoder is not None and y_raw.dtype == object:
@@ -202,8 +243,17 @@ def _get_pipeline_and_data(name):
                 if len(X_raw.columns) > 0:
                     return full_pipeline, X_raw, y_raw, X_raw
             except Exception:
-                pass
-        return estimator, X_test, y_test, X_test
+                logger.exception(
+                    "%s: held-out rows could not be re-read by label; falling "
+                    "back to the split's stored test matrix", name)
+        # THE PIPELINE STAYS ATTACHED ON EVERY PATH OUT OF THIS BRANCH.
+        # `X_test` holds RAW columns — page 06 fits on `pipeline.transform(
+        # X_test)` — and the estimator was fitted on that pipeline's OUTPUT.
+        # Returning the bare estimator here handed a one-hot-encoded model a
+        # frame still containing 'female', so every permutation and SHAP run
+        # died on the numeric cast while the page reported success
+        # (`DRIVE-065`).
+        return full_pipeline, X_test, y_test, X_test
     return estimator, X_test, y_test, X_test
 
 
@@ -215,6 +265,137 @@ def _to_dense_numpy(arr):
     else:
         out = np.asarray(arr, dtype=float)
     return np.ascontiguousarray(out)
+
+
+# ────────────────────────────────────────────────────────────────
+# HELPER: one SHAP record, normalized once  (`STATE-033`)
+# ────────────────────────────────────────────────────────────────
+
+def _shap_class_label(class_names, idx: int, n_classes: int) -> str:
+    """What a SHAP matrix is *of*, said the way a figure caption must say it."""
+    name = str(class_names[idx]) if idx < len(class_names) else f"Class {idx}"
+    if n_classes == 2 and idx == 1:
+        return f"{name} (positive class)"
+    return name
+
+
+def _normalize_shap_values(sv_raw, class_names=None) -> Dict:
+    """Build the SHAP record ONCE, with its class attribution written down.
+
+    The array's shape is the only thing that says whether a value belongs to a
+    class, and it used to be flattened twice with nothing recorded: the compute
+    path took `sv[:, :, -1]` — the LAST class — and set `class_label = None`,
+    and the render path re-sliced whatever it was handed. A multiclass model
+    therefore produced a summary plot and a "Mean Absolute SHAP Value (Global
+    Importance)" ranking that described one arbitrary class, with no way for the
+    figure or the exported report to reveal the substitution.
+
+    So: every per-class matrix is kept, each one is named, and the render path
+    is forbidden to reshape. A shape this cannot account for comes back as
+    `error` — a refusal the page shows — never as a silently reduced array.
+    """
+    n_classes = 1
+    per_class = None
+
+    if isinstance(sv_raw, list):
+        try:
+            per_class = [np.asarray(a, dtype=float) for a in sv_raw]
+        except Exception as exc:
+            return {'error': f"SHAP returned a list this page cannot read ({exc})."}
+        if not per_class:
+            return {'error': "SHAP returned no values."}
+        n_classes = len(per_class)
+    else:
+        arr = np.asarray(sv_raw)
+        if arr.ndim == 3:
+            # (n_samples, n_features, n_classes) — the modern shap shape for
+            # tree models on a multiclass target.
+            n_classes = arr.shape[2]
+            per_class = [np.asarray(arr[:, :, k], dtype=float)
+                         for k in range(n_classes)]
+        elif arr.ndim == 2:
+            values = np.asarray(arr, dtype=float)
+        elif arr.ndim == 1:
+            values = np.asarray(arr, dtype=float).reshape(1, -1)
+        else:
+            return {'error': f"SHAP returned a {arr.ndim}-dimensional array "
+                             f"({arr.shape}); this page can only plot per-sample "
+                             f"× per-feature values."}
+
+    if per_class is not None:
+        if any(a.ndim != 2 for a in per_class):
+            return {'error': "SHAP returned per-class values that are not "
+                             "sample × feature matrices."}
+        names = [str(c) for c in (class_names or [])]
+        if len(names) != n_classes:
+            names = [f"Class {i}" for i in range(n_classes)]
+        # Binary: index 1 is the positive class, which is the one a clinical
+        # reader means. Multiclass: no class is privileged, so the first is
+        # shown and the reader picks — with the class named either way.
+        default_idx = 1 if n_classes == 2 else 0
+        return {
+            'shap_values': per_class[default_idx],
+            'class_index': default_idx,
+            'class_label': _shap_class_label(names, default_idx, n_classes),
+            'class_names': names,
+            'per_class': per_class,
+            'n_classes': n_classes,
+            'error': None,
+        }
+
+    return {
+        'shap_values': values,
+        'class_index': None,
+        'class_label': None,
+        'class_names': [],
+        'per_class': None,
+        'n_classes': 1,
+        'error': None,
+    }
+
+
+def _consensus_top_features(perm_data: Dict, top_n: int = 5) -> List[str]:
+    """Features in EVERY model's top `top_n` by permutation importance.
+
+    The comparison chart used to tell the reader to "look for features that
+    appear in the top 5 for all models" — a computation handed back to the
+    person reading it. `consensus_features` is where this app already decides
+    what consensus means; a second notion drawn on a chart would be a third
+    answer to the same question.
+    """
+    from ml.feature_selection import FeatureSelectionResult, consensus_features
+
+    results = []
+    for name, info in (perm_data or {}).items():
+        names = list(info['feature_names'])
+        importances = [float(v) for v in info['importances_mean']]
+        order = np.argsort(importances)[::-1][:top_n]
+        picks = [names[i] for i in order if i < len(names)]
+        results.append(FeatureSelectionResult(
+            method=f"{name} permutation importance",
+            selected_features=picks,
+            all_features=names,
+            scores=dict(zip(names, importances)),
+            details={"top_n": top_n},
+            description=f"Top {top_n} features by permutation importance for {name}.",
+        ))
+    if not results:
+        return []
+    return consensus_features(results, min_methods=len(results))
+
+
+def _shap_class_names_for(model_step, n_classes: int, label_encoder=None) -> List[str]:
+    """The model's own class labels, decoded back to what the user typed."""
+    _declared = getattr(model_step, 'classes_', None)
+    classes = list(_declared) if _declared is not None else []
+    if len(classes) != n_classes:
+        classes = list(range(n_classes))
+    if label_encoder is not None and hasattr(label_encoder, 'inverse_transform'):
+        try:
+            classes = list(label_encoder.inverse_transform(np.asarray(classes)))
+        except Exception:
+            pass
+    return [str(c) for c in classes]
 
 
 # ════════════════════════════════════════════════════════════════
@@ -342,6 +523,10 @@ with _explain_tabs[0]:
         shap_results = {}
         pdp_results = {}
         errors = []
+        # Which models the run actually reached. The banner and the provenance
+        # record below both describe outcomes per model, and `model_selection`
+        # is the request — a cancel mid-run makes the two differ.
+        models_attempted = []
     
         # Display cancel button during execution
         with cancel_container:
@@ -356,6 +541,7 @@ with _explain_tabs[0]:
                 break
         
             step_start = time.perf_counter()
+            models_attempted.append(name)
             full_pipe, X_perm, y_perm, X_raw = _get_pipeline_and_data(name)
             if full_pipe is None:
                 errors.append(f"{name}: Fitted estimator not found or not fitted. Please retrain.")
@@ -473,26 +659,26 @@ with _explain_tabs[0]:
                         shap_values = explainer.shap_values(X_ev_kernel)
                         X_ev = X_ev_kernel  # use subsampled version downstream
 
-                    # Handle multiclass / multi-output SHAP values
-                    sv_raw = shap_values
-                    if isinstance(sv_raw, list):
-                        # List of arrays — one per class
-                        if len(sv_raw) == 2:
-                            sv_plot = np.asarray(sv_raw[1])
-                            class_label = "Class 1 (Positive)"
-                        else:
-                            sv_plot = np.asarray(sv_raw[0])
-                            class_label = "Class 0"
-                    else:
-                        sv_plot = np.asarray(sv_raw)
-                        class_label = None
-
-                    # Ensure 2D (n_samples, n_features) — some explainers return 3D
-                    if sv_plot.ndim == 3:
-                        # (n_samples, n_features, n_classes) → take last class
-                        sv_plot = sv_plot[:, :, -1]
-                    elif sv_plot.ndim == 1:
-                        sv_plot = sv_plot.reshape(1, -1)
+                    # Multiclass / multi-output SHAP: normalized once, here, with
+                    # the class attribution written into the record (`STATE-033`).
+                    _n_classes_guess = 1
+                    if isinstance(shap_values, list):
+                        _n_classes_guess = len(shap_values)
+                    elif np.asarray(shap_values).ndim == 3:
+                        _n_classes_guess = np.asarray(shap_values).shape[2]
+                    shap_record = _normalize_shap_values(
+                        shap_values,
+                        class_names=_shap_class_names_for(
+                            model_step, _n_classes_guess,
+                            st.session_state.get('target_label_encoder'))
+                        if _n_classes_guess > 1 else None,
+                    )
+                    if shap_record.get('error'):
+                        errors.append(f"{name} SHAP: {shap_record['error']}")
+                        step_count += 1
+                        overall_progress.progress(min(step_count / total_steps, 1.0))
+                        continue
+                    sv_plot = shap_record['shap_values']
 
                     # Feature names for SHAP
                     fn_by_model = st.session_state.get('feature_names_by_model', {})
@@ -515,8 +701,14 @@ with _explain_tabs[0]:
                         'shap_values': sv_plot,
                         'X_eval': X_ev,
                         'feature_names': fn_shap,
-                        'class_label': class_label,
-                        'all_shap_values': shap_values,  # keep for class switching
+                        # The normalized record: which class each matrix is of,
+                        # and every class kept so the render path can show one
+                        # without ever reshaping (`STATE-033`).
+                        'class_label': shap_record['class_label'],
+                        'class_index': shap_record['class_index'],
+                        'class_names': shap_record['class_names'],
+                        'per_class': shap_record['per_class'],
+                        'n_classes': shap_record['n_classes'],
                         'kernel_capped': shap_support == 'kernel',
                         'n_eval_samples': len(X_ev),
                     }
@@ -629,32 +821,92 @@ with _explain_tabs[0]:
         overall_progress.empty()
         overall_status.empty()
 
+        # ── What this run actually produced ──────────────────────────
+        # Three surfaces used to speak past the results: the errors were
+        # folded into a collapsed expander, the banner was an unconditional
+        # `st.success`, and the provenance record was written from the
+        # REQUESTED analysis list. A run where all six analyses raised
+        # therefore printed "✅ Explainability analysis complete" and ticked
+        # two TRIPOD items (`DRIVE-065`). All three now read the results.
+        _n_attempted = len(models_attempted)
+        _requested = []
+        if run_perm: _requested.append(("permutation importance", perm_results))
+        if run_shap: _requested.append(("SHAP", shap_results))
+        if run_pdp: _requested.append(("partial dependence", pdp_results))
+        _succeeded = [(label, res) for label, res in _requested if res]
+        _failed = [(label, res) for label, res in _requested if not res]
+        _n_units_ok = sum(len(res) for _, res in _requested)
+        _n_units = _n_attempted * len(_requested)
+
         if errors:
-            with st.expander(f"⚠️ {len(errors)} issue(s) during analysis", expanded=False):
+            # Expanded when nothing came out: the reason is the whole result.
+            with st.expander(f"⚠️ {len(errors)} issue(s) during analysis",
+                             expanded=not _succeeded):
                 for err in errors:
                     st.text(err)
+
+        _ok_phrase = ", ".join(
+            f"{label} ({len(res)}/{_n_attempted} models)" for label, res in _succeeded)
+        _fail_phrase = ", ".join(
+            f"{label} ({_n_attempted - len(res)}/{_n_attempted} models)"
+            for label, res in _failed)
 
         # Log methodology
         analyses_run = []
         if run_perm and perm_results: analyses_run.append("permutation_importance")
         if run_shap and shap_results: analyses_run.append("shap")
         if run_pdp and pdp_results: analyses_run.append("partial_dependence")
-        from utils.session_state import log_methodology
-        log_methodology(
-            step='Explainability',
-            action=f"Ran {', '.join(analyses_run)} on {len(model_selection)} models",
-            details={'analyses': analyses_run, 'models': list(model_selection)}
-        )
-        try:
-            from utils.workflow_provenance import get_provenance
-            get_provenance().record_explainability(
-                methods=analyses_run,
-                models=list(model_selection),
+        # The models a result exists for, not the models asked about: the
+        # ledger entry this writes is what page 10 quotes beside its TRIPOD
+        # ticks, and "Ran  on 3 models" described an empty run.
+        models_with_results = [
+            m for m in models_attempted
+            if m in perm_results or m in shap_results or m in pdp_results
+        ]
+        if analyses_run:
+            from utils.session_state import log_methodology
+            log_methodology(
+                step='Explainability',
+                action=(f"Ran {', '.join(analyses_run)} on "
+                        f"{len(models_with_results)} models"),
+                details={'analyses': analyses_run,
+                         'models': list(models_with_results),
+                         'models_requested': list(model_selection),
+                         'failed_analyses': [label for label, _ in _failed]}
             )
-        except Exception:
-            pass  # Provenance recording should never break the workflow
+            try:
+                from utils.workflow_provenance import get_provenance
+                get_provenance().record_explainability(
+                    methods=analyses_run,
+                    models=list(models_with_results),
+                )
+            except Exception:
+                pass  # Provenance recording should never break the workflow
 
-        st.success(f"✅ Explainability analysis complete ({elapsed:.1f}s)")
+        if _n_units == 0:
+            st.info(
+                "No analysis ran — the run was canceled before any model was "
+                "reached. Nothing was recorded."
+            )
+        elif not _succeeded:
+            st.error(
+                f"❌ Explainability produced no results ({elapsed:.1f}s): "
+                f"0 of {_n_units} analyses completed — {_fail_phrase} failed. "
+                f"Nothing on this page describes your models, and nothing was "
+                f"recorded for the report. Open the issues above for the reason."
+            )
+        elif _failed or _n_units_ok < _n_units:
+            st.warning(
+                f"⚠️ Explainability finished with {_n_units_ok} of {_n_units} "
+                f"analyses complete ({elapsed:.1f}s). Succeeded: {_ok_phrase}."
+                + (f" Failed: {_fail_phrase}." if _fail_phrase else "")
+                + " Only the completed analyses were recorded for the report."
+            )
+        else:
+            st.success(
+                f"✅ Explainability analysis complete ({elapsed:.1f}s) — "
+                f"{_ok_phrase}."
+            )
 
     # ════════════════════════════════════════════════════════════════
     # DISPLAY RESULTS
@@ -751,10 +1003,50 @@ with _explain_tabs[0]:
                         import shap
 
                         s = shap_data[name]
-                        sv = np.asarray(s['shap_values'])
                         X_ev = np.asarray(s['X_eval'])
                         fn = s['feature_names']
-                        cl = s.get('class_label')
+
+                        # One SHAP matrix per class, named. The class is CHOSEN
+                        # here and never derived from a shape: this tab used to
+                        # re-slice whatever it was handed, so a multiclass model
+                        # was explained as one unnamed arbitrary class
+                        # (`STATE-033`).
+                        _per_class = s.get('per_class')
+                        _class_names = list(s.get('class_names') or [])
+                        _n_classes = int(s.get('n_classes') or 1)
+                        if _per_class is not None and _n_classes > 2:
+                            _pick = st.selectbox(
+                                "SHAP explains one class at a time — which class?",
+                                list(range(_n_classes)),
+                                index=int(s.get('class_index') or 0),
+                                format_func=lambda i, _n=_class_names, _k=_n_classes:
+                                    _shap_class_label(_n, i, _k),
+                                key=f"shap_class_pick_{name}",
+                                help="A multiclass model produces one SHAP value "
+                                     "per class per feature. Every figure below "
+                                     "describes the class selected here.",
+                            )
+                            sv = np.asarray(_per_class[_pick])
+                            cl = _shap_class_label(_class_names, _pick, _n_classes)
+                        elif _per_class is not None:
+                            _pick = int(s.get('class_index') or 0)
+                            sv = np.asarray(_per_class[_pick])
+                            cl = _shap_class_label(_class_names, _pick, _n_classes)
+                        else:
+                            sv = np.asarray(s['shap_values'])
+                            cl = s.get('class_label')
+
+                        if sv.ndim != 2:
+                            # Reshaping here is what produced the wrong figure,
+                            # so the page halts instead: a matrix of another
+                            # shape cannot be plotted as sample × feature
+                            # without deciding, silently, what it is of.
+                            st.error(
+                                f"**SHAP values for {name.upper()} are not a "
+                                f"sample × feature matrix** (shape {sv.shape}), "
+                                f"so no importance plot is drawn. Re-run the "
+                                f"analysis for this model.")
+                            st.stop()
 
                         if s.get('kernel_capped'):
                             _n_eval = s.get('n_eval_samples', len(X_ev))
@@ -765,17 +1057,10 @@ with _explain_tabs[0]:
                                 f"use tree-based or linear models which have fast exact SHAP methods."
                             )
 
-                        # Ensure 2D
-                        if sv.ndim == 3:
-                            sv = sv[:, :, -1]
-                        if sv.ndim == 1:
-                            sv = sv.reshape(1, -1)
-
                         # Align columns: SHAP values and X_eval must have same n_features
-                        n_cols = min(X_ev.shape[1], sv.shape[1]) if sv.ndim == 2 else X_ev.shape[1]
+                        n_cols = min(X_ev.shape[1], sv.shape[1])
                         X_ev = X_ev[:, :n_cols]
-                        if sv.ndim == 2:
-                            sv = sv[:, :n_cols]
+                        sv = sv[:, :n_cols]
                         fn_plot = fn[:n_cols] if len(fn) >= n_cols else [f"Feature {i}" for i in range(n_cols)]
                         X_plot_df = pd.DataFrame(X_ev, columns=fn_plot)
 
@@ -784,10 +1069,15 @@ with _explain_tabs[0]:
                         fig, ax = plt.subplots(figsize=(10, fig_height))
                         shap.summary_plot(sv, X_plot_df, feature_names=fn_plot, show=False,
                                           plot_size=(10, fig_height))
-                        if cl:
-                            ax.set_title(f"SHAP Values ({cl})", fontsize=11)
+                        # The title is the figure's only class attribution, and
+                        # the figure is exported into the manuscript — so it is
+                        # written whenever the values belong to a class, not
+                        # only when a label happened to survive.
+                        ax.set_title(
+                            f"SHAP Values ({cl})" if cl
+                            else "SHAP Values", fontsize=11)
                         st.pyplot(fig)
-                    
+
                         # Store figure for export
                         if 'shap_matplotlib_figs' not in st.session_state:
                             st.session_state['shap_matplotlib_figs'] = {}
@@ -812,8 +1102,12 @@ with _explain_tabs[0]:
                                     lambda x: '🧬 Engineered' if x in engineered_names else '📊 Original'
                                 )
 
+                        # "Global Importance" was the claim on a one-class
+                        # ranking. It is global only when there is one output.
+                        _bar_title = ("Mean Absolute SHAP Value "
+                                      + (f"({cl})" if cl else "(Global Importance)"))
                         fig2 = px.bar(shap_df.head(10), x='Mean |SHAP|', y='Feature', orientation='h',
-                                      title="Mean Absolute SHAP Value (Global Importance)",
+                                      title=_bar_title,
                                       color='Mean |SHAP|', color_continuous_scale='Purples')
                         fig2.update_layout(yaxis={'categoryorder': 'total ascending'}, height=350,
                                            showlegend=False, coloraxis_showscale=False,
@@ -834,7 +1128,8 @@ with _explain_tabs[0]:
                         from utils.insight_ledger import MODEL_TO_FAMILY
                         nar = narrative_shap(sv, fn_plot, model_name=name)
                         if nar:
-                            st.markdown(f"**Summary:** {nar}")
+                            st.markdown(
+                                f"**Summary{f' ({cl})' if cl else ''}:** {nar}")
                         top_idx = np.argsort(mean_abs)[::-1][:5]
                         stats_summary = "; ".join(f"{fn_plot[i]}={mean_abs[i]:.3f}" for i in top_idx if i < len(fn_plot))
                         _bg_shap = gather_session_context()
@@ -874,7 +1169,9 @@ with _explain_tabs[0]:
                                 colors = ['#FF6B6B' if v < 0 else '#4ECDC4' for v in shap_vals_sample['SHAP Value']]
                                 ax_wf.barh(shap_vals_sample['Feature'], shap_vals_sample['SHAP Value'], color=colors)
                                 ax_wf.set_xlabel('SHAP Value (impact on prediction)')
-                                ax_wf.set_title(f'Top 10 Features Impacting Sample {sample_idx}')
+                                ax_wf.set_title(
+                                    f'Top 10 Features Impacting Sample {sample_idx}'
+                                    + (f' ({cl})' if cl else ''))
                                 ax_wf.axvline(x=0, color='black', linestyle='--', linewidth=0.8)
                                 plt.tight_layout()
                                 st.pyplot(fig_waterfall)
@@ -1035,19 +1332,46 @@ with _explain_tabs[0]:
         comp_df = comp_df.sort_values('Mean', ascending=False)
 
         top_cross = min(10, len(comp_df))
+
+        # The consensus the page used to ask the reader to find by eye.
+        _top_n = 5
+        consensus = set(_consensus_top_features(perm_data, top_n=_top_n))
+
+        _x_labels = [f"★ {f}" if f in consensus else str(f)
+                     for f in comp_df.index[:top_cross]]
         fig = go.Figure()
         for col in comp_df.columns[:-1]:  # skip Mean
-            fig.add_trace(go.Bar(name=col, x=comp_df.index[:top_cross], y=comp_df[col][:top_cross]))
-        fig.update_layout(barmode='group', title=f"Top {top_cross} Features Across Models",
+            fig.add_trace(go.Bar(name=col, x=_x_labels, y=comp_df[col][:top_cross]))
+        fig.update_layout(barmode='group',
+                          title=f"Top {top_cross} Features Across Models "
+                                f"(★ = in every model's top {_top_n})",
                           height=400, margin=dict(l=10, r=10, t=40, b=10))
+        for _i, _f in enumerate(comp_df.index[:top_cross]):
+            if _f in consensus:
+                fig.add_vrect(x0=_i - 0.5, x1=_i + 0.5, fillcolor="#667eea",
+                              opacity=0.10, line_width=0, layer="below")
         st.plotly_chart(fig, key="cross_model_importance")
 
-        # Consensus features
-        render_guidance(
-            f"<strong>Consensus:</strong> Features that rank highly across multiple models are more likely to be "
-            f"genuinely important. Look for features that appear in the top 5 for all models.",
-            icon="🎯"
-        )
+        # Consensus features — named, not left as an instruction to the reader.
+        _consensus_ordered = [str(f) for f in comp_df.index if f in consensus]
+        if _consensus_ordered:
+            render_guidance(
+                f"<strong>Consensus ({len(_consensus_ordered)} of "
+                f"{len(comp_df)} features):</strong> "
+                f"<strong>{', '.join(_consensus_ordered)}</strong> "
+                f"{'is' if len(_consensus_ordered) == 1 else 'are'} in the top "
+                f"{_top_n} for all {len(perm_data)} models (★ above). Features "
+                f"that rank highly across models are more likely to be "
+                f"genuinely important than any single model's ranking.",
+                icon="🎯"
+            )
+        else:
+            render_guidance(
+                f"<strong>No consensus:</strong> no feature is in the top "
+                f"{_top_n} for all {len(perm_data)} models. The models disagree "
+                f"about what matters, which is itself worth reporting.",
+                icon="🎯"
+            )
 
     # ════════════════════════════════════════════════════════════════
     # BLAND–ALTMAN (regression, 2+ models)
@@ -1121,22 +1445,104 @@ with _explain_tabs[2]:
                                     key="ext_val_file")
 
         if ext_file is not None:
-            from data_processor import load_tabular_data
-            try:
-                ext_df = load_tabular_data(ext_file, filename=ext_file.name)
+            # `IMPORT-213`: this was the one uploader in the app with no front
+            # door — a bare load_tabular_data and a missing-column check, on the
+            # file whose numbers the banner above calls the gold standard for
+            # publication. Every defect that preserves column names (a JSON
+            # payload with two record lists, sentinel codes, a duplicate index)
+            # went straight into predict(). Same path as page 01 now: layout
+            # disclosure, records-key choice, transpose, Import Doctor.
+            from data_processor import detect_file_type, inspect_json, load_tabular_data
+            from ml.import_doctor import diagnose
+            from utils.import_ui import applied_fixes, render_import_doctor
+
+            ext_key = f"extval_{ext_file.name}"
+            ext_type = detect_file_type(ext_file.name)
+            ext_records_key = ""
+            ext_df = None
+            _layout_failed = False
+
+            if ext_type in ('json', 'jsonl'):
+                ext_file.seek(0)
+                _layout = inspect_json(ext_file, lines=(ext_type == 'jsonl'))
+                ext_file.seek(0)
+                if _layout.error:
+                    st.error(_layout.error)
+                    _layout_failed = True
+                else:
+                    if _layout.candidates:
+                        _default_idx = (_layout.candidates.index(_layout.chosen_key)
+                                        if _layout.chosen_key in _layout.candidates else 0)
+                        ext_records_key = st.selectbox(
+                            "Which part of this file holds your rows?",
+                            _layout.candidates, index=_default_idx,
+                            key=f"records_key_{ext_key}",
+                            help="This JSON wraps its table inside a key. Pick "
+                                 "the one holding the external cohort's records.",
+                        )
+                    if _layout.note:
+                        st.caption(f"ℹ️ {_layout.note}")
+
+            if not _layout_failed:
+                ext_transpose = st.checkbox(
+                    "Transpose this file (rows ↔ columns)", value=False,
+                    key=f"transpose_{ext_key}",
+                    help="Use this if the external file has features in rows.")
+                try:
+                    ext_file.seek(0)
+                    ext_df = load_tabular_data(
+                        ext_file, filename=ext_file.name,
+                        transpose=ext_transpose,
+                        records_key=ext_records_key or None)
+                    ext_file.seek(0)
+                    ext_df.columns = [str(c) for c in ext_df.columns]
+                except Exception as e:
+                    st.error(f"Error loading file: {e}")
+                    ext_df = None
+
+            if ext_df is not None:
                 st.success(f"Loaded external dataset: {ext_df.shape[0]} rows × {ext_df.shape[1]} columns")
 
+                # Findings are DISPLAYED, with their reversible fixes, and the
+                # frame that goes into predict() is the repaired one.
+                ext_df = render_import_doctor(ext_df, ext_key)
+                ext_blocking = [f for f in diagnose(ext_df) if f.severity == "critical"]
+                ext_repairs = list(applied_fixes(ext_key))
+
                 selected_features = st.session_state.get('selected_features') or data_config.feature_cols
-                required_cols = selected_features + [data_config.target_col]
+                required_cols = list(selected_features) + [data_config.target_col]
                 missing_cols = [c for c in required_cols if c not in ext_df.columns]
                 if missing_cols:
                     st.error(f"Missing columns in external dataset: {missing_cols}")
                 else:
-                    if st.button("Validate on External Dataset", type="primary", key="run_ext_val"):
+                    ext_override = True
+                    if ext_blocking:
+                        st.error(
+                            f"**{len(ext_blocking)} blocking structural problem"
+                            f"{'s' if len(ext_blocking) != 1 else ''} in this "
+                            f"file:** " +
+                            "; ".join(f.title for f in ext_blocking) +
+                            ". External validation is what a reviewer weighs "
+                            "most heavily, so it will not run on a file the "
+                            "structural review calls broken.")
+                        ext_override = st.checkbox(
+                            "Validate anyway — I have reviewed these and they "
+                            "are not defects in this file",
+                            key=f"ext_override_{ext_key}",
+                            help="Anything unfixed is recorded with the results "
+                                 "and reported in the manuscript.")
+
+                    if st.button("Validate on External Dataset", type="primary",
+                                 key="run_ext_val",
+                                 disabled=bool(ext_blocking) and not ext_override):
+                        from datetime import datetime as _dt
                         from ml.bootstrap import bootstrap_all_regression_metrics, bootstrap_all_classification_metrics, format_metric_with_ci
+                        from utils.workflow_provenance import get_provenance
 
                         ext_y = ext_df[data_config.target_col].values
                         ext_X = ext_df[selected_features]
+                        _n_boot = 500
+                        ext_per_model = {}
 
                         st.subheader("External Validation Results")
                         for name in st.session_state.get('trained_models', {}):
@@ -1153,16 +1559,78 @@ with _explain_tabs[2]:
 
                                 st.markdown(f"**{name.upper()}:**")
                                 if data_config.task_type == "regression":
-                                    cis = bootstrap_all_regression_metrics(ext_y, ext_pred, n_resamples=500)
+                                    cis = bootstrap_all_regression_metrics(ext_y, ext_pred, n_resamples=_n_boot)
                                 else:
-                                    cis = bootstrap_all_classification_metrics(ext_y, ext_pred, n_resamples=500)
+                                    cis = bootstrap_all_classification_metrics(ext_y, ext_pred, n_resamples=_n_boot)
 
                                 for metric_name, result in cis.items():
                                     st.write(f"  {metric_name}: {format_metric_with_ci(result)}")
+                                ext_per_model[name] = {
+                                    m: {k: (float(v) if isinstance(v, (int, float, np.floating)) else v)
+                                        for k, v in r.to_dict().items()}
+                                    for m, r in cis.items()
+                                }
                             except Exception as e:
                                 st.warning(f"Could not validate {name}: {e}")
-            except Exception as e:
-                st.error(f"Error loading file: {e}")
+
+                        # The results used to be displayed and dropped: no
+                        # session write, no provenance event, so the manuscript's
+                        # external-validation section could never populate. They
+                        # are kept, and the record is what ml/publication reads.
+                        if ext_per_model:
+                            st.session_state['external_validation_results'] = {
+                                'dataset_name': ext_file.name,
+                                'n_rows': int(ext_df.shape[0]),
+                                'n_features': len(selected_features),
+                                'target_col': data_config.target_col,
+                                'features': list(selected_features),
+                                'task_type': data_config.task_type,
+                                'per_model': ext_per_model,
+                                'n_bootstrap': _n_boot,
+                                'records_key': ext_records_key,
+                                'transposed': bool(ext_transpose),
+                                'import_repairs': ext_repairs,
+                                'unresolved_findings': [f.title for f in ext_blocking],
+                                'timestamp': _dt.now().isoformat(),
+                            }
+                            get_provenance().record_external_validation(
+                                dataset_name=ext_file.name,
+                                n_rows=int(ext_df.shape[0]),
+                                n_features=len(selected_features),
+                                models_validated=list(ext_per_model.keys()),
+                                metrics=ext_per_model,
+                                n_bootstrap=_n_boot,
+                                import_repairs=ext_repairs,
+                                structural_findings="; ".join(f.title for f in ext_blocking),
+                                records_key=ext_records_key,
+                            )
+                            st.success(
+                                "Recorded. The Methods draft now reports this "
+                                "external validation, with these models and "
+                                "this cohort size.")
+                        else:
+                            st.warning(
+                                "No model could be scored on this file, so "
+                                "nothing was recorded as external validation.")
+
+    _ext_stored = st.session_state.get('external_validation_results')
+    if _ext_stored and _ext_stored.get('per_model'):
+        st.caption(
+            f"✅ External validation on record: **{_ext_stored.get('dataset_name', '')}** "
+            f"({_ext_stored.get('n_rows', 0):,} rows), "
+            f"{len(_ext_stored['per_model'])} model(s), "
+            f"95% CIs from {_ext_stored.get('n_bootstrap', 0):,} bootstrap resamples. "
+            f"This is what the manuscript reports.")
+        _ext_rows = [
+            {"Model": _m.upper(), "Metric": _metric,
+             "Estimate": _vals.get("estimate"),
+             "95% CI": f"[{_vals.get('ci_lower'):.4f}, {_vals.get('ci_upper'):.4f}]"
+                       if _vals.get('ci_lower') is not None else ""}
+            for _m, _mets in _ext_stored['per_model'].items()
+            for _metric, _vals in _mets.items()
+        ]
+        if _ext_rows:
+            table(pd.DataFrame(_ext_rows), key="ext_val_recorded", hide_index=True)
 
     # ════════════════════════════════════════════════════════════════
     # SUBGROUP ANALYSIS
@@ -1177,7 +1645,6 @@ with _explain_tabs[3]:
 
     with st.expander("Run Subgroup Analysis", expanded=False):
         df_raw = get_data()
-        test_indices = st.session_state.get('test_indices')
         if df_raw is not None and st.session_state.get('trained_models'):
             available_cat_cols = [c for c in df_raw.columns if df_raw[c].dtype in ('object', 'category') or df_raw[c].nunique() <= 20]
             subgroup_options = [c for c in available_cat_cols if c != data_config.target_col]
@@ -1188,12 +1655,30 @@ with _explain_tabs[3]:
                 if st.button("Run Subgroup Analysis", type="primary", key="run_subgroup"):
                     from ml.publication import subgroup_analysis, plot_forest_subgroups
 
+                    # y_test/y_pred come from the stored run; the stratum each
+                    # one belongs to must come from the SAME rows. Reading the
+                    # strata positionally paired one person's prediction with
+                    # another person's subgroup, and the N and 95% CI per
+                    # stratum then described nobody (CONTRACT-001). Resolved
+                    # once, before any model is tabulated: if the rows are gone
+                    # the whole table is refused rather than drawn wrong.
+                    test_rows = _held_out_rows(
+                        df_raw,
+                        "Subgroup analysis needs the held-out rows themselves "
+                        "to stratify by, so it cannot be run on this dataset "
+                        "until the split is re-run.")
+                    # The rows were named and could not be found: the fallback
+                    # below would answer a different question, so nothing runs.
+                    refused = test_rows is None and st.session_state.get("test_row_labels")
+
                     for name, results in st.session_state.model_results.items():
+                        if refused:
+                            break
                         y_test_sub = np.array(results["y_test"])
                         y_pred_sub = np.array(results["y_test_pred"])
 
-                        if test_indices is not None:
-                            subgroup_labels = df_raw.iloc[test_indices][subgroup_var].values
+                        if test_rows is not None:
+                            subgroup_labels = test_rows[subgroup_var].values
                         else:
                             X_test_local = st.session_state.get("X_test")
                             if X_test_local is not None and subgroup_var in X_test_local.columns:
@@ -1201,6 +1686,16 @@ with _explain_tabs[3]:
                             else:
                                 st.warning(f"Subgroup variable `{subgroup_var}` not found in test data.")
                                 continue
+
+                        if len(subgroup_labels) != len(y_test_sub):
+                            # Three vectors that must describe one person each,
+                            # in one order. Unequal lengths mean they do not.
+                            st.warning(
+                                f"{name}: {len(y_test_sub)} stored predictions "
+                                f"but {len(subgroup_labels)} subgroup values — "
+                                "the results and the data are from different "
+                                "splits. Re-run Prepare Splits and retrain.")
+                            continue
 
                         st.subheader(f"{name.upper()}")
                         sub_df = subgroup_analysis(

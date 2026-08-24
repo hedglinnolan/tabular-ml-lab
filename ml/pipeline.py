@@ -25,10 +25,212 @@ try:
     _HAS_TARGET_ENCODER = True
 except ImportError:
     _HAS_TARGET_ENCODER = False
+from sklearn.base import BaseEstimator, TransformerMixin
 from ml.feature_steps import create_pca_step, KMeansFeatures
 from ml.preprocess_operators import UnitHarmonizer, PlausibilityGate, OutlierCapping, plausibility_row_mask
 from ml.clinical_units import infer_unit, CLINICAL_VARIABLES
-from ml.physiology_reference import load_reference_bundle, match_variable_key, get_reference_interval
+from ml.physiology_reference import load_reference_bundle, match_variable_key, get_improbability_band
+
+
+class AppendedKMeansFeatures(BaseEstimator, TransformerMixin):
+    """Cluster features APPENDED to the matrix they were computed on.
+
+    `STATE-011`: `KMeansFeatures.transform` returns only the cluster columns —
+    "for now, we're replacing X with cluster features (not appending)", says its
+    comment — while the recipe line, the Preprocess page and the Methods section
+    all say *added*. Enabling the checkbox therefore discarded every clinical
+    predictor and trained the model on nothing but distances to k centroids:
+    shapes stayed valid, the pipeline fitted, metrics computed, and SHAP
+    rendered on `kmeans_dist_cluster_*` with nothing on screen to say the study's
+    variables were gone. The copy is what the researcher reads, so the code is
+    what changes: the predictors stay, and the cluster columns follow them.
+
+    The output is dense because the input block may be sparse (one-hot) while
+    the distances never are, and an optional PCA step downstream does not accept
+    sparse input.
+    """
+
+    def __init__(self, n_clusters: int = 5, add_distances: bool = True,
+                 add_onehot_label: bool = False, random_state: int = 42):
+        self.n_clusters = n_clusters
+        self.add_distances = add_distances
+        self.add_onehot_label = add_onehot_label
+        self.random_state = random_state
+
+    def _inner(self) -> KMeansFeatures:
+        return KMeansFeatures(
+            n_clusters=self.n_clusters,
+            add_distances=self.add_distances,
+            add_onehot_label=self.add_onehot_label,
+            random_state=self.random_state,
+        )
+
+    @staticmethod
+    def _dense(X) -> np.ndarray:
+        return np.asarray(X.toarray() if hasattr(X, "toarray") else X, dtype=float)
+
+    def fit(self, X, y=None):
+        self.kmeans_features_ = self._inner().fit(X)
+        self.n_input_features_ = self._dense(X).shape[1]
+        return self
+
+    def transform(self, X):
+        from sklearn.utils.validation import check_is_fitted
+        check_is_fitted(self, "kmeans_features_")
+        base = self._dense(X)
+        if not (self.add_distances or self.add_onehot_label):
+            # Nothing was asked for; the matrix passes through unchanged.
+            return base
+        cluster = self._dense(self.kmeans_features_.transform(X))
+        return np.hstack([base, cluster])
+
+    def get_feature_names_out(self, input_features=None):
+        cluster_names = self._inner().get_feature_names_out(input_features=[])
+        cluster_names = [] if cluster_names is None else [str(n) for n in cluster_names]
+        if input_features is None:
+            n_in = getattr(self, "n_input_features_", 0)
+            input_features = [f"feature_{i}" for i in range(n_in)]
+        return np.array([str(f) for f in input_features] + cluster_names)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# What the numeric imputation defaults cost  (`AUDIT-007`)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# `AUDIT-007`, corrected in the shape `AUDIT-021` uses.
+#
+# BEFORE: the `median` branch below was applied on the default path with
+#   nothing anywhere stating what it costs, and `pages/05_Preprocess.py`'s help
+#   text for it read *"Robust to skewed distributions. Most common default."* —
+#   an endorsement. `CLINICAL_SURVEY_PACK.md` §A2 anti-pattern 2 is
+#   **[SETTLED as bad]**: *"Mean/median imputation. Understates variance,
+#   destroys the distribution, indefensible in a manuscript."* Cross-cutting
+#   item 11 is blunter for the mean: *"Mean-imputing anything, ever, without a
+#   loud warning."*
+#
+# AFTER: the cost is stated where the default is applied, once. Nothing is
+#   removed — median remains the default, and the sentence keeps the true part
+#   of the old one (it IS the robust point estimate under skew) while adding
+#   what that buys and what it costs.
+#
+# Kept here rather than in the page because this module is where the choice
+# becomes an estimator; `pages/05_Preprocess.py` renders these strings, so the
+# sentence and the code that makes it true cannot drift apart. §A2 anti-pattern
+# 3 (**[SETTLED]**) is folded in for every strategy that fills from `X` alone:
+# the outcome is not in any of these fills, so associations are biased toward
+# the null. `iterative` (MICE) is the one entry that is not an anti-pattern,
+# and it says what it still assumes rather than claiming to be free.
+NUMERIC_IMPUTATION_COST = {
+    "median": (
+        "Robust to skew as a point estimate — and that is all it is. Filling "
+        "with one number understates that column's variance and distorts its "
+        "distribution, and the outcome is not in the fill, so associations are "
+        "biased toward the null. §A2 settles this as bad practice in a "
+        "manuscript."
+    ),
+    "mean": (
+        "⚠️ Mean imputation assumes symmetry and is pulled by outliers, and "
+        "like the median it understates variance, distorts the distribution "
+        "and biases associations toward the null because the outcome is not in "
+        "the fill. §A2 settles this as bad practice in a manuscript."
+    ),
+    "constant": (
+        "Fills with a fixed value, so it is a claim that the blank MEANS that "
+        "value. Defensible only where missing is structural or has a domain "
+        "meaning; otherwise it distorts the distribution more than the median "
+        "does, and the outcome is not in the fill."
+    ),
+    "iterative": (
+        "Models each column from the others (MICE), so it preserves variance "
+        "in a way single-value fills cannot. It still assumes the missingness "
+        "is MAR — where a value is absent because of what it would have been, "
+        "no imputation recovers it."
+    ),
+}
+
+# Every scaler this builder can actually construct, read off the branches in
+# `build_preprocessing_pipeline` below. It exists so a caller can ask whether a
+# variant it was handed is buildable instead of naming one this module would
+# silently ignore — the `else` in that branch chain is a no-op, so an unknown
+# variant applies NO scaling while the interface says it applied one.
+SUPPORTED_NUMERIC_SCALINGS = ("standard", "robust", "minmax", "none")
+
+
+def scaling_from_recipe(
+    model_key: str,
+    registry: Optional[Dict[str, Any]] = None,
+    fallback: str = "standard",
+    origins: Optional[frozenset] = None,
+) -> Dict[str, Any]:
+    """What `turbotab.recipes` says this model's scaling is, and what gets built.
+
+    `AUDIT-013`, corrected in the shape `AUDIT-021` uses.
+
+    BEFORE: `pages/05_Preprocess.py` read
+      `spec.capabilities.requires_scaled_numeric` directly at four sites and
+      hard-coded `"standard"` from it, then told the user *"scaling enabled
+      (standard); appropriate for this model"* and *"Enabled standard scaling
+      (model requires scaling)"*. Both sentences attribute the choice to the
+      model's declared requirement, which is the `caps:requires_scaled_numeric`
+      row in `turbotab/recipes.py`. A pack may override that row —
+      `turbotab/packs.py:5182` registers `scale → pareto` against exactly that
+      selector — and the page could not see it, so the sentence named a source
+      whose answer it had not read.
+
+    AFTER: the table is asked. `resolve()`'s precedence lattice decides, a pack
+      row reaches the Classic door, and where this builder cannot construct the
+      table's answer that is STATED rather than silently substituted.
+
+    The last clause is the point. `build_preprocessing_pipeline`'s scaler branch
+    has no `else`: a variant it does not know applies NO scaling at all. So
+    routing the table straight through would have turned a display defect into
+    a fit defect the first time a metabolomics project asked for `pareto`. The
+    honest form is the fallback plus `departure` — the app refusing, out loud.
+
+    Returns a dict. `consulted` is False and every table field is `None`/`""`
+    when the table cannot answer (an unregistered key such as the synthetic
+    `"default"` pipeline) — ignorance reported as ignorance rather than as a
+    default (`AGENT_ONBOARD.md` §07 trap 9). Callers keep their own
+    data-determined choice in that case, exactly as before.
+
+    Invariant, asserted by
+    `tests/test_the_preprocess_page_asks_the_recipe_table.py`: `departure` is
+    non-empty if and only if `applied != table_variant`.
+    """
+    out: Dict[str, Any] = {
+        "model": model_key, "consulted": False, "table_variant": None,
+        "reason": "", "origin": "", "selector": "", "required": None,
+        "applied": None, "buildable": None, "departure": "",
+    }
+    try:
+        from turbotab import recipes as _recipes
+        res = _recipes.resolve(model_key, "scale", registry, origins)
+    except Exception:
+        return out
+
+    out.update(consulted=True, table_variant=res.variant, reason=res.reason,
+               origin=res.origin, selector=res.selector)
+    out["required"] = res.variant != "none"
+    if not out["required"]:
+        # The table's answer is "no scaling is required for this model". WHICH
+        # scaling to use anyway is a judgment about the data, and the caller
+        # owns it; saying nothing here is the correct amount to say.
+        return out
+
+    out["buildable"] = res.variant in SUPPORTED_NUMERIC_SCALINGS
+    if out["buildable"]:
+        out["applied"] = res.variant
+    else:
+        out["applied"] = fallback
+        out["departure"] = (
+            f"The recipe table asks for **{res.variant}** scaling here "
+            f"(contributed by `{res.origin}`, matching `{res.selector}`), and "
+            f"this pipeline builder cannot construct it — it builds "
+            f"{', '.join(SUPPORTED_NUMERIC_SCALINGS)}. **{fallback}** is "
+            f"applied instead, which is a departure from the table, not the "
+            f"table's answer."
+        )
+    return out
 
 
 def build_unit_harmonization_config(
@@ -83,15 +285,15 @@ def build_plausibility_bounds(
 
     for col, factor in zip(numeric_features, conversion_factors):
         var_key = match_variable_key(col, nhanes_ref)
-        ref_interval = get_reference_interval(nhanes_ref, var_key) if var_key else None
-        if ref_interval:
-            ref_low, ref_high, ref_unit = ref_interval
-            lower_bounds.append(ref_low)
-            upper_bounds.append(ref_high)
+        improbability = get_improbability_band(nhanes_ref, var_key) if var_key else None
+        if improbability:
+            improbable_low, improbable_high, improbable_unit = improbability
+            lower_bounds.append(improbable_low)
+            upper_bounds.append(improbable_high)
             bounds_by_feature[col] = {
-                "lower": ref_low,
-                "upper": ref_high,
-                "unit": ref_unit
+                "lower": improbable_low,
+                "upper": improbable_high,
+                "unit": improbable_unit
             }
         else:
             lower_bounds.append(None)
@@ -125,6 +327,16 @@ def apply_plausibility_filter(
     ub = plausibility_bounds.get("upper_bounds", [])
     if not lb and not ub:
         return df
+    # `STATE-003`: the bounds are positional over `numeric_features`. A shorter
+    # or differently-ordered column list would drop rows for being outside
+    # another variable's reference range — and dropping rows is not a mistake
+    # anything downstream can see.
+    if len(lb) != len(numeric_features) or len(ub) != len(numeric_features):
+        raise ValueError(
+            f"Plausibility bounds ({len(lb)} lower, {len(ub)} upper) do not "
+            f"line up with the {len(numeric_features)} numeric feature(s) they "
+            f"would be applied to. They are positional, so filtering here would "
+            f"judge each column against another column's range.")
     X = df[numeric_features].values.astype(float)
     if unit_conversion_factors:
         X = X * np.array(unit_conversion_factors, dtype=float)
@@ -309,9 +521,10 @@ def build_preprocessing_pipeline(
     # Build pipeline steps
     steps = [('preprocessor', preprocessor)]
     
-    # Optional: KMeansFeatures (must come before PCA if both enabled)
+    # Optional: KMeansFeatures (must come before PCA if both enabled).
+    # `STATE-011`: appended, not substituted — see AppendedKMeansFeatures.
     if use_kmeans_features:
-        kmeans_transformer = KMeansFeatures(
+        kmeans_transformer = AppendedKMeansFeatures(
             n_clusters=kmeans_n_clusters,
             add_distances=kmeans_add_distances,
             add_onehot_label=kmeans_add_onehot,
@@ -336,94 +549,181 @@ def build_preprocessing_pipeline(
     return Pipeline(steps)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# The recipe  (`STATE-008`)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# This description is printed into the manuscript's Methods section, so the one
+# thing it may never do is leave a transformation out. It used to: the block
+# loop matched only 'numeric' and 'categorical' (the whole passthrough-numeric
+# block was invisible), the step loop knew 'log' but not 'power_transform', the
+# scaler branch knew two of the three scalers, the encoder branch knew one of
+# the three encoders — and the MAD branch read `mad_threshold`/`n_mad`, which
+# `OutlierCapping` never sets, so it printed the literal fallback `3` for a
+# capping that used 3.5. A Methods section is not a place for a default.
+#
+# The rule now: every block and every step produces a line. Parameters are read
+# from where the operator actually keeps them, and a step this function does not
+# recognize is named as `unrecorded step: <name> (<Class>)` rather than dropped.
+# An omission a reader can see is a defect; one they cannot is a false claim.
+
+
+def _describe_imputer(t: Any) -> str:
+    """Imputation, including the imputers that have no `strategy` attribute."""
+    if _HAS_ITERATIVE and isinstance(t, IterativeImputer):
+        desc = f"Iterative imputation (MICE-style, max_iter={getattr(t, 'max_iter', '?')})"
+    else:
+        strategy = getattr(t, 'strategy', None)
+        if strategy is None:
+            return f"Impute ({type(t).__name__})"
+        desc = f"Impute ({strategy})"
+        if strategy == 'constant':
+            desc = f"Impute (constant, fill={getattr(t, 'fill_value', '?')!r})"
+    if getattr(t, 'add_indicator', False):
+        desc += " + missing flags"
+    return desc
+
+
+def _describe_outlier(t: Any) -> str:
+    """Outlier treatment, read from the params the operator actually applies.
+
+    `OutlierCapping` stores a `params` dict and treats every method other than
+    'mad' as percentile capping — so that is what the recipe says happened,
+    including the requested method when it was neither.
+    """
+    method = getattr(t, 'method', None)
+    if method is None:
+        return f"Outlier treatment ({type(t).__name__})"
+    params = getattr(t, 'params', None)
+    if not isinstance(params, dict):
+        return f"Outlier treatment ({method}; parameters not recorded on the fitted step)"
+    if method == 'mad':
+        desc = f"MAD capping ({float(params.get('threshold', 3.5))}× MAD)"
+        # `TEST-018`: a column whose MAD is zero is left uncapped rather than
+        # collapsed onto its median, and the Methods section is told which.
+        uncapped = getattr(t, 'uncapped_columns_', None)
+        if uncapped:
+            desc += (f"; {len(uncapped)} column(s) had zero MAD (half or more of "
+                     f"the values equal the median) and were left uncapped")
+        return desc
+    lo = float(params.get('lower_q', 0.01)) * 100
+    hi = float(params.get('upper_q', 0.99)) * 100
+    desc = f"Percentile clip ({lo:g}th–{hi:g}th)"
+    if method != 'percentile':
+        desc += f" [requested '{method}', applied as percentile capping]"
+    return desc
+
+
+def _describe_scaler(t: Any) -> str:
+    if isinstance(t, StandardScaler):
+        return "Standard scaling"
+    if isinstance(t, RobustScaler):
+        return "Robust scaling"
+    if isinstance(t, MinMaxScaler):
+        return "Min-max scaling"
+    return f"Scaling ({type(t).__name__})"
+
+
+def _describe_encoder(t: Any) -> str:
+    if isinstance(t, OneHotEncoder):
+        return "One-hot encoding (sparse)"
+    if isinstance(t, OrdinalEncoder):
+        return "Ordinal encoding"
+    if _HAS_TARGET_ENCODER and isinstance(t, TargetEncoder):
+        return "Target encoding (cross-fitted, smoothed means; uses the outcome)"
+    return f"Encoding ({type(t).__name__})"
+
+
+def _describe_recipe_step(step_name: str, t: Any) -> str:
+    """One column-block step. Never returns empty — see the note above."""
+    if t is None or (isinstance(t, str) and t == 'passthrough'):
+        return "Passed through unchanged"
+    if step_name == 'unit_harmonize':
+        return "Unit harmonization"
+    if step_name == 'plausibility_gate':
+        return "Plausibility gate (NHANES)"
+    if step_name == 'imputer':
+        return _describe_imputer(t)
+    if step_name == 'log':
+        return "Log transform (log1p)"
+    if step_name == 'power_transform':
+        return f"Power transform ({getattr(t, 'method', 'unspecified')})"
+    if step_name == 'power_nan_guard':
+        # Named, because it is a second imputation of values the transform
+        # produced and it changes the data.
+        return f"Post-transform NaN guard ({_describe_imputer(t)})"
+    if step_name == 'outlier':
+        return _describe_outlier(t)
+    if step_name == 'scaler':
+        return _describe_scaler(t)
+    if step_name == 'encoder':
+        return _describe_encoder(t)
+    return f"unrecorded step: {step_name} ({type(t).__name__})"
+
+
+#: Column blocks `build_preprocessing_pipeline` emits. An unlisted block is
+#: still described, under its own transformer name.
+_RECIPE_BLOCK_LABELS = {
+    'numeric': 'Numeric features',
+    'categorical': 'Categorical features',
+    'numeric_passthrough': 'Engineered numeric features (passthrough)',
+}
+
+
 def get_pipeline_recipe(pipeline: Pipeline, plausibility_mode: Optional[str] = None) -> str:
     """
     Get human-readable description of pipeline steps.
-    
+
     Args:
         pipeline: sklearn Pipeline
         plausibility_mode: If 'filter', note that rows were filtered to NHANES range before pipeline.
-        
+
     Returns:
-        String description of pipeline
+        String description of pipeline. Every transformer block and every step
+        inside it is described; nothing is silently omitted.
     """
     steps = []
     if plausibility_mode == "filter":
         steps.append("Plausibility: rows filtered to NHANES range (before pipeline).")
-    if hasattr(pipeline.named_steps['preprocessor'], 'transformers_'):
-        for name, transformer, columns in pipeline.named_steps['preprocessor'].transformers_:
-            if name == 'numeric':
-                # Get numeric pipeline steps
-                numeric_pipe = transformer
-                step_desc = f"Numeric features ({len(columns)}): "
-                step_parts = []
-                for step_name, step_transformer in numeric_pipe.steps:
-                    if step_name == 'unit_harmonize':
-                        step_parts.append("Unit harmonization")
-                    elif step_name == 'plausibility_gate':
-                        step_parts.append("Plausibility gate (NHANES)")
-                    elif step_name == 'imputer':
-                        strategy = step_transformer.strategy
-                        if getattr(step_transformer, 'add_indicator', False):
-                            step_parts.append(f"Impute ({strategy}) + missing flags")
-                        else:
-                            step_parts.append(f"Impute ({strategy})")
-                    elif step_name == 'log':
-                        step_parts.append("Log transform")
-                    elif step_name == 'outlier':
-                        # Extract actual params from the fitted transformer
-                        outlier_desc = "Outlier capping"
-                        if hasattr(step_transformer, 'method'):
-                            method = step_transformer.method
-                            if method == 'percentile' and hasattr(step_transformer, 'lower_percentile'):
-                                lo = getattr(step_transformer, 'lower_percentile', '?')
-                                hi = getattr(step_transformer, 'upper_percentile', '?')
-                                outlier_desc = f"Percentile clip ({lo}th–{hi}th)"
-                            elif method == 'iqr':
-                                mult = getattr(step_transformer, 'iqr_multiplier', getattr(step_transformer, 'multiplier', 1.5))
-                                outlier_desc = f"IQR capping (×{mult})"
-                            elif method == 'zscore':
-                                thresh = getattr(step_transformer, 'threshold', 3)
-                                outlier_desc = f"Z-score filter (|z| > {thresh})"
-                            elif method == 'mad':
-                                thresh = getattr(step_transformer, 'mad_threshold', getattr(step_transformer, 'n_mad', 3))
-                                outlier_desc = f"MAD capping ({thresh}× MAD)"
-                            else:
-                                outlier_desc = f"Outlier treatment ({method})"
-                        step_parts.append(outlier_desc)
-                    elif step_name == 'scaler':
-                        if isinstance(step_transformer, StandardScaler):
-                            step_parts.append("Standard scaling")
-                        elif isinstance(step_transformer, RobustScaler):
-                            step_parts.append("Robust scaling")
-                step_desc += " → ".join(step_parts) if step_parts else "No transformation"
-                steps.append(step_desc)
-            
-            elif name == 'categorical':
-                # Get categorical pipeline steps
-                categorical_pipe = transformer
-                step_desc = f"Categorical features ({len(columns)}): "
-                step_parts = []
-                for step_name, step_transformer in categorical_pipe.steps:
-                    if step_name == 'imputer':
-                        strategy = step_transformer.strategy
-                        step_parts.append(f"Impute ({strategy})")
-                    elif step_name == 'encoder':
-                        if isinstance(step_transformer, OneHotEncoder):
-                            step_parts.append("One-hot encoding (sparse)")
-                        elif isinstance(step_transformer, OrdinalEncoder):
-                            step_parts.append("Ordinal encoding")
-                        elif _HAS_TARGET_ENCODER and isinstance(step_transformer, TargetEncoder):
-                            step_parts.append(
-                                "Target encoding (cross-fitted, smoothed means)"
-                            )
-                step_desc += " → ".join(step_parts) if step_parts else "No transformation"
-                steps.append(step_desc)
-    
+
+    preprocessor = pipeline.named_steps.get('preprocessor')
+    if preprocessor is not None and hasattr(preprocessor, 'transformers_'):
+        for name, transformer, columns in preprocessor.transformers_:
+            n_cols = len(columns) if hasattr(columns, '__len__') else 0
+            if isinstance(transformer, str):
+                # 'drop' / 'passthrough' — the remainder, usually.
+                if transformer == 'drop':
+                    if name == 'remainder' or n_cols == 0:
+                        continue
+                    steps.append(f"Dropped columns ({n_cols}): not passed to the model")
+                else:
+                    steps.append(
+                        f"{_RECIPE_BLOCK_LABELS.get(name, name)} ({n_cols}): "
+                        "Passed through unchanged")
+                continue
+
+            label = _RECIPE_BLOCK_LABELS.get(name, name)
+            block_steps = getattr(transformer, 'steps', None)
+            if block_steps is None:
+                steps.append(f"{label} ({n_cols}): {type(transformer).__name__}")
+                continue
+            parts = [_describe_recipe_step(sn, st_) for sn, st_ in block_steps]
+            steps.append(f"{label} ({n_cols}): "
+                         + (" → ".join(parts) if parts else "No transformation"))
+
     # Add optional feature engineering steps
     if "kmeans_features" in pipeline.named_steps:
         kmeans = pipeline.named_steps["kmeans_features"]
-        kmeans_desc = f"KMeans features added: {kmeans.n_clusters} clusters"
+        if isinstance(kmeans, AppendedKMeansFeatures):
+            kmeans_desc = (f"KMeans features added alongside the existing "
+                           f"predictors: {kmeans.n_clusters} clusters")
+        else:
+            # A pipeline built before `STATE-011` (or by another builder) may
+            # still hold the substituting transformer. It does not do what
+            # "added" says, so the recipe does not say it.
+            kmeans_desc = (f"KMeans cluster features REPLACED the preprocessed "
+                           f"feature matrix — the original predictors were not "
+                           f"passed to the model: {kmeans.n_clusters} clusters")
         if kmeans.add_distances:
             kmeans_desc += ", distances to centroids"
         if kmeans.add_onehot_label:
@@ -439,15 +739,23 @@ def get_pipeline_recipe(pipeline: Pipeline, plausibility_mode: Optional[str] = N
             steps.append(f"PCA applied: {n_comp} components (variance threshold)")
         if pca.whiten:
             steps[-1] += ", whitened"
-    
+
+    # Any other top-level step transforms the data too, and the Methods section
+    # may not learn about it only from whoever added the branch.
+    for _sname, _step in pipeline.steps:
+        if _sname not in ('preprocessor', 'kmeans_features', 'pca'):
+            steps.append(f"unrecorded step: {_sname} ({type(_step).__name__})")
+
     return "\n".join(steps) if steps else "No preprocessing steps"
 
 
 def get_feature_names_after_transform(pipeline: Pipeline, original_feature_names: List[str]) -> List[str]:
     """
     Get feature names after pipeline transformation.
-    Handles preprocessor, optional KMeansFeatures, and optional PCA.
-    KMeans replaces preprocessor output with kmeans_dist_cluster_* / kmeans_cluster_*.
+    Handles preprocessor, optional KMeans cluster features, and optional PCA.
+    KMeans APPENDS kmeans_dist_cluster_* / kmeans_cluster_* to the preprocessor
+    output (`STATE-011`); a pipeline still holding the older substituting
+    transformer is named for what it does instead.
     PCA replaces preceding features with PC1, PC2, ...
     """
     feature_names: List[str] = []
@@ -466,16 +774,15 @@ def get_feature_names_after_transform(pipeline: Pipeline, original_feature_names
 
     if "kmeans_features" in pipeline.named_steps:
         kmeans = pipeline.named_steps["kmeans_features"]
-        if hasattr(kmeans, "get_feature_names_out"):
-            feature_names = [str(x) for x in kmeans.get_feature_names_out()]
+        cluster_names: List[str] = []
+        if getattr(kmeans, "add_distances", True):
+            cluster_names += [f"kmeans_dist_cluster_{i}" for i in range(kmeans.n_clusters)]
+        if getattr(kmeans, "add_onehot_label", False):
+            cluster_names += [f"kmeans_cluster_{i}" for i in range(kmeans.n_clusters)]
+        if isinstance(kmeans, AppendedKMeansFeatures):
+            feature_names = list(feature_names) + cluster_names
         else:
-            feature_names = []
-            if getattr(kmeans, "add_distances", True):
-                for i in range(kmeans.n_clusters):
-                    feature_names.append(f"kmeans_dist_{i}")
-            if getattr(kmeans, "add_onehot_label", False):
-                for i in range(kmeans.n_clusters):
-                    feature_names.append(f"kmeans_cluster_{i}")
+            feature_names = cluster_names
 
     if "pca" in pipeline.named_steps:
         pca = pipeline.named_steps["pca"]
@@ -534,11 +841,37 @@ def reconcile_pipeline_columns(pipe, available_columns):
 
     Returns ``(new_pipe, dropped)``. ``new_pipe is pipe`` (unchanged) when
     nothing needed dropping. Transformers left with no columns are removed.
+
+    `STATE-003`: the two operators whose parameters are POSITIONAL over the
+    block's columns are trimmed with it. Dropping a column and leaving the
+    conversion factors and plausibility bounds at their old length would apply
+    each of them to the wrong column from that point on — which is exactly the
+    misalignment `PlausibilityGate.transform` now refuses rather than absorbs.
     """
     from sklearn.base import clone
 
     available = set(available_columns)
     dropped: List[str] = []
+
+    def _trim_positional_params(trans, cols, kept):
+        """Reindex positional operator parameters onto the surviving columns."""
+        if not isinstance(trans, Pipeline):
+            return trans
+        keep_idx = [i for i, c in enumerate(cols) if c in available]
+        if len(keep_idx) == len(cols):
+            return trans
+        for _sname, step in trans.steps:
+            if isinstance(step, UnitHarmonizer):
+                factors = list(step.conversion_factors or [])
+                if len(factors) == len(cols):
+                    step.conversion_factors = [factors[i] for i in keep_idx]
+            elif isinstance(step, PlausibilityGate):
+                lower = list(step.lower_bounds or [])
+                upper = list(step.upper_bounds or [])
+                if len(lower) == len(cols) and len(upper) == len(cols):
+                    step.lower_bounds = [lower[i] for i in keep_idx]
+                    step.upper_bounds = [upper[i] for i in keep_idx]
+        return trans
 
     def _fix_ct(ct: ColumnTransformer) -> ColumnTransformer:
         new_transformers = []
@@ -547,7 +880,8 @@ def reconcile_pipeline_columns(pipe, available_columns):
                 kept = [c for c in cols if c in available]
                 dropped.extend([c for c in cols if c not in available])
                 if kept:
-                    new_transformers.append((name, clone(trans), kept))
+                    new_transformers.append(
+                        (name, _trim_positional_params(clone(trans), cols, kept), kept))
                 # a transformer with no surviving columns is dropped entirely
             else:
                 new_transformers.append((name, clone(trans), cols))

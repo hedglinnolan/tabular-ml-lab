@@ -421,8 +421,20 @@ def test_round_trip_restores_coach_probe(fake_session):
 
 
 def test_exploratory_mode_travels_via_widget_state(fake_session):
-    """exploratory_mode is a widget key (page 01 checkbox): it must restore
-    via the deferred widget mechanism, never by direct assignment."""
+    """exploratory_mode is a widget key (page 01 checkbox): the RESTORE must
+    park it in the deferred dict rather than assigning the key itself.
+
+    The pin used to add "never by direct assignment" without qualification.
+    It guarded against bypassing the widget contract — a restore that writes a
+    widget key Streamlit already owns. It did not survive contact with
+    STATE-041: only page 01 ever claimed the parked value, so `is_exploratory()`
+    read False on every other page of a restored exploratory session. The claim
+    now happens in `utils.theme.render_sidebar_workflow`, which every page calls
+    before its own content and before page 01's checkbox exists — the same
+    central claim `workflow_mode_selector` already used, not a bypass. What is
+    pinned here is therefore the session-manager half of the contract: the
+    restore parks, it does not assign.
+    """
     _save_clear_restore(fake_session)
     assert "exploratory_mode" not in fake_session or fake_session.get(
         "exploratory_mode") is not True  # not directly assigned

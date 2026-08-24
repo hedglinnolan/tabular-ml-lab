@@ -276,6 +276,11 @@ class TestProvenanceEndToEnd:
         prov.record_statistical_test("Shapiro-Wilk", "residuals", 0.97, 0.03)
         assert prov.get_completeness()["statistical_validation"] is True
 
+        # 11. External validation
+        prov.record_external_validation(dataset_name="ext.csv", n_rows=80,
+                                        n_features=3, models_validated=["LR"])
+        assert prov.get_completeness()["external_validation"] is True
+
         # All complete
         completeness = prov.get_completeness()
         assert all(completeness.values()), f"Not all stages complete: {completeness}"

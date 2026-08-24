@@ -96,9 +96,10 @@ def _inject_full_downstream_state(at, df, target_col='glucose'):
     at.session_state['y_train'] = y_train
     at.session_state['y_val'] = y_val
     at.session_state['y_test'] = y_test
-    at.session_state['train_indices'] = list(range(n_train))
-    at.session_state['val_indices'] = list(range(n_train, n_train + n_val))
-    at.session_state['test_indices'] = list(range(n_train + n_val, n))
+    # Row identity as the app stores it: index LABELS, read off the frames.
+    at.session_state['train_row_labels'] = list(X_train.index)
+    at.session_state['val_row_labels'] = list(X_val.index)
+    at.session_state['test_row_labels'] = list(X_test.index)
     at.session_state['feature_names'] = numeric_feats
 
     # Train model
@@ -137,7 +138,7 @@ DOWNSTREAM_KEYS_CLEARED_BY_FEATURE_CHANGE = [
     'trained_models', 'model_results', 'fitted_estimators',
     'fitted_preprocessing_pipelines', 'feature_names_by_model',
     'X_train', 'X_val', 'X_test', 'y_train', 'y_val', 'y_test',
-    'train_indices', 'val_indices', 'test_indices',
+    'train_row_labels', 'val_row_labels', 'test_row_labels',
     'permutation_importance', 'partial_dependence', 'shap_results',
     'sensitivity_seed_results', 'report_data',
     'feature_selection_results', 'consensus_features',

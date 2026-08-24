@@ -11,7 +11,15 @@ import plotly.express as px
 from typing import Optional, List, Dict, Any, Tuple
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-import streamlit as st
+# No Streamlit here. These four functions used to carry @st.cache_data, whose
+# key is built from the non-underscore arguments — and every one of them takes
+# only `_df_numeric`, which Streamlit deliberately does not hash. The key was
+# therefore constant, st.cache_data is process-global, and the first dataset's
+# PCA, UMAP, persistence diagram and Mapper graph were returned for every
+# dataset afterwards, across users in the shared deployment (T0-LIVE-001).
+#
+# Caching belongs to the host, which knows what a "dataset" is and can key on a
+# content fingerprint. pages/02 already does exactly that for its own caches.
 
 # ---------------------------------------------------------------------------
 # sklearn 1.8+ compatibility: force_all_finite → ensure_all_finite
@@ -79,7 +87,6 @@ def _prepare_numeric(df: pd.DataFrame, max_features: int = 200) -> tuple:
 # PCA
 # ---------------------------------------------------------------------------
 
-@st.cache_data
 def compute_pca(
     _df_numeric: pd.DataFrame,
     n_components: Optional[int] = None,
@@ -230,6 +237,35 @@ def plot_pca_biplot(
         template="plotly_white",
         height=500,
     )
+    # ONE UNIT OF SCORE ON PC2 IS ONE UNIT OF SCORE ON PC1. `AUDIT-006`, and
+    # the before and after are recorded here because what moved is the PICTURE,
+    # which a reader reads before any label on it.
+    #   BEFORE: no aspect constraint at all. Plotly autoranges each axis to its
+    #   own data, so PC2's spread was drawn to the full height of the panel
+    #   whatever that spread was. On an ordinary correlated frame — eight
+    #   columns off one latent factor — PC1 explains ~97% and PC2 under 1%, and
+    #   the panel drew PC2's ~11x smaller spread the same height as PC1's. The
+    #   axis label beside it said 0.8% while the picture showed a component as
+    #   tall as the first one, and separation along PC2 is what a reader takes
+    #   from this figure.
+    #   AFTER: the y axis is anchored to the x axis at a ratio of 1, so the
+    #   panel's extent along PC2 relative to PC1 is the ratio of the two
+    #   components' standard deviations — set by the variance each component
+    #   explains rather than by the height of the figure.
+    # Nothing was deleted to get there: the % variance stays on both axis
+    # labels and in the title, and the loading arrows are in score units, so
+    # they are now drawn at their true angles too.
+    # `research/GENOMICS_PACK.md` §07 · A · *PCA of samples* item 2: *"Equal
+    # aspect ratio — without it the visual separation is a lie proportional to
+    # the aspect ratio. Widely ignored; the DESeq2 workflow explicitly
+    # recommends it."* §11's anti-pattern registry grades *unlabeled PCA axes,
+    # unequal aspect ratio* a SETTLED presentation error.
+    # `research/METABOLOMICS_PACK.md` §06.1 item 3 asks for the aspect
+    # proportional to variance explained, *"or at minimum equal aspect"*.
+    # `turbotab.figure_specs.PCA_SCORES` records the same requirement as
+    # `aspect_ratio` for the Guided door's renderer; this is the Classic door's
+    # plotly equivalent, and until now the Classic door had none.
+    fig.update_yaxes(scaleanchor="x", scaleratio=1)
     return fig
 
 
@@ -237,7 +273,6 @@ def plot_pca_biplot(
 # UMAP
 # ---------------------------------------------------------------------------
 
-@st.cache_data
 def compute_umap(
     _df_numeric: pd.DataFrame,
     n_neighbors: int = 15,
@@ -334,7 +369,6 @@ def plot_umap(
 # Persistence Diagrams (TDA)
 # ---------------------------------------------------------------------------
 
-@st.cache_data
 def compute_persistence(
     _df_numeric: pd.DataFrame,
     max_samples: int = 2_000,
@@ -492,7 +526,6 @@ def plot_persistence_barcode(result: Dict[str, Any]) -> go.Figure:
 # Mapper Graph
 # ---------------------------------------------------------------------------
 
-@st.cache_data
 def compute_mapper(
     _df_numeric: pd.DataFrame,
     n_cubes: int = 10,

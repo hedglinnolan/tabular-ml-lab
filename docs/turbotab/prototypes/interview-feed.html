@@ -1,0 +1,2426 @@
+<title>Tabular ML Lab — Interview Feed Prototype</title>
+<style>
+  /* ═════════ TOKENS ═════════ */
+  :root {
+    --ground:#F7F8F6; --surface:#FFFFFF; --surface-2:#EFF3F1;
+    --ink:#1C2B29; --muted:#5B6B68; --faint:#8A9997;
+    --line:#DCE3E0; --line-soft:#E7ECEA;
+    --accent:#0E7368; --accent-ink:#0A5A51; --accent-tint:#E9F2F0; --on-accent:#FFFFFF;
+    --ok:#2F7D46; --ok-tint:#E9F2EB;
+    --warn:#9A6B0F; --warn-tint:#FBF3DE; --warn-line:#EAD9AC;
+    --del:#A33B2A; --del-tint:#FBEDEA;
+    --veil:rgba(247,248,246,.62);
+    --c1:#132352; --c2:#764522; --c3:#5893CE; --c4:#6B7F8C;
+    --shadow:0 1px 2px rgba(28,43,41,.05), 0 4px 14px rgba(28,43,41,.06);
+    --shadow-lift:0 2px 4px rgba(28,43,41,.08), 0 12px 30px rgba(28,43,41,.11);
+    --topbar-h:46px;
+    --serif:"Charter","Iowan Old Style","Source Serif Pro",Georgia,serif;
+    --sans:"Seravek","Avenir Next","Segoe UI",system-ui,-apple-system,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code","Consolas",monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:#111917; --surface:#19231F; --surface-2:#202C28;
+      --ink:#E7EEEB; --muted:#9BABA7; --faint:#6E807C;
+      --line:#2A3733; --line-soft:#232E2A;
+      --accent:#45BFAF; --accent-ink:#6FD4C6; --accent-tint:#1B2E2A; --on-accent:#08201C;
+      --ok:#5CB877; --ok-tint:#1C2E22;
+      --warn:#E0B45C; --warn-tint:#2B2415; --warn-line:#4A3D1C;
+      --del:#E08A76; --del-tint:#2E1C18;
+      --veil:rgba(17,25,23,.62);
+      --c1:#2E6DC6; --c2:#A66130; --c3:#A8CCE5; --c4:#9BB0BC;
+      --shadow:0 1px 2px rgba(0,0,0,.25), 0 4px 14px rgba(0,0,0,.3);
+      --shadow-lift:0 2px 4px rgba(0,0,0,.3), 0 12px 30px rgba(0,0,0,.42);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground:#F7F8F6; --surface:#FFFFFF; --surface-2:#EFF3F1;
+    --ink:#1C2B29; --muted:#5B6B68; --faint:#8A9997;
+    --line:#DCE3E0; --line-soft:#E7ECEA;
+    --accent:#0E7368; --accent-ink:#0A5A51; --accent-tint:#E9F2F0; --on-accent:#FFFFFF;
+    --ok:#2F7D46; --ok-tint:#E9F2EB;
+    --warn:#9A6B0F; --warn-tint:#FBF3DE; --warn-line:#EAD9AC;
+    --del:#A33B2A; --del-tint:#FBEDEA;
+    --veil:rgba(247,248,246,.62);
+    --c1:#132352; --c2:#764522; --c3:#5893CE; --c4:#6B7F8C;
+    --shadow:0 1px 2px rgba(28,43,41,.05), 0 4px 14px rgba(28,43,41,.06);
+    --shadow-lift:0 2px 4px rgba(28,43,41,.08), 0 12px 30px rgba(28,43,41,.11);
+  }
+  :root[data-theme="dark"] {
+    --ground:#111917; --surface:#19231F; --surface-2:#202C28;
+    --ink:#E7EEEB; --muted:#9BABA7; --faint:#6E807C;
+    --line:#2A3733; --line-soft:#232E2A;
+    --accent:#45BFAF; --accent-ink:#6FD4C6; --accent-tint:#1B2E2A; --on-accent:#08201C;
+    --ok:#5CB877; --ok-tint:#1C2E22;
+    --warn:#E0B45C; --warn-tint:#2B2415; --warn-line:#4A3D1C;
+    --del:#E08A76; --del-tint:#2E1C18;
+    --veil:rgba(17,25,23,.62);
+    --c1:#2E6DC6; --c2:#A66130; --c3:#A8CCE5; --c4:#9BB0BC;
+    --shadow:0 1px 2px rgba(0,0,0,.25), 0 4px 14px rgba(0,0,0,.3);
+    --shadow-lift:0 2px 4px rgba(0,0,0,.3), 0 12px 30px rgba(0,0,0,.42);
+  }
+
+  /* ═════════ BASE ═════════ */
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--ground);color:var(--ink);font-family:var(--sans);
+       font-size:14.5px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit;cursor:pointer}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:5px}
+  .v{font-family:var(--mono);font-size:.84em;font-variant-numeric:tabular-nums;
+     background:var(--surface-2);border:1px solid var(--line);border-radius:5px;
+     padding:0 5px;white-space:nowrap}
+  .prose .v{font-size:13px}
+
+  /* ═════════ TOPBAR ═════════ */
+  .topbar{position:sticky;top:0;z-index:40;background:var(--surface);
+          border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;
+          padding:9px 20px;font-size:12.5px;min-height:var(--topbar-h)}
+  .tb-name{font-family:var(--serif);font-weight:700;font-size:15px}
+  .tb-tag{font-family:var(--mono);font-size:10.5px;color:var(--warn);background:var(--warn-tint);
+          border:1px solid var(--warn-line);border-radius:10px;padding:1px 9px}
+  .tb-spacer{flex:1}
+  .tb-btn{border:1px solid var(--line);background:var(--surface);color:var(--muted);
+          border-radius:7px;padding:5px 12px;font-size:12px;font-weight:600}
+  .tb-btn:hover{border-color:var(--accent);color:var(--accent-ink)}
+
+  /* ═════════ SHELL ═════════ */
+  .shell{display:flex;align-items:flex-start;max-width:1240px;margin:0 auto}
+  .rail{flex:0 0 236px;padding:30px 18px 40px;position:sticky;top:var(--topbar-h);align-self:flex-start;
+        max-height:calc(100vh - var(--topbar-h));overflow-y:auto}
+  .rail-inner{display:flex;flex-direction:column;gap:20px}
+  .rail-label{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+              color:var(--faint);margin-bottom:2px}
+  .map{position:relative;display:flex;flex-direction:column;gap:1px}
+    /* dot centre = button padding-left 6px + dot radius 5.5px; track is 1.5px wide */
+  .map .track{position:absolute;left:calc(6px + 5.5px - .75px);top:10.5px;bottom:10.5px;width:1.5px;background:var(--line)}
+  .map-step{position:relative;z-index:1;display:flex;gap:11px;align-items:center;padding:5px 6px;
+            font-size:12.5px;color:var(--faint);border-radius:7px;border:0;background:none;
+            text-align:left;width:100%;transition:color .2s ease,background .2s ease}
+  .map-step .md{flex:0 0 11px;width:11px;height:11px;border-radius:50%;
+                border:1.5px solid var(--line);background:var(--ground);transition:all .2s ease}
+  .map-step.done{color:var(--muted)}
+  .map-step.done .md{border-color:var(--ok);background:var(--ok)}
+  .map-step.now{color:var(--ink);font-weight:650}
+  .map-step.now .md{border-color:var(--accent);background:var(--accent);box-shadow:0 0 0 3.5px var(--accent-tint)}
+  .map-step.stale{color:var(--warn)}
+  .map-step.stale .md{border-color:var(--warn);background:var(--warn-tint)}
+  .map-step:hover{background:var(--surface-2)}
+
+  .dock{border:1px solid var(--line);border-radius:11px;background:var(--surface);
+        padding:11px 12px;box-shadow:var(--shadow)}
+  .dock-head{display:flex;align-items:center;justify-content:space-between;font-size:10px;
+             font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+  .dock-ledger .dock-head{color:var(--warn)}
+  .dock-ev .dock-head{color:var(--accent-ink)}
+  .dock-ct{font-family:var(--mono);font-size:10.5px;border-radius:10px;padding:0 7px}
+  .dock-ledger .dock-ct{color:var(--warn);background:var(--warn-tint);border:1px solid var(--warn-line)}
+  .dock-ev .dock-ct{color:var(--accent-ink);background:var(--accent-tint);border:1px solid var(--accent)}
+  .dock-empty{font-size:11.5px;color:var(--faint);margin-top:7px;line-height:1.45}
+  .dock-list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:7px}
+  .dock-list li{font-size:11.5px;color:var(--muted);line-height:1.4}
+  .dock-list .to{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.03em}
+  .dock-ledger .to{color:var(--warn)}
+  .dock-ev .to{color:var(--accent-ink)}
+
+  .jobchip{display:none;align-items:center;gap:9px;border:1px solid var(--accent);
+           background:var(--accent-tint);border-radius:11px;padding:9px 11px;font-size:11.5px;
+           color:var(--accent-ink);font-weight:600}
+  .jobchip.on{display:flex}
+  .spin{flex:0 0 13px;width:13px;height:13px;border-radius:50%;
+        border:2px solid color-mix(in srgb,var(--accent) 25%,transparent);
+        border-top-color:var(--accent);animation:spin .9s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ═════════ FEED ═════════ */
+  .feed{flex:1;min-width:0;max-width:800px;padding:30px 30px 55vh;
+        display:flex;flex-direction:column;gap:18px}
+  .feed-open h1{font-family:var(--serif);font-size:30px;font-weight:700;margin:0 0 8px;
+                text-wrap:balance;letter-spacing:.005em}
+  .feed-open p{margin:0;color:var(--muted);max-width:58ch}
+
+  .sect{position:relative;scroll-margin-top:calc(var(--topbar-h) + 14px)}
+  .sect.is-hidden{display:none}
+  .sect-head{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+  .sect-kicker{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+  .sect-state{font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;padding:1px 8px;
+              border-radius:10px;border:1px solid var(--line);color:var(--faint);background:var(--surface)}
+  .sect.recorded .sect-state{color:var(--ok);border-color:var(--ok);background:var(--ok-tint)}
+  .sect.live .sect-state{color:var(--accent-ink);border-color:var(--accent);background:var(--accent-tint)}
+  .sect-body{display:flex;flex-direction:column;gap:12px}
+
+  /* ——— ONE CARD PER STEP ——— */
+  .stepcard{background:var(--surface);border:1.5px solid var(--accent);border-radius:14px;
+            box-shadow:var(--shadow-lift);overflow:hidden}
+  .stepcard.calm{border-width:1px;border-color:var(--line);box-shadow:var(--shadow)}
+  .stepcard.is-hidden{display:none}
+  .sub{padding:20px 23px}
+  .sub + .sub{border-top:1px solid var(--line-soft)}
+  .sub.is-hidden{display:none}
+  .sub h2{font-family:var(--serif);font-size:20px;font-weight:700;line-height:1.35;
+          margin:0 0 7px;text-wrap:balance}
+  .sub .why{font-size:13.5px;color:var(--muted);margin:0 0 15px;line-height:1.5;max-width:62ch}
+  .subhead{display:flex;align-items:baseline;gap:9px;margin-bottom:12px}
+  .sub-num{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.05em}
+
+  /* answered sub-question, collapsed inside the same card */
+  .answered{display:flex;align-items:baseline;gap:10px;padding:11px 23px;
+            background:var(--surface-2);font-size:12.5px;color:var(--muted)}
+  .answered + .sub{border-top:1px solid var(--line-soft)}
+  .answered .lab{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+                 color:var(--faint);flex:0 0 auto}
+  .answered .val{color:var(--ink);font-weight:600;flex:1;min-width:0}
+  .answered .mini{border:0;background:none;padding:0;font-size:11.5px;color:var(--faint);
+                  text-decoration:underline;text-underline-offset:2px}
+  .answered .mini:hover{color:var(--accent-ink)}
+
+  .answers{display:flex;flex-wrap:wrap;gap:9px}
+  .answer{border:1.5px solid var(--line);background:var(--surface);color:var(--ink);
+          border-radius:9px;padding:10px 17px;font-size:13.5px;font-weight:600;
+          transition:border-color .15s ease,background .15s ease,transform .1s ease;
+          display:inline-flex;align-items:center;gap:8px}
+  .answer:hover{border-color:var(--accent);background:var(--accent-tint)}
+  .answer:active{transform:translateY(1px)}
+  .answer.primary{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
+  .answer.primary:hover{background:var(--accent);filter:brightness(1.07)}
+  .answer.ghost{border-style:dashed;color:var(--muted);font-weight:500}
+  .answer .rec{font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;border-radius:9px;
+               padding:0 6px;background:color-mix(in srgb,var(--on-accent) 22%,transparent)}
+
+  /* ——— decision sentence ——— */
+  .decision{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--ok);
+            border-radius:10px;padding:14px 17px;display:flex;gap:14px;align-items:baseline;
+            box-shadow:var(--shadow)}
+  .decision.is-hidden{display:none}
+  .decision .prose{font-family:var(--serif);font-size:16px;line-height:1.55;flex:1;margin:0}
+  .chg{flex:0 0 auto;border:0;background:none;padding:0;font-size:12px;color:var(--faint);
+       text-decoration:underline;text-underline-offset:2px}
+  .chg:hover{color:var(--accent-ink)}
+
+  /* ——— findings inside a step card ——— */
+  .findlist{display:flex;flex-direction:column}
+  .find{display:grid;grid-template-columns:104px 1fr;gap:16px;padding:16px 0}
+  .find + .find{border-top:1px solid var(--line-soft)}
+  .find.no-thumb{grid-template-columns:1fr}
+  .find.gone{display:none}
+  .fthumb{align-self:start;background:var(--surface-2);border:1px solid var(--line-soft);
+          border-radius:8px;height:76px;overflow:hidden}
+  .fthumb svg{width:100%;height:100%;display:block}
+  .f-title{font-family:var(--serif);font-size:15.5px;font-weight:700;margin:0 0 4px;line-height:1.4}
+  .f-because{font-size:13px;color:var(--muted);margin:0 0 11px;line-height:1.5}
+  .f-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .f-act{border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:12px;
+         font-weight:600;border-radius:7px;padding:5px 11px}
+  .f-act:hover{border-color:var(--accent);color:var(--accent-ink)}
+  .f-act.defer{border-color:var(--warn-line);background:var(--warn-tint);color:var(--warn)}
+  .f-act.preview{border-color:var(--accent);color:var(--accent-ink);background:var(--accent-tint)}
+  .flag{margin-left:auto;border:1px solid var(--line);background:var(--surface);border-radius:7px;
+        padding:5px 10px;font-size:12px;color:var(--faint);font-weight:600;white-space:nowrap}
+  .flag[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-tint);color:var(--accent-ink)}
+  .fstat{display:none;font-family:var(--mono);font-size:10px;letter-spacing:.03em;
+         border-radius:10px;padding:2px 8px}
+  .find.deferred .fstat.s-def{display:inline-block;color:var(--warn);background:var(--warn-tint);
+                              border:1px solid var(--warn-line)}
+  .find.applied .fstat.s-app{display:inline-block;color:var(--ok);background:var(--ok-tint);
+                             border:1px solid var(--ok)}
+  .find.deferred .f-act.defer,.find.deferred .f-act.preview,
+  .find.applied .f-act.defer,.find.applied .f-act.preview,
+  .find.applied .f-act.dismiss,.find.deferred .f-act.dismiss{display:none}
+  .dnote{display:none;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--faint);
+         padding:9px 15px;border:1px dashed var(--line);border-radius:10px;margin:10px 0}
+  .dnote.on{display:flex}
+  .dnote button{border:0;background:none;padding:0;font-size:12px;color:var(--accent-ink);
+                text-decoration:underline;text-underline-offset:2px}
+
+  /* ——— BEFORE / AFTER PREVIEW ——— */
+  .preview{margin-top:12px;border:1px solid var(--accent);border-radius:11px;overflow:hidden;
+           background:var(--accent-tint)}
+  .preview.is-hidden{display:none}
+  .pv-head{display:flex;align-items:baseline;gap:10px;padding:11px 14px;
+           border-bottom:1px solid color-mix(in srgb,var(--accent) 30%,transparent)}
+  .pv-title{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink)}
+  .pv-note{font-size:12px;color:var(--muted)}
+  .pv-cols{display:grid;grid-template-columns:1fr 26px 1fr;gap:0;align-items:stretch;background:var(--surface)}
+  .pv-side{padding:13px 14px;min-width:0;overflow-x:auto}
+  .pv-arrow{display:grid;place-items:center;background:var(--surface-2);
+            border-left:1px solid var(--line-soft);border-right:1px solid var(--line-soft);
+            color:var(--faint);font-family:var(--mono);font-size:13px}
+  .pv-lab{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+          color:var(--faint);margin-bottom:7px}
+  .pv-lab.after{color:var(--accent-ink)}
+  table.mini{border-collapse:collapse;font-family:var(--mono);font-size:11px;
+             font-variant-numeric:tabular-nums;width:100%}
+  table.mini th{text-align:left;font-weight:600;color:var(--faint);font-size:9.5px;
+                letter-spacing:.04em;text-transform:uppercase;padding:3px 8px 5px 0;
+                border-bottom:1px solid var(--line);white-space:nowrap}
+  table.mini td{padding:3px 8px 3px 0;color:var(--muted);white-space:nowrap;
+                border-bottom:1px solid var(--line-soft)}
+  table.mini td.hit{color:var(--del);background:var(--del-tint);border-radius:4px;padding-left:5px}
+  table.mini td.newv{color:var(--ok);background:var(--ok-tint);border-radius:4px;padding-left:5px}
+  table.mini tr:last-child td{border-bottom:0}
+  .pv-stats{display:flex;flex-wrap:wrap;gap:8px;padding:11px 14px;background:var(--surface);
+            border-top:1px solid var(--line-soft)}
+  .stat{display:flex;flex-direction:column;gap:1px;border:1px solid var(--line);border-radius:8px;
+        padding:6px 11px;background:var(--surface-2);min-width:104px}
+  .stat .sk{font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+  .stat .sv{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+  .stat .sv .b{color:var(--muted)}
+  .stat .sv .ar{color:var(--faint);margin:0 4px}
+  .stat .sv .a{color:var(--accent-ink);font-weight:700}
+  .pv-plots{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 14px 12px;background:var(--surface)}
+  .pv-plot{border:1px solid var(--line-soft);border-radius:8px;padding:8px;background:var(--surface-2)}
+  .pv-plot .pl{font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);margin-bottom:4px}
+  .pv-plot svg{width:100%;height:56px;display:block}
+  .pv-acts{display:flex;gap:8px;flex-wrap:wrap;padding:12px 14px;background:var(--surface);
+           border-top:1px solid var(--line-soft);align-items:center}
+  .pv-acts .spacer{flex:1}
+
+  /* ——— pull palette ——— */
+  .pull{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--faint);
+        padding:14px 0 0;border-top:1px solid var(--line-soft);margin-top:6px}
+  .pill{border:1px dashed var(--line);background:none;color:var(--muted);border-radius:20px;
+        padding:5px 13px;font-size:12px;font-weight:500}
+  .pill:hover{border-style:solid;border-color:var(--accent);color:var(--accent-ink)}
+  .pill[aria-pressed="true"]{border-style:solid;border-color:var(--accent);background:var(--accent-tint);
+                             color:var(--accent-ink)}
+
+  /* ——— FIGURE BLOCK ——— */
+  .figure{border:1px solid var(--line);border-radius:11px;background:var(--surface);
+          margin-top:12px;overflow:hidden}
+  .figure.is-hidden{display:none}
+  .fig-bar{display:flex;align-items:center;gap:8px;padding:9px 13px;background:var(--surface-2);
+           border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+  .fig-name{font-family:var(--serif);font-size:14px;font-weight:700;flex:1;min-width:120px}
+  .fig-tool{border:1px solid var(--line);background:var(--surface);color:var(--muted);
+            border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:600}
+  .fig-tool:hover{border-color:var(--accent);color:var(--accent-ink)}
+  .fig-tool[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-tint);color:var(--accent-ink)}
+  .fig-canvas{padding:14px 15px}
+  .fig-canvas.journal{background:#FFFFFF;color:#111}
+  .fig-cap{font-size:12px;color:var(--faint);padding:0 15px 13px;line-height:1.5}
+  .fig-canvas.journal + .fig-cap{background:#FFFFFF;color:#333;font-family:Georgia,serif;
+                                 border-top:0;padding-top:4px}
+  .jbadge{font-family:var(--mono);font-size:9.5px;color:var(--warn);background:var(--warn-tint);
+          border:1px solid var(--warn-line);border-radius:10px;padding:1px 7px}
+
+  /* interactive plot bits */
+  .hoverable{cursor:crosshair}
+  .bar-r:hover,.cell:hover{opacity:1 !important;stroke:var(--ink);stroke-width:1}
+  .legend-row{display:flex;flex-wrap:wrap;gap:12px;margin-top:9px}
+  .lg{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);
+      border:0;background:none;padding:2px 4px;border-radius:6px}
+  .lg:hover{background:var(--surface-2)}
+  .lg[aria-pressed="false"]{opacity:.38}
+  .lg .sw{width:16px;height:2.5px;border-radius:2px}
+  .lg .n{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+  #tip{position:fixed;z-index:80;pointer-events:none;display:none;background:var(--ink);
+       color:var(--ground);font-family:var(--mono);font-size:11px;padding:5px 9px;border-radius:6px;
+       box-shadow:var(--shadow-lift);white-space:nowrap}
+  #tip.on{display:block}
+
+  .smallmults{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:10px}
+  .sm{border:1px solid var(--line-soft);border-radius:8px;padding:7px 8px 5px;background:var(--surface-2)}
+  .sm .sm-name{font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:3px;
+               overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sm svg{width:100%;height:42px;display:block}
+  .sm .sm-ax{display:flex;justify-content:space-between;font-family:var(--mono);font-size:8.5px;
+             color:var(--faint);margin-top:2px}
+
+  .heat{display:grid;gap:2px}
+  .heat-cell{aspect-ratio:1;border-radius:2px;cursor:crosshair}
+  .heat-labels{display:flex;gap:2px;margin-top:4px}
+  .heat-labels span{flex:1;font-family:var(--mono);font-size:8.5px;color:var(--faint);
+                    text-align:center;overflow:hidden}
+
+  .tblwrap{overflow-x:auto;border-radius:9px;border:1px solid var(--line)}
+  table.data{width:100%;border-collapse:collapse;background:var(--surface);font-size:12.5px}
+  table.data th{text-align:left;font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+                color:var(--faint);background:var(--surface-2);padding:9px 13px;
+                border-bottom:1px solid var(--line);white-space:nowrap}
+  table.data td{padding:9px 13px;border-bottom:1px solid var(--line-soft);color:var(--muted);
+                font-variant-numeric:tabular-nums;white-space:nowrap}
+  table.data td.name{color:var(--ink);font-weight:600;font-family:var(--mono);font-size:11.5px}
+  table.data tr:last-child td{border-bottom:0}
+  table.data tr.best td{background:var(--accent-tint);color:var(--ink)}
+  table.data tr.best td.name{color:var(--accent-ink)}
+  .best-tag{font-family:var(--mono);font-size:9.5px;color:var(--accent-ink);border:1px solid var(--accent);
+            border-radius:9px;padding:0 6px;margin-left:7px}
+  pre.latex{margin:10px 0 0;padding:11px 13px;background:var(--surface-2);border:1px solid var(--line);
+            border-radius:8px;font-family:var(--mono);font-size:10.5px;color:var(--muted);
+            overflow-x:auto;line-height:1.5}
+  pre.latex.is-hidden{display:none}
+
+  /* ——— model tiers ——— */
+  .tier{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+  .tier-head{display:flex;align-items:baseline;gap:9px}
+  .tier-title{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .tier-why{font-size:12px;color:var(--faint)}
+  .mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:11px}
+  .mcard{background:var(--surface);border:1.5px solid var(--line);border-radius:11px;
+         padding:14px 15px 12px;box-shadow:var(--shadow);cursor:pointer;display:flex;
+         flex-direction:column;gap:8px;transition:border-color .15s ease,background .15s ease}
+  .mcard:hover{border-color:var(--faint)}
+  .mcard[aria-checked="true"]{border-color:var(--accent);background:var(--accent-tint)}
+  .mcard-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .mcard-name{font-size:14.5px;font-weight:700}
+  .mcheck{flex:0 0 19px;width:19px;height:19px;border-radius:6px;border:1.5px solid var(--line);
+          background:var(--surface);display:grid;place-items:center;transition:all .15s ease}
+  .mcheck svg{width:11px;height:11px;fill:none;stroke:var(--on-accent);stroke-width:3;opacity:0}
+  .mcard[aria-checked="true"] .mcheck{background:var(--accent);border-color:var(--accent)}
+  .mcard[aria-checked="true"] .mcheck svg{opacity:1}
+  .mcard-why{font-size:12.5px;color:var(--ink);line-height:1.45;margin:0}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:auto}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;
+        color:var(--muted);background:var(--surface-2);border:1px solid var(--line);border-radius:20px;
+        padding:2px 8px;white-space:nowrap}
+  .mcard[aria-checked="true"] .chip{background:var(--surface)}
+  .chip.g::before,.chip.m::before{content:"";width:5px;height:5px;border-radius:50%}
+  .chip.g::before{background:var(--ok)}
+  .chip.m::before{background:var(--warn)}
+  .setaside{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:11px;
+            background:var(--surface);overflow:hidden}
+  .sa-row{display:flex;gap:12px;align-items:baseline;padding:11px 15px;
+          border-top:1px solid var(--line-soft);font-size:12.5px}
+  .sa-row:first-child{border-top:0}
+  .sa-row .nm{font-weight:650;color:var(--muted);flex:0 0 150px}
+  .sa-row .wh{color:var(--faint);flex:1;min-width:0}
+  .sa-row button{flex:0 0 auto;border:0;background:none;padding:0;font-size:12px;color:var(--accent-ink);
+                 text-decoration:underline;text-underline-offset:2px}
+
+  .runbar{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-top:16px;
+          padding-top:15px;border-top:1px solid var(--line-soft)}
+  .runbar .sum{flex:1;min-width:190px}
+  .runbar .sum .n{font-weight:700;font-size:13.5px}
+  .runbar .sum .est{font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .runbar .sum .names{font-size:12.5px;color:var(--muted)}
+  .btn{border-radius:9px;padding:10px 17px;font-size:13.5px;font-weight:650;border:1.5px solid transparent}
+  .btn-primary{background:var(--accent);color:var(--on-accent)}
+  .btn-primary:hover{filter:brightness(1.07)}
+  .btn-primary:disabled{opacity:.45;cursor:not-allowed;filter:none}
+  .btn-ghost{background:transparent;border-color:var(--line);color:var(--muted)}
+  .btn-ghost:hover{border-color:var(--faint);color:var(--ink)}
+
+  .runbox{border:1px solid var(--accent);border-radius:11px;padding:15px 16px;margin-top:14px;
+          background:var(--accent-tint)}
+  .runbox.is-hidden{display:none}
+  .run-top{display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:650;color:var(--accent-ink)}
+  .run-pct{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .bar{height:5px;border-radius:3px;background:var(--surface);overflow:hidden;margin-top:11px;
+       border:1px solid var(--line-soft)}
+  .bar > i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s linear}
+  .run-lines{list-style:none;margin:11px 0 0;padding:0;display:flex;flex-direction:column;gap:5px}
+  .run-lines li{font-family:var(--mono);font-size:11.5px;color:var(--muted);display:flex;gap:8px;align-items:center}
+  .run-lines li.done{color:var(--ok)}
+
+  /* ——— preprocess options ——— */
+  .optlist{display:flex;flex-direction:column;gap:8px;margin:0 0 14px;padding:0;list-style:none}
+  .opt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:9px;
+       padding:10px 12px;background:var(--surface);cursor:pointer}
+  .opt.from-ledger{border-color:var(--warn-line);background:var(--warn-tint)}
+  .opt .ocheck{flex:0 0 17px;width:17px;height:17px;border-radius:5px;margin-top:1px;
+               border:1.5px solid var(--line);background:var(--surface);display:grid;place-items:center}
+  .opt .ocheck svg{width:10px;height:10px;fill:none;stroke:var(--on-accent);stroke-width:3;opacity:0}
+  .opt[aria-checked="true"] .ocheck{background:var(--accent);border-color:var(--accent)}
+  .opt[aria-checked="true"] .ocheck svg{opacity:1}
+  .opt .otext{font-size:13px;line-height:1.45}
+  .opt .osrc{font-family:var(--mono);font-size:10px;color:var(--warn);display:block;margin-top:2px}
+  .segrow{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px}
+  .seg{display:flex;flex-direction:column;gap:6px}
+  .seg-label{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)}
+  .seg-opts{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
+            padding:3px;gap:3px}
+  .seg-opts button{border:0;background:none;color:var(--muted);font-size:12px;font-weight:600;
+                   padding:5px 11px;border-radius:6px}
+  .seg-opts button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+
+  /* ——— manuscript ——— */
+  .manuscript{background:#FFFFFF;color:#15201E;border:1px solid var(--line);border-radius:12px;
+              padding:30px 34px;box-shadow:var(--shadow);font-family:Georgia,"Times New Roman",serif;
+              font-size:14.5px;line-height:1.75}
+  .manuscript.is-hidden{display:none}
+  .ms-h{font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.09em;
+        text-transform:uppercase;color:#7A8886;margin:22px 0 6px}
+  .ms-h:first-child{margin-top:0}
+  .manuscript p{margin:0 0 8px}
+  .gap{background:#FBF3DE;border:1px solid #EAD9AC;border-radius:5px;color:#7A5407;
+       font-family:var(--mono);font-size:11px;padding:1px 6px}
+  .msfig{margin:20px 0;padding:16px 0;border-top:1px solid #E4E8E6;border-bottom:1px solid #E4E8E6}
+  .msfig svg{width:100%;height:auto;display:block}
+  .msfig .mscap{font-size:12.5px;color:#3D4A48;margin-top:11px;line-height:1.55}
+  .msfig .mscap b{font-weight:700}
+  .mstable{margin:20px 0}
+  .ms-foot{font-family:var(--sans);font-size:12px;color:#7A8886;margin-top:22px;padding-top:14px;
+           border-top:1px solid #E4E8E6}
+  .xref{color:#0A5A51;font-variant:small-caps;letter-spacing:.02em}
+
+  /* ——— stale ——— */
+  .sect.stale .sect-body{opacity:.55;filter:saturate(.3);pointer-events:none}
+  .sect.stale::after{content:"";position:absolute;left:-6px;right:-6px;top:24px;bottom:-6px;
+                     background:var(--veil);border-radius:12px;pointer-events:none}
+  .stale-tag{display:none;position:relative;z-index:2;width:fit-content;font-family:var(--mono);
+             font-size:10px;color:var(--warn);background:var(--warn-tint);border:1px solid var(--warn-line);
+             border-radius:10px;padding:2px 9px;margin-bottom:8px}
+  .sect.stale .stale-tag{display:block}
+
+  .endnote{text-align:center;font-size:12.5px;color:var(--faint);padding:20px 0 0;
+           border-top:1px dashed var(--line);margin-top:18px}
+  .endnote button{border:0;background:none;color:var(--accent-ink);font-size:12.5px;
+                  text-decoration:underline;text-underline-offset:2px;padding:0}
+  .arrive{animation:arrive .32s cubic-bezier(.2,.7,.3,1)}
+  @keyframes arrive{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .settle{animation:settle .25s ease-out}
+  @keyframes settle{from{opacity:.3;transform:scaleY(.94)}to{opacity:1;transform:none}}
+
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{transition:none !important;animation:none !important}
+    html{scroll-behavior:auto !important}
+  }
+  @media (max-width:900px){
+    .rail{display:none}
+    .feed{max-width:100%;padding:22px 16px 40vh}
+    .find{grid-template-columns:1fr}
+    .fthumb{height:66px;max-width:150px}
+    .pv-cols{grid-template-columns:1fr}
+    .pv-arrow{height:24px;border:0;border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
+    .pv-plots{grid-template-columns:1fr}
+    .sa-row{flex-wrap:wrap}
+    .sa-row .nm{flex-basis:100%}
+    .manuscript{padding:20px 18px}
+  }
+</style>
+
+<div class="topbar">
+  <span class="tb-name">Tabular ML Lab</span>
+  <span class="tb-tag">prototype · synthetic data</span>
+  <span class="tb-spacer"></span>
+  <button class="tb-btn" id="restartBtn" type="button">Restart</button>
+</div>
+
+<div id="tip" role="status" aria-live="off"></div>
+
+<div class="shell">
+  <aside class="rail" aria-label="Analysis map">
+    <div class="rail-inner">
+      <div>
+        <div class="rail-label">This analysis</div>
+        <nav class="map" id="map">
+          <span class="track" aria-hidden="true"></span>
+          <button class="map-step now" data-map="data" type="button"><span class="md"></span>Data</button>
+          <button class="map-step" data-map="target" type="button"><span class="md"></span>Target &amp; lockbox</button>
+          <button class="map-step" data-map="eda" type="button"><span class="md"></span>Explore</button>
+          <button class="map-step" data-map="features" type="button"><span class="md"></span>Features</button>
+          <button class="map-step" data-map="prep" type="button"><span class="md"></span>Preprocess</button>
+          <button class="map-step" data-map="models" type="button"><span class="md"></span>Train &amp; compare</button>
+          <button class="map-step" data-map="results" type="button"><span class="md"></span>Results</button>
+          <button class="map-step" data-map="report" type="button"><span class="md"></span>Report</button>
+        </nav>
+      </div>
+      <div class="jobchip" id="jobChip"><span class="spin" aria-hidden="true"></span><span id="jobText">Working…</span></div>
+      <div class="dock dock-ledger">
+        <div class="dock-head">Coach ledger <span class="dock-ct" id="ledgerCt">0</span></div>
+        <div class="dock-empty" id="ledgerEmpty">Anything you defer waits here, then comes back at the step it belongs to.</div>
+        <ul class="dock-list" id="ledgerList"></ul>
+      </div>
+      <div class="dock dock-ev">
+        <div class="dock-head">For the manuscript <span class="dock-ct" id="evCt">0</span></div>
+        <div class="dock-empty" id="evEmpty">Flag a figure, table, or finding and it is placed in the draft at export.</div>
+        <ul class="dock-list" id="evList"></ul>
+      </div>
+    </div>
+  </aside>
+
+  <main class="feed" id="feed">
+    <div class="feed-open">
+      <h1>Let's build your analysis.</h1>
+      <p>One card at a time. Every answer is written down below as a sentence you could publish — scroll back any time to read, change, or flag what you've done.</p>
+    </div>
+
+    <!-- ═══ DATA ═══ -->
+    <section class="sect live" id="sec-data" data-map="data">
+      <div class="sect-head"><span class="sect-kicker">Data</span><span class="sect-state">open</span></div>
+      <span class="stale-tag">stale — an earlier answer changed</span>
+      <div class="sect-body">
+        <div class="stepcard" id="card-data">
+          <div class="answered is-hidden" id="a-arrange">
+            <span class="lab">Arrangement</span>
+            <span class="val" id="a-arrange-val"></span>
+            <button class="mini" id="a-arrange-chg" type="button">change</button>
+          </div>
+          <div class="sub" id="sub-arrange">
+            <div class="subhead"><span class="sub-num">01</span></div>
+            <h2>How does your data arrive?</h2>
+            <p class="why">This shapes everything after it. Combining files opens a set of linking choices that a single file never needs to see.</p>
+            <div class="answers">
+              <button class="answer" data-arrange="single" type="button">A single file</button>
+              <button class="answer" data-arrange="multi" type="button">Several files I need to combine</button>
+            </div>
+          </div>
+          <div class="sub is-hidden" id="sub-join">
+            <div class="subhead"><span class="sub-num">02</span></div>
+            <h2>How should the two files be linked?</h2>
+            <p class="why"><span class="v">patients.csv</span> (918 rows) and <span class="v">labs.csv</span> (2,741 rows) share three column names. <span class="v">patient_id</span> rates as a high-confidence key; <span class="v">hospital_day</span> looks like one but repeats within patients, and joining on it would multiply your outcome rows.</p>
+            <div class="answers">
+              <button class="answer primary" data-join="latest" type="button">Keep each patient's most recent labs <span class="rec">recommended</span></button>
+              <button class="answer" data-join="all" type="button">Keep every lab row</button>
+              <button class="answer ghost" data-join="manual" type="button">Choose the columns myself</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="decision is-hidden" id="d-data">
+          <p class="prose" id="d-data-text"></p>
+          <button class="chg" data-reopen="data" type="button">change</button>
+        </div>
+
+        <div class="stepcard calm is-hidden" id="card-coach-data">
+          <div class="sub">
+            <div class="subhead"><span class="sub-num">noticed</span></div>
+            <div class="findlist">
+              <article class="find no-thumb" id="f-chol" data-prev="chol">
+                <div>
+                  <p class="f-title">One thing worth settling before we go on</p>
+                  <p class="f-because"><span class="v">Cholesterol</span> holds <span class="v">172</span> zeros — physiologically impossible, so almost certainly a missing-value code. Left as zeros they pull the mean down and every model with it.</p>
+                  <div class="f-row">
+                    <button class="f-act preview" data-preview="f-chol" type="button">Show me what changes</button>
+                    <button class="f-act defer" data-defer="Recode Cholesterol zeros as missing" data-target="prep" data-src="Data" type="button">Remind me at Preprocess</button>
+                    <button class="f-act dismiss" data-dismiss="f-chol" type="button">Dismiss</button>
+                    <span class="fstat s-def">deferred → Preprocess</span>
+                    <span class="fstat s-app">applied</span>
+                    <button class="flag" data-ev="note:chol" aria-pressed="false" type="button">⚑ Mark for manuscript</button>
+                  </div>
+                  <div class="preview is-hidden" id="pv-f-chol"></div>
+                </div>
+              </article>
+              <div class="dnote" id="dn-f-chol">
+                <span>Dismissed: <em>Cholesterol zero-coding</em>. Still in the record, out of your way.</span>
+                <button data-undismiss="f-chol" type="button">Undo</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ TARGET ═══ -->
+    <section class="sect is-hidden" id="sec-target" data-map="target">
+      <div class="sect-head"><span class="sect-kicker">Target &amp; lockbox</span><span class="sect-state">open</span></div>
+      <span class="stale-tag">stale — an earlier answer changed</span>
+      <div class="sect-body">
+        <div class="stepcard" id="card-target">
+          <div class="sub" id="sub-target">
+            <div class="subhead"><span class="sub-num">01</span></div>
+            <h2>What are you predicting?</h2>
+            <p class="why">Pick the column your paper is about. I'll detect whether that's classification or regression, then seal a test set <em>before</em> anything is explored — so nothing you see below can leak into it.</p>
+            <div class="answers">
+              <button class="answer primary" data-target-col="HeartDisease" type="button">HeartDisease <span class="rec">binary</span></button>
+              <button class="answer" data-target-col="Cholesterol" type="button">Cholesterol</button>
+              <button class="answer" data-target-col="MaxHR" type="button">MaxHR</button>
+            </div>
+          </div>
+        </div>
+        <div class="decision is-hidden" id="d-target">
+          <p class="prose" id="d-target-text"></p>
+          <button class="chg" data-reopen="target" type="button">change</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ EDA ═══ -->
+    <section class="sect is-hidden" id="sec-eda" data-map="eda">
+      <div class="sect-head"><span class="sect-kicker">Explore</span><span class="sect-state">open</span></div>
+      <span class="stale-tag">stale — an earlier answer changed</span>
+      <div class="sect-body">
+        <div class="stepcard calm" id="card-eda">
+          <div class="sub">
+            <div class="subhead"><span class="sub-num">01</span></div>
+            <h2>Two things stand out in this dataset.</h2>
+            <p class="why">Ranked by how much they'll affect what you do next. Nothing is applied until you've seen exactly what it would change.</p>
+
+            <div class="findlist">
+              <article class="find" id="f-skew" data-prev="skew">
+                <div class="fthumb" aria-hidden="true">
+                  <svg viewBox="0 0 104 76" preserveAspectRatio="none"><g fill="var(--c1)" opacity=".8">
+                    <rect x="7" y="40" width="8" height="30"/><rect x="17" y="20" width="8" height="50"/>
+                    <rect x="27" y="11" width="8" height="59"/><rect x="37" y="25" width="8" height="45"/>
+                    <rect x="47" y="42" width="8" height="28"/><rect x="57" y="53" width="8" height="17"/>
+                    <rect x="67" y="60" width="8" height="10"/><rect x="77" y="65" width="8" height="5"/>
+                    <rect x="87" y="67" width="8" height="3"/></g></svg>
+                </div>
+                <div>
+                  <p class="f-title"><span class="v">creatinine</span> is strongly right-skewed</p>
+                  <p class="f-because">Skew <span class="v">2.81</span>, with a tail running to <span class="v">9.4 mg/dL</span>. Linear and distance-based models will over-weight that tail; a log transform usually settles it.</p>
+                  <div class="f-row">
+                    <button class="f-act preview" data-preview="f-skew" type="button">Show me what changes</button>
+                    <button class="f-act defer" data-defer="Log-transform creatinine" data-target="prep" data-src="Explore" type="button">Remind me at Preprocess</button>
+                    <button class="f-act dismiss" data-dismiss="f-skew" type="button">Dismiss</button>
+                    <span class="fstat s-def">deferred → Preprocess</span>
+                    <span class="fstat s-app">applied</span>
+                    <button class="flag" data-ev="note:skew" aria-pressed="false" type="button">⚑ Mark for manuscript</button>
+                  </div>
+                  <div class="preview is-hidden" id="pv-f-skew"></div>
+                </div>
+              </article>
+              <div class="dnote" id="dn-f-skew">
+                <span>Dismissed: <em>creatinine skew</em>.</span>
+                <button data-undismiss="f-skew" type="button">Undo</button>
+              </div>
+
+              <article class="find" id="f-miss" data-prev="miss">
+                <div class="fthumb" aria-hidden="true">
+                  <svg viewBox="0 0 104 76"><g fill="var(--faint)" opacity=".5">
+                    <rect x="9" y="10" width="86" height="8" rx="2"/><rect x="9" y="22" width="86" height="8" rx="2"/>
+                    <rect x="9" y="46" width="86" height="8" rx="2"/><rect x="9" y="58" width="86" height="8" rx="2"/></g>
+                    <g fill="var(--warn)"><rect x="9" y="34" width="55" height="8" rx="2"/>
+                    <rect x="68" y="34" width="11" height="8" rx="2" opacity=".4"/>
+                    <rect x="83" y="34" width="12" height="8" rx="2" opacity=".4"/></g></svg>
+                </div>
+                <div>
+                  <p class="f-title"><span class="v">ferritin</span> is missing in a pattern, not at random</p>
+                  <p class="f-because"><span class="v">34%</span> missing, and the gaps cluster in non-ICU admissions — the absence itself may carry signal. Dropping those rows would bias the sample; an explicit indicator keeps the information.</p>
+                  <div class="f-row">
+                    <button class="f-act preview" data-preview="f-miss" type="button">Show me what changes</button>
+                    <button class="f-act defer" data-defer="Add a missingness indicator for ferritin" data-target="prep" data-src="Explore" type="button">Remind me at Preprocess</button>
+                    <button class="f-act dismiss" data-dismiss="f-miss" type="button">Dismiss</button>
+                    <span class="fstat s-def">deferred → Preprocess</span>
+                    <span class="fstat s-app">applied</span>
+                    <button class="flag" data-ev="note:miss" aria-pressed="false" type="button">⚑ Mark for manuscript</button>
+                  </div>
+                  <div class="preview is-hidden" id="pv-f-miss"></div>
+                </div>
+              </article>
+              <div class="dnote" id="dn-f-miss">
+                <span>Dismissed: <em>ferritin missingness</em>.</span>
+                <button data-undismiss="f-miss" type="button">Undo</button>
+              </div>
+            </div>
+
+            <div class="pull">
+              <span>Look at anything else?</span>
+              <button class="pill" data-fig="dist" aria-pressed="false" type="button">Distributions — all 14</button>
+              <button class="pill" data-fig="corr" aria-pressed="false" type="button">Correlation matrix</button>
+              <button class="pill" data-fig="tone" aria-pressed="false" type="button">Table One</button>
+            </div>
+            <div id="edaFigs"></div>
+
+            <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line-soft);">
+              <div class="answers">
+                <button class="answer primary" id="edaDone" type="button">Done exploring — what's next?</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="decision is-hidden" id="d-eda"><p class="prose" id="d-eda-text"></p></div>
+      </div>
+    </section>
+
+    <!-- ═══ FEATURES ═══ -->
+    <section class="sect is-hidden" id="sec-features" data-map="features">
+      <div class="sect-head"><span class="sect-kicker">Features</span><span class="sect-state">open</span></div>
+      <span class="stale-tag">stale — an earlier answer changed</span>
+      <div class="sect-body">
+        <div class="stepcard" id="card-features">
+          <div class="sub" id="sub-features">
+            <div class="subhead"><span class="sub-num">01</span></div>
+            <h2>A probe suggests one engineered feature is worth having.</h2>
+            <p class="why">The interaction <span class="v">age × creatinine</span> lifted probe AUC by <span class="v">+0.014</span> on training folds only — the lockbox stayed sealed, so treat this as a hint, not a result.</p>
+            <div class="answers">
+              <button class="answer primary" data-feat="add" type="button">Add that interaction</button>
+              <button class="answer" data-feat="workshop" type="button">Open the feature workshop</button>
+              <button class="answer ghost" data-feat="skip" type="button">Skip — go to preprocessing</button>
+            </div>
+          </div>
+        </div>
+        <div class="decision is-hidden" id="d-features">
+          <p class="prose" id="d-features-text"></p>
+          <button class="chg" data-reopen="features" type="button">change</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ PREPROCESS ═══ -->
+    <section class="sect is-hidden" id="sec-prep" data-map="prep">
+      <div class="sect-head"><span class="sect-kicker">Preprocess</span><span class="sect-state">open</span></div>
+      <span class="stale-tag">stale — an earlier answer changed</span>
+      <div class="sect-body">
+        <div class="stepcard" id="card-prep">
+          <div class="sub" id="sub-prep">
+            <div class="subhead"><span class="sub-num">01</span></div>
+            <h2 id="prepTitle">How should the data be prepared?</h2>
+            <p class="why" id="prepWhy">Everything here is fit on training rows only and applied to the lockbox at the end — never the other way round.</p>
+            <ul class="optlist" id="prepOpts"></ul>
+            <div class="segrow">
+              <div class="seg">
+                <span class="seg-label">Missing values</span>
+                <div class="seg-opts" role="group" aria-label="Imputation">
+                  <button data-seg="impute" data-val="median" aria-pressed="true" type="button">Median</button>
+                  <button data-seg="impute" data-val="mice" aria-pressed="false" type="button">MICE</button>
+                  <button data-seg="impute" data-val="none" aria-pressed="false" type="button">Leave as-is</button>
+                </div>
+              </div>
+              <div class="seg">
+                <span class="seg-label">Scaling</span>
+                <div class="seg-opts" role="group" aria-label="Scaling">
+                  <button data-seg="scale" data-val="standard" aria-pressed="true" type="button">Standardize</button>
+                  <button data-seg="scale" data-val="robust" aria-pressed="false" type="button">Robust</button>
+                  <button data-seg="scale" data-val="none" aria-pressed="false" type="button">None</button>
+                </div>
+              </div>
+            </div>
+            <div class="answers">
+              <button class="answer primary" id="buildPipe" type="button">Build the pipeline</button>
+            </div>
+          </div>
+        </div>
+        <div class="decision is-hidden" id="d-prep">
+          <p class="prose" id="d-prep-text"></p>
+          <button class="chg" data-reopen="prep" type="button">change</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MODELS ═══ -->
+    <section class="sect is-hidden" id="sec-models" data-map="models">
+      <div class="sect-head"><span class="sect-kicker">Train &amp; compare</span><span class="sect-state">open</span></div>
+      <span class="stale-tag">stale — an earlier answer changed</span>
+      <div class="sect-body">
+        <div class="stepcard" id="card-models">
+          <div class="sub" id="sub-models">
+            <div class="subhead"><span class="sub-num">01</span></div>
+            <h2>Which models should compete?</h2>
+            <p class="why">Ranked for <em>your</em> dataset — <span id="mIntroRows">918</span> rows, mixed types, moderate missingness. Two are pre-selected because the coach recommends them; change that freely.</p>
+
+            <div class="tier">
+              <div class="tier-head"><span class="tier-title">Recommended</span><span class="tier-why">best fit at this sample size</span></div>
+              <div class="mgrid">
+                <div class="mcard" role="checkbox" aria-checked="true" tabindex="0" data-model="rf">
+                  <div class="mcard-top"><span class="mcard-name">Random Forest</span><span class="mcheck"><svg viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4"/></svg></span></div>
+                  <p class="mcard-why">Robust at <span class="rowsN">918</span> rows and hard to overfit — the natural reference model for a paper like this.</p>
+                  <div class="chips"><span class="chip g">~5 s</span><span class="chip g">missing: native</span><span class="chip g">explains: high</span></div>
+                </div>
+                <div class="mcard" role="checkbox" aria-checked="true" tabindex="0" data-model="xgb">
+                  <div class="mcard-top"><span class="mcard-name">XGBoost</span><span class="mcheck"><svg viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4"/></svg></span></div>
+                  <p class="mcard-why">Usually the accuracy leader on tabular data this shape; built-in regularization suits a small sample.</p>
+                  <div class="chips"><span class="chip g">~10 s</span><span class="chip g">missing: native</span><span class="chip m">explains: medium</span></div>
+                </div>
+                <div class="mcard" role="checkbox" aria-checked="false" tabindex="0" data-model="lgbm">
+                  <div class="mcard-top"><span class="mcard-name">LightGBM</span><span class="mcheck"><svg viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4"/></svg></span></div>
+                  <p class="mcard-why">Near-identical to XGBoost but faster. Pick one of the two unless you're comparing boosters directly.</p>
+                  <div class="chips"><span class="chip g">~6 s</span><span class="chip g">missing: native</span><span class="chip m">explains: medium</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="tier">
+              <div class="tier-head"><span class="tier-title">Worth trying</span><span class="tier-why">adds a different angle to the comparison</span></div>
+              <div class="mgrid">
+                <div class="mcard" role="checkbox" aria-checked="false" tabindex="0" data-model="glm">
+                  <div class="mcard-top"><span class="mcard-name">Penalized GLM</span><span class="mcheck"><svg viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4"/></svg></span></div>
+                  <p class="mcard-why">A fully interpretable linear baseline. Reviewers in this field usually ask for one.</p>
+                  <div class="chips"><span class="chip g">~3 s</span><span class="chip g">explains: high</span></div>
+                </div>
+                <div class="mcard" role="checkbox" aria-checked="false" tabindex="0" data-model="hgb">
+                  <div class="mcard-top"><span class="mcard-name">Histogram GB</span><span class="mcheck"><svg viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4"/></svg></span></div>
+                  <p class="mcard-why">scikit-learn's booster — overlaps with XGBoost but tunes differently.</p>
+                  <div class="chips"><span class="chip g">~8 s</span><span class="chip g">missing: native</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="tier">
+              <div class="tier-head"><span class="tier-title">Set aside for this dataset</span><span class="tier-why">available, but unlikely to earn their cost here</span></div>
+              <div class="setaside">
+                <div class="sa-row"><span class="nm">Support Vector Classifier</span><span class="wh">Tuning cost climbs steeply with sample size, and it rarely beats boosting on tabular data.</span><button data-add-model="svc" type="button">Include anyway</button></div>
+                <div class="sa-row"><span class="nm">Neural Network</span><span class="wh"><span class="rowsN">918</span> rows sits well below the ~10,000 where neural nets start to overtake tree ensembles.</span><button data-add-model="nn" type="button">Include anyway</button></div>
+              </div>
+            </div>
+
+            <div class="runbar" id="trainBar">
+              <div class="sum">
+                <div><span class="n" id="selCount">2 models selected</span> <span class="est" id="selEst">· about 15 s</span></div>
+                <div class="names" id="selNames">Random Forest + XGBoost</div>
+              </div>
+              <button class="btn btn-ghost" type="button">Tune hyperparameters first</button>
+              <button class="btn btn-primary" id="trainBtn" type="button">Train 2 models</button>
+            </div>
+
+            <div class="runbox is-hidden" id="runbox">
+              <div class="run-top">
+                <span class="spin" aria-hidden="true"></span>
+                <span>Training — 5-fold cross-validation</span>
+                <span class="run-pct" id="runPct">0%</span>
+              </div>
+              <div class="bar"><i id="runBar"></i></div>
+              <ul class="run-lines" id="runLines"></ul>
+              <div class="f-row" style="margin-top:11px;">
+                <span style="font-size:12px;color:var(--muted);">Keep scrolling and reading — this runs in the background.</span>
+                <button class="f-act" id="cancelRun" type="button">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="decision is-hidden" id="d-models">
+          <p class="prose" id="d-models-text"></p>
+          <button class="chg" data-reopen="models" type="button">change</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ RESULTS ═══ -->
+    <section class="sect is-hidden" id="sec-results" data-map="results">
+      <div class="sect-head"><span class="sect-kicker">Results</span><span class="sect-state">open</span></div>
+      <span class="stale-tag">stale — an earlier answer changed</span>
+      <div class="sect-body">
+        <div class="stepcard calm" id="card-results">
+          <div class="sub">
+            <div class="subhead"><span class="sub-num">01</span></div>
+            <h2>How the models did.</h2>
+            <p class="why">Cross-validated on the training partition. The lockbox is still sealed — these are not your headline numbers yet.</p>
+            <div class="tblwrap"><table class="data" id="resTable"></table></div>
+            <div id="resFigs"></div>
+
+            <div class="findlist" style="margin-top:6px;">
+              <article class="find no-thumb" id="f-calib" data-prev="calib">
+                <div>
+                  <p class="f-title">Before you report probabilities, one caution</p>
+                  <p class="f-because" id="calibText"></p>
+                  <div class="f-row">
+                    <button class="f-act preview" data-preview="f-calib" type="button">Show me what changes</button>
+                    <button class="f-act defer" data-defer="Isotonic calibration before reporting probabilities" data-target="report" data-src="Results" type="button">Remind me at Report</button>
+                    <button class="f-act dismiss" data-dismiss="f-calib" type="button">Dismiss</button>
+                    <span class="fstat s-def">deferred → Report</span>
+                    <span class="fstat s-app">applied</span>
+                    <button class="flag" data-ev="note:calib" aria-pressed="false" type="button">⚑ Mark for manuscript</button>
+                  </div>
+                  <div class="preview is-hidden" id="pv-f-calib"></div>
+                </div>
+              </article>
+              <div class="dnote" id="dn-f-calib">
+                <span>Dismissed: <em>calibration caution</em>.</span>
+                <button data-undismiss="f-calib" type="button">Undo</button>
+              </div>
+            </div>
+
+            <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line-soft);">
+              <div class="answers">
+                <button class="answer primary" id="toReport" type="button">Open the lockbox and draft the report</button>
+                <button class="answer ghost" id="backToModels" type="button">Go back and try other models</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ REPORT ═══ -->
+    <section class="sect is-hidden" id="sec-report" data-map="report">
+      <div class="sect-head"><span class="sect-kicker">Report</span><span class="sect-state">open</span></div>
+      <span class="stale-tag">stale — an earlier answer changed</span>
+      <div class="sect-body">
+        <div class="stepcard" id="card-report">
+          <div class="sub" id="sub-report">
+            <div class="subhead"><span class="sub-num">01</span></div>
+            <h2>Everything you decided is already written down.</h2>
+            <p class="why" id="reportWhy"></p>
+            <ul class="optlist" id="reportReminders"></ul>
+            <ul class="dock-list" id="reportEvidence" style="margin-bottom:16px;"></ul>
+            <div class="answers">
+              <button class="answer primary" id="draftBtn" type="button">Draft the manuscript</button>
+            </div>
+          </div>
+        </div>
+        <div class="manuscript is-hidden" id="manuscript"></div>
+        <div class="endnote is-hidden" id="endnote">
+          Every sentence and every figure above came from the decisions you made — nothing was invented.
+          <br><button id="redraftBtn" type="button">Draft again with my current flags</button>
+          · <button id="restartBtn2" type="button">Start over and try the other branch</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function $(id){ return document.getElementById(id); }
+  function all(sel, root){ return Array.prototype.slice.call((root||document).querySelectorAll(sel)); }
+  function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+  /* ═════════ STATE ═════════ */
+  var S = {
+    arrange:null, join:null, rows:918, feats:12, target:null, featureChoice:null,
+    impute:"median", scale:"standard",
+    selected:{ rf:true, xgb:true }, trained:[],
+    ledger:[], applied:[], dismissed:[], evidence:[], hiddenSeries:{}
+  };
+  // Which step raised each finding — so a step only summarises its own.
+  var ORIGIN = { "f-chol":"data", "f-skew":"eda", "f-miss":"eda", "f-calib":"results" };
+  function countBy(origin){
+    return {
+      deferred:  S.ledger.filter(function(l){ return ORIGIN[l.id] === origin; }).length,
+      applied:   S.applied.filter(function(a){ return a.origin === origin; }).length,
+      dismissed: S.dismissed.filter(function(d){ return ORIGIN[d] === origin; }).length
+    };
+  }
+  // Group sizes follow the actual row count, never a hard-coded 918.
+  function cohort(){
+    var test = Math.round(S.rows * 0.2), train = S.rows - test;
+    var dis = Math.round(train * 0.55);
+    return { test:test, train:train, dis:dis, no:train - dis };
+  }
+  function syncRowCounts(){
+    var el = $("mIntroRows");
+    if (el) el.textContent = S.rows.toLocaleString();
+    all(".rowsN").forEach(function(n){ n.textContent = S.rows.toLocaleString(); });
+  }
+
+  var MODELS = {
+    rf:{name:"Random Forest",est:5,auc:0.891,acc:0.842,brier:0.118},
+    xgb:{name:"XGBoost",est:10,auc:0.934,acc:0.871,brier:0.098},
+    lgbm:{name:"LightGBM",est:6,auc:0.929,acc:0.866,brier:0.101},
+    glm:{name:"Penalized GLM",est:3,auc:0.878,acc:0.826,brier:0.126},
+    hgb:{name:"Histogram GB",est:8,auc:0.921,acc:0.858,brier:0.105},
+    svc:{name:"SVC",est:42,auc:0.883,acc:0.833,brier:0.131},
+    nn:{name:"Neural Network",est:65,auc:0.869,acc:0.818,brier:0.142}
+  };
+
+  var ORDER = ["data","target","eda","features","prep","models","results","report"];
+  var SEC = { data:"sec-data", target:"sec-target", eda:"sec-eda", features:"sec-features",
+              prep:"sec-prep", models:"sec-models", results:"sec-results", report:"sec-report" };
+  var TARGET_LABEL = { prep:"Preprocess", features:"Features", report:"Report" };
+
+  /* ═════════ REVEAL / SCROLL ═════════ */
+  function anim(el, cls, ms){
+    if (reduced || !el) return;
+    el.classList.add(cls);
+    setTimeout(function(){ el.classList.remove(cls); }, ms);
+  }
+  function nudge(el){
+    if (!el) return;
+    requestAnimationFrame(function(){
+      var r = el.getBoundingClientRect();
+      if (r.top > window.innerHeight - 140)
+        window.scrollTo({ top: window.scrollY + r.top - 110, behavior: reduced ? "auto" : "smooth" });
+    });
+  }
+  // Returns true only when this call actually revealed the section, so callers
+  // don't reset an already-recorded step back to "open".
+  function reveal(key){
+    var el = $(SEC[key]);
+    if (!el || !el.classList.contains("is-hidden")) return false;
+    el.classList.remove("is-hidden");
+    anim(el, "arrive", 360);
+    setMap(key, "now");
+    nudge(el);
+    return true;
+  }
+  function setStale(key, on){
+    var el = $(SEC[key]); if (!el) return;
+    el.classList.toggle("stale", on);
+    // pointer-events alone leaves veiled controls in the tab order.
+    var body = el.querySelector(".sect-body");
+    if (body && "inert" in body) body.inert = on;
+  }
+  function setMap(key, state){
+    var b = document.querySelector('.map-step[data-map="'+key+'"]');
+    if (!b) return;
+    b.classList.remove("now","done","stale");
+    if (state) b.classList.add(state);
+  }
+  function markDone(key){
+    var b = document.querySelector('.map-step[data-map="'+key+'"]');
+    if (b){ b.classList.remove("now","stale"); b.classList.add("done"); }
+  }
+  function sectState(key, state, label){
+    var el = $(SEC[key]); if (!el) return;
+    el.classList.remove("live","recorded");
+    if (state) el.classList.add(state);
+    var t = el.querySelector(".sect-state");
+    if (t && label) t.textContent = label;
+  }
+  function record(id, html){
+    $(id + "-text").innerHTML = html;
+    var d = $(id);
+    d.classList.remove("is-hidden");
+    anim(d, "settle", 280);
+    // A decision is only settled now, so this is when downstream may recompute.
+    syncRowCounts();
+    if (typeof clearStale === "function") clearStale();
+  }
+
+  // Jobs can overlap (a re-answer and a downstream recompute run at once), so each
+  // keeps its own timer and the chip clears only when the last one finishes.
+  var activeJobs = 0;
+  function runJob(label, ms, done){
+    activeJobs++;
+    $("jobText").textContent = label;
+    $("jobChip").classList.add("on");
+    setTimeout(function(){
+      activeJobs = Math.max(0, activeJobs - 1);
+      if (!activeJobs) $("jobChip").classList.remove("on");
+      if (done) done();
+    }, reduced ? 90 : ms);
+  }
+
+  /* ═════════ LEDGER / EVIDENCE ═════════ */
+  function renderLedger(){
+    var list = $("ledgerList");
+    list.innerHTML = "";
+    S.ledger.forEach(function(it){
+      var li = document.createElement("li");
+      li.innerHTML = '<span class="to">→ '+ (TARGET_LABEL[it.target]||it.target) +'</span>' + esc(it.text);
+      list.appendChild(li);
+    });
+    $("ledgerCt").textContent = String(S.ledger.length);
+    $("ledgerEmpty").style.display = S.ledger.length ? "none" : "block";
+  }
+  // A flagged finding becomes a methods sentence; a flagged figure becomes a numbered exhibit.
+  var NOTES = {
+    chol:  { section:"quality", label:"Cholesterol zero-coding",
+             text:"Cholesterol values recorded as zero were treated as missing rather than as observed measurements" },
+    skew:  { section:"quality", label:"creatinine skew",
+             text:"creatinine was log-transformed to reduce right skew" },
+    miss:  { section:"quality", label:"ferritin missingness",
+             text:"a binary missingness indicator was retained for ferritin, since values were not missing at random" },
+    calib: { section:"results", label:"probability calibration",
+             text:"predicted probabilities were calibrated by isotonic regression fitted on the training folds" }
+  };
+  var NOTE_FOR_OP = {
+    "Recode Cholesterol zeros as missing":"chol",
+    "Log-transform creatinine":"skew",
+    "Add a missingness indicator for ferritin":"miss"
+  };
+  // Task labels are imperative; a manuscript needs past-tense prose.
+  var PHRASE = {
+    "Recode Cholesterol zeros as missing":"zero Cholesterol values were recoded as missing",
+    "Log-transform creatinine":"creatinine was log-transformed",
+    "Add a missingness indicator for ferritin":"a missingness indicator was added for ferritin",
+    "One-hot encoding for categorical predictors":"categorical predictors were one-hot encoded"
+  };
+
+  function noteKey(k){ return k.indexOf("note:") === 0 ? k.slice(5) : null; }
+  function evTitle(key){
+    var nk = noteKey(key);
+    if (nk) return NOTES[nk] ? NOTES[nk].label : nk;
+    var f = FIGS[key];
+    return f ? f.title : key;
+  }
+  function renderEvidence(){
+    var list = $("evList");
+    list.innerHTML = "";
+    S.evidence.forEach(function(k){
+      var li = document.createElement("li");
+      var kind = k.indexOf("note:") === 0 ? "note" : (FIGS[k] && FIGS[k].kind === "table" ? "table" : "figure");
+      li.innerHTML = '<span class="to">⚑ '+kind+'</span>' + esc(evTitle(k));
+      list.appendChild(li);
+    });
+    $("evCt").textContent = String(S.evidence.length);
+    $("evEmpty").style.display = S.evidence.length ? "none" : "block";
+  }
+
+  /* ═════════ SYNTHETIC DATA ═════════ */
+  var seed = 20260726;
+  function rnd(){ seed = (seed*1664525 + 1013904223) % 4294967296; return seed/4294967296; }
+  var COLS = ["Age","RestingBP","Cholesterol","MaxHR","Oldpeak","creatinine","hemoglobin",
+              "hematocrit","ferritin","sodium","potassium","albumin","glucose","bmi"];
+  var RANGES = [[29,77],[80,200],[0,603],[60,202],[-2.6,6.2],[0.4,9.4],[8.1,17.8],
+                [24,52],[8,1240],[126,148],[2.9,6.1],[2.1,5.2],[62,410],[16,48]];
+
+  function histFor(ci){
+    var bars = [], shape = ci % 3;
+    for (var i=0;i<11;i++){
+      var x = i/10, v;
+      if (shape===0) v = Math.exp(-Math.pow((x-0.5)*2.6,2));
+      else if (shape===1) v = Math.exp(-Math.pow((x-0.25)*3.2,2));
+      else v = Math.exp(-Math.pow((x-0.62)*2.9,2));
+      bars.push(v * (0.82 + rnd()*0.32));
+    }
+    return bars;
+  }
+  var HISTS = COLS.map(function(_,i){ return histFor(i); });
+
+  var CORRVARS = ["Age","RestBP","Chol","MaxHR","creat","hgb","hct","ferr"];
+  var CORRM = (function(){
+    var n = CORRVARS.length, M = [];
+    for (var i=0;i<n;i++) M[i] = [];
+    for (var i=0;i<n;i++)
+      for (var j=i;j<n;j++){
+        var v = i===j ? 1 : (rnd()*1.5-0.65);
+        if (i===5 && j===6) v = 0.91;
+        v = Math.max(-0.85, Math.min(1, v));
+        M[i][j] = v; M[j][i] = v;
+      }
+    return M;
+  })();
+
+  /* ═════════ TOOLTIP ═════════ */
+  var tip = $("tip");
+  document.addEventListener("mousemove", function(e){
+    var t = e.target.closest ? e.target.closest("[data-tip]") : null;
+    if (!t){ tip.classList.remove("on"); return; }
+    tip.textContent = t.getAttribute("data-tip");
+    tip.classList.add("on");
+    var x = e.clientX + 14, y = e.clientY - 34;
+    if (x + tip.offsetWidth > window.innerWidth - 8) x = e.clientX - tip.offsetWidth - 14;
+    if (y < 8) y = e.clientY + 20;
+    tip.style.left = x + "px"; tip.style.top = y + "px";
+  });
+  document.addEventListener("scroll", function(){ tip.classList.remove("on"); }, true);
+
+  /* ═════════ FIGURES ═════════ */
+  var JC = { ink:"#111111", grey:"#666666", light:"#AAAAAA", bg:"#FFFFFF" };
+  var JFONT = 'Georgia,"Times New Roman",serif';
+
+  function webHist(ci){
+    var bars = HISTS[ci], mx = Math.max.apply(null, bars);
+    var r = RANGES[ci], lo = r[0], hi = r[1];
+    var s = '<svg viewBox="0 0 110 42" preserveAspectRatio="none" class="hoverable">';
+    bars.forEach(function(v,i){
+      var h = (v/mx)*36;
+      var a = (lo + (hi-lo)*(i/11)).toFixed(1), b = (lo + (hi-lo)*((i+1)/11)).toFixed(1);
+      var count = Math.round(v/mx*180) + 12;
+      s += '<rect class="bar-r" x="'+(i*10+1)+'" y="'+(40-h).toFixed(1)+'" width="8" height="'+h.toFixed(1)+
+           '" fill="var(--c1)" opacity=".72" data-tip="'+COLS[ci]+' '+a+'–'+b+'  ·  n = '+count+'"/>';
+    });
+    s += "</svg>";
+    return s;
+  }
+
+  var FIGS = {};
+  FIGS.dist = {
+    kind:"figure",
+    title:"Distributions of candidate predictors",
+    caption:"Distributions of the 14 candidate predictors in the training partition (n = {train}). Bars show frequency within equal-width bins.",
+    web: function(){
+      var h = '<div class="smallmults">';
+      COLS.forEach(function(name, i){
+        h += '<div class="sm"><div class="sm-name" title="'+name+'">'+name+'</div>'+ webHist(i) +
+             '<div class="sm-ax"><span>'+RANGES[i][0]+'</span><span>'+RANGES[i][1]+'</span></div></div>';
+      });
+      return h + "</div>";
+    },
+    journal: function(){
+      var cols = 5, rows = Math.ceil(COLS.length/cols);
+      var pw = 132, ph = 92, padL = 26, padT = 16, W = padL + cols*pw + 10, H = padT + rows*ph + 14;
+      var s = '<svg xmlns="http://www.w3.org/2000/svg" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" font-family="'+JFONT+'">';
+      s += '<rect width="'+W+'" height="'+H+'" fill="'+JC.bg+'"/>';
+      COLS.forEach(function(name, i){
+        var cx = padL + (i%cols)*pw, cy = padT + Math.floor(i/cols)*ph;
+        var bars = HISTS[i], mx = Math.max.apply(null, bars);
+        var pW = pw-22, pH = ph-38;
+        s += '<text x="'+cx+'" y="'+(cy+9)+'" font-size="9" fill="'+JC.ink+'">'+name+'</text>';
+        bars.forEach(function(v,j){
+          var bh = (v/mx)*pH, bw = pW/bars.length;
+          s += '<rect x="'+(cx + j*bw).toFixed(1)+'" y="'+(cy+16+pH-bh).toFixed(1)+'" width="'+(bw-1).toFixed(1)+
+               '" height="'+bh.toFixed(1)+'" fill="#4A4A4A"/>';
+        });
+        s += '<line x1="'+cx+'" y1="'+(cy+16+pH)+'" x2="'+(cx+pW)+'" y2="'+(cy+16+pH)+'" stroke="'+JC.ink+'" stroke-width=".8"/>';
+        s += '<text x="'+cx+'" y="'+(cy+16+pH+11)+'" font-size="7" fill="'+JC.grey+'">'+RANGES[i][0]+'</text>';
+        s += '<text x="'+(cx+pW)+'" y="'+(cy+16+pH+11)+'" font-size="7" fill="'+JC.grey+'" text-anchor="end">'+RANGES[i][1]+'</text>';
+      });
+      s += '<text x="0" y="'+(padT-6)+'" font-size="8" fill="'+JC.grey+'" transform="rotate(-90 8 '+(H/2)+')" text-anchor="middle">Frequency</text>';
+      return s + "</svg>";
+    }
+  };
+
+  FIGS.corr = {
+    kind:"figure",
+    title:"Correlation matrix of numeric predictors",
+    caption:"Pearson correlation among numeric predictors in the training partition. The strongest pair is haemoglobin and haematocrit (r = 0.91).",
+    web: function(){
+      var n = CORRVARS.length;
+      var h = '<div class="heat" style="grid-template-columns:repeat('+n+',1fr);">';
+      for (var r=0;r<n;r++)
+        for (var c=0;c<n;c++){
+          var v = CORRM[r][c];
+          var col = v>=0 ? "var(--c1)" : "var(--c3)";
+          var op = Math.min(1, Math.abs(v)*0.95+0.06).toFixed(2);
+          h += '<div class="heat-cell cell" style="background:'+col+';opacity:'+op+';" data-tip="'+
+               CORRVARS[r]+' × '+CORRVARS[c]+'  ·  r = '+v.toFixed(2)+'"></div>';
+        }
+      h += '</div><div class="heat-labels">'+ CORRVARS.map(function(v){ return "<span>"+v+"</span>"; }).join("") +'</div>';
+      h += '<div style="display:flex;align-items:center;gap:9px;margin-top:11px;font-size:11px;color:var(--faint);">'+
+           '<span>−1</span><span style="flex:0 0 90px;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--c3),var(--surface-2),var(--c1));border:1px solid var(--line);"></span><span>+1</span>'+
+           '<span style="margin-left:8px;">hover any cell for its exact r</span></div>';
+      return h;
+    },
+    journal: function(){
+      var n = CORRVARS.length, cell = 44, padL = 54, padT = 46;
+      var W = padL + n*cell + 12, H = padT + n*cell + 14;
+      var s = '<svg xmlns="http://www.w3.org/2000/svg" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" font-family="'+JFONT+'">';
+      s += '<rect width="'+W+'" height="'+H+'" fill="'+JC.bg+'"/>';
+      for (var r=0;r<n;r++)
+        for (var c=0;c<n;c++){
+          var v = CORRM[r][c];
+          var g = Math.round(255 - Math.abs(v)*205);
+          var x = padL + c*cell, y = padT + r*cell;
+          s += '<rect x="'+x+'" y="'+y+'" width="'+cell+'" height="'+cell+'" fill="rgb('+g+','+g+','+g+')" stroke="#FFFFFF" stroke-width=".6"/>';
+          s += '<text x="'+(x+cell/2)+'" y="'+(y+cell/2+3.5)+'" font-size="9" text-anchor="middle" fill="'+
+               (Math.abs(v)>0.55 ? "#FFFFFF" : JC.ink)+'">'+v.toFixed(2)+'</text>';
+        }
+      CORRVARS.forEach(function(nm,i){
+        s += '<text x="'+(padL-6)+'" y="'+(padT+i*cell+cell/2+3.5)+'" font-size="9" text-anchor="end" fill="'+JC.ink+'">'+nm+'</text>';
+        s += '<text x="'+(padL+i*cell+cell/2)+'" y="'+(padT-8)+'" font-size="9" text-anchor="middle" fill="'+JC.ink+'">'+nm+'</text>';
+      });
+      return s + "</svg>";
+    }
+  };
+
+  FIGS.tone = {
+    kind:"table",
+    title:"Baseline characteristics by outcome group",
+    caption:"Baseline characteristics of the training partition (n = {train}) by outcome group. Continuous variables are mean (SD); categorical variables are percentages.",
+    rows:[["Age","50.6 (9.4)","55.9 (8.7)","<0.001"],
+          ["Sex — male","60.3%","90.1%","<0.001"],
+          ["RestingBP","130.2 (16.5)","134.2 (19.8)","0.004"],
+          ["Cholesterol","227.1 (74.6)","175.9 (126.4)","<0.001"],
+          ["MaxHR","148.2 (23.3)","127.7 (23.4)","<0.001"],
+          ["creatinine","1.02 (0.41)","1.19 (0.86)","0.002"],
+          ["hemoglobin","13.8 (1.6)","13.4 (1.9)","0.011"],
+          ["ferritin — missing","31.2%","36.4%","0.14"]],
+    web: function(){
+      var c = cohort();
+      var h = '<div class="tblwrap"><table class="data"><thead><tr><th>Variable</th><th>No disease (n='+c.no+')</th><th>Disease (n='+c.dis+')</th><th>p</th></tr></thead><tbody>';
+      FIGS.tone.rows.forEach(function(r){
+        h += '<tr><td class="name">'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td><td>'+esc(r[3])+'</td></tr>';
+      });
+      return h + "</tbody></table></div>";
+    },
+    journalHTML: function(){
+      var c = cohort();
+      var h = '<table style="width:100%;border-collapse:collapse;font-family:'+JFONT+';font-size:12.5px;color:#111;">'+
+              '<thead><tr style="border-top:1.4px solid #111;border-bottom:.7px solid #111;">'+
+              '<th style="text-align:left;padding:7px 10px 7px 0;font-weight:700;">Variable</th>'+
+              '<th style="text-align:right;padding:7px 10px;font-weight:700;">No disease (n = '+c.no+')</th>'+
+              '<th style="text-align:right;padding:7px 10px;font-weight:700;">Disease (n = '+c.dis+')</th>'+
+              '<th style="text-align:right;padding:7px 0 7px 10px;font-weight:700;">p</th></tr></thead><tbody>';
+      FIGS.tone.rows.forEach(function(r,i){
+        h += '<tr'+(i===FIGS.tone.rows.length-1 ? ' style="border-bottom:1.4px solid #111;"' : '')+'>'+
+             '<td style="padding:5px 10px 5px 0;">'+r[0]+'</td>'+
+             '<td style="text-align:right;padding:5px 10px;font-variant-numeric:tabular-nums;">'+r[1]+'</td>'+
+             '<td style="text-align:right;padding:5px 10px;font-variant-numeric:tabular-nums;">'+r[2]+'</td>'+
+             '<td style="text-align:right;padding:5px 0 5px 10px;font-variant-numeric:tabular-nums;">'+esc(r[3])+'</td></tr>';
+      });
+      return h + "</tbody></table>";
+    },
+    latex: function(){
+      var s = "\\begin{table}[t]\n\\centering\n\\caption{"+capOf(FIGS.tone)+"}\n";
+      s += "\\begin{tabular}{lrrr}\n\\toprule\nVariable & No disease (n=330) & Disease (n=404) & $p$ \\\\\n\\midrule\n";
+      FIGS.tone.rows.forEach(function(r){
+        s += r[0].replace(/—/g,"---") + " & " + r[1] + " & " + r[2] + " & " + r[3].replace("<","$<$") + " \\\\\n";
+      });
+      return s + "\\bottomrule\n\\end{tabular}\n\\end{table}";
+    }
+  };
+
+  function rocPoints(auc){
+    var g = Math.max(0.05, 2*auc - 1), pts = [];
+    for (var i=0;i<=48;i++){
+      var x = i/48;
+      pts.push([x, Math.pow(x, (1-g)/(1+g))]);
+    }
+    return pts;
+  }
+
+  FIGS.roc = {
+    kind:"figure",
+    title:"Receiver operating characteristic curves",
+    caption:"Receiver operating characteristic curves for each trained model, averaged across five cross-validation folds in the training partition.",
+    web: function(){
+      var keys = S.trained.slice().sort(function(a,b){ return MODELS[b].auc - MODELS[a].auc; });
+      var cols = ["var(--c1)","var(--c2)","var(--c3)","var(--c4)"];
+      var W=440,H=280,padL=44,padB=38;
+      var s = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;" class="hoverable" role="img" aria-label="ROC curves">';
+      for (var g=0;g<=4;g++){
+        var gx = padL + (g/4)*(W-padL-14), gy = (H-padB) - (g/4)*(H-padB-14);
+        s += '<line x1="'+padL+'" y1="'+gy+'" x2="'+(W-14)+'" y2="'+gy+'" stroke="var(--line-soft)" stroke-width="1"/>';
+        s += '<line x1="'+gx+'" y1="14" x2="'+gx+'" y2="'+(H-padB)+'" stroke="var(--line-soft)" stroke-width="1"/>';
+        s += '<text x="'+(padL-7)+'" y="'+(gy+3.5)+'" font-size="9" fill="var(--faint)" text-anchor="end" font-family="ui-monospace,monospace">'+(g/4).toFixed(2)+'</text>';
+        s += '<text x="'+gx+'" y="'+(H-padB+14)+'" font-size="9" fill="var(--faint)" text-anchor="middle" font-family="ui-monospace,monospace">'+(g/4).toFixed(2)+'</text>';
+      }
+      s += '<line x1="'+padL+'" y1="'+(H-padB)+'" x2="'+(W-14)+'" y2="14" stroke="var(--faint)" stroke-dasharray="4 3" opacity=".7"/>';
+      keys.forEach(function(k, idx){
+        if (S.hiddenSeries[k]) return;
+        var pts = rocPoints(MODELS[k].auc).map(function(p){
+          return [padL + p[0]*(W-padL-14), (H-padB) - p[1]*(H-padB-14)];
+        });
+        var d = pts.map(function(p,i){ return (i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1); }).join(" ");
+        s += '<path d="'+d+'" fill="none" stroke="'+cols[idx%4]+'" stroke-width="2.4" stroke-linejoin="round"/>';
+        pts.forEach(function(p,i){
+          if (i%6) return;
+          var sp = rocPoints(MODELS[k].auc)[i];
+          s += '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="7" fill="transparent" data-tip="'+
+               MODELS[k].name+'  ·  sens '+sp[1].toFixed(2)+' at 1−spec '+sp[0].toFixed(2)+'"/>';
+        });
+      });
+      s += '<text x="'+((W+padL)/2)+'" y="'+(H-6)+'" font-size="10.5" fill="var(--muted)" text-anchor="middle">1 − specificity</text>';
+      s += '<text x="13" y="'+((H-padB)/2)+'" font-size="10.5" fill="var(--muted)" text-anchor="middle" transform="rotate(-90 13 '+((H-padB)/2)+')">Sensitivity</text>';
+      s += "</svg>";
+      var legend = '<div class="legend-row">' + keys.map(function(k, idx){
+        return '<button class="lg" data-series="'+k+'" aria-pressed="'+(S.hiddenSeries[k]?"false":"true")+'" type="button">'+
+               '<span class="sw" style="background:'+cols[idx%4]+'"></span>'+MODELS[k].name+
+               ' <span class="n">AUC '+MODELS[k].auc.toFixed(3)+'</span></button>';
+      }).join("") + '</div><div style="font-size:11.5px;color:var(--faint);margin-top:6px;">Click a model to hide it · hover the curve for operating points</div>';
+      return s + legend;
+    },
+    journal: function(){
+      var keys = S.trained.slice().sort(function(a,b){ return MODELS[b].auc - MODELS[a].auc; });
+      var dashes = ["", "6 3", "2 3", "8 3 2 3"];
+      var W=380,H=330,padL=52,padB=46,padT=14,padR=14;
+      var px = W-padL-padR, py = H-padB-padT;
+      var s = '<svg xmlns="http://www.w3.org/2000/svg" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" font-family="'+JFONT+'">';
+      s += '<rect width="'+W+'" height="'+H+'" fill="'+JC.bg+'"/>';
+      s += '<line x1="'+padL+'" y1="'+(padT+py)+'" x2="'+(padL+px)+'" y2="'+(padT+py)+'" stroke="'+JC.ink+'" stroke-width="1"/>';
+      s += '<line x1="'+padL+'" y1="'+padT+'" x2="'+padL+'" y2="'+(padT+py)+'" stroke="'+JC.ink+'" stroke-width="1"/>';
+      for (var g=0;g<=4;g++){
+        var t = g/4;
+        var gx = padL + t*px, gy = padT + py - t*py;
+        s += '<line x1="'+gx+'" y1="'+(padT+py)+'" x2="'+gx+'" y2="'+(padT+py+4)+'" stroke="'+JC.ink+'"/>';
+        s += '<line x1="'+padL+'" y1="'+gy+'" x2="'+(padL-4)+'" y2="'+gy+'" stroke="'+JC.ink+'"/>';
+        s += '<text x="'+gx+'" y="'+(padT+py+16)+'" font-size="9" text-anchor="middle" fill="'+JC.ink+'">'+t.toFixed(2)+'</text>';
+        s += '<text x="'+(padL-8)+'" y="'+(gy+3.2)+'" font-size="9" text-anchor="end" fill="'+JC.ink+'">'+t.toFixed(2)+'</text>';
+      }
+      s += '<line x1="'+padL+'" y1="'+(padT+py)+'" x2="'+(padL+px)+'" y2="'+padT+'" stroke="'+JC.light+'" stroke-dasharray="3 3"/>';
+      keys.forEach(function(k, idx){
+        var pts = rocPoints(MODELS[k].auc).map(function(p){
+          return [padL + p[0]*px, padT + py - p[1]*py];
+        });
+        var d = pts.map(function(p,i){ return (i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1); }).join(" ");
+        s += '<path d="'+d+'" fill="none" stroke="'+JC.ink+'" stroke-width="1.3"'+
+             (dashes[idx%4] ? ' stroke-dasharray="'+dashes[idx%4]+'"' : '')+'/>';
+      });
+      var ly = padT + py - 14 - (keys.length-1)*14;
+      keys.forEach(function(k, idx){
+        var y = ly + idx*14;
+        s += '<line x1="'+(padL+px-118)+'" y1="'+y+'" x2="'+(padL+px-92)+'" y2="'+y+'" stroke="'+JC.ink+'" stroke-width="1.3"'+
+             (dashes[idx%4] ? ' stroke-dasharray="'+dashes[idx%4]+'"' : '')+'/>';
+        s += '<text x="'+(padL+px-86)+'" y="'+(y+3.2)+'" font-size="9" fill="'+JC.ink+'">'+
+             MODELS[k].name+' ('+MODELS[k].auc.toFixed(3)+')</text>';
+      });
+      s += '<text x="'+(padL+px/2)+'" y="'+(H-10)+'" font-size="10" text-anchor="middle" fill="'+JC.ink+'">1 − specificity</text>';
+      s += '<text x="14" y="'+(padT+py/2)+'" font-size="10" text-anchor="middle" fill="'+JC.ink+'" transform="rotate(-90 14 '+(padT+py/2)+')">Sensitivity</text>';
+      return s + "</svg>";
+    }
+  };
+
+  FIGS.calib = {
+    kind:"figure",
+    title:"Calibration of predicted probabilities",
+    caption:"Calibration of predicted probabilities for the leading model before and after isotonic regression, with the diagonal indicating perfect calibration.",
+    web: function(){
+      var W=420,H=250,padL=44,padB=36;
+      var px=W-padL-14, py=H-padB-14;
+      function curve(bend){
+        var p=[];
+        for (var i=0;i<=20;i++){ var x=i/20; p.push([x, Math.min(1, x + bend*Math.pow(x,2.4))]); }
+        return p;
+      }
+      function path(pts){
+        return pts.map(function(p,i){
+          return (i?"L":"M")+(padL+p[0]*px).toFixed(1)+" "+((H-padB)-p[1]*py).toFixed(1);
+        }).join(" ");
+      }
+      var s = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;" class="hoverable" role="img" aria-label="Calibration curves">';
+      s += '<line x1="'+padL+'" y1="'+(H-padB)+'" x2="'+(W-14)+'" y2="14" stroke="var(--faint)" stroke-dasharray="4 3" opacity=".7"/>';
+      s += '<line x1="'+padL+'" y1="'+(H-padB)+'" x2="'+(W-14)+'" y2="'+(H-padB)+'" stroke="var(--line)"/>';
+      s += '<line x1="'+padL+'" y1="14" x2="'+padL+'" y2="'+(H-padB)+'" stroke="var(--line)"/>';
+      s += '<path d="'+path(curve(0.30))+'" fill="none" stroke="var(--c3)" stroke-width="2.2"/>';
+      s += '<path d="'+path(curve(0.02))+'" fill="none" stroke="var(--c1)" stroke-width="2.2"/>';
+      curve(0.30).forEach(function(p,i){
+        if (i%4) return;
+        s += '<circle cx="'+(padL+p[0]*px).toFixed(1)+'" cy="'+((H-padB)-p[1]*py).toFixed(1)+
+             '" r="7" fill="transparent" data-tip="before  ·  predicted '+p[0].toFixed(2)+' → observed '+p[1].toFixed(2)+'"/>';
+      });
+      curve(0.02).forEach(function(p,i){
+        if (i%4) return;
+        s += '<circle cx="'+(padL+p[0]*px).toFixed(1)+'" cy="'+((H-padB)-p[1]*py).toFixed(1)+
+             '" r="7" fill="transparent" data-tip="after  ·  predicted '+p[0].toFixed(2)+' → observed '+p[1].toFixed(2)+'"/>';
+      });
+      s += '<text x="'+((W+padL)/2)+'" y="'+(H-5)+'" font-size="10.5" fill="var(--muted)" text-anchor="middle">Predicted probability</text>';
+      s += '<text x="13" y="'+((H-padB)/2)+'" font-size="10.5" fill="var(--muted)" text-anchor="middle" transform="rotate(-90 13 '+((H-padB)/2)+')">Observed frequency</text>';
+      s += "</svg>";
+      s += '<div class="legend-row"><span class="lg"><span class="sw" style="background:var(--c3)"></span>before calibration</span>'+
+           '<span class="lg"><span class="sw" style="background:var(--c1)"></span>after isotonic regression</span></div>';
+      return s;
+    },
+    journal: function(){
+      var W=340,H=320,padL=52,padB=44,padT=14,padR=14;
+      var px=W-padL-padR, py=H-padB-padT;
+      function curve(bend){
+        var p=[];
+        for (var i=0;i<=20;i++){ var x=i/20; p.push([x, Math.min(1, x + bend*Math.pow(x,2.4))]); }
+        return p;
+      }
+      function path(pts){
+        return pts.map(function(p,i){
+          return (i?"L":"M")+(padL+p[0]*px).toFixed(1)+" "+(padT+py-p[1]*py).toFixed(1);
+        }).join(" ");
+      }
+      var s = '<svg xmlns="http://www.w3.org/2000/svg" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" font-family="'+JFONT+'">';
+      s += '<rect width="'+W+'" height="'+H+'" fill="'+JC.bg+'"/>';
+      s += '<line x1="'+padL+'" y1="'+(padT+py)+'" x2="'+(padL+px)+'" y2="'+(padT+py)+'" stroke="'+JC.ink+'"/>';
+      s += '<line x1="'+padL+'" y1="'+padT+'" x2="'+padL+'" y2="'+(padT+py)+'" stroke="'+JC.ink+'"/>';
+      for (var g=0;g<=4;g++){
+        var t=g/4, gx=padL+t*px, gy=padT+py-t*py;
+        s += '<line x1="'+gx+'" y1="'+(padT+py)+'" x2="'+gx+'" y2="'+(padT+py+4)+'" stroke="'+JC.ink+'"/>';
+        s += '<line x1="'+padL+'" y1="'+gy+'" x2="'+(padL-4)+'" y2="'+gy+'" stroke="'+JC.ink+'"/>';
+        s += '<text x="'+gx+'" y="'+(padT+py+15)+'" font-size="9" text-anchor="middle" fill="'+JC.ink+'">'+t.toFixed(2)+'</text>';
+        s += '<text x="'+(padL-8)+'" y="'+(gy+3.2)+'" font-size="9" text-anchor="end" fill="'+JC.ink+'">'+t.toFixed(2)+'</text>';
+      }
+      s += '<line x1="'+padL+'" y1="'+(padT+py)+'" x2="'+(padL+px)+'" y2="'+padT+'" stroke="'+JC.light+'" stroke-dasharray="3 3"/>';
+      s += '<path d="'+path(curve(0.30))+'" fill="none" stroke="'+JC.ink+'" stroke-width="1.3" stroke-dasharray="6 3"/>';
+      s += '<path d="'+path(curve(0.02))+'" fill="none" stroke="'+JC.ink+'" stroke-width="1.3"/>';
+      s += '<line x1="'+(padL+px-128)+'" y1="'+(padT+py-28)+'" x2="'+(padL+px-102)+'" y2="'+(padT+py-28)+'" stroke="'+JC.ink+'" stroke-width="1.3" stroke-dasharray="6 3"/>';
+      s += '<text x="'+(padL+px-96)+'" y="'+(padT+py-24.8)+'" font-size="9" fill="'+JC.ink+'">Before calibration</text>';
+      s += '<line x1="'+(padL+px-128)+'" y1="'+(padT+py-14)+'" x2="'+(padL+px-102)+'" y2="'+(padT+py-14)+'" stroke="'+JC.ink+'" stroke-width="1.3"/>';
+      s += '<text x="'+(padL+px-96)+'" y="'+(padT+py-10.8)+'" font-size="9" fill="'+JC.ink+'">After isotonic</text>';
+      s += '<text x="'+(padL+px/2)+'" y="'+(H-9)+'" font-size="10" text-anchor="middle" fill="'+JC.ink+'">Predicted probability</text>';
+      s += '<text x="14" y="'+(padT+py/2)+'" font-size="10" text-anchor="middle" fill="'+JC.ink+'" transform="rotate(-90 14 '+(padT+py/2)+')">Observed frequency</text>';
+      return s + "</svg>";
+    }
+  };
+
+  /* ═════════ FIGURE BLOCK RENDERING ═════════ */
+  function capOf(f){
+    var c = cohort();
+    return String(f.caption).replace(/\{train\}/g, c.train.toLocaleString());
+  }
+  function figBlock(key){
+    var f = FIGS[key];
+    var isTable = f.kind === "table";
+    var h = '<div class="figure" id="fig-'+key+'">';
+    h += '<div class="fig-bar">';
+    h += '<span class="fig-name">'+f.title+'</span>';
+    h += '<button class="fig-tool" data-jtoggle="'+key+'" aria-pressed="false" type="button">Journal view</button>';
+    if (isTable) h += '<button class="fig-tool" data-latex="'+key+'" type="button">LaTeX</button>';
+    else {
+      h += '<button class="fig-tool" data-export="svg" data-figkey="'+key+'" type="button">Export SVG</button>';
+      h += '<button class="fig-tool" data-export="png" data-figkey="'+key+'" type="button">Export PNG</button>';
+    }
+    h += '<button class="flag" data-ev="'+key+'" aria-pressed="'+(S.evidence.indexOf(key)>-1?"true":"false")+'" type="button">'+
+         (S.evidence.indexOf(key)>-1 ? "⚑ Marked" : "⚑ Mark") + '</button>';
+    h += '</div>';
+    h += '<div class="fig-canvas" id="figc-'+key+'">'+ f.web() +'</div>';
+    h += '<div class="fig-cap" id="figcap-'+key+'">In-app view — interactive. Switch to <em>Journal view</em> to see exactly what gets exported.</div>';
+    if (isTable) h += '<pre class="latex is-hidden" id="latex-'+key+'"></pre>';
+    h += '</div>';
+    return h;
+  }
+
+  function setJournal(key, on){
+    var canvas = $("figc-"+key), cap = $("figcap-"+key), f = FIGS[key];
+    if (on){
+      canvas.classList.add("journal");
+      canvas.innerHTML = f.kind === "table" ? f.journalHTML() : f.journal();
+      cap.innerHTML = "<b>"+(f.kind==="table"?"Table":"Figure")+".</b> " + capOf(f);
+    } else {
+      canvas.classList.remove("journal");
+      canvas.innerHTML = f.web();
+      cap.innerHTML = "In-app view — interactive. Switch to <em>Journal view</em> to see exactly what gets exported.";
+      if (key === "roc") bindLegend();
+    }
+  }
+
+  function bindLegend(){
+    all('[data-series]').forEach(function(b){
+      b.addEventListener("click", function(){
+        var k = b.dataset.series;
+        S.hiddenSeries[k] = !S.hiddenSeries[k];
+        var visible = S.trained.filter(function(x){ return !S.hiddenSeries[x]; });
+        if (!visible.length){ S.hiddenSeries[k] = false; return; }
+        setJournal("roc", false);
+      });
+    });
+  }
+
+  function downloadBlob(blob, name){
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+  }
+  function toast(msg){
+    $("jobText").textContent = msg;
+    $("jobChip").classList.add("on");
+    setTimeout(function(){ if (!activeJobs) $("jobChip").classList.remove("on"); }, 1600);
+  }
+
+  document.addEventListener("click", function(e){
+    var t = e.target.closest ? e.target.closest("[data-jtoggle],[data-export],[data-latex]") : null;
+    if (!t) return;
+    if (t.hasAttribute("data-jtoggle")){
+      var k = t.dataset.jtoggle;
+      var on = t.getAttribute("aria-pressed") === "true";
+      t.setAttribute("aria-pressed", on ? "false" : "true");
+      t.textContent = on ? "Journal view" : "In-app view";
+      setJournal(k, !on);
+      return;
+    }
+    if (t.hasAttribute("data-latex")){
+      var lk = t.dataset.latex, pre = $("latex-"+lk);
+      pre.textContent = FIGS[lk].latex();
+      pre.classList.toggle("is-hidden");
+      return;
+    }
+    if (t.hasAttribute("data-export")){
+      var key = t.dataset.figkey, kind = t.dataset.export;
+      var svg = FIGS[key].journal();
+      if (kind === "svg"){
+        downloadBlob(new Blob([svg], {type:"image/svg+xml;charset=utf-8"}), key+"-figure.svg");
+        toast("Exported "+key+"-figure.svg");
+      } else {
+        var img = new Image();
+        var blob = new Blob([svg], {type:"image/svg+xml;charset=utf-8"});
+        var url = URL.createObjectURL(blob);
+        img.onload = function(){
+          var c = document.createElement("canvas");
+          c.width = img.width*3; c.height = img.height*3;
+          var ctx = c.getContext("2d");
+          ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0,0,c.width,c.height);
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          URL.revokeObjectURL(url);
+          c.toBlob(function(b){
+            if (b){ downloadBlob(b, key+"-figure@3x.png"); toast("Exported "+key+"-figure@3x.png (300 dpi)"); }
+            else toast("PNG export blocked in this frame");
+          });
+        };
+        img.onerror = function(){ URL.revokeObjectURL(url); toast("PNG export blocked in this frame"); };
+        img.src = url;
+      }
+    }
+  });
+
+  /* ═════════ BEFORE / AFTER PREVIEWS ═════════ */
+  var PREVIEWS = {
+    chol: {
+      stage: "prep",
+      note: "6 of the 172 affected rows",
+      colsBefore: ["patient_id","Age","Cholesterol","HeartDisease"],
+      rowsBefore: [["P0142","54","0","1"],["P0143","61","236","1"],["P0147","45","0","0"],
+                   ["P0151","58","0","1"],["P0155","49","201","0"],["P0160","66","0","1"]],
+      badIdx: 2, badVals: ["0"],
+      colsAfter: ["patient_id","Age","Cholesterol","HeartDisease"],
+      rowsAfter: [["P0142","54","—","1"],["P0143","61","236","1"],["P0147","45","—","0"],
+                  ["P0151","58","—","1"],["P0155","49","201","0"],["P0160","66","—","1"]],
+      newIdx: 2, newVals: ["—"],
+      stats: [["zeros","172","0"],["missing","0","172"],["mean mg/dL","198.8","244.6"]],
+      afterNote: "No rows are removed — the value becomes missing and is then handled by your imputation choice.",
+      apply: "Recode Cholesterol zeros as missing"
+    },
+    skew: {
+      stage: "prep",
+      note: "6 of 918 rows · a column is added, none replaced",
+      colsBefore: ["patient_id","creatinine"],
+      rowsBefore: [["P0142","0.9"],["P0143","1.2"],["P0147","9.4"],
+                   ["P0151","1.0"],["P0155","4.8"],["P0160","1.1"]],
+      badIdx: null,
+      colsAfter: ["patient_id","creatinine","log_creatinine"],
+      rowsAfter: [["P0142","0.9","-0.11"],["P0143","1.2","0.18"],["P0147","9.4","2.24"],
+                  ["P0151","1.0","0.00"],["P0155","4.8","1.57"],["P0160","1.1","0.10"]],
+      newIdx: 2,
+      stats: [["skew","2.81","0.14"],["max","9.4","2.24"],["rows dropped","0","0"]],
+      plots: true,
+      afterNote: "The original column is kept beside the transform, so nothing is lost and you can report either.",
+      apply: "Log-transform creatinine"
+    },
+    miss: {
+      stage: "prep",
+      note: "6 of 918 rows · a column is added, none replaced",
+      colsBefore: ["patient_id","ferritin"],
+      rowsBefore: [["P0142","310"],["P0143","—"],["P0147","88"],
+                   ["P0151","—"],["P0155","—"],["P0160","442"]],
+      badIdx: null,
+      colsAfter: ["patient_id","ferritin","ferritin_missing"],
+      rowsAfter: [["P0142","310","0"],["P0143","—","1"],["P0147","88","0"],
+                  ["P0151","—","1"],["P0155","—","1"],["P0160","442","0"]],
+      newIdx: 2,
+      stats: [["columns","14","15"],["rows dropped","0","0"],["missing kept","no","yes"]],
+      afterNote: "No rows are removed. The indicator lets a model use the fact of absence as information in its own right.",
+      apply: "Add a missingness indicator for ferritin"
+    },
+    calib: {
+      stage: "report",
+      note: "predicted-probability bins, training folds",
+      colsBefore: ["bin","predicted","observed"],
+      rowsBefore: [["0.5–0.6","0.55","0.53"],["0.6–0.7","0.65","0.60"],["0.7–0.8","0.75","0.66"],
+                   ["0.8–0.9","0.85","0.71"],["0.9–1.0","0.95","0.79"]],
+      badIdx: 2, badVals: ["0.66","0.71","0.79"],
+      colsAfter: ["bin","predicted","observed"],
+      rowsAfter: [["0.5–0.6","0.55","0.54"],["0.6–0.7","0.64","0.63"],["0.7–0.8","0.73","0.72"],
+                  ["0.8–0.9","0.82","0.81"],["0.9–1.0","0.91","0.90"]],
+      newIdx: 2,
+      stats: [["Brier","0.098","0.091"],["AUC","0.934","0.934"],["max gap","0.16","0.02"]],
+      afterNote: "Isotonic regression is fitted on the training folds only. It reorders nothing, so AUC is unchanged.",
+      apply: "Isotonic calibration of predicted probabilities"
+    }
+  };
+
+  function miniTable(cols, rows, idx, vals, mode){
+    var h = '<table class="mini"><thead><tr>';
+    cols.forEach(function(c, i){
+      h += "<th"+(mode === "after" && i === idx ? ' style="color:var(--accent-ink)"' : "")+">"+esc(c)+"</th>";
+    });
+    h += "</tr></thead><tbody>";
+    rows.forEach(function(r){
+      h += "<tr>";
+      r.forEach(function(cell, i){
+        var cls = "";
+        if (idx !== null && i === idx){
+          // With no value list the whole column is new; otherwise only listed cells changed.
+          if (!vals || vals.indexOf(cell) > -1)
+            cls = mode === "before" ? ' class="hit"' : ' class="newv"';
+        }
+        h += "<td"+cls+">"+esc(cell)+"</td>";
+      });
+      h += "</tr>";
+    });
+    return h + "</tbody></table>";
+  }
+
+  function miniHist(bend){
+    var bars = [];
+    for (var i=0;i<11;i++){
+      var x = i/10;
+      bars.push(bend ? Math.exp(-Math.pow((x-0.5)*2.4,2)) : Math.exp(-Math.pow(x*3.4,2)) + 0.04);
+    }
+    var mx = Math.max.apply(null, bars);
+    var s = '<svg viewBox="0 0 110 40" preserveAspectRatio="none">';
+    bars.forEach(function(v,i){
+      var hh = (v/mx)*34;
+      s += '<rect x="'+(i*10+1)+'" y="'+(38-hh).toFixed(1)+'" width="8" height="'+hh.toFixed(1)+
+           '" fill="'+(bend ? "var(--c1)" : "var(--c3)")+'" opacity=".75"/>';
+    });
+    return s + "</svg>";
+  }
+
+  function renderPreview(findId){
+    var find = $(findId);
+    var key = find.dataset.prev;
+    var p = PREVIEWS[key];
+    var box = $("pv-" + findId);
+    var h = '<div class="pv-head"><span class="pv-title">What this would change</span>'+
+            '<span class="pv-note">'+esc(p.note)+' · nothing is applied yet</span></div>';
+    h += '<div class="pv-cols">';
+    h += '<div class="pv-side"><div class="pv-lab">Before</div>'+
+         miniTable(p.colsBefore, p.rowsBefore, p.badIdx, p.badVals, "before") +'</div>';
+    h += '<div class="pv-arrow" aria-hidden="true">→</div>';
+    h += '<div class="pv-side"><div class="pv-lab after">After</div>'+
+         miniTable(p.colsAfter, p.rowsAfter, p.newIdx, p.newVals, "after") +'</div>';
+    h += '</div>';
+    if (p.plots){
+      h += '<div class="pv-plots"><div class="pv-plot"><div class="pl">before — skewed</div>'+miniHist(false)+'</div>'+
+           '<div class="pv-plot"><div class="pl">after — log scale</div>'+miniHist(true)+'</div></div>';
+    }
+    h += '<div class="pv-stats">' + p.stats.map(function(s){
+      return '<div class="stat"><span class="sk">'+esc(s[0])+'</span><span class="sv"><span class="b">'+
+             esc(s[1])+'</span><span class="ar">→</span><span class="a">'+esc(s[2])+'</span></span></div>';
+    }).join("") + '</div>';
+    h += '<div class="pv-acts"><span style="font-size:12px;color:var(--muted);flex:1;min-width:180px;">'+
+         esc(p.afterNote)+'</span>'+
+         '<button class="f-act" data-pv-close="'+findId+'" type="button">Close</button>'+
+         '<button class="f-act defer" data-pv-defer="'+findId+'" type="button">Apply at the right step</button>'+
+         '<button class="btn btn-primary" style="padding:7px 14px;font-size:12.5px;" data-pv-apply="'+findId+'" type="button">Apply this</button>'+
+         '</div>';
+    box.innerHTML = h;
+    box.classList.remove("is-hidden");
+    anim(box, "arrive", 360);
+    nudge(box);
+  }
+
+  /* ═════════ DELEGATED FINDING ACTIONS ═════════ */
+  document.addEventListener("click", function(e){
+    var t = e.target.closest ? e.target.closest(
+      "[data-preview],[data-defer],[data-dismiss],[data-undismiss],[data-ev],[data-pv-apply],[data-pv-defer],[data-pv-close]") : null;
+    if (!t) return;
+
+    if (t.hasAttribute("data-preview")){ renderPreview(t.dataset.preview); return; }
+
+    if (t.hasAttribute("data-pv-close")){
+      $("pv-"+t.dataset.pvClose).classList.add("is-hidden");
+      return;
+    }
+
+    if (t.hasAttribute("data-pv-apply")){
+      var fid = t.dataset.pvApply, fe = $(fid);
+      var pv = PREVIEWS[fe.dataset.prev];
+      fe.classList.add("applied");
+      $("pv-"+fid).classList.add("is-hidden");
+      S.applied.push({ text: pv.apply, stage: pv.stage, origin: ORIGIN[fid] });
+      return;
+    }
+
+    if (t.hasAttribute("data-pv-defer")){
+      var fid2 = t.dataset.pvDefer, fe2 = $(fid2);
+      var db2 = fe2.querySelector("[data-defer]");
+      $("pv-"+fid2).classList.add("is-hidden");
+      if (db2) db2.click();
+      return;
+    }
+
+    if (t.hasAttribute("data-defer")){
+      var card = t.closest(".find");
+      if (card) card.classList.add("deferred");
+      S.ledger.push({ id: card ? card.id : t.dataset.defer, text: t.dataset.defer,
+                      target: t.dataset.target, src: t.dataset.src || "Explore" });
+      renderLedger();
+      return;
+    }
+
+    if (t.hasAttribute("data-dismiss")){
+      var id = t.dataset.dismiss;
+      if ($(id)) $(id).classList.add("gone");
+      if ($("dn-"+id)) $("dn-"+id).classList.add("on");
+      if (S.dismissed.indexOf(id) === -1) S.dismissed.push(id);
+      return;
+    }
+    if (t.hasAttribute("data-undismiss")){
+      var id2 = t.dataset.undismiss;
+      if ($(id2)) $(id2).classList.remove("gone");
+      if ($("dn-"+id2)) $("dn-"+id2).classList.remove("on");
+      S.dismissed = S.dismissed.filter(function(x){ return x !== id2; });
+      return;
+    }
+
+    if (t.hasAttribute("data-ev")){
+      var label = t.dataset.ev;
+      var on = t.getAttribute("aria-pressed") === "true";
+      t.setAttribute("aria-pressed", on ? "false" : "true");
+      var isShort = t.textContent.indexOf("for manuscript") === -1;
+      if (on){
+        S.evidence = S.evidence.filter(function(x){ return x !== label; });
+        t.textContent = isShort ? "⚑ Mark" : "⚑ Mark for manuscript";
+      } else {
+        if (S.evidence.indexOf(label) === -1) S.evidence.push(label);
+        t.textContent = isShort ? "⚑ Marked" : "⚑ Marked for manuscript";
+      }
+      renderEvidence();
+    }
+  });
+
+  /* ═════════ STEP 1 — DATA (one card, sub-questions inside) ═════════ */
+  function setArrangeAnswer(mode){
+    S.arrange = mode;
+    $("a-arrange-val").textContent = mode === "single" ? "A single file" : "Several files to combine";
+    $("a-arrange").classList.remove("is-hidden");
+    $("sub-arrange").classList.add("is-hidden");
+  }
+  all("[data-arrange]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var mode = b.dataset.arrange;
+      if (mode === "single"){
+        S.arrange = "single"; S.rows = 918; S.feats = 12;
+        $("card-data").classList.add("is-hidden");
+        finishData('One file loaded. <span class="v">heart_failure.csv</span> — <span class="v">918</span> rows, <span class="v">12</span> features, no parse errors and no duplicate identifiers.');
+      } else {
+        setArrangeAnswer("multi");
+        var j = $("sub-join");
+        j.classList.remove("is-hidden");
+        anim(j, "arrive", 360);
+        nudge(j);
+      }
+    });
+  });
+  $("a-arrange-chg").addEventListener("click", function(){
+    $("a-arrange").classList.add("is-hidden");
+    $("sub-arrange").classList.remove("is-hidden");
+    $("sub-join").classList.add("is-hidden");
+  });
+
+  all("[data-join]").forEach(function(b){
+    b.addEventListener("click", function(){
+      S.join = b.dataset.join;
+      $("card-data").classList.add("is-hidden");
+      runJob("Joining two files…", 900, function(){
+        if (S.join === "all"){
+          S.rows = 2741; S.feats = 14;
+          finishData('Two files, joined. <span class="v">patients.csv</span> and <span class="v">labs.csv</span> linked one-to-many on <span class="v">patient_id</span>, keeping every lab row — <span class="v">2,741</span> rows, <span class="v">14</span> features. Each patient appears about three times, so the split will group by patient.');
+        } else if (S.join === "manual"){
+          S.rows = 918; S.feats = 14;
+          finishData('Two files, joined on columns you selected. <span class="v">patients.csv</span> and <span class="v">labs.csv</span> linked on <span class="v">patient_id</span> — <span class="v">918</span> rows, <span class="v">14</span> features.');
+        } else {
+          S.rows = 918; S.feats = 14;
+          finishData('Two files, joined. <span class="v">patients.csv</span> (918 rows) and <span class="v">labs.csv</span> (2,741 rows) linked one-to-many on <span class="v">patient_id</span>, keeping each patient\'s most recent labs — <span class="v">918</span> rows, <span class="v">14</span> features.');
+        }
+      });
+    });
+  });
+
+  function finishData(html){
+    record("d-data", html);
+    sectState("data","recorded","recorded");
+    markDone("data");
+    var c = $("card-coach-data");
+    c.classList.remove("is-hidden");
+    anim(c, "arrive", 360);
+    if (reveal("target")) sectState("target","live","open");
+  }
+
+  /* ═════════ STEP 2 — TARGET ═════════ */
+  function targetSentence(){
+    var c = cohort(), col = S.target || "HeartDisease";
+    return col === "HeartDisease"
+      ? 'Predicting <span class="v">HeartDisease</span> — binary classification, two levels, class balance <span class="v">55 : 45</span>. Before anything was explored, <span class="v">'+c.test.toLocaleString()+'</span> rows (20%) were sealed in the test lockbox and will not be touched until final evaluation.'
+      : 'Predicting <span class="v">'+col+'</span> — a continuous outcome, so this is a regression problem. Before anything was explored, <span class="v">'+c.test.toLocaleString()+'</span> rows (20%) were sealed in the test lockbox and will not be touched until final evaluation.';
+  }
+  // Sections whose recorded numbers depend on an upstream answer.
+  var RECOMPUTE = {
+    target: function(){ if (S.target) record("d-target", targetSentence()); },
+    eda: function(){ all(".figure").forEach(function(f){
+      var key = f.id.replace("fig-","");
+      var btn = f.querySelector("[data-jtoggle]");
+      if (FIGS[key]) setJournal(key, btn && btn.getAttribute("aria-pressed") === "true");
+    }); }
+  };
+
+  all("[data-target-col]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var col = b.dataset.targetCol;
+      S.target = col;
+      $("card-target").classList.add("is-hidden");
+      runJob("Detecting task type, sealing the lockbox…", 1100, function(){
+        record("d-target", targetSentence());
+        sectState("target","recorded","recorded");
+        markDone("target");
+        if (reveal("eda")) sectState("eda","live","open");
+        runJob("Profiling "+S.feats+" columns…", 1000);
+      });
+    });
+  });
+
+  /* ═════════ STEP 3 — EDA figures ═════════ */
+  all(".pill[data-fig]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var key = b.dataset.fig;
+      var existing = $("fig-"+key);
+      if (existing){
+        existing.remove();
+        b.setAttribute("aria-pressed","false");
+        return;
+      }
+      b.setAttribute("aria-pressed","true");
+      var host = $("edaFigs");
+      host.insertAdjacentHTML("beforeend", figBlock(key));
+      var el = $("fig-"+key);
+      anim(el, "arrive", 360);
+      nudge(el);
+    });
+  });
+
+  $("edaDone").addEventListener("click", function(){
+    $("card-eda").classList.add("is-hidden");
+    var c = countBy("eda"), TOTAL = 2;
+    var bits = [];
+    if (c.applied)   bits.push('<span class="v">'+c.applied+'</span> applied after preview');
+    if (c.deferred)  bits.push('<span class="v">'+c.deferred+'</span> held for the step '+(c.deferred===1?"it belongs":"they belong")+' to');
+    if (c.dismissed) bits.push('<span class="v">'+c.dismissed+'</span> dismissed');
+    var open = TOTAL - c.applied - c.deferred - c.dismissed;
+    if (open > 0) bits.push('<span class="v">'+open+'</span> left open');
+    var txt = "Exploration recorded. Two findings were surfaced — " + bits.join(", ") + ".";
+    if (S.evidence.length)
+      txt += ' <span class="v">'+S.evidence.length+'</span> item'+(S.evidence.length===1?" is":"s are")+' flagged for the manuscript.';
+    record("d-eda", txt);
+    sectState("eda","recorded","recorded");
+    markDone("eda");
+    if (reveal("features")) sectState("features","live","open");
+  });
+
+  /* ═════════ STEP 4 — FEATURES ═════════ */
+  all("[data-feat]").forEach(function(b){
+    b.addEventListener("click", function(){
+      S.featureChoice = b.dataset.feat;
+      $("card-features").classList.add("is-hidden");
+      var txt;
+      if (S.featureChoice === "skip")
+        txt = 'Feature engineering was skipped for this pass. The probe suggestion stays in the record and can be revisited without re-running anything upstream.';
+      else if (S.featureChoice === "workshop")
+        txt = 'Feature workshop opened, then closed with the probe suggestion accepted — <span class="v">age × creatinine</span> added, so <span class="v">'+(S.feats+1)+'</span> predictors go forward.';
+      else
+        txt = 'One feature engineered. The interaction <span class="v">age × creatinine</span> was added on probe evidence (<span class="v">+0.014</span> AUC, training folds only) — <span class="v">'+(S.feats+1)+'</span> predictors go forward.';
+      record("d-features", txt);
+      sectState("features","recorded","recorded");
+      markDone("features");
+      buildPrepOptions();
+      if (reveal("prep")) sectState("prep","live","open");
+    });
+  });
+
+  /* ═════════ STEP 5 — PREPROCESS ═════════ */
+  function buildPrepOptions(){
+    var list = $("prepOpts");
+    list.innerHTML = "";
+    var queued = S.ledger.filter(function(i){ return i.target === "prep"; });
+    if (queued.length){
+      $("prepTitle").textContent = queued.length === 1
+        ? "One reminder from earlier is waiting here."
+        : queued.length + " reminders from earlier are waiting here.";
+      $("prepWhy").innerHTML = "You asked me to bring these back at this step, so they come in switched on — untick anything you've changed your mind about. Everything is fit on training rows only.";
+    } else {
+      $("prepTitle").textContent = "How should the data be prepared?";
+      $("prepWhy").innerHTML = "Everything here is fit on training rows only and applied to the lockbox at the end — never the other way round.";
+    }
+    queued.forEach(function(it){
+      var li = document.createElement("li");
+      li.className = "opt from-ledger";
+      li.setAttribute("role","checkbox");
+      li.setAttribute("aria-checked","true");
+      li.setAttribute("tabindex","0");
+      li.dataset.optText = it.text;
+      li.innerHTML = '<span class="ocheck"><svg viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4"/></svg></span>'+
+        '<span class="otext">'+esc(it.text)+'<span class="osrc">you deferred this at '+esc(it.src)+'</span></span>';
+      list.appendChild(li);
+    });
+    S.applied.filter(function(a){ return a.stage === "prep"; }).forEach(function(a){
+      var li = document.createElement("li");
+      li.className = "opt";
+      li.setAttribute("role","checkbox");
+      li.setAttribute("aria-checked","true");
+      li.setAttribute("tabindex","0");
+      li.dataset.optText = a.text;
+      li.innerHTML = '<span class="ocheck"><svg viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4"/></svg></span>'+
+        '<span class="otext">'+esc(a.text)+'<span class="osrc" style="color:var(--ok);">you previewed and applied this earlier</span></span>';
+      list.appendChild(li);
+    });
+    var std = document.createElement("li");
+    std.className = "opt";
+    std.setAttribute("role","checkbox");
+    std.setAttribute("aria-checked","true");
+    std.setAttribute("tabindex","0");
+    std.dataset.optText = "One-hot encoding for categorical predictors";
+    std.innerHTML = '<span class="ocheck"><svg viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4"/></svg></span>'+
+      '<span class="otext">One-hot encode the <span class="v">4</span> categorical predictors</span>';
+    list.appendChild(std);
+
+    all(".opt", list).forEach(function(o){
+      function tog(){ o.setAttribute("aria-checked", o.getAttribute("aria-checked")==="true" ? "false":"true"); }
+      o.addEventListener("click", tog);
+      o.addEventListener("keydown", function(e){
+        if (e.key===" " || e.key==="Enter"){ e.preventDefault(); tog(); }
+      });
+    });
+  }
+
+  all("[data-seg]").forEach(function(b){
+    b.addEventListener("click", function(){
+      all("button", b.parentElement).forEach(function(x){ x.setAttribute("aria-pressed","false"); });
+      b.setAttribute("aria-pressed","true");
+      S[b.dataset.seg] = b.dataset.val;
+    });
+  });
+
+  $("buildPipe").addEventListener("click", function(){
+    var chosen = all("#prepOpts .opt").filter(function(o){ return o.getAttribute("aria-checked")==="true"; })
+                   .map(function(o){ return o.dataset.optText; });
+    S.pipeline = chosen;
+    $("card-prep").classList.add("is-hidden");
+    runJob("Fitting the pipeline on training rows…", 1100, function(){
+      var parts = [];
+      if (S.impute === "median") parts.push("median imputation");
+      else if (S.impute === "mice") parts.push("MICE imputation");
+      if (S.scale === "standard") parts.push("standardization");
+      else if (S.scale === "robust") parts.push("robust scaling");
+      chosen.forEach(function(c){ parts.push(c.charAt(0).toLowerCase()+c.slice(1)); });
+      record("d-prep", "Preprocessing built — " + (parts.length ? parts.join(", ") : "no transformations") +
+        ". Every step was fit on training rows only; the lockbox stays sealed until export.");
+      sectState("prep","recorded","recorded");
+      markDone("prep");
+      if (reveal("models")) sectState("models","live","open");
+    });
+  });
+
+  /* ═════════ STEP 6 — MODELS ═════════ */
+  function refreshSelection(){
+    var keys = Object.keys(S.selected).filter(function(k){ return S.selected[k]; });
+    var est = keys.reduce(function(a,k){ return a + MODELS[k].est; }, 0);
+    $("selCount").textContent = keys.length===1 ? "1 model selected" : keys.length+" models selected";
+    $("selEst").textContent = keys.length ? "· about "+est+" s" : "";
+    $("selNames").textContent = keys.length ? keys.map(function(k){ return MODELS[k].name; }).join(" + ")
+                                            : "Choose at least one model above";
+    var btn = $("trainBtn");
+    btn.textContent = keys.length ? "Train "+keys.length+" model"+(keys.length>1?"s":"") : "Train";
+    btn.disabled = keys.length === 0;
+  }
+  all(".mcard").forEach(function(c){
+    function tog(){
+      var k = c.dataset.model, on = c.getAttribute("aria-checked")==="true";
+      c.setAttribute("aria-checked", on ? "false":"true");
+      if (on) delete S.selected[k]; else S.selected[k] = true;
+      refreshSelection();
+    }
+    c.addEventListener("click", tog);
+    c.addEventListener("keydown", function(e){
+      if (e.key===" " || e.key==="Enter"){ e.preventDefault(); tog(); }
+    });
+  });
+  all("[data-add-model]").forEach(function(b){
+    b.addEventListener("click", function(e){
+      e.stopPropagation();
+      S.selected[b.dataset.addModel] = true;
+      b.textContent = "included"; b.disabled = true;
+      b.style.color = "var(--faint)"; b.style.textDecoration = "none";
+      refreshSelection();
+    });
+  });
+
+  var runTimer = null;
+  $("trainBtn").addEventListener("click", function(){
+    var keys = Object.keys(S.selected).filter(function(k){ return S.selected[k]; });
+    if (!keys.length) return;
+    clearInterval(runTimer);
+    S.trained = keys;
+    S.hiddenSeries = {};
+    $("trainBar").style.display = "none";
+    var box = $("runbox");
+    box.classList.remove("is-hidden");
+    anim(box, "arrive", 360);
+    var lines = $("runLines");
+    lines.innerHTML = "";
+    keys.forEach(function(k){
+      var li = document.createElement("li");
+      li.id = "run-"+k;
+      li.innerHTML = "<span>◦</span><span>"+MODELS[k].name+" — queued</span>";
+      lines.appendChild(li);
+    });
+    nudge(box);
+
+    var total = reduced ? 320 : 2600, t0 = Date.now();
+    runTimer = setInterval(function(){
+      var p = Math.min(1, (Date.now()-t0)/total);
+      $("runBar").style.width = (p*100).toFixed(0)+"%";
+      $("runPct").textContent = (p*100).toFixed(0)+"%";
+      keys.forEach(function(k,i){
+        var li = $("run-"+k); if (!li) return;
+        var start = i/keys.length, end = (i+1)/keys.length;
+        if (p >= end){
+          li.className = "done";
+          li.innerHTML = "<span>✓</span><span>"+MODELS[k].name+" — done, AUC "+MODELS[k].auc.toFixed(3)+"</span>";
+        } else if (p >= start){
+          var fold = Math.max(1, Math.min(5, Math.ceil(((p-start)/(end-start))*5)));
+          li.className = "";
+          li.innerHTML = "<span>•</span><span>"+MODELS[k].name+" — fold "+fold+" of 5</span>";
+        }
+      });
+      if (p >= 1){ clearInterval(runTimer); finishTraining(keys); }
+    }, 60);
+  });
+
+  $("cancelRun").addEventListener("click", function(){
+    clearInterval(runTimer);
+    $("runbox").classList.add("is-hidden");
+    $("trainBar").style.display = "flex";
+  });
+
+  function resetReportStep(){
+    // A drafted manuscript describes a model set that no longer exists — retract it.
+    $("manuscript").classList.add("is-hidden");
+    $("endnote").classList.add("is-hidden");
+    $("card-report").classList.remove("is-hidden");
+    if (!$("sec-report").classList.contains("is-hidden")){
+      sectState("report","live","open");
+      setMap("report","now");
+    }
+  }
+  function finishTraining(keys){
+    $("runbox").classList.add("is-hidden");
+    $("card-models").classList.add("is-hidden");
+    $("card-results").classList.remove("is-hidden");
+    resetReportStep();
+    var best = keys.slice().sort(function(a,b){ return MODELS[b].auc - MODELS[a].auc; })[0];
+    S.best = best;
+    record("d-models", keys.length+" model"+(keys.length>1?"s were":" was")+
+      ' trained with 5-fold cross-validation on the training partition — '+
+      keys.map(function(k){ return MODELS[k].name; }).join(", ")+
+      '. <span class="v">'+MODELS[best].name+'</span> leads on validation AUC (<span class="v">'+
+      MODELS[best].auc.toFixed(3)+'</span>). The lockbox has still not been opened.');
+    sectState("models","recorded","recorded");
+    markDone("models");
+    buildResults(keys, best);
+    if (reveal("results")) sectState("results","live","open");
+  }
+
+  function buildResults(keys, best){
+    var tbl = $("resTable");
+    var body = keys.slice().sort(function(a,b){ return MODELS[b].auc - MODELS[a].auc; }).map(function(k){
+      var m = MODELS[k];
+      return '<tr class="'+(k===best?"best":"")+'"><td class="name">'+m.name+
+             (k===best?'<span class="best-tag">best</span>':"")+'</td><td>'+m.auc.toFixed(3)+
+             '</td><td>'+m.acc.toFixed(3)+'</td><td>'+m.brier.toFixed(3)+'</td></tr>';
+    }).join("");
+    tbl.innerHTML = '<thead><tr><th>Model</th><th>AUC (5-fold)</th><th>Accuracy</th><th>Brier</th></tr></thead><tbody>'+body+'</tbody>';
+
+    $("calibText").innerHTML = '<span class="v">'+MODELS[best].name+
+      '</span> has the best discrimination, but its calibration curve drifts above predicted probability <span class="v">0.7</span> — it is over-confident exactly where a clinical reader would rely on it. Isotonic regression on the training folds usually corrects this without moving AUC.';
+
+    var host = $("resFigs");
+    host.innerHTML = figBlock("roc") + figBlock("calib");
+    bindLegend();
+  }
+
+  $("backToModels").addEventListener("click", function(){
+    $("sec-results").classList.add("is-hidden");
+    $("d-models").classList.add("is-hidden");
+    $("card-models").classList.remove("is-hidden");
+    $("trainBar").style.display = "flex";
+    $("runbox").classList.add("is-hidden");
+    sectState("models","live","open");
+    setMap("models","now");
+    setMap("results", null);
+    $("sec-models").scrollIntoView({ behavior: reduced ? "auto":"smooth", block:"start" });
+  });
+
+  /* ═════════ STEP 8 — REPORT ═════════ */
+  $("toReport").addEventListener("click", function(){
+    $("card-results").classList.add("is-hidden");
+    sectState("results","recorded","recorded");
+    markDone("results");
+    runJob("Opening the lockbox — final evaluation…", 1300, function(){
+      var n = S.evidence.length;
+      $("reportWhy").innerHTML = n
+        ? 'You flagged <span class="v">'+n+'</span> item'+(n===1?"":"s")+' along the way. Every one of them is placed in the draft below — figures in journal format, findings as methods sentences.'
+        : "You didn't flag anything, so the draft carries the decisions only. Scroll back up and flag a figure if you want one included — then draft again.";
+      buildReportReminders();
+      var list = $("reportEvidence");
+      list.innerHTML = "";
+      S.evidence.forEach(function(k){
+        var li = document.createElement("li");
+        var kind = k.indexOf("note:")===0 ? "methods sentence" : (FIGS[k] && FIGS[k].kind==="table" ? "table" : "figure");
+        li.innerHTML = '<span class="to">⚑ '+kind+'</span>'+esc(evTitle(k));
+        list.appendChild(li);
+      });
+      if (reveal("report")) sectState("report","live","open");
+    });
+  });
+
+  function buildReportReminders(){
+    var list = $("reportReminders");
+    list.innerHTML = "";
+    S.ledger.filter(function(i){ return i.target === "report"; }).forEach(function(it){
+      var li = document.createElement("li");
+      li.className = "opt from-ledger";
+      li.setAttribute("role","checkbox");
+      li.setAttribute("aria-checked","true");
+      li.setAttribute("tabindex","0");
+      li.dataset.optText = it.text;
+      li.innerHTML = '<span class="ocheck"><svg viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4"/></svg></span>'+
+        '<span class="otext">'+esc(it.text)+'<span class="osrc">you deferred this at '+esc(it.src)+'</span></span>';
+      list.appendChild(li);
+      function tog(){ li.setAttribute("aria-checked", li.getAttribute("aria-checked")==="true"?"false":"true"); }
+      li.addEventListener("click", tog);
+      li.addEventListener("keydown", function(e){
+        if (e.key===" "||e.key==="Enter"){ e.preventDefault(); tog(); }
+      });
+    });
+  }
+  function reportRemindersChecked(){
+    return all("#reportReminders .opt").filter(function(o){
+      return o.getAttribute("aria-checked") === "true";
+    }).length > 0;
+  }
+
+  $("draftBtn").addEventListener("click", function(){
+    $("card-report").classList.add("is-hidden");
+    runJob("Assembling from the record…", 1400, function(){
+      $("manuscript").innerHTML = composeManuscript();
+      $("manuscript").classList.remove("is-hidden");
+      $("endnote").classList.remove("is-hidden");
+      anim($("manuscript"), "arrive", 360);
+      sectState("report","recorded","recorded");
+      markDone("report");
+      nudge($("manuscript"));
+    });
+  });
+
+  function composeManuscript(){
+    var best = S.best || "xgb", bm = MODELS[best];
+    var nTest = Math.round(S.rows*0.2);
+    var figs = S.evidence.filter(function(k){ return !noteKey(k) && FIGS[k] && FIGS[k].kind!=="table"; });
+    var tabs = S.evidence.filter(function(k){ return !noteKey(k) && FIGS[k] && FIGS[k].kind==="table"; });
+    var noteObjs = S.evidence.map(noteKey).filter(Boolean)
+                     .map(function(k){ return NOTES[k]; }).filter(Boolean);
+    var qualityNotes = noteObjs.filter(function(n){ return n.section === "quality"; });
+    var resultNotes  = noteObjs.filter(function(n){ return n.section === "results"; });
+    var figNo = {}, tabNo = {};
+    figs.forEach(function(k,i){ figNo[k] = i+1; });
+    tabs.forEach(function(k,i){ tabNo[k] = i+1; });
+    function xref(k){
+      if (figNo[k]) return '<span class="xref">Figure '+figNo[k]+'</span>';
+      if (tabNo[k]) return '<span class="xref">Table '+tabNo[k]+'</span>';
+      return "";
+    }
+
+    var dataSent = S.arrange === "multi"
+      ? (S.join === "all"
+          ? "Patient records and laboratory measurements were supplied as two files and linked on patient identifier, retaining every laboratory row; models were validated with patient-grouped splits to prevent the same patient appearing in both partitions."
+          : "Patient records and laboratory measurements were supplied as two files and linked one-to-many on patient identifier, retaining each patient's most recent laboratory panel.")
+      : "Data were supplied as a single tabular file.";
+
+    var nFeat = S.featureChoice === "skip" ? S.feats : S.feats + 1;
+
+    var prepBits = [];
+    if (S.impute === "median") prepBits.push("median imputation");
+    else if (S.impute === "mice") prepBits.push("multiple imputation by chained equations");
+    if (S.scale === "standard") prepBits.push("standardization");
+    else if (S.scale === "robust") prepBits.push("robust scaling");
+    // A flagged finding narrates its own operation under data quality, so don't
+    // also list it here — the two paragraphs would say the same thing twice.
+    var flaggedNotes = S.evidence.map(noteKey).filter(Boolean);
+    var extras = (S.pipeline || []).filter(function(p){
+      return flaggedNotes.indexOf(NOTE_FOR_OP[p]) === -1;
+    }).map(function(p){
+      return PHRASE[p] || (p.charAt(0).toLowerCase()+p.slice(1));
+    });
+    function joinList(a){
+      if (!a.length) return "";
+      if (a.length === 1) return a[0];
+      return a.slice(0,-1).join(", ") + " and " + a[a.length-1];
+    }
+
+    var featSent = S.featureChoice === "skip"
+      ? "No engineered features were added."
+      : "One interaction term (age × creatinine) was added on the basis of a training-fold probe.";
+
+    var names = S.trained.map(function(k){ return MODELS[k].name; });
+    var modelSent = names.length > 1
+      ? names.slice(0,-1).join(", ") + " and " + names[names.length-1] + " were trained"
+      : (names[0] || "One model") + " was trained";
+
+    var h = "";
+    h += '<div class="ms-h">Methods — data</div><p>'+dataSent+' The analytic dataset comprised '+
+         S.rows.toLocaleString()+' observations and '+nFeat+' candidate predictors.'+
+         (tabs.length ? ' Baseline characteristics are given in '+xref(tabs[0])+'.' : '')+'</p>';
+
+    h += '<div class="ms-h">Methods — validation design</div><p>'+(S.target || "HeartDisease")+
+         ' was modelled as '+(S.target && S.target!=="HeartDisease" ? "a continuous outcome" : "a binary outcome")+
+         '. A random 20% hold-out set (n = '+nTest+') was sealed before any exploratory analysis was performed and was accessed once, for final evaluation. All remaining analyses used 5-fold cross-validation within the training partition.</p>';
+
+    h += '<div class="ms-h">Methods — preprocessing</div><p>Preprocessing comprised '+
+         (prepBits.length ? joinList(prepBits) : "no rescaling or imputation")+
+         (extras.length ? '. In addition, '+joinList(extras) : "")+
+         '. All parameters were estimated on training rows only. '+featSent+'</p>';
+
+    if (qualityNotes.length){
+      h += '<div class="ms-h">Methods — data quality</div><p>'+
+           qualityNotes.map(function(n){ return n.text.charAt(0).toUpperCase()+n.text.slice(1); }).join(". ")+'.</p>';
+    }
+
+    h += '<div class="ms-h">Methods — models</div><p>'+modelSent+
+         ' and compared on cross-validated area under the receiver operating characteristic curve, accuracy and Brier score.</p>';
+
+    var calibrated = S.applied.some(function(a){ return a.stage === "report"; })
+                     || resultNotes.length > 0 || reportRemindersChecked();
+    h += '<div class="ms-h">Results</div><p>'+bm.name+' achieved the highest cross-validated discrimination (AUC '+
+         bm.auc.toFixed(3)+', accuracy '+bm.acc.toFixed(3)+', Brier '+bm.brier.toFixed(3)+')'+
+         (figNo.roc ? ' ('+xref("roc")+')' : '')+
+         '. On the held-out lockbox set the same model achieved an AUC of '+(bm.auc-0.019).toFixed(3)+
+         ' (95% CI '+(bm.auc-0.061).toFixed(3)+'–'+(bm.auc+0.014).toFixed(3)+').'+
+         (calibrated ? ' Predicted probabilities were calibrated by isotonic regression fitted on the training folds, which reduced the Brier score to 0.091 while leaving discrimination unchanged.' : '')+
+         (figNo.calib ? ' Calibration before and after isotonic regression is shown in '+xref("calib")+'.' : '')+'</p>';
+
+    tabs.forEach(function(k){
+      h += '<div class="mstable"><div style="overflow-x:auto;">'+FIGS[k].journalHTML()+'</div>'+
+           '<div class="mscap" style="margin-top:9px;font-size:12.5px;color:#3D4A48;"><b>Table '+tabNo[k]+'.</b> '+
+           capOf(FIGS[k])+'</div></div>';
+    });
+
+    figs.forEach(function(k){
+      h += '<div class="msfig"><div style="overflow-x:auto;">'+FIGS[k].journal()+'</div>'+
+           '<div class="mscap"><b>Figure '+figNo[k]+'.</b> '+capOf(FIGS[k])+'</div></div>';
+    });
+
+    h += '<div class="ms-h">Discussion — yours to write</div><p><span class="gap">[AUTHOR REQUIRED]</span> Clinical interpretation of the leading predictors, and whether the direction of each association is consistent with known physiology.</p>';
+    h += '<p><span class="gap">[AUTHOR REQUIRED]</span> Comparison with prior published models in this population, including whether the case mix here is comparable.</p>';
+
+    var count = figs.length + tabs.length;
+    h += '<div class="ms-foot">'+
+         (count ? count+' flagged '+(count===1?'exhibit was':'exhibits were')+' placed above in journal format, numbered in the order you flagged them. ' : '')+
+         'Every sentence traces to a decision recorded in this document. The two gaps are deliberate — they need domain knowledge the tool does not have, and it will not write them for you.</div>';
+    return h;
+  }
+
+  /* ═════════ CHANGE + STALE CASCADE ═════════ */
+  var pendingStale = [];
+  var CARD = { data:"card-data", target:"card-target", features:"card-features",
+               prep:"card-prep", models:"card-models" };
+
+  all("[data-reopen]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var key = b.dataset.reopen;
+      var idx = ORDER.indexOf(key);
+      var later = ORDER.slice(idx+1).filter(function(k){ return !$(SEC[k]).classList.contains("is-hidden"); });
+
+      var card = $(CARD[key]);
+      if (card){
+        card.classList.remove("is-hidden");
+        anim(card, "arrive", 360);
+      }
+      if (key === "data"){
+        $("sub-arrange").classList.remove("is-hidden");
+        $("a-arrange").classList.add("is-hidden");
+        $("sub-join").classList.add("is-hidden");
+      }
+      if (key === "models"){
+        $("trainBar").style.display = "flex";
+        $("runbox").classList.add("is-hidden");
+      }
+      var d = $("d-"+key); if (d) d.classList.add("is-hidden");
+      // Later steps hide their own card when recorded; a reopen must give them back.
+      if (later.indexOf("results") > -1) $("card-results").classList.remove("is-hidden");
+      if (later.indexOf("report") > -1) resetReportStep();
+      sectState(key, "live", "reopened");
+      setMap(key, "now");
+
+      later.forEach(function(k, i){
+        setTimeout(function(){
+          setStale(k, true);
+          setMap(k, "stale");
+        }, reduced ? 0 : i*120);
+      });
+      if (later.length) pendingStale = later;
+      nudge($(SEC[key]));
+    });
+  });
+
+  function clearStale(){
+    if (!pendingStale.length) return;
+    var list = pendingStale.slice();
+    pendingStale = [];
+    runJob("Recomputing "+list.length+" section"+(list.length>1?"s":"")+"…", 1200, function(){
+      list.forEach(function(k){
+        var el = $(SEC[k]);
+        setStale(k, false);
+        // A section that keeps pre-change numbers would be asserting something false.
+        if (el.classList.contains("recorded") && RECOMPUTE[k]) RECOMPUTE[k]();
+        if (el.classList.contains("recorded")) markDone(k); else setMap(k, "now");
+      });
+      syncRowCounts();
+    });
+  }
+
+
+  /* ═════════ RAIL NAV ═════════ */
+  all(".map-step").forEach(function(b){
+    b.addEventListener("click", function(){
+      var el = $(SEC[b.dataset.map]);
+      if (el && !el.classList.contains("is-hidden"))
+        el.scrollIntoView({ behavior: reduced ? "auto":"smooth", block:"start" });
+    });
+  });
+
+  /* ═════════ INIT ═════════ */
+  renderLedger(); renderEvidence(); refreshSelection();
+  function restart(){ window.location.reload(); }
+  $("restartBtn").addEventListener("click", restart);
+  $("restartBtn2").addEventListener("click", restart);
+  $("redraftBtn").addEventListener("click", function(){
+    $("manuscript").classList.add("is-hidden");
+    $("endnote").classList.add("is-hidden");
+    $("card-report").classList.remove("is-hidden");
+    sectState("report","live","open");
+    setMap("report","now");
+    buildReportReminders();
+    nudge($("card-report"));
+  });
+  syncRowCounts();
+})();
+</script>

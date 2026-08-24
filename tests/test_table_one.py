@@ -64,7 +64,12 @@ def test_stratified_table1(sample_df):
         show_pvalues=True,
     )
     table, metadata = generate_table1(sample_df, config)
-    assert "P-value" in table.columns
+    # `AUDIT-010`. This asserted the UNCORRECTED column, which is the defect:
+    # a baseline table's rows are one family, and a raw p per row shows twenty
+    # tests as twenty results. The column is corrected and named now, and
+    # `pvalue_correction=""` withholds it entirely.
+    assert any("Q-value" in c for c in table.columns)
+    assert "P-value" not in table.columns
     assert len(metadata["tests_used"]) > 0
 
 

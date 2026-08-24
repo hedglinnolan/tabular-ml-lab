@@ -3,11 +3,12 @@ EDA Recommendation System for Medical/Nutritional Tabular Data.
 Generates contextual recommendations based on dataset signals.
 """
 import pandas as pd
+from pandas.api import types as _pdt
 import numpy as np
 from typing import Dict, List, Optional, Literal
 from dataclasses import dataclass, field
 from ml.clinical_units import infer_unit
-from ml.physiology_reference import load_reference_bundle, match_variable_key, get_reference_interval
+from ml.physiology_reference import load_reference_bundle, match_variable_key, get_improbability_band
 from ml.outliers import detect_outliers
 from scipy import stats
 from sklearn.feature_selection import mutual_info_regression, mutual_info_classif
@@ -33,6 +34,10 @@ class DatasetSignals:
     target_stats: Dict = field(default_factory=dict)
     leakage_flags: List[str] = field(default_factory=list)
     leakage_candidate_cols: List[str] = field(default_factory=list)
+    # `MINE-004`. Empty leakage lists mean "the scan found nothing" ONLY if the
+    # scan ran. This carries the reason it did not, so a failure and a clean
+    # dataset stop being the same downstream signal.
+    leakage_scan_error: str = ""
     collinearity_summary: Dict = field(default_factory=dict)
     physio_plausibility_flags: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
@@ -52,6 +57,261 @@ class EDARecommendation:
     description: Optional[str] = None  # Plain-language explanation
     enabled: bool = True
     disabled_reason: Optional[str] = None
+
+
+# ── AUDIT-003: what the values say before a log transform is advised ────────
+#
+# `research/METABOLOMICS_PACK.md`, "Value-state diagnostics":
+#
+#   "Already-transformed detection. Any negative values, or a max below ~40
+#    with a positive min and low dynamic range, or column means ~ 0 ->
+#    probably already log-transformed and/or scaled. Warn hard; a second log
+#    transform is a silent catastrophe."
+#   "Dynamic range: raw untargeted intensities span 10^2-10^9. A ratio below
+#    10^2 means something has already been done to the data."
+#
+# The two clauses do NOT carry the same weight on a single arbitrary column,
+# and collapsing them is the very defect this row is about.
+#
+#   * Non-positive values are ARITHMETIC. `log(x <= 0)` is undefined, on any
+#     table in any field. Read once, certain, and it withdraws the advice.
+#   * A compressed range is a DOMAIN reading calibrated to untargeted assay
+#     intensity blocks. `clinical_risk.csv::creatinine_mg_dl` runs 0.3-3.85
+#     mg/dL and trips it while being perfectly raw. Asserting "already
+#     transformed" there would be the same class of false claim one surface
+#     over, so this is REPORTED and never asserted - the same
+#     derived/offered split `turbotab/packs.py::_already_transformed` makes.
+#
+# `_block(df)` in `turbotab/packs.py` needs 30+ numeric columns, so the pack's
+# own detector cannot answer for one target column. The THRESHOLDS are still
+# imported from it rather than restated: no threshold moves in this loop
+# (AGENT_ONBOARD.md section 08, check 2), and a second copy is the defect
+# `ml/eda_recommender.py:130` already corrected once for HIGH_MISSING_SHARE.
+
+#: The reading the card cannot make when nothing measured the target's values.
+LOG_STATE_NOT_READ = "not_read"
+
+
+def read_log_transform_state(series: pd.Series) -> Dict:
+    """Whether a log transform is defined on these values, and what they look like.
+
+    Returns the measurements whether or not anything fired, so a caller that
+    wants the numbers is not forced through the sentence. `reading` is one of:
+
+    ``log_undefined``   at least one value is <= 0
+    ``compressed_scale``  strictly positive, but sitting in the range an
+                          already-log-transformed column sits in
+    ``no_signature``    strictly positive and spread like raw measurements
+
+    Never ``None`` for a numeric series: "we did not look" is the absence of
+    the key in `target_stats`, not a value inside this dict.
+    """
+    from turbotab.packs import _RAW_DYNAMIC_RANGE, _TRANSFORMED_MAX
+
+    values = pd.to_numeric(series, errors="coerce").dropna().to_numpy(dtype=float)
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return {"reading": LOG_STATE_NOT_READ, "n": 0,
+                "sentence": "the target has no finite values to read"}
+
+    n_nonpositive = int((values <= 0).sum())
+    lo, hi = float(values.min()), float(values.max())
+    ratio = (hi / lo) if lo > 0 else None
+    compressed = (lo > 0 and hi < _TRANSFORMED_MAX
+                  and ratio is not None and ratio < _RAW_DYNAMIC_RANGE)
+
+    if n_nonpositive:
+        reading = "log_undefined"
+        sentence = (f"{n_nonpositive:,} of {values.size:,} target values are "
+                    f"zero or negative (the smallest is {lo:,.4g})")
+    elif compressed:
+        reading = "compressed_scale"
+        sentence = (f"the target runs {lo:,.4g} to {hi:,.4g}, a span of only "
+                    f"{ratio:,.1f}x")
+    else:
+        reading = "no_signature"
+        sentence = (f"the target is strictly positive ({lo:,.4g} to {hi:,.4g}"
+                    + (f", a span of {ratio:,.0f}x" if ratio is not None else "")
+                    + ")")
+
+    return {"reading": reading, "n": int(values.size),
+            "n_nonpositive": n_nonpositive, "min": lo, "max": hi,
+            "dynamic_range": ratio, "sentence": sentence,
+            "raw_range_floor": _RAW_DYNAMIC_RANGE,
+            "transformed_max_ceiling": _TRANSFORMED_MAX}
+
+
+def log_transform_advice(state: Optional[Dict]) -> Dict[str, str]:
+    """The R5 card's three log-transform sentences, from one reading.
+
+    `AUDIT-003` — BEFORE, unconditional and identical for all four cases below:
+
+        what_you_learn:      "Need for log transformation or robust loss"
+        model_implications:  "High skew -> consider log transform or robust
+                              loss (Huber)"
+
+    AFTER: the same subject, a weaker claim, and true in each case. The advice
+    is corrected rather than deleted - `no_signature` still recommends the
+    transform, which is why this cannot be satisfied by dropping the word.
+    Every branch names what was NOT checked, because none of them can see
+    provenance: a log applied by the upstream tool and recorded nowhere in the
+    table reads exactly like raw data here.
+    """
+    unchecked = ("Provenance is not checked: a transform applied before this "
+                 "file was written is recorded nowhere the app can read.")
+
+    if not state or state.get("reading") == LOG_STATE_NOT_READ:
+        return {
+            "why": "Log transform: the target's values were not read",
+            "learn": ("Whether a log transform is defined on this target — "
+                      "not read here"),
+            "implication": (
+                "High skew → robust loss (Huber) needs no transform. A log "
+                "transform is NOT recommended from the skew alone: nothing "
+                "read this target's values, so whether a log is even defined "
+                "on them is unknown."),
+        }
+
+    reading, said = state["reading"], state["sentence"]
+
+    if reading == "log_undefined":
+        return {
+            "why": f"Log transform: not defined — {said}",
+            "learn": "Why a log transform is unavailable on this target",
+            "implication": (
+                f"High skew → a log transform is NOT available here: {said}, "
+                f"and the log of a non-positive number is undefined. "
+                f"Yeo-Johnson accepts them; robust loss (Huber) needs no "
+                f"transform at all. {unchecked}"),
+        }
+
+    if reading == "compressed_scale":
+        return {
+            "why": f"Log transform: compressed scale — {said}",
+            "learn": ("Whether this target is already on a transformed scale, "
+                      "and what the app can and cannot tell from the values"),
+            "implication": (
+                f"High skew → before any log transform, check what scale this "
+                f"target is already on: {said}, where a raw untargeted assay "
+                f"run spans 10² to 10⁹. On an assay column that reads as "
+                f"already log-transformed, and a second log is silent — it "
+                f"produces numbers and every plot still renders. On a clinical "
+                f"measurement in its own units (creatinine in mg/dL) the same "
+                f"span is ordinary. The app cannot tell those two apart from "
+                f"the numbers. {unchecked}"),
+        }
+
+    return {
+        "why": f"Log transform: available — {said}",
+        "learn": "Need for log transformation or robust loss",
+        "implication": (
+            f"High skew → consider log transform or robust loss (Huber). A log "
+            f"is defined here: {said}, carrying none of the signatures of an "
+            f"already-transformed column. {unchecked}"),
+    }
+
+
+# ── AUDIT-012: which tier the outlier rate is, before a remedy is named ─────
+#
+# `research/CLINICAL_SURVEY_PACK.md` §A1.2 keeps two bound sets apart and says
+# what each is for — plausibility bounds are "values incompatible with a living
+# patient. Use for flagging as suspected data error"; a reference interval is
+# the central 95% of a healthy population and is for "annotation. Never for
+# exclusion." Cross-cutting 7 ranks the collapse seventh by damage: "Excluding
+# abnormal-but-possible clinical values as 'outliers'. Removes the sickest
+# patients. Physiologically impossible ≠ abnormal, and generic outlier rules
+# (±3 SD, IQR fences) are wrong here."
+#
+# `ml/outliers.py:39` is an IQR fence and nothing else. R5 and R9 turned its
+# rate straight into "use Huber loss or winsorization" and "Consider
+# winsorization or outlier removal" — the last of which is the sentence the
+# pack names as the damage, offered without anything having checked which tier
+# the values are in.
+
+def outlier_tier_advice(rate: float,
+                        reading: Optional[Dict]) -> Dict[str, str]:
+    """The R5/R9 outlier sentences, from the reading rather than the rate alone.
+
+    `AUDIT-012` — BEFORE, one wording for all three situations below:
+
+        R5 model_implications: "High outlier rate -> use Huber loss or
+                                winsorization"
+        R9 model_implications: "High outlier rate -> use Huber loss or robust
+                                regression" / "Consider winsorization or
+                                outlier removal"
+
+    AFTER: Huber is still recommended in every branch — the shelf is not
+    shortened and `rate` is still reported — but what the app claims to have
+    distinguished shrinks to what it read, and where it read nothing it says
+    so and names why.
+
+    `reading` is `ml.dataset_profile.read_target_impossibility`'s dict, or
+    `None` where the frame was never read for it.
+    """
+    pct = f"{rate:.1%}"
+    state = (reading or {}).get("physio_read", "unread")
+    band = (reading or {}).get("impossibility_band")
+    n_imp = (reading or {}).get("impossible_count")
+    var = (reading or {}).get("physio_variable")
+
+    if state == "matched" and band and n_imp:
+        lo, hi, unit = band
+        return {
+            "why": (f"Outlier rate: {pct} — {n_imp} of them are outside "
+                    f"{lo:g}–{hi:g} {unit}, the published plausibility band "
+                    f"for {var}"),
+            "learn": ("Which fence hits are entries a living person could not "
+                      "produce, and which are extreme but attainable"),
+            "implication": (
+                f"Outlier rate {pct} is an IQR fence count and it is carrying "
+                f"two findings: {n_imp} value(s) fall outside {lo:g}–{hi:g} "
+                f"{unit}, which is the published plausibility band for {var}. "
+                f"Those are suspected entry errors — repair them on the "
+                f"plausibility card. Huber and winsorization DOWNWEIGHT rather "
+                f"than repair, and outlier REMOVAL applied to the rest would "
+                f"drop abnormal-but-real measurements, which removes the "
+                f"sickest rows in the table. Robust loss (Huber) is still the "
+                f"right handling for what is left once the impossible entries "
+                f"are dealt with."),
+        }
+
+    if state == "matched" and band:
+        lo, hi, unit = band
+        return {
+            "why": (f"Outlier rate: {pct} — none outside {lo:g}–{hi:g} {unit}, "
+                    f"the published plausibility band for {var}"),
+            "learn": ("That the fence hits are inside what a living person "
+                      "can produce, so they are extremes rather than errors"),
+            "implication": (
+                f"Outlier rate {pct}, and every one of those values is inside "
+                f"{lo:g}–{hi:g} {unit} — the published plausibility band for "
+                f"{var} — so they read as real extremes and not as entry "
+                f"errors. Robust loss (Huber) MODELS them at reduced weight; "
+                f"winsorization or removal would discard the phenomenon under "
+                f"study, and excluding abnormal-but-possible values removes "
+                f"the sickest rows in the table."),
+        }
+
+    why_unknown = (f"'{var}' has no published plausibility band"
+                   if var else
+                   f"the target matches no variable in the physiologic "
+                   f"reference")
+    if state == "unread":
+        why_unknown = "the physiologic reference was not read for this target"
+    return {
+        "why": f"Outlier rate: {pct} — IQR fence only, no plausibility band read",
+        "learn": ("How far the extreme values sit from the rest — and NOT "
+                  "whether they are possible, which is not checked here"),
+        "implication": (
+            f"Outlier rate {pct} is an IQR fence count and nothing more: the "
+            f"app cannot tell a physiologically impossible entry from an "
+            f"abnormal-but-real one here, because {why_unknown}. Robust loss "
+            f"(Huber) is a defensible handling under that uncertainty because "
+            f"it downweights rather than deletes. Winsorization and outlier "
+            f"REMOVAL are not offered on this reading: an impossible entry "
+            f"wants repair and an extreme-but-real one wants keeping, and "
+            f"nothing here distinguished them."),
+    }
 
 
 def compute_dataset_signals(
@@ -95,7 +355,8 @@ def compute_dataset_signals(
         dtype = str(df[col].dtype)
         if dtype.startswith('int') or dtype.startswith('float'):
             signals.numeric_cols.append(col)
-        elif dtype == 'object' or dtype == 'category' or dtype == 'bool':
+        elif (_pdt.is_object_dtype(dtype) or _pdt.is_string_dtype(dtype)
+              or isinstance(dtype, pd.CategoricalDtype) or _pdt.is_bool_dtype(dtype)):
             if df[col].dtype == 'bool':
                 signals.categorical_cols.append(col)
             elif df[col].dtype.name == 'category':
@@ -103,7 +364,8 @@ def compute_dataset_signals(
             else:
                 # Check if it's text-like (high cardinality, mostly unique)
                 unique_ratio = df[col].nunique() / len(df)
-                if unique_ratio > 0.8 and df[col].dtype == 'object':
+                if unique_ratio > 0.8 and (_pdt.is_object_dtype(df[col])
+                                           or _pdt.is_string_dtype(df[col])):
                     signals.text_like_cols.append(col)
                 else:
                     signals.categorical_cols.append(col)
@@ -113,9 +375,28 @@ def compute_dataset_signals(
     # Missingness
     missing_counts = df.isnull().sum()
     signals.missing_rate_by_col = (missing_counts / len(df)).to_dict()
+    # ONE THRESHOLD, READ RATHER THAN RESTATED. `GUIDED-189`.
+    #
+    # This said `rate > 0.05` and `ml/missingness_plan.HIGH_MISSING_SHARE` says
+    # 0.20, and the two decide different halves of one affordance: this one
+    # raises the Explore chip, that one fills the cards the chip opens onto. A
+    # table whose worst column sits between them — `multiclass_stage.csv`, with
+    # `crp` at 10.0% and `bmi` at 7.1% — got a solid-bordered chip whose own
+    # tooltip read *"2 columns with >5% missing values"* and which opened onto
+    # an empty panel. `GUIDED-006`'s sentence: a control that silently does
+    # nothing asserts a capability that does not exist.
+    #
+    # **Neither threshold moved**, which is the row's own `act` and is also
+    # `AGENT_ONBOARD.md` §08 check 2 — the loop that pressured a threshold does
+    # not get to move it. The one that FILLS the panel is the real one, because
+    # it decides whether there is anything to look at; this one now reads it
+    # instead of holding a second copy. §06.2 was not invoked and did not need
+    # to be.
+    from ml.missingness_plan import HIGH_MISSING_SHARE
+
     signals.high_missing_cols = [
         col for col, rate in signals.missing_rate_by_col.items()
-        if rate > 0.05
+        if rate > HIGH_MISSING_SHARE
     ]
     
     # Duplicate rows
@@ -134,7 +415,7 @@ def compute_dataset_signals(
             signals.target_stats['n_missing'] = df[target].isnull().sum()
             signals.target_stats['missing_rate'] = signals.target_stats['n_missing'] / len(df)
             
-            if task_type_final == 'regression' and target_series.dtype in [np.int64, np.int32, np.float64, np.float32]:
+            if task_type_final == 'regression' and _pdt.is_numeric_dtype(target_series):
                 signals.target_stats['mean'] = target_series.mean()
                 signals.target_stats['median'] = target_series.median()
                 signals.target_stats['std'] = target_series.std()
@@ -143,6 +424,27 @@ def compute_dataset_signals(
                 
                 outlier_mask, _ = detect_outliers(target_series, method=outlier_method)
                 signals.target_stats['outlier_rate'] = float(outlier_mask.sum() / len(target_series)) if len(target_series) > 0 else 0.0
+
+                # `AUDIT-003`. R5 used to advise a log transform from the skew
+                # alone. The reading that decides whether a log is even legal is
+                # taken HERE, because `recommend_eda` gets a `DatasetSignals`
+                # and never sees the frame. Absent from `target_stats` means
+                # NOT READ — the card says so rather than assuming raw.
+                signals.target_stats['log_transform_state'] = read_log_transform_state(target_series)
+
+                # `AUDIT-012`, the same shape one tier over. The fence rate
+                # above answers "is this value far from the others"; the
+                # published plausibility band answers "could a living person
+                # produce it". R5 and R9 recommended Huber, winsorization and
+                # outlier REMOVAL from the first number alone. Read here for
+                # the same reason as the line above — `recommend_eda` never
+                # sees the frame. Absent means NOT READ.
+                try:
+                    from ml.dataset_profile import read_target_impossibility
+                    signals.target_stats['impossibility'] = \
+                        read_target_impossibility(df, target)
+                except Exception:
+                    pass
             elif task_type_final == 'classification':
                 value_counts = target_series.value_counts()
                 signals.target_stats['class_counts'] = value_counts.to_dict()
@@ -179,8 +481,17 @@ def compute_dataset_signals(
                     if len(high_corr) > 0:
                         signals.leakage_flags.append(f"{len(high_corr)} columns with >0.95 correlation to target")
                         signals.leakage_candidate_cols = high_corr.index.tolist()
-            except Exception:
-                pass  # Skip leakage detection if correlation fails
+            except Exception as exc:
+                # The scan may fail — the p x p correlation matrix is built
+                # uncapped — but its failure must not read as a clean bill of
+                # health. Nothing downstream can tell an empty
+                # leakage_candidate_cols from a scan that never ran, and the
+                # EDA page's "no blocking data-quality issues" sentence is
+                # emitted on exactly that emptiness.
+                signals.leakage_scan_error = f"{type(exc).__name__}: {exc}"
+                signals.notes.append(
+                    f"Target-leakage screen did not complete: {signals.leakage_scan_error}"
+                )
     
     # Collinearity (sample if too many columns)
     # Filter to truly numeric columns within user's selected features
@@ -242,14 +553,18 @@ def compute_dataset_signals(
         if len(col_data) == 0:
             continue
         inferred_unit_info = infer_unit(col, col_data)
-        ref_interval = get_reference_interval(nhanes_ref, var_key)
-        if inferred_unit_info.get('conversion_factor') and ref_interval:
-            ref_low, ref_high, ref_unit = ref_interval
+        improbability = get_improbability_band(nhanes_ref, var_key)
+        if inferred_unit_info.get('conversion_factor') and improbability:
+            improbable_low, improbable_high, improbable_unit = improbability
             converted = col_data * inferred_unit_info['conversion_factor']
-            out_rate = ((converted < ref_low) | (converted > ref_high)).sum() / len(converted)
+            out_rate = ((converted < improbable_low) | (converted > improbable_high)).sum() / len(converted)
             if out_rate > 0.05:
+                # `MISC-018`: p01–p99 is an improbability band, not a reference
+                # interval, and the caption on page 02 disavows the second name
+                # two lines above where this warning prints.
                 signals.physio_plausibility_flags.append(
-                    f"{col}: {out_rate:.1%} outside NHANES reference ({ref_low}-{ref_high} {ref_unit})"
+                    f"{col}: {out_rate:.1%} values outside the NHANES improbability band "
+                    f"({improbable_low}-{improbable_high} {improbable_unit})"
                 )
     
     return signals
@@ -379,6 +694,19 @@ def recommend_eda(signals: DatasetSignals) -> List[EDARecommendation]:
         if signals.task_type_final == "regression":
             outlier_rate = signals.target_stats.get('outlier_rate', 0)
             skew = signals.target_stats.get('skew', 0)
+            # `AUDIT-003`. The log clause is composed from a reading of the
+            # target's values instead of from the skew alone, and the reading
+            # goes into `why` as well — `ml/router.py:397` renders `why` on the
+            # Guided pull chip and renders neither of the other two lists, so a
+            # correction that landed only in `model_implications` would be true
+            # on the wire and invisible to a person (trap 6).
+            log_advice = log_transform_advice(
+                signals.target_stats.get('log_transform_state'))
+            # `AUDIT-012`. The bare `Outlier rate: x%` line stood in `why`, the
+            # one field `ml/router.py:397` carries onto the Guided pull chip,
+            # and the remedy beside it was chosen from that number alone.
+            outlier_advice = outlier_tier_advice(
+                outlier_rate, signals.target_stats.get('impossibility'))
             recommendations.append(EDARecommendation(
                 id="r5_target_regression",
                 title="Target Distribution & Outliers",
@@ -387,16 +715,17 @@ def recommend_eda(signals: DatasetSignals) -> List[EDARecommendation]:
                 why=[
                     f"Target: {signals.target_name}",
                     f"Skewness: {skew:.2f}",
-                    f"Outlier rate: {outlier_rate:.1%}"
+                    outlier_advice["why"],
+                    log_advice["why"],
                 ],
                 what_you_learn=[
                     "Target distribution shape (normal, skewed, multimodal)",
-                    "Outlier locations and impact",
-                    "Need for log transformation or robust loss"
+                    outlier_advice["learn"],
+                    log_advice["learn"],
                 ],
                 model_implications=[
-                    "High skew → consider log transform or robust loss (Huber)",
-                    "High outlier rate → use Huber loss or winsorization",
+                    log_advice["implication"],
+                    outlier_advice["implication"],
                     "Multimodal → may benefit from tree-based models"
                 ],
                 run_action="target_profile"
@@ -417,10 +746,18 @@ def recommend_eda(signals: DatasetSignals) -> List[EDARecommendation]:
                 what_you_learn=[
                     "Class distribution and balance",
                     "Baseline accuracy (majority class)",
-                    "Need for class weighting or resampling"
+                    # `GUIDED-049`: was "Need for class weighting or
+                    # resampling", which presupposes the answer.
+                    "Whether the outcome is rare enough to threaten the fit",
                 ],
                 model_implications=[
-                    "Imbalanced classes → use class_weight or F1/PR-AUC metrics",
+                    # Was "Imbalanced classes → use class_weight or F1/PR-AUC
+                    # metrics". Rebalancing degrades calibration without
+                    # improving discrimination (van den Goorbergh et al., JAMIA
+                    # 2022;29:1525), so the metric half survives and the
+                    # rebalancing half does not.
+                    "Imbalanced classes → report PR-AUC and calibration, and "
+                    "choose the threshold from the costs",
                     "Low baseline → model must significantly outperform random",
                     "Binary vs multiclass affects model choice"
                 ],
@@ -518,23 +855,29 @@ def recommend_eda(signals: DatasetSignals) -> List[EDARecommendation]:
     if signals.task_type_final == "regression":
         outlier_rate = signals.target_stats.get('outlier_rate', 0)
         if outlier_rate > 0.05:
+            # `AUDIT-012`. This card carried the sharpest form of the row:
+            # "Consider winsorization or outlier removal", composed from the
+            # fence rate alone. CLINICAL_SURVEY_PACK Cross-cutting 7 names
+            # exactly that offer as the damage — it is how the sickest patients
+            # leave the table.
+            outlier_advice = outlier_tier_advice(
+                outlier_rate, signals.target_stats.get('impossibility'))
             recommendations.append(EDARecommendation(
                 id="r9_outlier_influence",
                 title="Outlier Influence Analysis",
                 priority=5,
                 cost="medium",
                 why=[
-                    f"Outlier rate: {outlier_rate:.1%}",
+                    outlier_advice["why"],
                     "Outliers can heavily influence regression models"
                 ],
                 what_you_learn=[
                     "Location and magnitude of outliers",
                     "Impact on model predictions",
-                    "Effect of robust loss or winsorization"
+                    outlier_advice["learn"],
                 ],
                 model_implications=[
-                    "High outlier rate → use Huber loss or robust regression",
-                    "Consider winsorization or outlier removal",
+                    outlier_advice["implication"],
                     "NN with robust loss may outperform GLM"
                 ],
                 run_action="outlier_influence"

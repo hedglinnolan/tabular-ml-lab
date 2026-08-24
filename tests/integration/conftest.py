@@ -107,9 +107,11 @@ def inject_trained_state(at, df, target_col='glucose'):
     at.session_state['y_train'] = y_train
     at.session_state['y_val'] = y_val
     at.session_state['y_test'] = y_test
-    at.session_state['train_indices'] = list(range(n_train))
-    at.session_state['val_indices'] = list(range(n_train, n_train + n_val))
-    at.session_state['test_indices'] = list(range(n_train + n_val, n))
+    # Row identity as the app stores it: index LABELS, taken from the frames
+    # themselves so an injected split names the same rows the pages would.
+    at.session_state['train_row_labels'] = list(X_train.index)
+    at.session_state['val_row_labels'] = list(X_val.index)
+    at.session_state['test_row_labels'] = list(X_test.index)
     at.session_state['feature_names'] = feature_cols
     at.session_state['selected_features'] = feature_cols
     at.session_state['trained_models'] = {'ridge': model}

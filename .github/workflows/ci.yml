@@ -12,7 +12,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The suite is ~2,650 tests plus a LaTeX install; 10 minutes stopped
+    # fitting when the paper-risk sprint tripled the test count.
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -44,8 +46,32 @@ jobs:
           pip install 'pytest>=7,<9' 'pytest-timeout>=2'
 
       - name: Tier 1 — Unit + Workflow tests
+        # The two nested-suite meta-tests re-run the ENTIRE suite in
+        # subprocesses (order-independence; every-FIXED-ledger-row-names-a-
+        # running-test, marked timeout(2700)). They are a local/nightly gate
+        # by construction — inside a bounded CI job they can only time the
+        # job out, which reads as a test failure it is not. Every documented
+        # local invocation (docs/audit/RESUME.md) excludes them the same way.
+        # OMP_NUM_THREADS=1: sklearn's and torch's OpenMP runtimes share this
+        # process; unpinned they can crash it outright (measured: pytest dies
+        # with a segfault ~40% in, which is what a 124-second "failure" of a
+        # 2,600-test tier was).
         run: |
-          python -m pytest tests/ --ignore=tests/integration -q --timeout=60
+          OMP_NUM_THREADS=1 python -m pytest tests/ --ignore=tests/integration \
+            --ignore=tests/test_suite_is_order_independent.py \
+            --ignore=tests/test_a_fixed_row_names_a_test_that_actually_runs.py \
+            --ignore=tests/test_nn_modernization.py \
+            -q --timeout=120
+
+      - name: Tier 1b — NN (torch) tests in a fresh interpreter
+        # The one file that RUNS torch ops. In a process that has already
+        # loaded a thousand tests' worth of native libraries and AppTest
+        # threads, torch's third forward pass segfaults (macOS and Linux
+        # both); in a fresh interpreter the same 22 tests pass in seconds.
+        # Isolation is the fix — the tests themselves are sound.
+        run: |
+          OMP_NUM_THREADS=1 python -m pytest tests/test_nn_modernization.py \
+            -q --timeout=120
 
       - name: Tier 2 — Streamlit AppTest integration + PDF round-trip
         run: |

@@ -39,7 +39,7 @@ def _mode_radios(at):
 
 def test_the_two_pca_modes_do_not_share_a_widget_key():
     """The structural fact, so the crash cannot come back by refactor."""
-    src = open("pages/05_Preprocess.py").read()
+    src = open("pages/05_Preprocess.py", encoding='utf-8').read()
     assert 'key=f"preprocess_{_mk}_pca_fixed_n"' in src
     assert 'key=f"preprocess_{_mk}_pca_variance"' in src
     assert ('st.number_input("Components", 1, _maxc, _defn, '

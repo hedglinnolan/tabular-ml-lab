@@ -2,8 +2,8 @@
 Neural Network wrapper using weighted Huber loss (regression) or BCE/CE loss (classification).
 Wraps the existing NN training implementation.
 """
-import torch
-import torch.nn as nn
+from __future__ import annotations
+
 import numpy as np
 from typing import Dict, List, Optional, Any
 import logging
@@ -14,8 +14,56 @@ from models.base import BaseModelWrapper
 
 logger = logging.getLogger(__name__)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# `MISC-095`. TORCH IS OPTIONAL, AND THIS MODULE IS NOT ALLOWED TO ASSUME IT.
+#
+# `import torch` at module scope made this file the one core module that could
+# not be imported in the environment the engine actually runs in (torch is
+# deliberately not installed — `TEST-038`, `utils/seed.py`, and the
+# xgboost/lightgbm guards in `ml/model_registry.py` are the same standard).
+# The registry's shelf-honesty rule applies: the neural network stays on the
+# shelf and says why it cannot run here, rather than taking the import down.
+#
+# `from __future__ import annotations` above is load-bearing: the `torch.Tensor`
+# annotations below are then strings and are never evaluated at import time.
+# ─────────────────────────────────────────────────────────────────────────────
+try:
+    import torch
+    import torch.nn as nn
+    _TORCH_ERROR: Optional[str] = None
+except Exception as exc:                                  # pragma: no cover
+    torch = None                                          # type: ignore
+    nn = None                                             # type: ignore
+    _TORCH_ERROR = f"{type(exc).__name__}: {exc}"
 
-class SimpleMLP(nn.Module):
+TORCH_AVAILABLE = _TORCH_ERROR is None
+
+
+def _require_torch() -> None:
+    """Refuse, with the reason, rather than fail on an attribute of `None`."""
+    if _TORCH_ERROR is not None:
+        raise ImportError(
+            "PyTorch is not installed, so the neural-network model cannot be "
+            "built, fitted or used for prediction in this environment. Install "
+            "torch (`pip install torch`) to enable it; every other model in the "
+            f"registry is unaffected. Import error was: {_TORCH_ERROR}")
+
+
+if _TORCH_ERROR is None:
+    _TorchModule = nn.Module
+else:                                                     # pragma: no cover
+    class _TorchModule:                                   # type: ignore
+        """Stand-in base so the network class can be *defined* without torch.
+
+        Constructing one is the point at which the answer becomes 'not here',
+        and that is where the refusal belongs.
+        """
+
+        def __init__(self, *args, **kwargs):
+            _require_torch()
+
+
+class SimpleMLP(_TorchModule):
     """Simplified MLP for regression and classification."""
     
     def __init__(self, input_dim: int, hidden: list = [32, 32], dropout: float = 0.1,
@@ -71,6 +119,7 @@ def weighted_huber_loss(y_pred: torch.Tensor, y_true: torch.Tensor,
     Callers derive t0/s from the training target (90th percentile / half an
     SD); the numeric defaults are only a legacy fallback.
     """
+    _require_torch()
     errors = y_true - y_pred
     abs_errors = torch.abs(errors)
     
@@ -99,6 +148,7 @@ class SklearnCompatibleNNRegressor(RegressorMixin, BaseEstimator):
         Args:
             wrapper_instance: NNWeightedHuberWrapper instance (can be None initially)
         """
+        _require_torch()
         self.wrapper_instance = wrapper_instance
         self.task_type = 'regression'
         self.is_fitted_ = False
@@ -112,6 +162,34 @@ class SklearnCompatibleNNRegressor(RegressorMixin, BaseEstimator):
                 "Call 'fit' with appropriate arguments before using this estimator."
             )
     
+    def mark_pretrained(self):
+        """Declare that `wrapper_instance` has already been trained.
+
+        Deliberately NOT a constructor parameter. `sklearn.base.clone` rebuilds
+        an estimator from `get_params()`, so anything passed to `__init__`
+        survives cloning — and surviving the clone is exactly what must not
+        happen here. Set after construction, the mark is dropped by `clone()`,
+        and the clone's `fit()` raises instead of quietly answering from the
+        original network (T0-LIVE-003).
+        """
+        self._trained_externally = True
+        return self
+
+    def _refuse_if_not_pretrained(self):
+        if not getattr(self, "_trained_externally", False):
+            raise NotFittedError(
+                f"{self.__class__.__name__} does not train. It adapts an "
+                "already-trained NNWeightedHuberWrapper to sklearn's interface, "
+                "and it was asked to fit without one. "
+                "This is almost always a clone-and-refit: sklearn utilities such "
+                "as cross_val_score and ml/sensitivity.py clone an estimator and "
+                "call fit() on the copy. Previously that succeeded and the copy "
+                "kept predicting from the ORIGINAL network — cross-validation "
+                "scores computed by a model that had already seen every fold's "
+                "held-out rows, with no error anywhere. Train a wrapper and call "
+                "get_sklearn_estimator() on it, or use the wrapper directly."
+            )
+
     def fit(self, X, y):
         """
         Fit the model (sklearn interface).
@@ -121,7 +199,8 @@ class SklearnCompatibleNNRegressor(RegressorMixin, BaseEstimator):
         """
         if self.wrapper_instance is None:
             raise ValueError("wrapper_instance must be set before calling fit()")
-        
+        self._refuse_if_not_pretrained()
+
         # Mark as fitted
         self.is_fitted_ = True
         self.n_features_in_ = X.shape[1]
@@ -157,6 +236,7 @@ class SklearnCompatibleNNClassifier(ClassifierMixin, BaseEstimator):
         Args:
             wrapper_instance: NNWeightedHuberWrapper instance (can be None initially)
         """
+        _require_torch()
         self.wrapper_instance = wrapper_instance
         self.task_type = 'classification'
         self.is_fitted_ = False
@@ -171,6 +251,34 @@ class SklearnCompatibleNNClassifier(ClassifierMixin, BaseEstimator):
                 "Call 'fit' with appropriate arguments before using this estimator."
             )
     
+    def mark_pretrained(self):
+        """Declare that `wrapper_instance` has already been trained.
+
+        Deliberately NOT a constructor parameter. `sklearn.base.clone` rebuilds
+        an estimator from `get_params()`, so anything passed to `__init__`
+        survives cloning — and surviving the clone is exactly what must not
+        happen here. Set after construction, the mark is dropped by `clone()`,
+        and the clone's `fit()` raises instead of quietly answering from the
+        original network (T0-LIVE-003).
+        """
+        self._trained_externally = True
+        return self
+
+    def _refuse_if_not_pretrained(self):
+        if not getattr(self, "_trained_externally", False):
+            raise NotFittedError(
+                f"{self.__class__.__name__} does not train. It adapts an "
+                "already-trained NNWeightedHuberWrapper to sklearn's interface, "
+                "and it was asked to fit without one. "
+                "This is almost always a clone-and-refit: sklearn utilities such "
+                "as cross_val_score and ml/sensitivity.py clone an estimator and "
+                "call fit() on the copy. Previously that succeeded and the copy "
+                "kept predicting from the ORIGINAL network — cross-validation "
+                "scores computed by a model that had already seen every fold's "
+                "held-out rows, with no error anywhere. Train a wrapper and call "
+                "get_sklearn_estimator() on it, or use the wrapper directly."
+            )
+
     def fit(self, X, y):
         """
         Fit the model (sklearn interface).
@@ -180,7 +288,8 @@ class SklearnCompatibleNNClassifier(ClassifierMixin, BaseEstimator):
         """
         if self.wrapper_instance is None:
             raise ValueError("wrapper_instance must be set before calling fit()")
-        
+        self._refuse_if_not_pretrained()
+
         # Mark as fitted
         self.is_fitted_ = True
         self.n_features_in_ = X.shape[1]
@@ -249,6 +358,7 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
                           For classification: automatically set to BCE/CE
             use_batchnorm: If True, add BatchNorm1d after each linear layer
         """
+        _require_torch()
         super().__init__("Neural Network")
         self.hidden_layers = hidden_layers or [128, 128, 128]
         self.dropout = dropout
@@ -561,7 +671,12 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
     def get_sklearn_estimator(self):
         """Get sklearn-compatible estimator wrapper."""
         if self._sklearn_estimator is None:
-            self._sklearn_estimator = SklearnCompatibleNN(wrapper_instance=self, task_type=self.task_type)
+            self._sklearn_estimator = SklearnCompatibleNN(
+                wrapper_instance=self, task_type=self.task_type)
+            # The one place an adapter is legitimately created: from a wrapper
+            # that has already trained. The mark is not a constructor parameter,
+            # so a clone of this estimator will not inherit it.
+            self._sklearn_estimator.mark_pretrained()
             # Mark as fitted and set attributes since model is already trained
             # Note: fit() will be called later with actual data to set n_features_in_ and classes_ properly
             self._sklearn_estimator.is_fitted_ = True

@@ -43,7 +43,6 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Literal, Dict, Any, Tuple
 from datetime import datetime
 import re
-import streamlit as st
 
 
 # ---------------------------------------------------------------------------
@@ -97,37 +96,80 @@ MODEL_TO_FAMILY = {
     "lgbm_reg": MODEL_FAMILY_TREE, "lgbm_clf": MODEL_FAMILY_TREE,
 }
 
-# Human-readable model names for reports and narrative
-MODEL_DISPLAY_NAMES = {
-    "ridge": "Ridge Regression",
-    "lasso": "LASSO",
-    "elasticnet": "Elastic Net",
-    "logreg": "Logistic Regression",
-    "glm": "Generalized Linear Model",
-    "huber": "Huber Regression",
-    "rf": "Random Forest",
-    "extratrees_reg": "Extra Trees (Regressor)",
-    "extratrees_clf": "Extra Trees (Classifier)",
-    "histgb_reg": "Histogram Gradient Boosting (Regressor)",
-    "histgb_clf": "Histogram Gradient Boosting (Classifier)",
-    "nn": "Neural Network (MLP)",
-    "knn_reg": "k-Nearest Neighbors (Regressor)",
-    "knn_clf": "k-Nearest Neighbors (Classifier)",
-    "svr": "Support Vector Regressor",
-    "svc": "Support Vector Classifier",
-    "naive_bayes": "Naïve Bayes",
-    "gaussian_nb": "Gaussian Naïve Bayes",
-    "lda": "Linear Discriminant Analysis",
-    "xgb_reg": "XGBoost (Regressor)",
-    "xgb_clf": "XGBoost (Classifier)",
-    "lgbm_reg": "LightGBM (Regressor)",
-    "lgbm_clf": "LightGBM (Classifier)",
-}
+# Human-readable model names for reports and narrative.
+#
+# **DERIVED FROM `ml.model_registry`, not maintained beside it (`GUIDED-124`).**
+# These were two hand-written tables and they had drifted on TWELVE models:
+# `histgb_clf` was "Histogram Gradient Boosting (Classifier)" here and
+# "(Classification)" in the registry, `svr` was "Support Vector Regressor" and
+# "Support Vector Regression", `lasso` was "LASSO" and "Lasso Regression".
+#
+# It surfaced as a manuscript defect. `ml/manuscript_validator.py` checks that
+# the model named in the Model Development section is the model named in Model
+# Evaluation, and it resolves names through this table while Guided's shelf
+# used the registry's — so a check built to catch one section asserting what
+# another does not support failed for a reason that was about neither.
+#
+# `ROADMAP.md` "One core, no forks": neither door may hold a private copy of a
+# rule, a default, or a NAME. The registry is what the user picks from, so the
+# registry is the source; this reads it and adds only the aliases it does not
+# have.
+def _display_names() -> dict:
+    """The registry's names, plus aliases for keys it does not carry.
+
+    Falls back to the previous hand-written table if the registry cannot be
+    imported — this module is loaded by Streamlit pages at import time, and a
+    display-name lookup is not worth taking a page down for.
+    """
+    aliases = {
+        # Not model keys in the registry; kept because callers pass them.
+        "naive_bayes": "Naïve Bayes",
+        "logistic": "Logistic Regression",
+        "xgb": "XGBoost (Gradient Boosting)",
+        "lgbm": "LightGBM",
+        "svm": "Support Vector Machine",
+        "knn": "K-Nearest Neighbors",
+        "dt": "Decision Tree",
+    }
+    try:
+        from ml.model_registry import get_registry
+        names = {key: spec.name for key, spec in get_registry().items()}
+    except Exception:                                       # pragma: no cover
+        names = {}
+    return {**aliases, **names}
+
+
+MODEL_DISPLAY_NAMES = _display_names()
 
 
 def model_display_name(key: str) -> str:
     """Human-readable name for a model key. Falls back to UPPER if unknown."""
     return MODEL_DISPLAY_NAMES.get(key.lower(), key.upper())
+
+
+# ONE NAMING RULE FOR SELECTION METHODS (`DRIVE-075` / D9-10). `lasso` is both a
+# model key and a feature-selection method, so a list written from raw keys —
+# "Selected 6 features using lasso, rfe" — came out of the manuscript cleaner as
+# *"Lasso Regression, rfe"*: one member renamed to a MODEL's display name, the
+# other left as an internal key, in one sentence. Producers name selection
+# methods from here, and `_clean_for_manuscript` leaves these labels alone.
+FEATURE_SELECTION_METHOD_LABELS = {
+    "lasso": "LASSO",
+    "rfe": "RFE-CV",
+    "rfe-cv": "RFE-CV",
+    "rfecv": "RFE-CV",
+    "univariate": "univariate screening",
+    "f_regression": "univariate screening",
+    "mutual_info": "mutual information screening",
+    "stability": "stability selection",
+    "stability_selection": "stability selection",
+}
+
+
+def feature_selection_method_label(method: str) -> str:
+    """Render a feature-selection method with its manuscript-friendly name."""
+    key = str(method or "").strip().lower()
+    return FEATURE_SELECTION_METHOD_LABELS.get(key, str(method or "").strip())
 
 
 # Human-readable family names for coaching UI
@@ -422,6 +464,20 @@ def _clean_for_manuscript(text: str) -> str:
     text = re.sub(r'(?i)\bdataset characteristics favorable to the analysis\b\s*[:\-]*\s*', '', text)
     text = re.sub(r'(?i)\bfavorable (?:for|to) analysis\b\.?', '', text)
     
+    # A SELECTION-METHOD LABEL IS ALREADY MANUSCRIPT REGISTER (`DRIVE-075`).
+    # `lasso` is a model key too, so the pass below rewrote the method "LASSO"
+    # into the model name "Lasso Regression" and left "rfe" — which is not a
+    # model key — raw beside it. The labels are held out of that pass and put
+    # back afterwards, so a method list is named by one rule end to end.
+    _protected = {}
+    for _idx, _label in enumerate(sorted(set(FEATURE_SELECTION_METHOD_LABELS.values()),
+                                         key=len, reverse=True)):
+        _token = f"\x00fsm{_idx}\x00"
+        _pattern = rf'(?<![\w-]){re.escape(_label)}(?![\w-])'
+        if re.search(_pattern, text):
+            text = re.sub(_pattern, _token, text)
+            _protected[_token] = _label
+
     # Replace internal model keys with manuscript-friendly names regardless of case,
     # but do not duplicate text that is already part of the display name.
     for key in sorted(MODEL_DISPLAY_NAMES.keys(), key=len, reverse=True):
@@ -440,17 +496,59 @@ def _clean_for_manuscript(text: str) -> str:
             flags=re.IGNORECASE,
         )
     
+    for _token, _label in _protected.items():
+        text = text.replace(_token, _label)
+
     # Clean up multiple spaces
     text = re.sub(r'\s+', ' ', text)
     text = re.sub(r'\.\.+', '.', text)
     text = re.sub(r'\s+\.', '.', text)
-    
+
     return text.strip()
 
 
 def _strip_terminal_sentence_punctuation(text: str) -> str:
     """Normalize sentence fragments before reassembling narrative prose."""
     return re.sub(r'[\s\.\-–—:;]+$', '', (text or "").strip())
+
+
+def name_empty_slots(text: str) -> str:
+    """Mark the gap an empty interpolation slot leaves in a recorded action.
+
+    `f"Ran {', '.join(analyses_run)} on {n} models"` with nothing to join
+    renders as *"Ran  on 3 models"* — an action with no subject, which shipped
+    as a coach card and as a TRIPOD annotation on a run where every analysis
+    had failed. The name cannot be recovered at render time, so the gap is
+    STATED rather than closed up: a reader must be able to see that something
+    is missing instead of reading a complete sentence.
+    """
+    if not text:
+        return ""
+    # Only an interior run of spaces after a non-terminal character: a double
+    # space following '.' or ',' is typography, not a missing argument.
+    return re.sub(r'(?<=[^\s.!?;:,])[ \t]{2,}(?=\S)', ' (not recorded) ',
+                  str(text).strip())
+
+
+def resolution_text(insight: "Insight") -> str:
+    """What to print after a finding's arrow, or "" when there is nothing.
+
+    A "resolution" that restates the finding word for word is not a
+    resolution. The bridge record `log_methodology` writes sets
+    `resolved_by = finding` by construction, so every surface that renders
+    `finding → resolved_by` printed the same sentence twice — on the drive,
+    *"✅ ~~Ran  on 3 models~~ → Ran  on 3 models"*. The record keeps both
+    fields (the audit trail is unchanged); only the rendering declines to
+    echo.
+    """
+    finding = name_empty_slots(getattr(insight, "finding", "") or "")
+    resolved_by = name_empty_slots(getattr(insight, "resolved_by", "") or "")
+    if not resolved_by:
+        return ""
+    if _strip_terminal_sentence_punctuation(resolved_by).casefold() == \
+            _strip_terminal_sentence_punctuation(finding).casefold():
+        return ""
+    return resolved_by
 
 
 def models_to_families(model_keys: List[str]) -> List[str]:
@@ -516,6 +614,106 @@ TRIPOD_CATEGORY_MAP = {
     "sensitivity": ["performance_ci"],
     "validation": ["performance_measures"],
 }
+
+
+# ---------------------------------------------------------------------------
+# TRIPOD evidence — a tick must come from the section it certifies
+# ---------------------------------------------------------------------------
+#
+# `DRIVE-074` / D9-04. A CATEGORY IS A PAGE BUCKET, NOT EVIDENCE. Every
+# `data_quality` entry claimed item 9 (*how missing data were handled*), so a
+# target dtype recode — which left every blank exactly where it found it —
+# certified a missing-data section it does not describe; and one `explainability`
+# line ticked both 15a (*present the full prediction model*) and 19a (*give an
+# overall interpretation*), neither of which a permutation-importance run
+# performs. The items below are certified by a PREDICATE over the entry's own
+# record rather than by its bucket, in both directions: an entry whose category
+# names the key still has to carry the evidence, and an entry that carries the
+# evidence certifies the key whatever its category. Items with no predicate keep
+# the category mapping unchanged.
+
+_MISSING_DATA_DETAIL_KEYS = (
+    "imputation", "numeric_imputation", "categorical_imputation",
+    "missing_strategy", "missing_data_strategy",
+)
+_NOT_A_STRATEGY = {"", "none", "no", "false", "nan", "null"}
+_MISSING_DATA_TEXT = re.compile(
+    r"\bimput|\bcomplete[- ]case|\bmissing (?:data|values)\s+(?:were|was)\b"
+    r"|\bdropped\b[^.]{0,40}\bmissing\b",
+    re.IGNORECASE,
+)
+#: TRIPOD 15a is the model itself — all coefficients and the intercept, enough to
+#: score one individual. An importance ranking describes a fitted model; it does
+#: not reproduce it. These are the keys a producer that really does present one
+#: would write.
+_FULL_MODEL_DETAIL_KEYS = (
+    "coefficients", "model_equation", "full_model", "model_card",
+    "model_specification",
+)
+
+
+def _names_a_strategy(value: Any) -> bool:
+    return str(value or "").strip().lower() not in _NOT_A_STRATEGY
+
+
+def _certifies_missing_data(insight: "Insight") -> bool:
+    """TRIPOD 9 — what happened to the MISSING VALUES, stated by this entry."""
+    details = insight.resolution_details or {}
+    if any(_names_a_strategy(details.get(key)) for key in _MISSING_DATA_DETAIL_KEYS):
+        return True
+    per_model = details.get("per_model_config")
+    if isinstance(per_model, dict):
+        for config in per_model.values():
+            if isinstance(config, dict) and _names_a_strategy(config.get("imputation")):
+                return True
+    if details.get("rows_dropped_missing") or details.get("n_rows_dropped_missing"):
+        return True
+    return bool(_MISSING_DATA_TEXT.search(" ".join(
+        str(part or "") for part in
+        (insight.finding, insight.resolved_by, insight.recommended_action)
+    )))
+
+
+def _certifies_full_model(insight: "Insight") -> bool:
+    """TRIPOD 15a — the model presented completely enough to predict with."""
+    details = insight.resolution_details or {}
+    return any(details.get(key) for key in _FULL_MODEL_DETAIL_KEYS)
+
+
+def _certifies_interpretation(insight: "Insight") -> bool:
+    """TRIPOD 19a — the Discussion's overall interpretation.
+
+    Author-owned in this app: the Discussion ships as `[AUTHOR REQUIRED — …]`
+    scaffolds, so nothing the workflow records certifies it. An entry that
+    carries a written interpretation certifies it; running an analysis does not.
+    """
+    details = insight.resolution_details or {}
+    return any(str(details.get(key, "") or "").strip()
+               for key in ("interpretation", "discussion"))
+
+
+TRIPOD_EVIDENCE = {
+    "missing_data": _certifies_missing_data,
+    "full_model": _certifies_full_model,
+    "interpretation": _certifies_interpretation,
+}
+
+
+def tripod_keys_certified(insight: "Insight") -> List[str]:
+    """The TRIPOD items this entry's own record can certify, in item order."""
+    from ml.publication import TRIPOD_ITEMS
+
+    declared = set(insight.tripod_keys or [])
+    certified = []
+    for item in TRIPOD_ITEMS:
+        key = item["auto_key"]
+        predicate = TRIPOD_EVIDENCE.get(key)
+        if predicate is None:
+            if key in declared:
+                certified.append(key)
+        elif predicate(insight):
+            certified.append(key)
+    return certified
 
 
 # ---------------------------------------------------------------------------
@@ -618,7 +816,16 @@ class Insight:
             ]
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize for session state / JSON export."""
+        """Serialize for session state / JSON export.
+
+        The field list is enumerated rather than derived so the mutable
+        containers are copied on the way out. That hand-written list is also
+        how `manuscript_text` went missing for a release: it is a declared
+        field, `from_dict` would have restored it, and nothing wrote it — so
+        every save/restore quietly returned the Discussion to coaching voice.
+        `test_to_dict_covers_every_declared_field` now fails if the list and
+        the dataclass ever diverge again.
+        """
         return {
             "id": self.id,
             "source_page": self.source_page,
@@ -627,6 +834,7 @@ class Insight:
             "finding": self.finding,
             "implication": self.implication,
             "recommended_action": self.recommended_action,
+            "manuscript_text": self.manuscript_text,
             "relevant_pages": list(self.relevant_pages),
             "affected_features": list(self.affected_features),
             "tripod_keys": list(self.tripod_keys),
@@ -1065,17 +1273,30 @@ class InsightLedger:
 
     # == TRIPOD auto-completion =============================================
 
+    def get_tripod_evidence(self) -> Dict[str, "Insight"]:
+        """The resolved entry that certifies each completed TRIPOD item.
+
+        `DRIVE-074`. The checklist prints a note beside every tick, and page 10
+        used to find it by scanning for the FIRST resolved entry holding the key
+        — not the one that certified it. An item names the record it rests on or
+        it is not ticked.
+        """
+        evidence: Dict[str, "Insight"] = {}
+        for i in self._insights:
+            if not i.resolved:
+                continue
+            for key in tripod_keys_certified(i):
+                evidence.setdefault(key, i)
+        return evidence
+
     def get_tripod_status(self) -> Dict[str, bool]:
         """Compute TRIPOD checklist completion from resolved entries.
 
         Returns dict of {tripod_auto_key: completed}.
-        A TRIPOD item is completed when any resolved insight has that key
-        in its tripod_keys.
+        A TRIPOD item is completed when a resolved insight carries the evidence
+        the item names — see `tripod_keys_certified`.
         """
-        completed = set()
-        for i in self._insights:
-            if i.resolved:
-                completed.update(i.tripod_keys)
+        completed = set(self.get_tripod_evidence())
         # Import TRIPOD items to get full list
         from ml.publication import TRIPOD_ITEMS
         return {
@@ -1140,17 +1361,47 @@ class InsightLedger:
                 return False
         return True
 
+    def narrative_summary(self) -> Dict[str, int]:
+        """Counts over the insights a publication narrative may speak about.
+
+        `AUDIT-042`: `summary()` counts the LEDGER — every pre-resolved bridge
+        entry `log_methodology` writes on each button press included — and that
+        is the right answer for a ledger view. It is the wrong answer for any
+        sentence that claims observations were *addressed*, and page 10 was
+        asking it for exactly that: measured, six button presses produced
+        "Systematic data quality audit: 6 observation(s) identified and
+        addressed" in the same report.md as a narrative saying 0 were
+        identified. Every producer of an addressed-count reads this instead, so
+        the count and the list beneath it cannot come from two filters again.
+        """
+        worthy = [i for i in self._insights if self._is_narrative_worthy(i)]
+        return {
+            "total": len(worthy),
+            "resolved": sum(1 for i in worthy if i.resolved),
+            "unresolved": sum(1 for i in worthy if not i.resolved),
+        }
+
     def narrative_for_report(self) -> str:
-        """Generate a concise methods-section narrative."""
-        s = self.summary()
+        """Generate a concise methods-section narrative.
+
+        `AUDIT-042`: the counts and the lists beneath them must come from ONE
+        filter. They used to come from two — summary(), which counts every
+        insight including the pre-resolved bridge entry that log_methodology
+        writes on each button press, and _is_narrative_worthy, which excludes
+        exactly those. So the sentence could report observations "addressed
+        during the modeling workflow" above an empty Addressed list, with both
+        numbers inflated by page visits.
+        """
+        worthy = [i for i in self._insights if self._is_narrative_worthy(i)]
         resolved = [i for i in self.get_resolved() if self._is_narrative_worthy(i)]
-        unresolved = self.get_unresolved()
+        unresolved = [i for i in self.get_unresolved()
+                      if self._is_narrative_worthy(i)]
 
         lines = []
         lines.append(
-            f"Exploratory analysis identified {s['total']} "
-            f"data observations. {s['resolved']} were addressed during the "
-            f"modeling workflow; {s['unresolved']} were documented and accepted."
+            f"Exploratory analysis identified {len(worthy)} "
+            f"data observations. {len(resolved)} were addressed during the "
+            f"modeling workflow; {len(unresolved)} were documented and accepted."
         )
 
         if resolved:
@@ -1161,11 +1412,12 @@ class InsightLedger:
                     detail_prose = format_resolution_detail(
                         i.resolution_details, model_scope=i.model_scope
                     )
-                    lines.append(f"  - {i.finding} → {detail_prose}")
+                    lines.append(f"  - {name_empty_slots(i.finding)} → {detail_prose}")
                 else:
-                    lines.append(
-                        f"  - {i.finding} → {i.resolved_by} ({i.resolved_on_page})"
-                    )
+                    _finding = name_empty_slots(i.finding)
+                    _res = resolution_text(i)
+                    _arrow = f" → {_res}" if _res else ""
+                    lines.append(f"  - {_finding}{_arrow} ({i.resolved_on_page})")
 
         if unresolved:
             lines.append("")
@@ -1204,6 +1456,13 @@ class InsightLedger:
                 continue
 
             if i.resolved:
+                continue
+
+            # COACH-007: an audit-only insight (a reassurance or neutral fact)
+            # must never surface as a study limitation, even after the training
+            # gate auto-acknowledges it — acknowledgement records that the user
+            # saw it, not that it became a finding about the study.
+            if i.metadata.get("audit_only"):
                 continue
 
             if i.acknowledged or self._is_narrative_worthy(i):
@@ -1348,11 +1607,16 @@ class InsightLedger:
 
     @classmethod
     def from_list(cls, items: List[Dict[str, Any]]) -> "InsightLedger":
-        """Deserialize from list of dicts."""
+        """Deserialize from list of dicts.
+
+        `upsert`, not `add`: a save file is a record of what happened, read in
+        order, so the later entry for an id is the current one. `add` skips
+        duplicates, which silently kept the first and dropped the second.
+        """
         ledger = cls()
         for item in items:
             try:
-                ledger.add(Insight.from_dict(item))
+                ledger.upsert(Insight.from_dict(item))
             except (TypeError, KeyError):
                 continue  # skip malformed entries
         return ledger
@@ -1397,7 +1661,16 @@ def get_ledger() -> InsightLedger:
     """Get or create the InsightLedger from session state.
 
     This is the single entry point. All pages call this.
+
+    The Streamlit import is deliberately inside the function. Everything above
+    it in this file is 1,400 lines of pure domain logic, and a module-level
+    import made all of it unreachable without the host — including
+    ml.narrative_engine and ml.manuscript_validator, which import this module
+    and were tainted by association. `utils.workflow_provenance.get_provenance`
+    already does it this way; this is the same shape.
     """
+    import streamlit as st
+
     if "insight_ledger" not in st.session_state:
         st.session_state.insight_ledger = InsightLedger()
     ledger = st.session_state.insight_ledger

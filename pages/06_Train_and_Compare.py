@@ -13,8 +13,9 @@ from utils.session_state import (
     init_session_state, get_data, get_preprocessing_pipeline,
     DataConfig, SplitConfig, ModelConfig, set_splits, add_trained_model,
     TaskTypeDetection, CohortStructureDetection, log_methodology,
+    ensure_dataset_profile,
 )
-from utils.seed import set_global_seed, get_global_seed
+from utils.seed import set_global_seed
 from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_metric_row, render_sidebar_workflow
 from ml.splits import to_numpy_1d
@@ -27,11 +28,6 @@ def _get_plotly():
     import plotly.graph_objects as go
     import plotly.express as px
     return go, px
-
-def _get_sklearn_splits():
-    """Lazy import sklearn model_selection."""
-    from sklearn.model_selection import train_test_split, GroupShuffleSplit, GroupKFold
-    return train_test_split, GroupShuffleSplit, GroupKFold
 
 def torch_available() -> bool:
     """Is the optional neural-network dependency installed?"""
@@ -101,8 +97,18 @@ render_step_indicator(6, "Train & Compare Models")
 st.title("🧠 Train & Compare Models")
 st.caption("This is the center of the recommended workflow: establish a credible baseline result before deciding whether you need advanced analyses.")
 render_breadcrumb("06_Train_and_Compare")
-from utils.test_lockbox import render_lockbox_status, is_exploratory as _lb_is_exploratory
-render_lockbox_status("This page opens the held-out test set exactly once.")
+from utils.test_lockbox import (render_lockbox_status,
+                                is_exploratory as _lb_is_exploratory,
+                                lockbox_open_count as _lb_open_count,
+                                reopen_notice as _lb_reopen_notice)
+# "Exactly once" was a promise the page could not keep: both train buttons are
+# re-runnable and nothing counted the openings, so a second look at the sealed
+# rows was invisible (`SWEEP-008`). The count is now recorded when held-out
+# metrics are computed, and this says what it says. The sentence itself is
+# composed in `utils/test_lockbox` beside the chip it is appended to, so the
+# two do not say the count twice (`DRIVE-069` finding 25).
+_lb_opens_before = _lb_open_count()
+render_lockbox_status(_lb_reopen_notice(_lb_opens_before))
 render_page_navigation("06_Train_and_Compare")
 
 # Progress indicator
@@ -179,6 +185,13 @@ entity_id_final = cohort_structure_detection.entity_id_final
 if task_type_final:
     data_config.task_type = task_type_final
 
+# `DRIVE-073`. Three surfaces on this page read `dataset_profile` — the
+# model-suitability badges, the class-imbalance card and its rebalancing control
+# — and applying a feature selection on page 04 clears it, so all three
+# disappeared with nothing on screen saying why. Recomputed here, against the
+# feature set this page is about to train on, before anything reads it.
+ensure_dataset_profile()
+
 # Split configuration
 st.header("Data Splitting")
 
@@ -247,14 +260,30 @@ if _test_governed_by_lockbox:
     # it here put two different numbers on one screen.
     from utils.cohorts import active_cohort as _slider_cohort
     _run = _slider_cohort()
-    _n_test_here = (len(set(_slider_lb["labels"]) & set(_run["labels"]))
-                    if _run is not None else _slider_lb["n_test"])
+    _here_labels = (list(set(_slider_lb["labels"]) & set(_run["labels"]))
+                    if _run is not None else list(_slider_lb["labels"]))
+    _n_test_here = len(_here_labels)
+    # Held out is not the same as scoreable, and this caption sits at the far
+    # end of the pipeline — every row-dropping step upstream has already run by
+    # the time it renders. Printing the SEALED count here was the second
+    # instance of STATE-102, found by tests/test_scoreable_locality.py rather
+    # than by reading: the same helper the chip uses, at the same distance from
+    # the seal, is what makes the two numbers agree.
+    from utils.test_lockbox import _scoreable_here as _score
+    _n_scoreable_here = _score(_here_labels)
     _whose = f" for {_run['column']} = {_run['label']}" if _run is not None else ""
     st.caption(
         f"🔒 Test set is locked at {test_size:.0%} (n={_n_test_here:,}{_whose}) by the upload "
         f"lockbox — held out since before feature engineering. Train % and Val % divide the "
         f"remaining {1 - test_size:.0%}. Change the holdout on Upload & Audit."
     )
+    if _n_scoreable_here is not None and _n_scoreable_here < _n_test_here:
+        st.warning(
+            f"⚖️ Of those {_n_test_here:,} held-out rows, **{_n_scoreable_here:,}** still "
+            f"have a value for the outcome. Performance will be measured on "
+            f"{_n_scoreable_here:,} rows — not {_n_test_here:,}. Something after the "
+            f"seal removed or blanked the rest; check what before reporting."
+        )
     if abs(train_size + val_size - (1.0 - test_size)) > 0.01:
         st.error(f"With the lockbox holding out {test_size:.0%} for test, "
                  f"Train % + Val % must sum to {1.0 - test_size:.0%}.")
@@ -459,8 +488,12 @@ if task_type_final == 'regression':
 
 st.session_state.split_config = split_config
 
-# Cross-validation option - read from session_state
-use_cv_default = st.session_state.get('use_cv', False)
+# Cross-validation option - read from session_state.
+# Default ON: the tutorial this app is written for describes cross-validation as
+# the routine way to read a model's spread, not as an extra. The neural network
+# is still excluded from the fold loop below (PyTorch models run their own
+# validation loop), which is a skip the record states rather than a silent one.
+use_cv_default = st.session_state.get('use_cv', True)
 use_cv = st.checkbox("Enable Cross-Validation", value=use_cv_default, key="train_use_cv")
 if use_cv:
     cv_folds_default = st.session_state.get('cv_folds', 5)
@@ -474,8 +507,8 @@ else:
 if st.button("Prepare Splits", type="primary"):
     try:
         t0 = time.perf_counter()
-        train_test_split, GroupShuffleSplit, GroupKFold = _get_sklearn_splits()
-        from sklearn.preprocessing import LabelEncoder
+        # sklearn's splitters and LabelEncoder used to be imported here; they
+        # moved into ml/splits.py with the logic that used them.
 
         # Get feature columns - use engineered features if applied
         target_col = data_config.target_col
@@ -501,236 +534,106 @@ if st.button("Prepare Splits", type="primary"):
             )
             st.stop()
 
-        X = df[feature_cols].copy()
-        y = df[target_col].copy()
-        mask = y.notna()
-        orig_labels = df.index[mask]
-        X = X[mask].reset_index(drop=True)
-        y = y[mask].reset_index(drop=True)
-        original_indices = np.where(mask)[0]
-        n_after_notna = len(X)
+        # ── the split ────────────────────────────────────────────────
+        # Extracted to ml/splits.py (L6). What used to be ~230 lines of
+        # branch selection here is now one call, and the same call is what
+        # the headless path and the Guided door use — so a change to the
+        # leakage semantics lands in one place for every consumer.
+        from ml.splits import SplitError, SplitSpec, make_split
 
-        # Test-set lockbox: labels frozen at upload, before feature
-        # engineering/selection could see them. When present (and not in
-        # exploratory mode), it IS the test set; this page only divides the
-        # remaining rows into train/validation. Group- and time-based splits
-        # have their own leakage semantics and bypass the lockbox (disclosed).
-        from utils.test_lockbox import get_lockbox as _get_lockbox, is_exploratory as _lb_exploratory
+        from utils.test_lockbox import (get_lockbox as _get_lockbox,
+                                        is_exploratory as _lb_exploratory)
         _lockbox = None if _lb_exploratory() else _get_lockbox()
-        if _lockbox is not None and use_group_split and entity_id_final:
-            st.warning(
-                "🔓 Group-based splitting draws its own test set (grouping has its own "
-                "leakage semantics) — the upload lockbox does NOT apply to this split."
-            )
-        if _lockbox is not None and split_config.use_time_split and data_config.datetime_col:
-            st.warning(
-                "🔓 Time-based splitting uses chronological ordering — the upload "
-                "lockbox does NOT apply to this split."
-            )
-        _lockbox_applicable = (
-            _lockbox is not None
-            and not (use_group_split and entity_id_final)
-            and not (split_config.use_time_split and data_config.datetime_col)
-        )
-        if _lockbox_applicable:
-            _test_label_set = set(_lockbox["labels"])
-            is_test_row = np.array([lbl in _test_label_set for lbl in orig_labels])
-            if int(is_test_row.sum()) < 2 or int((~is_test_row).sum()) < 4:
-                st.warning(
-                    "🔓 Too few lockbox test rows survive the current filters — "
-                    "falling back to a fresh random split for this run."
-                )
-                _lockbox_applicable = False
+        _lb_labels = list(_lockbox["labels"]) if _lockbox else None
 
-        # Target trimming (regression only, before split)
-        if task_type_final == 'regression' and split_config.target_trim_enabled:
-            # With a lockbox, trim thresholds come from training rows only and
-            # test rows are never dropped — otherwise the trim both leaks
-            # test-target statistics and evaluates on a truncated population.
-            _trim_basis = y[~is_test_row] if _lockbox_applicable else y
-            q_lo = float(_trim_basis.quantile(split_config.target_trim_lower))
-            q_hi = float(_trim_basis.quantile(split_config.target_trim_upper))
-            trim_mask = (y >= q_lo) & (y <= q_hi)
-            if _lockbox_applicable:
-                trim_mask = trim_mask | pd.Series(is_test_row, index=y.index)
-            n_trimmed_rows = int((~trim_mask).sum())
-            X = X[trim_mask].reset_index(drop=True)
-            y = y[trim_mask].reset_index(drop=True)
-            original_indices = original_indices[trim_mask.values]
-            if _lockbox_applicable:
-                is_test_row = is_test_row[trim_mask.values]
+        _spec = SplitSpec(
+            train_size=train_size, val_size=val_size, test_size=test_size,
+            random_state=getattr(split_config, "random_state", 42),
+            stratify=bool(getattr(split_config, "stratify", False)),
+            use_time_split=bool(split_config.use_time_split),
+            datetime_col=data_config.datetime_col,
+            entity_id_col=entity_id_final,
+            use_group_split=bool(use_group_split and entity_id_final),
+            target_trim_enabled=bool(getattr(split_config, "target_trim_enabled", False)),
+            target_trim_lower=float(getattr(split_config, "target_trim_lower", 0.0)),
+            target_trim_upper=float(getattr(split_config, "target_trim_upper", 1.0)),
+        )
+
+        # The engine decides which branch applies; the page only reports it.
+        try:
+            _split = make_split(df, feature_cols, target_col, task_type_final,
+                                _spec, _lb_labels)
+        except SplitError as _e:
+            st.error(str(_e))
+            st.stop()
+
+        # Disclosures the engine produced, surfaced rather than re-derived.
+        for _note in _split.notes:
+            (st.warning if "does not apply" in _note or "falling back" in _note
+             else st.info)(_note)
+
+        X_train, X_val, X_test = _split.X_train, _split.X_val, _split.X_test
+        y_train, y_val, y_test = _split.y_train, _split.y_val, _split.y_test
+        le = _split.label_encoder
+        _lockbox_applicable = _split.lockbox_applied
+        n_after_notna = int(df[target_col].notna().sum())
+        n_trimmed_rows = _split.n_trimmed_rows
+
+        if le is not None:
+            st.session_state["target_label_encoder"] = le
+        else:
+            st.session_state.pop("target_label_encoder", None)
+
+        # T0-BUILD-006. Which level is the event was decided by the alphabet and
+        # was never rendered, offered or recorded anywhere. The engine now states
+        # it in `notes` (surfaced above) and hands back the mapping; the record
+        # keeps it so the Methods section can name the class its metrics are about.
+        if _split.class_encoding:
+            st.session_state["target_class_encoding"] = _split.class_encoding
+            if task_type_final == 'classification':
+                log_methodology(
+                    step='Model Training',
+                    action=(
+                        f"Outcome levels encoded alphabetically; "
+                        f"{_split.class_encoding.get('positive_class')!r} is class 1 "
+                        f"(the event every classification metric describes)"
+                    ),
+                    details=_split.class_encoding,
+                )
+        else:
+            st.session_state.pop("target_class_encoding", None)
+
+        # CV must inherit the split's leakage semantics or the folds leak what
+        # the split was careful about.
+        st.session_state["cv_strategy"] = _split.cv_strategy
+        st.session_state["cv_groups_train"] = _split.cv_groups_train
+
+        if _split.strategy == "grouped":
             st.info(
-                f"Target trimming: removed **{n_trimmed_rows}** rows "
-                f"(quantiles [{split_config.target_trim_lower:.2f}, {split_config.target_trim_upper:.2f}] "
-                f"→ target range [{q_lo:.3g}, {q_hi:.3g}]). "
-                f"N: {n_after_notna} → {len(X)}"
-            )
+                f"Group-based split: {len(set(df.loc[_split.train_labels, entity_id_final]))} "
+                f"train groups, "
+                f"{len(set(df.loc[_split.val_labels, entity_id_final]))} val groups, "
+                f"{len(set(df.loc[_split.test_labels, entity_id_final]))} test groups")
+        elif _split.strategy == "chronological":
+            _dates = df.loc[_split.train_labels, data_config.datetime_col]
+            st.info(f"Time-based split: Train={_dates.min()} to {_dates.max()}")
+
+        if n_trimmed_rows:
             log_methodology(
                 step='Model Training',
                 action=(
                     f"Target trimmed before split: {n_trimmed_rows} rows removed "
-                    f"(quantiles [{split_config.target_trim_lower:.2f}, {split_config.target_trim_upper:.2f}])"
+                    f"(quantiles [{_spec.target_trim_lower:.2f}, {_spec.target_trim_upper:.2f}])"
                 ),
                 details={
                     'target_trim_enabled': True,
-                    'target_trim_lower': split_config.target_trim_lower,
-                    'target_trim_upper': split_config.target_trim_upper,
-                    'trim_threshold_lower': q_lo,
-                    'trim_threshold_upper': q_hi,
+                    'target_trim_lower': _spec.target_trim_lower,
+                    'target_trim_upper': _spec.target_trim_upper,
                     'n_before_trim': n_after_notna,
-                    'n_after_trim': len(X),
+                    'n_after_trim': len(_split.X_train) + len(_split.X_val) + len(_split.X_test),
                     'rows_removed': n_trimmed_rows,
                 },
             )
-
-        indices = np.arange(len(X))
-
-        if len(X) < 2:
-            st.error("Not enough samples after removing missing target values. Need at least 2 rows for train/test split.")
-            st.stop()
-
-        target_is_categorical = y.dtype.name in ("object", "category", "bool") or (
-            hasattr(y.dtype, "kind") and y.dtype.kind in ("O", "b")
-        )
-        
-        # Single-class validation for classification
-        if task_type_final == 'classification':
-            n_classes = y.nunique()
-            if n_classes < 2:
-                st.error(f"""
-                **Single-class target detected:** Your target has only {n_classes} unique value(s) after removing missing values.
-                
-                Classification requires at least 2 classes. Please check:
-                - That your target column has multiple distinct values
-                - That filtering (e.g., plausibility) did not remove all samples of one class
-                """)
-                st.stop()
-        
-        le = None
-        if target_is_categorical:
-            le = LabelEncoder()
-            y = pd.Series(le.fit_transform(y.astype(str)), index=y.index)
-            st.session_state["target_label_encoder"] = le
-        else:
-            st.session_state.pop("target_label_encoder", None)
-        
-        # Record which CV scheme the fold logic must use to match this split's
-        # leakage semantics (see ml.eval.perform_cross_validation). Cross-
-        # validation runs on TRAINING ROWS ONLY, so group labels are captured
-        # for the train rows alone.
-        st.session_state['cv_strategy'] = 'standard'
-        st.session_state['cv_groups_train'] = None
-
-        # Split data (group-based, time-based, or random)
-        if use_group_split and entity_id_final:
-            groups = to_numpy_1d(df.iloc[original_indices][entity_id_final])
-            y_arr = to_numpy_1d(y)
-
-            gss = GroupShuffleSplit(n_splits=1, test_size=(val_size + test_size), random_state=split_config.random_state)
-            train_idx, temp_idx = next(gss.split(indices, y_arr, groups))
-            # Same-entity rows must stay together in CV too, or folds leak.
-            st.session_state['cv_strategy'] = 'group'
-            st.session_state['cv_groups_train'] = groups[train_idx]
-
-            groups_temp = groups[temp_idx]
-            rel_val = val_size / (val_size + test_size)
-            gss2 = GroupShuffleSplit(n_splits=1, test_size=(1 - rel_val), random_state=split_config.random_state)
-            val_idx, test_idx = next(gss2.split(indices[temp_idx], y_arr[temp_idx], groups_temp))
-
-            X_train = X.iloc[train_idx]
-            X_val = X.iloc[temp_idx[val_idx]]
-            X_test = X.iloc[temp_idx[test_idx]]
-            y_train = y_arr[train_idx]
-            y_val = y_arr[temp_idx[val_idx]]
-            y_test = y_arr[temp_idx[test_idx]]
-
-            n_train_groups = len(np.unique(groups[train_idx]))
-            n_val_groups = len(np.unique(groups[temp_idx[val_idx]]))
-            n_test_groups = len(np.unique(groups[temp_idx[test_idx]]))
-            st.info(f"Group-based split: {n_train_groups} train groups, {n_val_groups} val groups, {n_test_groups} test groups")
-        elif split_config.use_time_split and data_config.datetime_col:
-            # Chronological split → CV must respect time order too (no shuffle).
-            st.session_state['cv_strategy'] = 'time'
-            df_work = df.iloc[original_indices].copy()
-            df_work["_temp_index"] = np.arange(len(df_work))
-            df_work = df_work.sort_values(data_config.datetime_col)
-
-            n_total = len(df_work)
-            n_train = int(n_total * train_size)
-            n_val = int(n_total * val_size)
-
-            train_pos = df_work.iloc[:n_train]["_temp_index"].values
-            val_pos = df_work.iloc[n_train : n_train + n_val]["_temp_index"].values
-            test_pos = df_work.iloc[n_train + n_val :]["_temp_index"].values
-
-            X_train = X.iloc[train_pos]
-            X_val = X.iloc[val_pos]
-            X_test = X.iloc[test_pos]
-            y_train = to_numpy_1d(y.iloc[train_pos])
-            y_val = to_numpy_1d(y.iloc[val_pos])
-            y_test = to_numpy_1d(y.iloc[test_pos])
-            train_indices = original_indices[train_pos]
-            val_indices = original_indices[val_pos]
-            test_indices = original_indices[test_pos]
-
-            st.info(f"Time-based split: Train={df_work.iloc[0][data_config.datetime_col]} to {df_work.iloc[n_train - 1][data_config.datetime_col]}")
-        elif _lockbox_applicable:
-            idx_test = indices[is_test_row]
-            _rest = indices[~is_test_row]
-            _den = train_size + val_size
-            _rel_val = (val_size / _den) if _den > 0 else 0.18
-            _strat = None
-            if split_config.stratify and task_type_final == 'classification':
-                _strat_candidate = y.iloc[_rest]
-                if _strat_candidate.value_counts().min() >= 2:
-                    _strat = _strat_candidate
-            try:
-                idx_train, idx_val = train_test_split(
-                    _rest, test_size=_rel_val,
-                    random_state=split_config.random_state, stratify=_strat
-                )
-            except ValueError:
-                idx_train, idx_val = train_test_split(
-                    _rest, test_size=_rel_val, random_state=split_config.random_state
-                )
-            X_train = X.iloc[idx_train]
-            X_val = X.iloc[idx_val]
-            X_test = X.iloc[idx_test]
-            y_train = y.iloc[idx_train]
-            y_val = y.iloc[idx_val]
-            y_test = y.iloc[idx_test]
-            st.info(
-                f"🔒 Test set from the upload lockbox: n={len(idx_test)} "
-                f"({_lockbox['fraction']:.0%} drawn at upload with seed {_lockbox['seed']}, "
-                f"never seen by feature engineering or selection). "
-                f"Remaining rows were divided into train/validation."
-            )
-        elif split_config.stratify and task_type_final == 'classification':
-            idx_train, idx_temp, y_train, y_temp = train_test_split(
-                indices, y, test_size=(val_size + test_size),
-                random_state=split_config.random_state, stratify=y
-            )
-            rel_val = val_size / (val_size + test_size)
-            idx_val, idx_test, y_val, y_test = train_test_split(
-                idx_temp, y_temp, test_size=(1 - rel_val),
-                random_state=split_config.random_state, stratify=y_temp
-            )
-            X_train = X.iloc[idx_train]
-            X_val = X.iloc[idx_val]
-            X_test = X.iloc[idx_test]
-        else:
-            idx_train, idx_temp, y_train, y_temp = train_test_split(
-                indices, y, test_size=(val_size + test_size),
-                random_state=split_config.random_state
-            )
-            rel_val = val_size / (val_size + test_size)
-            idx_val, idx_test, y_val, y_test = train_test_split(
-                idx_temp, y_temp, test_size=(1 - rel_val),
-                random_state=split_config.random_state
-            )
-            X_train = X.iloc[idx_train]
-            X_val = X.iloc[idx_val]
-            X_test = X.iloc[idx_test]
         
         # Use the same feature list we used above for X
         feature_names = list(feature_cols)
@@ -803,32 +706,45 @@ if st.button("Prepare Splits", type="primary"):
         elapsed = time.perf_counter() - t0
         st.session_state.setdefault("last_timings", {})["Prepare Splits"] = round(elapsed, 2)
 
-        # Store indices for explainability (original df positions)
-        if use_group_split and entity_id_final:
-            st.session_state.train_indices = original_indices[train_idx].tolist()
-            st.session_state.val_indices = original_indices[temp_idx[val_idx]].tolist()
-            st.session_state.test_indices = original_indices[temp_idx[test_idx]].tolist()
-        elif split_config.use_time_split and data_config.datetime_col:
-            st.session_state.train_indices = train_indices.tolist()
-            st.session_state.val_indices = val_indices.tolist()
-            st.session_state.test_indices = test_indices.tolist()
-        else:
-            st.session_state.train_indices = original_indices[idx_train].tolist()
-            st.session_state.val_indices = original_indices[idx_val].tolist()
-            st.session_state.test_indices = original_indices[idx_test].tolist()
+        # Store row identity for explainability — LABELS, and only labels.
+        #
+        # One expression per partition now, where there used to be a branch per
+        # split strategy; the branches only existed because each one carried its
+        # own index bookkeeping. Positions used to be stored alongside and were
+        # what page 07 read: offsets into THIS frame, dereferenced later against
+        # whatever get_data() returned then. Any row-set change in between made
+        # them name different people with no error (CONTRACT-001), so they are
+        # gone. Readers go through utils.session_state.get_split_rows, which
+        # resolves these labels against the current frame and refuses when one
+        # of them is missing.
+        st.session_state.train_row_labels = list(_split.train_labels)
+        st.session_state.val_row_labels = list(_split.val_labels)
+        st.session_state.test_row_labels = list(_split.test_labels)
+        # What the trim actually did, so no downstream page re-derives it.
+        st.session_state["split_trim_record"] = _split.trim_record
+        # Positions cannot outlive the frame they index into.
+        for _stale in ("train_indices", "val_indices", "test_indices"):
+            st.session_state.pop(_stale, None)
         
         # Record the split in workflow provenance — without this the generated
         # Methods section contains no train/val/test statement and no seed.
         try:
             from utils.workflow_provenance import get_provenance
-            if use_group_split and entity_id_final:
-                _split_strategy = "grouped"
-            elif split_config.use_time_split and data_config.datetime_col:
-                _split_strategy = "time-based"
-            elif split_config.stratify and task_type_final == 'classification':
-                _split_strategy = "stratified random"
-            else:
-                _split_strategy = "random"
+            # Read the strategy the split ACTUALLY used, rather than
+            # re-deriving it from the same inputs. The two can disagree: when
+            # too few sealed rows survive the current filters the engine falls
+            # back to a fresh random split, and a re-derivation would still
+            # record "lockbox" in the Methods section. Provenance may only
+            # assert what happened.
+            _split_strategy = {
+                "grouped": "grouped",
+                "chronological": "time-based",
+                "stratified": "stratified random",
+                "random": "random",
+                "lockbox": ("stratified random"
+                            if (split_config.stratify and task_type_final == 'classification')
+                            else "random"),
+            }.get(_split.strategy, _split.strategy)
             if _lockbox_applicable:
                 _split_strategy += " (test set locked at upload, before feature engineering/selection)"
             get_provenance().record_split(
@@ -836,9 +752,14 @@ if st.button("Prepare Splits", type="primary"):
                 train_n=len(X_train), val_n=len(X_val), test_n=len(X_test),
                 random_seed=int(getattr(split_config, 'random_state', 42)),
                 target_transform=_target_transform or "none",
-                target_trim_enabled=bool(getattr(split_config, 'trim_target', False)),
-                target_trim_lower=float(getattr(split_config, 'trim_lower', 0.0)),
-                target_trim_upper=float(getattr(split_config, 'trim_upper', 1.0)),
+                # These are the names the page itself writes at :312-318. They
+                # were `trim_target` / `trim_lower` / `trim_upper` here — names
+                # SplitConfig has never had — so getattr's default was recorded
+                # instead and the Methods section stated that no rows were
+                # removed while the screen said they were.
+                target_trim_enabled=bool(getattr(split_config, 'target_trim_enabled', False)),
+                target_trim_lower=float(getattr(split_config, 'target_trim_lower', 0.0)),
+                target_trim_upper=float(getattr(split_config, 'target_trim_upper', 1.0)),
             )
         except Exception:
             logger.exception("Failed to record split provenance")
@@ -849,7 +770,13 @@ if st.button("Prepare Splits", type="primary"):
             f"✅ Splits ready — Train {_n_tr:,} ({_n_tr/_n_all:.0%}) · "
             f"Val {_n_va:,} ({_n_va/_n_all:.0%}) · Test {_n_te:,} ({_n_te/_n_all:.0%})"
         )
-        st.caption("Train fits each model · Validation tunes it · Test is scored once, at the end.")
+        # This caption used to say the test set was scored a single time, at
+        # the end — the chip's unenforced promise in another voice, beside a
+        # button that can be pressed again (`SWEEP-008`). What the page can say
+        # without counting is what each partition is FOR; the count itself is
+        # on the chip above.
+        st.caption("Train fits each model · Validation tunes it · Test is what "
+                   "the final numbers are reported on.")
         # Guardrails for small evaluation sets
         if len(X_test) < 5:
             st.error(
@@ -997,7 +924,16 @@ try:
     from ml.model_coach import model_viability as _model_viability
     _profile_tc = st.session_state.get("dataset_profile")
     if _profile_tc:
-        _viability = _model_viability(_profile_tc, probe=st.session_state.get("coach_probe_result"))
+        # The realized training size, not the profile's row count: every
+        # verdict below is a claim about how much data the model is FITTED
+        # on, and the profile counts rows with no outcome value that never
+        # reach a fit — 20,904 on the badges beside a 4,407-row training set
+        # (`DRIVE-070`).
+        _viability = _model_viability(
+            _profile_tc,
+            probe=st.session_state.get("coach_probe_result"),
+            n_train=len(X_train),
+        )
 except Exception:
     _viability = {}
 _VIAB_ICONS = {"good": "✓", "ok": "△", "poor": "✗"}
@@ -1074,8 +1010,18 @@ for group_name in sorted_groups:
                             from ml.nn_recommender import recommend_nn_config
                             _profile = st.session_state.get("dataset_profile")
                             _target_prof = _profile.target_profile if _profile else None
-                            _data_suff = _profile.data_sufficiency if _profile else None
                             _p_n = _profile.p_n_ratio if _profile else (X_train.shape[1] / max(1, len(X_train)))
+                            # `MISC-105`: with no EDA profile this passed None,
+                            # and the recommender's abundance tests are all
+                            # False for None — a 50k-row run got the small-data
+                            # scheduler. The sizes are in hand here, so the
+                            # level is computed rather than left unstated.
+                            if _profile is not None:
+                                _data_suff = _profile.data_sufficiency
+                            else:
+                                from ml.dataset_profile import assess_data_sufficiency
+                                _data_suff, _ = assess_data_sufficiency(
+                                    len(X_train), X_train.shape[1], task_type_final)
                             _n_eng = len(st.session_state.get("engineered_feature_names", []))
                             _rec = recommend_nn_config(
                                 n_samples=len(X_train),
@@ -1397,23 +1343,38 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
     slow_models = {'nn', 'extratrees', 'svc', 'svr'}
     has_slow = any(m in slow_models for m in models_to_train)
     
-    # Initialize cancel flag in session state
-    if 'cancel_training' not in st.session_state:
-        st.session_state.cancel_training = False
-    
+    # T0-LIVE-002: there used to be a "Cancel Training" button here. It set
+    # st.session_state.cancel_training, which nothing in the repository read, so
+    # training ran to completion regardless.
+    #
+    # It has been removed rather than wired, because wiring it would still have
+    # overstated the control. Streamlit runs one script per session on one
+    # thread: while this loop is training, the script is blocked, no widget is
+    # interactive, and the button cannot be clicked at all. Checking the flag
+    # between models would make the code look answerable without making the
+    # button reachable.
+    #
+    # Real cancellation needs something that owns the work — turbotab/jobs.py,
+    # where cancel sets a token the worker checks, and a job that ignores it is
+    # reported as finished rather than as cancelled. That is the component whose
+    # absence caused the migration (PRODUCT_VISION.md §05).
+    #
+    # A button that claims control it does not have is the app asserting
+    # something false, which outranks the convenience of appearing to offer it.
     if has_slow or use_optimization:
-        col_warn, col_cancel = st.columns([4, 1])
-        with col_warn:
-            st.warning("""
-            ⏱️ **Training in progress.** Some models (Neural Networks, ExtraTrees, SVM) or hyperparameter 
-            optimization may take several minutes. Training progress shown below.
-            """)
-        with col_cancel:
-            if st.button("🛑 Cancel Training", type="secondary", key="cancel_training_btn"):
-                st.session_state.cancel_training = True
-                st.warning("Training canceled. Trained models saved. Refresh page to train again.")
-                st.stop()
-    
+        st.warning("""
+        ⏱️ **Training in progress.** Some models (Neural Networks, ExtraTrees, SVM) or hyperparameter
+        optimization may take several minutes. Training progress is shown below.
+
+        This cannot be interrupted once started — close the tab to abandon the run.
+        """)
+
+    # One TRAINING RUN is one opening of the sealed set, however many models it
+    # scores. Both train buttons are re-runnable and nothing counted the
+    # openings, so the chip and this page went on saying "opened once" while a
+    # researcher iterated against the held-out metric (`SWEEP-008`).
+    _opened_this_run = False
+
     for model_name in models_to_train:
         with progress_container:
             if use_optimization:
@@ -1648,11 +1609,38 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 else:
                     y_test_eval = y_test
 
+                _test_scoring = None
                 if task_type_final == 'regression':
                     test_metrics = calculate_regression_metrics(y_test_eval, y_test_pred)
+                    # MINE-027. Metrics computed on a SUBSET of the held-out set
+                    # are not the held-out metrics, and the denominator has to
+                    # reach the person reading the number. It travels BESIDE the
+                    # metrics, never inside them: everything downstream iterates
+                    # `metrics` and rendered the counts as two more model scores.
+                    from ml.eval import regression_scoring_disclosure
+                    _test_scoring = regression_scoring_disclosure(y_test_eval, y_test_pred)
+                    if _test_scoring:
+                        st.warning(
+                            f"{model_name.upper()}: {_test_scoring['n_dropped_nonfinite']} of "
+                            f"{_test_scoring['n_pairs']} "
+                            f"test prediction(s) were non-finite and could not be "
+                            f"scored. The metrics below are computed on the "
+                            f"remaining {_test_scoring['n_scored']} row(s), "
+                            f"not on the full held-out set — usually a degenerate "
+                            f"target back-transform. Report them with that N or "
+                            f"drop the target transform."
+                        )
                 else:
                     y_test_proba = model.predict_proba(X_test_model) if model.supports_proba() else None
                     test_metrics = calculate_classification_metrics(y_test, y_test_pred, y_test_proba)
+
+                # Recorded HERE, at the line where a held-out number comes into
+                # existence, rather than at the button — a run that fails before
+                # scoring anything has not opened anything.
+                if not _opened_this_run:
+                    from utils.test_lockbox import record_lockbox_open
+                    record_lockbox_open("Train & Compare")
+                    _opened_this_run = True
 
                 # Compute train-set metrics for overfitting assessment (#92)
                 try:
@@ -1720,6 +1708,10 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 # Store results (y_test and y_test_pred are always on original scale)
                 model_results = {
                     'metrics': test_metrics,
+                    # NOT a metric, and deliberately not in `metrics`: how many
+                    # held-out pairs the metrics above could not be computed on
+                    # (`MINE-027`). None on the ordinary path.
+                    'test_scoring': _test_scoring,
                     'train_metrics': train_metrics,
                     'history': results.get('history', {}),
                     'y_test_pred': y_test_pred,
@@ -1797,15 +1789,40 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
         )
         try:
             from utils.workflow_provenance import get_provenance
-            _task_type = st.session_state.get('task_type', '')
-            _selection_metric = 'RMSE' if _task_type == 'regression' else 'Accuracy'
+            from ml.holdout_selection import criterion_phrase
+            # CONTRACT-010. This read `st.session_state['task_type']`, a key
+            # nothing in the repository writes, so the ternary always took the
+            # 'Accuracy' branch and every regression study recorded 'the held-out
+            # Accuracy' as its selection criterion — an accuracy no regression
+            # run ever computed. The resolved task type is the local the ranking
+            # loop above uses; the record now reads the same one.
+            _selection_metric = 'RMSE' if task_type_final_local == 'regression' else 'Accuracy'
             _model_results_local = st.session_state.get('model_results', {})
+            # AUDIT-030. This recorded `validation <metric>` and the loop above
+            # ranks `results['metrics']`, which is the TEST dict written at
+            # :1496 from `test_metrics`. No per-model validation score is stored
+            # anywhere, so the word named a split this ranking never saw. The
+            # record now says what was compared, and `selected_on_holdout` says
+            # what that comparison costs — a recorded fact rather than a word the
+            # manuscript would have to parse back out of prose.
             get_provenance().record_training(
                 models_trained=list(trained_models.keys()),
                 primary_model=best_model_name or '',
-                selection_criteria=f'validation {_selection_metric}',
+                selection_criteria=criterion_phrase(_selection_metric),
+                selected_on_holdout=len(trained_models) >= 2,
                 use_cv=st.session_state.get('use_cv', False),
                 cv_folds=st.session_state.get('cv_folds', 5) if st.session_state.get('use_cv', False) else None,
+                # AUDIT-026. The checkbox above says what was ASKED FOR; this
+                # says what a fold loop actually scored. `cv_results` is written
+                # for every trained model at :1502 — `None` when CV was skipped
+                # for the neural network (:1455) or raised and was swallowed
+                # (:1489) — so this list is always derivable here and is a
+                # positive record rather than an absence. Always a list, never
+                # None, because this call site DID look.
+                cv_models_run=[
+                    name for name, res in _model_results_local.items()
+                    if isinstance(res, dict) and res.get('cv_results')
+                ],
                 use_hyperopt=use_optimization,
                 class_weight_balanced=st.session_state.get('use_class_weight', False),
                 hyperparameters={name: selected_model_params.get(name, {}) for name in trained_models.keys()},
@@ -1863,7 +1880,9 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 model_results=model_results,
                 task_type=task_type_final_local,
                 bootstrap_results=st.session_state.get("bootstrap_results"),
-                primary_model=st.session_state.get("primary_model", ""),
+                # COACH-003: nothing ever writes st.session_state['primary_model'],
+                # so this always passed ''. best_model_name is resolved at :1727-1742.
+                primary_model=best_model_name or "",
             )
             for diag in _diagnostics:
                 _tc_ledger.upsert(Insight(
@@ -1892,17 +1911,30 @@ if task_type_final == 'classification':
         severity = profile.target_profile.imbalance_severity
         ratio = profile.target_profile.class_balance_ratio
 
+        # `GUIDED-049`. THE SHELF IS NOT SHORTENED — the toggle stays, because
+        # rebalancing is defensible for a classifier read at a fixed operating
+        # point and this app cannot yet tell one from a risk model. What
+        # changes is that it is OFFERED WITH THE CITATION rather than
+        # recommended, and it no longer defaults on. The removed text said
+        # "Without correction, models will favor the majority class", which
+        # asserts the thing the cited replication disproves.
+        from ml import imbalance_advice as _imbalance
+        _adv = _imbalance.advice(st.session_state.get("model_purpose"))
+
         st.warning(f"""
         **{severity.title()} class imbalance detected** (ratio: {ratio:.1f}:1).
-        Without correction, models will favor the majority class. Enable class weighting
-        to give minority classes proportionally higher importance during training.
+        {_adv["advisory"]}
         """)
+        st.caption("Instead: " + " · ".join(_adv["instead"]))
 
         use_class_weight = st.toggle(
-            "Enable class weighting (recommended)",
-            value=True,
+            "Apply class weighting anyway",
+            value=False,
             key="use_class_weight",
-            help="Sets class_weight='balanced' for supported models. Unsupported models (kNN, Naive Bayes, LDA, Neural Net) are unaffected."
+            help=("Sets class_weight='balanced' for supported models. "
+                  + _adv["offered_note"]
+                  + " Unsupported models (kNN, Naive Bayes, LDA, Neural Net) "
+                    "are unaffected.")
         )
 
         if use_class_weight:
@@ -2295,32 +2327,45 @@ if st.session_state.get('trained_models'):
                 y_test_base = st.session_state.get("y_test")
 
             if X_train_base is not None and y_test_base is not None:
-                # Use the first model's preprocessing pipeline for baselines
-                first_model = list(st.session_state.get("fitted_preprocessing_pipelines", {}).keys())
-                if first_model:
-                    pipe = st.session_state["fitted_preprocessing_pipelines"][first_model[0]]
-                    try:
-                        X_train_t = pipe.transform(X_train_base)
-                        X_test_t = pipe.transform(X_test_base)
-                    except Exception:
-                        X_train_t = np.array(X_train_base)
-                        X_test_t = np.array(X_test_base)
-                else:
-                    X_train_t = np.array(X_train_base)
-                    X_test_t = np.array(X_test_base)
+                # MODELS-009. The baselines get their OWN preprocessing, stated
+                # below the table. They used to be transformed through whichever
+                # per-model pipeline was first in insertion order — checkbox
+                # order — so the comparator the headline claim is made against
+                # moved with the order the analyst ticked the boxes, and a bare
+                # except silently computed it on raw arrays instead.
+                from ml.baseline_models import prepare_baseline_matrices
+                try:
+                    X_train_t, X_test_t, _baseline_prep = prepare_baseline_matrices(
+                        X_train_base, X_test_base)
+                except Exception as _baseline_err:
+                    X_train_t = None
+                    st.warning(
+                        f"Baselines were not computed: the baseline preprocessing "
+                        f"could not be fitted ({_baseline_err}). A baseline "
+                        f"computed on untransformed data is not the comparator "
+                        f"this table claims, so no number is shown."
+                    )
 
-                baselines = train_baseline_models(
-                    X_train_t, np.array(y_train_base),
-                    X_test_t, np.array(y_test_base),
-                    task_type=data_config.task_type or "regression",
-                )
-                st.session_state["baseline_results"] = baselines
+                if X_train_t is not None:
+                    baselines = train_baseline_models(
+                        X_train_t, np.array(y_train_base),
+                        X_test_t, np.array(y_test_base),
+                        task_type=data_config.task_type or "regression",
+                        preprocessing_description=_baseline_prep,
+                    )
+                    st.session_state["baseline_results"] = baselines
 
         if st.session_state.get("baseline_results"):
             baselines = st.session_state["baseline_results"]
             _xte_b = st.session_state.get('X_test')
+            _bl_prep_note = next(
+                (b.get("preprocessing") for b in baselines.values() if b.get("preprocessing")),
+                "")
             st.caption(f"Baselines are evaluated on the same held-out test set "
-                       f"(n={len(_xte_b) if _xte_b is not None else 0}), on the original target scale.")
+                       f"(n={len(_xte_b) if _xte_b is not None else 0}), on the original target scale."
+                       + (f" Baseline features: {_bl_prep_note} — the baselines' own "
+                          f"preprocessing, not any trained model's pipeline."
+                          if _bl_prep_note else ""))
             for bname, bres in baselines.items():
                 st.markdown(f"**{bname}:** {bres['description']}")
                 cols_b = st.columns(len(bres["metrics"]))
@@ -2678,7 +2723,11 @@ if st.session_state.get('trained_models'):
                                 'issue': 'Severe Class Imbalance',
                                 'severity': 'HIGH',
                                 'description': f'Minority class is only {minority_pct:.1f}% of data',
-                                'action': 'Use stratified splits (already done), consider class weights, or collect more minority samples.'
+                                # `GUIDED-049`: "consider class weights" was the contraindicated
+                # half; penalization is the registry's named remedy and was absent.
+                'action': ('Use stratified splits (already done), penalize the fit '
+                           '(ridge/LASSO), or collect more minority samples. '
+                           'Rebalancing is contraindicated for a risk model.')
                             })
                     except Exception:
                         pass  # Skip if class imbalance check fails
@@ -2750,7 +2799,16 @@ Poor performance may be due to:
                     from ml.pipeline import get_pipeline_recipe
                     st.subheader("Preprocessing used")
                     st.caption(f"Pipeline for **{name.upper()}**")
-                    st.code(get_pipeline_recipe(fitted_prep), language=None)
+                    # The row filter is part of the recipe, and it is not on the
+                    # fitted object: without the mode this recipe silently drops
+                    # the "rows filtered to NHANES range" line the export keeps.
+                    _recipe_cfg = ((st.session_state.get("preprocessing_config_by_model") or {}).get(name)
+                                   or st.session_state.get("preprocessing_config") or {})
+                    st.code(
+                        get_pipeline_recipe(
+                            fitted_prep,
+                            plausibility_mode=_recipe_cfg.get("plausibility_mode")),
+                        language=None)
                     st.markdown("---")
 
                 st.subheader("Test Set Metrics")
@@ -2759,6 +2817,16 @@ Poor performance may be due to:
                 for i, (metric_name, metric_value) in enumerate(metrics.items()):
                     with metric_cols[i]:
                         st.metric(metric_name, f"{metric_value:.4f}")
+                _scoring = results.get("test_scoring")
+                if _scoring:
+                    # `MINE-027`: these tiles are not the held-out metrics unless
+                    # the denominator is stated with them.
+                    st.caption(
+                        f"Computed on {_scoring['n_scored']} of "
+                        f"{_scoring['n_pairs']} held-out rows; "
+                        f"{_scoring['n_dropped_nonfinite']} non-finite "
+                        f"prediction pair(s) could not be scored."
+                    )
 
                 if name == "nn" and results.get("history", {}).get("train_loss"):
                     st.subheader("Learning Curves")

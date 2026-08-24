@@ -21,6 +21,26 @@ class FeatureSelectionResult:
     description: str
 
 
+# `STATE-010`. Every penalized selector below compares coefficients against a
+# single penalty, so on raw columns the ranking is a function of the unit each
+# variable happens to be recorded in: the same analyte in mg/dL and in mmol/L
+# differs by ~18x in coefficient scale and is shrunk accordingly. Which
+# predictors reach the published model must not depend on that choice, so the
+# design matrix is standardized before the penalty and the coefficients these
+# methods report are standardized coefficients. The caller has already scoped X
+# to training rows (the lockbox), so fitting the scaler here leaks nothing.
+_STANDARDIZED_NOTE = (
+    "Features are standardized before fitting, so the penalty is comparable "
+    "across columns and the coefficients are standardized ones."
+)
+
+
+def _standardized(X: np.ndarray) -> np.ndarray:
+    """Zero-mean, unit-variance copy of X (constant columns left at zero)."""
+    from sklearn.preprocessing import StandardScaler
+    return StandardScaler().fit_transform(np.asarray(X, dtype=float))
+
+
 def lasso_path_selection(
     X: np.ndarray,
     y: np.ndarray,
@@ -35,6 +55,8 @@ def lasso_path_selection(
     Shows how feature coefficients change with increasing regularization,
     identifying the most robust predictors.
     """
+    X = _standardized(X)
+
     if task_type == "regression":
         import inspect
         from sklearn.linear_model import LassoCV, lasso_path
@@ -74,6 +96,7 @@ def lasso_path_selection(
         "optimal_alpha": float(optimal_alpha),
         "n_selected": len(selected),
         "coefficients": {f: float(c) for f, c in zip(feature_names, coefs)},
+        "standardized": True,
     }
     if alphas is not None:
         details["alphas"] = alphas.tolist()
@@ -86,7 +109,8 @@ def lasso_path_selection(
         scores=scores,
         details=details,
         description=f"LASSO selected {len(selected)}/{len(feature_names)} features "
-                    f"at optimal α={optimal_alpha:.4f} ({cv_folds}-fold CV).",
+                    f"at optimal α={optimal_alpha:.4f} ({cv_folds}-fold CV). "
+                    f"{_STANDARDIZED_NOTE}",
     )
 
 
@@ -105,6 +129,10 @@ def rfe_cv_selection(
     subset that maximizes CV performance.
     """
     from sklearn.feature_selection import RFECV
+
+    # RFE ranks by coefficient magnitude under a penalized estimator, so it
+    # carries the same unit dependence as the LASSO path (`STATE-010`).
+    X = _standardized(X)
 
     if task_type == "regression":
         from sklearn.linear_model import Ridge
@@ -138,7 +166,8 @@ def rfe_cv_selection(
         scores=scores,
         details=details,
         description=f"RFE-CV selected {len(selected)}/{len(feature_names)} features "
-                    f"as the optimal subset ({cv_folds}-fold CV).",
+                    f"as the optimal subset ({cv_folds}-fold CV). "
+                    f"{_STANDARDIZED_NOTE}",
     )
 
 
@@ -219,17 +248,39 @@ def stability_selection(
     threshold: float = 0.6,
     sample_fraction: float = 0.5,
     random_state: int = 42,
+    min_success_fraction: float = 0.5,
 ) -> FeatureSelectionResult:
     """Stability selection (Meinshausen & Bühlmann, 2010).
 
     Runs LASSO on random subsamples and selects features that are
     consistently chosen across subsamples.
+
+    Raises
+    ------
+    RuntimeError
+        When fewer than ``min_success_fraction`` of the subsample fits
+        succeed. Subsample fits do not fail at random — a rare outcome class
+        excluded from a subsample fails every time it is excluded — so the
+        surviving fits are not a fair sample of the resampling distribution
+        and no probability computed from them would mean what it says.
     """
     from sklearn.linear_model import Lasso, LogisticRegression
 
     rng = np.random.RandomState(random_state)
     n, p = X.shape
     selection_counts = np.zeros(p)
+    # `MINE-011`. A fit that never ran is not evidence that a feature was not
+    # selected, and the denominator has to say so: counts were divided by the
+    # ATTEMPTED bootstraps while failures were skipped, so every probability
+    # came back deflated by the failure rate and the threshold then dropped
+    # features the run had never actually voted on.
+    n_succeeded = 0
+    n_failed = 0
+    first_error = ""
+
+    # `STATE-010`. Fixed absolute alphas on raw columns make the selection a
+    # function of measurement units.
+    X = _standardized(X)
 
     for i in range(n_bootstrap):
         # Random subsample
@@ -249,20 +300,47 @@ def stability_selection(
             model.fit(X_sub, y_sub)
             coefs = model.coef_.ravel() if model.coef_.ndim > 1 else model.coef_
             selection_counts += (np.abs(coefs) > 1e-10).astype(float)
-        except Exception:
+            n_succeeded += 1
+        except Exception as exc:
+            n_failed += 1
+            if not first_error:
+                first_error = f"{type(exc).__name__}: {exc}"
             continue
 
-    # Selection probability
-    selection_probs = selection_counts / n_bootstrap
+    if n_succeeded < max(1, int(np.ceil(min_success_fraction * n_bootstrap))):
+        raise RuntimeError(
+            f"Stability selection refused: only {n_succeeded} of {n_bootstrap} "
+            f"subsample fits succeeded ({n_failed} failed). Selection "
+            f"probabilities computed from this many fits would not be the "
+            f"fraction of subsamples they are read as — the failures are not "
+            f"random (a subsample missing a rare outcome class fails every "
+            f"time). First failure: {first_error or 'unknown'}."
+        )
+
+    # Selection probability over the fits that ACHIEVED a result, never over
+    # the ones attempted.
+    selection_probs = selection_counts / n_succeeded
     selected = [f for f, p in zip(feature_names, selection_probs) if p >= threshold]
     scores = {f: float(p) for f, p in zip(feature_names, selection_probs)}
 
     details = {
         "selection_probabilities": scores,
         "threshold": threshold,
-        "n_bootstrap": n_bootstrap,
+        "n_bootstrap": n_bootstrap,  # attempted
+        "n_fits_succeeded": n_succeeded,
+        "n_fits_failed": n_failed,
+        "first_fit_error": first_error,
         "sample_fraction": sample_fraction,
+        "standardized": True,
     }
+
+    failure_note = ""
+    if n_failed:
+        failure_note = (
+            f" {n_failed} of {n_bootstrap} subsample fits failed and are "
+            f"excluded from the denominator (first failure: "
+            f"{first_error or 'unknown'})."
+        )
 
     return FeatureSelectionResult(
         method="Stability Selection",
@@ -271,7 +349,8 @@ def stability_selection(
         scores=scores,
         details=details,
         description=f"Stability selection found {len(selected)}/{len(feature_names)} features "
-                    f"with selection probability ≥{threshold} across {n_bootstrap} subsamples.",
+                    f"with selection probability ≥{threshold} across {n_succeeded} "
+                    f"completed subsamples.{failure_note} {_STANDARDIZED_NOTE}",
     )
 
 
@@ -280,12 +359,17 @@ def consensus_features(results: List[FeatureSelectionResult], min_methods: int =
 
     Args:
         results: List of FeatureSelectionResult from different methods
-        min_methods: Minimum number of methods that must select a feature
+        min_methods: Minimum number of methods that must select a feature.
+            Floored at 2: agreement between methods is what the word
+            "consensus" claims, and a threshold of 1 returns the union of
+            every method's picks under that name.
 
     Returns:
         List of consensus features
     """
     from collections import Counter
+
+    min_methods = max(2, int(min_methods))
 
     counts = Counter()
     for r in results:

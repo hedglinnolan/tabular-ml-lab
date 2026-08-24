@@ -12,7 +12,8 @@ from typing import List, Dict, Any, Optional
 
 from utils.session_state import (
     init_session_state, get_data, DataConfig, set_preprocessing_pipeline, set_preprocessing_pipelines,
-    TaskTypeDetection, log_methodology,
+    TaskTypeDetection, log_methodology, reset_downstream_results,
+    ensure_dataset_profile,
 )
 from utils.storyline import render_breadcrumb, render_page_navigation
 from ml.pipeline import (
@@ -22,6 +23,8 @@ from ml.pipeline import (
     build_unit_harmonization_config,
     build_plausibility_bounds,
     apply_plausibility_filter,
+    NUMERIC_IMPUTATION_COST,
+    scaling_from_recipe,
 )
 from ml.model_registry import get_registry
 from data_processor import get_numeric_columns
@@ -174,8 +177,10 @@ if _log_engineered or _power_engineered or _pca_engineered:
     The preprocessing pipeline below will **auto-exclude** these from redundant transforms.
     """)
 
-# Get profile and EDA results for recommendations
-profile = st.session_state.get('dataset_profile')
+# Get profile and EDA results for recommendations. `DRIVE-073`: applying a
+# feature selection clears the profile, and every recommendation cue below
+# silently reads False without it. Recomputed for the current feature set.
+profile = ensure_dataset_profile()
 eda_results = st.session_state.get('eda_results', {})
 
 # EDA-based recommendation cues (for display next to options)
@@ -212,8 +217,18 @@ if _profile:
 
                 # ── Evidence probe: measure instead of guessing ──
                 if _probe_result is None:
+                    # MINE-005's shape: `train_row_mask` returns an all-True mask
+                    # both when the quarantine is off and when nothing was ever
+                    # sealed, so "TRAINING rows only" was a claim about an
+                    # exclusion that may not have happened. Ask the seal.
+                    from utils.test_lockbox import quarantine_is_active as _probe_quarantine
+                    _probe_rows_phrase = (
+                        "TRAINING rows only (the sealed test rows are excluded)"
+                        if _probe_quarantine() else
+                        "every row with a target — no test set is sealed in this "
+                        "session, so nothing is held back from the probe")
                     if st.button("🔬 Run evidence probe (~10 s)", key="run_coach_probe",
-                                 help="Quick seeded cross-validation on TRAINING rows only: "
+                                 help=f"Quick seeded cross-validation on {_probe_rows_phrase}: "
                                       "is there learnable signal, does non-linearity pay, "
                                       "would more data help? Advisory — never a reportable result."):
                         from ml.coach_probe import run_probe
@@ -222,11 +237,25 @@ if _profile:
                         _pm = df[target_col].notna() & train_row_mask(df.index)
                         _feats_probe = [c for c in (st.session_state.get("selected_features")
                                                     or all_features) if c in df.columns]
+                        # AUDIT-009. The probe's folds are grouped by the
+                        # recorded entity when the cohort is longitudinal.
+                        # `cohort_structure_detection` has held both answers
+                        # since upload; this path was the one not reading them,
+                        # and the ranking the coach shows was computed on folds
+                        # a subject could span.
+                        _cohort = st.session_state.get("cohort_structure_detection")
+                        _entity = getattr(_cohort, "entity_id_final", None) if _cohort else None
+                        _longitudinal = (getattr(_cohort, "final", None)
+                                         == "longitudinal") if _cohort else False
+                        _groups = (df.loc[_pm, _entity].to_numpy()
+                                   if _longitudinal and _entity and _entity in df.columns
+                                   else None)
                         with st.spinner("Probing training rows (seeded, advisory)…"):
                             _pr = run_probe(df.loc[_pm, _feats_probe],
                                             df.loc[_pm, target_col],
                                             task_type=_profile.target_profile.task_type
-                                            if _profile.target_profile else "regression")
+                                            if _profile.target_profile else "regression",
+                                            groups=_groups)
                         st.session_state["coach_probe_result"] = _pr
 
                         # Ledger: probe findings that belong in the record
@@ -320,6 +349,7 @@ try:
                 finding=_pi["finding"],
                 implication=_pi["implication"],
                 recommended_action=_pi["recommended_action"],
+                manuscript_text=_pi.get("manuscript_text", ""),
                 model_scope=_pi.get("model_scope", []),
                 relevant_pages=_pi.get("relevant_pages", []),
                 theory_anchor=_pi.get("theory_anchor", ""),
@@ -448,6 +478,15 @@ config_mode = st.radio(
 use_smart_defaults = "Smart" in config_mode
 
 if use_smart_defaults:
+    # `AUDIT-007`. BEFORE this sentence listed "missing values → median
+    # imputation + missing indicators" and stopped, on the path where the
+    # per-model configuration block below is skipped entirely — so a user on
+    # the default path is given median imputation, is never shown the
+    # imputation control, and cannot reach MICE without first switching mode.
+    # AFTER it still lists the same defaults, and states what the one the user
+    # cannot see costs. `CLINICAL_SURVEY_PACK.md` §A2 anti-pattern 2 is
+    # **[SETTLED as bad]**; the cost string is `ml.pipeline`'s, beside the
+    # branch that constructs the imputer.
     render_guidance(
         "<strong>Smart Defaults</strong> will automatically configure preprocessing based on your data profile: "
         "missing values → median imputation + missing indicators; "
@@ -455,6 +494,14 @@ if use_smart_defaults:
         "linear models → standard scaling; "
         "tree models → minimal preprocessing. "
         "You can switch to Advanced mode anytime to fine-tune."
+    )
+    st.warning(
+        f"**What the median default costs.** {NUMERIC_IMPUTATION_COST['median']} "
+        f"Multiple imputation (MICE) preserves what a single fill cannot, and it "
+        f"is **not on this path** — the per-model controls, including the "
+        f"imputation choice, are only rendered under **🔧 Advanced (full "
+        f"control)**.",
+        icon="⚠️",
     )
 
     # Auto-detect best settings from EDA
@@ -490,13 +537,35 @@ interpretability_mode = st.selectbox(
     help="Controls whether advanced transforms (PCA, KMeans, log) are allowed. High keeps pipelines simple and explainable.",
 )
 
+# `AUDIT-013`. Every scaling decision on this page now comes from
+# `ml.pipeline.scaling_from_recipe`, which asks `turbotab.recipes.resolve` —
+# the precedence lattice, including any pack row registered against
+# `caps:requires_scaled_numeric`. BEFORE, all four sites read
+# `spec.capabilities.requires_scaled_numeric` off the registry and hard-coded
+# `"standard"` from it, so a pack override could not reach the Classic door
+# while the page's sentences went on attributing the choice to the model's
+# declared requirement. The docstring on `scaling_from_recipe` carries the rest,
+# including why the table's answer is not routed straight into the builder.
+_recipe_scale_departures: Dict[str, str] = {}
+
+
+def _scale_decision(model_key: str, data_choice: str) -> Dict[str, Any]:
+    """The table's answer for one model, with this page's fallback folded in."""
+    d = scaling_from_recipe(model_key, registry_prep, fallback="standard")
+    if d["departure"]:
+        _recipe_scale_departures[model_key] = d["departure"]
+    # `applied` is None exactly when the table did not require scaling (or could
+    # not be asked), and WHICH scaling to use then is a judgment about this
+    # data, which is what `data_choice` carries.
+    d["effective"] = d["applied"] or data_choice
+    return d
+
+
 # When using smart defaults, set session state values automatically
 if use_smart_defaults:
-    # Smart defaults: auto-upgrade scaling for models that need it
+    # Smart defaults: auto-upgrade scaling for models the recipe table requires it for
     for _mk in (selected_models if selected_models else ["default"]):
-        _spec = registry_prep.get(_mk)
-        _needs_scale = _spec and _spec.capabilities and getattr(_spec.capabilities, "requires_scaled_numeric", False)
-        st.session_state[f"preprocess_{_mk}_numeric_scaling"] = "standard" if _needs_scale else _auto_scaling
+        st.session_state[f"preprocess_{_mk}_numeric_scaling"] = _scale_decision(_mk, _auto_scaling)["effective"]
         st.session_state[f"preprocess_{_mk}_numeric_imputation"] = _auto_imputation
         st.session_state[f"preprocess_{_mk}_numeric_missing_indicators"] = _auto_missing_indicators
         st.session_state[f"preprocess_{_mk}_numeric_outlier_treatment"] = _auto_outlier
@@ -517,6 +586,9 @@ if use_smart_defaults:
         st.session_state[f"preprocess_{_mk}_use_kmeans"] = False
         st.session_state[f"preprocess_{_mk}_plausibility_gating"] = False
         st.session_state[f"preprocess_{_mk}_unit_harmonization"] = False
+
+    for _dep_mk, _dep in sorted(_recipe_scale_departures.items()):
+        st.warning(f"**{_dep_mk.upper()}** — {_dep}", icon="⚠️")
 
 def _interpretability_guidance(
     profile: Optional[Any],
@@ -584,11 +656,24 @@ else:
             _c_miss1, _c_miss2 = st.columns(2)
             with _c_miss1:
                 _imp_options = ["median", "mean", "iterative (MICE)", "constant"]
+                # `AUDIT-007`. BEFORE, "median" read *"Robust to skewed
+                # distributions. Most common default."* and "mean" read
+                # *"Assumes symmetry. Sensitive to outliers…"* — an endorsement
+                # and a caveat about the wrong thing, on the two options
+                # `CLINICAL_SURVEY_PACK.md` §A2 anti-pattern 2 settles as bad
+                # and cross-cutting item 11 says must never appear without a
+                # loud warning. AFTER, each option carries §A2's cost, from
+                # `ml.pipeline` so the sentence sits beside the branch that
+                # builds the imputer. The true half of each old sentence is
+                # kept; nothing is removed and no option is taken away.
                 _imp_help = {
-                    "median": "Robust to skewed distributions. Most common default.",
-                    "mean": "Assumes symmetry. Sensitive to outliers — use only if features are roughly Gaussian.",
-                    "iterative (MICE)": "Gold standard for clinical research. Models each feature conditioned on others. Recommended when >5% data is missing (Rubin, 1987).",
-                    "constant": "Fills with a fixed value (e.g., 0). Use when missingness has domain meaning.",
+                    "median": NUMERIC_IMPUTATION_COST["median"],
+                    "mean": NUMERIC_IMPUTATION_COST["mean"],
+                    "iterative (MICE)": (
+                        "Recommended when >5% of data is missing (Rubin, 1987). "
+                        + NUMERIC_IMPUTATION_COST["iterative"]
+                    ),
+                    "constant": NUMERIC_IMPUTATION_COST["constant"],
                 }
                 _stored_imp = _cfg(_mk, "numeric_imputation", "median")
                 if _stored_imp == "iterative":
@@ -725,11 +810,16 @@ else:
                 else:
                     _ot = "none"
             with _c_out2:
+                # `DRIVE8-30`/`MISC-018`. Page 02's nudge sends the reader here
+                # for "plausibility filtering" and this control was labeled
+                # "Domain-specific range filtering" — the word the pointer uses
+                # appeared nowhere on the page. The help also said "reference
+                # ranges", the register `ml/physiology_reference.py` disavows.
                 _pg = st.checkbox(
-                    "Domain-specific range filtering",
+                    "Plausibility filtering (domain-specific ranges)",
                     value=bool(_cfg(_mk, "plausibility_gating", False)),
                     key=f"preprocess_{_mk}_plausibility_gating",
-                    help="Apply domain-specific plausible ranges (e.g., NHANES reference ranges for biomarkers). Values outside the range are clipped or filtered.",
+                    help="Apply domain-specific plausible ranges (e.g., the NHANES p01–p99 improbability band for biomarkers). Values outside the range are clipped or filtered.",
                 )
                 if _pg:
                     _pm = safe_option_index(["clip", "filter"], _cfg(_mk, "plausibility_mode", "clip"), "clip")
@@ -799,11 +889,12 @@ else:
                 "🧪 Cluster-based features (experimental)",
                 value=_uk,
                 key=f"preprocess_{_mk}_use_kmeans",
-                help="Adds distance-to-centroid columns that capture nonlinear cluster structure in your data.",
+                help="Adds distance-to-centroid columns alongside your predictors, capturing nonlinear cluster structure in your data.",
             )
             if _uk:
                 st.warning(
-                    "⚠️ **Experimental feature.** Adds derived columns (distance to each KMeans centroid). "
+                    "⚠️ **Experimental feature.** Adds derived columns (distance to each KMeans centroid) "
+                    "**alongside** your existing predictors, which are kept. "
                     "Increases feature count. Makes SHAP/coefficient interpretation harder — "
                     "'distance to cluster 3' is not meaningful to domain experts. "
                     "Most useful for neural nets or when you suspect latent subgroups in your data."
@@ -831,9 +922,9 @@ if use_smart_defaults and selected_models:
     _summary_cols = st.columns(min(len(selected_models), 4))
     for _si, _sm in enumerate(selected_models):
         with _summary_cols[_si % len(_summary_cols)]:
-            _spec = registry_prep.get(_sm)
-            _needs_scale = _spec and _spec.capabilities and getattr(_spec.capabilities, "requires_scaled_numeric", False)
-            _effective_scaling = "standard" if _needs_scale else _auto_scaling
+            _sd = _scale_decision(_sm, _auto_scaling)
+            _needs_scale = bool(_sd["required"])
+            _effective_scaling = _sd["effective"]
             st.markdown(f"""
             <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.6rem; margin-bottom: 0.4rem; font-size: 0.85rem;">
                 <strong>{_sm.upper()}</strong><br/>
@@ -842,6 +933,30 @@ if use_smart_defaults and selected_models:
                 {"· Scaling auto-upgraded" if _needs_scale and _auto_scaling != "standard" else ""}
             </div>
             """, unsafe_allow_html=True)
+
+
+def _invalidate_on_row_filter_change(new_index) -> None:
+    """Clear downstream results when the plausibility filter changes WHO is in.
+
+    `STATE-037`: get_data() masks every page's frame by filtered_data whenever
+    it exists, so writing (or dropping) it here changes the row set every
+    downstream stage was computed on. Building pipelines used to write the key
+    with no invalidation, leaving splits, models and metrics describing a
+    different set of people — a divergence page 07 now refuses on, which is
+    better caught before it exists. Only a genuine change fires: rebuilding
+    with the same filter must not destroy a trained model.
+    """
+    prev = st.session_state.get("filtered_data")
+    prev_labels = None if prev is None else frozenset(prev.index)
+    new_labels = None if new_index is None else frozenset(new_index)
+    if new_labels == prev_labels:
+        return
+    # The engineered frame and the feature selection are inputs to this page,
+    # not results of it.
+    reset_downstream_results(clear_feature_engineering=False,
+                             restore_pre_fe_features=False,
+                             clear_feature_selection=False)
+
 
 if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_button"):
     try:
@@ -854,9 +969,23 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             def _get(mk: str, key: str, default: Any) -> Any:
                 return st.session_state.get(f"preprocess_{mk}_{key}", default)
 
+            # `STATE-037`, second half: the module-level `df` above is already
+            # MASKED by the filtered_data this button wrote last time — get_data()
+            # applies the row filter to every page. Deriving the unit factors, the
+            # bounds and the filter from it and writing the result back to
+            # filtered_data is a ratchet: each press filters the filtered, so
+            # rebuilding can only ever remove more people, and WIDENING a bound
+            # restores nobody. Measured on a 100-row study, 23 rows stayed excluded
+            # under bounds that admitted them. The row filter is recomputed from
+            # the unmasked base frame so that what is written reflects the current
+            # bounds and nothing else.
+            df_base = get_data(apply_row_filter=False)
+            if df_base is None:
+                df_base = df
+
             any_unit = any(_get(mk, "unit_harmonization", False) for mk in model_keys)
             unit_overrides = st.session_state.get("unit_overrides", {})
-            unit_config = build_unit_harmonization_config(df, numeric_features, unit_overrides) if any_unit else None
+            unit_config = build_unit_harmonization_config(df_base, numeric_features, unit_overrides) if any_unit else None
             any_plaus = any_unit and any(_get(mk, "plausibility_gating", False) for mk in model_keys)
             plausibility_bounds = build_plausibility_bounds(numeric_features, unit_config["conversion_factors"]) if (unit_config and any_plaus) else None
 
@@ -876,11 +1005,24 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     notes.append("Disabled KMeans features for interpretability.")
                 return notes
 
-            def apply_model_requirements(c: Dict[str, Any], caps: Any) -> List[str]:
+            def apply_model_requirements(c: Dict[str, Any], model_key: str) -> List[str]:
+                """`AUDIT-013`: the recipe table decides, and the note says so.
+
+                BEFORE this read `caps.requires_scaled_numeric` and appended
+                "Enabled standard scaling (model requires scaling)" — a
+                sentence attributing the choice to a table it had not read.
+                """
                 notes = []
-                if caps and getattr(caps, "requires_scaled_numeric", False) and c.get("numeric_scaling") == "none":
-                    c["numeric_scaling"] = "standard"
-                    notes.append("Enabled standard scaling (model requires scaling).")
+                d = _scale_decision(model_key, c.get("numeric_scaling") or "none")
+                if d["required"] and c.get("numeric_scaling") == "none":
+                    c["numeric_scaling"] = d["applied"]
+                    notes.append(
+                        f"Enabled {d['applied']} scaling — the recipe table's "
+                        f"row for this model (`{d['selector']}`, from "
+                        f"`{d['origin']}`) requires scaling."
+                    )
+                    if d["departure"]:
+                        notes.append(d["departure"])
                 return notes
 
             pipelines_by_model = {}
@@ -892,13 +1034,50 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             if any_filter:
                 uf_list = unit_config["conversion_factors"] if unit_config else None
                 filtered_df = apply_plausibility_filter(
-                    df, numeric_features, plausibility_bounds, uf_list
+                    df_base, numeric_features, plausibility_bounds, uf_list
                 )
+                # Constitution 04: a robustness trim applies to the TRAINING
+                # partition only, and "also trim the test set to match" is
+                # permanently off the menu. This filter used to run over the
+                # whole frame and write the result to filtered_data, which
+                # get_data() serves to every page -- so it silently removed
+                # sealed rows. Measured: a 60-row seal came back as 53 while
+                # the chip still said 60 (STATE-101).
+                #
+                # Sealed rows are put back whole. They obey ELIGIBILITY, which
+                # is pre-seal and changes N in the flow diagram; they do not
+                # obey a post-seal trim, which is a fitting decision about the
+                # training data. A user who genuinely wants the narrower
+                # population is routed back to the pre-seal question, which
+                # requires a re-seal and is its own logged decision.
+                from utils.test_lockbox import get_lockbox as _get_lb, is_exploratory as _is_exp
+                _lb_now = _get_lb()
+                if _lb_now and not _is_exp():
+                    _sealed = [l for l in _lb_now["labels"] if l in df_base.index]
+                    _restored = [l for l in _sealed if l not in filtered_df.index]
+                    if _restored:
+                        filtered_df = pd.concat(
+                            [filtered_df, df_base.loc[_restored]]).loc[
+                                [i for i in df_base.index
+                                 if i in set(filtered_df.index) | set(_restored)]]
+                        st.info(
+                            f"Plausibility filtering removed rows from the training "
+                            f"data only. {len(_restored):,} held-out row(s) were out "
+                            f"of range and have been kept: the sealed test set is "
+                            f"never trimmed to match a training-side decision. If "
+                            f"those values are genuinely impossible rather than "
+                            f"extreme, that is an eligibility criterion and belongs "
+                            f"before the split, on Upload & Audit."
+                        )
+                _invalidate_on_row_filter_change(filtered_df.index)
                 st.session_state["filtered_data"] = filtered_df
                 sample_source = filtered_df
             else:
+                _invalidate_on_row_filter_change(None)
                 st.session_state.pop("filtered_data", None)
-                sample_source = df
+                # The base, not `df`: with the filter now off, the previous
+                # press's mask is exactly what must not survive into this build.
+                sample_source = df_base
             X_sample = sample_source[all_features]
 
             # Target Encoding is the only step that reads y at fit time, and it
@@ -975,15 +1154,38 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     model_config["plausibility_bounds"] = plausibility_bounds
 
                 override_notes = []
-                spec = registry.get(model_key)
-                caps = spec.capabilities if spec else None
                 override_notes.extend(apply_interpretability_overrides(model_config, imode))
-                override_notes.extend(apply_model_requirements(model_config, caps))
+                override_notes.extend(apply_model_requirements(model_config, model_key))
 
                 uf = unit_config["conversion_factors"] if unit_config and use_unit else None
                 pb = plausibility_bounds if use_plaus and plausibility_bounds else None
                 pmode = model_config["plausibility_mode"]
 
+                # STATE-003. `uf` and `pb` are POSITIONAL lists built over the
+                # full `numeric_features`; the real build below passes
+                # `numeric_features_safe`, which drops the already-transformed
+                # engineered columns. Handing the unfiltered lists to a filtered
+                # column set applies bound j to column j' != j — an NHANES band
+                # for one biomarker gating another, every out-of-range value
+                # turned to NaN and median-imputed by the very next step, with
+                # the recipe still reading "Plausibility gate (NHANES)".
+                # UnitHarmonizer raised on the mismatch; PlausibilityGate
+                # truncated in silence. Realigned BY NAME here, so both operators
+                # see the columns their numbers were computed for.
+                def _align_to(cols: List[str]):
+                    _uf = None
+                    if uf is not None:
+                        _by_name = dict(zip(numeric_features, uf))
+                        _uf = [_by_name.get(c, 1.0) for c in cols]
+                    _pb = None
+                    if pb is not None:
+                        _bounds = pb.get("bounds_by_feature", {})
+                        _pb = dict(pb)
+                        _pb["lower_bounds"] = [(_bounds.get(c) or {}).get("lower") for c in cols]
+                        _pb["upper_bounds"] = [(_bounds.get(c) or {}).get("upper") for c in cols]
+                    return _uf, _pb
+
+                _uf_temp, _pb_temp = _align_to(numeric_features)
                 temp_pipeline = build_preprocessing_pipeline(
                     numeric_features=numeric_features,
                     categorical_features=categorical_features,
@@ -994,8 +1196,8 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     numeric_missing_indicators=model_config["numeric_missing_indicators"],
                     numeric_outlier_treatment=model_config["numeric_outlier_treatment"],
                     numeric_outlier_params=model_config["numeric_outlier_params"],
-                    unit_harmonization_factors=uf,
-                    plausibility_bounds=pb,
+                    unit_harmonization_factors=_uf_temp,
+                    plausibility_bounds=_pb_temp,
                     plausibility_mode=pmode,
                     categorical_imputation=model_config["categorical_imputation"],
                     categorical_encoding=model_config["categorical_encoding"],
@@ -1036,6 +1238,7 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                 _all_excluded = _exclude_from_log | _exclude_from_power | _exclude_from_pca
                 numeric_features_safe = [f for f in numeric_features if f not in _all_excluded]
                 numeric_features_passthrough = [f for f in numeric_features if f in _all_excluded]
+                _uf_safe, _pb_safe = _align_to(numeric_features_safe)
 
                 pipeline = build_preprocessing_pipeline(
                     numeric_features=numeric_features_safe,
@@ -1048,8 +1251,8 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     numeric_missing_indicators=model_config["numeric_missing_indicators"],
                     numeric_outlier_treatment=model_config["numeric_outlier_treatment"],
                     numeric_outlier_params=model_config["numeric_outlier_params"],
-                    unit_harmonization_factors=uf,
-                    plausibility_bounds=pb,
+                    unit_harmonization_factors=_uf_safe,
+                    plausibility_bounds=_pb_safe,
                     plausibility_mode=pmode,
                     categorical_imputation=model_config["categorical_imputation"],
                     categorical_encoding=model_config["categorical_encoding"],
@@ -1119,21 +1322,42 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             high_card = bool(profile and getattr(profile, "high_cardinality_features", None))
             model_check_bullets = []
             for mk, cfg in configs_by_model.items():
-                spec = registry.get(mk)
-                caps = spec.capabilities if spec else None
                 scaling = cfg.get("numeric_scaling", "standard")
                 ov = cfg.get("overrides", [])
                 parts = [f"{mk.upper()}:"]
-                if caps and getattr(caps, "requires_scaled_numeric", False):
+                # `AUDIT-013`. BEFORE: "scaling enabled ({scaling}); appropriate
+                # for this model." and, on the other branch, "no scaling; fine
+                # for tree models." The first asserts the applied scaler is the
+                # right one — which is exactly the question a pack row can
+                # answer differently — and the second asserts the model is a
+                # tree, which `caps.requires_scaled_numeric == False` does not
+                # say (Probabilistic models are on that branch too). AFTER: the
+                # page reports what the recipe table required and what was
+                # built, and calls a difference between them a difference.
+                _sd = _scale_decision(mk, scaling)
+                if not _sd["consulted"]:
+                    parts.append(
+                        f"scaling {scaling}; this pipeline is not tied to a "
+                        f"registered model, so the recipe table has no row for it."
+                    )
+                elif _sd["required"]:
                     if scaling == "none":
-                        parts.append("model requires scaling but you used none — consider enabling scaling.")
+                        parts.append(
+                            f"the recipe table requires {_sd['table_variant']} "
+                            f"scaling for this model and none was applied."
+                        )
+                    elif scaling == _sd["table_variant"]:
+                        parts.append(f"scaling {scaling}, as the recipe table requires.")
                     else:
-                        parts.append(f"scaling enabled ({scaling}); appropriate for this model.")
+                        parts.append(
+                            f"scaling {scaling} applied; the recipe table's row "
+                            f"for this model asks for {_sd['table_variant']}."
+                        )
                 else:
                     if scaling != "none":
-                        parts.append(f"scaling {scaling} (optional for tree models).")
+                        parts.append(f"scaling {scaling}; the recipe table does not require scaling here.")
                     else:
-                        parts.append("no scaling; fine for tree models.")
+                        parts.append("no scaling; the recipe table does not require it here.")
                 if any("interpretability" in str(o).lower() for o in ov):
                     parts.append("Interpretability overrides applied (e.g. PCA/KMeans disabled).")
                 if high_card and cfg.get("categorical_encoding") == "onehot":
@@ -1144,12 +1368,23 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                 finding += " …"
             from utils.insight_ledger import Insight, get_ledger as _get_pp_resolve_ledger
             _pp_resolve_ledger = _get_pp_resolve_ledger()
+            # `DRIVE8-17`. This card is a preprocessing-consistency check — what
+            # the recipe table asked for per model and what was built. It is a
+            # neutral internal fact, and it was reaching the manuscript's
+            # Discussion as a STUDY LIMITATION: the Limitations semicolon list
+            # carried "…; Histogram Gradient Boosting (Classification): scaling
+            # robust; the recipe table does not require scaling here. …" with
+            # its own full stops inside it. `COACH-007`'s rule already names the
+            # route out — an audit-only insight is a record, not a finding about
+            # the study — and the per-model preprocessing it describes is
+            # already reported in Methods from the pipeline recipes.
             _pp_resolve_ledger.upsert(Insight(
                 id="preprocess_model_checks",
                 source_page="05_Preprocess", category="methodology", severity="info",
                 finding=finding,
                 implication="Review that preprocessing matches each model; adjust and rebuild if needed.",
                 relevant_pages=["06_Train_and_Compare"],
+                metadata={"audit_only": True},
             ))
             # Build structured per-model provenance for the ledger
             _per_model_provenance = {}
@@ -1250,7 +1485,7 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                 # eda_target_skew is deliberately NOT here: it concerns the target
                 # variable, which a feature power transform does not touch — it is
                 # resolved on Train & Compare when a target transform is applied.
-                for _skew_id in ["eda_skew_group"]:
+                for _skew_id in ["eda_skew_group", "preprocess_skewness_transform"]:
                     _ins = _pp_resolve_ledger.get(_skew_id)
                     if _ins and not _ins.resolved:
                         if _models_without:

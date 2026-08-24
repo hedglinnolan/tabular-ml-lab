@@ -251,7 +251,8 @@ with st.expander("🔍 Full Capabilities & Technical Details", expanded=False):
         **Evaluation Metrics:**
         - Bootstrap 95% CIs (BCa method, 1000 resamples)
         - Calibration: Brier score, ECE, reliability diagrams
-        - Decision curve analysis for clinical utility
+        - Decision curve analysis (net benefit): available as a library call
+          (`ml.calibration.decision_curve_analysis`), not yet wired into a page
         - Subgroup analysis with forest plots
         - Cross-validation with statistical comparisons
         """)

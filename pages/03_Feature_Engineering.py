@@ -10,6 +10,7 @@ AUDIT NOTE (Data Flow):
 - Edge case handled: fe_work_in_progress tracks feature set hash and resets when features change
 - Downstream invalidation: Saving FE clears preprocessing, models, splits, explainability
 """
+import math
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -53,6 +54,136 @@ def _build_transform_map(engineered_features, engineering_log):
         else:
             transform_map[feat] = "other"
     return transform_map
+
+
+# The engineering log is written as free text and read back as provenance:
+# ml/publication.py turns each entry into a named technique in the Methods
+# section, and narrative_engine joins them verbatim. So an entry is a CLAIM
+# about a feature the model saw.
+
+
+def _entry_feature_names(entry, universe):
+    """The feature names one log entry is about, from the names in its text.
+
+    `universe` is every name the entry could be talking about (survivors plus
+    the just-removed). Tokenized exactly — `age_x_bmi` in an entry does NOT
+    attribute it to `age_x_bmi_2`.
+    """
+    import re
+
+    tokens = set(re.findall(r"[A-Za-z0-9_.]+", str(entry)))
+    return tokens & set(universe)
+
+
+def _surviving_log_indices(engineering_log, engineered_features, removed,
+                           sources=None):
+    """Indices of the log entries that still describe a feature the model sees.
+
+    `STATE-027`: the removal path updated the frame and the name list and left
+    the log alone, so removing every feature a technique created still left the
+    Methods section asserting that technique was applied.
+
+    The first repair pruned by TECHNIQUE TAG — the tag of the entry's prefix
+    against the tags of the surviving feature names — and a tag is not an
+    attribution. It inverted both ways: `Custom Square (A²)` and `Math x²` both
+    tag `power`, so removing every mathematical transform left "Mathematical
+    transforms: +1 features" standing on the strength of a custom interaction's
+    survivor (a FALSE KEEP); and any removal at all pruned every entry whose tag
+    no surviving name happened to carry, so a single-feature polynomial (`age^2`
+    tags `other`, not `polynomial`) lost its log line while its feature lived on
+    in the frame (a FALSE DROP).
+
+    Attribution is now by NAME. An entry is dropped only when the features it
+    is attributable to include one of the REMOVED and none that survive; every
+    entry this page cannot attribute is kept, on every path, because a log we
+    cannot parse is not evidence that the work did not happen. `sources` is the
+    per-entry list of names the technique created, recorded by `_fe_commit` at
+    the moment it created them — the entries that state a count rather than a
+    name ("Polynomial degree 2 (full): +2 features") are attributable only
+    through it.
+    """
+    if not removed:
+        return list(range(len(engineering_log)))
+    removed = set(removed)
+    survivors = set(engineered_features)
+    universe = removed | survivors
+
+    keep = []
+    for idx, entry in enumerate(engineering_log):
+        produced = set((sources or [])[idx]) if sources and idx < len(sources) else set()
+        produced |= _entry_feature_names(entry, universe)
+        if produced and (produced & removed) and not (produced & survivors):
+            continue
+        keep.append(idx)
+    return keep
+
+
+def _prune_engineering_log(engineering_log, engineered_features, removed,
+                           sources=None):
+    """Drop log entries whose entire output has been removed."""
+    keep = _surviving_log_indices(engineering_log, engineered_features,
+                                  removed, sources)
+    return [engineering_log[i] for i in keep]
+
+
+def _fe_commit(X_engineered, engineered_features, engineering_log, removed=(),
+               created=()):
+    """The ONE writer of the work-in-progress keys.
+
+    The frame, the name list and the log are one state in three slots, and
+    twelve hand-written assignment triples meant the failure mode was always
+    the one you forgot (`STATE-027`). Every technique tab commits through here.
+
+    `created` is what the technique just made. It is recorded alongside the log
+    entry so a later removal can ask which entry the removed feature belongs to
+    instead of guessing from a technique tag — a count-only entry names nothing
+    and is otherwise unattributable forever.
+    """
+    wip = st.session_state.fe_work_in_progress
+    sources = list(wip.get('engineering_log_sources') or [])
+    n_new = len(engineering_log) - len(sources)
+    if n_new > 0:
+        # One appended entry owns everything this commit created. A commit that
+        # appends SEVERAL entries writes one per feature and names that feature
+        # in the entry text, so those are attributed by name instead.
+        sources += [list(created)] if n_new == 1 else [[] for _ in range(n_new)]
+    sources = sources[:len(engineering_log)]
+
+    keep = _surviving_log_indices(engineering_log, engineered_features,
+                                  removed, sources)
+    engineering_log = [engineering_log[i] for i in keep]
+    sources = [sources[i] for i in keep]
+
+    wip['X_engineered'] = X_engineered
+    wip['engineered_features'] = engineered_features
+    wip['engineering_log'] = engineering_log
+    wip['engineering_log_sources'] = sources
+    return engineering_log
+
+
+def _poly_new_feature_count(n_numeric: int, degree: int,
+                            interaction_only: bool) -> int:
+    """Columns `PolynomialFeatures` would ADD, for the settings on screen.
+
+    `DRIVE8-33`. The panel carried two different formulas for one quantity and
+    printed both — "Estimated new features ~190" beside "This will create ~209
+    features" — because one counted the added columns and the other the total,
+    under the same word. Neither read the interaction-only box. This counts the
+    terms the transform emits (`include_bias=False`) minus the degree-1 terms
+    the button drops as duplicates, which is exactly what the run appends.
+    """
+    n = max(int(n_numeric), 0)
+    if n == 0:
+        return 0
+    total = 0
+    for order in range(2, max(int(degree), 1) + 1):
+        if interaction_only:
+            # C(n, order): distinct products of `order` different columns.
+            total += math.comb(n, order) if order <= n else 0
+        else:
+            # Multisets of size `order` drawn from n columns: C(n+order-1, order).
+            total += math.comb(n + order - 1, order)
+    return total
 
 
 # Initialize
@@ -158,7 +289,10 @@ if ('fe_work_in_progress' not in st.session_state
     st.session_state.fe_work_in_progress = {
         'X_engineered': X.copy(),
         'engineered_features': [],
-        'engineering_log': []
+        'engineering_log': [],
+        # Parallel to engineering_log: what each entry created, so a removal can
+        # be attributed to the entry that made it (`STATE-027`).
+        'engineering_log_sources': []
     }
     st.session_state.fe_features_hash = _features_hash
     st.session_state.fe_reset_requested = False
@@ -301,23 +435,26 @@ with _fe_tabs[0]:
             help="Only create A×B, A×B×C, etc. Skip A², A³. Reduces feature count."
         )
     
-    with col3:
-        st.metric("Estimated new features", 
-                  f"~{len(numeric_features) * (len(numeric_features) + 1) // 2 if poly_degree == 2 else len(numeric_features) * 3:,}")
-    
-    # Feature explosion warning
+    # ONE estimator, ONE number (`DRIVE8-33`). The metric read "Estimated new
+    # features ~190" beside a warning saying "This will create ~209 features"
+    # in the same panel: two formulas for one quantity, neither reading the
+    # `interaction_only` box, and the degree-3 pair disagreeing again (n×3 vs
+    # n×4). Both surfaces now count the same thing — the columns the button
+    # will ADD — computed from what PolynomialFeatures actually emits.
     n_numeric = len(numeric_features)
-    if poly_degree == 2:
-        est_features = n_numeric + (n_numeric * (n_numeric + 1)) // 2 if not interaction_only else n_numeric + (n_numeric * (n_numeric - 1)) // 2
+    est_new = _poly_new_feature_count(n_numeric, poly_degree, interaction_only)
+
+    with col3:
+        st.metric("Estimated new features", f"~{est_new:,}")
+
+    # Feature explosion warning
+    _total_clause = f" ({n_numeric + est_new:,} numeric columns in total)"
+    if est_new > 500:
+        st.error(f"⚠️ **Feature explosion warning!** This will create ~{est_new:,} new features{_total_clause}. Strongly recommend running Feature Selection afterward.")
+    elif est_new > 100:
+        st.warning(f"⚠️ This will create ~{est_new:,} new features{_total_clause}. Feature selection recommended.")
     else:
-        est_features = n_numeric * 4  # Rough estimate
-    
-    if est_features > 500:
-        st.error(f"⚠️ **Feature explosion warning!** This will create ~{est_features:,} features. Strongly recommend running Feature Selection afterward.")
-    elif est_features > 100:
-        st.warning(f"⚠️ This will create ~{est_features:,} features. Feature selection recommended.")
-    else:
-        st.info(f"This will create ~{est_features:,} features.")
+        st.info(f"This will create ~{est_new:,} new features{_total_clause}.")
     
     if st.button("🔬 Generate Polynomial Features", key="poly_btn"):
         with st.spinner(f"Generating degree-{poly_degree} polynomial features..."):
@@ -359,9 +496,7 @@ with _fe_tabs[0]:
                     st.caption(f"Skipped {_skipped_dupes} polynomial feature(s) that already existed.")
                 
                 # Save back to session state
-                st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
-                st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
-                st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                _fe_commit(X_engineered, engineered_features, engineering_log, created=new_cols)
                 
                 st.success(f"✅ Created **{len(new_cols):,} polynomial features**")
                 st.rerun()  # Refresh to show updated summary
@@ -407,9 +542,7 @@ with _fe_tabs[0]:
                                        "Multiply (A \u00d7 B)": "*",
                                        "Divide (A / B)": "/"}.get(_ci_op, "*")},
                                [_new_col_name], _replay.PURE)
-                st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
-                st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
-                st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                _fe_commit(X_engineered, engineered_features, engineering_log, created=[_new_col_name])
                 st.rerun()
     else:
         st.info('No numeric features available for custom interactions.')
@@ -508,9 +641,7 @@ with _fe_tabs[1]:
                     engineering_log.append(f"Mathematical transforms: +{len(new_cols)} features")
 
                     # Save back to session state
-                    st.session_state.fe_work_in_progress["X_engineered"] = X_engineered
-                    st.session_state.fe_work_in_progress["engineered_features"] = engineered_features
-                    st.session_state.fe_work_in_progress["engineering_log"] = engineering_log
+                    _fe_commit(X_engineered, engineered_features, engineering_log, created=new_cols)
 
                     # Resolve skew insight if all skewed features have been transformed
                     # Resolve skew insight with structured details
@@ -606,9 +737,7 @@ with _fe_tabs[2]:
                                        new_cols, _replay.PURE)
                         
                         # Save back to session state
-                        st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
-                        st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
-                        st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                        _fe_commit(X_engineered, engineered_features, engineering_log, created=new_cols)
                         
                         st.session_state.ratio_list = []  # Clear list
                         st.success(f"✅ Created **{len(new_cols)} ratio features**")
@@ -695,9 +824,7 @@ with _fe_tabs[3]:
                     engineering_log.append(f"Binning ({strategy}, {n_bins} bins): +{len(new_cols)} features")
                     
                     # Save back to session state
-                    st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
-                    st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
-                    st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                    _fe_commit(X_engineered, engineered_features, engineering_log, created=new_cols)
                     
                     st.success(f"✅ Created **{len(new_cols)} binned features**")
                     st.rerun()
@@ -880,9 +1007,7 @@ And crucially: **Which of these structures persist as you zoom in/out?** Persist
                 engineering_log.append(f"TDA (H{homology_dims}): +{len(tda_feature_names)} features")
                 
                 # Save back to session state
-                st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
-                st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
-                st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                _fe_commit(X_engineered, engineered_features, engineering_log, created=tda_feature_names)
                 
                 progress_bar.progress(100, "Complete!")
                 
@@ -952,9 +1077,7 @@ as supplementary features alongside originals.
                     engineering_log.append(f"PCA: +{n_components_pca} features ({pca.explained_variance_ratio_.sum():.1%} variance)")
                     
                     # Save back to session state
-                    st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
-                    st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
-                    st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                    _fe_commit(X_engineered, engineered_features, engineering_log, created=pca_cols)
                     
                     st.success(f"✅ Created **{n_components_pca} PCA features** ({pca.explained_variance_ratio_.sum():.1%} variance)")
                     st.rerun()
@@ -999,9 +1122,7 @@ as supplementary features alongside originals.
                     engineering_log.append(f"UMAP: +{n_components_umap} features")
                     
                     # Save back to session state
-                    st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
-                    st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
-                    st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                    _fe_commit(X_engineered, engineered_features, engineering_log, created=umap_cols)
                     
                     st.success(f"✅ Created **{n_components_umap} UMAP features**")
                     st.rerun()
@@ -1089,9 +1210,8 @@ with _fe_tabs[6]:
                             f"{_pct:.1f}% missing)"
                         )
 
-                    st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
-                    st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
-                    st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                    _fe_commit(X_engineered, engineered_features, engineering_log,
+                               created=[f"{f}_has_data" for f in _to_create])
                     st.success(f"✅ Created **{len(_to_create)} missingness indicator(s)**: "
                                f"{', '.join(f'`{f}_has_data`' for f in _to_create)}")
                     st.rerun()
@@ -1135,9 +1255,8 @@ with _fe_tabs[6]:
                                     f"{len(cat_map)} categories)"
                                 )
 
-                            st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
-                            st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
-                            st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                            _fe_commit(X_engineered, engineered_features, engineering_log,
+                                       created=[f"{f}_ordinal" for f in _to_encode])
                             st.success(f"✅ Created **{len(_to_encode)} ordinal encoding(s)**")
                             st.rerun()
         else:
@@ -1183,8 +1302,7 @@ if new_features > 0:
                     X_engineered = X_engineered.drop(columns=[feat])
                 if feat in engineered_features:
                     engineered_features.remove(feat)
-            st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
-            st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
+            engineering_log = _fe_commit(X_engineered, engineered_features, engineering_log, removed=_features_to_remove)
             st.rerun()
 
     # Check if already saved
@@ -1258,29 +1376,27 @@ if new_features > 0:
             # Track which transforms produced each engineered feature
             st.session_state["engineered_feature_transforms"] = _build_transform_map(engineered_features, engineering_log)
             
-            # CASCADE INVALIDATION: clear all downstream state
-            st.session_state.pop("feature_selection_results", None)
-            st.session_state.pop("consensus_features", None)
-            st.session_state["preprocessing_pipeline"] = None
-            st.session_state["preprocessing_config"] = None
-            st.session_state["preprocessing_pipelines_by_model"] = {}
-            st.session_state["preprocessing_config_by_model"] = {}
-            st.session_state["trained_models"] = {}
-            st.session_state["model_results"] = {}
-            st.session_state["fitted_estimators"] = {}
-            st.session_state["fitted_preprocessing_pipelines"] = {}
-            st.session_state["X_train"] = None
-            st.session_state["X_val"] = None
-            st.session_state["X_test"] = None
-            st.session_state["y_train"] = None
-            st.session_state["y_val"] = None
-            st.session_state["y_test"] = None
-            st.session_state["permutation_importance"] = {}
-            st.session_state["partial_dependence"] = {}
-            st.session_state["shap_results"] = {}
-            st.session_state.pop("sensitivity_seed_results", None)
-            st.session_state["report_data"] = None
-            
+            # CASCADE INVALIDATION — the production cascade, not a copy of it.
+            #
+            # This used to be nineteen lines of hand-listed keys, and it missed
+            # fifteen: cv_results, dataset_profile, eda_results, eda_insights,
+            # train/val/test_indices, cv_strategy, cv_groups_train,
+            # target_transformer, feature_names_by_model, bootstrap_results,
+            # baseline_results, calibration_results and the report artifacts —
+            # plus the ledger rollback and the provenance clearing entirely.
+            # A page that clears most of the downstream state leaves the rest
+            # stale and readable, which is worse than clearing none of it,
+            # because the numbers that survive still look current.
+            #
+            # Feature engineering rewrote the working table, so this is a data
+            # change: everything below it goes, including the selection, which
+            # was made against the old feature set.
+            reset_downstream_results(
+                clear_feature_engineering=False,   # we just wrote it
+                restore_pre_fe_features=False,     # and the selection above is current
+                clear_feature_selection=True,
+            )
+
             # Log methodology action
             log_methodology(
                 step='Feature Engineering',

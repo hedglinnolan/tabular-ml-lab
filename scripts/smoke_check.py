@@ -114,7 +114,7 @@ def test_import_outliers():
 @test("Import: ml.physiology_reference")
 def test_import_physiology_reference():
     from ml.physiology_reference import (
-        load_reference_bundle, match_variable_key, get_reference_interval,
+        load_reference_bundle, match_variable_key, get_improbability_band,
         load_nhanes_reference
     )
 

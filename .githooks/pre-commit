@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# The six gates, enforced structurally rather than remembered.
+#
+# LOOP.md said "run these before every commit and stop if it fails". That
+# enforces nothing: commit 8127101 went out with the spelling test RED because
+# the gate was chained to the commit with a newline instead of `&&`, so a
+# non-zero exit did not stop the sequence. An instruction a tired agent can
+# skip by punctuation is not a gate.
+#
+# This project's own rule is: make silence a test failure. This is that rule
+# applied to its own process.
+#
+# Enable in a fresh clone (git does not version .git/hooks, so this file lives
+# in .githooks/ and is pointed at):
+#
+#     git config core.hooksPath .githooks
+#
+# Bypass is `git commit --no-verify`, and it should appear in a commit message
+# with a reason when it is used.
+#
+# The slow half lives in `.githooks/pre-push` — the routing value check, which
+# takes ~2.6s warm and is too much per commit and nothing per push. See
+# `GUIDED-019`: a check that nothing triggers is a check that does not exist.
+set -uo pipefail
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# shellcheck source=lib.sh
+. "$(dirname "$0")/lib.sh"
+if ! PY=$(resolve_python); then
+    printf '\nCOMMIT REFUSED — no Python interpreter found for the gates.\n'
+    printf '  Set TURBOTAB_PYTHON to one, or create turbotab/.venv.\n'
+    exit 1
+fi
+
+# THE THIRD STATE — `TEST-108`. A gate that CANNOT RUN must not print the same
+# cross and the same "COMMIT REFUSED" as a gate that FAILED. `resolve_python`
+# falls back to a bare `python3`, so the branch above is effectively
+# unreachable and what actually happened in every agent worktree was six gates
+# dying on `ModuleNotFoundError` and reading as six red gates over correct code.
+if ! gates_can_run "$PY"; then
+    printf '\nGATES CANNOT RUN — this is not a failure of your code.\n'
+    printf '  %s cannot import %s, so the six gates cannot execute.\n' \
+           "$PY" "${GATES_MISSING:-their dependencies}"
+    printf '  This is usually a linked worktree with no environment of its own.\n'
+    printf '  Set TURBOTAB_PYTHON to a provisioned interpreter, or run the\n'
+    printf '  gates from the main checkout. Nothing was checked, so nothing is\n'
+    printf '  being asserted about this commit.\n'
+    exit 1
+fi
+
+# Nothing here touches application behavior, so a commit that changes neither
+# the ledger data nor any tracked markdown still pays ~2s. That is cheap enough
+# to be unconditional, and conditional gates are how gates get skipped.
+FAILED=0
+run() {
+    local label="$1"; shift
+    local out
+    if ! out=$("$@" 2>&1); then
+        printf '\n  ✗ %s\n' "$label"
+        printf '%s\n' "$out" | tail -25 | sed 's/^/      /'
+        FAILED=1
+    else
+        printf '  ✓ %s\n' "$label"
+    fi
+}
+
+printf 'pre-commit gates:\n'
+# `TEST-042`. THE ONLY GATE HERE THAT READS PYTHON AS PYTHON. The other five
+# read JSON, generated markdown, strings and badges — so L43-B committed an
+# `IndentationError` in `ml/eda_actions.py` and all five stayed green, and the
+# loop's own new guard swept that file for a phrase with `read_text` and a
+# regex and passed over it too. A file that does not parse is still text.
+#
+# The generalization, and it is the reason this is first rather than last:
+# A CHECK WHOSE INPUT IS A SERIALIZATION OF THE THING IT CARES ABOUT WILL PASS
+# ON A BROKEN INPUT.
+#
+# It is NOT a substitute for the suite and nothing about it should read as one
+# — it answers `does this compile` and nothing else, at the moment the mistake
+# is made rather than three commits downstream. 363 files in 0.45s.
+run "python parses"      "$PY" docs/turbotab/tools/parsecheck.py
+run "ledger schema"      "$PY" docs/turbotab/tools/ledger.py check
+run "register schema"    "$PY" docs/turbotab/tools/register.py check
+run "American spelling"  "$PY" -m pytest tests/test_american_spelling.py -q --no-header
+run "copy deck"          "$PY" docs/turbotab/tools/copydeck.py check
+# Every pack claim carries an evidence badge and a source that resolves. Same
+# posture and the same honest limit as the ledger's `check`: it verifies a
+# source is NAMED and RESOLVABLE, never that the claim is faithful to it.
+run "evidence badges"    "$PY" docs/turbotab/tools/evidence.py check
+
+if [ "$FAILED" -ne 0 ]; then
+    cat <<'EOF'
+
+COMMIT REFUSED — a gate is red.
+
+  `python parses` is `ast.parse` over every tracked .py file; it names the
+  file and the line. It is the only gate here that reads Python AS PYTHON,
+  and it says nothing about whether the code is CORRECT — run the suite.
+  ledger/register `check` regenerate nothing; if the markdown is stale run
+      python docs/turbotab/tools/ledger.py regen
+  the copy deck is half generated: if a user-facing string changed, run
+      python docs/turbotab/tools/copydeck.py regen
+  and if the change was to a HAND-assembled string, update its entry in
+  docs/turbotab/tools/copydeck.py first — the probe is what noticed.
+  the spelling test governs GENERATED markdown, so a British spelling quoted
+  from docs/audit/ must be paraphrased in findings.json rather than pasted
+  (docs/audit/ is the exempt path precisely so a quoted record stays quotable).
+
+  To commit anyway: git commit --no-verify — and say why in the message.
+EOF
+    exit 1
+fi
+exit 0

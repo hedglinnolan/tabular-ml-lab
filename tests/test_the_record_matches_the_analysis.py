@@ -111,7 +111,7 @@ def test_the_flow_diagram_shows_the_cohort_as_an_exclusion():
 def test_page_10_passes_the_study_total_not_the_cohort():
     """The page's own arithmetic, so the figure and the caller cannot drift."""
     import ast
-    src = open("pages/10_Report_Export.py").read()
+    src = open("pages/10_Report_Export.py", encoding='utf-8').read()
     tree = ast.parse(src)
     call = next(n for n in ast.walk(tree)
                 if isinstance(n, ast.Call)
@@ -143,7 +143,7 @@ def test_the_evidence_map_has_a_row_for_the_restriction():
 
 def test_the_manifest_names_the_group_it_hashed():
     import ast
-    src = open("pages/10_Report_Export.py").read()
+    src = open("pages/10_Report_Export.py", encoding='utf-8').read()
     fn = next(n for n in ast.walk(ast.parse(src))
               if isinstance(n, ast.FunctionDef)
               and n.name == "_build_reproducibility_manifest")

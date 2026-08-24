@@ -11,6 +11,40 @@ from sklearn.metrics import (
 )
 
 
+def regression_scoring_disclosure(y_true: np.ndarray,
+                                  y_pred: np.ndarray) -> Optional[Dict[str, int]]:
+    """What `calculate_regression_metrics` could NOT score, or None.
+
+    `MINE-027`: the drop is deliberate, but the NUMBER is not optional. A
+    degenerate target-transform back-mapping (e.g. a power transform fit on a
+    near-constant target) can make 30% of test predictions non-finite; those
+    pairs are dropped, and the R² that comes back is computed on the 70% the
+    model handled — biased optimistic, because the dropped rows are exactly the
+    ones it blew up on.
+
+    The first repair put `n_dropped_nonfinite` and `n_scored` INTO the metrics
+    dict, and a metrics dict is iterated: they became a tile in Train &
+    Compare's Test Set Metrics row, two columns of the model comparison table,
+    and `n_dropped_nonfinite=30` printed as a metric in the narrative's Methods
+    sentence. A disclosure is not a metric. It is returned separately here, and
+    the surfaces that PUBLISH the metrics state it in prose or in a table
+    footnote — see pages/10's Test R² line, `_metrics_to_latex_table`, and
+    `NarrativeEngine._gen_model_evaluation`.
+
+    Returns None when every pair was scorable, so a caller storing it beside
+    the metrics stores nothing on the ordinary path.
+    """
+    y_true = np.asarray(y_true, dtype=float).ravel()
+    y_pred = np.asarray(y_pred, dtype=float).ravel()
+    finite = np.isfinite(y_true) & np.isfinite(y_pred)
+    n_dropped = int((~finite).sum())
+    if not n_dropped:
+        return None
+    return {'n_dropped_nonfinite': n_dropped,
+            'n_scored': int(finite.sum()),
+            'n_pairs': int(finite.size)}
+
+
 def calculate_regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
     """
     Calculate regression metrics.
@@ -21,20 +55,26 @@ def calculate_regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict
     metric functions raise on them. If no finite pairs remain, all metrics
     are NaN — an honest 'no valid predictions' rather than a crash.
 
+    The count of what was dropped is NOT in this dict — everything downstream
+    iterates it as metrics. Ask `regression_scoring_disclosure` for it
+    (`MINE-027`); any surface that publishes these numbers must.
+
     Returns:
-        Dictionary with MAE, RMSE, R2, MedianAE
+        Dictionary with MAE, RMSE, R2, MedianAE.
     """
     y_true = np.asarray(y_true, dtype=float).ravel()
     y_pred = np.asarray(y_pred, dtype=float).ravel()
     finite = np.isfinite(y_true) & np.isfinite(y_pred)
-    if not finite.all():
+    n_dropped = int((~finite).sum())
+    if n_dropped:
         import logging
         logging.getLogger(__name__).warning(
             "calculate_regression_metrics: dropping %d non-finite prediction "
             "pair(s) — check for a degenerate target transform",
-            int((~finite).sum()),
+            n_dropped,
         )
         y_true, y_pred = y_true[finite], y_pred[finite]
+
     if y_true.size < 2:
         return {'MAE': float('nan'), 'RMSE': float('nan'),
                 'R2': float('nan'), 'MedianAE': float('nan')}

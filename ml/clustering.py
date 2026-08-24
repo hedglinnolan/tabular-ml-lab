@@ -41,7 +41,20 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
-import streamlit as st
+
+try:
+    import streamlit as st
+    _cache_data = st.cache_data
+except ImportError:
+    # Engine contract (tests/test_engine_is_headless.py): ml/ must import
+    # without Streamlit. Caching is a host concern; headless callers just
+    # get the plain functions.
+    def _cache_data(*args, **kwargs):
+        def _wrap(fn):
+            return fn
+        if args and callable(args[0]):
+            return args[0]
+        return _wrap
 
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.decomposition import PCA
@@ -131,7 +144,7 @@ def silhouette_reading(value: float) -> str:
 # Matrix preparation
 # ---------------------------------------------------------------------------
 
-@st.cache_data(show_spinner=False)
+@_cache_data(show_spinner=False)
 def prepare_cluster_matrix(
     _df: pd.DataFrame,
     features: Sequence[str],
@@ -321,7 +334,7 @@ def max_supported_k(n_rows: int, hard_cap: int = 8) -> int:
     return int(max(2, min(hard_cap, n_rows // 30)))
 
 
-@st.cache_data(show_spinner=False)
+@_cache_data(show_spinner=False)
 def sweep_k(
     X: np.ndarray,
     k_values: Tuple[int, ...],
@@ -417,7 +430,7 @@ def sweep_k(
 # Final fit + honesty checks
 # ---------------------------------------------------------------------------
 
-@st.cache_data(show_spinner=False)
+@_cache_data(show_spinner=False)
 def fit_clusters(X: np.ndarray, k: int, n_init: int = 25, seed: int = SEED) -> Dict[str, Any]:
     """Fit the chosen k properly and score every row's silhouette."""
     if k < 2 or k >= X.shape[0]:
@@ -448,7 +461,7 @@ def fit_clusters(X: np.ndarray, k: int, n_init: int = 25, seed: int = SEED) -> D
     }
 
 
-@st.cache_data(show_spinner=False)
+@_cache_data(show_spinner=False)
 def seed_stability(X: np.ndarray, k: int, n_seeds: int = 10, seed: int = SEED) -> Dict[str, Any]:
     """Refit under different random starts and score agreement by adjusted Rand.
 
@@ -485,7 +498,7 @@ def seed_stability(X: np.ndarray, k: int, n_seeds: int = 10, seed: int = SEED) -
     }
 
 
-@st.cache_data(show_spinner=False)
+@_cache_data(show_spinner=False)
 def feature_dominance(
     _df: pd.DataFrame,
     labels: np.ndarray,
@@ -583,7 +596,7 @@ def feature_dominance(
     }
 
 
-@st.cache_data(show_spinner=False)
+@_cache_data(show_spinner=False)
 def cluster_profile(
     _df: pd.DataFrame,
     labels: np.ndarray,
@@ -633,7 +646,7 @@ def cluster_profile(
     }
 
 
-@st.cache_data(show_spinner=False)
+@_cache_data(show_spinner=False)
 def target_association(
     _df: pd.DataFrame,
     labels: np.ndarray,
@@ -713,7 +726,7 @@ def target_association(
     }
 
 
-@st.cache_data(show_spinner=False)
+@_cache_data(show_spinner=False)
 def project_for_display(X: np.ndarray, seed: int = SEED) -> Dict[str, Any]:
     """Two-component PCA of the clustering matrix, for display only.
 

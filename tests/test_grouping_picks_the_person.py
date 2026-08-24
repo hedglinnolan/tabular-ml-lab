@@ -140,3 +140,28 @@ def test_the_finest_person_column_climbs_to_the_one_that_contains_it():
     })
     ranked = rank_grouping_candidates(df)
     assert ranked[0]["column"] == "subject_id", [c["column"] for c in ranked]
+
+
+def test_a_grouped_seal_reports_the_row_share_it_actually_held_out():
+    """`GroupShuffleSplit`'s `test_size` is a fraction of GROUPS, and every
+    consumer of the lockbox prints `fraction` as a share of ROWS. With unequal
+    group sizes those differ badly: one participant logging 40 days among
+    nineteen logging 5 turns a 15% subject split into 37% of the rows.
+    """
+    n_sub = 20
+    rows = []
+    for s in range(n_sub):
+        for v in range(40 if s == 0 else 5):
+            rows.append((f"P{s:02d}", 40 + s, v, (s + v) % 2))
+    df = pd.DataFrame(rows, columns=["SEQN", "age", "day", "outcome"])
+
+    lb = ensure_lockbox(df, "outcome", "classification", group_col="SEQN")
+    assert lb and lb.get("group_col") == "SEQN"
+
+    real_row_share = lb["n_test"] / len(df)
+    assert abs(lb["fraction"] - real_row_share) < 0.01, (
+        f"the seal reports {lb['fraction']:.0%} but held out "
+        f"{real_row_share:.0%} of the rows ({lb['n_test']} of {len(df)})")
+    assert lb.get("fraction_requested") is not None, (
+        "the requested fraction must survive alongside the achieved one, or "
+        "the difference cannot be explained")

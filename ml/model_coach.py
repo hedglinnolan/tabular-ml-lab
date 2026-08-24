@@ -8,8 +8,13 @@ Provides data-aware recommendations that:
 - Integrate throughout the ML workflow
 """
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Sequence, Tuple
 from enum import Enum
+
+# `AUDIT-020` / `AUDIT-021` — one design, one module, `CLINICAL_SURVEY_PACK.md`
+# §A5.4. The threshold, the denominator and the sentence that says the rule of
+# 10 is superseded all live there so the two doors cannot state them differently.
+from ml import sample_size as _ss
 
 
 class TrainingTimeTier(Enum):
@@ -364,6 +369,153 @@ class TopPick:
     handles_missing: bool
 
 
+def _skew_split(profile: Any, skewed: Sequence[str]) -> Dict[str, List[str]]:
+    """Which of the skewed features a LOG could actually be applied to.
+
+    `ml/dataset_profile.py:641` selects on `abs(skewness) > 1.0`, so `skewed`
+    holds two populations a log treats oppositely and one it cannot touch:
+
+    * ``log_ok``       strictly positive and skewed RIGHT — the log's own case
+    * ``left_skewed``  skewed LEFT; a log lengthens the left tail further
+    * ``not_positive`` a value at or below zero; `log` is undefined there
+
+    Read off `FeatureProfile.min_val` and `.skewness`, which the profile already
+    carries. A feature whose profile is missing either field lands in
+    ``unread`` rather than being assumed positive.
+    """
+    fps = getattr(profile, "feature_profiles", None) or {}
+    out: Dict[str, List[str]] = {"log_ok": [], "left_skewed": [],
+                                 "not_positive": [], "unread": []}
+    for col in skewed:
+        fp = fps.get(col)
+        lo = getattr(fp, "min_val", None) if fp is not None else None
+        sk = getattr(fp, "skewness", None) if fp is not None else None
+        if lo is None or sk is None:
+            out["unread"].append(col)
+        elif lo <= 0:
+            out["not_positive"].append(col)
+        elif sk < 0:
+            out["left_skewed"].append(col)
+        else:
+            out["log_ok"].append(col)
+    return out
+
+
+def _skew_transform_clause(profile: Any, skewed: Sequence[str]) -> str:
+    """`AUDIT-003` on the preprocessing card. BEFORE:
+
+        "apply Yeo-Johnson or log transform to stabilize the feature
+         distributions."
+
+    One sentence for every skewed feature, and `log` was offered for all of
+    them. `ml/dataset_profile.py:641` selects on `abs(skewness) > 1.0`, so the
+    same sentence covered a LEFT-skewed feature, where a log makes the skew
+    worse, and a feature holding zeros or negatives, where a log is undefined.
+
+    AFTER: Yeo-Johnson is still recommended for all of them — it is defined on
+    the whole real line and on either tail — and the LOG is named only for the
+    features it is defined and useful on, with the excluded ones counted. The
+    same subject, a weaker claim, true. And the clause the reading cannot
+    supply is stated: nothing here can see whether a column arrived already
+    transformed, and a second log is silent.
+    """
+    split = _skew_split(profile, skewed)
+    n = len(list(skewed))
+    parts = [f"apply Yeo-Johnson to all {n} — it is defined on zero, on "
+             f"negatives and on either tail"]
+
+    ok = split["log_ok"]
+    if ok:
+        shown = ", ".join(ok[:3]) + ("…" if len(ok) > 3 else "")
+        parts.append(f"A LOG transform is an option for {len(ok)} of them "
+                     f"({shown}), strictly positive and skewed right")
+    else:
+        parts.append("A LOG transform is an option for none of them")
+
+    def _they(names, singular, plural):
+        return f"{len(names)} of them {singular if len(names) == 1 else plural}"
+
+    excluded = []
+    if split["not_positive"]:
+        excluded.append(_they(split["not_positive"], "reaches", "reach")
+                        + " zero or below, where the log is undefined")
+    if split["left_skewed"]:
+        excluded.append(_they(split["left_skewed"], "is", "are")
+                        + " skewed LEFT, where a log lengthens the tail it is "
+                          "meant to shorten")
+    if split["unread"]:
+        excluded.append(_they(split["unread"], "carries", "carry")
+                        + " no min/skew reading, so nothing here can say")
+    if excluded:
+        parts.append("; and ".join(excluded))
+
+    return (". ".join(parts) + ". Whether any of these arrived already "
+            "transformed is not checked here, and a second log is silent.")
+
+
+def _huber_why(tp: Any) -> str:
+    """Why Huber, in the tier the app can actually distinguish.
+
+    `AUDIT-012`. BEFORE — one sentence for every regression target alike:
+
+        "The outcome itself contains outliers (12% of values) — Huber
+         downweights extreme residuals so they don't steer the fit. Feature
+         outliers are handled in preprocessing instead."
+
+    `tp.outlier_rate` is an IQR fence count (`ml/outliers.py:44`). On
+    `clinical_labs.csv::sbp` it counts a systolic pressure of **0 mmHg** and one
+    of **244 mmHg** as the same kind of thing. They are not: the first is an
+    entry error and wants REPAIR, the second is a hypertensive crisis and wants
+    MODELING — and Huber downweights both, which for the entry error is the
+    wrong remedy and for the real extreme discards signal the study is about.
+    `research/CLINICAL_SURVEY_PACK.md` Cross-cutting 7 is the source; the
+    impossibility band that separates them was already computed one module over
+    (`turbotab/engine.plausibility`) and nothing on this path read it.
+
+    AFTER — the same recommendation, the same subject, a weaker claim: the two
+    tiers are reported separately, and where the reference has nothing to say
+    about this column the sentence says THAT rather than implying a check it
+    did not make. Huber is still the pick in all three branches; the shelf is
+    not shortened.
+    """
+    rate = tp.outlier_rate or 0.0
+    tail = ("Feature outliers are handled in preprocessing instead.")
+    read = getattr(tp, "physio_read", "unread")
+    count = getattr(tp, "impossible_count", None)
+    band = getattr(tp, "impossibility_band", None)
+
+    if read == "matched" and band is not None and count:
+        floor, ceiling, unit = band
+        return (f"{rate:.0%} of the outcome's values fall outside the IQR "
+                f"fences, and {count:,} of them are outside the published "
+                f"impossible range for {tp.physio_variable} "
+                f"({floor:g}–{ceiling:g} {unit}). Those are entry errors rather "
+                f"than extreme measurements, and Huber DOWNWEIGHTS them instead "
+                f"of removing them — repair them on the plausibility card "
+                f"first, then Huber is the right model for the real extremes "
+                f"that remain. {tail}")
+
+    if read == "matched" and band is not None:
+        floor, ceiling, unit = band
+        return (f"The outcome itself contains outliers ({rate:.0%} of values by "
+                f"the IQR fences) — Huber downweights extreme residuals so they "
+                f"don't steer the fit. None of them is outside the published "
+                f"impossible range for {tp.physio_variable} "
+                f"({floor:g}–{ceiling:g} {unit}), so they read as real extremes "
+                f"rather than entry errors, which is exactly the case Huber is "
+                f"for. {tail}")
+
+    unnamed = (f"'{tp.name}' matches no variable in the physiologic reference"
+               if read == "unrecognized" else
+               "no impossibility band was read for this outcome")
+    return (f"The outcome itself contains outliers ({rate:.0%} of values) — "
+            f"Huber downweights extreme residuals so they don't steer the fit. "
+            f"That rate is an IQR fence count and nothing more: {unnamed}, so "
+            f"the app cannot tell a physiologically impossible entry from an "
+            f"abnormal-but-real measurement here, and Huber treats the two the "
+            f"same way. {tail}")
+
+
 def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], List[Tuple[str, str]], str]:
     """Select 2-3 models from the dataset's SHAPE, dominant constraint first.
 
@@ -399,7 +551,16 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
     epv = profile.events_per_variable
     minority = tp.minority_class_size if tp else None
     imbalanced = bool(tp and tp.is_imbalanced)
-    low_epv = task_type == "classification" and epv is not None and epv < 10
+    # `AUDIT-021`. `10` is this app's caution trigger and not the field's
+    # guideline — §A5.4 is [SETTLED that EPV≥10 is superseded]. It lives in
+    # `ml.sample_size.CAUTION_EPV` beside the sentence that says whose number
+    # it is, and the value is unchanged this loop: what moved is the
+    # DENOMINATOR it is applied to (`AUDIT-020`).
+    low_epv = (task_type == "classification" and epv is not None
+               and epv < _ss.CAUTION_EPV)
+    #: §A5.4's denominator. `None` where the profile predates the field, and
+    #: then the headline names no denominator rather than naming the wrong one.
+    params = getattr(profile, "n_candidate_parameters", None)
     small_n = n < 150
 
     model_info = _get_model_info()
@@ -412,16 +573,21 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
                     f"Unpenalized fits are not identifiable here — every pick below "
                     f"is regularized, and feature attribution will be unstable.")
     elif low_epv:
-        headline = (f"Dominant constraint: {minority:,} minority-class events for {p} "
-                    f"predictors (EPV = {epv:.1f}; guideline ≥ 10). Keep the model "
-                    f"lineup small, prefer penalized fits, and report confidence "
-                    f"intervals — estimates will be unstable.")
+        _denominator = (f"{params:,} candidate parameters" if params is not None
+                        else "the candidate parameters")
+        headline = (f"Dominant constraint: {minority:,} minority-class events for "
+                    f"{_denominator} (EPV = {epv:.1f}). {_ss.SUPERSEDED_SHORT} "
+                    f"Keep the model lineup small, prefer penalized fits, and "
+                    f"report confidence intervals — estimates will be unstable.")
     elif imbalanced:
         _ratio = tp.class_balance_ratio
         headline = (f"Dominant constraint: class imbalance "
                     f"({minority:,} minority events{f', {_ratio:.0f}:1 ratio' if _ratio else ''}). "
-                    f"Enable class weighting and judge models by AUROC/F1 — accuracy "
-                    f"will look deceptively good.")
+                    f"Judge models by AUROC and calibration rather than accuracy, "
+                    f"which will look deceptively good. Rebalancing is NOT the "
+                    f"remedy — it overestimates minority-class probability without "
+                    f"improving discrimination ({_imbalance.CITATION}); set the "
+                    f"decision threshold from the costs of the two errors instead.")
     elif small_n:
         headline = (f"Dominant constraint: {n} rows. Model rankings will vary "
                     f"fold-to-fold — report CV spread, not just the mean, and "
@@ -456,10 +622,7 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
                           f"feature shortlist for the manuscript.")
         elif target_outliers:
             linear_key, linear_name = "huber", "Huber Regression"
-            linear_why = (f"The outcome itself contains outliers "
-                          f"({tp.outlier_rate:.0%} of values) — Huber downweights extreme "
-                          f"residuals so they don't steer the fit. Feature outliers are "
-                          f"handled in preprocessing instead.")
+            linear_why = _huber_why(tp)
         elif is_high_dim:
             linear_key, linear_name = "ridge", "Ridge Regression"
             linear_why = (f"At {p} predictors for {n:,} rows, the L2 penalty stabilizes "
@@ -475,8 +638,9 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
                           f"logistic regression is the defensible core model — expect "
                           f"wide confidence intervals on the coefficients.")
         elif imbalanced:
-            linear_why = ("Interpretable log-odds baseline. Enable class weighting; "
-                          "evaluate with AUROC and F1 rather than accuracy.")
+            linear_why = ("Interpretable log-odds baseline. Evaluate with AUROC "
+                          "and calibration rather than accuracy, and penalize the "
+                          "fit rather than rebalancing the outcome.")
         elif minority is not None and minority >= 100:
             linear_why = (f"Interpretable baseline; with {minority:,} events per class, "
                           f"its probability calibration is checkable on the Train page.")
@@ -492,8 +656,11 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
             pp_parts.append("impute")
         if has_skew:
             pp_parts.append("transform skewed features")
+        # `GUIDED-049`: penalization is the registry's named remedy for a rare
+        # outcome; rebalancing is the contraindicated one. This line used to
+        # append "class weights".
         if task_type == "classification" and imbalanced:
-            pp_parts.append("class weights")
+            pp_parts.append("penalize")
         if (_signal and _gain is not None and _gain < 0.02):
             linear_why += (f" An evidence probe measured trees ≈ linear on this "
                            f"data (Δ{probe.metric_name} = {_gain:+.2f}) — the "
@@ -528,7 +695,9 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
             tree_why += (f" At n={n}, expect fold-to-fold variability — judge it by CV "
                          f"spread, not the single best score.")
         if tree_key and task_type == "classification" and imbalanced:
-            tree_why += " Enable class weighting here too."
+            tree_why += (" Trees are the worst case for rebalancing — they are "
+                         "already poorly calibrated out of the box, so report the "
+                         "calibration curve rather than reweighting the classes.")
 
     if tree_key and tree_key in model_info:
         info = model_info[tree_key]
@@ -593,8 +762,10 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
                           f"than generalize — reduce features first"))
     if low_epv:
         skip_list.append(("Tree ensembles / boosting / neural nets",
-                          f"EPV = {epv:.1f} cannot support high-capacity models — "
-                          f"every extra model is another chance to overfit the selection"))
+                          f"{minority:,} minority-class events across the candidate "
+                          f"parameters (EPV = {epv:.1f}) — a boosted ensemble spends "
+                          f"far more parameters than that, and every extra model is "
+                          f"another chance to overfit the selection"))
     if n < 500:
         skip_list.append(("Neural Network", f"needs roughly 500+ rows; you have {n:,}"))
     if is_high_dim and not is_wide:
@@ -613,6 +784,11 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
 
 # ── Preprocessing Coaching (Model-Scoped) ─────────────────────────────────
 
+def _count_word_coach(n: int, noun: str) -> str:
+    """'1 feature' / '3 features' — manuscript prose avoids '(s)'."""
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
 def generate_preprocessing_insights(
     selected_models: List[str],
     profile: Any,
@@ -630,6 +806,17 @@ def generate_preprocessing_insights(
     profile : DatasetProfile or similar
         Must expose: ``highly_skewed_features``, ``features_with_outliers``,
         ``n_features_with_missing``.
+
+    `COACH-007`. Every insight here carries an explicit manuscript disposition,
+    because the ledger's default for an unresolved insight is the manuscript's
+    LIMITATIONS list. Advice that is a reassurance ("the default pipeline
+    already standardizes for you") or a neutral fact is marked
+    ``metadata.audit_only`` with no ``manuscript_text``: it is coaching, and a
+    step the app performed must never be printed to a reviewer as an
+    unaddressed limitation. The two that describe a real data condition carry a
+    manuscript-register sentence that is true whether or not the user acts on
+    it. Each also states whether a control resolves it, so no advice is a
+    promise the app cannot keep.
     """
     from utils.insight_ledger import (
         MODEL_TO_FAMILY, ISSUE_MODEL_RELEVANCE,
@@ -676,7 +863,7 @@ def generate_preprocessing_insights(
                 "category": "preprocessing",
                 "severity": "warning",
                 "finding": (
-                    f"{len(skewed)} feature(s) are highly skewed "
+                    f"{_count_word_coach(len(skewed), 'feature')} are highly skewed "
                     f"({', '.join(skewed[:3])}{'…' if len(skewed) > 3 else ''})."
                 ),
                 "implication": (
@@ -684,13 +871,21 @@ def generate_preprocessing_insights(
                     "producing suboptimal coefficients or gradient updates."
                 ),
                 "recommended_action": (
-                    f"For your {_family_list(affected)}, apply Yeo-Johnson or log transform "
-                    f"to stabilize the feature distributions.{immune_msg}"
+                    f"For your {_family_list(affected)}, {_skew_transform_clause(profile, skewed)}"
+                    f"{immune_msg} Configure the transform in this page's numeric "
+                    f"transform setting (or in Feature Engineering); there is no "
+                    f"one-click resolver for this observation."
+                ),
+                "manuscript_text": (
+                    f"{_count_word_coach(len(skewed), 'predictor')} exhibited "
+                    f"strong skewness, which can increase the influence of "
+                    f"extreme values in scale-sensitive models"
                 ),
                 "model_scope": affected,
                 "relevant_pages": ["05_Preprocess"],
                 "theory_anchor": "skewness",
-                "metadata": {"skewed_features": skewed[:10]},
+                "metadata": {"skewed_features": skewed[:10],
+                             **_skew_split(profile, skewed)},
             })
 
     # 2. Outliers → robust scaling or clipping (affects linear, neural, distance)
@@ -720,7 +915,8 @@ def generate_preprocessing_insights(
                 "category": "preprocessing",
                 "severity": "info",
                 "finding": (
-                    f"{len(outlier_feats)} of {p_total} feature(s) contain outliers "
+                    f"{len(outlier_feats)} of {_count_word_coach(p_total, 'feature')} "
+                    f"contain outliers "
                     f"({', '.join(outlier_feats[:3])}{'…' if len(outlier_feats) > 3 else ''})."
                 ),
                 "implication": (
@@ -728,7 +924,14 @@ def generate_preprocessing_insights(
                 ),
                 "recommended_action": (
                     f"For your {_family_list(affected)}, consider Winsorizing or "
-                    f"robust scaling.{immune_msg}{detector_caveat}"
+                    f"robust scaling.{immune_msg}{detector_caveat} Building the "
+                    f"pipelines below records whichever outlier handling you "
+                    f"configure against this observation."
+                ),
+                "manuscript_text": (
+                    f"{_count_word_coach(len(outlier_feats), 'predictor')} "
+                    f"contained values flagged as outlying by the interquartile "
+                    f"criterion, which can influence scale-sensitive models"
                 ),
                 "model_scope": affected,
                 "relevant_pages": ["05_Preprocess"],
@@ -758,13 +961,17 @@ def generate_preprocessing_insights(
             ),
             "recommended_action": (
                 f"Keep scaling ON for {_family_list(scale_affected)} (the default "
-                f"does this — only verify it if you customize the pipeline).{immune_msg}"
+                f"does this — only verify it if you customize the pipeline).{immune_msg} "
+                f"Nothing to resolve: this states what the pipeline already does."
             ),
             "model_scope": scale_affected,
             "relevant_pages": ["05_Preprocess"],
             # 'scaling' is the key that exists in THEORY_ANCHORS; the demo
             # previously rendered only via an accidental text match
             "theory_anchor": "scaling",
+            # Reassurance about a step the app performs — never a limitation.
+            "manuscript_text": "",
+            "metadata": {"audit_only": True},
         })
 
     # 4. Missing data — native handling differs by family
@@ -777,7 +984,8 @@ def generate_preprocessing_insights(
             "category": "preprocessing",
             "severity": "info",
             "finding": (
-                f"{n_missing} feature(s) have missing values."
+                f"{_count_word_coach(n_missing, 'feature')} have missing values; "
+                f"model families differ in whether they need imputation."
             ),
             "implication": (
                 "HistGradientBoosting, LightGBM, XGBoost, and Random Forest "
@@ -790,12 +998,19 @@ def generate_preprocessing_insights(
                 "downstream explainability sees complete data. "
                 + (f"For your {_family_list(non_tree)}, imputation is required — "
                    f"median is the robust default; use MICE when missingness "
-                   f"exceeds ~5%."
+                   f"exceeds ~5%. "
                    if non_tree else "")
+                + "Nothing to resolve here: the missingness itself is reported "
+                  "by the EDA ledger, and this note only says how each family "
+                  "treats it."
             ),
             "model_scope": [],  # relevant to all, but differentiates
             "relevant_pages": ["05_Preprocess"],
             "theory_anchor": "missing_data",
+            # Neutral fact plus family guidance — the missingness limitation
+            # itself belongs to the EDA insight that measures it, not here.
+            "manuscript_text": "",
+            "metadata": {"audit_only": True},
         })
 
     return insights
@@ -807,6 +1022,40 @@ def _model_display_name_coach(key: str) -> str:
     """Return a human-readable model name from the coach's model info dict."""
     info = _get_model_info()
     return info.get(key, {}).get('name', key.upper())
+
+
+def _resolve_primary_model(
+    model_results: Dict[str, Dict[str, Any]],
+    task_type: str,
+    primary_model: str = "",
+) -> Tuple[str, str]:
+    """Return (model_key, how_it_was_chosen) for a single-model diagnostic.
+
+    `COACH-003`. The caller's `primary_model` is honored when it names a
+    trained model; otherwise the fallback used to be `next(iter(...))` — the
+    first model in dict insertion order, i.e. checkbox order — and the finding
+    it produced named no model at all. Checkbox order is not a defensible
+    basis for a manuscript sentence, so the fallback is now best-by-metric and
+    the basis travels with the key so the text can say which model it is about.
+    """
+    if primary_model and primary_model in model_results:
+        return primary_model, "designated primary model"
+
+    metric = "RMSE" if task_type == "regression" else "Accuracy"
+    higher_better = task_type != "regression"
+    scored = []
+    for key, r in model_results.items():
+        val = (r or {}).get("metrics", {}).get(metric)
+        if val is not None:
+            try:
+                scored.append((key, float(val)))
+            except (TypeError, ValueError):
+                continue
+    if scored:
+        scored.sort(key=lambda kv: kv[1], reverse=higher_better)
+        return scored[0][0], f"best {metric}"
+
+    return next(iter(model_results)), "only model with residuals available"
 
 
 def _detect_prefer_simpler(
@@ -1249,6 +1498,58 @@ def _detect_ci_overlap(
     }]
 
 
+def _detect_no_bootstrap_ci(
+    model_results: Dict[str, Dict[str, Any]],
+    task_type: str,
+    bootstrap_results: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """Before any metric is reported, say that it has no interval yet.
+
+    The coach's only CI check (`_detect_ci_overlap`) runs on intervals that
+    already exist, so the case that matters most — a point estimate about to
+    be written into a manuscript with no uncertainty attached at all — had no
+    detector. This is the one that fires when there are no intervals yet.
+    """
+    if bootstrap_results:
+        return []
+    scored = [k for k, r in model_results.items()
+              if (r or {}).get("metrics")]
+    if not scored:
+        return []
+
+    metric = "RMSE" if task_type == "regression" else "F1"
+    n_txt = "1 model" if len(scored) == 1 else f"{len(scored)} models"
+    rank_clause = (
+        " and the ranking between them rests on point estimates alone"
+        if len(scored) > 1 else ""
+    )
+    return [{
+        'id': 'train_no_bootstrap_ci',
+        'severity': 'info',
+        'finding': (
+            f"{n_txt} trained, and no bootstrap confidence intervals have been "
+            f"computed for the reported metrics{rank_clause}."
+        ),
+        'implication': (
+            f"A single test split gives one draw of {metric}; without an "
+            f"interval the number carries no visible sampling error, and a "
+            f"difference small enough to be noise reads as a real one."
+        ),
+        'recommended_action': (
+            "Run the bootstrap confidence intervals section on this page "
+            "before reporting any metric or model ranking."
+        ),
+        # No manuscript_text, and audit-only: this is a prompt for an action
+        # still available in the app, not a finding about the study. Nothing
+        # re-runs the post-training detectors after the intervals are computed,
+        # so a Discussion sentence saying "no confidence intervals were
+        # computed" could be false by the time the report is exported.
+        'manuscript_text': '',
+        'model_scope': [],
+        'metadata': {'audit_only': True, 'models_without_ci': scored},
+    }]
+
+
 def _detect_heteroscedastic_residuals(
     model_results: Dict[str, Dict[str, Any]],
     task_type: str,
@@ -1260,7 +1561,7 @@ def _detect_heteroscedastic_residuals(
 
     if task_type != "regression" or not model_results:
         return []
-    key = primary_model if primary_model in model_results else next(iter(model_results))
+    key, chosen_by = _resolve_primary_model(model_results, task_type, primary_model)
     r = model_results.get(key) or {}
     y_test, y_pred = r.get("y_test"), r.get("y_test_pred")
     if y_test is None or y_pred is None:
@@ -1282,7 +1583,9 @@ def _detect_heteroscedastic_residuals(
         'severity': 'info',
         'finding': (
             f"{name}'s residual spread {direction} with the predicted value "
-            f"(Spearman \u03c1 = {rho:.2f} between |residual| and prediction)."
+            f"(Spearman \u03c1 = {rho:.2f} between |residual| and prediction). "
+            f"Checked on {name} ({chosen_by}); other trained models are not "
+            f"covered by this check."
         ),
         'implication': (
             "Errors are not uniform across the outcome range: constant-width "
@@ -1293,14 +1596,18 @@ def _detect_heteroscedastic_residuals(
             "Consider a target transform (log / Yeo-Johnson) on the Train page "
             "and inspect the Bland\u2013Altman plot on Explainability."
         ),
+        # The model is named here, not only in the `finding` above: the
+        # manuscript sentence used to assert non-constant residual variance
+        # with no attribution at all, about whichever model came first in
+        # checkbox order (`COACH-003`).
         'manuscript_text': (
-            f"residual variance was not constant across the predicted range "
-            f"(Spearman \u03c1 = {rho:.2f} between absolute residuals and "
-            f"predictions), so uniform-width prediction intervals would be "
-            f"miscalibrated"
+            f"for the {name} model, residual variance was not constant across "
+            f"the predicted range (Spearman \u03c1 = {rho:.2f} between absolute "
+            f"residuals and predictions), so uniform-width prediction intervals "
+            f"would be miscalibrated"
         ),
         'model_scope': [],
-        'metadata': {'rho': float(rho), 'model': key},
+        'metadata': {'rho': float(rho), 'model': key, 'model_chosen_by': chosen_by},
     }]
 
 
@@ -1323,6 +1630,7 @@ def run_post_training_diagnostics(
     findings.extend(_detect_overfit(model_results, task_type))
     findings.extend(_detect_accuracy_vs_nir(model_results, task_type))
     findings.extend(_detect_ci_overlap(model_results, task_type, bootstrap_results))
+    findings.extend(_detect_no_bootstrap_ci(model_results, task_type, bootstrap_results))
     findings.extend(_detect_heteroscedastic_residuals(model_results, task_type, primary_model))
     return findings
 
@@ -1334,7 +1642,39 @@ def _nn_available() -> bool:
     return importlib.util.find_spec("torch") is not None
 
 
-def model_viability(profile: Any, probe: Any = None) -> Dict[str, Tuple[str, str]]:
+def realized_training_n() -> Optional[int]:
+    """How many rows a model fitted in this session will actually see.
+
+    `profile.n_rows` counts every row the dataset profile was computed on —
+    which includes the rows with no outcome value, and those never reach a
+    fit. On a 21,849-row upload with a 71%-missing outcome the profile said
+    20,904 while the training set was 4,407, and the badges below refused SVC
+    ("kernel training scales ~n² — slow at n=20,904") on a size the run did
+    not have (`DRIVE-070`). The split's own training matrix is the only place
+    that number is realized, so it is read from there when it exists.
+
+    Returns None outside a Streamlit session or before splits are prepared;
+    the caller then falls back to the profile.
+    """
+    try:
+        import streamlit as st
+    except ImportError:
+        return None
+    try:
+        X_train = st.session_state.get("X_train")
+    except Exception:
+        return None
+    if X_train is None:
+        return None
+    try:
+        n = int(len(X_train))
+    except TypeError:
+        return None
+    return n if n > 0 else None
+
+
+def model_viability(profile: Any, probe: Any = None,
+                    n_train: Optional[int] = None) -> Dict[str, Tuple[str, str]]:
     """One evidence-bearing verdict per registry model key.
 
     Returns {model_key: (verdict, clause)} with verdict in
@@ -1342,16 +1682,26 @@ def model_viability(profile: Any, probe: Any = None) -> Dict[str, Tuple[str, str
     page so the shape reasoning is visible at the exact moment of choice.
     The clause cites the dataset's numbers; probe evidence sharpens the
     tree/boosting clauses when available.
+
+    `n_train` is the realized training-set size. Every verdict below is a
+    claim about how much data the model will be FITTED on, so when the split
+    is drawn that is the number, not the profile's row count. Callers that
+    know it pass it; the rest get it from the session (`realized_training_n`).
     """
-    n = profile.n_rows
+    _n_realized = n_train if n_train is not None else realized_training_n()
+    n = int(_n_realized) if _n_realized else profile.n_rows
     p = profile.n_features
     tp = profile.target_profile
     task_type = tp.task_type if tp else "regression"
-    is_wide = profile.p_n_ratio > 1.0
-    is_high_dim = profile.p_n_ratio > 0.3
+    # p/n has to follow the same n, or a clause reads "p=200 > n=4,407".
+    _p_n = (p / n) if (_n_realized and n > 0) else profile.p_n_ratio
+    is_wide = _p_n > 1.0
+    is_high_dim = _p_n > 0.3
     epv = profile.events_per_variable
     minority = tp.minority_class_size if tp else None
-    low_epv = task_type == "classification" and epv is not None and epv < 10
+    # `AUDIT-021` — the app's caution trigger, named as that. See `select_top_picks`.
+    low_epv = (task_type == "classification" and epv is not None
+               and epv < _ss.CAUTION_EPV)
     target_outliers = bool(tp and tp.has_outliers and (tp.outlier_rate or 0) > 0.01)
 
     _gain = probe.nonlinearity_gain if probe is not None else None
@@ -1376,8 +1726,8 @@ def model_viability(profile: Any, probe: Any = None) -> Dict[str, Tuple[str, str
 
     if is_wide:
         v["glm"] = ("poor", f"unpenalized fit is not identifiable at p={p:,} ≥ n={n:,}")
-    elif profile.p_n_ratio > 0.5:
-        v["glm"] = ("poor", f"unpenalized estimates are unstable at p/n = {profile.p_n_ratio:.2f}")
+    elif _p_n > 0.5:
+        v["glm"] = ("poor", f"unpenalized estimates are unstable at p/n = {_p_n:.2f}")
     elif n < 30:
         v["glm"] = ("poor", f"n={n} is below a defensible minimum for unpenalized fits")
     else:
@@ -1411,7 +1761,8 @@ def model_viability(profile: Any, probe: Any = None) -> Dict[str, Tuple[str, str
         if is_wide:
             return ("poor", f"memorizes rather than generalizes at p={p:,} > n={n:,}")
         if low_epv:
-            return ("poor", f"EPV={epv:.1f} cannot support this capacity")
+            return ("poor", f"EPV={epv:.1f} — high capacity overfits hardest "
+                            f"where events per candidate parameter are lowest")
         if n < min_n:
             return ("poor", f"needs roughly {min_n}+ rows; you have {n:,}")
         if n < 150:
@@ -1433,8 +1784,14 @@ def model_viability(profile: Any, probe: Any = None) -> Dict[str, Tuple[str, str
             v[k] = ("ok", "try only if the linear baseline underfits")
 
     if n < 500 or low_epv:
-        v["nn"] = ("poor", f"needs roughly 500+ rows{f' and EPV≥10' if low_epv else ''}; you have {n:,}"
-                   + (f" (EPV={epv:.1f})" if low_epv else ""))
+        # `AUDIT-021`: this used to read "needs roughly 500+ rows and EPV≥10",
+        # which states the superseded rule as a requirement. The row count is
+        # the app's own rule of thumb and says so; the EPV is reported as the
+        # measured quantity it is, with no threshold attached.
+        v["nn"] = ("poor",
+                   f"more capacity than this shape supports — a rough floor of "
+                   f"500 rows; you have {n:,}"
+                   + (f", at EPV={epv:.1f}" if low_epv else ""))
     elif n < 1000:
         v["nn"] = ("ok", f"borderline at n={n:,} — regularize heavily")
     else:

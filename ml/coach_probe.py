@@ -59,6 +59,8 @@ class ProbeResult:
     half_data_score: float = float("nan")  # linear model on 50% of rows
 
     metric_name: str = "R²"
+    # Whether the folds were grouped by a recorded entity (`AUDIT-009`).
+    grouped: bool = False
     notes: List[str] = field(default_factory=list)
 
     # ── verdicts the coach consumes ──
@@ -122,20 +124,31 @@ class ProbeResult:
         return "; ".join(parts) if parts else "probe inconclusive"
 
 
-def _prepare(X, y, task_type, rng):
-    """Numeric-only, imputed, subsampled copies for probing."""
+def _prepare(X, y, task_type, rng, groups=None):
+    """Numeric-only, imputed, subsampled copies for probing.
+
+    `groups` rides through every mask and subsample the rows do, because a
+    grouping that stops matching its rows is worse than none: it would put a
+    fold boundary somewhere nobody chose.
+    """
     import pandas as pd
 
     Xd = X.select_dtypes(include=[np.number]).copy() if hasattr(X, "select_dtypes") else pd.DataFrame(X)
     y = np.asarray(y)
+    g = None if groups is None else np.asarray(groups)
     mask = np.isfinite(y) if task_type == "regression" else ~pd.isna(y)
+    mask = np.asarray(mask)
     Xd, y = Xd.loc[mask], y[mask]
+    if g is not None:
+        g = g[mask]
 
     notes = []
     subsampled = False
     if len(Xd) > MAX_ROWS:
         idx = rng.choice(len(Xd), MAX_ROWS, replace=False)
         Xd, y = Xd.iloc[idx], y[idx]
+        if g is not None:
+            g = g[idx]
         subsampled = True
         notes.append(f"subsampled to {MAX_ROWS:,} rows")
     wide = Xd.shape[1] > len(Xd)
@@ -148,7 +161,7 @@ def _prepare(X, y, task_type, rng):
         notes.append(f"top {feature_cap} features by variance")
 
     Xv = Xd.fillna(Xd.median(numeric_only=True)).fillna(0).to_numpy(dtype=float)
-    return Xv, y, notes, subsampled
+    return Xv, y, notes, subsampled, g
 
 
 def _linear_pipeline(task_type, wide: bool = False):
@@ -185,59 +198,118 @@ def _tree_estimator(task_type):
             else HistGradientBoostingClassifier(**kw))
 
 
-def _cv_score(est, X, y, task_type):
-    from sklearn.model_selection import KFold, StratifiedKFold, cross_val_score
+def _cv_score(est, X, y, task_type, groups=None):
+    """The probe's cross-validated score, grouped where an entity is recorded.
 
+    **`AUDIT-002`'s class, on the surface that ranks the shortlist**
+    (`AUDIT-009`). This built `KFold`/`StratifiedKFold` with `shuffle=True` and
+    no groups, and the mean it returns is what the Model Coach ranks its picks
+    on — so on any table with repeated measures one person's rows sat on both
+    sides of every fold and the ranking was computed on a number it should not
+    have trusted.
+
+    `ml/eval.py:113` documents the exact hazard and selects
+    `StratifiedGroupKFold`; `ml/splits.py` implements the whole priority order.
+    Neither was reachable from here, because this function had no `groups`
+    parameter to reach one with — which is why the fix is a signature change
+    rather than a call swap, and why it stayed open through two audits.
+
+    `groups` is the recorded entity per row, or `None`. **`None` means the
+    caller did not record one**, never *there is no grouping*: the scheme falls
+    back to the ungrouped one and `run_probe` says so in its notes.
+    """
+    from sklearn.model_selection import (GroupKFold, KFold, StratifiedGroupKFold,
+                                         StratifiedKFold, cross_val_score)
+
+    grouped = groups is not None
     if task_type == "regression":
-        cv = KFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
+        n_splits = N_FOLDS
+        if grouped:
+            n_groups = int(len(np.unique(groups)))
+            if n_groups < 2:
+                return float("nan")
+            n_splits = int(min(N_FOLDS, n_groups))
+            cv = GroupKFold(n_splits=n_splits)
+        else:
+            cv = KFold(n_splits=n_splits, shuffle=True, random_state=SEED)
         scoring = "r2"
     else:
         _, counts = np.unique(y, return_counts=True)
         n_splits = int(min(N_FOLDS, counts.min()))
+        if grouped:
+            n_splits = int(min(n_splits, len(np.unique(groups))))
         if n_splits < 2:
             return float("nan")
-        cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=SEED)
+        cv = (StratifiedGroupKFold(n_splits=n_splits, shuffle=True,
+                                   random_state=SEED) if grouped
+              else StratifiedKFold(n_splits=n_splits, shuffle=True,
+                                   random_state=SEED))
         scoring = "roc_auc" if len(counts) == 2 else "accuracy"
     try:
-        return float(np.mean(cross_val_score(est, X, y, cv=cv, scoring=scoring)))
+        return float(np.mean(cross_val_score(est, X, y, cv=cv, groups=groups,
+                                             scoring=scoring)))
     except Exception:
         return float("nan")
 
 
-def run_probe(X_train, y_train, task_type: str = "regression") -> ProbeResult:
+def run_probe(X_train, y_train, task_type: str = "regression",
+              groups=None) -> ProbeResult:
     """Run the evidence probe on TRAINING data only (caller enforces the
-    lockbox mask). Deterministic, a few seconds on typical shapes."""
+    lockbox mask). Deterministic, a few seconds on typical shapes.
+
+    `groups` is the recorded entity per row. Passing it makes every fold
+    grouped, so no entity spans a split — `AUDIT-009`. Omitting it scores the
+    ungrouped way and SAYS SO in the notes, because a number computed one way
+    and read as the other is the whole defect.
+    """
     rng = np.random.default_rng(SEED)
-    X, y, notes, subsampled = _prepare(X_train, y_train, task_type, rng)
+    X, y, notes, subsampled, groups = _prepare(X_train, y_train, task_type,
+                                               rng, groups)
 
     metric = "R²" if task_type == "regression" else (
         "AUC" if len(np.unique(y)) == 2 else "accuracy")
     result = ProbeResult(
         task_type=task_type, n_rows_used=len(X), n_features_used=X.shape[1],
         subsampled=subsampled, metric_name=metric, notes=notes,
+        grouped=groups is not None,
     )
+    # SAID WHERE THE READER IS, not only in the return value. A grouped score
+    # is usually LOWER than the leaked one, and a user who is not told reads
+    # the drop as a regression rather than as the app becoming correct.
+    if groups is not None:
+        result.notes.append(
+            f"folds grouped by the recorded entity — {len(np.unique(groups)):,} "
+            f"of them — so no entity spans a split. An ungrouped score on a "
+            f"table with repeated measures comes out higher than it should")
+    else:
+        result.notes.append(
+            "folds are ungrouped: no entity column was passed, so if a row "
+            "can repeat within a subject these numbers are optimistic")
     if len(X) < 20 or X.shape[1] == 0:
         result.notes.append("too little data to probe")
         return result
 
     wide = X.shape[1] > len(X)
     linear = _linear_pipeline(task_type, wide=wide)
-    result.linear_score = _cv_score(linear, X, y, task_type)
+    result.linear_score = _cv_score(linear, X, y, task_type, groups)
 
     perm_scores = []
     for i in range(N_PERMUTATIONS):
         y_perm = rng.permutation(y)
-        perm_scores.append(_cv_score(_linear_pipeline(task_type, wide=wide), X, y_perm, task_type))
+        perm_scores.append(_cv_score(_linear_pipeline(task_type, wide=wide),
+                                     X, y_perm, task_type, groups))
     perm_scores = [s for s in perm_scores if not np.isnan(s)]
     if perm_scores:
         result.permuted_score = float(np.mean(perm_scores))
         result.permuted_spread = float(np.std(perm_scores))
 
-    result.tree_score = _cv_score(_tree_estimator(task_type), X, y, task_type)
+    result.tree_score = _cv_score(_tree_estimator(task_type), X, y, task_type,
+                                  groups)
 
     if len(X) >= 80:
         half = rng.choice(len(X), len(X) // 2, replace=False)
         result.half_data_score = _cv_score(
-            _linear_pipeline(task_type, wide=wide), X[half], y[half], task_type)
+            _linear_pipeline(task_type, wide=wide), X[half], y[half], task_type,
+            None if groups is None else groups[half])
 
     return result

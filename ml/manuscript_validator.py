@@ -11,12 +11,47 @@ from ml.narrative_engine import _MODEL_NAMES
 
 @dataclass
 class ManuscriptValidationCheck:
-    """Single validation result."""
+    """Single validation result.
+
+    `scored` and `declared_because` are `MISC-029`. A check whose inputs are
+    absent from the manuscript context still appends a `PASS`, and the panel
+    then counts it as a unit of scrutiny — so a Guided draft was shown
+    *"13 checks, 0 unmet"* over a set in which three could not have said
+    anything else. **The number was the false assertion**; the sentence beside
+    it, which renders only when nothing failed, was true about the checks that
+    ran.
+
+    **`status` stays two-valued and nothing about the gate moves.** A third
+    value was measured and rejected: `to_rows` below collapses any non-`PASS`
+    status to the literal `"FAIL"` while `failed_checks` keys on `== "FAIL"`
+    and excludes a third value, so a third value serves `n_failed: 0` and
+    `passed: True` beside thirteen rows carrying eight `FAIL` — a header
+    reading *"13 checks, 8 unmet"* on a clean draft. That is trap #7, *the
+    machine-readable form is lossier than the sentence*, committed inside the
+    fix for it. Measured: two new fields turn 0 of 132 driven tests red across
+    11 files; a third status value turns 6 red across 3.
+
+    **The basis is STRUCTURAL and it comes from the CONTEXT, not from a
+    predicate over the payload.** `L64-B` shipped a `scored_when` predicate on
+    the figure checklist one registry over, and it does not transfer: run as a
+    payload predicate here it declares only five of the eight vacuous checks,
+    because *analysis population*, *split counts* and *final predictor count*
+    have their inputs **present** and are vacuous for reasons no predicate over
+    those inputs can see. So each check states its own basis where it is
+    derivable — *this key is absent*, *this list is empty* — and the app
+    recomputes it per render. Nothing writes a count down, and the two branches
+    of `turbotab.manuscript._counts` answer differently without anyone
+    maintaining two lists.
+    """
 
     name: str
     status: str
     location: str
     detail: str
+    #: Whether the manuscript could have moved this verdict at all.
+    scored: bool = True
+    #: Why not, in the words of the absent input. Empty when `scored`.
+    declared_because: str = ""
 
 
 @dataclass
@@ -27,22 +62,60 @@ class ManuscriptValidationReport:
 
     @property
     def failed_checks(self) -> List[ManuscriptValidationCheck]:
+        # DELIBERATELY UNCHANGED, and `passed` with it. `passed` gates the
+        # Classic download and `AGENT_ONBOARD.md` §08 check 2 is that a
+        # threshold does not move in the same loop as the change that
+        # pressured it. No declared check reports `FAIL` on either door today —
+        # `turbotab/manuscript.py` serves that as `n_declared_that_failed` and
+        # a test asserts it is zero — so excluding them here would change
+        # nothing observable while changing what a gate means.
         return [check for check in self.checks if check.status == "FAIL"]
 
     @property
     def passed(self) -> bool:
         return not self.failed_checks
 
-    def to_rows(self) -> List[Dict[str, str]]:
+    @property
+    def scored_checks(self) -> List[ManuscriptValidationCheck]:
+        """The checks the manuscript could have moved. `MISC-029`."""
+        return [check for check in self.checks if check.scored]
+
+    @property
+    def declared_checks(self) -> List[ManuscriptValidationCheck]:
+        """The checks that were decided before the draft was read."""
+        return [check for check in self.checks if not check.scored]
+
+    def to_rows(self) -> List[Dict[str, Any]]:
         return [
             {
                 "Status": "PASS" if check.status == "PASS" else "FAIL",
                 "Check": check.name,
                 "Location": check.location,
                 "Detail": check.detail,
+                "scored": check.scored,
+                "declared_because": check.declared_because,
             }
             for check in self.checks
         ]
+
+
+#: One sentence for one kind of absence, so a declared check reads the same
+#: wherever it appears. Borrowed in shape from `turbotab.manuscript`'s
+#: `_RENDER_IS_NOT_THE_FAULT`: the author is told the check did not run, and
+#: told why in terms of the input rather than of the check.
+_DECLARED = ("This check was decided before the draft was read: {what}, so "
+             "{consequence}. It is reported rather than counted, because a "
+             "verdict nothing could have changed is not a unit of scrutiny.")
+
+
+#: `MISC-103`. Matched against the whole draft, not against one producer's
+#: wording: `ml/narrative_engine` opens its limitation list with this clause and
+#: `ml/publication.EXPLORATORY_LIMITATION_SENTENCE` repeats it on the fallback
+#: path. The pattern spans the two halves that carry the claim — the mode, and
+#: what it did to the test set — so a paraphrase of the connective still
+#: matches while a draft that never says it cannot.
+_EXPLORATORY_LIMITATION_PATTERN = re.compile(
+    r"exploratory mode.{0,200}?not\s+quarantined", re.IGNORECASE | re.DOTALL)
 
 
 def _extract_section(text: str, heading: str, level: int) -> str:
@@ -55,6 +128,26 @@ def _extract_latex_subsection(text: str, heading: str) -> str:
     pattern = rf"(?ms)\\subsection\{{{re.escape(heading)}\}}\s*(.*?)(?=\\subsection\{{|\\section\{{|\\paragraph\{{|\\end\{{document\}}|\Z)"
     match = re.search(pattern, text or "")
     return match.group(1).strip() if match else ""
+
+
+#: Sections of the export that are the app's OWN RECORD of what it advised —
+#: the coaching log and the decision appendix. A coach sentence there is the
+#: record being accurate; the same sentence in Methods or Discussion is the
+#: manuscript speaking in a register no journal accepts. The coaching check
+#: reads everything else (`DRIVE-074` / D9-06).
+_AUDIT_SECTION_PATTERNS = (
+    r"(?ms)^##\s+Key Observations and Resolutions\s*$.*?(?=^##\s+|\Z)",
+    r"(?ms)^##\s+Appendix: Decision Audit Trail\s*$.*?(?=^##\s+|\Z)",
+    r"(?ms)\\subsection\{Decision Audit Trail\}.*?(?=\\subsection\{|\\section\{|\\end\{document\}|\Z)",
+)
+
+
+def _without_audit_sections(text: str) -> str:
+    """The export text with the app's own advice log removed."""
+    stripped = text or ""
+    for pattern in _AUDIT_SECTION_PATTERNS:
+        stripped = re.sub(pattern, "", stripped)
+    return stripped
 
 
 def _extract_analysis_n(text: str) -> Optional[int]:
@@ -144,7 +237,24 @@ def validate_manuscript_bundle(
     task_type: str,
     table1_df: Any = None,
 ) -> ManuscriptValidationReport:
-    """Validate manuscript consistency before export."""
+    """Validate manuscript consistency before export.
+
+    **Three checks declare themselves rather than being scored, and which
+    three depends on the context rather than on a list kept here.** Measured
+    over 3,000 randomized bundles per branch on two target shapes, holding the
+    context and `task_type` fixed and varying only the manuscript: on the
+    branch `turbotab.manuscript._counts` takes when a run is held, *Table 1
+    includes all finalized predictors* and *Abstract feature-selection
+    language* cannot dissent; on the no-run branch *Model names match* joins
+    them. Every other check moved in both directions.
+
+    **`Split counts reconcile to analysis population` is deliberately NOT
+    declared**, on either branch, and that is a decision rather than an
+    oversight. It is vacuous in two opposite ways — an identity that cannot
+    FAIL where a run wrote all three parts, and pinned at FAIL where the
+    lockbox branch wrote only two — and neither is repaired by saying so. It
+    gets a comparand instead; see `MISC-028` and `MISC-031`.
+    """
     context = manuscript_context or {}
     population = context.get("population_counts") or {}
     feature_counts = context.get("feature_counts") or {}
@@ -183,16 +293,72 @@ def validate_manuscript_bundle(
         )
     )
 
+    # `MISC-028` / `MISC-031`. THE PARTS AND THE WHOLE HAVE TO COME FROM
+    # DIFFERENT PLACES OR THIS ANSWERS NOTHING. Until `L65` the Guided producer
+    # made both sides itself, in opposite and equally useless ways: on the run
+    # branch `analysis_total` was DEFINED as `train_n + test_n` with `val_n`
+    # pinned to `0`, an identity that could not FAIL; on the lockbox branch it
+    # wrote only two of the four keys, so the sum was `test_n` alone and the
+    # check could not PASS — an unfitted project was shown a failure no edit
+    # could ever clear.
+    #
+    # `turbotab.manuscript._counts` now takes the whole from the SEAL and the
+    # parts from the RUN, and says which in these two keys. They are read
+    # rather than assumed absent: a producer that supplies neither (the Classic
+    # door does) is treated as two derivations, which is the safe direction —
+    # it scores the check rather than excusing it.
+    split_source = population.get("split_source")
+    total_source = population.get("analysis_total_source")
+    one_derivation = bool(split_source) and split_source == total_source
+    # AND THE THIRD STATE, FOUND BY DRIVING THE PAGE RATHER THAN BY READING.
+    # `MISC-031` names the lockbox branch; a project that has not been SEALED
+    # reaches neither branch, so `population_counts` is `{}` and this compared
+    # `None` against `0` — FAIL, permanently, on a project whose author has
+    # simply not got to the seal yet. That is the same class one state earlier,
+    # and it is the plainest case of `MISC-029`'s criterion: the input is
+    # absent, so there is nothing to reconcile and nothing an author can do
+    # about it.
+    nothing_to_reconcile = expected_analysis_n is None
     split_total = sum(
         int(population.get(key) or 0)
         for key in ("train_n", "val_n", "test_n")
     )
+    reconciles = nothing_to_reconcile or expected_analysis_n == split_total
     checks.append(
         ManuscriptValidationCheck(
             name="Split counts reconcile to analysis population",
-            status="PASS" if expected_analysis_n == split_total else "FAIL",
+            status="PASS" if reconciles else "FAIL",
             location="Methods: Study Design",
-            detail=f"analysis_total={expected_analysis_n}, split_sum={split_total}.",
+            detail=(
+                f"analysis_total={expected_analysis_n}, "
+                f"split_sum={split_total}."
+                + (f" The total is the {total_source} count and the split is "
+                   f"the {split_source} partition, so these are two "
+                   f"derivations and a disagreement between them is real."
+                   if split_source and not one_derivation else "")),
+            # THE ONLY THING THAT CAN DECLARE THIS CHECK IS THE ABSENCE OF A
+            # SECOND DERIVATION, which is the same criterion the other three
+            # declared checks use one step out: `MISC-029` declares where an
+            # INPUT is missing, and this declares where the COMPARAND is. Both
+            # are "there is no second thing to compare against".
+            scored=not (one_derivation or nothing_to_reconcile),
+            declared_because=(
+                _DECLARED.format(
+                    what=("no analysis population reached the manuscript "
+                          "context at all, which is the state of a project "
+                          "that has not been sealed"),
+                    consequence=("there is no total for the split to "
+                                 "reconcile to, and no edit to the draft "
+                                 "could supply one"))
+                if nothing_to_reconcile else
+                _DECLARED.format(
+                    what=(f"both the analysis total and the split come from "
+                          f"the {split_source} partition, and nothing else in "
+                          f"this project has counted those rows"),
+                    consequence=("the sum restates the total instead of "
+                                 "testing it, and it will agree however wrong "
+                                 "that partition is"))
+                if one_derivation else ""),
         )
     )
 
@@ -250,6 +416,17 @@ def validate_manuscript_bundle(
                 + ("..." if len(missing_table1_features) > 10 else "")
                 + "."
             ),
+            # `MISC-029`. The loop above iterates the finalized predictor list,
+            # so an ABSENT list makes it iterate nothing and pass whatever
+            # Table 1 contains — driven, a Table 1 whose index holds none of
+            # the predictors passes, and so does a zero-row one.
+            scored=bool(expected_feature_names),
+            declared_because=("" if expected_feature_names else _DECLARED.format(
+                what="no finalized predictor list reached the manuscript "
+                     "context (`feature_names_for_manuscript`)",
+                consequence="there is nothing to look for in Table 1, so this "
+                            "check passes over an empty list rather than over "
+                            "an agreement")),
         )
     )
 
@@ -270,6 +447,16 @@ def validate_manuscript_bundle(
                 if not missing_models
                 else f"Missing or inconsistent models: {', '.join(missing_models)}."
             ),
+            # `MISC-029`. With no model in the context the loop above never
+            # executes, so `missing_models` is empty for the one reason that
+            # is not a match.
+            scored=bool(included_models),
+            declared_because=("" if included_models else _DECLARED.format(
+                what="no model reached the manuscript context "
+                     "(`included_models` is empty)",
+                consequence="the comparison loop never runs, so this check "
+                            "passes over zero models rather than over a "
+                            "match")),
         )
     )
 
@@ -339,8 +526,58 @@ def validate_manuscript_bundle(
                 if not (should_not_reduce and reduction_language)
                 else f"Abstract still describes feature reduction even though original={original_count} and selected={selected_count}."
             ),
+            # `MISC-029`. `should_not_reduce` needs BOTH counts; with either
+            # absent it is False and the verdict is PASS whatever the abstract
+            # says. The check's premise, not its comparison, is what is
+            # missing.
+            scored=original_count is not None and selected_count is not None,
+            declared_because=(
+                "" if (original_count is not None
+                       and selected_count is not None)
+                else _DECLARED.format(
+                    what=("the pre-selection predictor count is absent from "
+                          "the manuscript context "
+                          "(`feature_counts['original']`)"),
+                    consequence=("whether the set actually shrank has no "
+                                 "answer, so this check cannot dissent "
+                                 "whatever the abstract claims"))),
         )
     )
+
+    # `MISC-103`. THE ONE LIMITATION THAT IS ABOUT THE WHOLE STUDY, AND THE
+    # ONLY CHECK THAT CAN NOTICE IT LEFT. It reached the draft through
+    # NarrativeEngine alone; on the fallback path — engine raised, or provenance
+    # empty — it silently disappeared, and an exploratory study exported a
+    # manuscript claiming a clean held-out evaluation. The composer now emits it
+    # too; this check is what makes its absence stop an export rather than pass
+    # unnoticed, because a caveat that only sometimes prints is not a caveat.
+    #
+    # APPENDED ONLY FOR AN EXPLORATORY STUDY, and that is the one place this
+    # registry's `MISC-029` doctrine does not apply. Declaring covers a check
+    # that RUNS over an input it did not get; a clean study is not missing an
+    # input, it owes no sentence at all — and a row on every panel saying so
+    # would inflate the roster the header counts (`turbotab.manuscript._counts`
+    # serves that number) with a check that is not about that manuscript.
+    exploratory = bool(context.get("exploratory_mode"))
+    if exploratory:
+        exploratory_text = f"{methods_text}\n{report_text}\n{latex_text}"
+        limitation_present = bool(
+            _EXPLORATORY_LIMITATION_PATTERN.search(exploratory_text))
+        checks.append(
+            ManuscriptValidationCheck(
+                name="Exploratory-mode limitation is stated in the draft",
+                status="PASS" if limitation_present else "FAIL",
+                location="Methods / Limitations",
+                detail=(
+                    "The exploratory-mode limitation is stated."
+                    if limitation_present
+                    else "The session is marked exploratory "
+                         "(`exploratory_mode`), but no draft section states "
+                         "that the held-out test set was not quarantined from "
+                         "feature engineering and selection."
+                ),
+            )
+        )
 
     artifact_patterns = {
         "raw placeholder tag": r"\[PLACEHOLDER\](?!:)",
@@ -383,20 +620,39 @@ def validate_manuscript_bundle(
         )
     )
 
+    # `DRIVE-074` / D9-06. FOUR LITERAL STRINGS COULD NOT SEE THE TWO REGISTERS
+    # THAT ACTUALLY REACH THE EXPORT. A coach card's *"A reviewer would question
+    # why the more complex model was selected."* sat in the Discussion of a
+    # drafted manuscript while this check reported "No coaching language
+    # detected" — the check passing was worse than its absence, because the
+    # panel said the prose had been examined for exactly this. Reviewer-
+    # anticipation and second-person address are what distinguish advice to the
+    # analyst from prose about the study; neither can appear in a manuscript.
     coaching_patterns = [
         "no action needed",
         "favorable to analysis",
         "workflow-derived abstract",
         "[applicable to",
+        "a reviewer would",
+        "reviewers would",
+        "you should",
+        "you may want",
+        "your data",
+        "your dataset",
+        "your model",
+        "consider using",
     ]
-    found_patterns = [pattern for pattern in coaching_patterns if pattern in combined_export_text.lower()]
+    coaching_scope_text = _without_audit_sections(combined_export_text).lower()
+    found_patterns = [pattern for pattern in coaching_patterns if pattern in coaching_scope_text]
     checks.append(
         ManuscriptValidationCheck(
             name="No coaching language patterns remain in export text",
             status="PASS" if not found_patterns else "FAIL",
             location="Markdown / LaTeX export",
             detail=(
-                "No coaching language detected."
+                "No coaching language detected in the drafted prose "
+                "(the coaching log and decision appendix are the app's own "
+                "record and are not read by this check)."
                 if not found_patterns
                 else f"Found coaching patterns: {', '.join(found_patterns)}."
             ),
