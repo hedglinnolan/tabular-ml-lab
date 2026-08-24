@@ -13831,5 +13831,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "ml/manuscript_validator.py (report_text assembly); pages/10_Report_Export.py (report sections)"
+ },
+ {
+  "id": "DRIVE-076",
+  "area": "DRIVE",
+  "sev": "medium",
+  "item": "Drive 10 below-the-gate pair: (D10-01) the Strengths sample-size claim cites three populations in one document - 'training rows only, n=20,904 of 21,849' vs Data Assessment's n=5,352 vs Methods' training n=4,407; pre-existing _profile_scope_fields newly reachable since the profile survives an apply; report-only, not LaTeX. (D10-02) DRIVE-074's clause rewrite left report Limitations bullets opening mid-sentence, three of four lowercase. Carried forward, still open: D9-07 render-lag, Drive-8 finding 34 (imbalance 0.14 vs 7.2:1, observable again).",
+  "detail": "",
+  "ev": "docs/audit/DRIVE10_GATE_CHECK.md; ml/dataset_profile.py (_profile_scope_fields)",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "docs/audit/DRIVE10_GATE_CHECK.md; ml/dataset_profile.py (_profile_scope_fields)"
  }
 ]

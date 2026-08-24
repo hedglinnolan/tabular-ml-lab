@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**512 of 1040 closed.**
+**512 of 1041 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 447 |
+| `OPEN` | 448 |
 | `PARTIAL` | 81 |
 | `FIXED` | 502 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 447
+## OPEN — 448
 
 
 ### Guided-door drive feedback — 76
@@ -527,7 +527,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Human drive feedback — 10
+### Human drive feedback — 11
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -541,6 +541,7 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-060` | medium | Summary panels keep asserting states the app has already left -- 'This step is waiting for the seal' after sealing, and 'No model has been fitted yet' after fitting | `docs/audit/DRIVE7_OBSERVATIONS.md Run 1 'Other observations' and Run 2; screenshot-1787416112712; build…` | assert-something-false, IN THE MOST ORDINARY PLACE IT CAN HAPPEN, AND SEPARATE FROM DRIVE-056: that row is about the manuscript never receiving the run, this one is about panels… |
 | `DRIVE-061` | medium | The app chooses a missing-data strategy for the user and discloses it after the fit, in the one place its own rule says it may not choose | `docs/audit/DRIVE7_OBSERVATIONS.md Runs 2 and 4; build 0856c1d` | THE DISCLOSURE IS HONEST AND THAT IS WHY THIS IS FILED AS A PRODUCT DEFECT RATHER THAN A FALSEHOOD: the app says exactly what it did. It says it in small print, after the fact… |
 | `DRIVE-062` | medium | The app accepted a row identifier as a classification target 'at high confidence' -- 240 unique values across 240 rows -- while the same app refuses to hand that column to a model because every value… | `docs/audit/DRIVE7_OBSERVATIONS.md Run 4 'Other observations'; build 0856c1d` | FOUND BY A MIS-CLICK CAUSED BY DRIVE-054, which is worth recording: the layout defect manufactured the input that exposed this one. A target with one class per row cannot be… |
+| `DRIVE-076` | medium | Drive 10 below-the-gate pair: (D10-01) the Strengths sample-size claim cites three populations in one document - 'training rows only, n=20,904 of 21,849' vs Data Assessment's n=5,352 vs Methods'… | `docs/audit/DRIVE10_GATE_CHECK.md; ml/dataset_profile.py (_profile_scope_fields)` |  |
 
 ### Page-layer extraction — 5
 
