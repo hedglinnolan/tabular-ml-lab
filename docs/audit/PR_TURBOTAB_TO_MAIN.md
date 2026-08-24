@@ -17,10 +17,11 @@ The Classic (Streamlit) app cleared of the 52 confirmed paper-risk findings from
 
 ## Gate evidence
 
-- Scoped suite: **2495 passed, 0 failed** (excluding the torch-dependent NN module tests — torch is deliberately optional per TEST-038; `models/nn_whuber` now imports without it).
+- Scoped suite: **2,647 passed, 0 failed** (excluding the torch-dependent NN module tests — torch is deliberately optional per TEST-038; `models/nn_whuber` now imports without it).
 - Meta-tests: suite order-independence + every-FIXED-row-names-a-running-test — **4 passed (36:42)**.
+- Three full end-to-end drives of the Classic app (Drives 8–10, `docs/audit/DRIVE*_*.md`): Drive 8 found 4 criticals behind green banners; two repair rounds later, Drive 10's targeted kill-confirmation returned **MERGE GATE: OPEN** with every critical dead on its own route and the manuscript validator at 13/13.
 - Integration + workflow suites green (373); routing baseline formally adjudicated through L67.
-- Ledger: `ledger.py check` clean, 494/1016 closed repo-wide.
+- Ledger: `ledger.py check` clean, 512/1041 closed repo-wide.
 
 ## Notes for review
 
