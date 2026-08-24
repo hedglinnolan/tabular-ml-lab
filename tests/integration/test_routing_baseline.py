@@ -78,21 +78,27 @@ LEAKY_BASELINE = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-leaky.j
 # `irrelevant_questions` each. Ruled in `VALUE_CHECK_ADJUDICATION.md` §"L67 ·
 # Classic asks the grain question, and the harness has nowhere to put it".
 #
-# **The stamp on this file is `30f48e4+wt`, and the suffix is load-bearing.** The
-# grain control is NOT committed — `git show 30f48e4:pages/01_Upload_and_Audit.py`
-# has no `subject_id_declaration`, so re-measuring at that commit reproduces `l66`,
-# not this. A stamp that cannot be resolved by `git show` announces its own limit
-# rather than quietly failing to honor it.
-ADJUDICATED = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l67.json"
+# **`L68`: `DRIVE-067` runs the Import Doctor's structural review on the working
+# table in Step 3, so repair buttons finally render on the measured path — and
+# the investigation found that `_map_to_requirement`'s repair branch had NEVER
+# matched a widget in any of the six readings before it. Classic's coverage on
+# messy-clinic goes `1/10` → `5/10`. Ruled in `VALUE_CHECK_ADJUDICATION.md`
+# §"L68 · the repair branch that never fired"; the reasoning for why this one is
+# fixed while `L67`'s clause question was declined is the table in that entry.
+#
+# This file's stamp is a plain commit again: the tree was verified clean with
+# `git status --porcelain`, so `L67`'s `+wt` convention applies and is not needed.
+ADJUDICATED = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l68.json"
 # The measurements this one superseded, oldest first. Kept named so the chain of
 # re-measurements is readable rather than implied by filenames —
-# l9 → l9c → l61 → l66 → l67. A list rather than one constant per link because the
-# chain is now five long and `_PRIOR_PRIOR_PRIOR` is not a name.
+# l9 → l9c → l61 → l66 → l67 → l68. A list rather than one constant per link
+# because the chain is now six long and `_PRIOR_PRIOR_PRIOR` is not a name.
 ADJUDICATED_SUPERSEDED = [
     ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9.json",
     ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9c.json",
     ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l61.json",
     ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l66.json",
+    ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l67.json",
 ]
 
 # What the adjudication permits the two references to disagree about, and by
@@ -128,18 +134,27 @@ ADJUDICATED_SUPERSEDED = [
 # self-declared clause labels and Classic declares none; that omission is ruled a
 # recorded limitation, not corrected here, and it is not in `_PREREG_METRICS`
 # either way.
+# **`L68`.** `DRIVE-067`'s working-table review adds repair buttons, and the
+# mapper fix above lets four of them cover the requirements they settle.
+#
+# `messy-clinic.irrelevant_questions` HAS NO ENTRY, and its absence is the
+# entry: at `l68` it reads 25, which is exactly the frozen pre-registered value
+# it has not equalled since `l9`. It went 25 → 24 → 18 → 19 → 25 through four
+# unrelated causes and landed back where it started. A reader diffing only the
+# frozen file against `l68` would conclude the metric never moved; the
+# adjudication note enumerates all four movements so that coincidence cannot be
+# read as stability.
 ADJUDICATED_DELTAS = {
     ("messy-clinic", "required_decisions"): (9, 10),
-    ("messy-clinic", "questions_asked"): (34, 29),         # L67 (L66 was 28)
-    ("messy-clinic", "irrelevant_questions"): (25, 19),    # L67 (L66 was 18)
-    ("messy-clinic", "coverage"): (0.1111, 0.1),
+    ("messy-clinic", "questions_asked"): (34, 35),         # L68 (L67 was 29)
+    ("messy-clinic", "coverage"): (0.1111, 0.5),           # L68 — 1/10 → 5/10
     ("longitudinal", "required_decisions"): (1, 2),
-    ("longitudinal", "questions_asked"): (32, 28),         # L67 (L66 was 27)
-    ("longitudinal", "irrelevant_questions"): (31, 26),    # L67 (L66 was 25)
+    ("longitudinal", "questions_asked"): (32, 28),         # L67, unmoved at L68
+    ("longitudinal", "irrelevant_questions"): (31, 26),    # L67, unmoved at L68
     ("longitudinal", "coverage"): (1.0, 0.5),
     ("wide-assay", "required_decisions"): (1, 2),          # L61
-    ("wide-assay", "questions_asked"): (31, 26),           # L67 (L66 was 25)
-    ("wide-assay", "irrelevant_questions"): (30, 24),      # L67 (L66 was 23)
+    ("wide-assay", "questions_asked"): (31, 27),           # L68 (L67 was 26)
+    ("wide-assay", "irrelevant_questions"): (30, 25),      # L68 (L67 was 24)
     ("wide-assay", "coverage"): (1.0, 0.5),                # L61
 }
 
@@ -179,10 +194,11 @@ ADJUDICATED_KEY_DELTAS = {
 # second drift cannot hide inside the first* — and it is worth saying plainly
 # that the leaky half did not have it before `L61` and nothing said so.
 LEAKY_ADJUDICATED = (ROOT / "docs" / "turbotab" / "data"
-                     / "routing-baseline-leaky-l67.json")
+                     / "routing-baseline-leaky-l68.json")
 LEAKY_SUPERSEDED = [
     ROOT / "docs" / "turbotab" / "data" / "routing-baseline-leaky-l61.json",
     ROOT / "docs" / "turbotab" / "data" / "routing-baseline-leaky-l66.json",
+    ROOT / "docs" / "turbotab" / "data" / "routing-baseline-leaky-l67.json",
 ]
 
 # L66 moved this dataset for the same cause as the three above — main's
@@ -190,10 +206,14 @@ LEAKY_SUPERSEDED = [
 # recommendation panel's `rec_run_leakage_scan`, whose label was the bare word
 # "Run". `test_classic_does_not_ask_about_the_leak` below is the test that
 # feels that one. L67 then adds the grain question here as on every dataset.
+# L68 does NOT move this dataset at all: leaky-sepsis has no findings on the
+# working-table surface `DRIVE-067` opened, so it and longitudinal are the two
+# datasets that are byte-identical to their l67 predecessor — which is also the
+# evidence that the mapper fix could not reach anything it should not.
 LEAKY_DELTAS = {
     ("leaky-sepsis", "required_decisions"): (1, 2),
-    ("leaky-sepsis", "questions_asked"): (31, 26),         # L67 (L66 was 25)
-    ("leaky-sepsis", "irrelevant_questions"): (30, 24),    # L67 (L66 was 23)
+    ("leaky-sepsis", "questions_asked"): (31, 26),         # L67, unmoved at L68
+    ("leaky-sepsis", "irrelevant_questions"): (30, 24),    # L67, unmoved at L68
     ("leaky-sepsis", "coverage"): (1.0, 0.5),
 }
 
@@ -284,19 +304,70 @@ def _map_to_requirement(label: str, key: str, required) -> str | None:
     requirement and makes the metric say nothing.
 
     Classic's mapping is small and legible: the target selectbox settles
-    `choose_target`, and each "Apply: <fix>" button in Suggested Actions settles
-    the repair whose engine-written `fix_label` it is showing.
+    `choose_target`, and a button showing a repair's engine-written `fix_label`
+    settles that repair.
+
+    **`L68`: the repair half had never once fired, on any dataset, in any of the
+    six published readings — the frozen pre-registration included.** Every
+    `covers` ever recorded for Classic is `target_selectbox → choose_target`.
+    That was not a bug at the time and it was not a lie: the "Apply: <fix>"
+    surface it was written against is Suggested Actions on a FRESH UPLOAD, and
+    the measured path seeds a registry dataset, which before `DRIVE-067` got no
+    structural review at all. The branch was unexercised, not wrong.
+
+    `DRIVE-067` runs the Import Doctor's structural review on the working table
+    in Step 3, so the repair buttons finally render on the measured path — under
+    keys like `worktable_1_fix_4_numeric_as_text__income`, labeled with the bare
+    `fix_label` and no "Apply:" prefix. Left alone, this function scores them as
+    covering nothing, and the artifact publishes `coverage: 1/10` for a door that
+    now puts five of the ten required decisions to the user. Ruled in
+    `VALUE_CHECK_ADJUDICATION.md` §"L68 · the repair branch that never fired".
+
+    **Two independent engine-written channels must agree, or the widget covers
+    nothing.** The engine writes the `fix_label` AND the finding key; this
+    function only checks that two of the engine's own strings point at the same
+    requirement. It never decides on its own what a Classic widget means, which
+    is the `L16` boundary — and the rule here is STRICTER than the surface-1
+    branch below, not looser, because a single substring match is what a
+    harness marking its own homework would settle for.
     """
     if key == "target_selectbox":
         return "choose_target"
-    if not label.startswith("Apply:"):
+
+    # Surface 1 — Suggested Actions, "Apply: <fix_label>". Deliberately
+    # untouched: no number this file has ever published can move because of the
+    # branch that follows it, since this one returns before reaching it.
+    if label.startswith("Apply:"):
+        body = label[len("Apply:"):].split(":")[0].strip().lower()
+        for r in required:
+            if r.key.startswith("repair::") and r.fix_label:
+                if body and body in r.fix_label.lower():
+                    return r.key
         return None
-    body = label[len("Apply:"):].split(":")[0].strip().lower()
+
+    # Surface 2 — the DRIVE-067 working-table review. Only widgets that did not
+    # exist before this fix can reach here, which is what bounds the blast
+    # radius to the movement being adjudicated.
+    if not key.startswith("worktable_"):
+        return None
+
+    low = label.strip().lower()
+    by_label = by_key = None
     for r in required:
-        if r.key.startswith("repair::") and r.fix_label:
-            if body and body in r.fix_label.lower():
-                return r.key
-    return None
+        if not r.key.startswith("repair::"):
+            continue
+        if r.fix_label and r.fix_label.strip().lower() == low:
+            if by_label and by_label != r.key:
+                return None  # two requirements claim one label; refuse, never guess
+            by_label = r.key
+        suffix = r.key[len("repair::"):]
+        if suffix and suffix in key:
+            if by_key and by_key != r.key:
+                return None
+            by_key = r.key
+    # Agreement, or nothing. A label that matches while the key does not is a
+    # coincidence of wording, and this file does not bank coincidences.
+    return by_label if by_label is not None and by_label == by_key else None
 
 
 def _classic_questions(csv_path: pathlib.Path, target: str, dataset: str):
@@ -712,7 +783,7 @@ def test_the_leaky_reference_differs_from_the_frozen_one_only_as_ruled():
 def test_the_chain_of_re_measurements_is_readable_rather_than_implied():
     """Every superseded reading is still on disk and still named.
 
-    `l9 → l9c → l61 → l66 → l67`, and the leaky file's own chain beside it. The rule this
+    `l9 → l9c → l61 → l66 → l67 → l68`, and the leaky file's own chain beside it. The rule this
     keeps is the one `VALUE_CHECK_ADJUDICATION.md` sets: *the frozen artifact is
     not edited, both readings are preserved in data, the ruling is published.*
     A chain implied by filenames alone is one a later loop can break by writing

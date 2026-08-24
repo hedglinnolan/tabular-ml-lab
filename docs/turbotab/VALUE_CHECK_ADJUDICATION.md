@@ -1257,3 +1257,201 @@ Not settled by this entry:
   the tree a reader can check out, the stamp says so in the stamp — not in a comment beside it.
 - **An accounting change that fixes no failing assertion is not part of the loop that revealed the
   need for it.** Bank the drift; file the accounting; do not let the second ride in on the first.
+
+---
+
+# L68 · the repair branch that never fired
+
+**Eighth adjudication, and the most expensive one to the builder's headline that this file has
+recorded.** The drift that fired the gate is ordinary — Classic renders more repair buttons, so it
+asks more questions. What the investigation found underneath it is not: **the half of the harness
+that scores Classic's coverage has never matched a single widget, on any dataset, in any of the six
+published readings, the frozen pre-registration included.** Classic's coverage has always been "the
+target selectbox, and nothing else." Fixed, it goes from 1/10 to **5/10** on the contested dataset.
+
+## What happened
+
+`DRIVE-067`: the Import Doctor's structural review now also runs on the working table in Step 3 of
+`pages/01_Upload_and_Audit.py`. Previously only fresh uploads were reviewed — registry, restored and
+combined datasets got none. Where the fixtures have findings, repair buttons now render.
+
+**Added, all under `worktable_*` keys, nothing removed and nothing re-keyed:**
+
+| dataset | widget key | label | covers |
+|---|---|---|---|
+| messy-clinic | `worktable_1_fix_3_category_variants__sex` | Merge those variants in 'sex' | `repair::category_variants__sex` |
+| messy-clinic | `worktable_1_fix_4_numeric_as_text__income` | Convert 'income' to numbers | `repair::numeric_as_text__income` |
+| messy-clinic | `worktable_1_fix_5_numeric_as_text__weight` | Convert 'weight' to numbers | `repair::numeric_as_text__weight` |
+| messy-clinic | `worktable_1_fix_7_unnamed_columns` | Drop 1 unnamed column(s) | `repair::unnamed_columns` |
+| messy-clinic | `worktable_1_fix_8_constant_columns` | Drop 1 constant column(s) | **nothing** |
+| messy-clinic | `worktable_1_fix_9_wide_repeated_measures` | Reshape to one row per measurement (long format) | **nothing** |
+| wide-assay | `worktable_1_fix_0_wide_repeated_measures` | Reshape to one row per measurement (long format) | **nothing** |
+
+longitudinal and leaky-sepsis have no findings on this surface and did not move at all — the first
+time in five adjudications that two datasets are byte-identical to their predecessor.
+
+The last three rows matter as much as the first four: `constant_columns` and `wide_repeated_measures`
+are buttons Classic renders for findings the engine does **not** put in `required_decisions`. They
+score as covering nothing, which is correct, and they are the evidence that the mapping fix below
+is not a blanket "count the new buttons".
+
+## The finding underneath the drift
+
+`_map_to_requirement` has two branches. One maps `target_selectbox → choose_target`. The other maps
+a button labeled `"Apply: <fix>"` to the repair whose engine-written `fix_label` it shows.
+
+**The second branch has never returned a value.** Every `covers` recorded for Classic in
+`routing-baseline.json`, `l9`, `l9c`, `l61`, `l66` and `l67` is `target_selectbox`. Six readings,
+four datasets, one match each.
+
+**That was not a bug and not a lie when it was written.** The "Apply:" surface is Suggested Actions
+on a *fresh upload*; the harness seeds a registry dataset via `_seed_dataset_roster`, and before
+`DRIVE-067` a registry dataset got no structural review — so there were no repair buttons on the
+measured path to match. The branch was **unexercised, not wrong**, and the pre-registered `0.111`
+was an accurate measurement of a door that genuinely surfaced one required decision.
+
+`DRIVE-067` ends that. The buttons now render, carrying the bare `fix_label` with no `"Apply:"`
+prefix — so the branch still does not fire, and the artifact would publish **`coverage: 1/10` for a
+door that now puts five of the ten required decisions to the user.** That is not a conservative
+number or a stale one. It is false, and it is false in the direction that flatters the door this
+project built.
+
+## The ruling on the mapper: fixed, and the corrected reading is banked
+
+**Ruled: `_map_to_requirement` learns the second surface. Classic's messy-clinic coverage is
+`5/10 @ 2da5528`.**
+
+This is the opposite of the `L67` ruling three entries up, and the difference is the whole point,
+so it is spelled out rather than asserted:
+
+| | `L67` — the clause question | `L68` — the fix_label question |
+|---|---|---|
+| who would decide what the widget means | the harness, via a hand-written `key → clause` constant | the **engine**, which wrote both the `fix_label` and the finding key |
+| is there ground truth to read | no — Classic declares no clause anywhere | yes — two independent engine-written strings |
+| does it move a `_PREREG_METRICS` number | no (`constitutional` is not one) | **yes — `coverage`, the headline** |
+| direction | flatters Classic | flatters Classic |
+| ruled | declined, recorded as a limitation | **fixed** |
+
+Grounds:
+
+1. **The harness is not classifying its own subject; it is checking that two of the engine's own
+   strings agree.** `L16`'s boundary is that the harness must read a label rather than invent one.
+   The label here is `r.fix_label`, written by the engine, and the widget key independently embeds
+   the engine's finding key (`worktable_1_fix_4_**numeric_as_text__income**`). This is the
+   `_map_to_requirement` precedent operating exactly as designed, on a surface that finally exists.
+2. **The rule adopted is stricter than the one it extends, not looser.** Surface 1 accepts a
+   substring match on one channel. Surface 2 requires the exact `fix_label` **and** the key suffix
+   to point at the same requirement, and returns nothing on disagreement or ambiguity. A harness
+   marking its own homework would have loosened the test, not tightened it.
+3. **Leaving it publishes a false headline.** The prereg's contested claim is a coverage
+   comparison. Publishing 1/10 while the door surfaces 5/10 is the single most consequential false
+   statement available to this project, and "it fixes no failing assertion" is not a reason to
+   leave a known-false headline standing — it is a reason to record both readings and rule, which
+   is what this entry does.
+4. **The direction is decisive, not incidental.** This correction *narrows the gap the project
+   exists to demonstrate.* A discipline whose standing rule is "the reading that flatters the door
+   I built is not mine to bank" cannot invoke process tidiness to keep a flattering number it has
+   discovered to be wrong. Declining here would be the self-serving option, which is precisely why
+   `L67` — where declining was the unflattering option — went the other way.
+
+**Blast radius, bounded deliberately.** Surface 1's branch is byte-identical and returns before
+surface 2 is reached, and surface 2 only fires on `worktable_*` keys, which did not exist before
+this fix. No number in any superseded reading could have moved. longitudinal and leaky-sepsis
+prove it: unchanged, key for key.
+
+## Both readings
+
+| dataset | metric | `l67` | `l68` under the OLD mapper | `l68` binding |
+|---|---|---:|---:|---:|
+| messy-clinic | questions_asked | 29 | 35 | **35** |
+| messy-clinic | irrelevant_questions | 19 | 25 | **25** |
+| messy-clinic | covered | 1 | 1 | **5** |
+| messy-clinic | **coverage** | 1/10 | 1/10 | **5/10** |
+| wide-assay | questions_asked | 26 | 27 | **27** |
+| wide-assay | irrelevant_questions | 24 | 25 | **25** |
+| wide-assay | coverage | 1/2 | 1/2 | **1/2** |
+| longitudinal | all | — | unchanged | **unchanged** |
+| leaky-sepsis | all | — | unchanged | **unchanged** |
+
+The middle column is the reading this entry declines — the drift banked without the mapper fix —
+written down so that what was rejected is on the record rather than merely rejected.
+
+**Two coincidences worth naming before someone reads them as signal:**
+
+- **messy-clinic's `irrelevant_questions` is back at 25, exactly the frozen pre-registered value**,
+  after going 25 → 24 → 18 → 19 → 25 through four unrelated causes. A reader comparing only the
+  frozen file to `l68` would conclude the metric never moved. It moved four times.
+- **messy-clinic and wide-assay both read `coverage: 0.5`, and they are not the same number** —
+  5/10 and 1/2. This is the "Coverage carries its denominator" rule earning its keep: the decimal
+  is identical, the `coverage_ratio` field is `5/10 @ 2da5528` and `1/2 @ 2da5528`, and only the
+  second form is quotable.
+
+## What this costs the headline
+
+**No pre-registered threshold moves, and none is missed.** Every threshold binds on Guided; Guided
+did not move; `verdict.passes` is unchanged. The prereg's Classic column stays pinned at `0.111`
+in perpetuity under rule 2 of "Coverage carries its denominator", and the pre-registration is
+unedited.
+
+What changes is what may honestly be *said*:
+
+- The narration "Classic surfaces one of ten required decisions; Guided surfaces ten of ten" is
+  **retired**. At `HEAD` it is five of ten against ten of ten.
+- The `L16` caveat — *"Classic's coverage numerator is structurally frozen … a widening gap is
+  therefore not by itself evidence of better routing"* — is now **doubly** expired. `L66` recorded
+  that Classic is no longer frozen. This entry records the second half: part of the gap was never
+  Classic's numerator being frozen at all, it was **the harness never reading it.** The caveat is
+  revisited as `L16` said it would be, not deleted:
+
+> Classic's coverage was measured at 1/n for six readings because the harness's repair branch had
+> no surface to match, not because Classic surfaced one decision in principle. From `L68` the
+> numerator is read from engine-written fix_labels and reads 5/10 on messy-clinic. Any coverage gap
+> quoted from a reading before `l68` is quoting a harness limitation as if it were a door's
+> behavior.
+
+## The limitation this entry does NOT fix
+
+`findings_driven` stays `0.0` for Classic, and it is now wrong for the same six widgets. The
+harness sets `triggering_finding=None` on every Classic question with a stated reason:
+*"the questions around it exist whether or not anything was found."* That reason is **false** for
+the working-table repair buttons — `worktable_1_fix_3_category_variants__sex` does not render
+unless the `category_variants` finding fired on `sex`.
+
+Not fixed here, and the distinction from the mapper is the ground for it: the mapper had an
+**existing branch encoding the intended semantics**, and this loop restored it to a surface it was
+written for. `triggering_finding=None` is a **stated editorial judgment about a whole class of
+widgets**, and overturning one is a new ruling, not a repair. `findings_driven` binds nothing on
+Classic (the ≥ 0.50 floor is Guided's), so the cost of carrying it one more loop is a descriptive
+understatement, recorded here. Filed for the next loop.
+
+**Measured at `2da5528`**, tree verified clean with `git status --porcelain`, `venv/bin/python`,
+2026-08-24, via `scripts/remeasure_routing_baseline.py` with and without `--leaky`. The stamp is
+resolvable — `L67`'s `+wt` precedent applies and is not needed. `l67`, `l66`, `l61`, `l9c`, `l9` and
+both frozen files are unedited and on disk.
+
+## The ruling
+
+**The `l68` readings are binding, including the corrected coverage.** `DRIVE-067` is **accepted** —
+a structural review that ran only on fresh uploads and silently skipped every registry, restored
+and combined dataset was the defect; running it on the working table is the fix, and six more
+questions on the messiest fixture is what surfacing real findings costs.
+
+Not settled:
+
+1. **`triggering_finding` for finding-conditional Classic widgets**, above.
+2. **Whether any narrative artifact still quotes the 1/10 comparison.** This entry retires the
+   claim; it does not go and find every place the claim was written down. `RETROSPECTIVE.md`,
+   `ROADMAP.md` and the paper drafts are unaudited for it.
+
+## Precedent added
+
+- **An unexercised branch is not a passing branch.** Six readings agreed on Classic's coverage and
+  all six were produced by a mapper half that never once matched. Agreement across re-measurements
+  is not evidence that the measurement is reading anything — a metric with a constant value should
+  be asked whether it CAN vary.
+- **Who wrote the string decides whether reading it is classification.** The harness may match on
+  anything the engine wrote, and may not invent a mapping of its own. `L67` and `L68` sit on
+  opposite sides of that line and are the worked examples.
+- **A correction that narrows the gap you are trying to demonstrate gets banked on discovery.**
+  Not deferred to a tidier loop. The tidier loop is the one where the flattering number survives
+  another release.

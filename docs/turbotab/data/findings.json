@@ -13719,5 +13719,33 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "utils/workflow_provenance.py (apply_multiplicity_correction); ml/narrative_engine.py (_distinct_comparisons)"
+ },
+ {
+  "id": "MISC-108",
+  "area": "MISC",
+  "sev": "low",
+  "item": "findings_driven stays 0.0 and is now wrong for the six worktable repair widgets: the harness sets triggering_finding=None ('the questions exist whether or not anything was found'), false for worktable fix buttons that render only when their finding fired. A stated editorial judgment needing a new ruling, not a mapper branch - deliberately not fixed at L68; binds nothing on Classic.",
+  "detail": "",
+  "ev": "docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L68, stated limitation); turbotab/measure.py (triggering_finding)",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L68, stated limitation); turbotab/measure.py (triggering_finding)"
+ },
+ {
+  "id": "MISC-109",
+  "area": "MISC",
+  "sev": "medium",
+  "item": "L68 retired the 'Classic surfaces 1 of 10; Guided 10 of 10' narration (Classic's repair branch had never been exercised by the harness; it measures 5/10 now) - but narrative artifacts were not swept: RETROSPECTIVE.md, ROADMAP.md, any paper/design drafts quoting the 1/10-vs-10/10 comparison still assert a retired number. Hunt and update the quotes.",
+  "detail": "",
+  "ev": "docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L68 ruling); grep '1 of 10\\|1/10' over docs/",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L68 ruling); grep '1 of 10\\|1/10' over docs/"
  }
 ]

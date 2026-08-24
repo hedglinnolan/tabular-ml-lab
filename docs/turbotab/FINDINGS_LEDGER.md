@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**508 of 1032 closed.**
+**508 of 1034 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 443 |
+| `OPEN` | 445 |
 | `PARTIAL` | 81 |
 | `FIXED` | 498 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 443
+## OPEN — 445
 
 
 ### Guided-door drive feedback — 76
@@ -457,7 +457,7 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` · **re-verified:** `utils/insight_ledger.py:1190 (text = manuscript_text or _clean_for_manuscript(finding)) and :388-445 (the…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` · **re-verified:** `(1) utils/combine_ui.py:262-280 filters only 'low' and hands the rest to a selectbox defaulting to index 0…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Other — 22
+### Other — 24
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -475,6 +475,7 @@ Nothing is closed without a regression test named after it.
 | `MISC-091` | medium | AUDIT-032's diagnostic-disclosure mechanism is dead UI on the EDA page: three of four surviving diagnostics are not in _ACTION_TO_INSIGHT_MAP so they disclose nothing, and VIF resolves its mapped set… | `pages/02_EDA.py:2280-2306; ml/eda_actions.py (_ACTION_TO_INSIGHT_MAP, diagnostic_disclosure)` |  |
 | `MISC-094` | medium | TRANSITION_PLAN.md section 05 asserts 'Classic is frozen as engine-move-only', which merges from main do not honor and do not announce - false at HEAD (main's diagnostics dedup moved Classic's… | `docs/turbotab/TRANSITION_PLAN.md section 05; docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L66 entry)` |  |
 | `MISC-097` | medium | GUIDED-018's Classic half is live: Classic now asks a constitution-02 question (subject_id_declaration) and the routing harness has no sanctioned way to read a clause off a Streamlit widget, so the… | `docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L67); turbotab/measure.py:129,229-260; ml/router.py:648 (Guided's…` |  |
+| `MISC-109` | medium | L68 retired the 'Classic surfaces 1 of 10; Guided 10 of 10' narration (Classic's repair branch had never been exercised by the harness; it measures 5/10 now) - but narrative artifacts were not swept… | `docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L68 ruling); grep '1 of 10\|1/10' over docs/` |  |
 | `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
 | `MISC-093` | low | leakage_scan is still mapped in _ACTION_TO_INSIGHT_MAP / DIAGNOSTIC_ONLY_ACTIONS but has no UI on any page after main's diagnostics dedup - dead registration; the automatic >0.95 scan and sign-off… | `ml/eda_actions.py (_ACTION_TO_INSIGHT_MAP); pages/02_EDA.py (no leakage_scan widget at HEAD)` |  |
 | `MISC-096` | low | turbotab/cascade.py's DAG does not declare 11 keys the production reset clears (filtered_data plus the ten manuscript-facing registry keys from STATE-038) - the gap is pinned per-key in… | `tests/integration/test_cascade_dag_equivalence.py (_NOT_YET_DECLARED_IN_THE_DAG); turbotab/cascade.py…` |  |
@@ -483,6 +484,7 @@ Nothing is closed without a regression test named after it.
 | `MISC-100` | low | engineered_feature_transforms is written on FE save and cleared by nobody - the clear_feature_engineering reset branch drops engineering_log and engineered_feature_names but leaves the map built from… | `pages/03_Feature_Engineering.py (FE save); utils/session_state.py (reset branch)` |  |
 | `MISC-106` | low | Calibration is not recorded in workflow provenance, so the NarrativeEngine (primary) draft path still carries no calibration prose - MISC-102 fixed the fallback composer and the LaTeX export only. A… | `utils/workflow_provenance.py (no calibration section); ml/narrative_engine.py; ml/publication.py…` |  |
 | `MISC-107` | low | apply_multiplicity_correction corrects over every recorded record while the manuscript sentence now counts distinct comparisons (Drive 8 finding 20) - a family containing a superseded override re-run… | `utils/workflow_provenance.py (apply_multiplicity_correction); ml/narrative_engine.py (_distinct_comparisons)` |  |
+| `MISC-108` | low | findings_driven stays 0.0 and is now wrong for the six worktable repair widgets: the harness sets triggering_finding=None ('the questions exist whether or not anything was found'), false for… | `docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L68, stated limitation); turbotab/measure.py (triggering_finding)` |  |
 
 ### Models / training / eval — 18
 
