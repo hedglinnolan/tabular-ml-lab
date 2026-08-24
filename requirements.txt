@@ -30,12 +30,20 @@ kaleido>=0.2.1
 optuna>=3.0.0
 openpyxl>=3.1.0
 pyarrow>=12.0.0
-# Optional: advanced feature engineering (install manually if needed)
-# giotto-tda>=0.6.0    # TDA features — requires Python <=3.12
-# umap-learn>=0.5.3    # UMAP embeddings
-# Optional: LLM backends for AI interpretation
-# openai>=1.0.0
-# anthropic>=0.18.0
+# Macro Shape / advanced feature engineering. These were commented out and a
+# fresh clone greeted its first user with "umap-learn not installed" on a
+# capability the paper describes. umap-learn installs everywhere this app
+# supports (its numba/llvmlite substrate is already required above);
+# giotto-tda publishes wheels only through Python 3.12, so it carries an
+# environment marker instead of a comment — 3.13 environments skip it and the
+# app's TDA sections degrade to their existing advisory.
+umap-learn>=0.5.3
+giotto-tda>=0.6.0; python_version < "3.13"
+# LLM backends for AI interpretation. Local-first Ollama needs no package
+# (plain HTTP); these two make the cloud backends work out of the box when a
+# user chooses them and brings a key. Both are small and pure-Python.
+openai>=1.0.0
+anthropic>=0.18.0
 # Publication tools
 tabulate>=0.9.0
 joblib>=1.3.0
