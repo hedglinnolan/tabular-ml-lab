@@ -13378,10 +13378,10 @@
   "detail": "",
   "ev": "pages/02_EDA.py:2280-2306 (upsert -> VIF resolve -> record ordering)",
   "act": "",
-  "status": "OPEN",
-  "note": "",
+  "status": "FIXED",
+  "note": "diagnostic_disclosure takes n_closed; the VIF sentence states the carve-out ('It IS the answer to N observations... now recorded as addressed by it') while the read-only path stays byte-identical.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_drive8_explainability.py::TestFinding13TheVifDisclosureStatesItsCarveOut",
   "verified_ev": "pages/02_EDA.py:2280-2306 (upsert -> VIF resolve -> record ordering)"
  },
  {
@@ -13588,10 +13588,10 @@
   "detail": "",
   "ev": "pages/04_Feature_Selection.py:409-411; docs/audit/DRIVE8_CLASSIC_SURFACING.md finding 1",
   "act": "",
-  "status": "OPEN",
-  "note": "",
+  "status": "FIXED",
+  "note": "pages/04 records consensus_methods=methods_completed and writes a consensus record only when there IS one; log_methodology names completions vs requests; the false consensus sentence verified gone from the draft on the repro. narrative_engine's zero-swallowing or-chain also fixed on three routes.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_drive8_selection.py::test_drive063_zero_completions_records_no_selection",
   "verified_ev": "pages/04_Feature_Selection.py:409-411; docs/audit/DRIVE8_CLASSIC_SURFACING.md finding 1"
  },
  {
@@ -13602,10 +13602,10 @@
   "detail": "",
   "ev": "pages/04_Feature_Selection.py:332,346,426-431; DRIVE8 findings 2,5",
   "act": "",
-  "status": "OPEN",
-  "note": "",
+  "status": "FIXED",
+  "note": "diagnose_target_dtype/repair_boolean_target at target configuration: exact boolean targets repaired in the open (disclosed, three records), anything else refused with the Import Doctor repair named; page 04's error names the real dtype condition; zero completions is a loud failure, never a green banner.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_drive8_selection.py::test_drive064_boolean_with_missing_target_is_diagnosed_before_it_flows",
   "verified_ev": "pages/04_Feature_Selection.py:332,346,426-431; DRIVE8 findings 2,5"
  },
  {
@@ -13616,10 +13616,10 @@
   "detail": "",
   "ev": "pages/07_Explainability.py:811-814,835; DRIVE8 finding 3",
   "act": "",
-  "status": "OPEN",
-  "note": "",
+  "status": "FIXED",
+  "note": "The fallback return path dropped the fitted pipeline - every exit now returns it; banner reads per-analysis outcomes; nothing recorded (no TRIPOD tick, no methodology line) when zero analyses produced results.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_drive8_explainability.py::TestDrive065ExplainabilityRunsThroughTheFittedPipelines",
   "verified_ev": "pages/07_Explainability.py:811-814,835; DRIVE8 finding 3"
  },
  {
@@ -13630,10 +13630,10 @@
   "detail": "",
   "ev": "pages/02_EDA.py:708-718; DRIVE8 finding 4",
   "act": "",
-  "status": "OPEN",
-  "note": "",
+  "status": "FIXED",
+  "note": "One _analysis_n (rows with a recorded outcome) feeds the ratio and both sufficiency sentences, denominator named inline (inside the parens the narrative regex captures); dataset_profile's n and p/n now name the same population.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_drive8_explainability.py::TestDrive066TheRatioDescribesTheAnalysisCohort",
   "verified_ev": "pages/02_EDA.py:708-718; DRIVE8 finding 4"
  },
  {
@@ -13644,10 +13644,10 @@
   "detail": "",
   "ev": "ml/import_doctor.py:685-706; DRIVE8 finding 6",
   "act": "",
-  "status": "OPEN",
-  "note": "",
+  "status": "FIXED",
+  "note": "boolean_as_text finding describes booleans truthfully; new coerce_boolean fix kind uses pd.to_numeric directly and refuses rather than blanking (the old high-confidence repair stringified first and blanked all 6,297 outcomes - worse than filed); structural review runs on the working table so registry/restored/combined datasets are reviewed, with repairs committed and recorded.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_drive8_selection.py::test_drive067_the_boolean_repair_does_not_blank_the_column",
   "verified_ev": "ml/import_doctor.py:685-706; DRIVE8 finding 6"
  },
  {
@@ -13658,10 +13658,10 @@
   "detail": "",
   "ev": "pages/01_Upload_and_Audit.py:1408-1412; DRIVE8 findings 7,8",
   "act": "",
-  "status": "OPEN",
-  "note": "",
+  "status": "FIXED",
+  "note": "Declaration surfaces reconciled (contradiction check exempts cluster columns, no false rows-repeat claim, record and sentence agree); withdrawing a declaration releases the reserved column via the role-scoped replacement.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_paper_risk_lockbox.py::TestImport257TheSubjectColumnCanBeDeclared",
   "verified_ev": "pages/01_Upload_and_Audit.py:1408-1412; DRIVE8 findings 7,8"
  },
  {
@@ -13672,10 +13672,10 @@
   "detail": "",
   "ev": "utils/test_lockbox.py:1385-1389; DRIVE8 finding 9",
   "act": "",
-  "status": "OPEN",
-  "note": "",
+  "status": "FIXED",
+  "note": "Chip states its denominator: '15% of eligible rows (n=945 of 6,297 rows with a value for <target>)'; grouped chip same; guarded on n_total existing so pre-fix archives stay silent rather than guessing.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_drive8_explainability.py::TestDrive069TheChipStatesItsDenominator",
   "verified_ev": "utils/test_lockbox.py:1385-1389; DRIVE8 finding 9"
  },
  {
@@ -13686,10 +13686,10 @@
   "detail": "",
   "ev": "ml/model_coach.py:1654; DRIVE8 findings 10,11",
   "act": "",
-  "status": "OPEN",
-  "note": "",
+  "status": "FIXED",
+  "note": "model_viability takes realized n_train (pages/06 passes len(X_train)); p/n recomputed on the same n; the >30%-missing insight excludes the target.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_drive8_explainability.py::TestDrive070TheBadgesQuoteTheTrainingSize",
   "verified_ev": "ml/model_coach.py:1654; DRIVE8 findings 10,11"
  },
  {
@@ -13700,10 +13700,24 @@
   "detail": "",
   "ev": "docs/audit/DRIVE8_CLASSIC_SURFACING.md ranked findings 12-34",
   "act": "",
+  "status": "PARTIAL",
+  "note": "Fixed from the umbrella: 12 (open-counter tone/permanence), 13 (VIF carve-out), 14 (vocabulary), 15 (truncated exception), 17 (limitations splice), 19 (one counting rule), 20 (override re-run), 21 (invented FE stage), 25 (plural), 27 (caption), 28 (Table 1 denominators), 29/30 (echo resolutions, pointer name), 31 (commit stamp), 32 (p floors), 33 (one estimator). REMAINS: 16 (coach copy/action id past validator), 18 (subgroup accuracy-only), 22 (expander silent under auto), 23 (flagged ID pre-selected as predictor + page-09 default), 24 (render-lag cards), 26 (held-back caption one render early), 34 (imbalance 0.14 vs 7.2:1 unbridged).",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "docs/audit/DRIVE8_CLASSIC_SURFACING.md ranked findings 12-34"
+ },
+ {
+  "id": "MISC-107",
+  "area": "MISC",
+  "sev": "low",
+  "item": "apply_multiplicity_correction corrects over every recorded record while the manuscript sentence now counts distinct comparisons (Drive 8 finding 20) - a family containing a superseded override re-run computes q-values over N while the sentence names M<=N; it should reuse narrative_engine._distinct_comparisons",
+  "detail": "",
+  "ev": "utils/workflow_provenance.py (apply_multiplicity_correction); ml/narrative_engine.py (_distinct_comparisons)",
+  "act": "",
   "status": "OPEN",
   "note": "",
   "verified_against": "",
   "test": "",
-  "verified_ev": "docs/audit/DRIVE8_CLASSIC_SURFACING.md ranked findings 12-34"
+  "verified_ev": "utils/workflow_provenance.py (apply_multiplicity_correction); ml/narrative_engine.py (_distinct_comparisons)"
  }
 ]
