@@ -46,3 +46,13 @@ lightgbm>=4.0.0
 # must work on first launch — an installed app that cannot run one of the
 # things it offers is worse than a bigger download.
 torch>=2.0.0
+
+# TurboTab (the second front door — see README "One engine, two interfaces").
+# The evidence gates and Tier-1 tests import turbotab/api.py, and the README's
+# documented launch path is a venv built from THIS file — both were broken by
+# these living only in the developer's environment (found when CI, installing
+# from here, failed 3 evidence-gate tests the local venv passed).
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9
+httpx>=0.27

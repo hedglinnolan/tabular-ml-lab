@@ -290,6 +290,15 @@ GUARANTEED_BY = {
     "dateutil": "pandas declares python-dateutil as an install requirement",
     "pytz": "pandas declares pytz as an install requirement",
     "starlette": "fastapi declares starlette as an install requirement",
+    # Not transitive — optional by construction. tests/conftest.py imports
+    # streamlit behind try/except ImportError (for the AppTest.from_file
+    # repo-root shim) and stays fully functional without it, so a
+    # streamlit-less hook interpreter cannot produce the `✗ … No module
+    # named …` state this probe exists to prevent: the import simply
+    # doesn't happen there. The tracer cannot see the guard, so the
+    # argument lives here instead.
+    "streamlit": "guarded optional import in tests/conftest.py; absence is "
+                 "handled, not fatal",
 }
 
 

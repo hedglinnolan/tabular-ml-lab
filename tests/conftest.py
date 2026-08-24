@@ -10,6 +10,33 @@ import pandas as pd
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
+# Streamlit 1.62 changed AppTest.from_file to resolve relative paths against
+# the CALLING file instead of the working directory; 90 call sites across this
+# suite say `AppTest.from_file("pages/…")` and every one broke at once on a
+# fresh dependency resolution (CI) while older-pinned local venvs stayed green.
+# Restore the one behavior every call site was written against — relative
+# paths mean repo-root-relative — in this one place, for tests/ and
+# tests/integration alike, rather than editing 90 sites into 90 chances to
+# drift. Absolute-path call sites are untouched.
+# Guarded: the pre-commit gates run single test files under an interpreter
+# that deliberately carries no streamlit; this conftest must stay importable
+# there (the probe-coverage test enforces exactly that). Where streamlit is
+# absent, no AppTest test can run anyway, so there is nothing to patch.
+try:
+    from streamlit.testing.v1 import AppTest as _AppTest  # noqa: E402
+except ImportError:
+    _AppTest = None
+else:
+    _orig_from_file = _AppTest.from_file.__func__
+
+    def _from_repo_root(cls, script_path, **kwargs):
+        p = str(script_path)
+        if not os.path.isabs(p):
+            p = os.path.join(PROJECT_ROOT, p)
+        return _orig_from_file(cls, p, **kwargs)
+
+    _AppTest.from_file = classmethod(_from_repo_root)
+
 
 def build_regression_df(n=200, seed=42, missing_rate=0.05):
     """Build a synthetic regression dataset with known relationships."""
