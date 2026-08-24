@@ -47,23 +47,30 @@ This repository ships one analysis engine behind two front doors:
 <details>
 <summary><b>Running TurboTab</b> (developer setup — terminal required)</summary>
 
-TurboTab is not part of the desktop starter yet. From a clone of this repository:
+TurboTab is not part of the desktop starter yet. From a clone of this
+repository, pick the block for **your** operating system — the two are not
+interchangeable: a Windows venv has **no `bin/` folder** (its executables live
+in `venv\Scripts\`), and `make` does not exist on Windows.
+
+**On macOS / Linux:**
 
 ```bash
-# macOS / Linux
 python3 -m venv venv
 venv/bin/pip install -r requirements.txt
 venv/bin/python scripts/serve_turbotab.py --port 8777   # or: make turbotab
 ```
 
+**On Windows (PowerShell)** — run each line separately (older PowerShell does
+not support `&&`):
+
 ```powershell
-# Windows (PowerShell) — `make` is not available on Windows; run the script directly
 python -m venv venv
 venv\Scripts\pip install -r requirements.txt
 venv\Scripts\python scripts\serve_turbotab.py --port 8777
 ```
 
-Then open http://127.0.0.1:8777. The launcher checks its own interpreter before
+Then open http://127.0.0.1:8777. The install pauses longest on torch (~1.1 GB)
+— that is normal, not stuck. The launcher checks its own interpreter before
 serving and refuses with an explanation rather than starting a server that
 would fail mid-workflow — if it refuses, it tells you exactly which package and
 which interpreter to fix. `make turbotab-check` runs that environment check on
