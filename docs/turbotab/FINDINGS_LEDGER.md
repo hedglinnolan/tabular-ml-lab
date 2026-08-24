@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**508 of 1034 closed.**
+**507 of 1038 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 445 |
-| `PARTIAL` | 81 |
-| `FIXED` | 498 |
+| `OPEN` | 449 |
+| `PARTIAL` | 82 |
+| `FIXED` | 497 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 445
+## OPEN — 449
 
 
 ### Guided-door drive feedback — 76
@@ -509,6 +509,25 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-113` | medium | The instability engine plots the wrong quantity on a multiclass target and does not refuse: _predict takes predict_proba's second column, which is the positive class of a binary problem and one class… | `turbotab/instability.py _predict returns proba[:, 1] for any classification task; no fixture in the…` · **re-verified:** `turbotab/instability.py _predict returns proba[:, 1] for any classification task; no fixture in the…` | FOUND WHILE WRITING THE FIXTURE RULE'S not-covered list, which is the list doing its job. A multiclass project would get a prediction instability plot about ONE class's… |
 | `GUIDED-235` | medium | The model shelf is ranked on the row count under a recorded repeated-measures design, so every threshold the coach applies is applied to an inflated sample size | `L55-B, and the number is now on screen rather than only in the code. ml/model_coach.model_viability reads…` | WHAT LANDED INSTEAD IS THE NUMBER. The shelf's design statement says the order was computed from N rows, which are M people, and states that every model here treats rows as… |
 
+### Human drive feedback — 14
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `DRIVE-054` | critical | The page reflows under the cursor when an answer is recorded, so clicks land on whatever moved -- and in an app whose premise is that every answer is written down, the layout answered questions the… | `docs/audit/DRIVE7_OBSERVATIONS.md sections 'Interaction and rendering problems' and 'THE DESIGN PASS'; driven…` | PRIMARY EVIDENCE FROM A HUMAN AT THE SCREEN, WHICH IS THE ONLY INSTRUMENT THIS PROJECT HAS FOR PRODUCT_VISION.md section 06b's third condition. THIS IS THE MOST SERIOUS FINDING OF… |
+| `DRIVE-072` | critical | D9-01: on the SUCCESSFUL selection route the Methods drafts 'Consensus feature selection across LASSO and RFE-CV retained all 14 candidate predictors' while the Evidence Map says 27->14… | `ml/publication.py (_resolve_workflow_feature_counts); docs/audit/DRIVE9_RECHECK.md D9-01` |  |
+| `DRIVE-010` | high | After the target is chosen the app does not ask which features to use, or whether to slice by subgroup | `The drive` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-055` | high | The ROC card asserts that the C-statistic does not exist and prints it in the same card, with a PASS row between them | `docs/audit/DRIVE7_OBSERVATIONS.md Run 1a; screenshots screenshot-1787416335600 and -1787416315996 at build…` | THE GOVERNING RULE'S assert-something-false BRANCH, AND IT ASSERTS BOTH SIDES AT ONCE. This is sharper than the usual instance of the class: the app is not merely wrong, it is… |
+| `DRIVE-056` | high | The reviewer panel and the draft never learn that a model was fitted, so L65-B's post-fit state is unreachable from the interface -- six fits across three datasets left the header frozen and the… | `docs/audit/DRIVE7_OBSERVATIONS.md Run 3 'AFTER fitting' and Run 4; driven by a human over six fits at build…` | THIS CORRECTS THE ADJUDICATOR'S OWN ACCEPTANCE OF L65-B AND THE CORRECTION IS MINE. Two independent adjudication agents drove '11 checks, 0 unmet - 4 declared'/'2 declared'… |
+| `DRIVE-057` | high | The app diagnoses the clustering hazard four times, contradicts itself about whether the split is clean, and offers no control to name the person column -- while elsewhere naming that column itself | `docs/audit/DRIVE7_OBSERVATIONS.md Runs 5a and 6; screenshots -1787419822723, -1787419914543, -1787420073896…` | THIS IS DRIVE-036's CONTENT, FOUND AT LAST: six previous drives never used a clustered fixture, and the row has sat unexercised. THE APP HOLDS THE ANSWER IT SAYS IT LACKS, which… |
+| `DRIVE-073` | high | D9-03: applying a feature selection clears dataset_profile and nothing recomputes it - page 06 silently loses the class-imbalance card, the rebalancing control, and the model-suitability badges… | `utils/session_state.py (reset registry); pages/06; DRIVE9 D9-03` |  |
+| `DRIVE-058` | medium | The two states that earn the app's strongest color wear its calmest ones -- red was never rendered once in six runs, and an unusable holdout is styled green SEALED | `docs/audit/DRIVE7_OBSERVATIONS.md 'THE DESIGN PASS' and Runs 5a/5b; screenshots -1787420661494, -1787420073896` | CONDITION THREE OF PRODUCT_VISION.md section 06b, MEASURED BY THE ONLY INSTRUMENT THAT CAN MEASURE IT. Note what this is NOT: it is not a complaint about taste. The app defines… |
+| `DRIVE-059` | medium | Literal markdown asterisks render unconverted inside serif prose on at least four datasets, in the voice the design language reserves for the app speaking | `docs/audit/DRIVE7_OBSERVATIONS.md Runs 5a and 6 and the design pass; build 0856c1d` | A SMALL DEFECT WHOSE CLASS IS NOT SMALL: the project already knows this failure mode well enough to have written a validator check for it, and pointed that check at the artifact… |
+| `DRIVE-060` | medium | Summary panels keep asserting states the app has already left -- 'This step is waiting for the seal' after sealing, and 'No model has been fitted yet' after fitting | `docs/audit/DRIVE7_OBSERVATIONS.md Run 1 'Other observations' and Run 2; screenshot-1787416112712; build…` | assert-something-false, IN THE MOST ORDINARY PLACE IT CAN HAPPEN, AND SEPARATE FROM DRIVE-056: that row is about the manuscript never receiving the run, this one is about panels… |
+| `DRIVE-061` | medium | The app chooses a missing-data strategy for the user and discloses it after the fit, in the one place its own rule says it may not choose | `docs/audit/DRIVE7_OBSERVATIONS.md Runs 2 and 4; build 0856c1d` | THE DISCLOSURE IS HONEST AND THAT IS WHY THIS IS FILED AS A PRODUCT DEFECT RATHER THAN A FALSEHOOD: the app says exactly what it did. It says it in small print, after the fact… |
+| `DRIVE-062` | medium | The app accepted a row identifier as a classification target 'at high confidence' -- 240 unique values across 240 rows -- while the same app refuses to hand that column to a model because every value… | `docs/audit/DRIVE7_OBSERVATIONS.md Run 4 'Other observations'; build 0856c1d` | FOUND BY A MIS-CLICK CAUSED BY DRIVE-054, which is worth recording: the layout defect manufactured the input that exposed this one. A target with one class per row cannot be… |
+| `DRIVE-074` | medium | D9-04/05/06 batch: TRIPOD item 9 ticked by a target dtype recode and 15a+19a both ticked by one explainability line (tick criteria too coarse); the draft's distinct-comparison count (1) disagrees… | `ml/publication.py (TRIPOD); ml/narrative_engine.py; utils/insight_ledger.py; DRIVE9 D9-04..06` |  |
+| `DRIVE-075` | low | D9-07..10 batch: page-01 structural review lags one render behind its own repair (caption 1, two cards); improbability-band warnings duplicate verbatim; external review header counts disagree ('Found… | `DRIVE9 D9-07..10 + deferred check` |  |
+
 ### Verified against main — 11
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -525,21 +544,6 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Human drive feedback — 10
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `DRIVE-054` | critical | The page reflows under the cursor when an answer is recorded, so clicks land on whatever moved -- and in an app whose premise is that every answer is written down, the layout answered questions the… | `docs/audit/DRIVE7_OBSERVATIONS.md sections 'Interaction and rendering problems' and 'THE DESIGN PASS'; driven…` | PRIMARY EVIDENCE FROM A HUMAN AT THE SCREEN, WHICH IS THE ONLY INSTRUMENT THIS PROJECT HAS FOR PRODUCT_VISION.md section 06b's third condition. THIS IS THE MOST SERIOUS FINDING OF… |
-| `DRIVE-010` | high | After the target is chosen the app does not ask which features to use, or whether to slice by subgroup | `The drive` | From the product owner's second NHANES drive. Their words are the specification. |
-| `DRIVE-055` | high | The ROC card asserts that the C-statistic does not exist and prints it in the same card, with a PASS row between them | `docs/audit/DRIVE7_OBSERVATIONS.md Run 1a; screenshots screenshot-1787416335600 and -1787416315996 at build…` | THE GOVERNING RULE'S assert-something-false BRANCH, AND IT ASSERTS BOTH SIDES AT ONCE. This is sharper than the usual instance of the class: the app is not merely wrong, it is… |
-| `DRIVE-056` | high | The reviewer panel and the draft never learn that a model was fitted, so L65-B's post-fit state is unreachable from the interface -- six fits across three datasets left the header frozen and the… | `docs/audit/DRIVE7_OBSERVATIONS.md Run 3 'AFTER fitting' and Run 4; driven by a human over six fits at build…` | THIS CORRECTS THE ADJUDICATOR'S OWN ACCEPTANCE OF L65-B AND THE CORRECTION IS MINE. Two independent adjudication agents drove '11 checks, 0 unmet - 4 declared'/'2 declared'… |
-| `DRIVE-057` | high | The app diagnoses the clustering hazard four times, contradicts itself about whether the split is clean, and offers no control to name the person column -- while elsewhere naming that column itself | `docs/audit/DRIVE7_OBSERVATIONS.md Runs 5a and 6; screenshots -1787419822723, -1787419914543, -1787420073896…` | THIS IS DRIVE-036's CONTENT, FOUND AT LAST: six previous drives never used a clustered fixture, and the row has sat unexercised. THE APP HOLDS THE ANSWER IT SAYS IT LACKS, which… |
-| `DRIVE-058` | medium | The two states that earn the app's strongest color wear its calmest ones -- red was never rendered once in six runs, and an unusable holdout is styled green SEALED | `docs/audit/DRIVE7_OBSERVATIONS.md 'THE DESIGN PASS' and Runs 5a/5b; screenshots -1787420661494, -1787420073896` | CONDITION THREE OF PRODUCT_VISION.md section 06b, MEASURED BY THE ONLY INSTRUMENT THAT CAN MEASURE IT. Note what this is NOT: it is not a complaint about taste. The app defines… |
-| `DRIVE-059` | medium | Literal markdown asterisks render unconverted inside serif prose on at least four datasets, in the voice the design language reserves for the app speaking | `docs/audit/DRIVE7_OBSERVATIONS.md Runs 5a and 6 and the design pass; build 0856c1d` | A SMALL DEFECT WHOSE CLASS IS NOT SMALL: the project already knows this failure mode well enough to have written a validator check for it, and pointed that check at the artifact… |
-| `DRIVE-060` | medium | Summary panels keep asserting states the app has already left -- 'This step is waiting for the seal' after sealing, and 'No model has been fitted yet' after fitting | `docs/audit/DRIVE7_OBSERVATIONS.md Run 1 'Other observations' and Run 2; screenshot-1787416112712; build…` | assert-something-false, IN THE MOST ORDINARY PLACE IT CAN HAPPEN, AND SEPARATE FROM DRIVE-056: that row is about the manuscript never receiving the run, this one is about panels… |
-| `DRIVE-061` | medium | The app chooses a missing-data strategy for the user and discloses it after the fit, in the one place its own rule says it may not choose | `docs/audit/DRIVE7_OBSERVATIONS.md Runs 2 and 4; build 0856c1d` | THE DISCLOSURE IS HONEST AND THAT IS WHY THIS IS FILED AS A PRODUCT DEFECT RATHER THAN A FALSEHOOD: the app says exactly what it did. It says it in small print, after the fact… |
-| `DRIVE-062` | medium | The app accepted a row identifier as a classification target 'at high confidence' -- 240 unique values across 240 rows -- while the same app refuses to hand that column to a model because every value… | `docs/audit/DRIVE7_OBSERVATIONS.md Run 4 'Other observations'; build 0856c1d` | FOUND BY A MIS-CLICK CAUSED BY DRIVE-054, which is worth recording: the layout defect manufactured the input that exposed this one. A target with one class per row cannot be… |
-
 ### Page-layer extraction — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -552,7 +556,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 81
+## PARTIAL — 82
 
 
 ### Guided-door drive feedback — 19
@@ -646,6 +650,15 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-020` | medium | The lens is asked after the structural diagnosis has already run and is placed inside the Target step below the target picker, and both cards render as step 01, against OPENING_SEQUENCE.md's… | `docs/turbotab/DRIVE_UX_SURFACING_NHANES.md sections 3.2, 3.3 and 6 (F3); docs/turbotab/OPENING_SEQUENCE.md` | **test:** `turbotab/test_one_decision_is_one_undo.py::test_the_target_card_renders_the_position_the_router_served` — THE NUMBERING HALF ONLY. The ordering half of this row is… |
 | `DRIVE-038` | medium | A finding card's 'arrived' chip rendered the literal string [object Object] on the positive-class finding -- a non-string reaching esc() in the third positional argument of findingCard(f, withSource… | `run-3 drive path 2: <span class='chip arrived'>[object Object]</span>, 1 occurrence, persists across a lens…` | **test:** `turbotab/test_a_finding_chip_refuses_a_non_string.py::test_an_object_in_that_slot_reaches_no_chip` — THE DEFENSIVE HALF ONLY, AND THE TRIGGER STAYS OPEN. The chip… |
 
+### Human drive feedback — 4
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `DRIVE-009` | critical | The domain-specific EDA plot vision is unbuilt, and it is the product's stated centerpiece | `The drive; DESIGN_LANGUAGE.md 07; DOMAIN_PACKS.md 08` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py` — L54-D. MOVED FROM OPEN TO PARTIAL, and the reason is that a third of it is built and the row said… |
+| `DRIVE-007` | high | Impossible values cannot be taken out of the app, and there is no way to mark a feature as unclean | `The drive; the impossibility pass on NHANES bp_di` | **test:** `turbotab/test_the_flagged_rows_can_leave_the_app.py::test_every_flagged_row_travels_with_the_block_not_only_the_twelve_shown` — THE COPYABLE ROW LIST IS DONE; THE… |
+| `DRIVE-068` | high | Declaring a subject column yields four contradictory surfaces including a false 'rows repeat' claim and an 'undetermined' sentence while the seal record says grouped; withdrawing the declaration… | `pages/01_Upload_and_Audit.py:1408-1412; DRIVE8 findings 7,8` | **test:** `tests/test_paper_risk_lockbox.py::TestImport257TheSubjectColumnCanBeDeclared` — RE-OPENED by Drive 9 (D9-02): all three note claims refuted at f84d7b0 - false 'Rows… |
+| `DRIVE-071` | medium | Umbrella row for DRIVE8 findings 12-34 (mediums and lows): open-counter warning permanence and causal overclaim on a clean run, plausibility duplicated in the disavowed vocabulary, VIF… | `docs/audit/DRIVE8_CLASSIC_SURFACING.md ranked findings 12-34` | Fixed from the umbrella: 12 (open-counter tone/permanence), 13 (VIF carve-out), 14 (vocabulary), 15 (truncated exception), 17 (limitations splice), 19 (one counting rule), 20… |
+
 ### Verified against main — 3
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -678,14 +691,6 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-109` | medium | Duplicate key column name makes every ml/join_doctor.py entry point raise AttributeError and makes find_key_candidates silently drop the true key — but the module has no UI callers and no loader can… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 09'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — REOPENED AS PARTIAL AT L44-D BY THE MISC-019 SWEEP. THE SITES: ml/join_doctor.py:118, :380, :943, :1002. The… |
 | `IMPORT-240` | medium | HUNT stack-empty-file-turns-every-numeric-column-to-text: the dtype corruption is gone, but a header-only cycle now produces a FALSE type-conflict warning and is still never named as contributing… | `utils/combine.py plan_stack (total_rows as a plain sum, no zero-row check) and execute_stack's pd.concat…` | PARTIAL, measured at HEAD. Three cycles with glucose float64 in two of them and an empty header-only frame between: the stacked glucose column comes back float64 with 4 rows - the… |
 
-### Human drive feedback — 3
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `DRIVE-009` | critical | The domain-specific EDA plot vision is unbuilt, and it is the product's stated centerpiece | `The drive; DESIGN_LANGUAGE.md 07; DOMAIN_PACKS.md 08` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py` — L54-D. MOVED FROM OPEN TO PARTIAL, and the reason is that a third of it is built and the row said… |
-| `DRIVE-007` | high | Impossible values cannot be taken out of the app, and there is no way to mark a feature as unclean | `The drive; the impossibility pass on NHANES bp_di` | **test:** `turbotab/test_the_flagged_rows_can_leave_the_app.py::test_every_flagged_row_travels_with_the_block_not_only_the_twelve_shown` — THE COPYABLE ROW LIST IS DONE; THE… |
-| `DRIVE-071` | medium | Umbrella row for DRIVE8 findings 12-34 (mediums and lows): open-counter warning permanence and causal overclaim on a clean run, plausibility duplicated in the disavowed vocabulary, VIF… | `docs/audit/DRIVE8_CLASSIC_SURFACING.md ranked findings 12-34` | Fixed from the umbrella: 12 (open-counter tone/permanence), 13 (VIF carve-out), 14 (vocabulary), 15 (truncated exception), 17 (limitations splice), 19 (one counting rule), 20… |
-
 ### Coach to Router — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -708,7 +713,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 498
+## FIXED — 497
 
 
 ### Guided-door drive feedback — 163
@@ -1172,26 +1177,6 @@ Nothing is closed without a regression test named after it.
 | `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` · **re-verified:** `ml/bootstrap.py:136-149 - boot_stats initialized to NaN, failed resamples left as NaN, valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
 | `GUIDED-103` | medium | Genuinely fold-local selection needs the training step to resample: this door fits each model once, so scope=train_folds is recorded and train_rows is what happens | `turbotab/training.py train() fits each pipeline once on the training partition; turbotab/pipeline_plan.py…` · **re-verified:** `the probe is a PAIR and only the pair is evidence: on 8 near-identical assay columns the chosen set moves…` | **test:** `turbotab/test_the_whole_pipeline_is_refitted.py (17 tests, two target shapes, the page surface driven), especially… |
 
-### Human drive feedback — 15
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `DRIVE-001` | critical | The lens question is unreachable through the interface - it has a dedicated endpoint the page never calls, so the entire domain-pack arc is invisible | `turbotab/api.py:1289 versus :1545; turbotab/web/index.html has no lens reference` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_the_page_renders_every_question_the_router_can_serve` — FIXED at L23, and the class is closed rather than… |
-| `DRIVE-063` | critical | Methods draft asserts a consensus selection that never ran: page 04 records methods_to_run into provenance instead of the methods_completed list MISC-104 built - with both selectors failing, the… | `pages/04_Feature_Selection.py:409-411; docs/audit/DRIVE8_CLASSIC_SURFACING.md finding 1` | **test:** `tests/test_drive8_selection.py::test_drive063_zero_completions_records_no_selection` — pages/04 records consensus_methods=methods_completed and writes a consensus… |
-| `DRIVE-064` | critical | LASSO and RFE-CV both raise on a boolean-with-missing object target (sklearn type 'unknown') and the page's error blames the target for being CONTINUOUS; then 'Only one method completed' renders when… | `pages/04_Feature_Selection.py:332,346,426-431; DRIVE8 findings 2,5` | **test:** `tests/test_drive8_selection.py::test_drive064_boolean_with_missing_target_is_diagnosed_before_it_flows` — diagnose_target_dtype/repair_boolean_target at target… |
-| `DRIVE-065` | critical | Explainability runs all six analyses against the RAW frame instead of the fitted pipelines - all six fail ('could not convert string to float: female') and the page prints 'Explainability analysis… | `pages/07_Explainability.py:811-814,835; DRIVE8 finding 3` | **test:** `tests/test_drive8_explainability.py::TestDrive065ExplainabilityRunsThroughTheFittedPipelines` — The fallback return path dropped the fitted pipeline - every exit now… |
-| `DRIVE-066` | critical | Methods reports sample-to-feature ratio 809:1 computed on the full 21,849 rows inside a document stating a 6,297-row analysis cohort - two denominators in one draft | `pages/02_EDA.py:708-718; DRIVE8 finding 4` | **test:** `tests/test_drive8_explainability.py::TestDrive066TheRatioDescribesTheAnalysisCohort` — One _analysis_n (rows with a recorded outcome) feeds the ratio and both… |
-| `DRIVE-002` | high | A repair affecting nine features requires nine separate show-me-then-apply cycles; the bulk affordance was built for questions and not for repairs | `The drive; contrast turbotab bulk missingness affordance` | **test:** `turbotab/test_one_repair_covers_a_set_of_features.py::test_applying_to_a_selected_set_changes_those_columns_and_no_others` — bulk.py's rule-scope pointed at repairs… |
-| `DRIVE-003` | high | Action buttons do not say what they will do, so the driver could not tell what several of them meant | `The drive; turbotab/web/index.html action rows` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_a_generic_question_states_its_effect_before_it_is_taken` — Closed at L23. The EFFECTS table plus effectOf… |
-| `DRIVE-004` | high | Disclosures do not toggle and actions do not acknowledge - the app never narrates its own behavior | `The drive; DESIGN_LANGUAGE.md 05` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_every_action_acknowledges_itself_after_it_is_taken` — Closed at L23, in two halves. THE DISCLOSURE half… |
-| `DRIVE-005` | high | Situational-awareness findings get one card each, which turns ten improbable-value flags into accidental infinite scroll | `The drive; clinical_longitudinal and NHANES` | **test:** `turbotab/test_action_free_findings_share_one_paged_card.py::test_many_improbable_features_become_one_card_with_a_pager` — THE LINE IS ACTION, NOT SEVERITY, and stating… |
-| `DRIVE-006` | high | Auto-scroll skips past the noticed card, so the driver has to scroll back up every time | `The drive; DESIGN_LANGUAGE.md 05 scroll rule` | **test:** `turbotab/test_the_page_never_moves_the_viewport.py::test_a_drive_with_many_findings_never_scrolls_the_page` — The nudge is DELETED rather than tuned, and the reason the… |
-| `DRIVE-008` | high | The missingness pop-out shows what would change and does not let the driver do it | `The drive; the missingness what-the-app-can-do panel` | **test:** `turbotab/test_the_missingness_panel_can_execute.py::test_a_row_local_choice_changes_the_working_table_now` — WORSE THAN NOT WIRED. Pressing 'Record this' posted a NOTE… |
-| `DRIVE-067` | high | Import Doctor's description of the root target defect self-contradicts ('Every value is a plain number (e.g. True, False)') - and its repair is confirmed to be exactly what unblocks selection and… | `ml/import_doctor.py:685-706; DRIVE8 finding 6` | **test:** `tests/test_drive8_selection.py::test_drive067_the_boolean_repair_does_not_blank_the_column` — boolean_as_text finding describes booleans truthfully; new coerce_boolean… |
-| `DRIVE-068` | high | Declaring a subject column yields four contradictory surfaces including a false 'rows repeat' claim and an 'undetermined' sentence while the seal record says grouped; withdrawing the declaration… | `pages/01_Upload_and_Audit.py:1408-1412; DRIVE8 findings 7,8` | **test:** `tests/test_paper_risk_lockbox.py::TestImport257TheSubjectColumnCanBeDeclared` — Declaration surfaces reconciled (contradiction check exempts cluster columns, no false… |
-| `DRIVE-069` | high | The seal chip omits its denominator - '15% (n=945, stratified)' is 15% of 6,297 eligible rows, not of the 21,849 uploaded; the Methods draft states 'of eligible observations' correctly, so the… | `utils/test_lockbox.py:1385-1389; DRIVE8 finding 9` | **test:** `tests/test_drive8_explainability.py::TestDrive069TheChipStatesItsDenominator` — Chip states its denominator: '15% of eligible rows (n=945 of 6,297 rows with a value for… |
-| `DRIVE-070` | high | Model coach quotes n=20,904 on badges beside a 4,407-row training set and refuses SVC on the wrong number; coaching also lists the TARGET among '>30% missing features' with advice to drop or impute… | `ml/model_coach.py:1654; DRIVE8 findings 10,11` | **test:** `tests/test_drive8_explainability.py::TestDrive070TheBadgesQuoteTheTrainingSize` — model_viability takes realized n_train (pages/06 passes len(X_train)); p/n recomputed… |
-
 ### Silent-failure landmines — 14
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -1210,6 +1195,25 @@ Nothing is closed without a regression test named after it.
 | `MINE-027` | high | calculate_regression_metrics drops non-finite pairs and reports only to the logger | `ml/eval.py:18-51` · **re-verified:** `ml/eval.py:28-40 - non-finite pairs are dropped after a logging.warning, and the returned dict is the…` | **test:** `tests/test_paper_risk_mlcore.py::test_mine_027_regression_metrics_disclose_dropped_nonfinite_pairs` — Repaired: regression_scoring_disclosure returned beside metrics… |
 | `MINE-030` | high | Sensitivity seed loop swallows failed seeds and then reports the survivor count as the analysis size | `ml/sensitivity.py:85-100; ml/publication.py:1249-1281` · **re-verified:** `ml/sensitivity.py:91-92 (except Exception: pass inside the per-seed loop) and :98-100 (description=f'Results…` | **test:** `tests/test_paper_risk_mlcore.py::TestMine030SeedFailuresAreCounted` — Engine: SensitivityAnalysis records n_attempted/failures per seed with exceptions, description… |
 | `MINE-039` | medium | GroupShuffleSplit failure silently degrades the lockbox to a non-grouped split | `utils/test_lockbox.py:176-210, 282-294` · **re-verified:** `utils/test_lockbox.py:386-397 records _lockbox_grouping_abandoned with column, n_groups, noun and minimum…` | **test:** `tests/test_grouping_picks_the_person.py::test_too_few_groups_to_split_by_is_said_out_loud` — Closed, and the test's own assertion message is the invariant: 'the… |
+
+### Human drive feedback — 14
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `DRIVE-001` | critical | The lens question is unreachable through the interface - it has a dedicated endpoint the page never calls, so the entire domain-pack arc is invisible | `turbotab/api.py:1289 versus :1545; turbotab/web/index.html has no lens reference` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_the_page_renders_every_question_the_router_can_serve` — FIXED at L23, and the class is closed rather than… |
+| `DRIVE-063` | critical | Methods draft asserts a consensus selection that never ran: page 04 records methods_to_run into provenance instead of the methods_completed list MISC-104 built - with both selectors failing, the… | `pages/04_Feature_Selection.py:409-411; docs/audit/DRIVE8_CLASSIC_SURFACING.md finding 1` | **test:** `tests/test_drive8_selection.py::test_drive063_zero_completions_records_no_selection` — pages/04 records consensus_methods=methods_completed and writes a consensus… |
+| `DRIVE-064` | critical | LASSO and RFE-CV both raise on a boolean-with-missing object target (sklearn type 'unknown') and the page's error blames the target for being CONTINUOUS; then 'Only one method completed' renders when… | `pages/04_Feature_Selection.py:332,346,426-431; DRIVE8 findings 2,5` | **test:** `tests/test_drive8_selection.py::test_drive064_boolean_with_missing_target_is_diagnosed_before_it_flows` — diagnose_target_dtype/repair_boolean_target at target… |
+| `DRIVE-065` | critical | Explainability runs all six analyses against the RAW frame instead of the fitted pipelines - all six fail ('could not convert string to float: female') and the page prints 'Explainability analysis… | `pages/07_Explainability.py:811-814,835; DRIVE8 finding 3` | **test:** `tests/test_drive8_explainability.py::TestDrive065ExplainabilityRunsThroughTheFittedPipelines` — The fallback return path dropped the fitted pipeline - every exit now… |
+| `DRIVE-066` | critical | Methods reports sample-to-feature ratio 809:1 computed on the full 21,849 rows inside a document stating a 6,297-row analysis cohort - two denominators in one draft | `pages/02_EDA.py:708-718; DRIVE8 finding 4` | **test:** `tests/test_drive8_explainability.py::TestDrive066TheRatioDescribesTheAnalysisCohort` — One _analysis_n (rows with a recorded outcome) feeds the ratio and both… |
+| `DRIVE-002` | high | A repair affecting nine features requires nine separate show-me-then-apply cycles; the bulk affordance was built for questions and not for repairs | `The drive; contrast turbotab bulk missingness affordance` | **test:** `turbotab/test_one_repair_covers_a_set_of_features.py::test_applying_to_a_selected_set_changes_those_columns_and_no_others` — bulk.py's rule-scope pointed at repairs… |
+| `DRIVE-003` | high | Action buttons do not say what they will do, so the driver could not tell what several of them meant | `The drive; turbotab/web/index.html action rows` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_a_generic_question_states_its_effect_before_it_is_taken` — Closed at L23. The EFFECTS table plus effectOf… |
+| `DRIVE-004` | high | Disclosures do not toggle and actions do not acknowledge - the app never narrates its own behavior | `The drive; DESIGN_LANGUAGE.md 05` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_every_action_acknowledges_itself_after_it_is_taken` — Closed at L23, in two halves. THE DISCLOSURE half… |
+| `DRIVE-005` | high | Situational-awareness findings get one card each, which turns ten improbable-value flags into accidental infinite scroll | `The drive; clinical_longitudinal and NHANES` | **test:** `turbotab/test_action_free_findings_share_one_paged_card.py::test_many_improbable_features_become_one_card_with_a_pager` — THE LINE IS ACTION, NOT SEVERITY, and stating… |
+| `DRIVE-006` | high | Auto-scroll skips past the noticed card, so the driver has to scroll back up every time | `The drive; DESIGN_LANGUAGE.md 05 scroll rule` | **test:** `turbotab/test_the_page_never_moves_the_viewport.py::test_a_drive_with_many_findings_never_scrolls_the_page` — The nudge is DELETED rather than tuned, and the reason the… |
+| `DRIVE-008` | high | The missingness pop-out shows what would change and does not let the driver do it | `The drive; the missingness what-the-app-can-do panel` | **test:** `turbotab/test_the_missingness_panel_can_execute.py::test_a_row_local_choice_changes_the_working_table_now` — WORSE THAN NOT WIRED. Pressing 'Record this' posted a NOTE… |
+| `DRIVE-067` | high | Import Doctor's description of the root target defect self-contradicts ('Every value is a plain number (e.g. True, False)') - and its repair is confirmed to be exactly what unblocks selection and… | `ml/import_doctor.py:685-706; DRIVE8 finding 6` | **test:** `tests/test_drive8_selection.py::test_drive067_the_boolean_repair_does_not_blank_the_column` — boolean_as_text finding describes booleans truthfully; new coerce_boolean… |
+| `DRIVE-069` | high | The seal chip omits its denominator - '15% (n=945, stratified)' is 15% of 6,297 eligible rows, not of the 21,849 uploaded; the Methods draft states 'of eligible observations' correctly, so the… | `utils/test_lockbox.py:1385-1389; DRIVE8 finding 9` | **test:** `tests/test_drive8_explainability.py::TestDrive069TheChipStatesItsDenominator` — Chip states its denominator: '15% of eligible rows (n=945 of 6,297 rows with a value for… |
+| `DRIVE-070` | high | Model coach quotes n=20,904 on badges beside a 4,407-row training set and refuses SVC on the wrong number; coaching also lists the TARGET among '>30% missing features' with advice to drop or impute… | `ml/model_coach.py:1654; DRIVE8 findings 10,11` | **test:** `tests/test_drive8_explainability.py::TestDrive070TheBadgesQuoteTheTrainingSize` — model_viability takes realized n_train (pages/06 passes len(X_train)); p/n recomputed… |
 
 ### Stage-boundary contracts — 13
 

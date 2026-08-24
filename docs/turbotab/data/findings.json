@@ -13658,8 +13658,8 @@
   "detail": "",
   "ev": "pages/01_Upload_and_Audit.py:1408-1412; DRIVE8 findings 7,8",
   "act": "",
-  "status": "FIXED",
-  "note": "Declaration surfaces reconciled (contradiction check exempts cluster columns, no false rows-repeat claim, record and sentence agree); withdrawing a declaration releases the reserved column via the role-scoped replacement.",
+  "status": "PARTIAL",
+  "note": "RE-OPENED by Drive 9 (D9-02): all three note claims refuted at f84d7b0 - false 'Rows repeat per subject' on rows_per==1.0; 'grain is undetermined' sentence while seal_basis=='grouped'; withdrawing the declaration leaves SEQN reserved with group_col None. The earlier fix did not land as described; re-verify what shipped and repair for real.",
   "verified_against": "",
   "test": "tests/test_paper_risk_lockbox.py::TestImport257TheSubjectColumnCanBeDeclared",
   "verified_ev": "pages/01_Upload_and_Audit.py:1408-1412; DRIVE8 findings 7,8"
@@ -13747,5 +13747,61 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L68 ruling); grep '1 of 10\\|1/10' over docs/"
+ },
+ {
+  "id": "DRIVE-072",
+  "area": "DRIVE",
+  "sev": "critical",
+  "item": "D9-01: on the SUCCESSFUL selection route the Methods drafts 'Consensus feature selection across LASSO and RFE-CV retained all 14 candidate predictors' while the Evidence Map says 27->14 - _resolve_workflow_feature_counts reads logged_steps['Feature Selection'][-1], which the Applied entry overwrites, so screening and retention both collapse to the post-apply count. Validator catches it and disables downloads (good), but the draft is false",
+  "detail": "",
+  "ev": "ml/publication.py (_resolve_workflow_feature_counts); docs/audit/DRIVE9_RECHECK.md D9-01",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "ml/publication.py (_resolve_workflow_feature_counts); docs/audit/DRIVE9_RECHECK.md D9-01"
+ },
+ {
+  "id": "DRIVE-073",
+  "area": "DRIVE",
+  "sev": "high",
+  "item": "D9-03: applying a feature selection clears dataset_profile and nothing recomputes it - page 06 silently loses the class-imbalance card, the rebalancing control, and the model-suitability badges (DRIVE-070's fix unreachable); page 10 reads 'Dataset profile: Not computed'. Recompute on the post-selection features or preserve with a stale-marker - silence is the one wrong option",
+  "detail": "",
+  "ev": "utils/session_state.py (reset registry); pages/06; DRIVE9 D9-03",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "utils/session_state.py (reset registry); pages/06; DRIVE9 D9-03"
+ },
+ {
+  "id": "DRIVE-074",
+  "area": "DRIVE",
+  "sev": "medium",
+  "item": "D9-04/05/06 batch: TRIPOD item 9 ticked by a target dtype recode and 15a+19a both ticked by one explainability line (tick criteria too coarse); the draft's distinct-comparison count (1) disagrees with the Evidence Map's record count (2 tests) - both should name their universe; Limitations splices coach cards as 'finding.: rationale' and the validator's no-coaching-language check passes over 'A reviewer would question...'",
+  "detail": "",
+  "ev": "ml/publication.py (TRIPOD); ml/narrative_engine.py; utils/insight_ledger.py; DRIVE9 D9-04..06",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "ml/publication.py (TRIPOD); ml/narrative_engine.py; utils/insight_ledger.py; DRIVE9 D9-04..06"
+ },
+ {
+  "id": "DRIVE-075",
+  "area": "DRIVE",
+  "sev": "low",
+  "item": "D9-07..10 batch: page-01 structural review lags one render behind its own repair (caption 1, two cards); improbability-band warnings duplicate verbatim; external review header counts disagree ('Found 1 worth checking, 1 note' over 'Also worth a look (2)'); audit trail mixes one display label with one raw key ('Lasso Regression, rfe'). Plus deferred re-files: finding 16 and 24 each half-closed - re-scope to the remaining half; 18 rises slightly (subgroup Accuracy is the metric the run's own coach card disowns); 34 unobservable behind DRIVE-073",
+  "detail": "",
+  "ev": "DRIVE9 D9-07..10 + deferred check",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "DRIVE9 D9-07..10 + deferred check"
  }
 ]
