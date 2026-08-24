@@ -14,6 +14,8 @@ import tempfile
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Any, Tuple
+
+from ml.table_one import format_pvalue
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -182,7 +184,12 @@ def _format_abstract_predictor_sentence(feature_counts: Dict[str, Any], feature_
     original_count = feature_counts.get('original')
     candidate_count = feature_counts.get('candidate')
 
-    if original_count and candidate_count and selected_count and candidate_count != original_count and selected_count != candidate_count:
+    # `DRIVE8-21`: the FE clause is written only where the record holds
+    # engineered columns. `candidate != original` alone is not that evidence.
+    from ml.publication import feature_engineering_ran
+    if (original_count and candidate_count and selected_count
+            and candidate_count != original_count and selected_count != candidate_count
+            and feature_engineering_ran(feature_counts)):
         return (
             f"The raw dataset contained {original_count} predictor variables, "
             f"feature engineering yielded {candidate_count} candidates, and "
@@ -1146,11 +1153,18 @@ def generate_latex_report(
             p_value = entry.get('p_value')
             
             if statistic is not None and p_value is not None:
-                sections.append(f"{test_name} was performed on {variable}: statistic = {statistic:.4f}, $p$ = {p_value:.4f}.")
+                # `DRIVE8-32`: `:.4f` renders anything below 5e-5 as "0.0000",
+                # which asserts p = 0. The floor is stated as an inequality.
+                _p = format_pvalue(p_value)
+                _p_clause = (f"$p$ {_p}" if _p.startswith("<")
+                             else f"$p$ = {_p}")
+                sections.append(f"{test_name} was performed on {variable}: statistic = {statistic:.4f}, {_p_clause}.")
                 sections.append("")
-        
-        # Multiple testing caveat if >3 tests
-        if len(stat_validation_summary) > 3:
+
+        # Multiple testing caveat if >3 distinct comparisons. `DRIVE8-20`: an
+        # override re-run of one comparison is not a second test.
+        from ml.narrative_engine import _distinct_comparisons
+        if len(_distinct_comparisons(stat_validation_summary)) > 3:
             sections.append(
                 r"Note: Multiple statistical tests were performed; "
                 r"readers should consider the increased risk of Type I error "

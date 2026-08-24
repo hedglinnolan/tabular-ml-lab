@@ -9,8 +9,15 @@ import importlib
 import sys
 from unittest.mock import MagicMock
 
-# Mock streamlit before importing insight_ledger
-if "streamlit" not in sys.modules:
+# Use the real streamlit in bare mode when it is installed. Installing a
+# MagicMock at sys.modules["streamlit"] leaked into every later-collected
+# file: float(MagicMock()) is 1.0, so a module reading test_lockbox_fraction
+# got a 100% holdout and ensure_lockbox raised — an order-dependent failure
+# that only appeared in multi-file runs (same class as the
+# test_unified_ledger_integration stub fixed earlier).
+try:
+    import streamlit  # noqa: F401 — bare-mode import is all we need
+except ImportError:
     sys.modules["streamlit"] = MagicMock()
 
 from ml.model_coach import generate_preprocessing_insights

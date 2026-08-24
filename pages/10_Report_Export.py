@@ -7,6 +7,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from typing import Dict, Optional, Any, List, Tuple
+import os
+import subprocess
 import io
 import zipfile
 import json
@@ -29,6 +31,8 @@ init_session_state()
 from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_sidebar_workflow
 from utils.table_export import table
 from utils.insight_ledger import get_ledger as _get_report_ledger
+from utils.insight_ledger import name_empty_slots, resolution_text
+from ml.table_one import format_pvalue
 
 # Module-level ledger — used by generate_report(), TRIPOD section, and debug panel
 _report_ledger = _get_report_ledger()
@@ -142,9 +146,52 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+#: Marks a commit stamp taken from a tree with uncommitted changes. The L67
+#: adjudication's convention (`docs/turbotab/VALUE_CHECK_ADJUDICATION.md`): the
+#: suffix is deliberately not a valid revision, so a stamp that `git show`
+#: cannot resolve announces its own limitation instead of quietly failing to
+#: honor a reproducibility claim it cannot support.
+_WORKING_TREE_SUFFIX = '+wt'
+
+
+def _git_commit() -> Optional[str]:
+    """The commit this export was produced at, or None outside a repository.
+
+    `DRIVE8-31`. The reproducibility manifest reported `'commit': 'n/a'` — a
+    record whose one job is to say which code produced these numbers, declining
+    to say it while the answer was two subprocess calls away. Absence is still
+    a legitimate answer (an installed copy, a downloaded zip), and it stays
+    None rather than becoming a guess.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        head = subprocess.run(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            cwd=root, capture_output=True, text=True, timeout=5,
+        )
+        if head.returncode != 0:
+            return None
+        commit = head.stdout.strip()
+        if not commit:
+            return None
+        dirty = subprocess.run(
+            ['git', 'status', '--porcelain'],
+            cwd=root, capture_output=True, text=True, timeout=5,
+        )
+        # A stamp is a claim about reproducibility: if the tree the export was
+        # taken from is not the tree a reader can check out, the stamp says so.
+        if dirty.returncode == 0 and dirty.stdout.strip():
+            commit += _WORKING_TREE_SUFFIX
+        return commit
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def get_git_info() -> Dict[str, str]:
     """Get app version info for export metadata. Excludes branch name to avoid leaking deployment details."""
-    return {'app_version': '1.0.0', 'commit': 'n/a'}
+    commit = _git_commit()
+    return {'app_version': '1.0.0',
+            'commit': commit if commit else 'not a git checkout'}
 
 
 def _profile_scope_fields() -> Dict[str, Any]:
@@ -1189,7 +1236,7 @@ def _prepare_table1_for_latex_export(table1_df: Optional[pd.DataFrame]) -> Optio
             first_match_idx = table1_df_local.index[mask][0]
             current_label = str(first_match_idx)
             table1_df_local = table1_df_local.rename(index={first_match_idx: f"{current_label}^{idx}"})
-            p_str = f"{test['p_value']:.4f}" if test['p_value'] >= 0.001 else "<0.001"
+            p_str = format_pvalue(test['p_value'])
             footnotes.append(f"^{idx} {test['test']}: {test['statistic']}, p={p_str} ({test['note']})")
 
     if footnotes:
@@ -1301,7 +1348,10 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     report_lines.append(f"# {title}")
     report_lines.append("")
     report_lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    report_lines.append(f"**App Version:** {git_info.get('app_version', git_info.get('commit', 'unknown'))}")
+    report_lines.append(f"**App Version:** {git_info.get('app_version', 'unknown')}")
+    # The commit is the half of the version that identifies the CODE; the
+    # app_version string moves once a release (`DRIVE8-31`).
+    report_lines.append(f"**Code Version:** {git_info.get('commit', 'unknown')}")
     report_lines.append(f"**Random Seed:** {st.session_state.get('random_seed', 42)}")
     report_lines.append("")
     report_lines.append("---")
@@ -1501,8 +1551,11 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
                         report_lines.append(f"- {_prov_insight.finding} → {prose}")
                     elif prose:
                         report_lines.append(f"- {prose}")
-                elif _prov_insight.resolved_by and _prov_insight.finding:
-                    report_lines.append(f"- {_prov_insight.finding} → {_prov_insight.resolved_by}")
+                elif _prov_insight.finding:
+                    # An echo resolution is not a resolution (`DRIVE8-29`).
+                    _res = resolution_text(_prov_insight)
+                    _find = name_empty_slots(_prov_insight.finding)
+                    report_lines.append(f"- {_find} → {_res}" if _res else f"- {_find}")
             report_lines.append("")
 
         for mk, pl in pipelines_by_model.items():
@@ -1615,10 +1668,8 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
                 tname = v["test_name"]
                 p = v["p"]
                 sig = "Yes" if (p is not None and np.isfinite(p) and p < 0.05) else "No"
-                if p is not None and np.isfinite(p):
-                    p_str = "<0.001" if p < 0.001 else f"{p:.4f}"
-                else:
-                    p_str = "—"
+                p_str = (format_pvalue(p)
+                         if p is not None and np.isfinite(p) else "—")
                 report_lines.append(
                     f"| {_export_model_label(ma)} | {_export_model_label(mb)} | {mean_d:.4f} | {tname} | {p_str} | {sig} |"
                 )
@@ -2216,7 +2267,9 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
             note = ""
             for _ins in _report_ledger.get_resolved():
                 if auto_key in _ins.tripod_keys:
-                    note = _ins.resolved_by
+                    # "Ran  on 3 models" ticked two TRIPOD items with the
+                    # analysis name missing; the gap is named, not hidden.
+                    note = name_empty_slots(_ins.resolved_by)
                     break
             tracker.mark_complete(auto_key, note or "Auto-detected from analysis", "Ledger")
 
@@ -2266,6 +2319,8 @@ if table1_bundle.get("table1_df_local") is not None:
         table1_metadata = table1_bundle.get("table1_metadata", {})
         custom_tests = st.session_state.get('custom_table1_tests', [])
 
+        if table1_metadata.get("denominator_note"):
+            st.caption(table1_metadata["denominator_note"])
         if table1_metadata.get("tests_used"):
             st.caption("**Automatic tests used:** " + ", ".join(
                 f"{var}: {test}" for var, test in table1_metadata["tests_used"].items()
@@ -2273,7 +2328,7 @@ if table1_bundle.get("table1_df_local") is not None:
         if custom_tests:
             st.info(f"✅ {len(custom_tests)} custom statistical test(s) attached")
             for test in custom_tests:
-                p_str = f"{test['p_value']:.4f}" if test['p_value'] >= 0.001 else "<0.001"
+                p_str = format_pvalue(test['p_value'])
                 note = f" ({test['note']})" if test.get('note') else ""
                 st.caption(f"{test['variable']}: {test['test']} {test['statistic']}, p={p_str}{note}")
 

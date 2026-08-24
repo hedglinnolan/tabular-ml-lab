@@ -470,6 +470,45 @@ def _strip_terminal_sentence_punctuation(text: str) -> str:
     return re.sub(r'[\s\.\-–—:;]+$', '', (text or "").strip())
 
 
+def name_empty_slots(text: str) -> str:
+    """Mark the gap an empty interpolation slot leaves in a recorded action.
+
+    `f"Ran {', '.join(analyses_run)} on {n} models"` with nothing to join
+    renders as *"Ran  on 3 models"* — an action with no subject, which shipped
+    as a coach card and as a TRIPOD annotation on a run where every analysis
+    had failed. The name cannot be recovered at render time, so the gap is
+    STATED rather than closed up: a reader must be able to see that something
+    is missing instead of reading a complete sentence.
+    """
+    if not text:
+        return ""
+    # Only an interior run of spaces after a non-terminal character: a double
+    # space following '.' or ',' is typography, not a missing argument.
+    return re.sub(r'(?<=[^\s.!?;:,])[ \t]{2,}(?=\S)', ' (not recorded) ',
+                  str(text).strip())
+
+
+def resolution_text(insight: "Insight") -> str:
+    """What to print after a finding's arrow, or "" when there is nothing.
+
+    A "resolution" that restates the finding word for word is not a
+    resolution. The bridge record `log_methodology` writes sets
+    `resolved_by = finding` by construction, so every surface that renders
+    `finding → resolved_by` printed the same sentence twice — on the drive,
+    *"✅ ~~Ran  on 3 models~~ → Ran  on 3 models"*. The record keeps both
+    fields (the audit trail is unchanged); only the rendering declines to
+    echo.
+    """
+    finding = name_empty_slots(getattr(insight, "finding", "") or "")
+    resolved_by = name_empty_slots(getattr(insight, "resolved_by", "") or "")
+    if not resolved_by:
+        return ""
+    if _strip_terminal_sentence_punctuation(resolved_by).casefold() == \
+            _strip_terminal_sentence_punctuation(finding).casefold():
+        return ""
+    return resolved_by
+
+
 def models_to_families(model_keys: List[str]) -> List[str]:
     """Convert a list of model keys to unique family names."""
     return list(dict.fromkeys(
@@ -1218,11 +1257,12 @@ class InsightLedger:
                     detail_prose = format_resolution_detail(
                         i.resolution_details, model_scope=i.model_scope
                     )
-                    lines.append(f"  - {i.finding} → {detail_prose}")
+                    lines.append(f"  - {name_empty_slots(i.finding)} → {detail_prose}")
                 else:
-                    lines.append(
-                        f"  - {i.finding} → {i.resolved_by} ({i.resolved_on_page})"
-                    )
+                    _finding = name_empty_slots(i.finding)
+                    _res = resolution_text(i)
+                    _arrow = f" → {_res}" if _res else ""
+                    lines.append(f"  - {_finding}{_arrow} ({i.resolved_on_page})")
 
         if unresolved:
             lines.append("")

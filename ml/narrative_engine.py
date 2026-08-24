@@ -318,6 +318,44 @@ def _lockbox_open_count(ctx: Dict[str, Any]) -> Optional[int]:
         return None
 
 
+#: Keys a hypothesis-test record carries when the parametric/non-parametric
+#: choice was made for it. Their presence is what marks two records of one
+#: comparison — the assumption check's run and the author's override re-run.
+_ASSUMPTION_CHOICE_KEYS = ("assumption_overridden", "assumption_basis", "parametric")
+
+
+def _distinct_comparisons(tests: Any) -> List[Dict[str, Any]]:
+    """One record per COMPARISON, not per test record written.
+
+    `DRIVE8-20`. Page 09 records a test each time one is run, and re-running
+    the same comparison under an author override writes a second record. The
+    multiplicity sentence counted records, so *"No correction for multiple
+    comparisons was applied across the 2 tests reported here"* described one
+    comparison — glucose by gender — run two ways as if it were two findings.
+    A multiplicity burden is the number of questions asked of the data; asking
+    the same question with a different estimator does not add one.
+
+    A record that carries the assumption-choice keys is identified by the
+    comparison it is about, and the LAST such record wins — that is the one the
+    page reports and the one whose p-value the author sees. Records without
+    them keep their own identity: Shapiro-Wilk and Breusch-Pagan on the same
+    residuals are two different nulls, not one comparison run twice.
+    """
+    if not tests:
+        return []
+    by_identity: Dict[Any, Dict[str, Any]] = {}
+    for test in tests:
+        if not isinstance(test, dict):
+            continue
+        variable = str(test.get("variable", "") or "")
+        if variable and any(key in test for key in _ASSUMPTION_CHOICE_KEYS):
+            identity: Any = ("comparison", variable)
+        else:
+            identity = ("test", str(test.get("test_name", "") or ""), variable)
+        by_identity[identity] = test
+    return list(by_identity.values())
+
+
 def _oxford_join(items: List[str]) -> str:
     """Join a list for manuscript prose."""
     cleaned = [str(item).strip() for item in items if str(item).strip()]
@@ -875,13 +913,19 @@ class NarrativeEngine:
         features = self.ctx.get("features_kept") or self.ctx.get("feature_cols", [])
         n_final = len(features) if features else 0
         n_before_sel = self.ctx.get("n_features_before_selection", 0)
-        n_after_sel = self.ctx.get("n_features_after_selection", 0)
+        # ZERO IS A REAL COUNT; ABSENCE IS None. `n_features_after_selection`
+        # was read with a `0` default and then `n_after_sel or n_final` — so a
+        # selection that retained NOTHING fell through to the pre-selection list
+        # and the paragraph drafted "All 27 candidate predictors were retained
+        # for final modeling", the false-consensus sentence by a second route.
+        # Same discipline as `_lockbox_open_count` above (`DRIVE8-21`).
+        n_after_sel = self.ctx.get("n_features_after_selection")
         n_engineered = self.ctx.get("n_engineered", 0)
         engineered_candidate_count = (n_original + n_engineered) if n_original else 0
         candidate_count = max(n_before_sel or 0, engineered_candidate_count or 0)
         if not candidate_count:
             candidate_count = engineered_candidate_count or n_before_sel or 0
-        final_count = n_after_sel or n_final
+        final_count = n_after_sel if n_after_sel is not None else n_final
 
         # Feature engineering
         transforms = self.ctx.get("engineering_transforms", [])
@@ -899,15 +943,42 @@ class NarrativeEngine:
         ]
         consensus_phrase = _oxford_join(consensus_methods)
 
+        # A RECORDED ZERO IS A RESULT, and it is stated rather than routed
+        # around. Every sentence below describes a predictor set that exists;
+        # with none, the funnel, the selection detail and the final list would
+        # all be about a set the run never produced.
+        if n_after_sel == 0:
+            # The denominator is the SELECTION step's own — the columns it
+            # screened — not the study-wide candidate count.
+            _screened = n_before_sel or candidate_count or n_original
+            parts.append(
+                f"Feature selection retained none of the "
+                f"{_count_phrase(_screened, 'candidate predictor')} it screened, "
+                f"so no selected predictor set was produced."
+            )
+            return " ".join(parts)
+
         # Feature funnel narrative
+        #
+        # `DRIVE8-21`. The two FE branches used to fire on `candidate_count !=
+        # n_original`, and `candidate_count` comes from the SELECTION record's
+        # `n_features_before` — the columns selection could rank, not columns
+        # engineering made. On a run where page 03 was skipped that asserted a
+        # stage the provenance has no record of. An engineered count is the
+        # only evidence of one.
+        from ml.publication import feature_engineering_ran
+        _fe_ran = (bool(transforms) or (n_engineered or 0) > 0
+                   or feature_engineering_ran(
+                       self.manuscript_context.get("feature_counts")))
         if n_original and final_count:
-            if candidate_count and candidate_count != n_original and final_count != candidate_count:
+            if (candidate_count and candidate_count != n_original
+                    and final_count != candidate_count and _fe_ran):
                 added_count = max(candidate_count - n_original, 0)
                 parts.append(
                     f"The raw dataset contained {n_original} predictor variables. "
                     f"Feature engineering added {added_count} predictor variables, yielding {candidate_count} candidate predictors."
                 )
-            elif candidate_count and candidate_count != n_original:
+            elif candidate_count and candidate_count != n_original and _fe_ran:
                 parts.append(
                     f"The raw dataset contained {n_original} predictor variables. "
                     f"Feature engineering yielded {candidate_count} candidate predictors, "
@@ -1390,6 +1461,9 @@ class NarrativeEngine:
         tests = self.ctx.get("statistical_tests", [])
         if not tests:
             return ""
+        # The names are every test that was performed; the multiplicity burden
+        # is the number of distinct comparisons those tests asked (`DRIVE8-20`).
+        comparisons = _distinct_comparisons(tests)
 
         parts = []
         # SORTED, not `list(set(...))`. Set iteration order is not stable
@@ -1403,7 +1477,7 @@ class NarrativeEngine:
                 f"Statistical validation was performed using: {', '.join(test_names)}."
             )
 
-        with_p = [t for t in tests
+        with_p = [t for t in comparisons
                   if isinstance(t.get("p_value"), (int, float))
                   and t.get("p_value") is not None]
         correction = multiplicity.correction_of(tests)
@@ -1416,14 +1490,14 @@ class NarrativeEngine:
             parts.append(
                 f"P-values were adjusted for multiple comparisons using the "
                 f"{multiplicity.method_label(correction)} method across the "
-                f"{len(with_p)} tests reported here; "
+                f"{_count_phrase(len(with_p), 'test')} reported here; "
                 f"{len(corrected)} remained significant at q < {alpha:g}."
             )
         elif with_p:
             expected = multiplicity.expected_by_chance(len(with_p))
             parts.append(
                 f"No correction for multiple comparisons was applied across "
-                f"the {len(with_p)} tests reported here, so the number reaching "
+                f"the {_count_phrase(len(with_p), 'test')} reported here, so the number reaching "
                 f"p < 0.05 is not interpretable as a count of findings: at "
                 f"alpha = 0.05 roughly {expected:.0f} of {len(with_p)} would be "
                 f"expected to do so by chance alone."

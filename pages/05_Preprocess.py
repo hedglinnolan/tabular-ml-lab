@@ -807,11 +807,16 @@ else:
                 else:
                     _ot = "none"
             with _c_out2:
+                # `DRIVE8-30`/`MISC-018`. Page 02's nudge sends the reader here
+                # for "plausibility filtering" and this control was labeled
+                # "Domain-specific range filtering" — the word the pointer uses
+                # appeared nowhere on the page. The help also said "reference
+                # ranges", the register `ml/physiology_reference.py` disavows.
                 _pg = st.checkbox(
-                    "Domain-specific range filtering",
+                    "Plausibility filtering (domain-specific ranges)",
                     value=bool(_cfg(_mk, "plausibility_gating", False)),
                     key=f"preprocess_{_mk}_plausibility_gating",
-                    help="Apply domain-specific plausible ranges (e.g., NHANES reference ranges for biomarkers). Values outside the range are clipped or filtered.",
+                    help="Apply domain-specific plausible ranges (e.g., the NHANES p01–p99 improbability band for biomarkers). Values outside the range are clipped or filtered.",
                 )
                 if _pg:
                     _pm = safe_option_index(["clip", "filter"], _cfg(_mk, "plausibility_mode", "clip"), "clip")
@@ -1360,12 +1365,23 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                 finding += " …"
             from utils.insight_ledger import Insight, get_ledger as _get_pp_resolve_ledger
             _pp_resolve_ledger = _get_pp_resolve_ledger()
+            # `DRIVE8-17`. This card is a preprocessing-consistency check — what
+            # the recipe table asked for per model and what was built. It is a
+            # neutral internal fact, and it was reaching the manuscript's
+            # Discussion as a STUDY LIMITATION: the Limitations semicolon list
+            # carried "…; Histogram Gradient Boosting (Classification): scaling
+            # robust; the recipe table does not require scaling here. …" with
+            # its own full stops inside it. `COACH-007`'s rule already names the
+            # route out — an audit-only insight is a record, not a finding about
+            # the study — and the per-model preprocessing it describes is
+            # already reported in Methods from the pipeline recipes.
             _pp_resolve_ledger.upsert(Insight(
                 id="preprocess_model_checks",
                 source_page="05_Preprocess", category="methodology", severity="info",
                 finding=finding,
                 implication="Review that preprocessing matches each model; adjust and rebuild if needed.",
                 relevant_pages=["06_Train_and_Compare"],
+                metadata={"audit_only": True},
             ))
             # Build structured per-model provenance for the ledger
             _per_model_provenance = {}

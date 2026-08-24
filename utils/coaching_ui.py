@@ -9,7 +9,7 @@ import streamlit as st
 from utils.insight_ledger import (
     get_ledger, InsightLedger, Insight,
     MODEL_TO_FAMILY, FAMILY_DISPLAY_NAMES, models_to_families,
-    SEVERITY_ORDER,
+    SEVERITY_ORDER, name_empty_slots, resolution_text,
 )
 from utils.theory_anchors import infer_theory_anchor, render_theory_link
 
@@ -137,7 +137,12 @@ def _render_insights_body(
         st.markdown("---")
         st.caption("**Resolved:**")
         for ins in resolved[:5]:
-            st.caption(f"✅ ~~{ins.finding}~~ → {ins.resolved_by}")
+            # A resolution that restates the finding is not a resolution, and
+            # an action with an empty subject is not an action. Both are
+            # decided by `insight_ledger`, so every render path agrees.
+            _res = resolution_text(ins)
+            _finding = name_empty_slots(ins.finding)
+            st.caption(f"✅ ~~{_finding}~~ → {_res}" if _res else f"✅ {_finding}")
         if len(resolved) > 5:
             st.caption(f"... and {len(resolved) - 5} more")
 

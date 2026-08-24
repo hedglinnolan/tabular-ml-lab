@@ -205,6 +205,14 @@ DECLARED = {
         "section A1.3 is explicit are NOT censoring - TNTC, QNS, hemolyzed, "
         "see comment - which routinely arrive as part of a longer free-text "
         "comment rather than as the whole cell.",
+    ("ml/narrative_engine.py", "_ASSUMPTION_CHOICE_KEYS"):
+        "Not a name registry. `any(key in test for key in ...)` asks whether "
+        "a RESULT DICT carries any of three exact field names the hypothesis "
+        "page writes (assumption_overridden / assumption_basis / parametric) "
+        "- dict-key membership, not a substring scan over a column name. It "
+        "decides only whether a record is identity-bearing for the "
+        "distinct-comparisons count (Drive 8 finding 20); an unknown record "
+        "keeps its own identity, which is the safe direction.",
     ("ml/splits.py", "kept_labels"):
         "Not a name registry. `kept_labels` holds ROW LABELS and the test is "
         "membership in an index, not a substring of a name.",

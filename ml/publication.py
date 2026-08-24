@@ -284,16 +284,22 @@ def _resolve_workflow_feature_counts(
     if base_features:
         original_count = len(base_features)
 
+    # ZERO IS A REAL COUNT; ABSENCE IS None. `x or y` swallowed a recorded
+    # zero here exactly as it did in `ml/narrative_engine.py`, and a selection
+    # that retained nothing then read back as the pre-selection list.
     fs_entries = logged_steps.get('Feature Selection', [])
     if fs_entries:
         last_fs = fs_entries[-1].get('details', {})
-        candidate_count = last_fs.get('n_features_before') or candidate_count
-        selected_count = last_fs.get('n_features_after') or selected_count
+        if last_fs.get('n_features_before') is not None:
+            candidate_count = last_fs['n_features_before']
+        if last_fs.get('n_features_after') is not None:
+            selected_count = last_fs['n_features_after']
 
     applied_entries = logged_steps.get('Feature Selection Applied', [])
     if applied_entries:
         last_applied = applied_entries[-1].get('details', {})
-        selected_count = last_applied.get('n_features_selected') or selected_count
+        if last_applied.get('n_features_selected') is not None:
+            selected_count = last_applied['n_features_selected']
 
     try:
         import streamlit as st
@@ -329,6 +335,40 @@ def _resolve_workflow_feature_counts(
         'selected': selected_count,
         'engineered': engineered_count,
     }
+
+
+def feature_engineering_ran(feature_counts: Optional[Dict[str, Any]]) -> bool:
+    """Did the provenance record a feature-engineering stage that CREATED columns?
+
+    `DRIVE8-21`. `candidate` is resolved from the feature-selection record's
+    `n_features_before`, which is the count of columns selection could *rank* —
+    on a classification run with eight non-numeric predictors that is smaller
+    than the original set and has nothing to do with engineering. Every
+    manuscript surface then read `candidate != original` as evidence of a
+    stage, and the abstract asserted *"feature engineering yielded 19
+    candidates"* on a session where page 03 was never opened.
+
+    The only evidence that engineering happened is columns it created. With
+    none recorded the FE clause is not written — the funnel sentence states the
+    counts the record supports and claims no stage.
+
+    Where no engineered count was resolved at all, the direction of the two
+    counts still settles it: engineering only ADDS columns, so `candidate >
+    original` is evidence of a stage and `candidate < original` — the drive's
+    19 against 27 — never is.
+    """
+    counts = feature_counts or {}
+    engineered = counts.get('engineered')
+    if engineered is not None:
+        try:
+            return int(engineered) > 0
+        except (TypeError, ValueError):
+            return False
+    original, candidate = counts.get('original'), counts.get('candidate')
+    try:
+        return bool(original and candidate and int(candidate) > int(original))
+    except (TypeError, ValueError):
+        return False
 
 
 def _oxford_join(items: List[str]) -> str:
@@ -692,7 +732,9 @@ def generate_methods_section(
     # Feature counts: derive once so manuscript text stays internally consistent.
     logged_steps = generate_methods_from_log()
     feature_counts = manuscript_facts['feature_counts'] or _resolve_workflow_feature_counts(feature_names, logged_steps, data_config)
-    predictor_count = feature_counts.get('selected') or len(feature_names)
+    _selected_count = feature_counts.get('selected')
+    predictor_count = (_selected_count if _selected_count is not None
+                       else len(feature_names))
 
     # Study design
     sections.append("### Study Design and Participants\n")
@@ -736,12 +778,24 @@ def generate_methods_section(
 
     # Predictors
     sections.append("\n\n### Predictor Variables\n")
-    if feature_counts.get('original') and feature_counts.get('selected') and feature_counts['original'] != feature_counts['selected']:
+    if _selected_count == 0:
+        # A recorded zero is a RESULT. Falling through to the branches below
+        # would list the predictors the workflow started with as though they
+        # were the ones selection kept.
+        _screened = feature_counts.get('candidate') or feature_counts.get('original')
+        sections.append(
+            (f"Feature selection retained none of the {_screened} candidate "
+             f"predictors it screened, so no selected predictor set was produced."
+             ) if _screened else
+            "Feature selection retained no predictors, so no selected "
+            "predictor set was produced."
+        )
+    elif feature_counts.get('original') and feature_counts.get('selected') and feature_counts['original'] != feature_counts['selected']:
         original_count = feature_counts['original']
         candidate_count = feature_counts.get('candidate')
         engineered_count = feature_counts.get('engineered')
         selected_count = feature_counts['selected']
-        if candidate_count and candidate_count != original_count:
+        if candidate_count and candidate_count != original_count and feature_engineering_ran(feature_counts):
             sections.append(
                 f"The workflow began with {original_count} original predictors. "
                 f"Feature engineering added {engineered_count if engineered_count is not None else max(candidate_count - original_count, 0)} predictors, yielding {candidate_count} candidate predictors. "

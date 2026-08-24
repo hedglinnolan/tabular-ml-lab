@@ -10,6 +10,7 @@ AUDIT NOTE (Data Flow):
 - Edge case handled: fe_work_in_progress tracks feature set hash and resets when features change
 - Downstream invalidation: Saving FE clears preprocessing, models, splits, explainability
 """
+import math
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -158,6 +159,31 @@ def _fe_commit(X_engineered, engineered_features, engineering_log, removed=(),
     wip['engineering_log'] = engineering_log
     wip['engineering_log_sources'] = sources
     return engineering_log
+
+
+def _poly_new_feature_count(n_numeric: int, degree: int,
+                            interaction_only: bool) -> int:
+    """Columns `PolynomialFeatures` would ADD, for the settings on screen.
+
+    `DRIVE8-33`. The panel carried two different formulas for one quantity and
+    printed both — "Estimated new features ~190" beside "This will create ~209
+    features" — because one counted the added columns and the other the total,
+    under the same word. Neither read the interaction-only box. This counts the
+    terms the transform emits (`include_bias=False`) minus the degree-1 terms
+    the button drops as duplicates, which is exactly what the run appends.
+    """
+    n = max(int(n_numeric), 0)
+    if n == 0:
+        return 0
+    total = 0
+    for order in range(2, max(int(degree), 1) + 1):
+        if interaction_only:
+            # C(n, order): distinct products of `order` different columns.
+            total += math.comb(n, order) if order <= n else 0
+        else:
+            # Multisets of size `order` drawn from n columns: C(n+order-1, order).
+            total += math.comb(n + order - 1, order)
+    return total
 
 
 # Initialize
@@ -409,23 +435,26 @@ with _fe_tabs[0]:
             help="Only create A×B, A×B×C, etc. Skip A², A³. Reduces feature count."
         )
     
-    with col3:
-        st.metric("Estimated new features", 
-                  f"~{len(numeric_features) * (len(numeric_features) + 1) // 2 if poly_degree == 2 else len(numeric_features) * 3:,}")
-    
-    # Feature explosion warning
+    # ONE estimator, ONE number (`DRIVE8-33`). The metric read "Estimated new
+    # features ~190" beside a warning saying "This will create ~209 features"
+    # in the same panel: two formulas for one quantity, neither reading the
+    # `interaction_only` box, and the degree-3 pair disagreeing again (n×3 vs
+    # n×4). Both surfaces now count the same thing — the columns the button
+    # will ADD — computed from what PolynomialFeatures actually emits.
     n_numeric = len(numeric_features)
-    if poly_degree == 2:
-        est_features = n_numeric + (n_numeric * (n_numeric + 1)) // 2 if not interaction_only else n_numeric + (n_numeric * (n_numeric - 1)) // 2
+    est_new = _poly_new_feature_count(n_numeric, poly_degree, interaction_only)
+
+    with col3:
+        st.metric("Estimated new features", f"~{est_new:,}")
+
+    # Feature explosion warning
+    _total_clause = f" ({n_numeric + est_new:,} numeric columns in total)"
+    if est_new > 500:
+        st.error(f"⚠️ **Feature explosion warning!** This will create ~{est_new:,} new features{_total_clause}. Strongly recommend running Feature Selection afterward.")
+    elif est_new > 100:
+        st.warning(f"⚠️ This will create ~{est_new:,} new features{_total_clause}. Feature selection recommended.")
     else:
-        est_features = n_numeric * 4  # Rough estimate
-    
-    if est_features > 500:
-        st.error(f"⚠️ **Feature explosion warning!** This will create ~{est_features:,} features. Strongly recommend running Feature Selection afterward.")
-    elif est_features > 100:
-        st.warning(f"⚠️ This will create ~{est_features:,} features. Feature selection recommended.")
-    else:
-        st.info(f"This will create ~{est_features:,} features.")
+        st.info(f"This will create ~{est_new:,} new features{_total_clause}.")
     
     if st.button("🔬 Generate Polynomial Features", key="poly_btn"):
         with st.spinner(f"Generating degree-{poly_degree} polynomial features..."):

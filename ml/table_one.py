@@ -108,7 +108,7 @@ def _smd(group1: pd.Series, group2: pd.Series) -> float:
 
 
 def _format_pvalue(p: float) -> str:
-    """Format p-value for publication."""
+    """Format p-value for a Table 1 cell (journal convention: three decimals)."""
     if p is None or np.isnan(p):
         return "—"
     if p < 0.001:
@@ -117,6 +117,28 @@ def _format_pvalue(p: float) -> str:
         return f"{p:.3f}"
     else:
         return f"{p:.2f}"
+
+
+def format_pvalue(p: Any, decimals: int = 4) -> str:
+    """Render a p-value with a floor instead of rounding it to zero.
+
+    `DRIVE8-32`. `f"{p:.4f}"` prints **0.0000** for anything below 5e-5, which
+    is not a p-value a journal accepts and is not a number: it asserts p = 0.
+    The floor is the smallest value the chosen precision can represent, stated
+    as an inequality. Every p-value surface — the hypothesis-testing results
+    blocks, the export page and the LaTeX Methods — renders through here so the
+    same quantity does not read three ways in one manuscript.
+    """
+    try:
+        value = float(p)
+    except (TypeError, ValueError):
+        return "—"
+    if np.isnan(value):
+        return "—"
+    floor = 10.0 ** (-decimals)
+    if value < floor:
+        return f"< {floor:.{decimals}f}"
+    return f"{value:.{decimals}f}"
 
 
 def _continuous_row(series: pd.Series, is_normal: bool, dp: int) -> str:
@@ -131,12 +153,38 @@ def _continuous_row(series: pd.Series, is_normal: bool, dp: int) -> str:
         return f"{q50:.{dp}f} [{q25:.{dp}f}, {q75:.{dp}f}]"
 
 
+#: Stated once per table rather than per cell, and rendered by every surface
+#: that shows Table 1. `DRIVE8-28`.
+DENOMINATOR_NOTE = (
+    "Each percentage carries its own denominator: category rows are of the "
+    "values observed for that variable, and the Missing row is of all rows in "
+    "the column. The two are different denominators and are not additive."
+)
+
+
 def _categorical_row(series: pd.Series, category: Any) -> str:
-    """Format a categorical variable count and percentage."""
+    """Format a categorical variable count and percentage, with its denominator.
+
+    `DRIVE8-28`. The percentage is of the OBSERVED values, and the Missing row
+    below it is of all rows, so one variable block read
+    *"False 1001 (21.6%) · True 3644 (78.4%) · Missing 17204 (78.7%)"* —
+    percentages summing to 178% with nothing on screen saying why. Neither
+    number was wrong; the denominators were unstated and different. Each cell
+    now carries the denominator it was computed over.
+    """
     clean = series.dropna()
+    n_observed = len(clean)
     n = (clean == category).sum()
-    pct = n / len(clean) * 100 if len(clean) > 0 else 0
-    return f"{n} ({pct:.1f}%)"
+    pct = n / n_observed * 100 if n_observed > 0 else 0
+    return f"{n}/{n_observed} ({pct:.1f}%)"
+
+
+def _missing_row(series: pd.Series) -> str:
+    """Format a missing-count cell over the column's full row count."""
+    n_all = len(series)
+    n_miss = int(series.isna().sum())
+    pct = n_miss / n_all * 100 if n_all > 0 else 0
+    return f"{n_miss}/{n_all} ({pct:.1f}%)"
 
 
 def generate_table1(
@@ -153,7 +201,8 @@ def generate_table1(
         (table_df, metadata) where table_df is the formatted table
         and metadata contains test info and raw statistics
     """
-    metadata = {"tests_used": {}, "normality": {}, "raw_stats": {}}
+    metadata = {"tests_used": {}, "normality": {}, "raw_stats": {},
+                "denominator_note": DENOMINATOR_NOTE}
     # `AUDIT-010`. Every p the table computes, collected and corrected across
     # the family once every row exists — `ml/multiplicity.py`, the same
     # `statsmodels.multipletests` `ml/feature_selection.py` already calls.
@@ -258,20 +307,16 @@ def generate_table1(
 
         # Missing count
         if config.show_missing and series.isna().sum() > 0:
-            n_miss = series.isna().sum()
-            pct_miss = n_miss / len(series) * 100
-            miss_row = [f"{n_miss} ({pct_miss:.1f}%)"]
+            miss_row = [_missing_row(series)]
             if groups is not None:
                 for g in groups:
                     gs = df.loc[df[config.grouping_var] == g, var]
-                    nm = gs.isna().sum()
-                    pm = nm / len(gs) * 100 if len(gs) > 0 else 0
-                    miss_row.append(f"{nm} ({pm:.1f}%)")
+                    miss_row.append(_missing_row(gs))
                 if config.show_pvalues:
                     miss_row.append("")
                 if config.show_smd and len(groups) == 2:
                     miss_row.append("")
-            row_labels.append(f"  Missing")
+            row_labels.append("  Missing, n/N (%)")
             rows.append(miss_row)
 
     # Categorical variables
@@ -282,9 +327,11 @@ def generate_table1(
         series = df[var]
         categories = sorted(series.dropna().unique(), key=str)
 
-        # Variable header row
+        # Variable header row. The label names the denominator the category
+        # rows beneath it use — "observed" is the non-missing count, which the
+        # Missing row does NOT share (`DRIVE8-28`).
         header_row = [""] * len(col_headers)
-        row_labels.append(f"{var}, n (%)")
+        row_labels.append(f"{var}, n/observed (%)")
         rows.append(header_row)
 
         for cat in categories:
@@ -324,20 +371,16 @@ def generate_table1(
 
         # Missing
         if config.show_missing and series.isna().sum() > 0:
-            n_miss = series.isna().sum()
-            pct_miss = n_miss / len(series) * 100
-            miss_row = [f"{n_miss} ({pct_miss:.1f}%)"]
+            miss_row = [_missing_row(series)]
             if groups is not None:
                 for g in groups:
                     gs = df.loc[df[config.grouping_var] == g, var]
-                    nm = gs.isna().sum()
-                    pm = nm / len(gs) * 100 if len(gs) > 0 else 0
-                    miss_row.append(f"{nm} ({pm:.1f}%)")
+                    miss_row.append(_missing_row(gs))
                 if config.show_pvalues:
                     miss_row.append("")
                 if config.show_smd and len(groups) == 2:
                     miss_row.append("")
-            row_labels.append(f"  Missing")
+            row_labels.append("  Missing, n/N (%)")
             rows.append(miss_row)
 
     # Build DataFrame

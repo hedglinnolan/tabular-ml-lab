@@ -156,6 +156,13 @@ class DatasetProfile:
     #: where the quotient would be a guess — see `ml.sample_size`.
     events_per_variable: Optional[float] = None
 
+    #: Rows that carry an outcome value — the population every sufficiency and
+    #: dimensionality claim on this profile describes. `n_rows` is the frame
+    #: handed in; a row with no outcome is in no analysis cohort, so a verdict
+    #: computed over it describes a study that does not exist. `None` where no
+    #: target was known and the two are the same number.
+    n_analysis_rows: Optional[int] = None
+
     # Target info
     target_profile: Optional[TargetProfile] = None
     
@@ -593,6 +600,7 @@ def assess_data_sufficiency(
     task_type: str,
     minority_class_size: Optional[int] = None,
     n_parameters: Optional[int] = None,
+    population: str = "",
 ) -> Tuple[DataSufficiencyLevel, str]:
     """
     Assess data sufficiency for modeling.
@@ -616,30 +624,38 @@ def assess_data_sufficiency(
     only disclosure that this is a heuristic, and it lived here where no user
     can read it. `sample_size.SUPERSEDED` is that disclosure attached to the
     string that ships.
+
+    **`population` names what `n` counts, and it is in every sentence that
+    quotes it.** The drive found *"Large sample (n=20,904). All model types are
+    viable."* in a manuscript whose Study Design paragraph says 6,297
+    observations and whose Table 1 is built on them — a fourth `n` for one
+    study, naming no population, so a reader cannot tell which rows it is a
+    verdict about. Empty means the caller had nothing to disclose.
     """
     from ml import sample_size as _ss
 
     p_n_ratio = p / n if n > 0 else float('inf')
-    
+    _pop = f" {population.strip()}" if population and population.strip() else ""
+
     narratives = []
     level = DataSufficiencyLevel.ADEQUATE
-    
+
     # Basic sample size check
     if n < 50:
         level = DataSufficiencyLevel.CRITICAL
-        narratives.append(f"Very small sample (n={n:,}). Only the simplest models are viable.")
+        narratives.append(f"Very small sample (n={n:,}{_pop}). Only the simplest models are viable.")
     elif n < 100:
         level = DataSufficiencyLevel.SCARCE
-        narratives.append(f"Small sample (n={n:,}). Strong regularization recommended.")
+        narratives.append(f"Small sample (n={n:,}{_pop}). Strong regularization recommended.")
     elif n < 500:
         level = DataSufficiencyLevel.LIMITED
-        narratives.append(f"Modest sample size (n={n:,}). Complex models may overfit.")
+        narratives.append(f"Modest sample size (n={n:,}{_pop}). Complex models may overfit.")
     elif n < 5000:
         level = DataSufficiencyLevel.ADEQUATE
-        narratives.append(f"Adequate sample size (n={n:,}) for most model types.")
+        narratives.append(f"Adequate sample size (n={n:,}{_pop}) for most model types.")
     else:
         level = DataSufficiencyLevel.ABUNDANT
-        narratives.append(f"Large sample (n={n:,}). All model types are viable.")
+        narratives.append(f"Large sample (n={n:,}{_pop}). All model types are viable.")
     
     # Feature-to-sample ratio check
     if p_n_ratio > 1.0:
@@ -883,14 +899,19 @@ def compute_dataset_profile(
     
     p = len(feature_cols)
     
-    # Count numeric vs categorical
-    numeric_cols = []
-    categorical_cols = []
-    for col in feature_cols:
-        if pd.api.types.is_numeric_dtype(df[col]):
-            numeric_cols.append(col)
-        else:
-            categorical_cols.append(col)
+    # ── ONE counting rule for "numeric" and "categorical" ────────────────────
+    # This split reached the report as "Numeric Features 25 / Categorical
+    # Features 2" beside page 02's tiles saying 19 / 8 — a fourth type count for
+    # one table — because `is_numeric_dtype` calls a bool column numeric and the
+    # preprocessing pipeline does not. THE RULE THAT DECIDES IS THE PIPELINE'S:
+    # pages/05 splits the columns with `data_processor.get_numeric_columns`, so
+    # a bool column really is one-hot encoded. Page 02 was reconciled to that
+    # rule; this is the same rule, read from the same function.
+    from data_processor import get_numeric_columns as _get_numeric_columns
+
+    _numeric_in_frame = set(_get_numeric_columns(df))
+    numeric_cols = [c for c in feature_cols if c in _numeric_in_frame]
+    categorical_cols = [c for c in feature_cols if c not in _numeric_in_frame]
     
     # Compute feature profiles
     feature_profiles = {}
@@ -948,11 +969,25 @@ def compute_dataset_profile(
     n_candidate_parameters = _ss.candidate_parameters(
         df, feature_cols)["total"]
 
+    # ── The population every sufficiency and dimensionality claim describes ──
+    # `n` counts every row of the frame handed in. A row with no outcome value
+    # is in no analysis cohort — the split drops it and Table 1 is built on what
+    # survives — so a sufficiency verdict or a p/n computed over those rows is
+    # about a study that does not exist. Same rule and same words as page 02's
+    # `_analysis_n`, so the two surfaces cannot report different populations.
+    if target_col is not None and target_col in df.columns:
+        n_analysis = int(df[target_col].notna().sum())
+    else:
+        n_analysis = n
+    population_phrase = ("observations with a recorded outcome"
+                         if n_analysis < n else "observations")
+
     # Compute data sufficiency
-    p_n_ratio = p / n if n > 0 else float('inf')
+    p_n_ratio = p / n_analysis if n_analysis > 0 else float('inf')
     data_sufficiency, sufficiency_narrative = assess_data_sufficiency(
-        n, p, task_type or 'regression', minority_class_size,
+        n_analysis, p, task_type or 'regression', minority_class_size,
         n_parameters=n_candidate_parameters,
+        population=population_phrase,
     )
 
     # Events per candidate parameter
@@ -979,8 +1014,11 @@ def compute_dataset_profile(
             converted = col_data * inferred_unit_info['conversion_factor']
             out_rate = ((converted < improbable_low) | (converted > improbable_high)).sum() / len(converted)
             if out_rate > 0.05:
+                # `MISC-018`: p01–p99 is an improbability band, not a reference
+                # interval. Same fact, same register as `ml/eda_actions.py`.
                 physio_flags.append(
-                    f"{col}: {out_rate:.1%} outside NHANES reference ({improbable_low}-{improbable_high} {improbable_unit})"
+                    f"{col}: {out_rate:.1%} values outside the NHANES improbability band "
+                    f"({improbable_low}-{improbable_high} {improbable_unit})"
                 )
 
     # Create profile
@@ -996,6 +1034,7 @@ def compute_dataset_profile(
         n_features_critical_missing=n_features_critical_missing,
         n_candidate_parameters=n_candidate_parameters,
         events_per_variable=events_per_variable,
+        n_analysis_rows=n_analysis,
         target_profile=target_profile,
         feature_profiles=feature_profiles,
         high_cardinality_features=high_cardinality,

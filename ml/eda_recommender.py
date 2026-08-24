@@ -559,8 +559,12 @@ def compute_dataset_signals(
             converted = col_data * inferred_unit_info['conversion_factor']
             out_rate = ((converted < improbable_low) | (converted > improbable_high)).sum() / len(converted)
             if out_rate > 0.05:
+                # `MISC-018`: p01–p99 is an improbability band, not a reference
+                # interval, and the caption on page 02 disavows the second name
+                # two lines above where this warning prints.
                 signals.physio_plausibility_flags.append(
-                    f"{col}: {out_rate:.1%} outside NHANES reference ({improbable_low}-{improbable_high} {improbable_unit})"
+                    f"{col}: {out_rate:.1%} values outside the NHANES improbability band "
+                    f"({improbable_low}-{improbable_high} {improbable_unit})"
                 )
     
     return signals
