@@ -130,6 +130,26 @@ def _extract_latex_subsection(text: str, heading: str) -> str:
     return match.group(1).strip() if match else ""
 
 
+#: Sections of the export that are the app's OWN RECORD of what it advised —
+#: the coaching log and the decision appendix. A coach sentence there is the
+#: record being accurate; the same sentence in Methods or Discussion is the
+#: manuscript speaking in a register no journal accepts. The coaching check
+#: reads everything else (`DRIVE-074` / D9-06).
+_AUDIT_SECTION_PATTERNS = (
+    r"(?ms)^##\s+Key Observations and Resolutions\s*$.*?(?=^##\s+|\Z)",
+    r"(?ms)^##\s+Appendix: Decision Audit Trail\s*$.*?(?=^##\s+|\Z)",
+    r"(?ms)\\subsection\{Decision Audit Trail\}.*?(?=\\subsection\{|\\section\{|\\end\{document\}|\Z)",
+)
+
+
+def _without_audit_sections(text: str) -> str:
+    """The export text with the app's own advice log removed."""
+    stripped = text or ""
+    for pattern in _AUDIT_SECTION_PATTERNS:
+        stripped = re.sub(pattern, "", stripped)
+    return stripped
+
+
 def _extract_analysis_n(text: str) -> Optional[int]:
     patterns = [
         r"Of\s+[\d,]+\s+observations,\s+([\d,]+)\s+remained for analysis",
@@ -600,20 +620,39 @@ def validate_manuscript_bundle(
         )
     )
 
+    # `DRIVE-074` / D9-06. FOUR LITERAL STRINGS COULD NOT SEE THE TWO REGISTERS
+    # THAT ACTUALLY REACH THE EXPORT. A coach card's *"A reviewer would question
+    # why the more complex model was selected."* sat in the Discussion of a
+    # drafted manuscript while this check reported "No coaching language
+    # detected" — the check passing was worse than its absence, because the
+    # panel said the prose had been examined for exactly this. Reviewer-
+    # anticipation and second-person address are what distinguish advice to the
+    # analyst from prose about the study; neither can appear in a manuscript.
     coaching_patterns = [
         "no action needed",
         "favorable to analysis",
         "workflow-derived abstract",
         "[applicable to",
+        "a reviewer would",
+        "reviewers would",
+        "you should",
+        "you may want",
+        "your data",
+        "your dataset",
+        "your model",
+        "consider using",
     ]
-    found_patterns = [pattern for pattern in coaching_patterns if pattern in combined_export_text.lower()]
+    coaching_scope_text = _without_audit_sections(combined_export_text).lower()
+    found_patterns = [pattern for pattern in coaching_patterns if pattern in coaching_scope_text]
     checks.append(
         ManuscriptValidationCheck(
             name="No coaching language patterns remain in export text",
             status="PASS" if not found_patterns else "FAIL",
             location="Markdown / LaTeX export",
             detail=(
-                "No coaching language detected."
+                "No coaching language detected in the drafted prose "
+                "(the coaching log and decision appendix are the app's own "
+                "record and are not read by this check)."
                 if not found_patterns
                 else f"Found coaching patterns: {', '.join(found_patterns)}."
             ),

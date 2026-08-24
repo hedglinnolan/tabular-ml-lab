@@ -194,7 +194,12 @@ def render_import_doctor(df: pd.DataFrame, key_prefix: str,
         st.markdown("")
 
     if rest:
-        with st.expander(f"Also worth a look ({len(rest)})"):
+        # `DRIVE-075` / D9-09. ONE COUNTING VOCABULARY. The headline breaks the
+        # findings down by severity ("Found 1 worth checking, 1 note.") and this
+        # label counted the same two as a single total, so two adjacent lines
+        # said 1 and 2 about one set. `summarize` composes both.
+        _rest_phrase = summarize(rest).removeprefix("Found ").rstrip(".")
+        with st.expander(f"Also worth a look — {_rest_phrase}"):
             for idx, finding in enumerate(rest, start=len(critical)):
                 updated = _render_finding(finding, current, key_prefix, idx)
                 if updated is not None:

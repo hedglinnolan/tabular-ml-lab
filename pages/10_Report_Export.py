@@ -18,7 +18,7 @@ import logging
 
 from utils.session_state import (
     init_session_state, get_data, get_preprocessing_pipeline,
-    DataConfig, SplitConfig, ModelConfig
+    DataConfig, SplitConfig, ModelConfig, ensure_dataset_profile
 )
 from ml.pipeline import get_pipeline_recipe
 from utils.storyline import render_breadcrumb, render_page_navigation
@@ -87,7 +87,10 @@ pipeline = get_preprocessing_pipeline()
 trained_models = st.session_state.get('trained_models', {})
 model_results = st.session_state.get('model_results', {})
 data_audit = st.session_state.get('data_audit')
-profile = st.session_state.get('dataset_profile')
+# `DRIVE-073`. The manifest states whether a profile exists and the missing-data
+# summary is built from one; a selection applied on page 04 cleared it, so the
+# export reported "Dataset profile: Not computed" on a session that had one.
+profile = ensure_dataset_profile()
 # coach_output removed — now derived from unified ledger
 
 if not data_config:
@@ -2042,7 +2045,6 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     report_lines.append("")
     
     # Auto-fill limitations from unresolved ledger insights
-    _unresolved_for_limitations = _report_ledger.get_unresolved()
     limitation_items = []
     # `AUDIT-022`, THE OTHER HALF, AND IT IS WHY THIS IS A CORRECTION RATHER
     # THAN A DELETION. When the sufficiency check did not rate the data
@@ -2053,9 +2055,18 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     # the claim in the codebase and this page is not a second author of it.
     if _claim is not None and not _claim.is_strength:
         limitation_items.append(_claim.text)
-    for _ui in _unresolved_for_limitations:
-        if _ui.severity in ("blocker", "warning"):
-            limitation_items.append(f"{_ui.finding}: {_ui.implication}")
+    # `DRIVE-074` / D9-06. COACH REGISTER STAYS OUT OF THE LIMITATIONS LIST.
+    # This spliced a card's `finding` onto its `implication` with ": ", so the
+    # document carried "…the more complex model was selected.: When models
+    # perform comparably, parsimony favors…" — a full stop followed by a colon,
+    # and a sentence addressed to the analyst printed as a study limitation.
+    # `discussion_points_for_manuscript()` is the COACH-007 discipline in one
+    # place: `manuscript_text` where the producer wrote one, the cleaned finding
+    # otherwise, and `audit_only` reassurances dropped rather than promoted.
+    _discussion_points = _report_ledger.discussion_points_for_manuscript()
+    for _limitation in _discussion_points.get("limitations", []):
+        if _limitation not in limitation_items:
+            limitation_items.append(_limitation)
     
     if limitation_items:
         report_lines.append("**Limitations:**")
@@ -2260,18 +2271,20 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
 
     tracker = TRIPODTracker()
 
-    # Auto-mark from ledger resolutions
-    _tripod_from_ledger = _report_ledger.get_tripod_status()
-    for auto_key, completed in _tripod_from_ledger.items():
-        if completed:
-            note = ""
-            for _ins in _report_ledger.get_resolved():
-                if auto_key in _ins.tripod_keys:
-                    # "Ran  on 3 models" ticked two TRIPOD items with the
-                    # analysis name missing; the gap is named, not hidden.
-                    note = name_empty_slots(_ins.resolved_by)
-                    break
-            tracker.mark_complete(auto_key, note or "Auto-detected from analysis", "Ledger")
+    # Auto-mark from ledger resolutions. `DRIVE-074`: the note and the page
+    # reference come from the entry that CERTIFIED the item, not from the first
+    # resolved entry that happened to carry its key — a tick that cannot name
+    # its own evidence is a tick no reader can check.
+    from utils.insight_ledger import _page_to_step_name as _tripod_step_name
+    for auto_key, _ins in _report_ledger.get_tripod_evidence().items():
+        # "Ran  on 3 models" ticked two TRIPOD items with the analysis name
+        # missing; the gap is named, not hidden.
+        note = name_empty_slots(_ins.resolved_by)
+        tracker.mark_complete(
+            auto_key,
+            note or "Auto-detected from analysis",
+            _tripod_step_name(_ins.resolved_on_page or _ins.source_page) or "Ledger",
+        )
 
     # Auto-mark from workflow state
     if data_config and data_config.target_col:
@@ -2290,8 +2303,22 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
     prep_config = st.session_state.get('preprocessing_config', {})
     if prep_config:
         tracker.mark_complete("predictor_handling", "Preprocessing configured", "Preprocess")
-        if prep_config.get("numeric_imputation", "none") != "none":
-            tracker.mark_complete("missing_data", f"Imputation: {prep_config.get('numeric_imputation')}", "Preprocess")
+        # `DRIVE-074`. Item 9 is *how missing data were handled*, and this read a
+        # `numeric_imputation` key `preprocessing_config` has not carried since
+        # preprocessing became per-model — so the branch never fired and the tick
+        # came from whatever else held the key, which was a target dtype recode.
+        # The strategy is read where it lives, and the note names it.
+        _imputations = sorted({
+            str(cfg.get("numeric_imputation"))
+            for cfg in (st.session_state.get('preprocessing_config_by_model') or {}).values()
+            if isinstance(cfg, dict)
+            and str(cfg.get("numeric_imputation", "none")).lower() != "none"
+        })
+        if not _imputations and prep_config.get("numeric_imputation", "none") != "none":
+            _imputations = [str(prep_config["numeric_imputation"])]
+        if _imputations:
+            tracker.mark_complete(
+                "missing_data", f"Imputation: {', '.join(_imputations)}", "Preprocess")
 
     done, total = tracker.get_progress()
     st.progress(done / total)

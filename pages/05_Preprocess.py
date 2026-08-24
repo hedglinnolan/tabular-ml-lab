@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Optional
 from utils.session_state import (
     init_session_state, get_data, DataConfig, set_preprocessing_pipeline, set_preprocessing_pipelines,
     TaskTypeDetection, log_methodology, reset_downstream_results,
+    ensure_dataset_profile,
 )
 from utils.storyline import render_breadcrumb, render_page_navigation
 from ml.pipeline import (
@@ -176,8 +177,10 @@ if _log_engineered or _power_engineered or _pca_engineered:
     The preprocessing pipeline below will **auto-exclude** these from redundant transforms.
     """)
 
-# Get profile and EDA results for recommendations
-profile = st.session_state.get('dataset_profile')
+# Get profile and EDA results for recommendations. `DRIVE-073`: applying a
+# feature selection clears the profile, and every recommendation cue below
+# silently reads False without it. Recomputed for the current feature set.
+profile = ensure_dataset_profile()
 eda_results = st.session_state.get('eda_results', {})
 
 # EDA-based recommendation cues (for display next to options)

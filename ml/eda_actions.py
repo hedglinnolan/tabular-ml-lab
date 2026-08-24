@@ -189,10 +189,15 @@ def plausibility_check(
     else:
         findings.append("All checked columns within plausible ranges")
     
-    # Add unit sanity flags from signals
+    # Add unit sanity flags from signals — minus the bands this action already
+    # reported above (D9-08: the recommender writes the same sentence without
+    # the "after conversion from <unit>" clause, and both used to print).
     if signals.physio_plausibility_flags:
-        warnings.extend(signals.physio_plausibility_flags)
-        findings.append(f"Found {len(signals.physio_plausibility_flags)} empirical plausibility flags")
+        _already = {w.split(" after conversion from ")[0] for w in warnings}
+        _fresh = [f for f in signals.physio_plausibility_flags if f not in _already]
+        warnings.extend(_fresh)
+        if _fresh:
+            findings.append(f"Found {len(_fresh)} empirical plausibility flags")
     
     # Add note about unit overrides
     if unit_overrides:

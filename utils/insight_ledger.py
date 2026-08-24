@@ -147,6 +147,31 @@ def model_display_name(key: str) -> str:
     return MODEL_DISPLAY_NAMES.get(key.lower(), key.upper())
 
 
+# ONE NAMING RULE FOR SELECTION METHODS (`DRIVE-075` / D9-10). `lasso` is both a
+# model key and a feature-selection method, so a list written from raw keys —
+# "Selected 6 features using lasso, rfe" — came out of the manuscript cleaner as
+# *"Lasso Regression, rfe"*: one member renamed to a MODEL's display name, the
+# other left as an internal key, in one sentence. Producers name selection
+# methods from here, and `_clean_for_manuscript` leaves these labels alone.
+FEATURE_SELECTION_METHOD_LABELS = {
+    "lasso": "LASSO",
+    "rfe": "RFE-CV",
+    "rfe-cv": "RFE-CV",
+    "rfecv": "RFE-CV",
+    "univariate": "univariate screening",
+    "f_regression": "univariate screening",
+    "mutual_info": "mutual information screening",
+    "stability": "stability selection",
+    "stability_selection": "stability selection",
+}
+
+
+def feature_selection_method_label(method: str) -> str:
+    """Render a feature-selection method with its manuscript-friendly name."""
+    key = str(method or "").strip().lower()
+    return FEATURE_SELECTION_METHOD_LABELS.get(key, str(method or "").strip())
+
+
 # Human-readable family names for coaching UI
 FAMILY_DISPLAY_NAMES = {
     MODEL_FAMILY_LINEAR: "Linear Models",
@@ -439,6 +464,20 @@ def _clean_for_manuscript(text: str) -> str:
     text = re.sub(r'(?i)\bdataset characteristics favorable to the analysis\b\s*[:\-]*\s*', '', text)
     text = re.sub(r'(?i)\bfavorable (?:for|to) analysis\b\.?', '', text)
     
+    # A SELECTION-METHOD LABEL IS ALREADY MANUSCRIPT REGISTER (`DRIVE-075`).
+    # `lasso` is a model key too, so the pass below rewrote the method "LASSO"
+    # into the model name "Lasso Regression" and left "rfe" — which is not a
+    # model key — raw beside it. The labels are held out of that pass and put
+    # back afterwards, so a method list is named by one rule end to end.
+    _protected = {}
+    for _idx, _label in enumerate(sorted(set(FEATURE_SELECTION_METHOD_LABELS.values()),
+                                         key=len, reverse=True)):
+        _token = f"\x00fsm{_idx}\x00"
+        _pattern = rf'(?<![\w-]){re.escape(_label)}(?![\w-])'
+        if re.search(_pattern, text):
+            text = re.sub(_pattern, _token, text)
+            _protected[_token] = _label
+
     # Replace internal model keys with manuscript-friendly names regardless of case,
     # but do not duplicate text that is already part of the display name.
     for key in sorted(MODEL_DISPLAY_NAMES.keys(), key=len, reverse=True):
@@ -457,11 +496,14 @@ def _clean_for_manuscript(text: str) -> str:
             flags=re.IGNORECASE,
         )
     
+    for _token, _label in _protected.items():
+        text = text.replace(_token, _label)
+
     # Clean up multiple spaces
     text = re.sub(r'\s+', ' ', text)
     text = re.sub(r'\.\.+', '.', text)
     text = re.sub(r'\s+\.', '.', text)
-    
+
     return text.strip()
 
 
@@ -572,6 +614,106 @@ TRIPOD_CATEGORY_MAP = {
     "sensitivity": ["performance_ci"],
     "validation": ["performance_measures"],
 }
+
+
+# ---------------------------------------------------------------------------
+# TRIPOD evidence — a tick must come from the section it certifies
+# ---------------------------------------------------------------------------
+#
+# `DRIVE-074` / D9-04. A CATEGORY IS A PAGE BUCKET, NOT EVIDENCE. Every
+# `data_quality` entry claimed item 9 (*how missing data were handled*), so a
+# target dtype recode — which left every blank exactly where it found it —
+# certified a missing-data section it does not describe; and one `explainability`
+# line ticked both 15a (*present the full prediction model*) and 19a (*give an
+# overall interpretation*), neither of which a permutation-importance run
+# performs. The items below are certified by a PREDICATE over the entry's own
+# record rather than by its bucket, in both directions: an entry whose category
+# names the key still has to carry the evidence, and an entry that carries the
+# evidence certifies the key whatever its category. Items with no predicate keep
+# the category mapping unchanged.
+
+_MISSING_DATA_DETAIL_KEYS = (
+    "imputation", "numeric_imputation", "categorical_imputation",
+    "missing_strategy", "missing_data_strategy",
+)
+_NOT_A_STRATEGY = {"", "none", "no", "false", "nan", "null"}
+_MISSING_DATA_TEXT = re.compile(
+    r"\bimput|\bcomplete[- ]case|\bmissing (?:data|values)\s+(?:were|was)\b"
+    r"|\bdropped\b[^.]{0,40}\bmissing\b",
+    re.IGNORECASE,
+)
+#: TRIPOD 15a is the model itself — all coefficients and the intercept, enough to
+#: score one individual. An importance ranking describes a fitted model; it does
+#: not reproduce it. These are the keys a producer that really does present one
+#: would write.
+_FULL_MODEL_DETAIL_KEYS = (
+    "coefficients", "model_equation", "full_model", "model_card",
+    "model_specification",
+)
+
+
+def _names_a_strategy(value: Any) -> bool:
+    return str(value or "").strip().lower() not in _NOT_A_STRATEGY
+
+
+def _certifies_missing_data(insight: "Insight") -> bool:
+    """TRIPOD 9 — what happened to the MISSING VALUES, stated by this entry."""
+    details = insight.resolution_details or {}
+    if any(_names_a_strategy(details.get(key)) for key in _MISSING_DATA_DETAIL_KEYS):
+        return True
+    per_model = details.get("per_model_config")
+    if isinstance(per_model, dict):
+        for config in per_model.values():
+            if isinstance(config, dict) and _names_a_strategy(config.get("imputation")):
+                return True
+    if details.get("rows_dropped_missing") or details.get("n_rows_dropped_missing"):
+        return True
+    return bool(_MISSING_DATA_TEXT.search(" ".join(
+        str(part or "") for part in
+        (insight.finding, insight.resolved_by, insight.recommended_action)
+    )))
+
+
+def _certifies_full_model(insight: "Insight") -> bool:
+    """TRIPOD 15a — the model presented completely enough to predict with."""
+    details = insight.resolution_details or {}
+    return any(details.get(key) for key in _FULL_MODEL_DETAIL_KEYS)
+
+
+def _certifies_interpretation(insight: "Insight") -> bool:
+    """TRIPOD 19a — the Discussion's overall interpretation.
+
+    Author-owned in this app: the Discussion ships as `[AUTHOR REQUIRED — …]`
+    scaffolds, so nothing the workflow records certifies it. An entry that
+    carries a written interpretation certifies it; running an analysis does not.
+    """
+    details = insight.resolution_details or {}
+    return any(str(details.get(key, "") or "").strip()
+               for key in ("interpretation", "discussion"))
+
+
+TRIPOD_EVIDENCE = {
+    "missing_data": _certifies_missing_data,
+    "full_model": _certifies_full_model,
+    "interpretation": _certifies_interpretation,
+}
+
+
+def tripod_keys_certified(insight: "Insight") -> List[str]:
+    """The TRIPOD items this entry's own record can certify, in item order."""
+    from ml.publication import TRIPOD_ITEMS
+
+    declared = set(insight.tripod_keys or [])
+    certified = []
+    for item in TRIPOD_ITEMS:
+        key = item["auto_key"]
+        predicate = TRIPOD_EVIDENCE.get(key)
+        if predicate is None:
+            if key in declared:
+                certified.append(key)
+        elif predicate(insight):
+            certified.append(key)
+    return certified
 
 
 # ---------------------------------------------------------------------------
@@ -1131,17 +1273,30 @@ class InsightLedger:
 
     # == TRIPOD auto-completion =============================================
 
+    def get_tripod_evidence(self) -> Dict[str, "Insight"]:
+        """The resolved entry that certifies each completed TRIPOD item.
+
+        `DRIVE-074`. The checklist prints a note beside every tick, and page 10
+        used to find it by scanning for the FIRST resolved entry holding the key
+        — not the one that certified it. An item names the record it rests on or
+        it is not ticked.
+        """
+        evidence: Dict[str, "Insight"] = {}
+        for i in self._insights:
+            if not i.resolved:
+                continue
+            for key in tripod_keys_certified(i):
+                evidence.setdefault(key, i)
+        return evidence
+
     def get_tripod_status(self) -> Dict[str, bool]:
         """Compute TRIPOD checklist completion from resolved entries.
 
         Returns dict of {tripod_auto_key: completed}.
-        A TRIPOD item is completed when any resolved insight has that key
-        in its tripod_keys.
+        A TRIPOD item is completed when a resolved insight carries the evidence
+        the item names — see `tripod_keys_certified`.
         """
-        completed = set()
-        for i in self._insights:
-            if i.resolved:
-                completed.update(i.tripod_keys)
+        completed = set(self.get_tripod_evidence())
         # Import TRIPOD items to get full list
         from ml.publication import TRIPOD_ITEMS
         return {

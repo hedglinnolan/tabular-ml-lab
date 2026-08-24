@@ -722,6 +722,92 @@ def reset_data_dependent_state():
     reset_downstream_results(restore_pre_fe_features=False)
 
 
+def ensure_dataset_profile(quiet: bool = True) -> Optional[Any]:
+    """The dataset profile for the CURRENT feature set, recomputed if it is not.
+
+    `DRIVE-073`. `dataset_profile` is in `_ANALYSIS_KEYS`, so applying a feature
+    selection clears it — correctly, because the profile describes a feature set
+    that no longer exists — and nothing on the 04 → 05 → 06 path recomputed it.
+    Page 06 then dropped the class-imbalance card, the rebalancing control and
+    the model-suitability badges with no word on screen, and page 10's manifest
+    read "Dataset profile: Not computed" on a session that had one.
+
+    RECOMPUTED WHERE IT IS READ, not eagerly at apply: the profile is a function
+    of (rows, features, target, task), and every one of those can change after an
+    apply without passing back through page 04. A value refreshed at the moment
+    of use cannot be stale; a value written once at apply can, and a stale
+    imbalance ratio is a wrong number on screen rather than a missing card.
+
+    Scope follows `pages/02_EDA.py`: the profile describes the TRAINING rows,
+    and `dataset_profile_scope` is rewritten beside it so the two never
+    disagree about which population they are about.
+    """
+    profile = st.session_state.get("dataset_profile")
+    data_config = st.session_state.get("data_config")
+    if data_config is None:
+        return profile
+
+    feature_cols = list(st.session_state.get("selected_features")
+                        or getattr(data_config, "feature_cols", None) or [])
+    target_col = getattr(data_config, "target_col", None)
+    if not feature_cols:
+        return profile
+
+    try:
+        df = get_data()
+    except Exception:
+        return profile
+    if df is None or df.empty:
+        return profile
+
+    try:
+        from utils.test_lockbox import train_row_mask
+        train_mask = train_row_mask(df.index)
+        train_df = df.loc[train_mask]
+        if train_df.empty:
+            train_df = df
+            train_mask = pd.Series(True, index=df.index)
+    except Exception:
+        train_df = df
+        train_mask = pd.Series(True, index=df.index)
+
+    described = set(getattr(profile, "feature_profiles", {}) or {})
+    if profile is not None and described == set(feature_cols) \
+            and getattr(profile, "n_rows", None) == len(train_df):
+        return profile
+
+    task_type = st.session_state.get("task_type_detection")
+    task_type = getattr(task_type, "final", None) or getattr(data_config, "task_type", None)
+
+    try:
+        from ml.dataset_profile import compute_dataset_profile
+        profile = compute_dataset_profile(
+            train_df, target_col or feature_cols[0], feature_cols,
+            task_type or "regression",
+            st.session_state.get("eda_outlier_method", "iqr"),
+        )
+    except Exception:
+        # A profile that cannot be computed leaves the previous answer alone;
+        # the callers all treat absence as "these panels are unavailable".
+        return st.session_state.get("dataset_profile")
+
+    st.session_state["dataset_profile"] = profile
+    _scoped = bool((~train_mask).any())
+    st.session_state["dataset_profile_scope"] = {
+        "rows": "training" if _scoped else "all",
+        "n_rows": int(train_mask.sum()),
+        "n_rows_total": int(len(df)),
+        "reason": ("held-out test rows are excluded to prevent selection leakage"
+                   if _scoped else "no rows are sealed in this analysis"),
+    }
+    if not quiet:
+        st.caption(
+            f"Dataset profile recomputed for the current {len(feature_cols)} "
+            f"predictor(s) on n={int(train_mask.sum())} training rows."
+        )
+    return profile
+
+
 def get_preprocessing_pipeline(model_key: Optional[str] = None) -> Optional[Pipeline]:
     """Get preprocessing pipeline from session state."""
     if model_key:

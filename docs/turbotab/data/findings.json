@@ -13658,10 +13658,10 @@
   "detail": "",
   "ev": "pages/01_Upload_and_Audit.py:1408-1412; DRIVE8 findings 7,8",
   "act": "",
-  "status": "PARTIAL",
-  "note": "RE-OPENED by Drive 9 (D9-02): all three note claims refuted at f84d7b0 - false 'Rows repeat per subject' on rows_per==1.0; 'grain is undetermined' sentence while seal_basis=='grouped'; withdrawing the declaration leaves SEQN reserved with group_col None. The earlier fix did not land as described; re-verify what shipped and repair for real.",
+  "status": "FIXED",
+  "note": "Repaired for real this time, with forensics: the prior FIXED note was written from the proposed act, not the diff (three of four claims never landed in any commit). Now: rows-per measured onto the seal record, sentences derived from the record on every basis, unique-per-row declared column narrated as the mirror case (by subject and by row at once - contradiction None, matching turbotab divergence filed as MISC-110), withdrawal releases the reservation on the same render and re-runs detection. All five declaration states pinned; L68 counts unmoved.",
   "verified_against": "",
-  "test": "tests/test_paper_risk_lockbox.py::TestImport257TheSubjectColumnCanBeDeclared",
+  "test": "tests/test_paper_risk_lockbox.py::TestDrive068TheDeclarationSurfacesSayWhatTheRecordSays",
   "verified_ev": "pages/01_Upload_and_Audit.py:1408-1412; DRIVE8 findings 7,8"
  },
  {
@@ -13756,10 +13756,10 @@
   "detail": "",
   "ev": "ml/publication.py (_resolve_workflow_feature_counts); docs/audit/DRIVE9_RECHECK.md D9-01",
   "act": "",
-  "status": "OPEN",
-  "note": "",
+  "status": "FIXED",
+  "note": "Counts resolved by the fields entries carry (screening vs apply), with provenance's feature_selection section as the authority and upload.n_features as the original; the applied count gets its own clause. Draft now: 'ranked 19 candidates and retained 6; with 8 non-ranked carried through, 27 -> 14'. Evidence Map agrees; validator back to 13/13, downloads re-enabled.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_drive9_repairs.py",
   "verified_ev": "ml/publication.py (_resolve_workflow_feature_counts); docs/audit/DRIVE9_RECHECK.md D9-01"
  },
  {
@@ -13770,10 +13770,10 @@
   "detail": "",
   "ev": "utils/session_state.py (reset registry); pages/06; DRIVE9 D9-03",
   "act": "",
-  "status": "OPEN",
-  "note": "",
+  "status": "FIXED",
+  "note": "ensure_dataset_profile() recomputes lazily at consumption (pages 05/06/10), scoped to training rows like page 02 - a value refreshed where it is read cannot go stale. Imbalance card, class-weight toggle, and viability badges restored after an Apply; page 10 reads Available.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_drive9_repairs.py",
   "verified_ev": "utils/session_state.py (reset registry); pages/06; DRIVE9 D9-03"
  },
  {
@@ -13784,10 +13784,10 @@
   "detail": "",
   "ev": "ml/publication.py (TRIPOD); ml/narrative_engine.py; utils/insight_ledger.py; DRIVE9 D9-04..06",
   "act": "",
-  "status": "OPEN",
-  "note": "",
+  "status": "FIXED",
+  "note": "TRIPOD keys are candidates gated by predicates over the entry's own record (item 9 now certified by the imputation record, not a dtype recode; 15a/19a honestly blank - nothing in the app certifies them today); both test-count surfaces name their universe (distinct comparisons vs recorded runs); Limitations uses discussion_points_for_manuscript everywhere and the validator learned reviewer-anticipation/second-person patterns with its scoping declared.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_drive9_repairs.py",
   "verified_ev": "ml/publication.py (TRIPOD); ml/narrative_engine.py; utils/insight_ledger.py; DRIVE9 D9-04..06"
  },
  {
@@ -13798,10 +13798,38 @@
   "detail": "",
   "ev": "DRIVE9 D9-07..10 + deferred check",
   "act": "",
+  "status": "FIXED",
+  "note": "Structural-review header counts from one summarize(); method lists through one naming rule (LASSO, RFE-CV; registry names for models); improbability-band duplicate deduped at eda_actions (the reported exact patch applied); page-01 render-lag (D9-07) remains as filed under DRIVE-071's tail along with 16/18/22/23/24/26/34 re-scopes.",
+  "verified_against": "",
+  "test": "tests/test_drive9_repairs.py",
+  "verified_ev": "DRIVE9 D9-07..10 + deferred check"
+ },
+ {
+  "id": "MISC-110",
+  "area": "MISC",
+  "sev": "low",
+  "item": "turbotab/grain.py:291 still emits stated_repeats_but_column_is_unique for a unique-per-row declared subject column; Classic now treats that as the mirror case (by-subject and by-row at once), not a contradiction, per the DRIVE-068 repair - the two doors diverge on this case and Classic's docstring calls turbotab the reference design. Close the divergence on the turbotab side.",
+  "detail": "",
+  "ev": "turbotab/grain.py:291; utils/test_lockbox.py (declaration_contradiction returns None for rows_per==1.0)",
+  "act": "",
   "status": "OPEN",
   "note": "",
   "verified_against": "",
   "test": "",
-  "verified_ev": "DRIVE9 D9-07..10 + deferred check"
+  "verified_ev": "turbotab/grain.py:291; utils/test_lockbox.py (declaration_contradiction returns None for rows_per==1.0)"
+ },
+ {
+  "id": "MISC-111",
+  "area": "MISC",
+  "sev": "medium",
+  "item": "The manuscript validator's report_text is a SHORTER document than the on-screen markdown report - it contains neither 'Key Observations and Resolutions' nor 'Data Assessment / Open warnings', both of which carry raw coach findings, so validator checks (including the new reviewer-anticipation patterns) never see those sections. Predates the Drive-9 work; the D9-06 scoping change is a no-op for this bundle because of it.",
+  "detail": "",
+  "ev": "ml/manuscript_validator.py (report_text assembly); pages/10_Report_Export.py (report sections)",
+  "act": "",
+  "status": "OPEN",
+  "note": "",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "ml/manuscript_validator.py (report_text assembly); pages/10_Report_Export.py (report sections)"
  }
 ]

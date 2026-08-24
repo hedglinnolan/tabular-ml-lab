@@ -412,12 +412,19 @@ if st.button("🔍 Run Feature Selection", type="primary"):
     # Log methodology action. `DRIVE-063`: the action sentence named the
     # REQUESTED methods, so a run where both raised was logged as "Selected 0
     # features using lasso, rfe" — a claim that two methods ran.
-    methods_used = ", ".join(methods_completed) if methods_completed else "no method"
+    # `DRIVE-075` / D9-10. Written with the SELECTION-METHOD labels, not the raw
+    # keys: `lasso` is also a model key, so the manuscript cleaner rewrote it to
+    # the model name "Lasso Regression" and left "rfe" untouched beside it —
+    # one display label and one internal key in the same audit-trail sentence.
+    from utils.insight_ledger import feature_selection_method_label
+    methods_used = (", ".join(feature_selection_method_label(m) for m in methods_completed)
+                    if methods_completed else "no method")
     log_methodology(
         step='Feature Selection',
         action=(f"Selected {len(consensus)} features using {methods_used}"
                 if methods_completed else
-                f"No selection method completed; {', '.join(methods_to_run)} "
+                f"No selection method completed; "
+                f"{', '.join(feature_selection_method_label(m) for m in methods_to_run)} "
                 f"were requested and all failed"),
         details={
             'methods': methods_to_run,

@@ -284,22 +284,59 @@ def _resolve_workflow_feature_counts(
     if base_features:
         original_count = len(base_features)
 
+    # `DRIVE-072`. THE SCREENING RUN AND THE APPLY ARE TWO RECORDS, AND STEP
+    # NAME CANNOT TELL THEM APART. `utils.insight_ledger._page_to_step_name`
+    # maps both back through page `04_Feature_Selection`, so both arrive under
+    # `Feature Selection` and `Feature Selection Applied` is empty; `[-1]` was
+    # therefore the APPLY entry, which carries no `n_features_before` /
+    # `n_features_after`. Both counts fell through to `len(selected_features)`
+    # and the Methods draft read "all 14 candidate predictors were retained"
+    # over a selection that went 27 → 14. Entries are identified by the fields
+    # they carry, which is what actually distinguishes them.
+    fs_entries = list(logged_steps.get('Feature Selection', [])) + \
+        list(logged_steps.get('Feature Selection Applied', []))
+    screening_details: Dict[str, Any] = {}
+    applied_details: Dict[str, Any] = {}
+    for entry in fs_entries:
+        details = entry.get('details') or {}
+        if details.get('n_features_before') is not None or details.get('n_features_after') is not None:
+            screening_details = details
+        if details.get('n_features_selected') is not None:
+            applied_details = details
+
     # ZERO IS A REAL COUNT; ABSENCE IS None. `x or y` swallowed a recorded
     # zero here exactly as it did in `ml/narrative_engine.py`, and a selection
     # that retained nothing then read back as the pre-selection list.
-    fs_entries = logged_steps.get('Feature Selection', [])
-    if fs_entries:
-        last_fs = fs_entries[-1].get('details', {})
-        if last_fs.get('n_features_before') is not None:
-            candidate_count = last_fs['n_features_before']
-        if last_fs.get('n_features_after') is not None:
-            selected_count = last_fs['n_features_after']
+    if screening_details.get('n_features_before') is not None:
+        candidate_count = screening_details['n_features_before']
+    if screening_details.get('n_features_after') is not None:
+        selected_count = screening_details['n_features_after']
+    if applied_details.get('n_features_selected') is not None:
+        selected_count = applied_details['n_features_selected']
 
-    applied_entries = logged_steps.get('Feature Selection Applied', [])
-    if applied_entries:
-        last_applied = applied_entries[-1].get('details', {})
-        if last_applied.get('n_features_selected') is not None:
-            selected_count = last_applied['n_features_selected']
+    # THE SELECTION RECORD IS THE AUTHORITY (`CONTRACT-034`). Provenance holds
+    # the screened set and the retained set as two separate facts, and page 04's
+    # apply updates it in place, so it survives `data_config.feature_cols` being
+    # overwritten with the post-apply list. The ledger scrape above is the
+    # fallback for a session that never wrote a provenance record.
+    _prov_fs = None
+    _prov_upload = None
+    try:
+        from utils.workflow_provenance import get_provenance
+        _provenance = get_provenance()
+        _prov_fs = getattr(_provenance, 'feature_selection', None)
+        _prov_upload = getattr(_provenance, 'upload', None)
+    except Exception:
+        pass
+    if _prov_fs is not None:
+        if getattr(_prov_fs, 'n_features_before', None) is not None:
+            candidate_count = _prov_fs.n_features_before
+        if getattr(_prov_fs, 'n_features_after', None) is not None:
+            selected_count = _prov_fs.n_features_after
+    if _prov_upload is not None and getattr(_prov_upload, 'n_features', None):
+        # The predictor count as OFFERED, which `data_config.feature_cols` no
+        # longer holds once a selection has been applied over it.
+        original_count = _prov_upload.n_features
 
     try:
         import streamlit as st
@@ -329,11 +366,25 @@ def _resolve_workflow_feature_counts(
     if engineered_count is None and original_count is not None and candidate_count is not None:
         engineered_count = max(candidate_count - original_count, 0)
 
+    # The SCREENING step's own two numbers, kept separate from the applied set
+    # they are routinely confused with (`DRIVE-072`): the methods ranked
+    # `ranked` columns and agreed on `ranked_kept` of them, while
+    # `carried_unranked` predictors reached the modeling set without being
+    # ranked at all. `selected` is the modeling set; these three explain how it
+    # was arrived at, and a section that cannot use them omits them.
+    _ranked = screening_details.get('n_features_before')
+    _ranked_kept = screening_details.get('n_features_after')
+    _carried = applied_details.get('carried_through_unranked')
     return {
         'original': original_count,
         'candidate': candidate_count,
         'selected': selected_count,
         'engineered': engineered_count,
+        'ranked': _ranked,
+        'ranked_kept': (applied_details.get('n_consensus_ranked')
+                        if applied_details.get('n_consensus_ranked') is not None
+                        else _ranked_kept),
+        'carried_unranked': len(_carried) if isinstance(_carried, (list, tuple)) else None,
     }
 
 

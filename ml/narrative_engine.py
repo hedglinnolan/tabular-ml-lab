@@ -22,7 +22,10 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from utils.workflow_provenance import WorkflowProvenance
-from utils.insight_ledger import InsightLedger, MODEL_DISPLAY_NAMES
+from utils.insight_ledger import (
+    InsightLedger, MODEL_DISPLAY_NAMES, _clean_for_manuscript,
+    feature_selection_method_label,
+)
 
 
 #: How many ledger strengths / limitations the Discussion prints inline.
@@ -369,20 +372,12 @@ def _oxford_join(items: List[str]) -> str:
 
 
 def _feature_selection_method_label(method: str) -> str:
-    """Render feature-selection methods with manuscript-friendly names."""
-    labels = {
-        "lasso": "LASSO",
-        "rfe": "RFE-CV",
-        "rfe-cv": "RFE-CV",
-        "rfecv": "RFE-CV",
-        "univariate": "univariate screening",
-        "f_regression": "univariate screening",
-        "mutual_info": "mutual information screening",
-        "stability": "stability selection",
-        "stability_selection": "stability selection",
-    }
-    key = str(method or "").strip().lower()
-    return labels.get(key, str(method or "").strip())
+    """Render feature-selection methods with manuscript-friendly names.
+
+    One naming rule, held in `utils.insight_ledger` beside the model-key rule
+    that used to overwrite it (`DRIVE-075`).
+    """
+    return feature_selection_method_label(method)
 
 
 def _polish_data_observations_text(text: str) -> str:
@@ -589,8 +584,17 @@ class NarrativeEngine:
             rows.append(("Sensitivity Analysis", "sensitivity record",
                          "seed stability / feature dropout as recorded"))
         if comp.get("statistical_validation"):
+            # `DRIVE-074` / D9-05. TWO UNIVERSES, BOTH NAMED. The multiplicity
+            # sentence counts distinct COMPARISONS (`_distinct_comparisons`) —
+            # a comparison re-run under an author override is one question asked
+            # once — while this row counted RECORDS, so the draft said "the 1
+            # test reported here" beside an evidence row reading "2 test(s)" and
+            # neither said which it meant.
+            _recorded_tests = ctx.get('statistical_tests') or []
+            _comparisons = _distinct_comparisons(_recorded_tests)
             rows.append(("Statistical Validation", "statistical-test record",
-                         f"{len(ctx.get('statistical_tests') or [])} test(s)"))
+                         f"{_count_phrase(len(_recorded_tests), 'recorded test run')} over "
+                         f"{_count_phrase(len(_comparisons), 'distinct comparison')}"))
 
         if self.ledger is not None and len(self.ledger) > 0:
             contributing = sorted(
@@ -722,6 +726,15 @@ class NarrativeEngine:
                 self.ctx["n_features_after_selection"] = feature_counts.get("selected")
             if feature_counts.get("engineered") is not None:
                 self.ctx["n_engineered"] = feature_counts.get("engineered")
+            # `DRIVE-072`. The screening step's own denominator and its result,
+            # which are NOT the modeling set: the methods ranked `n_ranked`
+            # columns, agreed on `n_ranked_kept`, and `n_carried_unranked`
+            # predictors reached the model without being ranked at all.
+            for _key, _ctx_key in (("ranked", "n_ranked"),
+                                   ("ranked_kept", "n_ranked_kept"),
+                                   ("carried_unranked", "n_carried_unranked")):
+                if feature_counts.get(_key) is not None:
+                    self.ctx[_ctx_key] = feature_counts.get(_key)
 
         frozen_feature_names = self.manuscript_context.get("feature_names_for_manuscript") or []
         if frozen_feature_names:
@@ -993,8 +1006,35 @@ class NarrativeEngine:
                 parts.append(f"All {final_count} candidate predictors were retained for final modeling.")
 
         # Feature selection detail
+        #
+        # `DRIVE-072`. THE SCREENING AND THE APPLY ARE TWO FACTS. The methods
+        # rank the columns they can rank — on a classification run the numeric
+        # ones — and the applied set is that agreement plus whatever was carried
+        # through unranked. Where the record holds both, the sentence states
+        # both, so the reduction it reports is the one a reader can reconcile
+        # against the selection page and the Evidence Map.
+        _ranked = self.ctx.get("n_ranked")
+        _ranked_kept = self.ctx.get("n_ranked_kept")
+        _carried = self.ctx.get("n_carried_unranked")
+        _screening_reconciles = (
+            _ranked is not None and _ranked_kept is not None
+            and _carried is not None
+            and (_ranked_kept + _carried) == final_count
+        )
         if fs_method and final_count:
-            if candidate_count == final_count:
+            if _screening_reconciles and candidate_count and candidate_count != final_count:
+                _lead = (f"Consensus feature selection across {consensus_phrase}"
+                         if fs_method == "consensus" and consensus_phrase
+                         else f"Feature selection using {fs_method}")
+                parts.append(
+                    f"{_lead} ranked "
+                    f"{_count_phrase(_ranked, 'candidate predictor')} and retained "
+                    f"{_ranked_kept}; with "
+                    f"{_count_phrase(_carried, 'non-ranked predictor')} carried "
+                    f"through, the predictor set was reduced from "
+                    f"{candidate_count} to {final_count} for final modeling."
+                )
+            elif candidate_count == final_count:
                 parts.append(
                     (
                         f"Consensus feature selection across {consensus_phrase} retained all {final_count} candidate predictors."
@@ -1482,6 +1522,19 @@ class NarrativeEngine:
                   and t.get("p_value") is not None]
         correction = multiplicity.correction_of(tests)
 
+        # NAMED UNIVERSE (`DRIVE-074` / D9-05). The count below is DISTINCT
+        # COMPARISONS; the Evidence Map row beside it counts recorded test runs,
+        # and with two records of one comparison the draft's "1 test" read as a
+        # miscount of the map's "2". Where the two universes differ the sentence
+        # says which one it is counting and why the other is larger.
+        _universe_note = ""
+        if with_p and len(tests) != len(comparisons):
+            _universe_note = (
+                f" ({_count_phrase(len(tests), 'test run')} recorded: a "
+                f"comparison re-run under an author override is one comparison, "
+                f"not two)"
+            )
+
         if correction and with_p:
             alpha = next((float(t.get("correction_alpha")) for t in tests
                           if t.get("correction_alpha") is not None), 0.05)
@@ -1490,14 +1543,16 @@ class NarrativeEngine:
             parts.append(
                 f"P-values were adjusted for multiple comparisons using the "
                 f"{multiplicity.method_label(correction)} method across the "
-                f"{_count_phrase(len(with_p), 'test')} reported here; "
+                f"{_count_phrase(len(with_p), 'test')} reported here"
+                f"{_universe_note}; "
                 f"{len(corrected)} remained significant at q < {alpha:g}."
             )
         elif with_p:
             expected = multiplicity.expected_by_chance(len(with_p))
             parts.append(
                 f"No correction for multiple comparisons was applied across "
-                f"the {_count_phrase(len(with_p), 'test')} reported here, so the number reaching "
+                f"the {_count_phrase(len(with_p), 'test')} reported here"
+                f"{_universe_note}, so the number reaching "
                 f"p < 0.05 is not interpretable as a count of findings: at "
                 f"alpha = 0.05 roughly {expected:.0f} of {len(with_p)} would be "
                 f"expected to do so by chance alone."
@@ -2086,8 +2141,20 @@ class NarrativeEngine:
             try:
                 prefer_simpler = self.ledger.get("train_prefer_simpler")
                 if prefer_simpler and not prefer_simpler.resolved:
+                    # `DRIVE-074` / D9-06. THE CARD'S `finding` IS COACH VOICE —
+                    # "A reviewer would question why the more complex model was
+                    # selected." is addressed to the analyst, and it reached the
+                    # Discussion of the exported manuscript verbatim. COACH-007
+                    # gives every such card a `manuscript_text` written in the
+                    # register a paper uses; it is spliced mid-paragraph, so it
+                    # starts lowercase and is capitalized here.
+                    _observation = (prefer_simpler.manuscript_text or "").strip()
+                    if _observation:
+                        _observation = (_observation[0].upper() + _observation[1:]).rstrip(".") + "."
+                    else:
+                        _observation = _clean_for_manuscript(prefer_simpler.finding)
                     return (
-                        f"{prefer_simpler.finding} "
+                        f"{_observation} "
                         "This pattern suggests that the available predictive signal is largely "
                         "captured by linear effects, favoring the simpler model on grounds of "
                         "parsimony and interpretability."

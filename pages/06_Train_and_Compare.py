@@ -13,6 +13,7 @@ from utils.session_state import (
     init_session_state, get_data, get_preprocessing_pipeline,
     DataConfig, SplitConfig, ModelConfig, set_splits, add_trained_model,
     TaskTypeDetection, CohortStructureDetection, log_methodology,
+    ensure_dataset_profile,
 )
 from utils.seed import set_global_seed
 from utils.storyline import render_breadcrumb, render_page_navigation
@@ -183,6 +184,13 @@ entity_id_final = cohort_structure_detection.entity_id_final
 # Use final task type for downstream logic
 if task_type_final:
     data_config.task_type = task_type_final
+
+# `DRIVE-073`. Three surfaces on this page read `dataset_profile` — the
+# model-suitability badges, the class-imbalance card and its rebalancing control
+# — and applying a feature selection on page 04 clears it, so all three
+# disappeared with nothing on screen saying why. Recomputed here, against the
+# feature set this page is about to train on, before anything reads it.
+ensure_dataset_profile()
 
 # Split configuration
 st.header("Data Splitting")
