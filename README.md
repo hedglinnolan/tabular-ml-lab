@@ -47,13 +47,20 @@ This repository ships one analysis engine behind two front doors:
 <details>
 <summary><b>Running TurboTab</b> (developer setup — terminal required)</summary>
 
-TurboTab is not part of the desktop starter yet. From a clone of this repository
-with the full environment installed (`python -m venv venv && venv/bin/pip install -r requirements.txt`):
+TurboTab is not part of the desktop starter yet. From a clone of this repository:
 
 ```bash
-make turbotab
-# or, equivalently:
-venv/bin/python scripts/serve_turbotab.py --port 8777
+# macOS / Linux
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+venv/bin/python scripts/serve_turbotab.py --port 8777   # or: make turbotab
+```
+
+```powershell
+# Windows (PowerShell) — `make` is not available on Windows; run the script directly
+python -m venv venv
+venv\Scripts\pip install -r requirements.txt
+venv\Scripts\python scripts\serve_turbotab.py --port 8777
 ```
 
 Then open http://127.0.0.1:8777. The launcher checks its own interpreter before

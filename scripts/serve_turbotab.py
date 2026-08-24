@@ -24,8 +24,9 @@ interpreter the same question.
 
 Usage
 -----
-    make turbotab                 # the supported form; uses ./venv explicitly
+    make turbotab                 # macOS/Linux alias; uses ./venv explicitly
     venv/bin/python scripts/serve_turbotab.py --port 8777 --reload
+    venv\\Scripts\\python scripts\\serve_turbotab.py --port 8777   # Windows
 """
 from __future__ import annotations
 
