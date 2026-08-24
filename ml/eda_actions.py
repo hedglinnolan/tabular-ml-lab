@@ -97,7 +97,7 @@ def plausibility_check(
                 
                 # Add fasting note if applicable
                 if inferred_unit_info.get('fasting_note'):
-                    unit_row['Note'] = 'Fasting assumption (reference ranges assume fasting state)'
+                    unit_row['Note'] = 'Fasting assumption (the improbability band assumes a fasting state)'
                 else:
                     unit_row['Note'] = ''
                 
@@ -224,9 +224,10 @@ def plausibility_check(
         else:
             manuscript = (
                 f"{num_flags} empirical plausibility "
-                f"{'flag was' if num_flags == 1 else 'flags were'} raised against published "
-                f"reference ranges, which may reflect unit inconsistency or measurement "
-                f"error rather than true physiological extremes"
+                f"{'flag was' if num_flags == 1 else 'flags were'} raised against the "
+                f"NHANES p01–p99 improbability band, which may reflect unit "
+                f"inconsistency or measurement error rather than true physiological "
+                f"extremes"
             )
         insights.append(Insight(
             id="eda_plausibility_out_of_range",

@@ -89,6 +89,54 @@ def _fmt_param_value(value: Any) -> str:
     return str(value)
 
 
+def _calibration_field(cal: Any, name: str) -> Optional[float]:
+    """One finite scalar off a calibration record, or None.
+
+    `ml.calibration.CalibrationResult` is a dataclass, but a restored session
+    hands back plain dicts; a record type this reader does not recognize must
+    contribute nothing rather than a formatted `None`.
+    """
+    value = cal.get(name) if isinstance(cal, dict) else getattr(cal, name, None)
+    if isinstance(value, bool):
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return value if np.isfinite(value) else None
+
+
+def _calibration_sentence(model_name: Any, cal: Any) -> Optional[str]:
+    """One manuscript line per model, naming only the metrics that were computed.
+
+    The classification and regression records carry different quantities on
+    different scales (`AUDIT-017`), and the weak-calibration pair is named as
+    such: one word for two meanings is how a reader trusts the wrong number.
+    """
+    parts: List[str] = []
+
+    brier = _calibration_field(cal, 'brier_score')
+    if brier is not None:
+        parts.append(f"Brier score = {brier:.4f}")
+    ece = _calibration_field(cal, 'ece')
+    if ece is not None:
+        parts.append(f"ECE = {ece:.4f}")
+    weak_slope = _calibration_field(cal, 'weak_slope')
+    weak_intercept = _calibration_field(cal, 'weak_intercept')
+    if weak_slope is not None and weak_intercept is not None:
+        parts.append(
+            f"weak calibration slope = {weak_slope:.3f}, intercept = {weak_intercept:.3f}")
+    slope = _calibration_field(cal, 'calibration_slope')
+    intercept = _calibration_field(cal, 'calibration_intercept')
+    if slope is not None and intercept is not None:
+        parts.append(
+            f"calibration slope = {slope:.3f}, intercept = {intercept:.3f}")
+
+    if not parts:
+        return None
+    return f"**{_publication_model_label(model_name)}:** {'; '.join(parts)}.\n\n"
+
+
 def _publication_model_label(model_key: Any) -> str:
     """Return a manuscript-friendly model label."""
     if model_key is None:
@@ -312,6 +360,34 @@ def _feature_selection_method_label(method: str) -> str:
     return labels.get(key, str(method or '').strip())
 
 
+def _consensus_threshold_clause(
+    threshold: Optional[int],
+    n_completed: Optional[int],
+    n_requested: Optional[int],
+) -> str:
+    """The "at least T of N methods" clause, over ONE universe of methods.
+
+    `MISC-104`. The threshold pages/04 computes is a count of the methods that
+    COMPLETED (`max(2, len(results) // 2)`); the denominator printed here was
+    the count of the methods that were REQUESTED. With a method that raised,
+    the sentence described an agreement rule the run never applied. The
+    denominator is now the completed set, and the shortfall is stated rather
+    than absorbed. With no record of what completed, the clause names the
+    threshold and no denominator — an unknown universe is not a universe.
+    """
+    if not threshold:
+        return ""
+    if not n_completed:
+        return (f" Features were retained if selected by at least {threshold} "
+                f"of the methods that completed.")
+    clause = (f" Features were retained if selected by at least {threshold} of "
+              f"the {n_completed} method(s) that completed")
+    if n_requested and n_requested != n_completed:
+        clause += (f" ({n_requested} were requested; "
+                   f"{n_requested - n_completed} did not complete)")
+    return clause + "."
+
+
 def _dedupe_latest_by(entries: List[Dict[str, Any]], key_fields: Tuple[str, ...]) -> List[Dict[str, Any]]:
     """Keep only the latest entry for each logical analysis key."""
     latest_by_key: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
@@ -392,6 +468,44 @@ def _resolve_manuscript_context(
         'best_model_by_metric': context.get('best_model_by_metric'),
         'best_metric_name': context.get('best_metric_name'),
     }
+
+
+#: The exploratory limitation, verbatim. `ml/narrative_engine.py` opens its
+#: limitation list with the same clause and `ml/manuscript_validator.py` looks
+#: for it in the finished draft — one sentence, three readers, so the wording
+#: does not drift out from under the check that gates the export.
+EXPLORATORY_LIMITATION_SENTENCE = (
+    "The analysis was run in exploratory mode: the held-out test set was not "
+    "quarantined from feature engineering and selection, so reported "
+    "performance may be optimistically biased and should not be presented as "
+    "validated held-out performance."
+)
+
+
+def _exploratory_watermark(manuscript_context: Optional[Dict[str, Any]]) -> bool:
+    """Whether this study carries the exploratory watermark.
+
+    `MISC-103`. Frozen export context first, session state second — the same
+    precedence `external_validation_record` uses, and for the same reason: the
+    context is what the export froze, and a draft composed from it must not be
+    re-decided by live state.
+
+    The session read is mode-OR-used, matching pages/10: `exploratory_used` is
+    set when the mode is enabled and cleared only by the downstream reset, so
+    toggling the mode off cannot launder results computed with it on.
+    """
+    context = manuscript_context or {}
+    if 'exploratory_mode' in context:
+        return bool(context.get('exploratory_mode'))
+    try:
+        import streamlit as st
+    except ImportError:
+        return False
+    try:
+        return bool(st.session_state.get('exploratory_mode', False)
+                    or st.session_state.get('exploratory_used', False))
+    except Exception:
+        return False
 
 
 def external_validation_record() -> Optional[Dict[str, Any]]:
@@ -666,13 +780,21 @@ def generate_methods_section(
         
         # Get the methods used from the analysis step (lasso, rfe, etc.)
         analysis_methods = []
+        analysis_methods_completed = None
         n_original = None
         for ae in analysis_entries:
             ad = ae.get('details', {})
             analysis_methods = ad.get('methods', analysis_methods)
+            if ad.get('methods_completed') is not None:
+                analysis_methods_completed = ad['methods_completed']
             if ad.get('n_features_before'):
                 n_original = ad['n_features_before']
-        methods_str = _oxford_join(_feature_selection_method_label(method_name) for method_name in analysis_methods)
+        # `MISC-104`: the methods that RAN are the ones the sentence names. A
+        # method that raised is not part of a consensus it never voted in.
+        methods_named = (analysis_methods_completed
+                         if analysis_methods_completed is not None
+                         else analysis_methods)
+        methods_str = _oxford_join(_feature_selection_method_label(method_name) for method_name in methods_named)
 
         if method == 'manual' and n_selected is not None:
             # Manual override — report it as such
@@ -689,16 +811,41 @@ def generate_methods_section(
         elif method == 'consensus' and n_selected is not None:
             # Consensus selection
             n_before = feature_counts.get('candidate') or n_original or details.get('n_features_before')
-            
+
             # Check for consensus threshold in details
             consensus_threshold = details.get('consensus_threshold') or details.get('threshold')
-            n_methods = len(analysis_methods) if analysis_methods else None
-            
-            if n_before and n_before == n_selected:
+            threshold_clause = _consensus_threshold_clause(
+                consensus_threshold,
+                len(analysis_methods_completed) if analysis_methods_completed is not None else None,
+                len(analysis_methods) if analysis_methods else None,
+            )
+
+            # `MISC-104`. TWO UNIVERSES, AND THE SENTENCE USED TO MIX THEM.
+            # `n_before` counts the NUMERIC candidates that were ranked
+            # (pages/04:385); `n_selected` counts what was APPLIED — the ranked
+            # survivors PLUS the non-ranked features carried through unchanged
+            # (pages/04:571). "reduced the feature set from 10 to 5" was
+            # therefore a ratio between two different populations. Both are
+            # stated when the log records the split.
+            n_ranked = details.get('n_consensus_ranked')
+            carried = list(details.get('carried_through_unranked') or [])
+
+            if n_ranked is not None and carried:
+                lead = (f" Consensus feature selection across {methods_str}"
+                        if methods_str else " Consensus feature selection")
+                if n_before:
+                    ranking_clause = (f"{lead} ranked {n_before} numeric candidate "
+                                      f"predictors and retained {n_ranked} of them")
+                else:
+                    ranking_clause = f"{lead} retained {n_ranked} ranked predictors"
+                sections.append(
+                    f"{ranking_clause}; {len(carried)} non-ranked feature(s) "
+                    f"({_oxford_join(carried)}) were carried through unranked, "
+                    f"giving {n_selected} predictors in the final modeling set."
+                    f"{threshold_clause}"
+                )
+            elif n_before and n_before == n_selected:
                 if methods_str:
-                    threshold_clause = ""
-                    if consensus_threshold and n_methods:
-                        threshold_clause = f" Features were retained if selected by at least {consensus_threshold} of {n_methods} methods."
                     sections.append(
                         f" Consensus feature selection across {methods_str} retained all {n_selected} candidate predictors."
                         f"{threshold_clause}"
@@ -708,9 +855,6 @@ def generate_methods_section(
                         f" Feature selection was performed; all {n_selected} features were retained."
                     )
             elif n_before:
-                threshold_clause = ""
-                if consensus_threshold and n_methods:
-                    threshold_clause = f" Features were retained if selected by at least {consensus_threshold} of {n_methods} methods."
                 if methods_str:
                     sections.append(
                         f" Consensus feature selection across {methods_str} reduced the feature set "
@@ -723,9 +867,6 @@ def generate_methods_section(
                         f"{threshold_clause}"
                     )
             else:
-                threshold_clause = ""
-                if consensus_threshold and n_methods:
-                    threshold_clause = f" Features were retained if selected by at least {consensus_threshold} of {n_methods} methods."
                 if methods_str:
                     sections.append(f" Consensus feature selection across {methods_str} retained {n_selected} features.{threshold_clause}")
                 else:
@@ -1585,6 +1726,17 @@ def generate_methods_section(
         "for transparency and reproducibility.\n\n"
     )
 
+    # 0. The exploratory watermark, FIRST. `MISC-103`.
+    #
+    # This limitation reached the manuscript only through NarrativeEngine. When
+    # the engine raises — or when provenance is empty — pages/10 falls back to
+    # this composer, which said nothing about it, so the one caveat that is
+    # about the whole study rather than one column vanished on exactly the path
+    # a failure takes. It goes first here for the same reason it goes first
+    # there: a study-wide caveat outranks a per-column one.
+    if _exploratory_watermark(manuscript_context):
+        sections.append(f"**Exploratory mode:** {EXPLORATORY_LIMITATION_SENTENCE}\n\n")
+
     # 1. What the cross-validation loop enclosed. `AUDIT-029`.
     #
     # This paragraph told the reader CV was "performed on data that had already
@@ -1719,21 +1871,22 @@ def generate_methods_section(
                     metric_strs.append(f"{m}: {v:.4f}")
             sections.append(f"**{_publication_model_label(name)}:** {'; '.join(metric_strs)}\n\n")
 
-        # Calibration
+        # Calibration. `MISC-102`: this block was unreachable — no caller passed
+        # `calibration_results` — so every calibration number page 06 computed
+        # stopped at the app. The header is emitted only when at least one model
+        # produced a readable sentence, so a records dict of empty artifacts
+        # cannot open a Calibration section that then says nothing.
         if calibration_results:
-            sections.append("\n### Calibration\n")
-            sections.append("Calibration outputs are reported only for models with computed calibration artifacts.\n\n")
-            for model_name, cal in calibration_results.items():
-                if hasattr(cal, 'brier_score') and cal.brier_score is not None:
-                    sections.append(
-                        f"**{_publication_model_label(model_name)}:** Brier score = {cal.brier_score:.4f}, "
-                        f"ECE = {cal.ece:.4f}.\n\n"
-                    )
-                elif hasattr(cal, 'calibration_slope') and cal.calibration_slope is not None:
-                    sections.append(
-                        f"**{_publication_model_label(model_name)}:** Calibration slope = {cal.calibration_slope:.3f}, "
-                        f"intercept = {cal.calibration_intercept:.3f}.\n\n"
-                    )
+            cal_sentences = [
+                s for s in (
+                    _calibration_sentence(name, cal)
+                    for name, cal in calibration_results.items()
+                ) if s
+            ]
+            if cal_sentences:
+                sections.append("\n### Calibration\n")
+                sections.append("Calibration outputs are reported only for models with computed calibration artifacts.\n\n")
+                sections.extend(cal_sentences)
 
         # FIX 4: Statistical Validation Results
         stat_val_entries = logged_steps.get('Statistical Validation', [])

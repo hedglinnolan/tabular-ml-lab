@@ -355,3 +355,463 @@ def test_sweep_023_seed_zero_survives_export_to_the_manifest():
     # Nothing recorded at all still falls back, and does not raise.
     _FakeSt.session_state.clear()
     assert manifest()["random_seed"] == 42
+
+
+# ── MISC-102 · calibration PROSE reaches the manuscript, not just figures ──
+
+class TestMisc102CalibrationProseReachesTheManuscript:
+    """Page 06 calibrates every eligible model and stores the records; the
+    composer carried a Calibration block no caller ever fed, and the LaTeX
+    export printed a placeholder asking its own author for numbers the session
+    already held."""
+
+    @staticmethod
+    def _records():
+        from ml.calibration import CalibrationResult
+
+        return {
+            "rf": CalibrationResult(model_name="RF", task_type="classification",
+                                    brier_score=0.12, ece=0.03,
+                                    weak_slope=0.87, weak_intercept=-0.05),
+            "ridge": CalibrationResult(model_name="RIDGE", task_type="regression",
+                                       calibration_slope=0.98,
+                                       calibration_intercept=0.40),
+            "blank": CalibrationResult(model_name="B", task_type="classification"),
+        }
+
+    def test_the_composer_block_is_reachable_for_several_models(self):
+        from ml.publication import generate_methods_section
+
+        text = generate_methods_section(
+            data_config={"feature_cols": ["a"], "target_col": "y"},
+            preprocessing_config={}, model_configs={"rf": {}}, split_config={},
+            n_total=100, n_train=70, n_val=15, n_test=15,
+            feature_names=["a"], target_name="y", task_type="classification",
+            metrics_used=["AUC"],
+            selected_model_results={"rf": {"metrics": {"AUC": 0.80}},
+                                    "ridge": {"metrics": {"AUC": 0.70}}},
+            calibration_results=self._records(),
+        )
+
+        assert "### Calibration" in text, "the Calibration block never rendered"
+        assert "Brier score = 0.1200" in text and "ECE = 0.0300" in text
+        assert "weak calibration slope = 0.870" in text
+        # The SECOND model is there too — one model's calibration is not a
+        # statement about the others.
+        assert "calibration slope = 0.980, intercept = 0.400" in text
+        # A record with no computed metric contributes no sentence.
+        assert text.count("**") >= 2
+
+    def test_a_records_dict_with_nothing_in_it_opens_no_section(self):
+        from ml.calibration import CalibrationResult
+        from ml.publication import generate_methods_section
+
+        text = generate_methods_section(
+            data_config={"feature_cols": ["a"], "target_col": "y"},
+            preprocessing_config={}, model_configs={}, split_config={},
+            n_total=100, n_train=70, n_val=15, n_test=15,
+            feature_names=["a"], target_name="y", task_type="classification",
+            metrics_used=["AUC"],
+            selected_model_results={"rf": {"metrics": {"AUC": 0.8}}},
+            calibration_results={"rf": CalibrationResult(model_name="RF",
+                                                         task_type="classification")},
+        )
+        assert "### Calibration" not in text, (
+            "an empty artifact opened a section that then said nothing")
+
+    def test_page10_hands_over_the_records_for_included_models_only(self):
+        from typing import Any, Dict, List
+
+        ns = load_from_page(
+            PAGE_10,
+            ["_calibration_records_for_manuscript", "_calibration_metrics_as_dict"],
+            {"st": st, "np": np, "Dict": Dict, "Any": Any, "List": List},
+        )
+        st.session_state["calibration_results"] = self._records()
+
+        kept = ns["_calibration_records_for_manuscript"](["rf", "ridge"])
+        assert set(kept) == {"rf", "ridge"}
+        assert ns["_calibration_records_for_manuscript"](["rf"]).keys() == {"rf"}, (
+            "a manuscript may not report calibration for a model it excludes")
+        assert ns["_calibration_records_for_manuscript"]([]) == {}
+
+        metrics = ns["_calibration_metrics_as_dict"](self._records()["rf"])
+        assert metrics["brier_score"] == 0.12
+        assert "model_name" not in metrics and "task_type" not in metrics
+        # A restored session's plain dict reads the same way.
+        assert ns["_calibration_metrics_as_dict"](
+            {"model_name": "rf", "ece": 0.03})["ece"] == 0.03
+
+    def test_the_export_summary_carries_every_included_model(self):
+        """The bridge between the stored records and the LaTeX subsection."""
+        from typing import Any, Dict, List, Optional
+
+        ns = load_from_page(
+            PAGE_10,
+            ["_build_explainability_summary_for_export",
+             "_calibration_metrics_as_dict"],
+            {"st": st, "np": np, "Dict": Dict, "Any": Any, "List": List,
+             "Optional": Optional},
+        )
+        st.session_state["calibration_results"] = self._records()
+
+        summary = ns["_build_explainability_summary_for_export"](
+            {"manuscript_primary_model": "rf", "included_models": ["rf", "ridge"]})
+
+        assert set(summary["calibration_by_model"]) == {"rf", "ridge"}, (
+            "only the primary model's calibration reached the PDF")
+        assert summary["calibration_metrics"]["brier_score"] == 0.12
+        assert "blank" not in summary["calibration_by_model"]
+
+    def test_the_latex_calibration_subsection_carries_every_model(self):
+        from ml.latex_report import generate_latex_report
+
+        tex = generate_latex_report(
+            task_type="classification",
+            model_results={"rf": {"metrics": {"AUC": 0.8}}},
+            explainability_summary={
+                "calibration_by_model": {
+                    "rf": {"brier_score": 0.12, "ece": 0.03},
+                    "ridge": {"calibration_slope": 0.98,
+                              "calibration_intercept": 0.40},
+                },
+                "calibration_metrics": {"brier_score": 0.12},
+            },
+        )
+        assert "PLACEHOLDER: Report calibration" not in tex, (
+            "the export asked its author for numbers the session held")
+        assert "Brier score = 0.1200" in tex
+        assert "calibration slope = 0.980" in tex
+        assert "Random Forest" in tex and "Ridge Regression" in tex
+        assert "Calibration Metrics" not in tex, (
+            "the primary model's metrics are stated twice")
+
+    def test_the_placeholder_stays_when_nothing_was_computed(self):
+        from ml.latex_report import generate_latex_report
+
+        for task in ("classification", "regression"):
+            tex = generate_latex_report(
+                task_type=task, model_results={"rf": {"metrics": {"AUC": 0.8}}})
+            assert "PLACEHOLDER: Report calibration" in tex, (
+                "an absence is a real absence and keeps saying so")
+
+
+# ── MISC-103 · the exploratory limitation survives the fallback path ──────
+
+class TestMisc103TheExploratoryLimitationSurvivesTheFallback:
+    """It reached the draft through NarrativeEngine alone. When the engine
+    raises — or provenance is empty — pages/10 falls back to the composer, and
+    the one limitation about the whole study disappeared without a word."""
+
+    @staticmethod
+    def _methods(**kwargs):
+        from ml.publication import generate_methods_section
+
+        return generate_methods_section(
+            data_config={"feature_cols": ["a"], "target_col": "y"},
+            preprocessing_config={}, model_configs={}, split_config={},
+            n_total=100, n_train=70, n_val=15, n_test=15,
+            feature_names=["a"], target_name="y", task_type="regression",
+            metrics_used=["RMSE"], **kwargs)
+
+    def test_the_fallback_composer_states_it(self):
+        from ml.publication import EXPLORATORY_LIMITATION_SENTENCE
+
+        text = self._methods(manuscript_context={"exploratory_mode": True})
+        assert EXPLORATORY_LIMITATION_SENTENCE in text
+        assert EXPLORATORY_LIMITATION_SENTENCE not in self._methods(
+            manuscript_context={"exploratory_mode": False})
+
+    def test_the_session_watermark_is_read_when_the_context_is_silent(self):
+        from ml.publication import EXPLORATORY_LIMITATION_SENTENCE
+
+        st.session_state["exploratory_used"] = True
+        assert EXPLORATORY_LIMITATION_SENTENCE in self._methods(), (
+            "'exploratory_used' is sticky precisely so toggling the mode off "
+            "cannot launder results computed with it on")
+
+    def test_the_validator_fails_a_draft_that_omits_it(self):
+        from ml.manuscript_validator import validate_manuscript_bundle
+
+        report = validate_manuscript_bundle(
+            {"exploratory_mode": True}, methods_text="A clean held-out study.",
+            report_text="", latex_text="", task_type="regression")
+        check = self._check(report)
+        assert check.status == "FAIL" and check.scored
+        assert not report.passed, "a failing check must gate the export"
+
+    def test_the_validator_accepts_either_producer_wording(self):
+        from ml.manuscript_validator import validate_manuscript_bundle
+        from ml.publication import EXPLORATORY_LIMITATION_SENTENCE
+
+        narrative = ("Limitations: the analysis was run in exploratory mode: "
+                     "the held-out test set was not quarantined from feature "
+                     "engineering and selection, so reported performance may be "
+                     "optimistically biased.")
+        for draft in (EXPLORATORY_LIMITATION_SENTENCE, narrative):
+            report = validate_manuscript_bundle(
+                {"exploratory_mode": True}, methods_text=draft, report_text="",
+                latex_text="", task_type="regression")
+            assert self._check(report).status == "PASS"
+
+    def test_a_clean_study_is_not_asked_for_a_sentence_it_does_not_owe(self):
+        """The roster the panel counts is not padded with a check that is not
+        about this manuscript — and a clean draft is never gated on it."""
+        from ml.manuscript_validator import validate_manuscript_bundle
+
+        report = validate_manuscript_bundle(
+            {"exploratory_mode": False}, methods_text="x", report_text="",
+            latex_text="", task_type="regression")
+        assert not [c for c in report.checks if "Exploratory" in c.name]
+
+    @staticmethod
+    def _check(report):
+        named = [c for c in report.checks if "Exploratory" in c.name]
+        assert named, "the exploratory-limitation check is gone"
+        return named[0]
+
+
+# ── MISC-104 · four manuscript numbers, each over one universe ────────────
+
+class TestMisc104TheManuscriptNumbersNameTheirUniverse:
+
+    @staticmethod
+    def _methods_with_log(log):
+        from ml.publication import generate_methods_section
+
+        st.session_state["methodology_log"] = log
+        return generate_methods_section(
+            data_config={"feature_cols": ["a"] * 5, "target_col": "y"},
+            preprocessing_config={}, model_configs={}, split_config={},
+            n_total=100, n_train=70, n_val=15, n_test=15,
+            feature_names=["a", "b", "c", "sex", "site"], target_name="y",
+            task_type="regression", metrics_used=["RMSE"])
+
+    def test_the_selection_sentence_counts_both_universes(self):
+        text = self._methods_with_log([
+            {"step": "Feature Selection", "action": "ran",
+             "details": {"methods": ["lasso", "rfe"],
+                         "methods_completed": ["lasso", "rfe"],
+                         "n_features_before": 10, "n_features_after": 3,
+                         "consensus_threshold": 2}},
+            {"step": "Feature Selection Applied", "action": "applied",
+             "details": {"method": "consensus", "n_features_selected": 5,
+                         "n_consensus_ranked": 3,
+                         "carried_through_unranked": ["sex", "site"],
+                         "consensus_threshold": 2}},
+        ])
+
+        assert "ranked 10 numeric candidate predictors and retained 3" in text
+        assert "2 non-ranked feature(s) (sex and site) were carried through" in text
+        assert "giving 5 predictors in the final modeling set" in text
+        assert "reduced the feature set from 10 to 5" not in text, (
+            "10 is the numeric universe and 5 includes carried categoricals")
+
+    def test_the_threshold_denominator_is_the_methods_that_ran(self):
+        text = self._methods_with_log([
+            {"step": "Feature Selection", "action": "ran",
+             "details": {"methods": ["lasso", "rfe", "univariate"],
+                         "methods_completed": ["lasso", "rfe"],
+                         "n_features_before": 10, "n_features_after": 3,
+                         "consensus_threshold": 2}},
+            {"step": "Feature Selection Applied", "action": "applied",
+             "details": {"method": "consensus", "n_features_selected": 3,
+                         "consensus_threshold": 2}},
+        ])
+
+        assert "at least 2 of the 2 method(s) that completed" in text
+        assert "3 were requested; 1 did not complete" in text
+        assert "at least 2 of 3 methods" not in text, (
+            "the threshold came from the methods that RAN; the denominator "
+            "came from the methods that were REQUESTED")
+        # The named methods are the ones that voted.
+        assert "univariate screening" not in text
+
+    def test_an_unrecorded_completion_gets_no_denominator_at_all(self):
+        text = self._methods_with_log([
+            {"step": "Feature Selection", "action": "ran",
+             "details": {"methods": ["lasso", "rfe"], "n_features_before": 10,
+                         "n_features_after": 3, "consensus_threshold": 2}},
+            {"step": "Feature Selection Applied", "action": "applied",
+             "details": {"method": "consensus", "n_features_selected": 3,
+                         "consensus_threshold": 2}},
+        ])
+        assert "at least 2 of the methods that completed." in text
+        assert "of 2 methods" not in text
+
+    def test_page04_records_which_methods_completed(self):
+        text = source(REPO / "pages" / "04_Feature_Selection.py")
+        assert "'methods_completed': list(methods_completed)" in text, (
+            "without this key the manuscript cannot tell requested from run")
+        assert "methods_completed.append(method)" in text
+
+    def test_the_seed_stability_export_names_its_model(self):
+        from typing import Any, Dict, List, Tuple
+
+        ns = load_from_page(
+            PAGE_10,
+            ["_build_sensitivity_summary_for_export", "_seed_stability_records",
+             "_seed_stability_by_model"],
+            {"st": st, "np": np, "pd": pd, "Dict": Dict, "Any": Any,
+             "List": List, "Tuple": Tuple,
+             "_report_ledger": _NoLedger()},
+        )
+
+        st.session_state["sensitivity_seed_results"] = pd.DataFrame({
+            "seed": [0, 1, 2, 3],
+            "rmse": [1.00, 1.10, 0.95, 1.05],
+            "rmse [ridge]": [1.30, 1.25, 1.35, 1.28],
+        })
+        st.session_state["methodology_log"] = [
+            {"step": "Sensitivity Analysis", "action": "Ran seed stability analysis",
+             "details": {"model": "ridge", "metric": "rmse", "n_seeds": 4}},
+            {"step": "Sensitivity Analysis", "action": "Ran seed stability analysis",
+             "details": {"model": "rf", "metric": "rmse", "n_seeds": 4}},
+        ]
+
+        summary = ns["_build_sensitivity_summary_for_export"]()
+        stability = summary["seed_stability"]
+        assert stability["model"] == "rf", (
+            "the unsuffixed columns belong to the primary model, which page 08 "
+            "logs last")
+        assert stability["metric"] == "rmse"
+        assert stability["n_seeds"] == 4
+        by_model = {row["model"]: row for row in stability["by_model"]}
+        assert set(by_model) == {"rf", "ridge"}, (
+            "page 08 sweeps every model; the export carried one")
+        assert by_model["ridge"]["mean"] == pytest.approx(1.295)
+
+    def test_the_seed_sentence_is_unnamed_when_nothing_recorded_it(self):
+        from typing import Any, Dict, List, Tuple
+
+        ns = load_from_page(
+            PAGE_10,
+            ["_build_sensitivity_summary_for_export", "_seed_stability_records",
+             "_seed_stability_by_model"],
+            {"st": st, "np": np, "pd": pd, "Dict": Dict, "Any": Any,
+             "List": List, "Tuple": Tuple, "_report_ledger": _NoLedger()},
+        )
+        st.session_state["sensitivity_seed_results"] = pd.DataFrame(
+            {"seed": [0, 1], "rmse": [1.0, 1.2]})
+
+        stability = ns["_build_sensitivity_summary_for_export"]()["seed_stability"]
+        assert "model" not in stability, (
+            "with no record of whose sweep it was, the export names no model "
+            "rather than guessing one")
+
+    def test_the_latex_seed_sentence_and_table_name_their_models(self):
+        from ml.latex_report import generate_latex_report
+
+        tex = generate_latex_report(sensitivity_summary={"seed_stability": {
+            "cv_percent": 3.2, "range": "0.80 to 0.86", "metric": "roc_auc",
+            "model": "rf", "n_seeds": 10, "by_model": [
+                {"model": "rf", "metric": "roc_auc", "n_seeds": 10, "mean": 0.83,
+                 "sd": 0.02, "min": 0.80, "max": 0.86, "cv_percent": 3.2},
+                {"model": "ridge", "metric": "roc_auc", "n_seeds": 10,
+                 "mean": 0.79, "sd": 0.03, "min": 0.74, "max": 0.83,
+                 "cv_percent": 4.1}]}})
+
+        assert "Random seed sensitivity analysis of" in tex
+        assert "Random Forest" in tex and "across 10 seeds" in tex
+        assert "tab:seed-stability" in tex and "Ridge Regression" in tex
+
+    def test_table1_footnote_markers_point_at_a_note(self):
+        from ml.latex_report import generate_latex_report
+
+        table1 = pd.DataFrame({"Overall (N=100)": ["50 (10)", "20 (40%)"]},
+                              index=["age^1", "sex"])
+        note = "^1 Welch t-test: t=2.1, p=0.0400 (unequal variance)"
+
+        tex = generate_latex_report(table1_df=table1, table1_footnotes=[note])
+        assert "Welch t-test" in tex, (
+            "the marker on the row label referred to a note the manuscript "
+            "did not contain")
+        assert tex.index("Welch t-test") > tex.index("bottomrule")
+
+        # And nothing is invented when there are no custom tests.
+        assert "Welch t-test" not in generate_latex_report(table1_df=table1)
+
+    def test_page10_passes_the_footnotes_to_the_exporter(self):
+        text = source(PAGE_10)
+        assert "table1_footnotes=st.session_state.get('table1_custom_test_footnotes')" in text
+
+
+class _NoLedger:
+    """Stands in for the page's module-level insight ledger."""
+
+    @staticmethod
+    def get_methodology_log():
+        return []
+
+
+# ── MISC-105 · the copy describes what the code does ──────────────────────
+
+class TestMisc105CopyMatchesShippedBehavior:
+
+    def test_the_dropout_slider_does_not_promise_importance_order(self):
+        kwargs = call_args(PAGE_08, "slider", "Max features to test")
+        assert kwargs is not None, "the dropout slider is gone"
+        help_text = kwargs["help"].value if hasattr(kwargs["help"], "value") else ""
+        if not help_text:  # a joined implicit concatenation lands as a BinOp
+            help_text = source(PAGE_08).split("Max features to test", 1)[1][:400]
+        assert "column order" in help_text
+        assert "top N by importance" not in help_text, (
+            "the run takes feature_names[:max_features]")
+
+    def test_the_dropout_copy_says_neutralize_not_remove(self):
+        text = source(PAGE_08)
+        assert "Neutralize one feature at a time" in text
+        assert "(neutralizing them hurts performance)" in text
+        assert "(removing them hurts performance)" not in text
+        assert "removing it improved" not in text
+
+    def test_the_plausibility_copy_uses_the_improbability_band_vocabulary(self):
+        from ml.eda_actions import plausibility_check
+
+        class _Signals:
+            numeric_cols = []
+            physio_plausibility_flags = ["glucose: unit mismatch suspected"]
+
+        result = plausibility_check(
+            pd.DataFrame({"x": [1.0, 2.0, 3.0]}), None, ["x"], _Signals(), {})
+        manuscript = result["insights"][0].manuscript_text
+        assert "improbability band" in manuscript
+        assert "reference range" not in manuscript.lower(), (
+            "MISC-018: p01-p99 is not a reference interval, and the word is "
+            "not used for it")
+
+        page = source(REPO / "pages" / "02_EDA.py")
+        assert "NHANES reference ranges" not in page
+        assert "improbability band" in page
+
+    def test_the_no_consensus_advice_is_something_a_user_can_do(self):
+        text = source(REPO / "pages" / "04_Feature_Selection.py")
+        assert "Try lowering the threshold" not in text, (
+            "the threshold has a floor of 2 and no control lowers it")
+        assert "Manual feature selection** below" in text
+
+    def test_a_large_unprofiled_run_gets_the_large_data_scheduler(self):
+        from ml.dataset_profile import DataSufficiencyLevel
+        from ml.nn_recommender import recommend_nn_config
+
+        unprofiled = recommend_nn_config(
+            n_samples=50_000, n_features=20, data_sufficiency=None,
+            p_n_ratio=0.0004, task_type="regression")
+        profiled = recommend_nn_config(
+            n_samples=50_000, n_features=20,
+            data_sufficiency=DataSufficiencyLevel.ABUNDANT,
+            p_n_ratio=0.0004, task_type="regression")
+
+        assert unprofiled.params["lr_scheduler"] == "cosine_warm_restarts", (
+            "None means 'not profiled', not 'scarce' — a 50k-row study fell to "
+            "the small-data schedule against this module's own rule")
+        assert unprofiled.params["lr_scheduler"] == profiled.params["lr_scheduler"]
+
+        small = recommend_nn_config(
+            n_samples=200, n_features=20, data_sufficiency=None,
+            p_n_ratio=0.1, task_type="regression")
+        assert small.params["lr_scheduler"] == "reduce_on_plateau"
+
+    def test_page06_computes_the_level_when_no_profile_exists(self):
+        text = source(REPO / "pages" / "06_Train_and_Compare.py")
+        assert "_data_suff, _ = assess_data_sufficiency(" in text

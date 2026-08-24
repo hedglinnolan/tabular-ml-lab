@@ -108,6 +108,16 @@ _DECLARED = ("This check was decided before the draft was read: {what}, so "
              "verdict nothing could have changed is not a unit of scrutiny.")
 
 
+#: `MISC-103`. Matched against the whole draft, not against one producer's
+#: wording: `ml/narrative_engine` opens its limitation list with this clause and
+#: `ml/publication.EXPLORATORY_LIMITATION_SENTENCE` repeats it on the fallback
+#: path. The pattern spans the two halves that carry the claim — the mode, and
+#: what it did to the test set — so a paraphrase of the connective still
+#: matches while a draft that never says it cannot.
+_EXPLORATORY_LIMITATION_PATTERN = re.compile(
+    r"exploratory mode.{0,200}?not\s+quarantined", re.IGNORECASE | re.DOTALL)
+
+
 def _extract_section(text: str, heading: str, level: int) -> str:
     pattern = rf"(?ms)^{'#' * level}\s+{re.escape(heading)}\s*\n(.*?)(?=^{'#' * level}\s+|^\#{{1,{level-1}}}\s+|\Z)"
     match = re.search(pattern, text or "")
@@ -513,6 +523,41 @@ def validate_manuscript_bundle(
                                  "whatever the abstract claims"))),
         )
     )
+
+    # `MISC-103`. THE ONE LIMITATION THAT IS ABOUT THE WHOLE STUDY, AND THE
+    # ONLY CHECK THAT CAN NOTICE IT LEFT. It reached the draft through
+    # NarrativeEngine alone; on the fallback path — engine raised, or provenance
+    # empty — it silently disappeared, and an exploratory study exported a
+    # manuscript claiming a clean held-out evaluation. The composer now emits it
+    # too; this check is what makes its absence stop an export rather than pass
+    # unnoticed, because a caveat that only sometimes prints is not a caveat.
+    #
+    # APPENDED ONLY FOR AN EXPLORATORY STUDY, and that is the one place this
+    # registry's `MISC-029` doctrine does not apply. Declaring covers a check
+    # that RUNS over an input it did not get; a clean study is not missing an
+    # input, it owes no sentence at all — and a row on every panel saying so
+    # would inflate the roster the header counts (`turbotab.manuscript._counts`
+    # serves that number) with a check that is not about that manuscript.
+    exploratory = bool(context.get("exploratory_mode"))
+    if exploratory:
+        exploratory_text = f"{methods_text}\n{report_text}\n{latex_text}"
+        limitation_present = bool(
+            _EXPLORATORY_LIMITATION_PATTERN.search(exploratory_text))
+        checks.append(
+            ManuscriptValidationCheck(
+                name="Exploratory-mode limitation is stated in the draft",
+                status="PASS" if limitation_present else "FAIL",
+                location="Methods / Limitations",
+                detail=(
+                    "The exploratory-mode limitation is stated."
+                    if limitation_present
+                    else "The session is marked exploratory "
+                         "(`exploratory_mode`), but no draft section states "
+                         "that the held-out test set was not quarantined from "
+                         "feature engineering and selection."
+                ),
+            )
+        )
 
     artifact_patterns = {
         "raw placeholder tag": r"\[PLACEHOLDER\](?!:)",

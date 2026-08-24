@@ -177,7 +177,10 @@ def init_session_state():
         
         # Evaluation
         'cv_results': None,  # For k-fold CV
-        'use_cv': False,
+        # Default ON. pages/06 reads `get('use_cv', True)` for the checkbox, but
+        # this seed runs first, so the seed IS the default a user sees — a False
+        # here makes that fallback unreachable and ships CV off.
+        'use_cv': True,
         'cv_folds': 5,
         
         # Explainability
@@ -695,7 +698,10 @@ def reset_data_dependent_state():
     clear_cohort()
     st.session_state.pop("cohort_runs_done", None)
     st.session_state.selected_features = []
-    st.session_state.use_cv = False
+    # Re-seed to the same default as init_session_state, not to False: a new
+    # dataset returns the user to the shipped default, and the shipped default
+    # is CV on.
+    st.session_state.use_cv = True
     st.session_state.cv_folds = 5
 
     st.session_state.pop("methodology_log", None)

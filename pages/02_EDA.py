@@ -2390,7 +2390,8 @@ def _run_and_show(action_id: str, title: str, run_action: str):
 st.markdown("---")
 st.header("Physiologic Plausibility")
 st.caption(
-    "Reads each column against NHANES reference ranges and clinical guideline bands, "
+    "Reads each column against the NHANES p01–p99 improbability band and clinical "
+    "guideline thresholds, "
     "after inferring its units. This is the check that catches a glucose column recorded "
     "in mmol/L being read as mg/dL — a mix-up that produces no statistical outliers at all."
 )

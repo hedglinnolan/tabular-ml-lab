@@ -995,8 +995,18 @@ for group_name in sorted_groups:
                             from ml.nn_recommender import recommend_nn_config
                             _profile = st.session_state.get("dataset_profile")
                             _target_prof = _profile.target_profile if _profile else None
-                            _data_suff = _profile.data_sufficiency if _profile else None
                             _p_n = _profile.p_n_ratio if _profile else (X_train.shape[1] / max(1, len(X_train)))
+                            # `MISC-105`: with no EDA profile this passed None,
+                            # and the recommender's abundance tests are all
+                            # False for None — a 50k-row run got the small-data
+                            # scheduler. The sizes are in hand here, so the
+                            # level is computed rather than left unstated.
+                            if _profile is not None:
+                                _data_suff = _profile.data_sufficiency
+                            else:
+                                from ml.dataset_profile import assess_data_sufficiency
+                                _data_suff, _ = assess_data_sufficiency(
+                                    len(X_train), X_train.shape[1], task_type_final)
                             _n_eng = len(st.session_state.get("engineered_feature_names", []))
                             _rec = recommend_nn_config(
                                 n_samples=len(X_train),

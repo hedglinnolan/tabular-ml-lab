@@ -703,6 +703,53 @@ def _build_manuscript_table1(
     return table1_df, table1_metadata, table1_config
 
 
+def _calibration_records_for_manuscript(
+    included_models: List[str],
+) -> Dict[str, Any]:
+    """Per-model calibration artifacts for the models the manuscript includes.
+
+    `MISC-102`. Session state is the only source: nothing writes calibration
+    into workflow provenance, so there is no provenance record to prefer here
+    the way `external_validation_record` prefers one. Models the author excluded
+    from the report are dropped HERE rather than in the composer — a manuscript
+    may not carry a calibration number for a model it does not report.
+    """
+    stored = st.session_state.get('calibration_results') or {}
+    if not isinstance(stored, dict):
+        return {}
+    if not included_models:
+        return {}
+    included = set(included_models)
+    return {k: v for k, v in stored.items() if k in included}
+
+
+def _calibration_metrics_as_dict(cal: Any) -> Dict[str, float]:
+    """The finite scalar calibration metrics on a record, whatever its type.
+
+    Page 06 stores `CalibrationResult` dataclasses; a restored session may hand
+    back plain dicts. Both must reach the manuscript, and neither may contribute
+    an array or a name to a numeric table.
+    """
+    if cal is None:
+        return {}
+    if not isinstance(cal, dict):
+        import dataclasses
+        if dataclasses.is_dataclass(cal):
+            cal = dataclasses.asdict(cal)
+        else:
+            cal = vars(cal) if hasattr(cal, '__dict__') else {}
+    out: Dict[str, float] = {}
+    for key, value in cal.items():
+        if key in ('model_name', 'model', 'task_type', 'timestamp'):
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float, np.floating, np.integer)):
+            continue
+        if not np.isfinite(float(value)):
+            continue
+        out[key] = float(value)
+    return out
+
+
 def _build_methods_section_for_export(
     manuscript_context: Dict[str, Any],
 ) -> str:
@@ -934,6 +981,10 @@ def _build_methods_section_for_export(
         bootstrap_results=selected_bootstrap,
         best_model_name=manuscript_context.get('manuscript_primary_model'),
         explainability_methods=manuscript_context.get('explainability_methods'),
+        # `MISC-102`: the composer has carried a Calibration block since it was
+        # written; nothing ever passed it the results, so the block was dead and
+        # calibration numbers computed on page 06 never reached the draft.
+        calibration_results=_calibration_records_for_manuscript(selected_for_report),
         random_seed=st.session_state.get("random_seed", 42),
         manuscript_context=manuscript_context,
         model_hyperparameters=model_hyperparameters,
@@ -970,17 +1021,90 @@ def _build_explainability_summary_for_export(manuscript_context: Dict[str, Any])
     if calibration_results:
         best_model_key = manuscript_context.get('manuscript_primary_model') or manuscript_context.get('best_model_by_metric')
         if best_model_key and best_model_key in calibration_results:
-            cal_data = calibration_results[best_model_key]
-            if not isinstance(cal_data, dict):
-                # Page 06 stores CalibrationResult dataclasses
-                import dataclasses
-                cal_data = dataclasses.asdict(cal_data) if dataclasses.is_dataclass(cal_data) else vars(cal_data)
-            explainability_summary['calibration_metrics'] = {
-                k: v for k, v in cal_data.items()
-                if isinstance(v, (int, float)) and k not in ('model', 'timestamp')
-            }
+            explainability_summary['calibration_metrics'] = _calibration_metrics_as_dict(
+                calibration_results[best_model_key])
+        # `MISC-102`: page 06 calibrates every eligible model, and the LaTeX
+        # export reported the primary one only — a Calibration subsection that
+        # names one model while the Results table names five reads as a claim
+        # about all of them. Restricted to the included models for the same
+        # reason the methods composer's records are.
+        included = set(manuscript_context.get('included_models') or [])
+        by_model = {
+            name: _calibration_metrics_as_dict(cal)
+            for name, cal in calibration_results.items()
+            if not included or name in included
+        }
+        by_model = {name: m for name, m in by_model.items() if m}
+        if by_model:
+            explainability_summary['calibration_by_model'] = by_model
 
     return explainability_summary or None
+
+
+def _seed_stability_records() -> List[Dict[str, Any]]:
+    """What page 08 logged about the seed sweep: one record per model.
+
+    `MISC-104`. The frame under `sensitivity_seed_results` holds every re-seeded
+    model in one table — the primary model keeps the bare metric column and the
+    others carry a `" [key]"` suffix (pages/08:37) — and the column names are
+    the only record of which model a column belongs to once it is stored. The
+    log says which model was primary and which metric was swept; without it the
+    export cannot name either, and an unnamed number is what this finding is
+    about.
+    """
+    log = _report_ledger.get_methodology_log() or st.session_state.get('methodology_log', [])
+    records = []
+    for entry in log:
+        if entry.get('step') != 'Sensitivity Analysis':
+            continue
+        if 'seed' not in str(entry.get('action', '')).lower():
+            continue
+        details = entry.get('details', {}) or {}
+        if details.get('model'):
+            records.append(details)
+    return records
+
+
+def _seed_stability_by_model(
+    df_seeds: pd.DataFrame,
+    metric: str,
+    primary_model: str,
+) -> List[Dict[str, Any]]:
+    """Per-model spread for `metric`, read back out of the combined frame.
+
+    The same decomposition page 08 renders on screen (`_seed_summary_table`),
+    rebuilt here because a page module cannot be imported. A model whose column
+    holds fewer than two finite values is omitted: a coefficient of variation
+    over one seed is not a spread.
+    """
+    import re as _re
+
+    pattern = _re.compile(rf"^{_re.escape(metric)} \[(.+)\]$")
+    columns: List[Tuple[str, str]] = []
+    if metric in df_seeds.columns:
+        columns.append((primary_model, metric))
+    for col in df_seeds.columns:
+        matched = pattern.match(str(col))
+        if matched:
+            columns.append((matched.group(1), str(col)))
+
+    rows = []
+    for model_key, col in columns:
+        values = pd.to_numeric(df_seeds[col], errors='coerce').dropna()
+        if len(values) < 2:
+            continue
+        mean = float(values.mean())
+        rows.append({
+            'model': model_key,
+            'metric': metric,
+            'n_seeds': int(len(values)),
+            'mean': mean,
+            'sd': float(values.std()),
+            'min': float(values.min()),
+            'max': float(values.max()),
+            'cv_percent': (float(values.std()) / abs(mean) * 100) if mean != 0 else 0.0,
+        })
+    return rows
 
 
 def _build_sensitivity_summary_for_export() -> Optional[Dict[str, Any]]:
@@ -988,15 +1112,38 @@ def _build_sensitivity_summary_for_export() -> Optional[Dict[str, Any]]:
     sensitivity_summary: Dict[str, Any] = {}
     seed_sensitivity = st.session_state.get('sensitivity_seed_results')
     if seed_sensitivity is not None and not seed_sensitivity.empty:
+        # `MISC-104`. The headline number used to be whichever metric column
+        # sorted first, attributed to no model at all — page 08 sweeps every
+        # eligible model, so "a coefficient of variation of 3.1% across seeds"
+        # named neither the model it describes nor the metric it varies. The
+        # log's LAST seed record is the primary model (pages/08 writes the
+        # primary last, deliberately).
+        records = _seed_stability_records()
+        primary_model = str(records[-1].get('model')) if records else ''
+        metric = str(records[-1].get('metric') or '') if records else ''
         metric_cols = [c for c in seed_sensitivity.columns if c not in ('seed', '_error')]
-        if metric_cols:
-            metric_vals = seed_sensitivity[metric_cols[0]].dropna()
+        if metric not in seed_sensitivity.columns:
+            # No usable record: fall back to the first metric column and stay
+            # silent about whose it is rather than guessing a model.
+            metric = metric_cols[0] if metric_cols else ''
+            primary_model = ''
+        if metric:
+            metric_vals = pd.to_numeric(seed_sensitivity[metric], errors='coerce').dropna()
             if len(metric_vals) > 1:
                 cv_pct = (metric_vals.std() / metric_vals.mean() * 100) if metric_vals.mean() != 0 else 0
-                sensitivity_summary['seed_stability'] = {
+                seed_stability: Dict[str, Any] = {
                     'cv_percent': cv_pct,
                     'range': f"{metric_vals.min():.4f} to {metric_vals.max():.4f}",
+                    'metric': metric,
+                    'n_seeds': int(len(metric_vals)),
                 }
+                if primary_model:
+                    seed_stability['model'] = primary_model
+                    by_model = _seed_stability_by_model(
+                        seed_sensitivity, metric, primary_model)
+                    if len(by_model) > 1:
+                        seed_stability['by_model'] = by_model
+                sensitivity_summary['seed_stability'] = seed_stability
 
     feature_dropout = st.session_state.get('sensitivity_feature_dropout')
     if feature_dropout is not None:
@@ -2002,7 +2149,10 @@ from ml.manuscript_validator import validate_manuscript_bundle
 # Auto-generate LaTeX — cache with invalidation when inputs change
 _latex_cache_key = (paper_title, authors, affiliation,
                     tuple(selected_for_report), tuple(selected_explain),
-                    include_results, best_model)
+                    include_results, best_model,
+                    # The footnotes are part of the rendered table now, so a
+                    # changed custom test must rebuild the LaTeX.
+                    tuple(st.session_state.get('table1_custom_test_footnotes') or ()))
 if st.session_state.get("_latex_cache_key") != _latex_cache_key or not st.session_state.get("latex_report"):
     st.session_state["latex_report"] = _generate_latex(
         title=paper_title,
@@ -2010,6 +2160,12 @@ if st.session_state.get("_latex_cache_key") != _latex_cache_key or not st.sessio
         affiliation=affiliation,
         methods_section=_cached_bundle['methods_text'],
         table1_df=_cached_bundle['table1_df_local'],
+        # `MISC-104`: `_prepare_table1_for_latex_export` appends `^N` markers to
+        # the row labels and stores the notes they point at. The notes never
+        # reached the export, so the manuscript carried superscripts referring
+        # to nothing. Carrying the notes is the honest direction — stripping the
+        # markers would delete the disclosure that a custom test was applied.
+        table1_footnotes=st.session_state.get('table1_custom_test_footnotes'),
         model_results=_cached_bundle['manuscript_context'].get('selected_model_results'),
         bootstrap_results=_cached_bundle['bootstrap_results'],
         task_type=data_config.task_type or "regression",

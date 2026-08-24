@@ -584,14 +584,67 @@ class TestContract010TheSelectionCriterionMatchesTheTask:
         assert "Accuracy" in criterion_phrase("Accuracy")
 
 
-# ── paper alignment · cross-validation is routine, so it defaults on ─────
+# ── MISC-101 · cross-validation is routine, so it defaults on ────────────
 
-def test_cross_validation_is_enabled_by_default():
-    assert "st.session_state.get('use_cv', True)" in PAGE_06, (
-        "the tutorial describes cross-validation as the routine way to read a "
-        "model's spread; the checkbox defaulted off")
-    assert "Cross-validation skipped for Neural Network" in PAGE_06, (
-        "the NN exclusion is a stated skip, not a silent one")
+class TestMisc101CrossValidationDefaultsOnAtRuntime:
+    """The predecessor of this class grepped PAGE_06 for the literal
+    `get('use_cv', True)`. That string was present and the checkbox still
+    rendered unchecked, because `init_session_state` seeds the key first and the
+    page's fallback never runs. Every assertion here reads the live value."""
+
+    @pytest.fixture
+    def session(self):
+        import streamlit as st
+        st.session_state.clear()
+        yield st.session_state
+        st.session_state.clear()
+
+    def test_the_seeded_default_is_on(self, session):
+        from utils.session_state import init_session_state
+
+        init_session_state()
+
+        assert session["use_cv"] is True, (
+            "the seed runs before the page's get('use_cv', True), so the seed "
+            "IS the default the checkbox renders")
+
+    def test_a_new_dataset_returns_to_the_default(self, session):
+        from utils.session_state import (init_session_state,
+                                         reset_data_dependent_state)
+
+        init_session_state()
+        session["use_cv"] = False
+        reset_data_dependent_state()
+
+        assert session["use_cv"] is True, (
+            "the re-seed on a new dataset must land on the shipped default")
+
+    def test_the_checkbox_renders_checked(self):
+        """The rendered widget, not the value behind it."""
+        pytest.importorskip("streamlit.testing.v1")
+        from sklearn.impute import SimpleImputer
+        from sklearn.pipeline import Pipeline
+        from streamlit.testing.v1 import AppTest
+        from tests.integration.conftest import (build_test_dataframe,
+                                                inject_data_state)
+
+        at = AppTest.from_file(str(REPO / "pages" / "06_Train_and_Compare.py"),
+                               default_timeout=60)
+        inject_data_state(at, build_test_dataframe())
+        # The page stops above the checkbox without a built pipeline.
+        at.session_state["preprocessing_pipelines_by_model"] = {
+            "ridge": Pipeline([("imp", SimpleImputer())])}
+        at.run()
+
+        boxes = [c for c in at.checkbox if c.key == "train_use_cv"]
+        assert boxes, "the Enable Cross-Validation checkbox did not render"
+        assert boxes[0].value is True, (
+            "the checkbox a user sees on arrival is the default, whatever the "
+            "fallback in the source says")
+
+    def test_the_neural_network_exclusion_is_stated(self):
+        assert "Cross-validation skipped for Neural Network" in PAGE_06, (
+            "the NN exclusion is a stated skip, not a silent one")
 
 
 # ── MISC-095 · torch is optional ─────────────────────────────────────────

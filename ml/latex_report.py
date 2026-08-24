@@ -5,6 +5,7 @@ Generates a complete LaTeX manuscript template populated with actual results
 from the modeling workflow. Ready to compile with pdflatex.
 """
 import logging
+import math
 import os
 import re
 import shutil
@@ -193,6 +194,52 @@ def _format_abstract_predictor_sentence(feature_counts: Dict[str, Any], feature_
             f"{selected_count} predictors for final modeling."
         )
     return f"The final modeling set contained {selected_count or 'N'} predictors."
+
+
+_CALIBRATION_METRIC_LABELS = (
+    ('brier_score', 'Brier score', 4),
+    ('ece', 'expected calibration error', 4),
+    ('mce', 'maximum calibration error', 4),
+    ('c_statistic', 'c-statistic', 3),
+    ('weak_slope', 'weak calibration slope', 3),
+    ('weak_intercept', 'weak calibration intercept', 3),
+    ('calibration_slope', 'calibration slope', 3),
+    ('calibration_intercept', 'calibration intercept', 3),
+    ('calibration_r2', r'calibration $R^2$', 3),
+)
+
+
+def _calibration_prose_by_model(
+    calibration_by_model: Optional[Dict[str, Dict[str, float]]],
+) -> List[str]:
+    """One Calibration sentence per model that has computed artifacts.
+
+    `MISC-102`. Only the metrics present on a record are named — the
+    classification and regression records carry different quantities, and the
+    weak-calibration pair keeps its own name so it is not read as the
+    observed-on-predicted regression slope.
+    """
+    if not calibration_by_model:
+        return []
+    lines: List[str] = []
+    for model_key, metrics in calibration_by_model.items():
+        if not isinstance(metrics, dict):
+            continue
+        parts = []
+        for field_name, label, digits in _CALIBRATION_METRIC_LABELS:
+            value = metrics.get(field_name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            if not math.isfinite(float(value)):
+                continue
+            parts.append(f"{label} = {float(value):.{digits}f}")
+        if not parts:
+            continue
+        lines.append(
+            f"For \\textbf{{{_escape_latex(_model_display_name(model_key))}}}, "
+            f"{'; '.join(parts)}."
+        )
+    return lines
 
 
 def _model_display_name(key: Optional[str]) -> str:
@@ -617,8 +664,61 @@ def _metrics_to_latex_table(
     return "\n".join(lines)
 
 
-def _table1_to_latex(table1_df: pd.DataFrame) -> str:
-    """Convert Table 1 DataFrame to LaTeX with width containment."""
+def _seed_stability_table_latex(by_model: List[Dict[str, Any]]) -> str:
+    """The per-model seed spread page 08 shows on screen, as a LaTeX table.
+
+    `MISC-104`. Page 08 sweeps every eligible model and renders mean / SD /
+    range / CV per model; the export carried one model's numbers and named no
+    model. Emitted only when more than one model was swept — for a single model
+    the sentence above already says it.
+    """
+    rows = [row for row in (by_model or []) if isinstance(row, dict)]
+    if len(rows) < 2:
+        return ""
+
+    metric = str(rows[0].get('metric') or 'the primary metric')
+    lines = [
+        r"\begin{table}[htbp]",
+        r"\begin{spacing}{1.0}",
+        r"\centering",
+        r"\caption{Across-seed " + _escape_latex(metric)
+        + " by model (fresh split per seed).}",
+        r"\label{tab:seed-stability}",
+        r"\begin{tabular}{lrrrrr}",
+        r"\toprule",
+        r"Model & Seeds & Mean & SD & Range & CV (\%) \\",
+        r"\midrule",
+    ]
+    for row in rows:
+        lines.append(
+            " & ".join([
+                _escape_latex(_model_display_name(str(row.get('model') or ''))),
+                str(int(row.get('n_seeds') or 0)),
+                f"{float(row.get('mean', 0.0)):.4f}",
+                f"{float(row.get('sd', 0.0)):.4f}",
+                f"{float(row.get('min', 0.0)):.4f}--{float(row.get('max', 0.0)):.4f}",
+                f"{float(row.get('cv_percent', 0.0)):.1f}",
+            ]) + r" \\"
+        )
+    lines.extend([
+        r"\bottomrule",
+        r"\end{tabular}",
+        r"\end{spacing}",
+        r"\end{table}",
+    ])
+    return "\n".join(lines)
+
+
+def _table1_to_latex(
+    table1_df: pd.DataFrame,
+    footnotes: Optional[List[str]] = None,
+) -> str:
+    """Convert Table 1 DataFrame to LaTeX with width containment.
+
+    `MISC-104`: `footnotes` are the custom-test notes pages/10 writes when it
+    appends `^N` markers to row labels. Without them the markers were dangling
+    superscripts — a reference to a note the manuscript did not contain.
+    """
     if table1_df is None or table1_df.empty:
         return ""
 
@@ -660,6 +760,15 @@ def _table1_to_latex(table1_df: pd.DataFrame) -> str:
     lines.append(r"\bottomrule")
     lines.append(r"\end{tabular}")
     lines.append(r"\end{adjustbox}")
+
+    clean_footnotes = [str(note).strip() for note in (footnotes or []) if str(note).strip()]
+    if clean_footnotes:
+        lines.append(r"\begin{flushleft}")
+        lines.append(r"\footnotesize")
+        for note in clean_footnotes:
+            lines.append(_escape_latex(note) + r" \\")
+        lines.append(r"\end{flushleft}")
+
     lines.append(r"\end{spacing}")
     lines.append(r"\end{table}")
 
@@ -673,6 +782,7 @@ def generate_latex_report(
     abstract: str = "[ABSTRACT PLACEHOLDER]",
     methods_section: str = "",
     table1_df: Optional[pd.DataFrame] = None,
+    table1_footnotes: Optional[List[str]] = None,
     model_results: Optional[Dict[str, Dict]] = None,
     bootstrap_results: Optional[Dict] = None,
     task_type: str = "regression",
@@ -848,7 +958,7 @@ def generate_latex_report(
 
     # Table 1
     if table1_df is not None and not table1_df.empty:
-        sections.append(_table1_to_latex(table1_df))
+        sections.append(_table1_to_latex(table1_df, table1_footnotes))
     else:
         sections.append(_styled_placeholder("[INSERT TABLE 1: Characteristics of the study population]"))
 
@@ -923,10 +1033,21 @@ def generate_latex_report(
         sections.append(_styled_placeholder(r"[INSERT TABLE: Model performance metrics with 95\% CIs]"))
 
     # Calibration
+    calibration_prose = _calibration_prose_by_model(
+        (explainability_summary or {}).get('calibration_by_model'))
     if calibration_text:
         sections.append(r"""
 \subsection{Calibration}""")
         sections.append(_escape_latex(calibration_text))
+    elif calibration_prose:
+        # `MISC-102`: the placeholder used to stand even when page 06 had
+        # calibrated every model, so the export asked its own author to supply
+        # numbers the session already held. The placeholder still stands when
+        # nothing was computed — that is a real absence.
+        sections.append(r"""
+\subsection{Calibration}""")
+        sections.extend(calibration_prose)
+        sections.append("")
     else:
         if task_type == "regression":
             sections.append(r"""
@@ -963,7 +1084,7 @@ def generate_latex_report(
         
         # Calibration metrics (if not already reported above)
         calibration_metrics = explainability_summary.get('calibration_metrics')
-        if calibration_metrics and not calibration_text:
+        if calibration_metrics and not calibration_text and not calibration_prose:
             sections.append(r"\paragraph{Calibration Metrics}")
             for metric_name, metric_val in calibration_metrics.items():
                 sections.append(f"{_escape_latex(metric_name)}: {metric_val:.4f}. ")
@@ -979,11 +1100,32 @@ def generate_latex_report(
         if seed_stability:
             cv_pct = seed_stability.get('cv_percent')
             metric_range = seed_stability.get('range')
+            # `MISC-104`: whose coefficient of variation, of what. Page 08
+            # re-seeds every eligible model; a bare percentage in a manuscript
+            # that reports five models reads as a statement about all of them.
+            # The model and metric are named when the export knows them, and
+            # the sentence stays as it was when it does not.
+            seed_model = seed_stability.get('model')
+            seed_metric = seed_stability.get('metric')
+            subject = "Random seed sensitivity analysis"
+            if seed_model:
+                subject += f" of \\textbf{{{_escape_latex(_model_display_name(seed_model))}}}"
+            if seed_metric:
+                subject += f" ({_escape_latex(str(seed_metric))})"
             if cv_pct is not None:
-                sections.append(f"Random seed sensitivity analysis showed a coefficient of variation of {cv_pct:.1f}\\% across seeds.")
+                n_seeds = seed_stability.get('n_seeds')
+                seeds_clause = f" across {n_seeds} seeds" if n_seeds else " across seeds"
+                sections.append(
+                    f"{subject} showed a coefficient of variation of "
+                    f"{cv_pct:.1f}\\%{seeds_clause}.")
             if metric_range:
                 sections.append(f"Performance range: {metric_range}.")
             sections.append("")
+
+            by_model = seed_stability.get('by_model')
+            if by_model:
+                sections.append(_seed_stability_table_latex(by_model))
+                sections.append("")
         
         # Feature dropout
         if sensitivity_summary.get('feature_dropout_conducted'):

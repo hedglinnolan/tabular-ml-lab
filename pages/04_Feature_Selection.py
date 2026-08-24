@@ -310,6 +310,13 @@ if st.button("🔍 Run Feature Selection", type="primary"):
     if run_stability:
         methods_to_run.append("stability")
 
+    # `MISC-104`. Which methods COMPLETED, in the same vocabulary as
+    # `methods_to_run`: every branch below catches its own failure and warns,
+    # so a method that raised leaves `methods_to_run` unchanged and the
+    # manuscript could not tell the two lists apart.
+    methods_completed = []
+    _n_results_done = 0
+
     for i, method in enumerate(methods_to_run):
         pct = (i + 1) / len(methods_to_run)
 
@@ -362,6 +369,10 @@ if st.button("🔍 Run Feature Selection", type="primary"):
             except Exception as e:
                 st.warning(f"⚠️ Stability selection failed: {e}")
 
+        if len(results) > _n_results_done:
+            methods_completed.append(method)
+        _n_results_done = len(results)
+
         progress.progress(pct)
 
     status.text("Done!")
@@ -382,6 +393,12 @@ if st.button("🔍 Run Feature Selection", type="primary"):
         action=f"Selected {len(consensus)} features using {methods_used}",
         details={
             'methods': methods_to_run,
+            # `MISC-104`. REQUESTED and COMPLETED are different lists whenever a
+            # method raises, and the consensus threshold is computed from the
+            # COMPLETED ones (`len(results)` above). The Methods sentence said
+            # "at least T of N methods" with T from one universe and N from the
+            # other; it can only be written honestly if both are recorded.
+            'methods_completed': list(methods_completed),
             'n_features_before': len(numeric_features),
             'n_features_after': len(consensus),
             'selected': list(consensus),
@@ -597,7 +614,14 @@ if results:
                 + ". Proceed to Preprocessing."
             )
     else:
-        st.warning("No consensus features found. Try lowering the threshold or running more methods.")
+        # `MISC-105`: the threshold has a floor of 2 (agreement means two methods
+        # agreed) and no control lowers it, so "try lowering the threshold" named
+        # an action the page does not offer.
+        st.warning(
+            "No consensus features found — no feature was selected by at least "
+            "two of the methods that ran. Run another selection method above, or "
+            "pick features yourself under **Manual feature selection** below."
+        )
 
     # Option to manually select
     with st.expander("🔧 Manual feature selection", expanded=False):

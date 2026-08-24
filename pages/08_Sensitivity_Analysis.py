@@ -541,15 +541,21 @@ with _sens_tabs[0]:
 with _sens_tabs[1]:
     st.header("🔀 Feature Dropout")
     st.markdown(
-        "Remove one feature at a time and retrain. Features whose removal causes a large "
-        "performance drop are genuinely important. Features whose removal *improves* performance "
-        "may be adding noise. **This complements SHAP/permutation importance with a causal flavor.**"
+        "Neutralize one feature at a time — hold it at its training median or mode, so the "
+        "column stays but its variation is gone — and retrain. Features whose neutralization "
+        "causes a large performance drop are genuinely important. Features whose neutralization "
+        "*improves* performance may be adding noise. "
+        "**This complements SHAP/permutation importance with a causal flavor.**"
     )
 
     max_features = st.slider(
         "Max features to test",
         1, min(len(feature_names), 30), min(len(feature_names), 15),
-        help="Testing all features can be slow. Start with the top N by importance.",
+        # `MISC-105`: the run takes `feature_names[:max_features]` — column
+        # order. The help promised the top N by importance, which is a different
+        # set and a stronger claim than the slider can keep.
+        help="Testing every feature can be slow. This tests the first N features in "
+             "column order, not the N most important.",
     )
 
     if st.button("▶️ Run Feature Dropout", type="primary", key="run_dropout"):
@@ -689,19 +695,19 @@ with _sens_tabs[1]:
 
             st.metric(f"Baseline {primary_metric}", f"{baseline_score:.4f}")
 
-            # Color code: features whose removal hurts (important) vs helps (noisy)
+            # Color code: features whose neutralization hurts (important) vs helps (noisy)
             important = df_dropout[df_dropout["impact"] > 0.001].head(10)
             noisy = df_dropout[df_dropout["impact"] < -0.001]
 
             if not important.empty:
-                st.markdown("**Most impactful features** (removing them hurts performance):")
+                st.markdown("**Most impactful features** (neutralizing them hurts performance):")
                 chart_data = important.set_index("feature")[["impact"]]
                 st.bar_chart(chart_data)
 
             if not noisy.empty:
-                st.markdown("**Potentially noisy features** (removing them *improves* performance):")
+                st.markdown("**Potentially noisy features** (neutralizing them *improves* performance):")
                 for _, row in noisy.iterrows():
-                    st.markdown(f"- `{row['feature']}`: removing it improved {primary_metric} by {abs(row['impact']):.4f}")
+                    st.markdown(f"- `{row['feature']}`: neutralizing it improved {primary_metric} by {abs(row['impact']):.4f}")
 
             with st.expander("Full dropout results"):
                 table(df_dropout[["feature", "score_without", "impact"]], key="feature_dropout")

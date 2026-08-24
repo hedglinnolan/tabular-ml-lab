@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**494 of 1016 closed.**
+**499 of 1022 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 442 |
+| `OPEN` | 443 |
 | `PARTIAL` | 80 |
-| `FIXED` | 484 |
+| `FIXED` | 489 |
 | `NOT-A-DEFECT` | 10 |
 
 ---
 
-## OPEN — 442
+## OPEN — 443
 
 
 ### Guided-door drive feedback — 76
@@ -457,7 +457,7 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` · **re-verified:** `utils/insight_ledger.py:1190 (text = manuscript_text or _clean_for_manuscript(finding)) and :388-445 (the…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` · **re-verified:** `(1) utils/combine_ui.py:262-280 filters only 'low' and hands the rest to a selectbox defaulting to index 0…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Other — 21
+### Other — 22
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -482,6 +482,7 @@ Nothing is closed without a regression test named after it.
 | `MISC-098` | low | The routing remeasure script stamps --measured-at with a bare commit even when the working tree is dirty: l66's f507ce2 stamp was optimistic (tree dirty, unamendable per the measurement rule… | `scripts/remeasure_routing_baseline.py; docs/turbotab/VALUE_CHECK_ADJUDICATION.md (L67 provenance section)` |  |
 | `MISC-099` | low | pages/01_Upload_and_Audit.py:1420-1440's own exploratory_mode claim is dead code since utils/theme.apply_pending_exploratory_mode claims first (identical effects); owner may delete | `pages/01_Upload_and_Audit.py:1420-1440; utils/theme.py (apply_pending_exploratory_mode)` |  |
 | `MISC-100` | low | engineered_feature_transforms is written on FE save and cleared by nobody - the clear_feature_engineering reset branch drops engineering_log and engineered_feature_names but leaves the map built from… | `pages/03_Feature_Engineering.py (FE save); utils/session_state.py (reset branch)` |  |
+| `MISC-106` | low | Calibration is not recorded in workflow provenance, so the NarrativeEngine (primary) draft path still carries no calibration prose - MISC-102 fixed the fallback composer and the LaTeX export only. A… | `utils/workflow_provenance.py (no calibration section); ml/narrative_engine.py; ml/publication.py…` |  |
 
 ### Models / training / eval — 18
 
@@ -704,7 +705,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 484
+## FIXED — 489
 
 
 ### Guided-door drive feedback — 163
@@ -1065,7 +1066,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-097` | low | A guard's precondition depended on which file the last edit touched, so correct code produced a red in a two-hour sweep | `turbotab/test_the_app_says_which_build_answered.py::test_a_page_newer_than_the_engine_is_reported…` | **test:** `turbotab/test_the_app_says_which_build_answered.py::test_a_page_newer_than_the_engine_is_reported` — Fixed at L62-E1. |
 | `TEST-110` | low | The pre-commit hook's can-the-gates-run probe enumerates a SUBSET of what the gates import, so an interpreter that passes the probe can still produce the false red the probe exists to prevent | `.githooks/lib.sh gates_can_run at :131-147 with the module tuple at :136 (NOT :90 -- ac44be8, this loop's own…` · **re-verified:** `.githooks/lib.sh:86-93 with the module tuple at :90; docs/turbotab/tools/evidence.py:302; turbotab/api.py:29…` | **test:** `tests/test_the_pre_commit_hook_can_run_where_it_is_run.py::test_the_probe_covers_every_package_the_gates_import_directly` — FOUND WHILE DRIVING TEST-108's REPAIR AT THE… |
 
-### Other — 23
+### Other — 28
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -1084,6 +1085,7 @@ Nothing is closed without a regression test named after it.
 | `MISC-026` | high | A test that writes a path git tracks -- the class behind TEST-098's four instances. Every one of them RESTORES, so `git status` is clean after the run and `git diff` is empty; the tree never drifts… | `Four instances at 98d410f: a subprocess rewriting 12 tracked files (1,461,182 bytes) in 0.421s; a research…` | **test:** `tests/test_no_test_writes_a_path_git_tracks.py::test_no_tracked_test_writes_a_path_git_tracks` — THE DETECTOR IS VALIDATED AGAINST THE FOUR REAL PRE-FIX BODIES, not… |
 | `MISC-029` | high | The only pass/fail set in the app that feeds a RENDERED compliance count is the manuscript validator's 13 checks -- and nobody has ever asked whether any of them reads a constant | `ml/manuscript_validator.py, 426 lines, 13 checks.append sites with 13 matching status=PASS-if expressions…` | **test:** `turbotab/test_the_checklist_count_says_what_it_counted.py::test_the_header_a_person_sees_counts_only_what_was_scored` — FILED AT THE L64 RECONNAISSANCE, AND IT IS WHERE… |
 | `MISC-031` | high | The manuscript validator's split-counts check is PINNED AT FAIL on the no-run branch, so an unfitted project is shown a validation failure that describes no real defect and that no user edit can ever… | `turbotab/manuscript.py:240-245 and :267-269; ml/manuscript_validator.py:186-193; turbotab/api.py:2773 and…` | **test:** `turbotab/test_the_split_reconciles_against_something.py::test_the_lockbox_branch_is_no_longer_pinned_at_failure` — FOUND AT THE L65 RECONNAISSANCE BY AN ADVERSARIAL… |
+| `MISC-101` | high | The CV-default-on fix is defeated at runtime: init_session_state seeds use_cv False (utils/session_state.py:180) before pages/06:490 reads get('use_cv', True), so the True fallback is unreachable and… | `utils/session_state.py:180,698; pages/06_Train_and_Compare.py:490; tests/test_paper_risk_mlcore.py:589-594` | **test:** `tests/test_paper_risk_mlcore.py::TestMisc101CrossValidationDefaultsOnAtRuntime` — use_cv seeded True at init and re-seeded True on new data; pin is a runtime AppTest… |
 | `AUDIT-004` | medium | The quick baseline drops every row with any missing feature and reports no N cascade, so the number the user reads is about a subset nobody named | `ml/eda_actions.py:1209-1211; research/NUTRITION_PACK.md section 06 anti-patterns` | **test:** `tests/test_the_manuscript_does_not_assert_an_uncorrected_count.py::test_the_quick_baseline_reports_what_it_dropped` — FIXED at L30-B, alongside AUDIT-001 because a… |
 | `AUDIT-006` | medium | The PCA biplot sets no aspect constraint, so PC2 is stretched to fill the panel and separation is visually exaggerated | `ml/macro_shape.py plot_pca_biplot; research/GENOMICS_PACK.md section 11; research/METABOLOMICS_PACK.md…` | **test:** `tests/test_the_biplot_does_not_stretch_the_second_component.py::test_the_biplot_constrains_pc2_to_the_scale_of_pc1` — L53-C, fanned out to four chunks PARTITIONED BY… |
 | `AUDIT-007` | medium | Median imputation is the silent default and nothing states what it costs, which the clinical pack marks SETTLED as bad | `ml/pipeline.py:213; pages/05_Preprocess.py:1082; research/CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2…` | **test:** `tests/integration/test_classic_states_the_cost_of_median_imputation.py::test_the_smart_defaults_path_states_what_its_median_fill_costs` — L53-C, fanned out to four… |
@@ -1092,6 +1094,10 @@ Nothing is closed without a regression test named after it.
 | `MISC-027` | medium | A count filtered to rows with an outcome, printed under the label "training rows" -- the number is right and its name describes a strictly larger population. DRIVE-050's class, and two of the five… | `Five sites at 98d410f: instability.py:157 (the cluster-bootstrap sentence), instability.py:351 (`scored_on`…` | **test:** `turbotab/test_a_count_is_labeled_with_the_population_it_counts.py::test_a_publication_caption_names_the_population_it_counted` — FILED AS A CLASS BECAUSE THE INSTANCE… |
 | `MISC-028` | medium | The manuscript's split reconciliation cannot fail: it asserts train_n + val_n + test_n == analysis_total while analysis_total is DEFINED as n_train + n_test and val_n is pinned to 0 | `turbotab/test_the_manuscript_is_checked.py's split assertion against turbotab/manuscript.py's counts builder…` | **test:** `turbotab/test_the_split_reconciles_against_something.py::test_the_reconciliation_fails_when_the_fit_and_the_seal_disagree` — DRIVE-051's CLASS ONE SURFACE OVER, AND IT… |
 | `MISC-095` | medium | models/nn_whuber.py imports torch unguarded at module top, so the module cannot import in the deliberately-torchless environment - the one standing red in… | `models/nn_whuber.py:5-6; tests/test_engine_is_headless.py:143; ml/model_registry.py:25-45 (the standard…` | **test:** `tests/test_paper_risk_mlcore.py::TestMisc095TheNeuralNetworkModuleImportsWithoutTorch` — models/nn_whuber imports without torch: guarded import, _TorchModule stand-in… |
+| `MISC-102` | medium | Calibration figures export by default but calibration PROSE never reaches the manuscript: latex_report.py:936-940 still emits the placeholder, publication.py's Calibration block (:1722-1736) is dead… | `ml/latex_report.py:936-940,964-970; ml/publication.py:518,1722-1736; pages/10_Report_Export.py:906-944,970-981` | **test:** `tests/test_paper_alignment.py::TestMisc102CalibrationProseReachesTheManuscript` — Per-model calibration records pass into generate_methods_section (dead block revived… |
+| `MISC-103` | medium | Exploratory watermark fallback hole: the limitation reaches the manuscript only via NarrativeEngine; if it raises, pages/10:725-732 falls back to publication.generate_methods_section which has NO… | `pages/10_Report_Export.py:725-732; ml/publication.py (no exploratory handling); ml/manuscript_validator.py…` | **test:** `tests/test_paper_alignment.py::TestMisc103TheExploratoryLimitationSurvivesTheFallback` — EXPLORATORY_LIMITATION_SENTENCE emitted first in the fallback composer… |
+| `MISC-104` | medium | Manuscript-number defects found in reconciliation: (1) selection Methods sentence mixes universes - n_before is numeric-only, n_selected includes carried categoricals (publication.py:716-718); (2)… | `ml/publication.py:695,716-718; pages/04_Feature_Selection.py:374,384-385,571…` | **test:** `tests/test_paper_alignment.py::TestMisc104TheManuscriptNumbersNameTheirUniverse` — Selection sentence states both universes (ranked reduction + carried categoricals +… |
+| `MISC-105` | low | UI copy contradicting shipped behavior: dropout slider help promises 'top N by importance' where code takes column order, and copy says 'remove' where it neutralizes (pages/08:544,552,697); two… | `pages/08_Sensitivity_Analysis.py:544,552,697; pages/02_EDA.py:2393; ml/eda_actions.py:226-230…` | **test:** `tests/test_paper_alignment.py::TestMisc105CopyMatchesShippedBehavior` — Dropout copy says neutralize and column-order truthfully; improbability-band vocabulary in the… |
 
 ### Verified against main — 20
 

@@ -23,7 +23,7 @@ def recommend_nn_config(
     n_samples: int,
     n_features: int,
     target_profile: Optional[TargetProfile] = None,
-    data_sufficiency: DataSufficiencyLevel = DataSufficiencyLevel.ADEQUATE,
+    data_sufficiency: Optional[DataSufficiencyLevel] = DataSufficiencyLevel.ADEQUATE,
     p_n_ratio: float = 0.1,
     task_type: str = "regression",
     has_engineered_interactions: bool = False,
@@ -35,7 +35,9 @@ def recommend_nn_config(
         n_samples: Number of training samples.
         n_features: Number of input features.
         target_profile: Target variable profile from EDA (skewness, outliers, etc.).
-        data_sufficiency: Data sufficiency level from dataset profile.
+        data_sufficiency: Data sufficiency level from dataset profile. `None`
+            means the caller has no profile, NOT that the data are scarce — it
+            is derived from `n_samples`/`n_features` here (`MISC-105`).
         p_n_ratio: Feature-to-sample ratio (p/n).
         task_type: 'regression' or 'classification'.
         has_engineered_interactions: Whether interaction features were already created.
@@ -46,6 +48,18 @@ def recommend_nn_config(
     params: Dict[str, Any] = {}
     reasoning: Dict[str, str] = {}
     ratio = n_samples / max(n_features, 1)
+
+    # `MISC-105`. A `None` sufficiency is "the caller has not profiled this
+    # dataset", and every membership test below reads it as neither abundant nor
+    # scarce — so a 50,000-row study fell to `reduce_on_plateau`, the schedule
+    # meant for small data, against this module's own rule. Derived from the
+    # sizes the caller DID supply, through the same function the profile uses,
+    # so an unprofiled dataset and a profiled one of the same shape agree.
+    if data_sufficiency is None:
+        from ml.dataset_profile import assess_data_sufficiency
+
+        data_sufficiency, _ = assess_data_sufficiency(
+            n_samples, n_features, task_type)
 
     # --- Depth (num_layers) ---
     if has_engineered_interactions or n_features < 10:
