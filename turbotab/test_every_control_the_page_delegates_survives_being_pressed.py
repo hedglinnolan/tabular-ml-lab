@@ -76,8 +76,15 @@ DATA = Path(__file__).resolve().parent / "sample_data"
 #: `data-teach` — and three of those five post. One of them, `data-earmark`, is
 #: `GUIDED-161`'s own control: the guard that would have caught it could not see
 #: it.
+#: The selector list is grammar'd as `"…" ( + "…" )*` with the `+` REQUIRED
+#: between strings — JS string concatenation has no other spelling, and making
+#: it optional (`\s*\+?\s*` inside the repetition) gave two adjacent `\s*` runs
+#: exponentially many ways to split the whitespace between strings when no
+#: closing paren follows (CodeQL: inefficient regular expression). Verified
+#: against the page: both forms extract the identical attribute set.
 _DELEGATE = re.compile(
-    r"[A-Za-z_$][\w$]*\.target\.closest\(\s*((?:\"[^\"]*\"\s*\+?\s*)+)\)")
+    r"[A-Za-z_$][\w$]*\.target\.closest\(\s*"
+    r"(\"[^\"]*\"(?:\s*\+\s*\"[^\"]*\")*)\s*\)")
 
 
 def delegated_attributes(page: str) -> list:
