@@ -98,18 +98,16 @@ st.caption("This is the center of the recommended workflow: establish a credible
 render_breadcrumb("06_Train_and_Compare")
 from utils.test_lockbox import (render_lockbox_status,
                                 is_exploratory as _lb_is_exploratory,
-                                lockbox_open_count as _lb_open_count)
+                                lockbox_open_count as _lb_open_count,
+                                reopen_notice as _lb_reopen_notice)
 # "Exactly once" was a promise the page could not keep: both train buttons are
 # re-runnable and nothing counted the openings, so a second look at the sealed
 # rows was invisible (`SWEEP-008`). The count is now recorded when held-out
-# metrics are computed, and this says what it says.
+# metrics are computed, and this says what it says. The sentence itself is
+# composed in `utils/test_lockbox` beside the chip it is appended to, so the
+# two do not say the count twice (`DRIVE-069` finding 25).
 _lb_opens_before = _lb_open_count()
-render_lockbox_status(
-    "Training on this page opens the held-out test set."
-    if _lb_opens_before == 0 else
-    f"Training again re-opens the same sealed rows — they have been scored "
-    f"against {_lb_opens_before} time(s) already."
-)
+render_lockbox_status(_lb_reopen_notice(_lb_opens_before))
 render_page_navigation("06_Train_and_Compare")
 
 # Progress indicator
@@ -918,7 +916,16 @@ try:
     from ml.model_coach import model_viability as _model_viability
     _profile_tc = st.session_state.get("dataset_profile")
     if _profile_tc:
-        _viability = _model_viability(_profile_tc, probe=st.session_state.get("coach_probe_result"))
+        # The realized training size, not the profile's row count: every
+        # verdict below is a claim about how much data the model is FITTED
+        # on, and the profile counts rows with no outcome value that never
+        # reach a fit — 20,904 on the badges beside a 4,407-row training set
+        # (`DRIVE-070`).
+        _viability = _model_viability(
+            _profile_tc,
+            probe=st.session_state.get("coach_probe_result"),
+            n_train=len(X_train),
+        )
 except Exception:
     _viability = {}
 _VIAB_ICONS = {"good": "✓", "ok": "△", "poor": "✗"}

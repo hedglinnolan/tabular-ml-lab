@@ -243,8 +243,17 @@ def _get_pipeline_and_data(name):
                 if len(X_raw.columns) > 0:
                     return full_pipeline, X_raw, y_raw, X_raw
             except Exception:
-                pass
-        return estimator, X_test, y_test, X_test
+                logger.exception(
+                    "%s: held-out rows could not be re-read by label; falling "
+                    "back to the split's stored test matrix", name)
+        # THE PIPELINE STAYS ATTACHED ON EVERY PATH OUT OF THIS BRANCH.
+        # `X_test` holds RAW columns — page 06 fits on `pipeline.transform(
+        # X_test)` — and the estimator was fitted on that pipeline's OUTPUT.
+        # Returning the bare estimator here handed a one-hot-encoded model a
+        # frame still containing 'female', so every permutation and SHAP run
+        # died on the numeric cast while the page reported success
+        # (`DRIVE-065`).
+        return full_pipeline, X_test, y_test, X_test
     return estimator, X_test, y_test, X_test
 
 
@@ -514,6 +523,10 @@ with _explain_tabs[0]:
         shap_results = {}
         pdp_results = {}
         errors = []
+        # Which models the run actually reached. The banner and the provenance
+        # record below both describe outcomes per model, and `model_selection`
+        # is the request — a cancel mid-run makes the two differ.
+        models_attempted = []
     
         # Display cancel button during execution
         with cancel_container:
@@ -528,6 +541,7 @@ with _explain_tabs[0]:
                 break
         
             step_start = time.perf_counter()
+            models_attempted.append(name)
             full_pipe, X_perm, y_perm, X_raw = _get_pipeline_and_data(name)
             if full_pipe is None:
                 errors.append(f"{name}: Fitted estimator not found or not fitted. Please retrain.")
@@ -807,32 +821,92 @@ with _explain_tabs[0]:
         overall_progress.empty()
         overall_status.empty()
 
+        # ── What this run actually produced ──────────────────────────
+        # Three surfaces used to speak past the results: the errors were
+        # folded into a collapsed expander, the banner was an unconditional
+        # `st.success`, and the provenance record was written from the
+        # REQUESTED analysis list. A run where all six analyses raised
+        # therefore printed "✅ Explainability analysis complete" and ticked
+        # two TRIPOD items (`DRIVE-065`). All three now read the results.
+        _n_attempted = len(models_attempted)
+        _requested = []
+        if run_perm: _requested.append(("permutation importance", perm_results))
+        if run_shap: _requested.append(("SHAP", shap_results))
+        if run_pdp: _requested.append(("partial dependence", pdp_results))
+        _succeeded = [(label, res) for label, res in _requested if res]
+        _failed = [(label, res) for label, res in _requested if not res]
+        _n_units_ok = sum(len(res) for _, res in _requested)
+        _n_units = _n_attempted * len(_requested)
+
         if errors:
-            with st.expander(f"⚠️ {len(errors)} issue(s) during analysis", expanded=False):
+            # Expanded when nothing came out: the reason is the whole result.
+            with st.expander(f"⚠️ {len(errors)} issue(s) during analysis",
+                             expanded=not _succeeded):
                 for err in errors:
                     st.text(err)
+
+        _ok_phrase = ", ".join(
+            f"{label} ({len(res)}/{_n_attempted} models)" for label, res in _succeeded)
+        _fail_phrase = ", ".join(
+            f"{label} ({_n_attempted - len(res)}/{_n_attempted} models)"
+            for label, res in _failed)
 
         # Log methodology
         analyses_run = []
         if run_perm and perm_results: analyses_run.append("permutation_importance")
         if run_shap and shap_results: analyses_run.append("shap")
         if run_pdp and pdp_results: analyses_run.append("partial_dependence")
-        from utils.session_state import log_methodology
-        log_methodology(
-            step='Explainability',
-            action=f"Ran {', '.join(analyses_run)} on {len(model_selection)} models",
-            details={'analyses': analyses_run, 'models': list(model_selection)}
-        )
-        try:
-            from utils.workflow_provenance import get_provenance
-            get_provenance().record_explainability(
-                methods=analyses_run,
-                models=list(model_selection),
+        # The models a result exists for, not the models asked about: the
+        # ledger entry this writes is what page 10 quotes beside its TRIPOD
+        # ticks, and "Ran  on 3 models" described an empty run.
+        models_with_results = [
+            m for m in models_attempted
+            if m in perm_results or m in shap_results or m in pdp_results
+        ]
+        if analyses_run:
+            from utils.session_state import log_methodology
+            log_methodology(
+                step='Explainability',
+                action=(f"Ran {', '.join(analyses_run)} on "
+                        f"{len(models_with_results)} models"),
+                details={'analyses': analyses_run,
+                         'models': list(models_with_results),
+                         'models_requested': list(model_selection),
+                         'failed_analyses': [label for label, _ in _failed]}
             )
-        except Exception:
-            pass  # Provenance recording should never break the workflow
+            try:
+                from utils.workflow_provenance import get_provenance
+                get_provenance().record_explainability(
+                    methods=analyses_run,
+                    models=list(models_with_results),
+                )
+            except Exception:
+                pass  # Provenance recording should never break the workflow
 
-        st.success(f"✅ Explainability analysis complete ({elapsed:.1f}s)")
+        if _n_units == 0:
+            st.info(
+                "No analysis ran — the run was canceled before any model was "
+                "reached. Nothing was recorded."
+            )
+        elif not _succeeded:
+            st.error(
+                f"❌ Explainability produced no results ({elapsed:.1f}s): "
+                f"0 of {_n_units} analyses completed — {_fail_phrase} failed. "
+                f"Nothing on this page describes your models, and nothing was "
+                f"recorded for the report. Open the issues above for the reason."
+            )
+        elif _failed or _n_units_ok < _n_units:
+            st.warning(
+                f"⚠️ Explainability finished with {_n_units_ok} of {_n_units} "
+                f"analyses complete ({elapsed:.1f}s). Succeeded: {_ok_phrase}."
+                + (f" Failed: {_fail_phrase}." if _fail_phrase else "")
+                + " Only the completed analyses were recorded for the report."
+            )
+        else:
+            st.success(
+                f"✅ Explainability analysis complete ({elapsed:.1f}s) — "
+                f"{_ok_phrase}."
+            )
 
     # ════════════════════════════════════════════════════════════════
     # DISPLAY RESULTS

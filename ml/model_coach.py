@@ -1642,7 +1642,39 @@ def _nn_available() -> bool:
     return importlib.util.find_spec("torch") is not None
 
 
-def model_viability(profile: Any, probe: Any = None) -> Dict[str, Tuple[str, str]]:
+def realized_training_n() -> Optional[int]:
+    """How many rows a model fitted in this session will actually see.
+
+    `profile.n_rows` counts every row the dataset profile was computed on —
+    which includes the rows with no outcome value, and those never reach a
+    fit. On a 21,849-row upload with a 71%-missing outcome the profile said
+    20,904 while the training set was 4,407, and the badges below refused SVC
+    ("kernel training scales ~n² — slow at n=20,904") on a size the run did
+    not have (`DRIVE-070`). The split's own training matrix is the only place
+    that number is realized, so it is read from there when it exists.
+
+    Returns None outside a Streamlit session or before splits are prepared;
+    the caller then falls back to the profile.
+    """
+    try:
+        import streamlit as st
+    except ImportError:
+        return None
+    try:
+        X_train = st.session_state.get("X_train")
+    except Exception:
+        return None
+    if X_train is None:
+        return None
+    try:
+        n = int(len(X_train))
+    except TypeError:
+        return None
+    return n if n > 0 else None
+
+
+def model_viability(profile: Any, probe: Any = None,
+                    n_train: Optional[int] = None) -> Dict[str, Tuple[str, str]]:
     """One evidence-bearing verdict per registry model key.
 
     Returns {model_key: (verdict, clause)} with verdict in
@@ -1650,13 +1682,21 @@ def model_viability(profile: Any, probe: Any = None) -> Dict[str, Tuple[str, str
     page so the shape reasoning is visible at the exact moment of choice.
     The clause cites the dataset's numbers; probe evidence sharpens the
     tree/boosting clauses when available.
+
+    `n_train` is the realized training-set size. Every verdict below is a
+    claim about how much data the model will be FITTED on, so when the split
+    is drawn that is the number, not the profile's row count. Callers that
+    know it pass it; the rest get it from the session (`realized_training_n`).
     """
-    n = profile.n_rows
+    _n_realized = n_train if n_train is not None else realized_training_n()
+    n = int(_n_realized) if _n_realized else profile.n_rows
     p = profile.n_features
     tp = profile.target_profile
     task_type = tp.task_type if tp else "regression"
-    is_wide = profile.p_n_ratio > 1.0
-    is_high_dim = profile.p_n_ratio > 0.3
+    # p/n has to follow the same n, or a clause reads "p=200 > n=4,407".
+    _p_n = (p / n) if (_n_realized and n > 0) else profile.p_n_ratio
+    is_wide = _p_n > 1.0
+    is_high_dim = _p_n > 0.3
     epv = profile.events_per_variable
     minority = tp.minority_class_size if tp else None
     # `AUDIT-021` — the app's caution trigger, named as that. See `select_top_picks`.
@@ -1686,8 +1726,8 @@ def model_viability(profile: Any, probe: Any = None) -> Dict[str, Tuple[str, str
 
     if is_wide:
         v["glm"] = ("poor", f"unpenalized fit is not identifiable at p={p:,} ≥ n={n:,}")
-    elif profile.p_n_ratio > 0.5:
-        v["glm"] = ("poor", f"unpenalized estimates are unstable at p/n = {profile.p_n_ratio:.2f}")
+    elif _p_n > 0.5:
+        v["glm"] = ("poor", f"unpenalized estimates are unstable at p/n = {_p_n:.2f}")
     elif n < 30:
         v["glm"] = ("poor", f"n={n} is below a defensible minimum for unpenalized fits")
     else:

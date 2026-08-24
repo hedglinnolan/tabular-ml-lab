@@ -1718,13 +1718,41 @@ _ACTION_TO_INSIGHT_MAP = {
 DIAGNOSTIC_ONLY_ACTIONS = frozenset(_ACTION_TO_INSIGHT_MAP)
 
 
-def diagnostic_disclosure(title: str, n_open: int) -> str:
+def diagnostic_disclosure(title: str, n_open: int, n_closed: int = 0) -> str:
     """The sentence the EDA page shows after a recommended analysis has run.
 
     States the silence rather than leaving it (`AUDIT-028`): a person who has
     just watched a scan report a leakage column would otherwise reasonably read
     the green result as the problem having been handled.
+
+    `n_closed` is the CARVE-OUT (`MISC-092`, `DRIVE-069` finding 13). One of
+    these actions does answer the observations it speaks to: running VIF is the
+    answer to the pairwise-correlation clusters this page raised, and
+    `pages/02_EDA.py` resolves `eda_corr_cluster_*` on that run. The disclosure
+    kept saying "it changes nothing. No open observation is waiting on it" —
+    true about the DATA, and contradicted two pages later by a coaching panel
+    crediting VIF with resolving two observations. When something was closed,
+    the sentence says so and says what was closed.
     """
+    if n_closed > 0:
+        _cnoun = "observation" if n_closed == 1 else "observations"
+        closed_clause = (
+            f"{title} reads the data and reports — it removed, filled and "
+            f"transformed nothing in your dataset. It IS the answer to "
+            f"{n_closed} {_cnoun} this page raised, and {'that one is' if n_closed == 1 else 'those are'} "
+            f"now recorded as addressed by it."
+        )
+        if n_open <= 0:
+            return closed_clause + " Nothing else is waiting on it."
+        _onoun, _overb, _othem = (
+            ("observation", "stays", "it") if n_open == 1
+            else ("observations", "stay", "them")
+        )
+        return (
+            closed_clause +
+            f" A further {n_open} {_onoun} it speaks to {_overb} **open** in "
+            f"the report until an action on a later page addresses {_othem}."
+        )
     if n_open <= 0:
         return (
             f"{title} reads the data and reports; it changes nothing. "

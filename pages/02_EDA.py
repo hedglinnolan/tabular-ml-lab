@@ -115,6 +115,47 @@ feature_cols = (
 )
 _has_target = target_col is not None and target_col in df.columns
 
+# ── ONE counting rule for "numeric" and "categorical" (`DRIVE-069` sibling) ──
+# This page stated the split three ways on one screen — tiles "Numeric 19 ·
+# Categorical 8", the distribution filter "Numeric (25) · Categorical (2)", and
+# Macro Shape "across 25 features (computed on 19 of 25)" — because the tiles
+# read `regime` (select_dtypes(np.number): a bool column is categorical) and
+# everything else called `pd.api.types.is_numeric_dtype`, which calls bool
+# numeric. THE RULE THAT DECIDES IS THE PIPELINE'S: pages/05 splits the columns
+# with `data_processor.get_numeric_columns`, so a bool column really is one-hot
+# encoded. That rule is applied once, here, and every surface below reads these
+# two lists.
+from data_processor import get_numeric_columns as _get_numeric_columns
+
+_numeric_cols_in_df = set(_get_numeric_columns(df))
+numeric_features = [c for c in feature_cols
+                    if c in df.columns and c in _numeric_cols_in_df]
+cat_features = [c for c in feature_cols
+                if c in df.columns and c not in _numeric_cols_in_df]
+_TYPE_COUNT_RULE = (
+    "Counted the way the preprocessing pipeline splits the columns: numeric "
+    "means a numeric dtype with at least one value; everything else — text, "
+    "category, boolean, date — is categorical and gets one-hot encoded."
+)
+
+# ── The population every "observations per predictor" claim describes ─────
+# `regime.n_rows` counts every uploaded row. Rows with no outcome value are in
+# no analysis cohort — the split drops them, and page 10's Table 1 is built on
+# what survives — so a ratio computed over them reported a study that does not
+# exist: 809:1 (21,849/27) inside a draft whose own first sentence said 6,297
+# observations (`DRIVE-066`). Every sentence below that quotes this number also
+# names its denominator.
+_analysis_n = (int(df[target_col].notna().sum()) if _has_target else int(len(df)))
+_analysis_n_is_subset = _analysis_n < len(df)
+_ANALYSIS_POP_PHRASE = (
+    f"{_analysis_n:,} rows with a value for `{target_col}`"
+    if _analysis_n_is_subset else f"{_analysis_n:,} rows"
+)
+_ANALYSIS_POP_PROSE = (
+    f"{_analysis_n:,} observations with a recorded outcome"
+    if _analysis_n_is_subset else f"{_analysis_n:,} observations"
+)
+
 # ── Sealed rows, quarantined from the paths that model ───────────────────
 # `utils/test_lockbox.py`'s contract: "Every target-aware step upstream of
 # Train & Compare — feature-engineering fits, feature selection,
@@ -323,18 +364,21 @@ def _auto_generate_insights():
         _prov = None
     _cands = _cand_count(feature_cols, _prov)
     _cand_text = _cand_phrase(_cands)
-    _suff_ratio = regime.n_rows / max(_cands.screened, 1)
+    # Same denominator correction as the n/p opportunity below (`DRIVE-066`):
+    # an observation with no outcome value is not an observation this study
+    # has, so it may not raise the observations-per-candidate ratio.
+    _suff_ratio = _analysis_n / max(_cands.screened, 1)
     _suff_ratio_str = f"{_suff_ratio:.2f}:1" if _suff_ratio < 10 else f"{_suff_ratio:.0f}:1"
     if sufficiency == "critical":
         ledger.upsert(Insight(
             id="eda_sufficiency_insufficient",
             source_page="02_EDA", category="sufficiency", severity="blocker",
-            finding=f"Sample size may be insufficient ({regime.n_rows:,} rows, {_cands.screened} candidate predictors, {_suff_ratio_str} observations per candidate)",
+            finding=f"Sample size may be insufficient ({_ANALYSIS_POP_PHRASE}, {_cands.screened} candidate predictors, {_suff_ratio_str} observations per candidate)",
             implication="Complex models will likely overfit. Prefer simple baselines.",
             recommended_action="Reduce features or gather more data",
             manuscript_text=(
                 f"the sample size was small relative to the number of candidate "
-                f"predictors ({regime.n_rows:,} observations, {_cand_text}), "
+                f"predictors ({_ANALYSIS_POP_PROSE}, {_cand_text}), "
                 f"which limits statistical power and increases overfitting risk"
             ),
             relevant_pages=["04_Feature_Selection", "06_Train_and_Compare", "10_Report_Export"],
@@ -344,12 +388,12 @@ def _auto_generate_insights():
         ledger.upsert(Insight(
             id="eda_sufficiency_borderline",
             source_page="02_EDA", category="sufficiency", severity="warning",
-            finding=f"Data sufficiency is {sufficiency} ({regime.n_rows:,} rows, {_cands.screened} candidate predictors)",
+            finding=f"Data sufficiency is {sufficiency} ({_ANALYSIS_POP_PHRASE}, {_cands.screened} candidate predictors)",
             implication="Prefer simpler models and tighter regularization.",
             recommended_action="Consider feature reduction before complex modeling",
             manuscript_text=(
                 f"the modest ratio of observations to candidate predictors "
-                f"({regime.n_rows:,} observations, {_cand_text}) constrained the "
+                f"({_ANALYSIS_POP_PROSE}, {_cand_text}) constrained the "
                 f"model complexity that could be reliably supported"
             ),
             relevant_pages=["04_Feature_Selection", "06_Train_and_Compare"],
@@ -458,10 +502,22 @@ def _auto_generate_insights():
                 metadata={"max_correlation": cluster_max, "cluster_size": n_feats},
             ))
 
-    # Missing data — synthesize into severity tiers, not per-column
-    if signals.high_missing_cols:
-        severe_missing = [(c, signals.missing_rate_by_col.get(c, 0)) for c in signals.high_missing_cols if signals.missing_rate_by_col.get(c, 0) > 0.3]
-        moderate_missing = [(c, signals.missing_rate_by_col.get(c, 0)) for c in signals.high_missing_cols if 0.05 < signals.missing_rate_by_col.get(c, 0) <= 0.3]
+    # Missing data — synthesize into severity tiers, not per-column.
+    #
+    # THE OUTCOME IS NOT A FEATURE (`DRIVE-070`). `signals.high_missing_cols`
+    # is computed over every column, and the target went into a card headed
+    # "N feature(s) with >30% missing" whose recommended action is "consider
+    # dropping or advanced imputation" — advice to drop or impute the study's
+    # own outcome, which then reached the exported report as an addressed
+    # observation ("Missing values were handled with median imputation"). A
+    # missing outcome removes the row from the analysis cohort; it is not an
+    # imputation problem, and the cohort size that follows from it is stated
+    # by the sufficiency and n/p sentences above.
+    _missing_candidates = [c for c in signals.high_missing_cols
+                           if not (_has_target and c == target_col)]
+    if _missing_candidates:
+        severe_missing = [(c, signals.missing_rate_by_col.get(c, 0)) for c in _missing_candidates if signals.missing_rate_by_col.get(c, 0) > 0.3]
+        moderate_missing = [(c, signals.missing_rate_by_col.get(c, 0)) for c in _missing_candidates if 0.05 < signals.missing_rate_by_col.get(c, 0) <= 0.3]
 
         if severe_missing:
             cols_str = ", ".join(f"{c} ({r:.0%})" for c, r in severe_missing[:5])
@@ -704,20 +760,30 @@ def _auto_generate_insights():
                         resolved_on_page="02_EDA", auto_generated=True,
                     ))
 
-    # High n/p ratio opportunity
-    n_p_ratio = regime.n_rows / max(regime.n_features, 1)
+    # High n/p ratio opportunity. The numerator is the ANALYSIS POPULATION, not
+    # the uploaded row count (`DRIVE-066`), and both sentences name it.
+    n_p_ratio = _analysis_n / max(regime.n_features, 1)
     if n_p_ratio > 100:
         ledger.upsert(Insight(
             id="eda_opportunity_high_np",
             source_page="02_EDA", category="sufficiency", severity="opportunity",
-            finding=f"Large sample-to-feature ratio ({n_p_ratio:.0f}:1) — plenty of data relative to complexity",
+            # The denominator goes INSIDE the parentheses on purpose:
+            # `ml/narrative_engine.py` rewrites this exact sentence into
+            # manuscript prose by capturing what is between them, so the
+            # ratio and its population travel together into the draft.
+            finding=(f"Large sample-to-feature ratio ({n_p_ratio:.0f}:1 — "
+                     f"{_ANALYSIS_POP_PROSE} over {regime.n_features} "
+                     f"predictors) — plenty of data relative to complexity"),
             implication="You can afford more complex models (deep trees, neural nets) without overfitting. Cross-validation will be reliable.",
             manuscript_text=(f"the sample size was large relative to the number of "
                              f"predictors ({n_p_ratio:.0f}:1 observations per "
-                             f"predictor), supporting stable model estimation"),
+                             f"predictor, computed on the {_ANALYSIS_POP_PROSE}), "
+                             f"supporting stable model estimation"),
             recommended_action="Consider full model suite in Train & Compare",
             relevant_pages=["06_Train_and_Compare"],
-            metadata={"n_p_ratio": float(n_p_ratio)},
+            metadata={"n_p_ratio": float(n_p_ratio),
+                      "n_analysis_rows": int(_analysis_n),
+                      "n_uploaded_rows": int(len(df))},
             resolved=True, resolved_by="Positive signal — no action needed",
             resolved_on_page="02_EDA", auto_generated=True,
         ))
@@ -762,9 +828,9 @@ with cols[0]:
 with cols[1]:
     st.metric("Features", f"{regime.n_features}")
 with cols[2]:
-    st.metric("Numeric", f"{regime.n_numeric}")
+    st.metric("Numeric", f"{len(numeric_features)}", help=_TYPE_COUNT_RULE)
 with cols[3]:
-    st.metric("Categorical", f"{regime.n_categorical}")
+    st.metric("Categorical", f"{len(cat_features)}", help=_TYPE_COUNT_RULE)
 with cols[4]:
     _missing_by_col = df[feature_cols].isnull().mean()
     missing_pct = _missing_by_col.mean() * 100
@@ -815,10 +881,12 @@ with _eda_tabs[0]:
     )
 
     # Type filter pills and column inspector
-    type_label = f"{regime.n_numeric} numeric · {regime.n_categorical} categorical"
+    type_label = f"{len(numeric_features)} numeric · {len(cat_features)} categorical"
     if regime.n_datetime > 0:
-        type_label += f" · {regime.n_datetime} datetime"
-    st.caption(type_label)
+        # Datetime columns are inside the categorical count, not beside it —
+        # that is where the pipeline puts them.
+        type_label += f" ({regime.n_datetime} of them datetime)"
+    st.caption(type_label + f" — {_TYPE_COUNT_RULE[0].lower()}{_TYPE_COUNT_RULE[1:]}")
 
     # Column inspector
     with st.expander("🔍 Column Inspector", expanded=False):
@@ -913,8 +981,10 @@ with _eda_tabs[1]:
     # -- Feature Distribution Gallery -----------------------------------------
     st.subheader("Feature Distributions")
 
-    numeric_features = [f for f in feature_cols if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
-    cat_features = [f for f in feature_cols if f in df.columns and not pd.api.types.is_numeric_dtype(df[f])]
+    # `numeric_features` / `cat_features` are the page-level lists built once
+    # near the top under the pipeline's own counting rule. They used to be
+    # recomputed here with `is_numeric_dtype`, which is why this filter offered
+    # "Numeric (25)" beside a tile reading 19.
 
     if regime.distribution_mode == "summary":
         # Ultra-wide: summary-of-summaries view
@@ -1455,7 +1525,19 @@ with _eda_tabs[2]:
                 else:
                     st.caption("No strong interaction effects detected.")
             except Exception as e:
-                st.caption(f"Interaction detection skipped: {str(e)[:80]}")
+                # `DRIVE8-15`. `str(e)[:80]` printed sklearn's message as
+                # guidance, cut mid-word — "…which exp" — and the sentence it
+                # truncated blames the target for being continuous when it is a
+                # binary flag. A raw exception is not advice: the CAPTION names
+                # the operation that did not run and what that costs, and the
+                # exception is kept WHOLE for whoever can act on it.
+                st.caption(
+                    "Interaction detection did not run — the mutual-information "
+                    "screen raised an error. No interaction pairs are reported "
+                    "for this run; nothing else on this page is affected."
+                )
+                with st.expander("Why interaction detection did not run", expanded=False):
+                    st.code(f"{type(e).__name__}: {e}")
 
     # -- Cluster Structure (k-means) -------------------------------------------
     st.markdown("---")
@@ -2214,7 +2296,8 @@ from ml.eda_actions import (
 )
 
 
-def _resolve_insights_from_eda_result(action_id: str, result: dict, title: str) -> str:
+def _resolve_insights_from_eda_result(action_id: str, result: dict, title: str,
+                                      n_closed: int = 0) -> str:
     """Record a completed recommended analysis against the insights it speaks to.
 
     `AUDIT-032`. BEFORE this resolved every matching insight, so pressing **Run
@@ -2231,7 +2314,7 @@ def _resolve_insights_from_eda_result(action_id: str, result: dict, title: str) 
         touched = record_diagnostic_on_insights(ledger, action_id, result, title)
         if not _ACTION_TO_INSIGHT_MAP.get(action_id):
             return ""
-        return diagnostic_disclosure(title, len(touched))
+        return diagnostic_disclosure(title, len(touched), n_closed)
     except Exception:
         return ""  # Never break the workflow
 
@@ -2304,6 +2387,11 @@ def _run_and_show(action_id: str, title: str, run_action: str):
                     # Nothing else in the app resolves eda_corr_cluster_*, and
                     # left open they reach the manuscript as a limitation the
                     # user has in fact already investigated.
+                    # The count is carried into the disclosure below: a
+                    # sentence saying "it changes nothing. No open observation
+                    # is waiting on it" over a run that just closed two of them
+                    # is the one thing this surface may not say (`MISC-092`).
+                    _n_closed_here = 0
                     if action_id == "multicollinearity_vif":
                         _vif_summary = (result.get("findings") or [title])[0]
                         for _ins in list(ledger.insights):
@@ -2320,13 +2408,15 @@ def _run_and_show(action_id: str, title: str, run_action: str):
                                         "stats": result.get("stats", {}),
                                     },
                                 )
+                                _n_closed_here += 1
                             except Exception:
                                 pass
                     # Stored rather than written straight out: `st.rerun()`
                     # below discards everything this block renders, which is
                     # `AGENT_ONBOARD.md` §07 trap 6 in its purest form — the
                     # server composes the sentence and nobody ever sees it.
-                    _disclosure = _resolve_insights_from_eda_result(action_id, result, title)
+                    _disclosure = _resolve_insights_from_eda_result(
+                        action_id, result, title, _n_closed_here)
                     if _disclosure:
                         st.session_state.setdefault("eda_diagnostic_disclosure", {})[action_id] = _disclosure
                     try:

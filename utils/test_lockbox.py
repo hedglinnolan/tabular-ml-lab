@@ -687,6 +687,15 @@ def declaration_contradiction(df: pd.DataFrame,
     }
 
 
+#: The one opening this workflow makes BY DESIGN and discloses where it
+#: happens: `pages/08_Sensitivity_Analysis.py` pools the sealed rows back in,
+#: retrains over them, says so on the page, and reports split sensitivity
+#: rather than held-out performance. Matched by PREFIX — the recorded source
+#: carries its own parenthetical ("(seed sweep, re-split over the sealed
+#: rows)"). Everything else that opens the seal is a scoring run.
+_SWEEP_SOURCE = "Sensitivity Analysis"
+
+
 def record_lockbox_open(source: str = "") -> Optional[Dict[str, Any]]:
     """Count one opening of the sealed test set, with a timestamp.
 
@@ -706,6 +715,25 @@ def record_lockbox_open(source: str = "") -> Optional[Dict[str, Any]]:
     lb["opened_count"] = int(lb.get("opened_count", 0)) + 1
     _state()["test_lockbox"] = lb
     return lb
+
+
+def reopen_notice(opens: Optional[int] = None) -> str:
+    """The context line a page that re-opens the seal passes to the chip.
+
+    `DRIVE-069` finding 25: page 06 composed this inline as "they have been
+    scored against {n} time(s) already" — a plural placeholder in shipped copy
+    — and the chip it is appended to already said the count ("opened once, at
+    Train & Compare"), so one render said it twice. This says it once, in
+    words, and leaves the count to the chip.
+    """
+    n = lockbox_open_count() if opens is None else int(opens)
+    if n <= 0:
+        return "Training on this page opens the held-out test set."
+    if n == 1:
+        return ("Training again re-opens the same sealed rows — they have "
+                "already been scored against once.")
+    return (f"Training again re-opens the same sealed rows — they have "
+            f"already been scored against on {n} separate occasions.")
 
 
 def lockbox_open_count() -> int:
@@ -1179,14 +1207,17 @@ def render_lockbox_status(context: str = "") -> None:
     # saying "opened once, at Train & Compare" was naming the wrong page for an
     # exposure that happened somewhere else (`SWEEP-008`).
     _sources: List[str] = []
+    _source_counts: Dict[str, int] = {}
     for _entry in (lb.get("opened_at") or []):
         _text = str(_entry)
         if _text.endswith(")") and "(" in _text:
             # FIRST paren: the timestamp `record_lockbox_open` prefixes has
             # none, and the source itself may contain them.
             _src = _text[_text.find("(") + 1:-1].strip()
-            if _src and _src not in _sources:
-                _sources.append(_src)
+            if _src:
+                if _src not in _sources:
+                    _sources.append(_src)
+                _source_counts[_src] = _source_counts.get(_src, 0) + 1
     _where = ", ".join(_sources) if _sources else "Train & Compare"
     if _opens == 0:
         _open_phrase = "not opened yet — it opens at Train & Compare"
@@ -1195,16 +1226,54 @@ def render_lockbox_status(context: str = "") -> None:
     else:
         _open_phrase = f"**opened {_opens} times** at {_where}"
 
-    if _opens > 1:
+    # WHAT WAS MEASURED, AND THE RISK THAT FOLLOWS FROM IT (`DRIVE-069`
+    # finding 12). The warning below used to assert a mechanism — "once a
+    # choice is made after seeing a held-out number, that number is part of
+    # the model selection and reads better than it will on new data" — over
+    # every second opening, including the one page 08's seed sweep makes BY
+    # DESIGN and discloses in its own caption ("your reported headline metrics
+    # still come from the untouched lockbox test set"). The count is right and
+    # the source list is right; only the causal claim was unearned, and it
+    # then shadowed pages 08, 09 and 10 in red for the rest of the run.
+    #
+    # The distinction the record already supports: openings that SCORE the
+    # sealed rows (Train & Compare, once per training run) versus the
+    # disclosed split-sensitivity sweep, which re-partitions them and reports
+    # no held-out number. Repeated scoring is the thing to be loud about, and
+    # it stays loud.
+    _sweep_opens = sum(n for s, n in _source_counts.items()
+                       if s.startswith(_SWEEP_SOURCE))
+    _scoring_opens = _opens - _sweep_opens
+    _detail = "; ".join(f"{s} ({n}×)" if n > 1 else s
+                        for s, n in _source_counts.items()) or _where
+    if _opens > 1 and _scoring_opens > 1:
         st.warning(
             f"⚠️ The sealed test set has been **opened {_opens} times** — "
             f"models have been scored against it, or retrained over it, on "
-            f"{_opens} separate occasions ({_where}). A held-out estimate is "
-            f"unbiased only for a single, final evaluation; once a choice "
-            f"(features, preprocessing, models) is made after seeing a held-out "
-            f"number, that number is part of the model selection and reads "
+            f"{_opens} separate occasions ({_detail}), of which "
+            f"{_scoring_opens} were scoring runs. A held-out estimate is "
+            f"unbiased only for a single, final evaluation; if any choice "
+            f"(features, preprocessing, models) followed one of those "
+            f"numbers, that number is part of the model selection and reads "
             f"better than it will on new data. Report it as such, and say in "
             f"the Methods that the set was accessed {_opens} times."
+        )
+    elif _opens > 1:
+        _headline_clause = (
+            "The headline metrics still come from the single scoring run; "
+            if _scoring_opens == 1 else
+            "No scoring run against the sealed rows is recorded; "
+        )
+        st.info(
+            f"ℹ️ The sealed test set has been **accessed {_opens} times**, and "
+            f"every access recorded is one this workflow makes by design: "
+            f"{_detail}. {_headline_clause}the seed sweep re-partitions the "
+            f"sealed rows to measure split sensitivity and reports no held-out "
+            f"performance. Nothing here records a modeling choice made after "
+            f"seeing a held-out number — but a choice made from now on would "
+            f"put that number into the selection, and the estimate would read "
+            f"better than it will on new data. The Methods section says the "
+            f"set was accessed {_opens} times."
         )
 
     # Held out is not the same as scoreable, and that is true on EVERY path
@@ -1365,12 +1434,34 @@ def render_lockbox_status(context: str = "") -> None:
         )
         return
 
+    # ── 15% OF WHAT (`DRIVE-069`) ────────────────────────────────────────
+    # Eligibility is `y.notna()`: `n_total` is the number of rows that HAVE an
+    # outcome, and the fraction is taken from that, not from the uploaded row
+    # count. A chip reading "15% (n=945)" over a 21,849-row upload invites the
+    # reader to compute 3,277 and find 945 — and the Methods draft one page
+    # over already says it correctly ("15% of eligible observations"), so the
+    # machine knew the basis and the chip declined to state it. Guarded on the
+    # field being present: a lockbox restored from an older save has no
+    # `n_total`, and silence there is better than a guessed denominator.
+    _n_eligible = lb.get("n_total")
+    _of_eligible, _of_n_total, _out_of_n_total = "", "", ""
+    if isinstance(_n_eligible, int) and _n_eligible > lb.get("n_test", 0):
+        _tgt = lb.get("target_col")
+        _eligible_phrase = (
+            f"{_n_eligible:,} rows with a value for `{_tgt}`" if _tgt
+            else f"{_n_eligible:,} rows with an outcome value")
+        _of_eligible = " of eligible rows"
+        _of_n_total = f" of {_eligible_phrase}"
+        _out_of_n_total = f", out of {_eligible_phrase}"
+
     if lb.get("group_col"):
         _noun = lb.get("group_noun") or "subjects"
         _one = _noun.rstrip('s') if _noun.endswith('s') else _noun
         st.caption(
-            f"🔒 Test set: {lb['fraction']:.0%} (n={lb['n_test']} rows from "
-            f"{lb.get('n_test_groups', '?')} {_noun}, split by '{lb['group_col']}' so no "
+            f"🔒 Test set: {lb['fraction']:.0%}{_of_eligible} "
+            f"(n={lb['n_test']} rows from "
+            f"{lb.get('n_test_groups', '?')} {_noun}{_out_of_n_total}, "
+            f"split by '{lb['group_col']}' so no "
             f"{_one} appears on both sides) held out since upload — "
             f"{_open_phrase}.{extra}"
         )
@@ -1383,7 +1474,8 @@ def render_lockbox_status(context: str = "") -> None:
             )
     else:
         st.caption(
-            f"🔒 Test set: {lb['fraction']:.0%} (n={lb['n_test']}"
+            f"🔒 Test set: {lb['fraction']:.0%}{_of_eligible} (n={lb['n_test']}"
+            f"{_of_n_total}"
             f"{', stratified' if lb.get('stratified') else ''}) held out since upload — "
             f"{_open_phrase}.{extra}"
         )
