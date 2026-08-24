@@ -20,13 +20,13 @@ The Classic (Streamlit) app cleared of the 52 confirmed paper-risk findings from
 - Scoped suite: **2,647 passed, 0 failed** (excluding the torch-dependent NN module tests — torch is deliberately optional per TEST-038; `models/nn_whuber` now imports without it).
 - Meta-tests: suite order-independence + every-FIXED-row-names-a-running-test — **4 passed (36:42)**.
 - Three full end-to-end drives of the Classic app (Drives 8–10, `docs/audit/DRIVE*_*.md`): Drive 8 found 4 criticals behind green banners; two repair rounds later, Drive 10's targeted kill-confirmation returned **MERGE GATE: OPEN** with every critical dead on its own route and the manuscript validator at 13/13.
-- Integration + workflow suites green (373); routing baseline formally adjudicated through L67.
+- Integration + workflow suites green (373); routing baseline formally adjudicated through L68 (which corrected Classic's coverage from a never-exercised 1/10 to a measured 5/10 and retired the old narration).
 - Ledger: `ledger.py check` clean, 512/1041 closed repo-wide.
 
 ## Notes for review
 
-- `docs/turbotab/VALUE_CHECK_ADJUDICATION.md` L66/L67 entries record how main's diagnostics dedup and the new grain question moved the frozen routing baseline, and the rulings.
-- Open ledger rows filed during the sprint (MISC-090..100) are tracked follow-ups, none blocking: dead-UI cleanups, the DAG declaration gap, the routing clause-attribution mechanism, and TRANSITION_PLAN §05's expired freeze wording.
+- `docs/turbotab/VALUE_CHECK_ADJUDICATION.md` L66/L67/L68 entries record how main's diagnostics dedup, the grain question, and the working-table structural review moved the frozen routing baseline, and the rulings.
+- Open ledger rows filed during the sprint (MISC-090..111 and DRIVE-071/076) are tracked follow-ups, none blocking: dead-UI cleanups, the DAG declaration gap, the routing clause-attribution mechanism, and TRANSITION_PLAN §05's expired freeze wording.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
