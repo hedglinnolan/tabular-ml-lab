@@ -13859,5 +13859,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": ".github/workflows/ci.yml (Tier 1/1b); tests/test_nn_modernization.py; scratchpad ci_repro.log"
+ },
+ {
+  "id": "MISC-113",
+  "area": "MISC",
+  "sev": "medium",
+  "item": "CLASS: dependencies that exist only in the developer's venv - three instances in one day, found three ways: fastapi/uvicorn/httpx/python-multipart (CI evidence gates failed on fresh resolution), umap-learn commented out (fresh clone's first EDA visit errored on a paper-headline capability), openai/anthropic commented out (cloud LLM backends dead out of box). Class fix candidate: a test that builds the app's import graph and asserts every third-party import is satisfiable from requirements.txt alone (the sweep script exists in scratchpad from today's diagnosis - make it a test).",
+  "detail": "",
+  "ev": "requirements.txt; the AST sweep used to find them (scratchpad); docs/audit/DRIVE8 method",
+  "act": "",
+  "status": "PARTIAL",
+  "note": "All three instances fixed in requirements.txt (2d0c977, e8e6105); the import-graph-vs-requirements test is the open remainder.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "requirements.txt; the AST sweep used to find them (scratchpad); docs/audit/DRIVE8 method"
  }
 ]

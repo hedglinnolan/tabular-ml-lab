@@ -20,13 +20,13 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**512 of 1042 closed.**
+**512 of 1043 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 448 |
-| `PARTIAL` | 82 |
+| `PARTIAL` | 83 |
 | `FIXED` | 502 |
 | `NOT-A-DEFECT` | 10 |
 
@@ -555,7 +555,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 82
+## PARTIAL — 83
 
 
 ### Guided-door drive feedback — 19
@@ -629,7 +629,7 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-061` | medium | Import cycle ml.publication ↔ utils.insight_ledger is a genuine layering inversion | `ml/publication.py:128,182,453,460; utils/insight_ledger.py (imports at module top)` · **re-verified:** `utils/insight_ledger.py now DEFINES model_display_name (:127), format_resolution_detail (:181)…` | The inversion narrowed from four formatting helpers to one pure-data constant. The presentation helpers this row says belong to neither module are no longer imported from… |
 | `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` · **re-verified:** `models/base.py BaseModelWrapper(ABC) with abstract fit/predict and concrete…` | The row's blocking condition is satisfied and its recommendation still stands. 'Entirely untested, which is the reason to do it first WITH TESTS ATTACHED' - the tests are attached… |
 
-### Other — 6
+### Other — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -639,6 +639,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | **test:** `turbotab/test_a_skew_that_could_not_be_computed_is_not_reported_as_zero.py::test_an_unmeasurable_target_skew_is_not_reported_as_zero and… |
 | `AUDIT-012` | medium | Outlier advice is driven by a generic IQR rate that cannot tell physiologically impossible from abnormal-but-real, while the impossibility bands sit beside it unused | `ml/outliers.py:44 IQR fences; ml/eda_actions.py:412-420; ml/dataset_profile.py:214…` | **test:** `turbotab/test_the_outlier_remedy_is_not_offered_from_the_fence_alone.py::test_the_corrected_sentence_reaches_the_guided_finding_card and… |
 | `MISC-112` | medium | Native-layer cross-test pollution: after ~1,300 tests load sklearn's OpenMP and leave AppTest threads behind, torch's third forward pass in tests/test_nn_modernization.py segfaults the interpreter… | `.github/workflows/ci.yml (Tier 1/1b); tests/test_nn_modernization.py; scratchpad ci_repro.log` | Mitigated in CI and documented; root isolation mechanism not built. |
+| `MISC-113` | medium | CLASS: dependencies that exist only in the developer's venv - three instances in one day, found three ways: fastapi/uvicorn/httpx/python-multipart (CI evidence gates failed on fresh resolution)… | `requirements.txt; the AST sweep used to find them (scratchpad); docs/audit/DRIVE8 method` | All three instances fixed in requirements.txt (2d0c977, e8e6105); the import-graph-vs-requirements test is the open remainder. |
 
 ### Page-layer extraction — 5
 
