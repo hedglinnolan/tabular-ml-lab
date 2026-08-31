@@ -55,8 +55,12 @@ address = "0.0.0.0"
 headless = true
 enableCORS = true
 enableXsrfProtection = true
-maxUploadSize = 50
-maxMessageSize = 50
+# Kept in step with .streamlit/config.toml, which `COPY . .` above puts in the
+# image and this heredoc then overwrites. Two files, one pair of numbers: 50 was
+# both the server ceiling AND the app's own check, which is what made the app's
+# check unreachable. See the repo config for the full reasoning.
+maxUploadSize = 2000
+maxMessageSize = 500
 
 [browser]
 gatherUsageStats = false

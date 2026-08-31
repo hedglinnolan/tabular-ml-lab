@@ -5,8 +5,28 @@ address = "localhost"
 headless = true
 enableCORS = true
 enableXsrfProtection = true
-maxUploadSize = 50
-maxMessageSize = 50
+# The server is deliberately no longer the admission gate.
+#
+# These were both 50 — 4x stricter than Streamlit's own 200 MB default, and the
+# same number the upload page enforced in `MAX_FILE_SIZE_MB`. Matching exactly
+# is what made the app's own check dead code: Streamlit refuses the upload POST
+# with a generic 413 before any page code runs, so the friendly message and its
+# "Load anyway" escape hatch could never render. A server ceiling must sit ABOVE
+# the app's own thresholds or it silently replaces them.
+#
+# Admission is now decided on the parsed frame, in `utils/admission.py`, because
+# cells predict memory and bytes of text do not — the same 20,000 x 300 matrix
+# wrote out at 19.66 MB, 40.44 MB and 106.32 MB depending only on decimal
+# places. 2000 is a ceiling, not a promise: `docker-compose.yml` defaults the
+# container to 4g, so the shape gate (and the cgroup-aware probe behind it) is
+# what actually protects that, not this line.
+maxUploadSize = 2000
+
+# A separate quantity, kept far lower on purpose: this caps what can be sent
+# BACK over the websocket to the browser. Nothing in this app should be shipping
+# half a gigabyte to a browser tab, so raising it to match the upload ceiling
+# would remove a limit that is doing real work.
+maxMessageSize = 500
 
 [browser]
 gatherUsageStats = false
