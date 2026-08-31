@@ -45,7 +45,7 @@ refused rather than applied to rows it may no longer name.
 Rejected on load:
     - Anything that is not a valid ZIP
     - Archives >100 MB uploaded or >500 MB uncompressed
-    - Archives with >50 members (sanity cap)
+    - Archives with >64 members (sanity cap)
     - Archive members with absolute paths or "../" in name
     - Archives whose manifest.json schema_version is unknown
     - Legacy .pkl files (detected by magic byte 0x80) -- error with migration note
@@ -617,6 +617,71 @@ def _validate_zip(zf: zipfile.ZipFile) -> None:
             )
 
 
+def _reload_limit_bytes() -> int:
+    """The largest archive THIS deployment can actually take back on upload.
+
+    Two ceilings stand in front of a reload and the smaller one decides:
+    Streamlit's `server.maxUploadSize`, which refuses the POST with a generic
+    413 before a line of app code runs, and `_MAX_UPLOAD_BYTES` above. The
+    server value is read rather than restated here because it moves with the
+    deployment -- see the note in .streamlit/config.toml about why it must sit
+    ABOVE the app's own thresholds -- and a promise made at save time against a
+    number that has since moved is worse than no promise.
+
+    An unreadable option falls back to `_MAX_UPLOAD_BYTES`, never to
+    "unlimited". This is the same argument utils/admission.py makes about a
+    failed memory probe: a ceiling that could not be verified must not be
+    reported as one that was checked. `_MAX_UPLOAD_BYTES` is the honest answer
+    because it holds whatever the server is configured to allow.
+    """
+    try:
+        server_mb = int(st.get_option("server.maxUploadSize"))
+    except Exception:
+        # No Streamlit config reachable (bare import, a test's fake `st`, an
+        # option removed upstream). Report the cap we can still guarantee.
+        return _MAX_UPLOAD_BYTES
+    return min(server_mb * 1024 * 1024, _MAX_UPLOAD_BYTES)
+
+
+def _reload_refusal(archive_bytes: bytes) -> Optional[str]:
+    """Why a just-built archive could not be re-uploaded, or None if it could.
+
+    Save and load knew different things, and the gap read to the user as
+    success. Load applies three independent gates -- the over-the-wire size
+    here, and the uncompressed total and the member count inside `_validate_zip`
+    -- while save tested only the first, and called the result "very large"
+    rather than "unreloadable". Parquet compresses several-fold, so an omics
+    session sits comfortably under the compressed cap and is still refused on
+    the uncompressed sum; and one member per `datasets_registry` entry means a
+    busy session trips the member cap with a small file. Two of the three doors
+    were invisible at save time.
+
+    So this runs the produced bytes through `_validate_zip` itself rather than
+    restating its rules: the save-side answer cannot drift from the load-side
+    rules as those rules change. Only the ZIP central directory is read --
+    nothing is decompressed -- so the cost is negligible on any real session.
+    """
+    limit = _reload_limit_bytes()
+    if len(archive_bytes) > limit:
+        return (
+            f"It is {_format_size(len(archive_bytes))}, over this deployment's "
+            f"{limit // (1024 * 1024)} MB limit on uploads."
+        )
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as zf:
+            _validate_zip(zf)
+    except SessionLoadError as exc:
+        return str(exc)
+    except Exception as exc:
+        # Total by construction: this runs inside the save branch, and anything
+        # raised out of here would be caught as "Error saving session" and take
+        # the download button down with it -- turning a warning into the refused
+        # save this design deliberately avoids. The load path would meet the
+        # same unreadable archive, so reporting it is also the honest answer.
+        return f"The archive could not be read back ({exc})."
+    return None
+
+
 def _read_json(zf: zipfile.ZipFile, name: str) -> Any:
     with zf.open(name) as f:
         return json.loads(f.read().decode("utf-8"))
@@ -1123,31 +1188,60 @@ def render_session_controls() -> None:
                 return
 
             size_str = _format_size(len(archive_bytes))
-            if len(archive_bytes) > _MAX_UPLOAD_BYTES:
-                st.sidebar.warning(
-                    f"⚠️ Session is very large ({size_str}). "
-                    "Consider completing your analysis before saving."
+            # Save has to ask the load path's question before it claims success.
+            # It used to warn only that the session was "very large" and advise
+            # the user to "complete your analysis before saving" -- advice that
+            # makes the archive bigger, aimed at the wrong consequence, and
+            # silent about the one that matters: this app will not take the file
+            # back. The green "Session Ready" underneath rendered regardless, so
+            # a researcher read success and kept a file that could never be
+            # reopened. There is no second copy to fall back on
+            # (utils/session_projects.py writes nothing to disk).
+            refusal = _reload_refusal(archive_bytes)
+            if refusal:
+                st.sidebar.error(
+                    "🚫 **This session cannot be loaded back into the app.**\n\n"
+                    f"{refusal}\n\n"
+                    "Download it anyway and keep it — the file is a plain ZIP of "
+                    "Parquet and JSON that pandas reads directly, and an "
+                    "administrator can raise the ceiling. But do not close this "
+                    "tab expecting **Upload Session File** to bring it back."
                 )
 
             filename = f"tabular_ml_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{SAVE_EXTENSION}"
+            # The download always renders, including when the archive is too big
+            # to reload. The two failures are not symmetric: an archive this app
+            # will not re-accept is still readable by pandas and still openable
+            # once a limit is raised, while a save refused outright leaves the
+            # researcher with nothing at all once the session times out. Refusing
+            # would be the app destroying the only copy to protect a message.
             st.sidebar.download_button(
                 label=f"⬇️ Download Session ({size_str})",
                 data=archive_bytes,
                 file_name=filename,
                 mime="application/zip",
-                help="Save this file to resume your work later",
+                # The old help said "resume your work later" unconditionally,
+                # which is the same false promise in miniature. It stays exactly
+                # as it was where it is true, and stops being made where it is not.
+                help=(
+                    "Save this file to resume your work later" if refusal is None
+                    else "Keep this file — it holds your work, but this app "
+                         "cannot take it back as it is"
+                ),
                 key="download_session_button",
             )
             skipped = manifest.get("skipped_keys", [])
-            success_msg = (
-                f"✅ **Session Ready for Download!**\n\n"
+            detail = (
                 f"- **Items saved:** {len(manifest.get('saved_keys', []))}\n"
                 f"- **File size:** {size_str}\n"
                 f"- **Current step:** {manifest.get('workflow_step', 'Unknown')}"
             )
             if skipped:
-                success_msg += f"\n- **Note:** {len(skipped)} items skipped (non-serializable)"
-            st.sidebar.success(success_msg)
+                detail += f"\n- **Note:** {len(skipped)} items skipped (non-serializable)"
+            if refusal is None:
+                st.sidebar.success(f"✅ **Session Ready for Download!**\n\n{detail}")
+            else:
+                st.sidebar.warning(f"⚠️ **Saved, but not reloadable here.**\n\n{detail}")
         except Exception as exc:
             st.sidebar.error(f"❌ **Error saving session:**\n\n{exc}")
 
