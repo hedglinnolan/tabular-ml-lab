@@ -8,6 +8,27 @@
 - 4GB RAM minimum
 - **Optional:** Install and run [Ollama](https://ollama.ai) if you want LLM-powered interpretations.
 
+## How Much Data Can It Handle?
+
+Check this before you install. The binding limit is **column count**, not file
+size — reading is fast (a 194 MB, 60,000 × 1,000 matrix parses in ~4.3 s at ~1.3 GB
+peak).
+
+- **Up to ~500 columns:** comfortable, any reasonable row count.
+- **~500-2,000 columns:** works, but EDA is slow.
+- **Above ~2,000 columns:** you get a warning, not a refusal. The EDA and explainability pages do uncapped O(columns²) work and may not finish. Known gap, under active work — subset your features before uploading.
+
+The "4GB RAM minimum" above is also your data ceiling. Uploads are admitted by
+measuring the parsed frame against free memory, budgeting ~32 bytes per cell for
+numbers — text and categorical columns cost several times that and are measured,
+not assumed — so 4 GB admits numeric frames on the order of a hundred million
+cells, less the few hundred megabytes the app itself occupies. A loaded frame
+costs roughly 6.6-7.2× the size of its CSV. Files over 1,500 MB are refused
+without being parsed.
+
+Longer version in the [README](README.md#how-much-data-can-it-handle); server-side
+limits in [UNIVERSITY_DEPLOYMENT.md](UNIVERSITY_DEPLOYMENT.md#hardware).
+
 ## Windows (PowerShell)
 
 ### From Fresh Clone

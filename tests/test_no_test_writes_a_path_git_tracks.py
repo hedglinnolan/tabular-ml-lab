@@ -60,7 +60,29 @@ EXEMPT: dict = {}
 #: entry has to be looked at rather than absorbed. Ratcheted 32 → 30 when the
 #: resolver learned that an io.BytesIO/StringIO destination is not a
 #: filesystem write at all (three `.to_parquet(buf)` sites resolved away).
-UNRESOLVED_CEILING = 30
+#:
+#: Raised 30 → 32 for TWO sites, both inside `_cgroup()` in
+#: `tests/test_a_memory_probe_reads_the_container_limit_not_the_host.py` — the
+#: `.parent.mkdir()` and the `.write_text()` that build a fake `/sys/fs/cgroup`.
+#: Named rather than absorbed, because that is what this constant is for. The
+#: code under test calls `Path.read_text` on a kernel-supplied path, so
+#: exercising the READ needs a real file at a real path, and the destination is
+#: composed from the `tmp_path` fixture, which never resolves. The rest of that
+#: file's cases — every sentinel, every malformed value — go through a pure
+#: string parser and write nothing, which is why this is two and not eight.
+#:
+#: Raised 32 → 34 for TWO more sites in the same file, the `memory.current` and
+#: `memory/memory.usage_in_bytes` writes that give a fake cgroup something to
+#: have *spent*. The probe now subtracts usage from the ceiling, and a limit
+#: file alone cannot exercise a subtraction. Same argument as the two above: the
+#: destination is composed from `tmp_path`, and the code under test reads a real
+#: path with `Path.read_text`.
+#:
+#: A note for whoever ratchets this next: the sweep reads `git ls-files`, so an
+#: uncommitted test file contributes NOTHING to this count. A green run on a
+#: dirty tree is not evidence — stage the new files first, or this constant goes
+#: stale in the one direction that fails CI after the commit lands.
+UNRESOLVED_CEILING = 34
 
 
 def _relative(sites):

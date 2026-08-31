@@ -59,6 +59,7 @@ with col_audience1:
     **📊 Works best with:**
     - Tabular data (CSV, Excel)
     - 50-10,000 rows
+    - Up to ~500 columns (wider still works, but EDA slows down)
     - Supervised learning (classification or regression)
     - Research that requires transparent, reproducible methods
     """)
@@ -68,7 +69,7 @@ with col_audience2:
     - Production ML deployment
     - Time series forecasting
     - Image, text, or audio data
-    - Extremely large datasets (>100K rows)
+    - Extremely large or very wide datasets (>100K rows, or >2,000 columns)
     
     **📝 What you need to know:**
     - **No coding required** — point-and-click interface

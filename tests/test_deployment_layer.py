@@ -32,8 +32,12 @@ DOCS = ["README.md", "DEPLOYMENT.md", "UNIVERSITY_DEPLOYMENT.md", "QUICKSTART.md
 
 
 def _read(name):
+    # encoding is explicit because these files are UTF-8 and Python's default is
+    # the *locale's* codec: on a Windows runner that is cp1252, which has no
+    # mapping for byte 0x9d, so a curly quote anywhere in README.md raised
+    # UnicodeDecodeError and the assertion below it never ran at all.
     p = ROOT / name
-    return p.read_text() if p.exists() else ""
+    return p.read_text(encoding="utf-8") if p.exists() else ""
 
 
 @pytest.mark.parametrize("name", DEPLOYMENT_FILES)
@@ -128,6 +132,107 @@ def test_the_dockerfile_copies_a_tree_that_exists():
 def test_the_removed_modules_are_not_imported_anywhere():
     """auth.py and compute_config.py were dropped; nothing may reach for them."""
     for py in list(ROOT.glob("*.py")) + list(ROOT.glob("pages/*.py")) + list(ROOT.glob("utils/*.py")):
-        body = py.read_text()
+        body = py.read_text(encoding="utf-8")     # see _read
         assert "utils.auth" not in body and "utils.compute_config" not in body, (
             f"{py.name} imports a module that no longer exists")
+
+
+# ── the enterprise path must not be worse than a laptop ──────────────────────
+#
+# Four defaults conspired to make an institution following this guide end up
+# with a *smaller* usable dataset than a researcher running `streamlit run` on
+# their own machine: the image discarded the admin's edited config, nginx capped
+# bodies at 1 MB, both proxies closed the connection at 60 s, and a two-minute
+# disconnection threw the session away. Each is a one-line omission, and each
+# comes back the moment someone reformats the file it lives in — so each is
+# asserted here rather than trusted to review.
+
+def _config_value(text, key):
+    """First `key = value` in a TOML-ish text, as a string, or None."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(key) and "=" in stripped:
+            return stripped.split("=", 1)[1].strip()
+    return None
+
+
+def test_the_image_does_not_discard_a_config_the_admin_edited():
+    """`COPY . .` brings the repo's `.streamlit/config.toml` into the image.
+
+    The Dockerfile then writes its own. Unguarded, that silently overwrote the
+    one file UNIVERSITY_DEPLOYMENT.md tells a site admin to edit — so an
+    institution could raise the upload ceiling in their checkout, build, and get
+    an image that ignored it with nothing in the build log to say so.
+    """
+    body = _read("Dockerfile")
+    writes = [ln for ln in body.splitlines()
+              if "> /app/.streamlit/config.toml" in ln]
+    assert writes, "the Dockerfile no longer writes a fallback Streamlit config"
+    for line in writes:
+        assert "test -f /app/.streamlit/config.toml ||" in line, (
+            f"the image overwrites a config it just copied in: {line.strip()}\n"
+            f"An admin's edited .streamlit/config.toml must survive the build.")
+
+
+@pytest.mark.parametrize("name", [".streamlit/config.toml", "Dockerfile"])
+def test_a_session_outlives_a_vpn_blip(name):
+    """Streamlit's default TTL is 120 s, and the cost of it scales with the data.
+
+    Two minutes is a closed laptop lid. What it discards is the uploaded frame,
+    the fitted models and the audit trail, which is worst for exactly the wide
+    files this app markets itself at. Both configs must set it, and must agree —
+    the Dockerfile's copy is the fallback for a tree with no `.streamlit/`.
+    """
+    value = _config_value(_read(name), "disconnectedSessionTTL")
+    assert value is not None, f"{name} leaves disconnectedSessionTTL at 120s"
+    assert int(value) > 120, f"{name} sets disconnectedSessionTTL = {value}"
+
+
+#: Per-recipe: the fenced-block language, the body-size directive and the unit
+#: its number is written in, and the read-timeout directive.
+PROXY_RECIPES = [
+    ("nginx", r"client_max_body_size\s+(\d+)m\b", 1,
+     r"proxy_read_timeout\s+(\d+)s?\b"),
+    ("apache", r"LimitRequestBody\s+(\d+)\b", 1 / (1024 * 1024),
+     r"ProxyTimeout\s+(\d+)\b"),
+]
+
+
+def _recipe(lang):
+    blocks = re.findall(rf"```{lang}\n(.*?)```", _read("UNIVERSITY_DEPLOYMENT.md"), re.S)
+    assert blocks, f"UNIVERSITY_DEPLOYMENT.md no longer documents a {lang} proxy"
+    return "\n".join(blocks)
+
+
+@pytest.mark.parametrize("lang,body_re,to_mb,_timeout_re", PROXY_RECIPES)
+def test_every_proxy_recipe_admits_a_file_the_app_would_admit(lang, body_re, to_mb, _timeout_re):
+    """nginx caps request bodies at 1 MB by default — 2000x below the app's own
+    ceiling, and stricter than a laptop. The proxy would answer the upload with
+    its own 413 before a line of page code ran, exactly as the server's
+    `maxUploadSize` used to. Apache defaults to unlimited, so its directive is
+    there to override a site-wide policy rather than to raise a default; it
+    still has to be at least as large or the recipe contradicts itself.
+    """
+    app_cap_mb = int(_config_value(_read(".streamlit/config.toml"), "maxUploadSize"))
+    found = re.search(body_re, _recipe(lang))
+    assert found, (
+        f"the {lang} recipe sets no request body limit — a proxied deployment "
+        f"is then capped below the {app_cap_mb} MB the app itself admits")
+    assert int(found.group(1)) * to_mb >= app_cap_mb, (
+        f"the {lang} recipe caps bodies below server.maxUploadSize ({app_cap_mb} MB)")
+
+
+@pytest.mark.parametrize("lang,_body_re,_to_mb,timeout_re", PROXY_RECIPES)
+def test_every_proxy_recipe_outlives_a_multi_minute_computation(lang, _body_re, _to_mb, timeout_re):
+    """Both proxies give up on a silent upstream after 60 s.
+
+    A fit, a SHAP run or a bootstrap carries nothing over the connection while
+    it works, so the proxy closes it and the browser shows a 504 while the
+    container is still computing. Ten minutes is the floor asserted here; the
+    recipes use an hour.
+    """
+    found = re.search(timeout_re, _recipe(lang))
+    assert found, f"the {lang} recipe sets no read timeout — long runs die at 60s"
+    assert int(found.group(1)) >= 600, (
+        f"the {lang} recipe times out after {found.group(1)}s, which is shorter "
+        f"than analyses this app routinely runs")

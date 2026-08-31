@@ -25,6 +25,9 @@ from utils.state_reconcile import reconcile_state_with_df
 from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.session_projects import get_project_manager
 from utils.column_utils import make_unique_columns
+from utils.admission import (admission_verdict, measured_frame_bytes,
+                             prefilter_verdict)
+from utils.host_resources import available_memory_bytes
 from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
 from utils.table_export import table
 from utils.import_ui import render_import_doctor, repaired_frame, applied_fixes
@@ -231,6 +234,23 @@ st.header("Step 1: Add Your Data")
 _forgotten = st.session_state.pop("_working_table_forgotten", None)
 if _forgotten:
     st.warning(f"↩️ {_forgotten}")
+
+# The same carry, for the "Add all N files" button. It calls st.rerun() when
+# anything was added, and a rerun discards everything the pass had rendered —
+# so its success line, and now its refusals and its width warnings, were being
+# written to a screen that was about to be thrown away. A file the admission
+# gate refuses mid-batch has to say so somewhere the researcher will actually
+# read it; refusing in silence is worse than not gating at all.
+_bulk_report = st.session_state.pop("_bulk_add_report", None)
+if _bulk_report:
+    _n_added = len(_bulk_report.get("added") or [])
+    if _n_added:
+        st.success(f"Added {_n_added} file{'s' if _n_added != 1 else ''}: "
+                   + ", ".join(_bulk_report["added"]))
+    for _msg in _bulk_report.get("notes") or []:
+        st.warning(_msg)
+    for _msg in _bulk_report.get("failed") or []:
+        st.error(_msg)
 st.caption(
     "Bring one file or bring all of them. If your study lives in several files "
     "that you have never combined — demographics here, labs there, diet in a "
@@ -318,7 +338,27 @@ uploaded_files = st.file_uploader(
     ),
 )
 
-MAX_FILE_SIZE_MB = 50
+
+def _admission(df: pd.DataFrame, filename: str):
+    """Whether this parsed frame is admitted, asked once for both ingest paths.
+
+    A thin wrapper so the per-file expander and the "Add all N files" button
+    cannot drift apart — the byte cap this replaces lived only in the expander,
+    which left the bulk button, the path that commits every file back to back
+    with no chance to intervene, completely ungated.
+
+    The decision itself is in `utils.admission` and is a pure function of shape
+    plus a memory reading, so it is testable without a Streamlit runtime. The
+    probe is called here rather than in there for the same reason.
+
+    The size estimate is MEASURED from the frame rather than derived from its
+    shape, because both places this is called from already hold the parsed
+    frame. Shape alone assumes 8 bytes a cell, which is right for a numeric
+    matrix and roughly 7x low for a table of text — see `measured_frame_bytes`.
+    """
+    return admission_verdict(df.shape[0], df.shape[1], filename,
+                             available_memory_bytes(),
+                             estimated_bytes=measured_frame_bytes(df))
 
 
 def _file_key_for(name: str, idx: int) -> str:
@@ -412,11 +452,19 @@ if uploaded_files and len(uploaded_files) > 1:
             f"problems first.")
     if st.button(f"Add all {len(uploaded_files)} files to project",
                  type="primary", key="add_all_files"):
-        added, failed = [], []
+        added, failed, notes = [], [], []
         with st.spinner("Adding files…"):
             for _idx, _uf in enumerate(uploaded_files):
                 _fk = _file_key_for(_uf.name, _idx)
                 try:
+                    # Same gate as the expander below, because this path is
+                    # strictly the more dangerous one: it parses and commits
+                    # every file back to back with no opportunity to refuse in
+                    # between, and until now it had no size check at all.
+                    _pre = prefilter_verdict(getattr(_uf, "size", None), _uf.name)
+                    if _pre.refused:
+                        failed.append(_pre.refusal)
+                        continue
                     _ft = detect_file_type(_uf.name)
                     _frame = cached_parse_upload(
                         _uf.getvalue(), _uf.name,
@@ -425,6 +473,16 @@ if uploaded_files and len(uploaded_files) > 1:
                         st.session_state.get(f"records_key_{_fk}", "") or "",
                     )
                     _frame.columns = [str(c) for c in _frame.columns]
+                    # A refusal here skips this file and keeps going; the rest
+                    # of the batch is not the offending file's fault. There is
+                    # deliberately no per-file override on this path — the
+                    # button has no UI to hang one from, and a warning that
+                    # cannot be answered is reported with the summary instead.
+                    _verdict = _admission(_frame, _uf.name)
+                    if _verdict.refused:
+                        failed.append(_verdict.refusal)
+                        continue
+                    notes.extend(_verdict.warnings)
                     # Honor fixes already applied in the review below.
                     _frame = repaired_frame(_frame, _fk)
                     _name = st.session_state.get(f"name_{_fk}") or _uf.name.rsplit('.', 1)[0]
@@ -436,12 +494,16 @@ if uploaded_files and len(uploaded_files) > 1:
                 except Exception as exc:
                     failed.append(f"{_uf.name}: {exc}")
         if added:
-            st.success(f"Added {len(added)} file{'s' if len(added) != 1 else ''}: "
-                       + ", ".join(added))
+            # Hand the whole account to the next run, which is the only one
+            # that will still be on screen — see the carry near "Step 1".
+            st.session_state["_bulk_add_report"] = {
+                "added": added, "notes": notes, "failed": failed}
+            st.rerun()
+        # Nothing was added, so there is no rerun to survive: say it here.
+        for msg in notes:
+            st.warning(msg)
         for msg in failed:
             st.error(msg)
-        if added:
-            st.rerun()
 
 if uploaded_files:
     for file_idx, uploaded_file in enumerate(uploaded_files):
@@ -450,16 +512,17 @@ if uploaded_files:
 
         with st.expander(f"Configure: {uploaded_file.name}", expanded=True):
             try:
-                # Large file warning
-                file_size_mb = uploaded_file.size / (1024 * 1024)
-                if file_size_mb > MAX_FILE_SIZE_MB:
-                    st.warning(
-                        f"**{uploaded_file.name}** is {file_size_mb:.1f} MB (limit: {MAX_FILE_SIZE_MB} MB). "
-                        "Large files may be slow to load."
-                    )
-                    load_anyway = st.checkbox("Load anyway", key=f"load_large_{file_key}")
-                    if not load_anyway:
-                        continue
+                # The cheap pre-parse backstop, and the ONLY thing decided on
+                # bytes. The real gate is on shape and cannot run until the
+                # frame exists, so this exists solely to avoid materializing a
+                # file that could not possibly fit in order to discover that.
+                # It is set far above any real research file; see
+                # PREFILTER_REFUSE_MB for why it cannot be set tight.
+                _pre = prefilter_verdict(getattr(uploaded_file, "size", None),
+                                         uploaded_file.name)
+                if _pre.refused:
+                    st.error(_pre.refusal)
+                    continue
 
                 # Excel sheet selector (for multi-sheet files)
                 excel_sheet_choice = 0
@@ -520,20 +583,65 @@ if uploaded_files:
                 # this block re-executes on every rerun while the file sits in
                 # the uploader, and re-parsing a wide file each click costs
                 # seconds.
-                with st.spinner(f"Loading {uploaded_file.name}..."):
-                    df_preview = cached_parse_upload(
-                        uploaded_file.getvalue(),
-                        uploaded_file.name,
-                        transpose_this_file,
-                        excel_sheet_choice if file_type == 'excel' else 0,
-                        records_key_choice,
-                    )
-                
+                # Turning a table around can refuse — duplicate feature names
+                # would become two columns with one name. Imported here, not at
+                # the top of the page, because that is how Classic crosses into
+                # turbotab everywhere else (`ml/router.py` imports this same
+                # module from inside a function body).
+                from turbotab.orientation import OrientationError
+                try:
+                    with st.spinner(f"Loading {uploaded_file.name}..."):
+                        df_preview = cached_parse_upload(
+                            uploaded_file.getvalue(),
+                            uploaded_file.name,
+                            transpose_this_file,
+                            excel_sheet_choice if file_type == 'excel' else 0,
+                            records_key_choice,
+                        )
+                except OrientationError as exc:
+                    # Deliberately NOT the "Error loading file:" prefix the
+                    # backstop below uses: the file parsed fine and the
+                    # transpose refused, and telling the user their file is
+                    # broken sends them to fix the wrong thing. The message is
+                    # already end-user prose and names the offending row, so it
+                    # is passed through as written and only the way out is
+                    # added. `continue` is this block's established stop for a
+                    # recoverable per-file problem.
+                    st.error(f"{exc} Or untick “Transpose this file” to load "
+                             f"it the way round it arrived.")
+                    continue
+
                 # Reset file position for later
                 uploaded_file.seek(0)
                 
                 # Ensure column names are strings for merging compatibility
                 df_preview.columns = [str(c) for c in df_preview.columns]
+
+                # Admission, on the shape the frame ACTUALLY has. This is the
+                # first point that shape is known and the last before the page
+                # starts doing per-column work, and it has to be after the
+                # transpose: a header peek at a transposed omics file would
+                # report ~300 columns for a frame that becomes 20,000 columns
+                # a moment later, i.e. it would be wrong on exactly the files
+                # this gate exists for.
+                _verdict = _admission(df_preview, uploaded_file.name)
+                if _verdict.refused:
+                    # `continue` is this block's established stop for a
+                    # recoverable per-file problem. No override offered: the
+                    # far side of one is an OOM kill that reaches the user as a
+                    # blank tab with no traceback anywhere they can see.
+                    st.error(_verdict.refusal)
+                    continue
+                if _verdict.warnings:
+                    for _msg in _verdict.warnings:
+                        st.warning(_msg)
+                    # The escape hatch the old byte check offered but could
+                    # never actually render. It is reachable only from here,
+                    # where the cost is the user's time rather than the
+                    # process's life.
+                    if not st.checkbox("Load anyway",
+                                       key=f"load_large_{file_key}"):
+                        continue
 
                 # Structural review, before anything is committed. The doctor
                 # returns the frame with the user's applied fixes, and that —

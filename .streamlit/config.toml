@@ -5,8 +5,48 @@ address = "localhost"
 headless = true
 enableCORS = true
 enableXsrfProtection = true
-maxUploadSize = 50
-maxMessageSize = 50
+# The server is deliberately no longer the admission gate.
+#
+# These were both 50 — 4x stricter than Streamlit's own 200 MB default, and the
+# same number the upload page enforced in `MAX_FILE_SIZE_MB`. Matching exactly
+# is what made the app's own check dead code: Streamlit refuses the upload POST
+# with a generic 413 before any page code runs, so the friendly message and its
+# "Load anyway" escape hatch could never render. A server ceiling must sit ABOVE
+# the app's own thresholds or it silently replaces them.
+#
+# Admission is now decided on the parsed frame, in `utils/admission.py`, because
+# cells predict memory and bytes of text do not — the same 20,000 x 300 matrix
+# wrote out at 19.66 MB, 40.44 MB and 106.32 MB depending only on decimal
+# places. 2000 is a ceiling, not a promise: `docker-compose.yml` defaults the
+# container to 4g, so the shape gate (and the cgroup-aware probe behind it) is
+# what actually protects that, not this line.
+maxUploadSize = 2000
+
+# A separate quantity, kept far lower on purpose: this caps what can be sent
+# BACK over the websocket to the browser. Nothing in this app should be shipping
+# half a gigabyte to a browser tab, so raising it to match the upload ceiling
+# would remove a limit that is doing real work.
+maxMessageSize = 500
+
+# Streamlit discards a disconnected session — and everything held in it — 120
+# seconds after the browser stops talking. That default is a poor fit here: two
+# minutes is a closed laptop lid, a VPN reconnect, or a walk between buildings,
+# and what it destroys is the uploaded frame, every fitted model and the audit
+# trail, putting the researcher back at Step 1 with the file to re-upload. The
+# cost of that scales with the dataset, so the default is worst for exactly the
+# wide files this app claims to serve.
+#
+# The tradeoff is memory, and it is real: a disconnected session keeps its
+# frames for the whole window. Under docker-compose's `${APP_MEMORY_LIMIT:-4g}`
+# ceiling that is memory the admission gate will correctly refuse the *next*
+# upload with. 1800 s is chosen as long enough to survive a reconnect and short
+# enough that an abandoned tab is not pinning a multi-gigabyte frame an hour
+# later.
+#
+# Behind a load balancer this buys nothing without session stickiness in the
+# proxy: a reconnect routed to another replica finds no session to resume. See
+# UNIVERSITY_DEPLOYMENT.md.
+disconnectedSessionTTL = 1800
 
 [browser]
 gatherUsageStats = false
