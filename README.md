@@ -257,6 +257,33 @@ For preflight checks, troubleshooting, and a smoke test checklist, see [QUICKSTA
 
 > **First launch:** The app loads ~60 packages including PyTorch and scikit-learn. Expect 15-30 seconds on a typical work laptop before the browser opens. Subsequent launches are faster.
 
+### How much data can it handle?
+
+Short version: **it's the column count that hurts, not the file size.** Reading a
+big file is cheap — a 194 MB RNA-seq matrix (60,000 rows × 1,000 columns) parses in
+about 4.3 seconds at roughly 1.3 GB peak. Ingest is not the bottleneck. What
+decides whether your study is comfortable here is how wide the table is:
+
+- **Up to ~500 columns** — comfortable, at any reasonable row count. This is the shape the guided workflow was built and tuned for.
+- **~500-2,000 columns** — workable, but EDA gets slow. Everything still finishes; you'll wait on the exploratory pages.
+- **Above ~2,000 columns** — the app warns you and lets you continue, and the warning is worth taking seriously. The EDA and explainability pages still do uncapped pairwise (O(columns²)) work, so 20,000 columns is 200 million column pairs and no amount of RAM makes that return. This is a known gap and it's under active work; until it's fixed, subset to the features you actually intend to model before you upload.
+
+**If you work with omics:** a targeted panel of a few hundred to a couple of
+thousand features is a good fit. A full 20,000-gene expression matrix is not, today
+— and we would rather say that here than have you find out on page 3.
+
+**On memory.** A frame costs roughly 6.6-7.2× the size of its CSV by the time the
+app is holding it, so plan on several GB of free RAM per GB of CSV. There is no
+fixed megabyte cap: uploads are admitted by measuring the *parsed frame* against
+the memory your machine can actually give, because the same matrix written at two
+different decimal precisions differs several-fold on disk and not at all in RAM. If
+a file won't fit, the app tells you at upload instead of half-way through the
+workflow.
+
+Running this on a shared or containerized server? The deployment-side knobs — upload
+ceiling, proxy body size, container memory — are in
+[UNIVERSITY_DEPLOYMENT.md](UNIVERSITY_DEPLOYMENT.md#hardware).
+
 ---
 
 ## For Researchers
