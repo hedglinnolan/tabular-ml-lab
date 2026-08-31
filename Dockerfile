@@ -47,20 +47,46 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy application code
 COPY --chown=appuser:appuser . .
 
-# Streamlit config for containerized deployment
-RUN mkdir -p /app/.streamlit && cat > /app/.streamlit/config.toml <<'EOF'
+# Streamlit config for containerized deployment — a DEFAULT, not an override.
+#
+# `COPY . .` above brings the repo's own `.streamlit/config.toml` into the image
+# (`.dockerignore` excludes the docs and the venvs, not `.streamlit/`), and this
+# heredoc used to overwrite it unconditionally. That silently discarded the one
+# file UNIVERSITY_DEPLOYMENT.md tells a site admin to edit: an institution that
+# raised the upload ceiling in their checkout built an image that ignored the
+# change, with nothing in the build output to say so. The guard makes this a
+# fallback for a tree that carries no `.streamlit/` at all, so an edited config
+# now wins.
+#
+# Two RUN instructions rather than `mkdir -p ... && test -f ... || cat ...`:
+# in `sh` that chain writes the default when the *mkdir* fails, which is
+# operator precedence quietly deciding a configuration question.
+#
+# `address` is the only key that differs between the two configs ("0.0.0.0"
+# here, "localhost" in the repo). Letting the repo's value win cannot strand the
+# container: the ENTRYPOINT passes `--server.address=0.0.0.0` on the command
+# line, and a Streamlit CLI flag outranks config.toml.
+RUN mkdir -p /app/.streamlit
+RUN test -f /app/.streamlit/config.toml || cat > /app/.streamlit/config.toml <<'EOF'
 [server]
 port = 8501
 address = "0.0.0.0"
 headless = true
 enableCORS = true
 enableXsrfProtection = true
-# Kept in step with .streamlit/config.toml, which `COPY . .` above puts in the
-# image and this heredoc then overwrites. Two files, one pair of numbers: 50 was
-# both the server ceiling AND the app's own check, which is what made the app's
-# check unreachable. See the repo config for the full reasoning.
+# Kept in step with .streamlit/config.toml, which the guard above now lets win —
+# these values apply only to a build whose tree carried no config of its own.
+# The server is not the admission gate: at 50 it matched the app's own limit
+# exactly and refused uploads with a generic 413 before any page code could
+# explain itself. Shape decides now (utils/admission.py). maxMessageSize governs
+# the other direction — what is rendered back to the browser — and stays far
+# lower.
 maxUploadSize = 2000
 maxMessageSize = 500
+
+# Streamlit's default is 120 s, which is a laptop lid or a VPN reconnect. See
+# .streamlit/config.toml for the full reasoning and the memory tradeoff.
+disconnectedSessionTTL = 1800
 
 [browser]
 gatherUsageStats = false
