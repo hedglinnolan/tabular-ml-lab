@@ -56,3 +56,20 @@ fastapi>=0.110
 uvicorn[standard]>=0.27
 python-multipart>=0.0.9
 httpx>=0.27
+
+# Host memory probe for the upload admission gate (utils/host_resources.py).
+# The gate has to size an incoming frame against memory this process can really
+# get, and the standard library has no answer to that question at all.
+#
+# It cannot be a bare psutil call, which is why the pin arrives with a helper
+# rather than alone. docker-compose.yml runs this app under
+# `memory: ${APP_MEMORY_LIMIT:-4g}` and UNIVERSITY_DEPLOYMENT.md tells omics
+# deployers to raise that knob — but psutil.virtual_memory() inside a container
+# reads the un-namespaced /proc/meminfo and reports the HOST's RAM, not the
+# cgroup ceiling. Trusted alone it would read a departmental server's hundreds
+# of GB, admit the file, and get the container OOM-killed at 4 GB. The helper
+# reads the cgroup limit too and takes the smaller.
+#
+# 5.9 is the floor with reliable 3.12/3.13 wheels; no upper bound, like every
+# line here that has not earned one.
+psutil>=5.9
