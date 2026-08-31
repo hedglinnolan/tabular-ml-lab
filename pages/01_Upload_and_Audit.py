@@ -520,15 +520,34 @@ if uploaded_files:
                 # this block re-executes on every rerun while the file sits in
                 # the uploader, and re-parsing a wide file each click costs
                 # seconds.
-                with st.spinner(f"Loading {uploaded_file.name}..."):
-                    df_preview = cached_parse_upload(
-                        uploaded_file.getvalue(),
-                        uploaded_file.name,
-                        transpose_this_file,
-                        excel_sheet_choice if file_type == 'excel' else 0,
-                        records_key_choice,
-                    )
-                
+                # Turning a table around can refuse — duplicate feature names
+                # would become two columns with one name. Imported here, not at
+                # the top of the page, because that is how Classic crosses into
+                # turbotab everywhere else (`ml/router.py` imports this same
+                # module from inside a function body).
+                from turbotab.orientation import OrientationError
+                try:
+                    with st.spinner(f"Loading {uploaded_file.name}..."):
+                        df_preview = cached_parse_upload(
+                            uploaded_file.getvalue(),
+                            uploaded_file.name,
+                            transpose_this_file,
+                            excel_sheet_choice if file_type == 'excel' else 0,
+                            records_key_choice,
+                        )
+                except OrientationError as exc:
+                    # Deliberately NOT the "Error loading file:" prefix the
+                    # backstop below uses: the file parsed fine and the
+                    # transpose refused, and telling the user their file is
+                    # broken sends them to fix the wrong thing. The message is
+                    # already end-user prose and names the offending row, so it
+                    # is passed through as written and only the way out is
+                    # added. `continue` is this block's established stop for a
+                    # recoverable per-file problem.
+                    st.error(f"{exc} Or untick “Transpose this file” to load "
+                             f"it the way round it arrived.")
+                    continue
+
                 # Reset file position for later
                 uploaded_file.seek(0)
                 

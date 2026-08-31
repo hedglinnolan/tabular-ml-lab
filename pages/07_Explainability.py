@@ -1488,6 +1488,10 @@ with _explain_tabs[2]:
                     "Transpose this file (rows ↔ columns)", value=False,
                     key=f"transpose_{ext_key}",
                     help="Use this if the external file has features in rows.")
+                # Same crossing, same reason, as `pages/01_Upload_and_Audit.py`:
+                # turning a table around refuses rather than silently merging
+                # two rows that share a name.
+                from turbotab.orientation import OrientationError
                 try:
                     ext_file.seek(0)
                     ext_df = load_tabular_data(
@@ -1496,6 +1500,13 @@ with _explain_tabs[2]:
                         records_key=ext_records_key or None)
                     ext_file.seek(0)
                     ext_df.columns = [str(c) for c in ext_df.columns]
+                except OrientationError as exc:
+                    # Not "Error loading file:" — the file loaded, and it was
+                    # the transpose that refused. Its message already names the
+                    # row to fix.
+                    st.error(f"{exc} Or untick “Transpose this file” to load "
+                             f"it the way round it arrived.")
+                    ext_df = None
                 except Exception as e:
                     st.error(f"Error loading file: {e}")
                     ext_df = None

@@ -56,9 +56,147 @@ def flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _transpose_refusal(df: pd.DataFrame, label: Optional[str]) -> Optional[str]:
+    """The message for a transpose that would destroy a column, or None.
+
+    `orientation.transpose` refuses the two cases that corrupt a table —
+    duplicate feature names, and a row already called `sample_id` — but both
+    refusals sit *behind* `orientation.label_column` having accepted a column as
+    the identifiers, and it only accepts one that is fully populated and ~90%
+    distinct. When it accepts nothing, `transpose` takes its `else` branch,
+    names the turned-around columns `row_0, row_1, …`, and the identifier column
+    becomes an ordinary row — which the per-column coercion at the end of
+    `transpose` then reads as a measurement row that will not coerce and
+    replaces with NaN.
+
+    Measured on 12 genes × 8 samples with three duplicated symbols: the names do
+    not survive anywhere in the output. That is *worse* than the `df.T` this
+    function replaced, which at least stranded them as readable cells, so the
+    fix for the identifier bug has to close this or it reintroduces it in a form
+    that leaves nothing to recover. Three ordinary omics exports land here:
+
+    * duplicated gene symbols — the norm in a symbol-keyed expression matrix,
+      and routine in probe-level arrays. The 90% rule also cannot fire at all
+      below ten rows, where `int(0.9 * len(df))` rounds the margin away;
+    * one blank in the identifier column, which fails the fully-populated test
+      outright however unique the rest of it is;
+    * a second metadata column — `chrom`, `biotype`, `gene_symbol` — beside the
+      identifiers, which becomes a phantom sample row of NaN *even when* the
+      identifiers themselves are recognized.
+
+    The predicate is deliberately blunt: any column that is neither the
+    identifiers nor numeric, because every one of them becomes a row that is not
+    a sample. The all-numeric frame with no identifier column at all is
+    untouched — there the `row_N` names are the honest answer and nothing is
+    lost — which is why this asks about columns rather than about `label` alone.
+
+    This lives here rather than in `orientation.label_column` on purpose.
+    Loosening that rule would change which column TurboTab consumes as labels
+    for `turbotab/project.py`, `packs.py`, `api.py` and `ml/router.py` too,
+    against a 386-line test file none of this PR's measurements cover. Refusing
+    is the part that is safe to state now; widening what is *accepted* needs
+    that module's own evidence. One gap is left open by the same reasoning: an
+    identifier column of numbers (some probe and m/z exports) is skipped by
+    `label_column` before this sees it and still transposes to positional names.
+    That is not a regression — it is what `df.T` did too — and it is recorded
+    rather than guessed at.
+    """
+    stranded = [c for c in df.columns
+                if c != label and not pd.api.types.is_numeric_dtype(df[c])]
+    if not stranded:
+        return None
+
+    name = stranded[0]
+    col = df[name]
+    also = (f" ({len(stranded)} columns hold text: "
+            f"{', '.join(repr(str(c)) for c in stranded[:4])}"
+            f"{', …' if len(stranded) > 4 else ''}.)"
+            if len(stranded) > 1 else "")
+
+    if label is None:
+        blanks = int(col.isna().sum())
+        if blanks:
+            return (f"The column {str(name)!r} names the rows, but {blanks} of "
+                    f"its {len(df)} values "
+                    f"{'is' if blanks == 1 else 'are'} blank. Turning the table "
+                    f"around would drop every one of those names and label the "
+                    f"columns `row_0`, `row_1`, … instead. A single gap is "
+                    f"enough to lose all of them, so fill it in first.")
+        text = col.astype(str)
+        repeated = text[text.duplicated()]
+        if len(repeated):
+            # Same sentence `orientation.transpose` raises for the duplicates it
+            # does catch, so a user who hits it at either threshold reads one
+            # answer rather than two descriptions of one problem.
+            return (f"Two rows are both named {repeated.iloc[0]!r}. Turning the "
+                    f"table around would give two columns one name, and every "
+                    f"reading after that would silently use one of them. Give "
+                    f"the rows distinct names, or combine the repeats, first.")
+
+    return (f"The column {str(name)!r} holds text rather than measurements. "
+            f"Turning the table around would make it a row — a sample with no "
+            f"numbers in it — and its values would be read as measurements that "
+            f"failed and replaced with blanks. Keep one column of feature names "
+            f"and remove the rest before transposing.{also}")
+
+
 def transpose_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Transpose a DataFrame (rows ↔ columns)."""
-    return df.T
+    """Turn a features-in-rows table around, keeping the feature names.
+
+    This used to be a bare `df.T`, and on the file the checkbox above it names
+    — "use this if your features are in rows", i.e. an omics matrix of a string
+    `gene_id`/`mz_id` column beside one numeric column per sample — that did
+    three destructive things at once:
+
+    * the new column names came from the source RangeIndex, so they were
+      `0, 1, 2, …`. **The feature identifiers stopped being identifiers**, and
+      every downstream reading — the target picker, the audit, the manuscript's
+      methods — named a position instead of a gene.
+    * the discarded identifiers reappeared as a phantom first ROW of strings,
+      which reads as a sample and is counted as one.
+    * that string row forced every column to `object`, measured at a constant
+      40.0 bytes/cell against 8 — a ~3.9× inflation — which then makes
+      `utils/perf_cache.cached_audit_tables`'s per-object-column `to_numeric`
+      scan run once per gene instead of once.
+
+    `turbotab/orientation.py` already solves this, is already tested against
+    real assay fixtures, and refuses rather than guesses where a transpose can
+    quietly corrupt a table (duplicate feature names; a row named `sample_id`).
+    It sets the index instead of transposing blind, so it is a view rather than
+    a copy, and it coerces dtypes back one column at a time.
+
+    **The shape therefore changes, and that is the fix, not a side effect.**
+    For R feature rows × (1 id + S sample) columns, `df.T` gave (1 + S, R) with
+    the identifiers stranded in a dropped index; this gives (S, R + 1), the
+    extra column being `sample_id` holding the sample names that used to be
+    thrown away. Same cells, nothing invented.
+
+    `OrientationError` propagates: it is raised precisely so a corrupting
+    transpose refuses, its messages are already end-user prose, and the upload
+    pages surface it verbatim. Wrapping it here would turn a specific,
+    actionable refusal back into "something went wrong".
+
+    It is also raised *before* the delegation, for the cases `orientation`'s own
+    refusals cannot reach because they sit behind its identifier rule — see
+    `_transpose_refusal`, which is where the reasoning is written down.
+
+    On the import direction: `utils/test_lockbox.py` says in passing that
+    "Classic cannot import turbotab". That has not been true for some time —
+    `ml/router.py`, `ml/pipeline.py`, `ml/eda_recommender.py`,
+    `ml/missingness_plan.py` and `utils/theme.py` all cross, and router.py
+    imports *this same module*. The crossing is done their way, lazily from
+    inside the function body: `setup.py` ships `data_processor` as a bare
+    py_module without `turbotab/`, so `import data_processor` must not hard-fail
+    where the package is absent, and only a caller that actually asks for a
+    transpose should pay for it. Porting the logic instead would fork a module
+    that carries its own 386-line test file, and the fork would go stale.
+    """
+    from turbotab.orientation import (OrientationError, label_column,
+                                      transpose as _turn)
+    refusal = _transpose_refusal(df, label_column(df))
+    if refusal:
+        raise OrientationError(refusal)
+    return _turn(df)["df"]
 
 
 def load_csv(file: Union[str, io.BytesIO], encoding: Optional[str] = None) -> pd.DataFrame:
@@ -676,14 +814,24 @@ def load_tabular_data(
     Args:
         file: File path or file-like object
         filename: Original filename (used to detect file type if file is BytesIO)
-        transpose: Whether to transpose the data after loading
+        transpose: Whether to transpose the data after loading. The feature
+            names are carried across rather than discarded, so the result gains
+            a `sample_id` column — see `transpose_dataframe`.
         excel_sheet: Sheet name or index for Excel files (default: first sheet)
         records_key: for JSON, the top-level key holding the rows when the
             payload wraps them (e.g. "data"). Chosen by the user in the UI when
             more than one key could plausibly hold the table.
-    
+
     Returns:
         Loaded DataFrame, optionally transposed
+
+    Raises:
+        turbotab.orientation.OrientationError: when `transpose` is set and the
+            table cannot be turned around without corrupting it — duplicate
+            feature names, a blank among them, a row already named `sample_id`,
+            or a second column of text that would become a sample with no
+            measurements in it. The file itself loaded; it is the transpose that
+            refused, and the callers report it as such.
     """
     # Detect file type
     if filename:

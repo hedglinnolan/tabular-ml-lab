@@ -154,8 +154,16 @@ def test_load_tabular_data_routes_json(filename, payload, shape):
 
 
 def test_load_tabular_data_transpose_still_applies():
+    """(2, 2), not the (2, 1) this asserted while the transpose was a bare
+    `df.T`. The second column is not new data — it is `sample_id`, holding the
+    original column headers `a` and `b`, which `df.T` used to strand in an
+    index it then dropped. This frame has no identifier column, so its one row
+    turns into the column `row_0`. See `data_processor.transpose_dataframe`."""
     df = load_tabular_data(_b('[{"a":1,"b":2}]'), filename="x.json", transpose=True)
-    assert df.shape == (2, 1)
+    assert df.shape == (2, 2)
+    assert list(df.columns) == ["sample_id", "row_0"]
+    assert df["sample_id"].tolist() == ["a", "b"]
+    assert df["row_0"].tolist() == [1, 2]
 
 
 
