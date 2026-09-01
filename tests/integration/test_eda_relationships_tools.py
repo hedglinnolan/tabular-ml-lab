@@ -305,3 +305,246 @@ class TestClusterPlotsAlwaysRender:
         assert k_sel is not None
         assert len(list(k_sel.options)) >= 2
         assert k_sel.value is not None
+
+
+# ── The p x p correlation screen, and what it says when it caps ──────
+
+class TestCorrelationScreenDisclosure:
+    """The pair table is capped now; the manuscript has to hear about it.
+
+    `_top_corr_pairs` built a full p x p matrix — 28p^2 bytes, so 2.7 GB at
+    10,000 columns — to print 30 rows. It is capped at
+    `ml.regime.DENSE_PAIRWISE_MAX_FEATURES` with a variance pre-screen, and a
+    reduction that changes which features were analyzed without saying so would
+    write a Methods section describing an analysis that did not happen.
+
+    The caps engage at widths too large to render inside a test suite, so the
+    threshold is lowered rather than the dataset grown: the constant is read at
+    call time by `ml.regime.dense_pairwise_budget`, and the code path exercised
+    is the one a 12,000-column upload takes.
+    """
+
+    @staticmethod
+    def _all_text(at):
+        parts = []
+        for attr in ("markdown", "caption", "info", "warning", "error", "success"):
+            for el in getattr(at, attr, []):
+                parts.append(str(getattr(el, "value", "")))
+        return " ".join(parts)
+
+    @staticmethod
+    def _ledger(at):
+        try:
+            return at.session_state["insight_ledger"]
+        except Exception:
+            return None
+
+    @staticmethod
+    def _graded_frame(n=200, p=80, seed=1, missing=0.0):
+        """Variance rising with column index, and a flat outcome beside it.
+
+        The outcome is the lowest-variance column by three orders of magnitude
+        — the omics shape — and is strongly correlated with the WIDEST column,
+        so a screen that ranks it out loses the most interesting pair in the
+        table.
+        """
+        rng = np.random.RandomState(seed)
+        df = pd.DataFrame({f"g{i:03d}": rng.normal(0, i + 1, n) for i in range(p)})
+        df["glucose"] = df[f"g{p - 1:03d}"] * 0.001 + rng.normal(0, 0.0005, n)
+        if missing:
+            block = df.to_numpy()
+            block[rng.random_sample(block.shape) < missing] = np.nan
+            df = pd.DataFrame(block, columns=df.columns)
+        return df
+
+    def test_a_narrow_upload_acquires_no_new_friction(self):
+        """500 x 20, real thresholds: no screen, no caption, no ledger entry."""
+        rng = np.random.RandomState(0)
+        df = pd.DataFrame(rng.normal(size=(500, 19)),
+                          columns=[f"f{i:02d}" for i in range(19)])
+        df.loc[rng.choice(500, 25, replace=False), "f03"] = np.nan
+        df["glucose"] = df["f01"] * 2 + rng.normal(size=500)
+
+        at = _run_eda(df)
+        _assert_clean(at, "EDA on a 500 x 20 upload")
+
+        text = self._all_text(at)
+        assert "highest-variance of" not in text, (
+            "a narrow dataset was told about a cap that did not engage")
+        ledger = self._ledger(at)
+        assert ledger is not None
+        assert ledger.get("eda_cap_corr_pairs") is None
+        assert ledger.get("eda_method_spearman_rank_approx") is None
+        log = at.session_state["methodology_log"]
+        assert not [e for e in log if "Screened pairwise correlations" in e["action"]]
+
+    def test_the_screen_that_engages_says_so_on_screen_and_in_the_record(self, monkeypatch):
+        import ml.regime as regime
+        monkeypatch.setattr(regime, "DENSE_PAIRWISE_MAX_FEATURES", 30)
+
+        at = _run_eda(self._graded_frame())
+        _assert_clean(at, "EDA with the pair screen capped")
+
+        text = self._all_text(at)
+        assert "the 30 highest-variance of 81 numeric features" in text
+        assert "a stronger pair may exist among them" in text, (
+            "the notice implies the printed pairs are the dataset's strongest")
+        assert "glucose" in text and "kept in the screen" in text, (
+            "nothing says the outcome survived a variance ranking it would lose")
+
+        insight = self._ledger(at).get("eda_cap_corr_pairs")
+        assert insight is not None, "the cap never reached the ledger"
+        assert insight.resolved is False, (
+            "a resolved insight is skipped by discussion_points_for_manuscript()")
+        assert insight.metadata["n_screened"] == 30
+        assert insight.metadata["n_total"] == 81
+        assert insight.metadata["selection_rule"] == "variance"
+        assert insight.metadata["target_retained"] is True
+
+        limitations = self._ledger(at).discussion_points_for_manuscript()["limitations"]
+        assert any("screened among the 30 highest-variance" in s for s in limitations), (
+            "the reduction does not reach the manuscript")
+
+        log = at.session_state["methodology_log"]
+        assert [e for e in log if "Screened pairwise correlations on 30 of 81" in e["action"]]
+
+    def test_the_rank_substitution_is_disclosed_where_it_is_chosen(self, monkeypatch):
+        import ml.regime as regime
+        monkeypatch.setattr(regime, "RANK_CORR_PAIRWISE_MAX_FEATURES", 20)
+
+        at = AppTest.from_file("pages/02_EDA.py", default_timeout=90)
+        inject_data_state(at, self._graded_frame(missing=0.03))
+        at.session_state["corr_method"] = "Spearman"
+        at.run()
+        _assert_clean(at, "EDA with Spearman on a frame with gaps")
+
+        text = self._all_text(at)
+        assert "Pearson correlation of column ranks" in text
+        assert "% of cells are missing" in text
+
+        insight = self._ledger(at).get("eda_method_spearman_rank_approx")
+        assert insight is not None and insight.resolved is False
+        assert insight.manuscript_text.startswith("Spearman correlations were computed")
+        limitations = self._ledger(at).discussion_points_for_manuscript()["limitations"]
+        assert any("column ranks" in s for s in limitations)
+
+    def test_a_correlation_that_runs_out_of_memory_does_not_take_the_page_down(
+            self, monkeypatch):
+        """The block had no try/except at all, so this was a dead page.
+
+        At 10,000 columns the p x p construction wants 2.7 GB and at 60,000 it
+        wants 94 GB, and the failure has to leave a sentence behind: an empty
+        Relationships tab reads as "no strong pairs" to anyone who did not watch
+        it fail.
+        """
+        real_corr = pd.DataFrame.corr
+
+        def out_of_memory(self, *args, **kwargs):
+            # Only the wide construction fails; the narrower correlation work
+            # elsewhere on the page (the collinearity screen caps at 50 columns)
+            # keeps working, so this isolates the site under test.
+            if self.shape[1] > 70:
+                raise MemoryError("Unable to allocate 94.0 GiB for an array")
+            return real_corr(self, *args, **kwargs)
+
+        monkeypatch.setattr(pd.DataFrame, "corr", out_of_memory)
+
+        at = _run_eda(self._graded_frame())
+        _assert_clean(at, "EDA when the pair screen runs out of memory")
+
+        said = [str(w.value) for w in at.warning if "correlation screen" in str(w.value)]
+        assert said, "the screen failed silently"
+        assert "not a finding of 'no strong pairs'" in said[0], (
+            "the notice lets an empty tab read as a clean result")
+
+    def test_narrowing_the_feature_set_rebuilds_the_screen_it_describes(
+            self, monkeypatch):
+        """A stale table under a live caption is a false Methods claim.
+
+        `_top_corr_pairs` takes its columns as `_features`, which is
+        underscore-prefixed and so takes no part in the cache key, and `data_id`
+        digests the FRAME. The screened columns come from
+        `data_config.feature_cols`, which the Feature Selection page changes
+        without touching a cell of `df`, so two feature sets landing on the same
+        budget collided. The caption and the `eda_cap_corr_pairs` insight are
+        both composed live from the CURRENT feature set, so the served table
+        named columns that were not in the analysis while the manuscript
+        sentence beside it described a screen that had never run.
+        """
+        import ml.regime as regime
+        monkeypatch.setattr(regime, "DENSE_PAIRWISE_MAX_FEATURES", 30)
+
+        df = self._graded_frame()
+        at = _run_eda(df)
+        _assert_clean(at, "EDA with the pair screen capped")
+        assert "of 81 numeric features" in self._all_text(at)
+
+        # Narrow the feature set the way the Feature Selection page does. Same
+        # frame, same budget of 30 — only the pool changes.
+        kept = [f"g{i:03d}" for i in range(60)]
+        at.session_state["data_config"].feature_cols = list(kept)
+        at.session_state["selected_features"] = list(kept)
+        at.run()
+        _assert_clean(at, "EDA after narrowing the feature set")
+
+        table_df = None
+        for el in at.dataframe:
+            value = el.value
+            if (isinstance(value, pd.DataFrame)
+                    and {"Feature A", "Feature B"} <= set(value.columns)):
+                table_df = value
+                break
+        assert table_df is not None, "the correlation table did not render"
+
+        named = set(table_df["Feature A"]) | set(table_df["Feature B"])
+        allowed = set(kept) | {"glucose"}
+        assert not (named - allowed), (
+            "the table was served from the pre-narrowing cache and names columns "
+            f"that are not in the analysis: {sorted(named - allowed)}")
+
+        insight = self._ledger(at).get("eda_cap_corr_pairs")
+        assert insight is not None and insight.metadata["n_total"] == 61
+
+    def test_gaps_in_a_column_that_never_enters_the_matrix_change_nothing(
+            self, monkeypatch):
+        """A categorical's missingness must not caveat a numeric correlation.
+
+        The substitution used to trigger on `regime.n_missing_cols`, which
+        counts gaps across every feature column — categoricals included, and not
+        one of those appears in a correlation. On complete numeric data
+        `sub.rank().corr("pearson")` IS Spearman exactly, so the unresolved
+        "computed as the Pearson correlation of column ranks" limitation
+        described an approximation that was not one: a false caveat in the
+        Discussion, the same class of error as a silent cap.
+        """
+        import ml.regime as regime
+        monkeypatch.setattr(regime, "RANK_CORR_PAIRWISE_MAX_FEATURES", 20)
+
+        rng = np.random.RandomState(5)
+        df = self._graded_frame(n=120, p=60)
+        site = np.array(["A", "B", "C"] * 40, dtype=object)[:120]
+        site[rng.choice(120, 12, replace=False)] = None
+        df["site"] = site  # the ONLY column with gaps, and it is categorical
+
+        at = AppTest.from_file("pages/02_EDA.py", default_timeout=120)
+        inject_data_state(at, df)
+        at.session_state["corr_method"] = "Spearman"
+        at.run()
+        _assert_clean(at, "EDA with Spearman beside a gappy categorical")
+
+        assert "Pearson correlation of column ranks" not in self._all_text(at), (
+            "a categorical column's gaps caveated a complete numeric correlation")
+        assert self._ledger(at).get("eda_method_spearman_rank_approx") is None
+        limitations = self._ledger(at).discussion_points_for_manuscript()["limitations"]
+        assert not any("column ranks" in s for s in limitations), limitations
+
+        # And the disclosure still fires when a column that IS in the matrix
+        # has gaps — the substitution is scoped, not disabled.
+        df.loc[rng.choice(120, 8, replace=False), "g005"] = np.nan
+        at2 = AppTest.from_file("pages/02_EDA.py", default_timeout=120)
+        inject_data_state(at2, df)
+        at2.session_state["corr_method"] = "Spearman"
+        at2.run()
+        _assert_clean(at2, "EDA with Spearman on a gappy numeric column")
+        assert "Pearson correlation of column ranks" in self._all_text(at2)
+        assert self._ledger(at2).get("eda_method_spearman_rank_approx") is not None
