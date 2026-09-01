@@ -895,7 +895,7 @@ def compare_models_paired_cv(
     `d = d[~np.isnan(d)]`, so a fold that died for either model is dropped from
     the paired difference and the test runs on what is left. That is a
     defensible thing for the statistic to do and it is NOT changed here — but
-    it means `p` can be a three-fold result labelled "paired t-test" while
+    it means `p` can be a three-fold result labeled "paired t-test" while
     `mean_delta` is NaN, and a caller that prints the `p` without the
     denominator publishes exactly the survivor statistic this module's other
     disclosures exist to prevent. Both display sites (pages/06 and pages/10)

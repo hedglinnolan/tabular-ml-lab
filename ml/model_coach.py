@@ -1713,7 +1713,7 @@ def _svc_calibrated_fit_seconds(n: int) -> float:
 
     The anchors were measured at 120 features. Kernel evaluation is linear in
     p, so this projection is a FLOOR on a wider table; it is not corrected for
-    p because nothing measured a second width, and a modelled correction would
+    p because nothing measured a second width, and a modeled correction would
     be a guess wearing a measurement's clothes.
 
     Total by construction — no branch raises, every path returns a finite

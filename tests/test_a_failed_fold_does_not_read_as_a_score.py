@@ -454,7 +454,7 @@ def test_the_paired_test_reports_the_folds_it_was_actually_computed_over():
 
     `ml/stats_tests.py` opens `paired_location_test` with
     `d = d[~np.isnan(d)]`. That is not changed — but it means a pair where one
-    model lost a fold still yields a finite `p`, labelled "paired t-test",
+    model lost a fold still yields a finite `p`, labeled "paired t-test",
     computed over a self-selected subset of the loop. The denominator has to
     come back with it or a display cannot tell the two cases apart.
     """
