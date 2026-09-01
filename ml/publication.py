@@ -726,6 +726,19 @@ def generate_methods_section(
     # NEW: methods parameter precision
     model_hyperparameters: Optional[Dict[str, Dict]] = None,
     hyperparameter_optimization: bool = False,
+    # How many Optuna trials the run actually used, when the caller knows.
+    #
+    # The sentence below hardcoded "(30 trials per model)", which was true only
+    # because pages/06 hardcoded 30 at its call site as well. That count is now
+    # a user control, so the literal would have become the Methods section
+    # asserting a search budget the run did not use — the same fault as
+    # `AUDIT-026` below, where Methods described a cross-validation design
+    # nobody performed.
+    #
+    # `None` is not `0` and not a fallback to 30 (trap 9): `None` is a caller
+    # who did not record the count, and the sentence then names the method
+    # without inventing a number for it.
+    hyperparameter_optimization_trials: Optional[int] = None,
     split_strategy: Optional[str] = None,
     missing_data_summary: Optional[Dict] = None,
     ledger_narratives: Optional[Dict[str, str]] = None,
@@ -1519,9 +1532,17 @@ def generate_methods_section(
         if hp_details:
             sections.append(f" Key hyperparameters: {'; '.join(hp_details)}.")
     
-    # Add hyperparameter optimization note
+    # Add hyperparameter optimization note. The trial count is reported only
+    # when the record carries it; an unrecorded budget is left unstated rather
+    # than backfilled with the old literal.
     if hyperparameter_optimization:
-        sections.append(" Hyperparameter optimization was performed using Optuna (30 trials per model).")
+        if hyperparameter_optimization_trials:
+            sections.append(
+                f" Hyperparameter optimization was performed using Optuna "
+                f"({hyperparameter_optimization_trials} trials per model)."
+            )
+        else:
+            sections.append(" Hyperparameter optimization was performed using Optuna.")
     
     # FIX 5: Baseline model reporting
     if selected_model_results:

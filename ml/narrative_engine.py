@@ -1292,11 +1292,36 @@ class NarrativeEngine:
                         f"split alone."
                     )
 
-        # Hyperparameter optimization
+        # Hyperparameter optimization.
+        #
+        # This said "using grid search", and the app has never run one: page 06
+        # builds an Optuna study whose default sampler is a tree-structured
+        # Parzen estimator, and its objective is a single fit scored on the
+        # held-out validation split rather than a fold loop. The sentence named
+        # a method the run did not use, which is the same class of fault as
+        # `AUDIT-026` — Methods asserting a design nobody performed — and this
+        # generator is the one page 10 reaches first, so it is the one a reader
+        # of the exported draft actually sees.
+        #
+        # The trial count comes from the record, never from a literal: it is a
+        # user control now, so a hardcoded number would go stale the first time
+        # someone moved the slider. Absent from the record, the method is named
+        # without a budget rather than given an invented one.
         if self.ctx.get("use_hyperopt"):
-            parts.append(
-                "Hyperparameter optimization was performed using grid search."
-            )
+            _hyperopt_trials = self.ctx.get("hyperopt_trials")
+            if _hyperopt_trials:
+                parts.append(
+                    f"Hyperparameter optimization was performed with Optuna "
+                    f"(tree-structured Parzen estimator sampler, "
+                    f"{_hyperopt_trials} trials per tunable model), with each "
+                    f"trial scored on the held-out validation split."
+                )
+            else:
+                parts.append(
+                    "Hyperparameter optimization was performed with Optuna "
+                    "(tree-structured Parzen estimator sampler), with each trial "
+                    "scored on the held-out validation split."
+                )
 
         # NN config rationale (#95)
         nn_config_source = self.ctx.get("nn_config_source", "")

@@ -913,14 +913,20 @@ def _build_methods_section_for_export(
             except Exception as e:
                 logger.debug("Could not extract hyperparameters for %s: %s", model_key, e)
 
-    # Check methodology log for hyperparameter_optimization
+    # Check methodology log for hyperparameter_optimization, and for the trial
+    # count that went with it. The Methods sentence used to name "30 trials per
+    # model" as a literal; the count is a user control now, so it travels with
+    # the flag or the sentence does not name a number at all. `None` here means
+    # the log predates the field, not that zero trials ran.
     hyperparameter_optimization = False
+    hyperparameter_optimization_trials = None
     _hp_log = _report_ledger.get_methodology_log() or st.session_state.get('methodology_log', [])
     for entry in _hp_log:
         if entry.get('step') == 'Model Training':
             details = entry.get('details', {})
             if details.get('hyperparameter_optimization'):
                 hyperparameter_optimization = True
+                hyperparameter_optimization_trials = details.get('hyperopt_trials')
                 break
     
     # Build missing_data_summary from dataset_profile or data_audit
@@ -1039,6 +1045,7 @@ def _build_methods_section_for_export(
         manuscript_context=manuscript_context,
         model_hyperparameters=model_hyperparameters,
         hyperparameter_optimization=hyperparameter_optimization,
+        hyperparameter_optimization_trials=hyperparameter_optimization_trials,
         split_strategy=split_strategy,
         missing_data_summary=missing_data_summary,
         ledger_narratives=_ledger_narratives,

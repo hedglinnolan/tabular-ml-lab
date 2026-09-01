@@ -176,6 +176,18 @@ class TrainingProvenance:
     # about a run nobody recorded.
     cv_models_run: Optional[List[str]] = None
     use_hyperopt: bool = False
+    # HOW MANY Optuna trials per tunable model, when the recorder knew.
+    #
+    # `use_hyperopt` above is the flag, and the flag alone was all the Methods
+    # narrative ever had — so it could say a search happened but never what it
+    # cost, and ml/publication.py filled the gap with the literal "30 trials
+    # per model". That literal was true only while pages/06 hardcoded 30. The
+    # count is a user control now, so it is recorded rather than assumed.
+    #
+    # `None` rather than `0`, and the distinction is the same one
+    # `cv_models_run` draws: `None` is a record written before this field
+    # existed, `0`/absence of the flag is a run that tuned nothing.
+    hyperopt_trials: Optional[int] = None
     class_weight_balanced: bool = False
     metrics_by_model: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     nn_config_source: str = ""  # "recommended", "custom", "recommended+modified"
@@ -532,6 +544,7 @@ class WorkflowProvenance:
         cv_folds: Optional[int] = None,
         cv_models_run: Optional[List[str]] = None,
         use_hyperopt: bool = False,
+        hyperopt_trials: Optional[int] = None,
         class_weight_balanced: bool = False,
         hyperparameters: Optional[Dict[str, Dict[str, Any]]] = None,
         metrics_by_model: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -551,6 +564,7 @@ class WorkflowProvenance:
             cv_models_run=(list(cv_models_run)
                            if cv_models_run is not None else None),
             use_hyperopt=use_hyperopt,
+            hyperopt_trials=hyperopt_trials,
             class_weight_balanced=class_weight_balanced,
             metrics_by_model=dict(metrics_by_model or {}),
             nn_config_source=nn_config_source,
@@ -787,6 +801,10 @@ class WorkflowProvenance:
                                     if self.training.cv_models_run is not None
                                     else None)
             ctx["use_hyperopt"] = self.training.use_hyperopt
+            # Carried so the narrative can name the search budget the run used
+            # instead of describing the search without one. `None` when the
+            # record does not know, and the sentence then omits the number.
+            ctx["hyperopt_trials"] = self.training.hyperopt_trials
             ctx["class_weight_balanced"] = self.training.class_weight_balanced
             ctx["hyperparameters"] = self.training.hyperparameters
             ctx["metrics_by_model"] = self.training.metrics_by_model
