@@ -1673,6 +1673,78 @@ def realized_training_n() -> Optional[int]:
     return n if n > 0 else None
 
 
+# Measured wall time of ONE `SVC(probability=True).fit`, this repo's own
+# benchmark, on a dense 120-feature matrix: (rows, seconds). The uncalibrated
+# fits at the same three shapes were 0.084 s / 1.95 s / 79.4 s, so the flag
+# costs 6.4x / 4.1x / 6.9x — the dip in the middle is expected, not noise,
+# because each of the five Platt folds fits on 4/5 n and libsvm is
+# superquadratic, which puts the theoretical ratio near 4x with fixed
+# overheads inflating it at small n and the steepening exponent inflating it
+# again at large n.
+_SVC_CALIBRATED_FIT_SECONDS: Tuple[Tuple[int, float], ...] = (
+    (1_000, 0.54), (5_000, 8.02), (20_000, 548.7),
+)
+
+
+def _svc_calibrated_fit_seconds(n: int) -> float:
+    """Project one calibrated SVC fit's wall time at `n` training rows.
+
+    Log-log interpolation between the measured anchors above, extrapolated
+    beyond them with the nearest segment's own exponent — 1.68 below 1,000
+    rows, 3.05 above 20,000. A single global exponent (2.29 over the whole
+    range) would understate the top end badly, which is the end that matters:
+    libsvm is superquadratic and steepens, so the cost above 20,000 rows
+    explodes rather than grows.
+
+    The anchors were measured at 120 features. Kernel evaluation is linear in
+    p, so this projection is a FLOOR on a wider table; it is not corrected for
+    p because nothing measured a second width, and a modelled correction would
+    be a guess wearing a measurement's clothes.
+
+    Total by construction — no branch raises, every path returns a finite
+    positive number. `pages/06_Train_and_Compare.py` wraps the whole
+    `model_viability` call in a bare `except` that empties EVERY model's
+    badge, so an exception raised here would silently delete the shape
+    reasoning from all twenty-odd model cards, not just this one.
+    """
+    import math
+    pts = _SVC_CALIBRATED_FIT_SECONDS
+    # Clamp before the power: a row count is bounded in practice, but an
+    # overflow to inf here would print "inf min" on a model card.
+    n = min(max(int(n), 1), 10 ** 9)
+    if n <= pts[0][0]:
+        lo, hi = pts[0], pts[1]
+    elif n >= pts[-1][0]:
+        lo, hi = pts[-2], pts[-1]
+    else:
+        lo, hi = pts[0], pts[1]
+        for i in range(len(pts) - 1):
+            if pts[i][0] <= n <= pts[i + 1][0]:
+                lo, hi = pts[i], pts[i + 1]
+                break
+    exponent = math.log(hi[1] / lo[1]) / math.log(hi[0] / lo[0])
+    return lo[1] * (n / lo[0]) ** exponent
+
+
+def _fmt_fit_duration(seconds: float) -> str:
+    """A duration a model card has room for, in the unit that reads honestly.
+
+    Deliberately coarse, and coarser the further it gets from the measured
+    anchors: the large values are extrapolations off a three-point curve, and
+    "3 days" makes the order-of-magnitude claim this actually is, where "70.8
+    h" would dress the same guess up as a stopwatch reading.
+    """
+    if seconds < 1:
+        return "<1 s"
+    if seconds < 90:
+        return f"{seconds:.0f} s"
+    if seconds < 5400:
+        return f"{seconds / 60:.0f} min"
+    if seconds < 172800:
+        return f"{seconds / 3600:.0f} h"
+    return f"{seconds / 86400:.0f} days"
+
+
 def model_viability(profile: Any, probe: Any = None,
                     n_train: Optional[int] = None) -> Dict[str, Tuple[str, str]]:
     """One evidence-bearing verdict per registry model key.
@@ -1782,6 +1854,49 @@ def model_viability(profile: Any, probe: Any = None,
             v[k] = ("ok", "kernels tolerate p>n, but results are hard to interpret")
         else:
             v[k] = ("ok", "try only if the linear baseline underfits")
+
+    # SVR and SVC part company on cost, so the shared clause above can no
+    # longer serve both. `_create_svc` (ml/model_registry.py) sets
+    # `probability=True`, which runs an internal 5-fold Platt calibration, so
+    # ONE "SVC fit" is six libsvm solves — five calibration folds plus the
+    # final one. sklearn's SVR has no such parameter at all and `_create_svr`
+    # builds it bare, so writing "six solves" into the shared string would
+    # state a falsehood about SVR.
+    #
+    # The flag is NOT removed and must not be: ROC-AUC, LogLoss and PR-AUC
+    # (ml/eval.py), the calibration curve, the ROC/PR plots and SVC's
+    # KernelExplainer path all gate on `hasattr(model, "predict_proba")`,
+    # which sklearn's `available_if` makes False when the flag is off. Turning
+    # it off would therefore not raise — it would silently delete those
+    # outputs from the comparison table and from the exported manuscript,
+    # which is a worse failure than a crash. What was missing was the price
+    # tag, so the price tag is what this adds.
+    #
+    # The cost is WALL TIME AND NOT MEMORY, and is stated that way: peak RSS
+    # was 256.8 MB without the flag against 258.1 MB with it at 20,000 x 120,
+    # because libsvm's kernel cache is capped at 200 MB by default. A GB
+    # figure here would be wrong.
+    #
+    # It is said in every branch, not only the `n > 5000` one. Above 5,000 the
+    # badge already reads "poor" and is discouraging the user anyway; below it
+    # is where a user actually does tick the box, and that is exactly where
+    # the clause used to name no cost at all despite a measured 4.1x at
+    # n=5,000 and 6.4x at n=1,000. The two other surfaces that state this
+    # (pages/06_Train_and_Compare.py, the per-model notice and the caption
+    # under the train buttons) both speak at TRAIN time, after the user has
+    # already committed; this is the only one that speaks at the moment of
+    # choice.
+    _svc_verdict, _svc_shape_clause = v["svc"]
+    if n > 5000:
+        # The cost phrase below already names the row count, so the n² note
+        # carries the trend rather than a second copy of the same number.
+        _svc_shape_clause = "kernel cost keeps scaling ~n² from there"
+    v["svc"] = (
+        _svc_verdict,
+        f"probability=True makes each fit 6 libsvm solves ≈ "
+        f"{_fmt_fit_duration(_svc_calibrated_fit_seconds(n))} at n={n:,}; "
+        f"{_svc_shape_clause}"
+    )
 
     if n < 500 or low_epv:
         # `AUDIT-021`: this used to read "needs roughly 500+ rows and EPV≥10",
