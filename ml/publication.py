@@ -1712,6 +1712,19 @@ def generate_methods_section(
         
         # FIX 3: Extract model list and sample size from explainability log
         explainability_models = []
+        # ...and the per-method breakdown, when the producer supplied one.
+        # `details['models']` is a single flat list ORed across every analysis,
+        # so a model whose SHAP was declined at its feature count but whose
+        # permutation importance succeeded still appears in it — and the
+        # sentence below would then claim SHAP for a model that never got it.
+        # `details['models_by_analysis']` is per-method and wins where present;
+        # entries written before it existed fall back to the flat list.
+        explainability_models_by_method: Dict[str, List[str]] = {}
+        # How many held-out observations SHAP actually explained. The row count
+        # below used to be the full test-set size, which is not what was
+        # explained: the evaluation sample is capped at the page's slider, and
+        # at 50 rows on the model-agnostic kernel path.
+        shap_eval_rows: List[int] = []
         explainability_entries = logged_steps.get('Explainability', [])
         if explainability_entries:
             for entry in explainability_entries:
@@ -1719,9 +1732,21 @@ def generate_methods_section(
                 models = details.get('models', [])
                 if models:
                     explainability_models.extend(models)
-        # Deduplicate models
-        explainability_models = list(set(explainability_models)) if explainability_models else []
-        
+                for _method, _ms in (details.get('models_by_analysis') or {}).items():
+                    if _ms:
+                        explainability_models_by_method.setdefault(_method, [])
+                        explainability_models_by_method[_method].extend(_ms)
+                shap_eval_rows.extend(
+                    int(r) for r in (details.get('shap_n_eval_rows') or []) if r)
+        # Deduplicate models, preserving first-seen order so the sentence reads
+        # the same way twice.
+        explainability_models = list(dict.fromkeys(explainability_models))
+        explainability_models_by_method = {
+            k: list(dict.fromkeys(v))
+            for k, v in explainability_models_by_method.items()
+        }
+        shap_eval_rows = sorted(set(shap_eval_rows))
+
         method_descriptions = {
             "permutation_importance": "Permutation importance was computed to assess feature contributions by measuring the decrease in model performance when each feature was randomly shuffled.",
             "shap": "SHapley Additive exPlanations (SHAP) values were computed to quantify the contribution of each feature to individual predictions.",
@@ -1746,10 +1771,20 @@ def generate_methods_section(
         for method in sorted(explainability_to_mention):
             desc = method_descriptions.get(method, f"{method} analysis was performed.")
             # FIX 3: Add model scope and sample size
-            if method in ['permutation_importance', 'shap'] and explainability_models:
-                model_list = ', '.join(explainability_models)
+            _method_models = explainability_models_by_method.get(
+                method, explainability_models)
+            if method in ['permutation_importance', 'shap'] and _method_models:
+                model_list = ', '.join(_method_models)
                 desc = desc.rstrip('.') + f" for {model_list}"
-                if n_test > 0:
+                # SHAP names the rows it actually explained; the others still
+                # run on the whole held-out set.
+                _rows = shap_eval_rows if method == 'shap' else []
+                if _rows:
+                    desc += (f" using {_rows[0]:,} test observations."
+                             if len(_rows) == 1 else
+                             f" using between {_rows[0]:,} and {_rows[-1]:,} "
+                             f"test observations, depending on the model.")
+                elif n_test > 0:
                     desc += f" using {n_test:,} test observations."
                 else:
                     desc += "."

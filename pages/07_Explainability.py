@@ -21,12 +21,29 @@ from utils.storyline import render_breadcrumb, render_page_navigation
 from ml.estimator_utils import is_estimator_fitted
 from ml.model_registry import get_registry
 from ml.pipeline import get_feature_names_after_transform
+from ml.regime import (
+    kernel_shap_availability, permutation_importance_availability,
+    shap_result_guard,
+)
+from utils.insight_ledger import Insight, get_ledger
 from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_reviewer_concern, render_sidebar_workflow
 from utils.table_export import table
 from sklearn.pipeline import Pipeline as SklearnPipeline
 
 class _SkipAnalysis(Exception):
     """Raised to skip an analysis block when user deselected it."""
+    pass
+
+
+class _ShapRefused(Exception):
+    """Raised when a SHAP estimator was declined rather than attempted.
+
+    Distinct from `_SkipAnalysis` (the user unticked SHAP) because the two need
+    different bookkeeping: a refusal has already been shown on screen and
+    written to the ledger, and it consumed a step of the progress bar. It is
+    also distinct from an exception: nothing failed, and the issues expander
+    should not read as if something did.
+    """
     pass
 
 @st.cache_resource
@@ -398,6 +415,89 @@ def _shap_class_names_for(model_step, n_classes: int, label_encoder=None) -> Lis
     return [str(c) for c in classes]
 
 
+def _record_kernel_shap_skip(name: str, avail: Dict, errors: List[str]) -> None:
+    """Show and RECORD that the kernel estimator was declined for one model.
+
+    Both halves are obligatory. On screen, because a user who asked for SHAP is
+    owed the reason it did not appear and the alternative that does work. In the
+    ledger, because this page's output is a manuscript: a refused analysis that
+    reaches no record leaves the Methods section silent about a diagnostic the
+    workflow offers, which is the silent-omission failure the caps exist to
+    prevent. The entry is left UNRESOLVED, which is what routes it through
+    `InsightLedger.discussion_points_for_manuscript()` into the Discussion
+    limitations.
+    """
+    p = int(avail.get('n_features') or 0)
+    if avail.get('policy') == 'confirm':
+        # The helper's own sentence for this band is a PRICE ("about 8 minutes
+        # and 1.6 GB per model"), written for the control above. At the point
+        # of skipping, the user needs the outcome and the way back in, so the
+        # price is restated inside a sentence that says what happened.
+        msg = (
+            f"SHAP was not computed for {name.upper()}: KernelExplainer at "
+            f"{p:,} features costs about "
+            f"{float(avail.get('estimated_minutes_per_model') or 0):,.0f} "
+            f"minutes and {float(avail.get('estimated_gb_per_model') or 0):,.1f} "
+            f"GB for this model, so it is not started without confirmation. "
+            f"Tick 'Run KernelExplainer anyway' above to run it. Tree-based and "
+            f"linear models were explained normally, and permutation importance "
+            f"remains available for this one."
+        )
+    else:
+        msg = avail.get('reason') or (
+            f"SHAP was not computed for {name.upper()}: the model-agnostic "
+            f"kernel estimator is not affordable at {p:,} features. "
+            f"TreeExplainer models were explained normally, and permutation "
+            f"importance remains available for this one."
+        )
+    st.warning(f"🐢 {msg}")
+    errors.append(f"{name} SHAP: {msg}")
+    try:
+        get_ledger().upsert(Insight(
+            id=f"xai_kernel_shap_skipped_{name}",
+            source_page="07_Explainability",
+            category="explainability",
+            severity="info",
+            finding=msg,
+            implication=(
+                f"No SHAP attribution exists for {name.upper()}. Any statement "
+                f"about which features drive this model's predictions must come "
+                f"from permutation importance instead."
+            ),
+            recommended_action=(
+                "Use permutation importance for this model, compare against a "
+                "tree-based model that has an exact fast explainer, or reduce "
+                "the feature space on the Feature Selection page."
+            ),
+            # The Discussion limitation. A deferral and a refusal are different
+            # facts about the study and must not be written the same way: one
+            # says the analysis was priced and declined, the other that it was
+            # not available at this width.
+            manuscript_text=(
+                (f"SHAP values were not computed for the {name.upper()} model; "
+                 f"the model-agnostic kernel estimator was not run at "
+                 f"{p:,} features")
+                if avail.get('policy') == 'confirm' else
+                (f"SHAP values were not computed for the {name.upper()} model; "
+                 f"the model-agnostic kernel estimator was not affordable at "
+                 f"{p:,} features")
+            ),
+            relevant_pages=["10_Report_Export"],
+            metadata={
+                'model': name,
+                'n_features': p,
+                'policy': avail.get('policy'),
+                'refuse_above': avail.get('refuse_above'),
+                'estimated_gb_per_model': round(
+                    float(avail.get('estimated_gb_per_model') or 0.0), 2),
+                'estimated_minutes_per_model': round(
+                    float(avail.get('estimated_minutes_per_model') or 0.0), 1),
+            },
+        ))
+    except Exception:
+        logger.exception("Could not record the KernelExplainer skip for %s", name)
+
+
 # ════════════════════════════════════════════════════════════════
 # MAIN ANALYSIS: Run Everything
 # ════════════════════════════════════════════════════════════════
@@ -453,10 +553,58 @@ _explain_tabs = st.tabs(["🎯 Feature Importance", "📉 Bland–Altman", "🔗
 
 with _explain_tabs[0]:
     st.markdown("### Select Analyses to Run")
+
+    def _post_transform_width(models) -> int:
+        """The widest post-preprocessing feature space among `models`.
+
+        `feature_names_by_model` is written at train time from
+        `get_feature_names_after_transform`, so it is the space the estimator
+        actually sees — 20 PCA components, not 3,000 raw columns — which is the
+        axis every cost model in `ml.regime` is calibrated against. The fallback
+        is the RAW column count, which OVER-states p whenever preprocessing
+        reduces. Over-stating is the safe direction here: it can make the app
+        quote a higher price than it will pay, never make it skip work it
+        should have done, because every threshold below is re-checked against
+        the real width once the pipeline has been applied.
+        """
+        by_model = st.session_state.get('feature_names_by_model') or {}
+        return max(
+            (len(by_model.get(m) or []) for m in models),
+            default=0,
+        ) or len(st.session_state.get('feature_names') or [])
+
+    # ── Permutation importance: default, not availability ───────────────
+    # Measured with this page's own defaults (n_repeats=10, n_jobs=-1, 200 test
+    # rows) on RandomForest: 26.8 s at p=200, 101.2 s at p=1,000, 200.3 s at
+    # p=2,000 — PER MODEL, and this page runs every selected model. Above
+    # PERM_IMPORTANCE_DEFAULT_ON_MAX_FEATURES it therefore stops being
+    # something the app starts on the user's behalf. It is deliberately never a
+    # refusal: this is the only model-agnostic importance the page offers, it
+    # does complete, and Cancel works mid-run.
+    _perm_width = _post_transform_width(trained)
+    _perm_avail = permutation_importance_availability(
+        _perm_width, n_models=len(trained), n_repeats=perm_repeats)
+    # Streamlit honors `value=` only on the FIRST render of a session; from
+    # then on `session_state["run_perm"]` wins. A width-dependent default has to
+    # be seeded into session state, and seeded only when the width CLASS
+    # changes — re-seeding every rerun would untick a box the user had just
+    # deliberately ticked.
+    if ('run_perm' not in st.session_state
+            or st.session_state.get('_run_perm_width_class') != _perm_avail['default_on']):
+        st.session_state['_run_perm_width_class'] = _perm_avail['default_on']
+        st.session_state['run_perm'] = _perm_avail['default_on']
+
     sel_col1, sel_col2, sel_col3 = st.columns(3)
     with sel_col1:
-        run_perm = st.checkbox("📊 Permutation Importance", value=True, key="run_perm",
+        # No `value=` here: the seeding above always leaves session state
+        # holding the intended default, and passing both makes Streamlit log a
+        # conflict warning on every render.
+        run_perm = st.checkbox("📊 Permutation Importance", key="run_perm",
                                help="Essential — which features matter most to each model")
+        if _perm_avail['reason']:
+            # The price, beside the control it applies to, so the choice to
+            # spend it is made with the number in view.
+            st.caption(f"⏱️ {_perm_avail['reason']}")
     with sel_col2:
         run_shap = st.checkbox("🎯 SHAP Values", value=True, key="run_shap",
                                help="Essential — how each feature pushes predictions up or down")
@@ -482,11 +630,7 @@ with _explain_tabs[0]:
     # n_features × n_repeats times. Measured ~141s at 3000 features × 5
     # repeats — warn up front instead of letting the run look hung.
     if run_perm and model_selection:
-        _fn_by_model = st.session_state.get('feature_names_by_model') or {}
-        _max_model_feats = max(
-            (len(_fn_by_model.get(m) or []) for m in model_selection),
-            default=0,
-        ) or len(st.session_state.get('feature_names') or [])
+        _max_model_feats = _post_transform_width(model_selection)
         if _max_model_feats > 500:
             st.info(
                 f"⏱️ Up to **{_max_model_feats:,} features** reach your models. "
@@ -496,6 +640,57 @@ with _explain_tabs[0]:
                 f"the Feature Selection page, enable PCA in Preprocessing, or "
                 f"lower the repeats slider. The Cancel button works mid-run."
             )
+
+    # ── KernelExplainer: quote the price before spending it ─────────────
+    # The model-agnostic estimator tiles the background to
+    # (2p + 2048) · n_bg · p float64 cells and re-allocates that for EVERY
+    # explained row, so it is quadratic in p where the tree and linear paths
+    # are not. Measured on this page's own hard-coded 50 background / 50
+    # explained rows: 4.82 s per explained row at p=200, 20.54 s and 2.60 GB at
+    # p=800 — roughly 17 minutes for one model. Between
+    # KERNEL_SHAP_CONFIRM_FEATURES and KERNEL_SHAP_MAX_FEATURES it does still
+    # finish, so it is offered with a price attached rather than refused; it is
+    # simply no longer started on the user's behalf. Above
+    # KERNEL_SHAP_MAX_FEATURES the refusal itself is raised inside the run
+    # loop, where the real post-preprocessing width is known and the projected
+    # GB in the message is a number about this dataset rather than an estimate.
+    run_kernel_confirmed = False
+    _kernel_quotes = []
+    if run_shap and model_selection:
+        _observed_widths = st.session_state.get('kernel_shap_observed_widths') or {}
+        for _km in model_selection:
+            _kspec = registry.get(_km)
+            if not _kspec or _kspec.capabilities.supports_shap != 'kernel':
+                continue
+            # A width MEASURED by a previous run wins outright; the estimate is
+            # only what to say before the pipeline has ever been applied.
+            #
+            # This was `max(estimate, observed)`, which self-heals in one
+            # direction only. `_post_transform_width` falls back to the RAW
+            # column count whenever `feature_names_by_model` has no entry, so a
+            # 60,000-column upload whose pipeline emits 300 components quoted
+            # `refuse`, rendered no confirmation checkbox, then met the real 300
+            # in the run loop, read `confirm`, found nothing ticked and recorded
+            # a skip. Taking the max threw the measured 300 away, so the control
+            # that would have released a five-minute job never appeared and the
+            # ledger filed "was not affordable" against it in perpetuity.
+            _observed_kw = int(_observed_widths.get(_km, 0))
+            _kw = _observed_kw if _observed_kw > 0 else _post_transform_width([_km])
+            _kq = kernel_shap_availability(_kw, n_models=1, model_label=_km.upper())
+            if _kq['policy'] == 'confirm':
+                _kernel_quotes.append((_km, _kq))
+    if _kernel_quotes:
+        for _km, _kq in _kernel_quotes:
+            st.info(f"🐢 **{_km.upper()}** — {_kq['reason']}")
+        run_kernel_confirmed = st.checkbox(
+            "Run KernelExplainer anyway for the model(s) above",
+            value=False, key="run_kernel_shap_confirm",
+            help=("Leaving this unticked skips SHAP for those models only — "
+                  "tree and linear models are explained either way, and "
+                  "permutation importance is unaffected. The skip is recorded "
+                  "so the manuscript cannot claim SHAP for a model that did "
+                  "not get it."),
+        )
 
     # Initialize cancel flag
     if 'cancel_explainability' not in st.session_state:
@@ -639,7 +834,43 @@ with _explain_tabs[0]:
                             continue
                         model_step = full_pipe
 
-                    # Choose explainer
+                    # ── Result-size guard: rows, never features ─────────
+                    # The one thing that does grow without bound here is the
+                    # RESULT array, n_eval · p · n_classes float64 cells, which
+                    # stays resident in session state for the report. The class
+                    # count is only known for certain after the explainer
+                    # returns, so it is estimated from the fitted model — the
+                    # same `classes_` attribute the class-naming helper reads
+                    # below. On anything but an extreme frame this is a no-op:
+                    # at the default 200 evaluation rows it does not fire until
+                    # p · n_classes exceeds 312,500.
+                    _n_classes_budget = 1
+                    _declared_classes = getattr(model_step, 'classes_', None)
+                    if (data_config and data_config.task_type == 'classification'
+                            and _declared_classes is not None):
+                        # `classes_` is a numpy array — truth-testing it raises,
+                        # so the None check has to be explicit.
+                        _n_classes_budget = max(len(_declared_classes), 1)
+                    _row_guard = shap_result_guard(
+                        len(X_ev), int(X_ev.shape[1]), _n_classes_budget)
+                    if _row_guard['reduced']:
+                        X_ev = X_ev[:_row_guard['n_rows']]
+
+                    # Choose explainer.
+                    #
+                    # TreeExplainer is deliberately NOT capped on the feature
+                    # axis, and the asymmetry with the kernel branch below is
+                    # intentional — please do not "fix" it. Measured:
+                    # RandomForest at 200 explained rows took 1.297 / 1.238 /
+                    # 1.311 / 1.301 s at p = 500 / 2,000 / 5,000 / 20,000, a
+                    # fitted exponent of 0.00 across a 40× range, because the
+                    # cost is O(trees · leaves · depth²) per explained row and
+                    # depth is set by n_train, not by p. Capping it on feature
+                    # count would delete information for free and force a
+                    # Methods caveat onto an analysis that needed none.
+                    # LinearExplainer is likewise uncapped, but for a weaker
+                    # reason: it was never benchmarked, so no threshold could be
+                    # defended. Measure it before capping it.
                     if shap_support == 'tree':
                         explainer = shap.TreeExplainer(model_step)
                         shap_values = explainer.shap_values(X_ev)
@@ -648,6 +879,22 @@ with _explain_tabs[0]:
                         shap_values = explainer.shap_values(X_ev)
                     else:
                         task_type = data_config.task_type if data_config else 'regression'
+                        # The real post-preprocessing width. The pre-run quote
+                        # above could only use the session-state estimate; this
+                        # is the number the projection must be computed from,
+                        # and it is remembered so the next render can offer the
+                        # confirmation for a width the estimate under-stated.
+                        _kernel_p = int(X_bg.shape[1])
+                        st.session_state.setdefault(
+                            'kernel_shap_observed_widths', {})[name] = _kernel_p
+                        _kernel = kernel_shap_availability(
+                            _kernel_p, n_models=len(model_selection),
+                            model_label=name.upper())
+                        if _kernel['policy'] == 'refuse' or (
+                                _kernel['policy'] == 'confirm'
+                                and not run_kernel_confirmed):
+                            _record_kernel_shap_skip(name, _kernel, errors)
+                            raise _ShapRefused()
                         bg_small = X_bg[:min(50, len(X_bg))]
                         # KernelExplainer is very slow — cap eval samples at 50
                         X_ev_kernel = X_ev[:min(50, len(X_ev))]
@@ -711,12 +958,62 @@ with _explain_tabs[0]:
                         'n_classes': shap_record['n_classes'],
                         'kernel_capped': shap_support == 'kernel',
                         'n_eval_samples': len(X_ev),
+                        # Distinct from `kernel_capped`, which the caption below
+                        # reads as "KernelExplainer was used" — this one means
+                        # the stored result was trimmed to stay under the cell
+                        # budget, on a path where every feature was explained.
+                        'eval_rows_capped': bool(_row_guard['reduced']),
+                        'eval_rows_reason': _row_guard['reason'] or "",
                     }
+                    # A model that got SHAP this time must not still carry a
+                    # "was not computed" entry from a run where it was declined.
+                    try:
+                        get_ledger().remove(f"xai_kernel_shap_skipped_{name}")
+                    except Exception:
+                        pass
+                    if _row_guard['reduced']:
+                        st.caption(f"ℹ️ {_row_guard['reason']}")
+                        try:
+                            get_ledger().upsert(Insight(
+                                id=f"xai_shap_eval_rows_reduced_{name}",
+                                source_page="07_Explainability",
+                                category="explainability", severity="info",
+                                finding=_row_guard['reason'],
+                                implication=(
+                                    "The SHAP summary describes fewer held-out "
+                                    "observations than were available; feature "
+                                    "attributions are unaffected."
+                                ),
+                                manuscript_text=(
+                                    f"SHAP values were computed for "
+                                    f"{_row_guard['n_rows']:,} of the "
+                                    f"{_row_guard['n_rows_requested']:,} available "
+                                    f"evaluation observations"
+                                ),
+                                relevant_pages=["10_Report_Export"],
+                                metadata={
+                                    'model': name,
+                                    'n_rows': _row_guard['n_rows'],
+                                    'n_rows_requested': _row_guard['n_rows_requested'],
+                                    'n_features': _row_guard['n_features'],
+                                    'n_classes': _row_guard['n_classes'],
+                                },
+                            ))
+                        except Exception:
+                            logger.exception(
+                                "Could not record the SHAP row guard for %s", name)
                     shap_time = time.perf_counter() - shap_start
                     if shap_time > 10:
                         st.caption(f"⏱️ {name.upper()} SHAP took {shap_time:.1f}s (slow for this model type)")
             except _SkipAnalysis:
                 pass  # User opted out of SHAP — don't increment step_count
+            except _ShapRefused:
+                # Already shown and already recorded by `_record_kernel_shap_skip`.
+                # The step is counted because it was reached and decided, and
+                # the loop continues to partial dependence for this model —
+                # declining one estimator must not silently drop the rest.
+                step_count += 1
+                overall_progress.progress(min(step_count / total_steps, 1.0))
             except ImportError:
                 errors.append(f"{name} SHAP: shap package not installed")
                 step_count += 1
@@ -863,6 +1160,60 @@ with _explain_tabs[0]:
             m for m in models_attempted
             if m in perm_results or m in shap_results or m in pdp_results
         ]
+        # ...and which models each individual analysis reached. `models` above
+        # is one flat list ORed across all three, so a model whose SHAP was
+        # declined but whose permutation importance succeeded still appears in
+        # it — and `ml/publication.py` joins that list into the SHAP sentence,
+        # producing a Methods claim about work that did not happen. The
+        # per-analysis mapping is what that sentence reads when present.
+        _models_by_analysis = {
+            'permutation_importance': [m for m in models_attempted if m in perm_results],
+            'shap': [m for m in models_attempted if m in shap_results],
+            'partial_dependence': [m for m in models_attempted if m in pdp_results],
+        }
+        _models_by_analysis = {k: v for k, v in _models_by_analysis.items()
+                               if k in analyses_run}
+        # How many held-out rows SHAP actually explained, per model. The Methods
+        # sentence used to quote the full test-set size, which has never been
+        # what was explained: the evaluation sample is capped at the slider
+        # value, and at 50 rows on the kernel path.
+        _shap_eval_rows = sorted({int(r.get('n_eval_samples') or 0)
+                                  for r in shap_results.values()} - {0})
+        # Permutation importance the width default turned off and the user left
+        # off. A skip changes what the manuscript may claim, so it is recorded;
+        # the entry is removed again as soon as a run produces results, so the
+        # ledger can never carry "was not computed" beside a computed table.
+        try:
+            _led = get_ledger()
+            if perm_results:
+                _led.remove("xai_perm_importance_not_run")
+            elif not run_perm and not _perm_avail['default_on']:
+                _led.upsert(Insight(
+                    id="xai_perm_importance_not_run",
+                    source_page="07_Explainability",
+                    category="explainability", severity="info",
+                    finding=(
+                        f"Permutation importance was left off at "
+                        f"{_perm_avail['n_features']:,} features, where it is "
+                        f"not enabled by default."
+                    ),
+                    implication=(
+                        "No model-agnostic importance ranking exists for this "
+                        "analysis; any feature-importance claim rests on SHAP "
+                        "or on model-internal importances alone."
+                    ),
+                    recommended_action=(
+                        "Tick Permutation Importance and re-run if a "
+                        "model-agnostic ranking is needed, or reduce the "
+                        "feature space first to make it cheaper."
+                    ),
+                    manuscript_text="permutation feature importance was not computed",
+                    relevant_pages=["10_Report_Export"],
+                    metadata={'n_features': _perm_avail['n_features'],
+                              'limit': _perm_avail['limit']},
+                ))
+        except Exception:
+            logger.exception("Could not record the permutation-importance skip")
         if analyses_run:
             from utils.session_state import log_methodology
             log_methodology(
@@ -871,6 +1222,8 @@ with _explain_tabs[0]:
                         f"{len(models_with_results)} models"),
                 details={'analyses': analyses_run,
                          'models': list(models_with_results),
+                         'models_by_analysis': _models_by_analysis,
+                         'shap_n_eval_rows': _shap_eval_rows,
                          'models_requested': list(model_selection),
                          'failed_analyses': [label for label, _ in _failed]}
             )
@@ -1056,6 +1409,11 @@ with _explain_tabs[0]:
                                 f"(KernelExplainer is computationally expensive). For full coverage, "
                                 f"use tree-based or linear models which have fast exact SHAP methods."
                             )
+                        elif s.get('eval_rows_capped') and s.get('eval_rows_reason'):
+                            # The row guard, restated beside the figure it
+                            # produced. Every feature was explained here — only
+                            # the number of explained observations was reduced.
+                            st.caption(f"ℹ️ {s['eval_rows_reason']}")
 
                         # Align columns: SHAP values and X_eval must have same n_features
                         n_cols = min(X_ev.shape[1], sv.shape[1])

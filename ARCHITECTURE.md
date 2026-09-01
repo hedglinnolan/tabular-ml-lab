@@ -240,7 +240,7 @@ Whenever a new feature or ML model is added, it cuts across all three layers:
 | **EDA intelligence** | `ml/eda_recommender.py`, `ml/eda_actions.py` |
 | **Feature selection** | `ml/feature_selection.py`, `ml/feature_steps.py` |
 | **Evaluation** | `ml/eval.py`, `ml/calibration.py`, `ml/bootstrap.py`, `ml/sensitivity.py` |
-| **Regime detection** | `ml/regime.py` (adaptive layout based on dataset shape) |
+| **Regime detection** | `ml/regime.py` (adaptive layout, and the compute caps that gate what is computed at all, based on dataset shape) |
 | **Data persistence** | `utils/session_projects.py` (session-state projects), `utils/session_manager.py` (save/load) |
 | **Navigation** | `utils/storyline.py` (breadcrumbs), `utils/theme.py` (CSS/styling) |
 | **Utilities** | `utils/reconcile.py`, `utils/column_utils.py`, `utils/widget_helpers.py`, `utils/seed.py` |
