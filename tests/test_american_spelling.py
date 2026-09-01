@@ -85,6 +85,16 @@ def _source_files():
     that a bare `ls-files` would have lost.
     """
     for rel in _listed() + _listed("--others", "--exclude-standard"):
+        # `git ls-files` emits forward slashes on every platform, but
+        # `EXEMPT_PREFIXES` is built with `os.path.join` — so on Windows the
+        # comparison below was 'docs/audit' == 'docs\audit', never true. The
+        # exemption silently stopped applying, `docs/audit`'s quoted historical
+        # prose was scanned, and the gate failed for a reason unrelated to the
+        # code under test. A gate that is red for the wrong reason is worse
+        # than one that is absent: it gets classified as a known failure, and
+        # then it hides the real offence it was written to catch. It did
+        # exactly that once, on the commit that introduced this comment.
+        rel = rel.replace("/", os.sep)
         rel_dir = os.path.dirname(rel) or "."
         if any(rel_dir == p or rel_dir.startswith(p + os.sep)
                for p in EXEMPT_PREFIXES):

@@ -584,7 +584,7 @@ with _explain_tabs[0]:
     _perm_width = _post_transform_width(trained)
     _perm_avail = permutation_importance_availability(
         _perm_width, n_models=len(trained), n_repeats=perm_repeats)
-    # Streamlit honours `value=` only on the FIRST render of a session; from
+    # Streamlit honors `value=` only on the FIRST render of a session; from
     # then on `session_state["run_perm"]` wins. A width-dependent default has to
     # be seeded into session state, and seeded only when the width CLASS
     # changes — re-seeding every rerun would untick a box the user had just
