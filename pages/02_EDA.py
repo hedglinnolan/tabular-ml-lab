@@ -43,7 +43,10 @@ from utils.insight_ledger import (
     MODEL_FAMILY_DISTANCE, MODEL_FAMILY_MARGIN, MODEL_FAMILY_PROBABILISTIC,
     ISSUE_MODEL_RELEVANCE,
 )
-from ml.regime import detect_regime, pairwise_correlation_plan, variance_subset_phrase
+from ml.regime import (
+    detect_regime, pairwise_correlation_plan, variance_subset_phrase,
+    PER_COLUMN_SCAN_MAX_FEATURES,
+)
 from ml.eda_recommender import compute_dataset_signals, recommend_eda, DatasetSignals, EDARecommendation
 from ml import eda_actions
 from ml.plot_narrative import (
@@ -1345,259 +1348,306 @@ with _eda_tabs[2]:
         # exact, so it is disclosed here, under the pills that asked for it.
         _corr_exec_method = "spearman_on_ranks" if _corr_plan["rank_substitution"] else method_name
 
-        if _corr_plan["rank_substitution"]:
-            st.caption(_corr_plan["rank_substitution_reason"])
-
-
-        # `cols_key` is the column list AS A HASHED ARGUMENT. `_features` is
-        # underscore-prefixed and so takes no part in the cache key, and
-        # `data_id` is a digest of the FRAME — but the columns screened come
-        # from `data_config.feature_cols`, which the Feature Selection page
-        # changes without touching a single cell of `df`. Without this the
-        # two caches below happily serve a table built from a feature set
-        # the user has since narrowed.
-        _corr_cols_key = tuple(corr_cols)
-
-        @st.cache_data
-        def _compute_corr(_df, _features, method, data_id=None, cols_key=None):
-            return _df[_features].corr(method=method).round(3)
-
-        if regime.show_full_corr_matrix:
-            # Full heatmap for narrow/medium datasets
-            corr_matrix = _compute_corr(df, corr_cols, method_name, data_id=_data_fingerprint, cols_key=_corr_cols_key)
-            threshold = st.slider("Highlight threshold", 0.0, 1.0, 0.8, 0.05, key="corr_threshold")
-
-            fig_corr = px.imshow(
-                corr_matrix,
-                color_continuous_scale="RdBu_r",
-                zmin=-1, zmax=1,
-                title=f"{corr_method} Correlation Matrix",
-                aspect="auto",
+        # Streamlit executes EVERY tab body on every rerun, open or not — there
+        # is no lazy tab and no st.fragment on this page — so this section used
+        # to compute while the Data Snapshot tab was the one on screen, and
+        # again on every widget touch that missed the cache. Above
+        # PER_COLUMN_SCAN_MAX_FEATURES (which is exactly where
+        # `compute_regime` turns "capped") it waits to be asked instead.
+        #
+        # The gate is deliberately the PER-COLUMN tier and not the p×p budget
+        # the plan above uses. The two answer different questions: the p×p
+        # budget decides how much of a screen the user gets, and it fires as
+        # low as 1,000 columns where the capped construction costs 0.38 s
+        # measured — not enough to justify a click. Reading the pairwise
+        # constant here would also defer the section out from under the
+        # disclosure it is supposed to render.
+        #
+        # NOTHING IS RECORDED FOR A DEFERRAL, and that is the point: no cap
+        # engaged, no feature was dropped, no analysis was reduced. The ledger
+        # writes below sit inside `if pairs_df is not None` and correctly stay
+        # silent. Filing a "correlations were not computed" limitation for work
+        # the user can still request with one click would put a false caveat in
+        # the Discussion — the mirror image of the silent truncation the rest
+        # of this section exists to prevent. The sentence on screen is the
+        # whole obligation here.
+        _corr_deferred = regime.compute_regime == "capped"
+        # Same shape as the cluster-structure control further down: the button
+        # stores a CONFIG, and the section renders only while the stored config
+        # still matches the current one. A plain `if st.button(...)` would keep
+        # serving a table computed under one method pill beneath a caption
+        # written for another. These are the four things `_top_corr_pairs` is
+        # keyed on, so any change that would alter the table re-defers it.
+        _corr_run_config = (
+            str(_data_fingerprint), tuple(corr_cols),
+            _corr_exec_method, int(_corr_plan["max_features"]),
+        )
+        if _corr_deferred:
+            st.info(
+                f"This dataset has {regime.n_features:,} features. Above "
+                f"{PER_COLUMN_SCAN_MAX_FEATURES:,} the correlation screen is not run "
+                f"unless you ask for it: every tab on this page executes on every "
+                f"rerun whether or not it is open, so at this width you would wait "
+                f"for it before seeing the Data Snapshot, and wait again on each "
+                f"change of method, target or feature set. Nothing has been reduced "
+                f"or decided — no pair has been examined yet."
             )
-            fig_corr.update_layout(template="plotly_white", height=max(400, len(corr_cols) * 18 + 100))
-            st.plotly_chart(fig_corr)
+            if st.button("Compute feature correlations", key="eda_corr_run", type="primary"):
+                st.session_state["eda_corr_config"] = _corr_run_config
 
-            # List pairs above threshold (numpy-based)
-            corr_vals = corr_matrix.values
-            idx_upper = np.triu_indices_from(corr_vals, k=1)
-            upper_vals = corr_vals[idx_upper]
-            mask = np.abs(upper_vals) >= threshold
-            if mask.any():
-                cols_list = corr_matrix.columns.tolist()
-                pairs_above = pd.DataFrame({
-                    "Feature A": [cols_list[idx_upper[0][i]] for i in np.where(mask)[0]],
-                    "Feature B": [cols_list[idx_upper[1][i]] for i in np.where(mask)[0]],
-                    "Correlation": [round(float(upper_vals[i]), 3) for i in np.where(mask)[0]],
-                }).sort_values("Correlation", key=abs, ascending=False)
-                st.caption(f"{len(pairs_above)} pairs above |r| ≥ {threshold}")
-                table(pairs_above)
-        else:
-            # Wide/ultra-wide: top-N pairs via numpy (avoids O(n²) Python loop)
-            top_n = regime.corr_top_n
+        if not _corr_deferred or st.session_state.get("eda_corr_config") == _corr_run_config:
+            if _corr_plan["rank_substitution"]:
+                st.caption(_corr_plan["rank_substitution_reason"])
+
+            # `cols_key` is the column list AS A HASHED ARGUMENT. `_features` is
+            # underscore-prefixed and so takes no part in the cache key, and
+            # `data_id` is a digest of the FRAME — but the columns screened come
+            # from `data_config.feature_cols`, which the Feature Selection page
+            # changes without touching a single cell of `df`. Without this the
+            # two caches below happily serve a table built from a feature set
+            # the user has since narrowed.
+            _corr_cols_key = tuple(corr_cols)
 
             @st.cache_data
-            def _top_corr_pairs(_df, _features, method, n, max_features=None, target=None, data_id=None, cols_key=None):
-                """Top |r| pairs, screening the columns when p×p is over budget.
+            def _compute_corr(_df, _features, method, data_id=None, cols_key=None):
+                return _df[_features].corr(method=method).round(3)
 
-                `max_features`, `target` and `cols_key` are ordinary (hashed)
-                arguments while `_features` is not. The budget moves with the
-                method pill, so without them a table cached under one budget
-                could be served beside a caption written for another — a
-                mismatch nobody could see and the exact failure this section
-                exists to prevent.
+            if regime.show_full_corr_matrix:
+                # Full heatmap for narrow/medium datasets
+                corr_matrix = _compute_corr(df, corr_cols, method_name, data_id=_data_fingerprint, cols_key=_corr_cols_key)
+                threshold = st.slider("Highlight threshold", 0.0, 1.0, 0.8, 0.05, key="corr_threshold")
 
-                `cols_key` is the load-bearing one now that this table carries a
-                disclosure. `data_id` fingerprints the FRAME; the screened
-                columns come from `data_config.feature_cols`, which changes on
-                the Feature Selection page without touching `df`. Two feature
-                sets that land on the same budget then collided, and the caption
-                and the unresolved `eda_cap_corr_pairs` insight — both composed
-                live from the CURRENT feature set — described a screen that had
-                never run, naming columns absent from the analysis. A stale
-                table is a display bug; a stale table under a manuscript
-                sentence is a false Methods claim.
-                """
-                cols = list(_features)
-                if max_features is not None and len(cols) > max_features:
-                    # Highest variance first — `ml.regime.SELECTION_RULE_VARIANCE`,
-                    # the rule already used for the collinearity screen in
-                    # `ml/eda_recommender.py`. It is a heuristic, not a
-                    # guarantee: nothing says the strongest pair lives among the
-                    # widest-spread columns, which is why the disclosed sentence
-                    # says a stronger pair may exist among the rest.
-                    #
-                    # The outcome column is kept whatever its variance. On omics
-                    # frames a clinical outcome is routinely flatter than the
-                    # expression columns around it, and ranking it out would
-                    # silently delete every feature↔target pair — the rows a
-                    # reader looks at first.
-                    keep_target = target is not None and target in cols
-                    ranked = [c for c in cols if c != target]
-                    variances = _df[ranked].var().sort_values(ascending=False)
-                    cols = variances.head(max_features - (1 if keep_target else 0)).index.tolist()
-                    if keep_target:
-                        cols.append(target)
-                sub = _df[cols]
-                if method == "spearman_on_ranks":
-                    # Pearson of ranks — the identity `utils/perf_cache.py`
-                    # already documents for the target-correlation helper.
-                    corr = sub.rank().corr(method="pearson").values
-                else:
-                    corr = sub.corr(method=method).values
-                idx_upper = np.triu_indices_from(corr, k=1)
-                vals = corr[idx_upper]
-                # Get top N by absolute value. Floored at 1 because
-                # `np.argsort(...)[-0:]` is the WHOLE array reversed rather than
-                # an empty slice: a zero here would return every pair at the one
-                # width where that is fatal (see the note in `ml/regime.py`).
-                n = max(int(n), 1)
-                top_idx = np.argsort(np.abs(vals))[-n:][::-1]
-                return pd.DataFrame([
-                    {
-                        "Feature A": cols[idx_upper[0][i]],
-                        "Feature B": cols[idx_upper[1][i]],
-                        "Correlation": round(float(vals[i]), 3),
-                    }
-                    for i in top_idx
-                ])
-
-            _corr_target_kept = target_col in corr_cols if _has_target else False
-            # Guarded now that it is capped, because the two failures read
-            # identically to a user and must not: an empty table where a
-            # correlation screen should be says "no strong pairs", and a
-            # MemoryError here used to take the whole page down mid-render.
-            try:
-                pairs_df = _top_corr_pairs(df, corr_cols, _corr_exec_method, top_n, max_features=_corr_plan["max_features"], target=(target_col if _corr_target_kept else None), data_id=_data_fingerprint, cols_key=_corr_cols_key)
-            except MemoryError:
-                pairs_df = None
-                st.warning(
-                    f"The correlation screen ran out of memory on "
-                    f"{len(corr_cols):,} columns and produced nothing. This is not "
-                    f"a finding of 'no strong pairs' — no pair was examined. "
-                    f"Reduce the feature set on the Feature Selection page and "
-                    f"return to this tab."
+                fig_corr = px.imshow(
+                    corr_matrix,
+                    color_continuous_scale="RdBu_r",
+                    zmin=-1, zmax=1,
+                    title=f"{corr_method} Correlation Matrix",
+                    aspect="auto",
                 )
-            except Exception as _corr_exc:
-                pairs_df = None
-                st.warning(
-                    f"The correlation screen did not complete "
-                    f"({type(_corr_exc).__name__}: {str(_corr_exc)[:120]}). No pair "
-                    f"was examined, so the absence of a table below is not "
-                    f"evidence that the features are uncorrelated."
-                )
+                fig_corr.update_layout(template="plotly_white", height=max(400, len(corr_cols) * 18 + 100))
+                st.plotly_chart(fig_corr)
 
-            if pairs_df is not None:
-                n_total = len(corr_cols) * (len(corr_cols) - 1) // 2
-                if _corr_plan["capped"]:
-                    # `reason` verbatim: it carries how many columns were kept,
-                    # how they were chosen and what that costs the reader.
-                    st.caption(f"Top {top_n} correlated pairs ({method_name}). {_corr_plan['reason']}")
-                    if _corr_target_kept:
-                        st.caption(
-                            f"**{target_col}** was kept in the screen whatever its "
-                            f"variance, so feature–outcome pairs are still in the table."
-                        )
-                else:
-                    st.caption(f"Top {top_n} correlated pairs ({method_name}) out of {n_total:,} total")
-                table(pairs_df)
+                # List pairs above threshold (numpy-based)
+                corr_vals = corr_matrix.values
+                idx_upper = np.triu_indices_from(corr_vals, k=1)
+                upper_vals = corr_vals[idx_upper]
+                mask = np.abs(upper_vals) >= threshold
+                if mask.any():
+                    cols_list = corr_matrix.columns.tolist()
+                    pairs_above = pd.DataFrame({
+                        "Feature A": [cols_list[idx_upper[0][i]] for i in np.where(mask)[0]],
+                        "Feature B": [cols_list[idx_upper[1][i]] for i in np.where(mask)[0]],
+                        "Correlation": [round(float(upper_vals[i]), 3) for i in np.where(mask)[0]],
+                    }).sort_values("Correlation", key=abs, ascending=False)
+                    st.caption(f"{len(pairs_above)} pairs above |r| ≥ {threshold}")
+                    table(pairs_above)
+            else:
+                # Wide/ultra-wide: top-N pairs via numpy (avoids O(n²) Python loop)
+                top_n = regime.corr_top_n
 
-                # -- The record --------------------------------------------
-                # Written here, beside the table, so what reaches the Methods
-                # section is what the screen actually produced: a reduction that
-                # was computed but never displayed is not a reduction the
-                # manuscript should describe. Left UNRESOLVED, which is what
-                # routes it through `discussion_points_for_manuscript()` into
-                # the Discussion limitations.
-                if _corr_plan["capped"]:
-                    _n_corr_screened = int(_corr_plan["max_features"])
-                    _n_corr_offered = len(corr_cols)
-                    ledger.upsert(Insight(
-                        id="eda_cap_corr_pairs",
-                        source_page="02_EDA", category="relationship", severity="warning",
-                        finding=_corr_plan["reason"],
-                        implication=(
-                            "Pairwise correlations among the unscreened features are unknown; "
-                            "the pairs reported are the strongest within the subset, not "
-                            "necessarily the strongest in the dataset."
-                        ),
-                        recommended_action=(
-                            "Narrow the feature set on the Feature Selection page if the "
-                            "correlation table is meant to describe every feature."
-                        ),
-                        manuscript_text=(
-                            f"pairwise feature correlations were screened among "
-                            f"{variance_subset_phrase(_n_corr_screened, _n_corr_offered)}; "
-                            f"correlations involving the remaining "
-                            f"{_n_corr_offered - _n_corr_screened:,} features were not examined"
-                        ),
-                        relevant_pages=["10_Report_Export"],
-                        metadata={
-                            "n_screened": _n_corr_screened,
-                            "n_total": _n_corr_offered,
-                            "selection_rule": _corr_plan["selection_rule"],
-                            "target_retained": bool(_corr_target_kept),
-                            "method": _corr_plan["method_executed"],
-                        },
-                    ))
-                if _corr_plan["rank_substitution"]:
-                    ledger.upsert(Insight(
-                        id="eda_method_spearman_rank_approx",
-                        source_page="02_EDA", category="methodology", severity="info",
-                        finding=_corr_plan["rank_substitution_reason"],
-                        implication=(
-                            "The reported Spearman coefficients are the rank-transform "
-                            "identity rather than pairwise-complete ranking; with missing "
-                            "values the two can differ in the third decimal."
-                        ),
-                        manuscript_text=(
-                            "Spearman correlations were computed as the Pearson correlation "
-                            "of column ranks rather than by pairwise-complete ranking"
-                        ),
-                        relevant_pages=["10_Report_Export"],
-                        metadata={
-                            "max_abs_diff_benchmarked": 0.0126,
-                            "n_features": len(corr_cols),
-                        },
-                    ))
-                # The audit trail, once per distinct configuration. Streamlit
-                # re-executes this block on any widget touch anywhere on the
-                # page: the ledger de-duplicates by id, `methodology_log` does
-                # not. Note step='EDA' is audit-only
-                # (`utils/session_state._AUDIT_ONLY_STEPS`) and never reaches
-                # the narrative on its own — the upserts above are what carry
-                # this into the manuscript.
-                _corr_log_actions = []
-                if _corr_plan["capped"]:
-                    _corr_log_actions.append(
-                        f"Screened pairwise correlations on "
-                        f"{int(_corr_plan['max_features']):,} of {len(corr_cols):,} "
-                        f"numeric columns (highest variance)"
+                @st.cache_data
+                def _top_corr_pairs(_df, _features, method, n, max_features=None, target=None, data_id=None, cols_key=None):
+                    """Top |r| pairs, screening the columns when p×p is over budget.
+
+                    `max_features`, `target` and `cols_key` are ordinary (hashed)
+                    arguments while `_features` is not. The budget moves with the
+                    method pill, so without them a table cached under one budget
+                    could be served beside a caption written for another — a
+                    mismatch nobody could see and the exact failure this section
+                    exists to prevent.
+
+                    `cols_key` is the load-bearing one now that this table carries a
+                    disclosure. `data_id` fingerprints the FRAME; the screened
+                    columns come from `data_config.feature_cols`, which changes on
+                    the Feature Selection page without touching `df`. Two feature
+                    sets that land on the same budget then collided, and the caption
+                    and the unresolved `eda_cap_corr_pairs` insight — both composed
+                    live from the CURRENT feature set — described a screen that had
+                    never run, naming columns absent from the analysis. A stale
+                    table is a display bug; a stale table under a manuscript
+                    sentence is a false Methods claim.
+                    """
+                    cols = list(_features)
+                    if max_features is not None and len(cols) > max_features:
+                        # Highest variance first — `ml.regime.SELECTION_RULE_VARIANCE`,
+                        # the rule already used for the collinearity screen in
+                        # `ml/eda_recommender.py`. It is a heuristic, not a
+                        # guarantee: nothing says the strongest pair lives among the
+                        # widest-spread columns, which is why the disclosed sentence
+                        # says a stronger pair may exist among the rest.
+                        #
+                        # The outcome column is kept whatever its variance. On omics
+                        # frames a clinical outcome is routinely flatter than the
+                        # expression columns around it, and ranking it out would
+                        # silently delete every feature↔target pair — the rows a
+                        # reader looks at first.
+                        keep_target = target is not None and target in cols
+                        ranked = [c for c in cols if c != target]
+                        variances = _df[ranked].var().sort_values(ascending=False)
+                        cols = variances.head(max_features - (1 if keep_target else 0)).index.tolist()
+                        if keep_target:
+                            cols.append(target)
+                    sub = _df[cols]
+                    if method == "spearman_on_ranks":
+                        # Pearson of ranks — the identity `utils/perf_cache.py`
+                        # already documents for the target-correlation helper.
+                        corr = sub.rank().corr(method="pearson").values
+                    else:
+                        corr = sub.corr(method=method).values
+                    idx_upper = np.triu_indices_from(corr, k=1)
+                    vals = corr[idx_upper]
+                    # Get top N by absolute value. Floored at 1 because
+                    # `np.argsort(...)[-0:]` is the WHOLE array reversed rather than
+                    # an empty slice: a zero here would return every pair at the one
+                    # width where that is fatal (see the note in `ml/regime.py`).
+                    n = max(int(n), 1)
+                    top_idx = np.argsort(np.abs(vals))[-n:][::-1]
+                    return pd.DataFrame([
+                        {
+                            "Feature A": cols[idx_upper[0][i]],
+                            "Feature B": cols[idx_upper[1][i]],
+                            "Correlation": round(float(vals[i]), 3),
+                        }
+                        for i in top_idx
+                    ])
+
+                _corr_target_kept = target_col in corr_cols if _has_target else False
+                # Guarded now that it is capped, because the two failures read
+                # identically to a user and must not: an empty table where a
+                # correlation screen should be says "no strong pairs", and a
+                # MemoryError here used to take the whole page down mid-render.
+                try:
+                    pairs_df = _top_corr_pairs(df, corr_cols, _corr_exec_method, top_n, max_features=_corr_plan["max_features"], target=(target_col if _corr_target_kept else None), data_id=_data_fingerprint, cols_key=_corr_cols_key)
+                except MemoryError:
+                    pairs_df = None
+                    st.warning(
+                        f"The correlation screen ran out of memory on "
+                        f"{len(corr_cols):,} columns and produced nothing. This is not "
+                        f"a finding of 'no strong pairs' — no pair was examined. "
+                        f"Reduce the feature set on the Feature Selection page and "
+                        f"return to this tab."
                     )
-                if _corr_plan["rank_substitution"]:
-                    # Both can fire at once, and the log has to say so: a record
-                    # naming only the screen would describe a Spearman table
-                    # that was not computed the way Spearman usually is.
-                    _corr_log_actions.append(
-                        "Computed Spearman correlations as the Pearson correlation of column ranks"
+                except Exception as _corr_exc:
+                    pairs_df = None
+                    st.warning(
+                        f"The correlation screen did not complete "
+                        f"({type(_corr_exc).__name__}: {str(_corr_exc)[:120]}). No pair "
+                        f"was examined, so the absence of a table below is not "
+                        f"evidence that the features are uncorrelated."
                     )
-                if _corr_log_actions:
-                    _corr_cap_logged = (
-                        str(_data_fingerprint), len(corr_cols),
-                        int(_corr_plan["max_features"]), _corr_plan["method_executed"],
-                    )
-                    if st.session_state.get("eda_corr_cap_logged") != _corr_cap_logged:
-                        st.session_state["eda_corr_cap_logged"] = _corr_cap_logged
-                        log_methodology(
-                            step="EDA",
-                            action="; ".join(_corr_log_actions),
-                            details={
-                                "n_screened": int(_corr_plan["max_features"]),
-                                "n_total": len(corr_cols),
+
+                if pairs_df is not None:
+                    n_total = len(corr_cols) * (len(corr_cols) - 1) // 2
+                    if _corr_plan["capped"]:
+                        # `reason` verbatim: it carries how many columns were kept,
+                        # how they were chosen and what that costs the reader.
+                        st.caption(f"Top {top_n} correlated pairs ({method_name}). {_corr_plan['reason']}")
+                        if _corr_target_kept:
+                            st.caption(
+                                f"**{target_col}** was kept in the screen whatever its "
+                                f"variance, so feature–outcome pairs are still in the table."
+                            )
+                    else:
+                        st.caption(f"Top {top_n} correlated pairs ({method_name}) out of {n_total:,} total")
+                    table(pairs_df)
+
+                    # -- The record --------------------------------------------
+                    # Written here, beside the table, so what reaches the Methods
+                    # section is what the screen actually produced: a reduction that
+                    # was computed but never displayed is not a reduction the
+                    # manuscript should describe. Left UNRESOLVED, which is what
+                    # routes it through `discussion_points_for_manuscript()` into
+                    # the Discussion limitations.
+                    if _corr_plan["capped"]:
+                        _n_corr_screened = int(_corr_plan["max_features"])
+                        _n_corr_offered = len(corr_cols)
+                        ledger.upsert(Insight(
+                            id="eda_cap_corr_pairs",
+                            source_page="02_EDA", category="relationship", severity="warning",
+                            finding=_corr_plan["reason"],
+                            implication=(
+                                "Pairwise correlations among the unscreened features are unknown; "
+                                "the pairs reported are the strongest within the subset, not "
+                                "necessarily the strongest in the dataset."
+                            ),
+                            recommended_action=(
+                                "Narrow the feature set on the Feature Selection page if the "
+                                "correlation table is meant to describe every feature."
+                            ),
+                            manuscript_text=(
+                                f"pairwise feature correlations were screened among "
+                                f"{variance_subset_phrase(_n_corr_screened, _n_corr_offered)}; "
+                                f"correlations involving the remaining "
+                                f"{_n_corr_offered - _n_corr_screened:,} features were not examined"
+                            ),
+                            relevant_pages=["10_Report_Export"],
+                            metadata={
+                                "n_screened": _n_corr_screened,
+                                "n_total": _n_corr_offered,
                                 "selection_rule": _corr_plan["selection_rule"],
-                                "method_requested": _corr_plan["method_requested"],
-                                "method_executed": _corr_plan["method_executed"],
+                                "target_retained": bool(_corr_target_kept),
+                                "method": _corr_plan["method_executed"],
                             },
+                        ))
+                    if _corr_plan["rank_substitution"]:
+                        ledger.upsert(Insight(
+                            id="eda_method_spearman_rank_approx",
+                            source_page="02_EDA", category="methodology", severity="info",
+                            finding=_corr_plan["rank_substitution_reason"],
+                            implication=(
+                                "The reported Spearman coefficients are the rank-transform "
+                                "identity rather than pairwise-complete ranking; with missing "
+                                "values the two can differ in the third decimal."
+                            ),
+                            manuscript_text=(
+                                "Spearman correlations were computed as the Pearson correlation "
+                                "of column ranks rather than by pairwise-complete ranking"
+                            ),
+                            relevant_pages=["10_Report_Export"],
+                            metadata={
+                                "max_abs_diff_benchmarked": 0.0126,
+                                "n_features": len(corr_cols),
+                            },
+                        ))
+                    # The audit trail, once per distinct configuration. Streamlit
+                    # re-executes this block on any widget touch anywhere on the
+                    # page: the ledger de-duplicates by id, `methodology_log` does
+                    # not. Note step='EDA' is audit-only
+                    # (`utils/session_state._AUDIT_ONLY_STEPS`) and never reaches
+                    # the narrative on its own — the upserts above are what carry
+                    # this into the manuscript.
+                    _corr_log_actions = []
+                    if _corr_plan["capped"]:
+                        _corr_log_actions.append(
+                            f"Screened pairwise correlations on "
+                            f"{int(_corr_plan['max_features']):,} of {len(corr_cols):,} "
+                            f"numeric columns (highest variance)"
                         )
+                    if _corr_plan["rank_substitution"]:
+                        # Both can fire at once, and the log has to say so: a record
+                        # naming only the screen would describe a Spearman table
+                        # that was not computed the way Spearman usually is.
+                        _corr_log_actions.append(
+                            "Computed Spearman correlations as the Pearson correlation of column ranks"
+                        )
+                    if _corr_log_actions:
+                        _corr_cap_logged = (
+                            str(_data_fingerprint), len(corr_cols),
+                            int(_corr_plan["max_features"]), _corr_plan["method_executed"],
+                        )
+                        if st.session_state.get("eda_corr_cap_logged") != _corr_cap_logged:
+                            st.session_state["eda_corr_cap_logged"] = _corr_cap_logged
+                            log_methodology(
+                                step="EDA",
+                                action="; ".join(_corr_log_actions),
+                                details={
+                                    "n_screened": int(_corr_plan["max_features"]),
+                                    "n_total": len(corr_cols),
+                                    "selection_rule": _corr_plan["selection_rule"],
+                                    "method_requested": _corr_plan["method_requested"],
+                                    "method_executed": _corr_plan["method_executed"],
+                                },
+                            )
     else:
         st.info("Need at least 2 numeric features for correlation analysis.")
 
