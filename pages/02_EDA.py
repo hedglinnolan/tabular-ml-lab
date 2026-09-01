@@ -2561,6 +2561,17 @@ from ml.eda_actions import (
 )
 
 
+# The disclosure each OLS-family diagnostic files when it refuses to run, keyed
+# by the action that files it. The ids are `ml.eda_actions`' — this map exists
+# so the page can CLEAR one, which is the other half of an honest cap: a "was
+# not computed" limitation must not outlive the re-run that computed it.
+_CAP_INSIGHT_FOR_ACTION = {
+    "multicollinearity_vif": "eda_cap_vif_refused",
+    "influence_diagnostics": "eda_cap_influence_undefined",
+    "normality_residuals": "eda_cap_normality_undefined",
+}
+
+
 def _resolve_insights_from_eda_result(action_id: str, result: dict, title: str,
                                       n_closed: int = 0) -> str:
     """Record a completed recommended analysis against the insights it speaks to.
@@ -2576,6 +2587,12 @@ def _resolve_insights_from_eda_result(action_id: str, result: dict, title: str,
     break on a bookkeeping step.
     """
     try:
+        # A refused diagnostic gets no sentence at all. Every phrasing
+        # `diagnostic_disclosure` can produce opens "<title> reads the data and
+        # reports", which is exactly the impression a refusal must not leave;
+        # the refusal's own `st.warning` is the surface that speaks here.
+        if result.get("refused"):
+            return ""
         touched = record_diagnostic_on_insights(ledger, action_id, result, title)
         if not _ACTION_TO_INSIGHT_MAP.get(action_id):
             return ""
@@ -2629,7 +2646,21 @@ def _run_and_show(action_id: str, title: str, run_action: str):
                 with st.spinner(f"Running {title}..."):
                     result = action_func(_action_df, target_col, feature_cols, signals, st.session_state)
                     st.session_state.eda_results[action_id] = result
-                    log_methodology(step="EDA", action=f"Ran {title}", details={"analysis": run_action})
+                    # "Ran X" is a claim, and for the three OLS diagnostics it
+                    # is now sometimes false: they decline at shapes where the
+                    # answer would be an artifact. The audit trail has to be
+                    # able to tell a run from a refusal.
+                    _refused = bool(result.get("refused"))
+                    log_methodology(
+                        step="EDA",
+                        action=(f"Declined {title} — not defined at this shape"
+                                if _refused else f"Ran {title}"),
+                        details={
+                            "analysis": run_action,
+                            "refused": _refused,
+                            **({"reason": (result.get("warnings") or [""])[0]} if _refused else {}),
+                        },
+                    )
                     # MERGE NOTE: three things happen here and all three are
                     # fixes. (1) main's upsert — actions now RETURN their
                     # insights (utils.storyline.add_insight is gone), and
@@ -2647,6 +2678,21 @@ def _run_and_show(action_id: str, title: str, run_action: str):
                             ledger.upsert(_insight)
                         except Exception:
                             pass  # A malformed insight must not lose the analysis.
+                    # …and the mirror image: when a diagnostic that previously
+                    # refused now produces numbers (the user narrowed the
+                    # feature set, or unsealed more rows), its "was not
+                    # computed" entry is false and must go. `upsert` would keep
+                    # it for the life of the session and carry it into the
+                    # Discussion as a limitation of an analysis that was in fact
+                    # performed. Removal, not resolution: the sentence is not
+                    # "we addressed this", it is "this never happened".
+                    if not result.get("refused"):
+                        _stale_cap = _CAP_INSIGHT_FOR_ACTION.get(action_id)
+                        if _stale_cap:
+                            try:
+                                ledger.remove(_stale_cap)
+                            except Exception:
+                                pass
                     # Running VIF answers the collinearity clusters the page
                     # detected from pairwise correlation, so it closes them.
                     # Nothing else in the app resolves eda_corr_cluster_*, and
@@ -2657,7 +2703,15 @@ def _run_and_show(action_id: str, title: str, run_action: str):
                     # is waiting on it" over a run that just closed two of them
                     # is the one thing this surface may not say (`MISC-092`).
                     _n_closed_here = 0
-                    if action_id == "multicollinearity_vif":
+                    # `result["refused"]` is the gate. VIF now DECLINES above
+                    # p = min(200, n/2) instead of returning 999.0 for every
+                    # feature, and a refusal answers nothing: without this
+                    # check the loop below would close every open collinearity
+                    # cluster with `resolved_by="VIF (Multicollinearity): VIF
+                    # was not computed…"`, deleting the limitation from the
+                    # manuscript on the strength of an analysis that did not
+                    # run. Same `AUDIT-032` class as the comment above.
+                    if action_id == "multicollinearity_vif" and not result.get("refused"):
                         _vif_summary = (result.get("findings") or [title])[0]
                         for _ins in list(ledger.insights):
                             if _ins.resolved or not _ins.id.startswith("eda_corr_cluster_"):
@@ -2682,13 +2736,26 @@ def _run_and_show(action_id: str, title: str, run_action: str):
                     # server composes the sentence and nobody ever sees it.
                     _disclosure = _resolve_insights_from_eda_result(
                         action_id, result, title, _n_closed_here)
-                    if _disclosure:
-                        st.session_state.setdefault("eda_diagnostic_disclosure", {})[action_id] = _disclosure
-                    try:
-                        from utils.workflow_provenance import get_provenance
-                        get_provenance().record_eda_analysis(title)
-                    except Exception:
-                        pass  # Provenance recording should never break the workflow
+                    # Stored UNCONDITIONALLY, empty string included. Writing only
+                    # a non-empty sentence left the previous run's entry standing,
+                    # so a diagnostic that had succeeded on a narrow feature set
+                    # and was then REFUSED on a wide one still rendered "VIF … IS
+                    # the answer to 1 observation this page raised" immediately
+                    # above its own "VIF was not computed" warning. The `return ""`
+                    # guard inside `_resolve_insights_from_eda_result` is correct;
+                    # it was this write that discarded its answer.
+                    st.session_state.setdefault("eda_diagnostic_disclosure", {})[action_id] = _disclosure
+                    # `analyses_run` is a list of analyses that were PERFORMED.
+                    # A refused diagnostic must not appear in it: the stale
+                    # "was not computed" ledger entry above is the record of a
+                    # refusal, and having both would let the report claim the
+                    # analysis in one place and disclaim it in another.
+                    if not _refused:
+                        try:
+                            from utils.workflow_provenance import get_provenance
+                            get_provenance().record_eda_analysis(title)
+                        except Exception:
+                            pass  # Provenance recording should never break the workflow
                     st.rerun()
             else:
                 st.error(f"Action '{run_action}' not found")
@@ -2735,7 +2802,11 @@ def _run_and_show(action_id: str, title: str, run_action: str):
                 result_session_key=f"llm_result_{action_id}",
                 plot_type=action_id,
             )
-        next_step = ACTION_NEXT_STEPS.get(action_id)
+        # "Review flagged high-influence points" is an instruction about points
+        # that were never flagged when the diagnostic refused to run. The
+        # refusal's own warning already names the next step, and the Insight it
+        # files carries a `recommended_action`.
+        next_step = None if result.get("refused") else ACTION_NEXT_STEPS.get(action_id)
         if next_step:
             st.markdown(next_step)
 
