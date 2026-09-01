@@ -1230,19 +1230,34 @@ def _detect_high_cv_variance(
     model_results: Dict[str, Dict[str, Any]],
     task_type: str,
 ) -> List[Dict[str, Any]]:
-    """Detect when CV variance is large relative to inter-model performance gaps."""
+    """Detect when CV variance is large relative to inter-model performance gaps.
+
+    A model that lost a fold has an SD of NaN, not an SD of zero and not a
+    large one (`ml.eval.cv_fold_disclosure`). NaN is skipped rather than
+    compared: `nan < threshold` is False, so an unfiltered NaN walked straight
+    past the early return below and wrote "maximum fold SD = nan" into the
+    manuscript sentence — and `max()` over a list containing NaN is
+    order-dependent in Python, so whether it did depended on dict insertion
+    order. A model with no SD contributes no evidence to a variance check.
+    """
+    import numpy as np
+
     cv_stds = []
     scores = []
     for key, results in model_results.items():
         cv = results.get('cv_results')
-        if cv and cv.get('std') is not None:
+        if cv and cv.get('std') is not None and np.isfinite(cv['std']):
             cv_stds.append(cv['std'])
         metrics = results.get('metrics', {})
         if task_type == 'regression':
             val = metrics.get('RMSE')
         else:
             val = metrics.get('F1', metrics.get('Accuracy'))
-        if val is not None:
+        # Same guard on the other side: a metric can be NaN too (`MINE-027`
+        # drops non-finite prediction pairs and returns NaN when none remain),
+        # and a NaN there makes `score_range` NaN and the comparison below
+        # meaningless in exactly the same way.
+        if val is not None and np.isfinite(val):
             scores.append(val)
 
     if len(cv_stds) < 1 or len(scores) < 2:

@@ -1889,6 +1889,22 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     name for name, res in _model_results_local.items()
                     if isinstance(res, dict) and res.get('cv_results')
                 ],
+                # The list above cannot distinguish a fold loop that finished
+                # from one that lost a fold — both leave a truthy `cv_results`.
+                # `ml.publication.generate_methods_section` derives the third
+                # state from the per-model dicts, but page 10 reaches
+                # ml/narrative_engine.py FIRST and falls back to publication.py
+                # only when this record is empty, so the narrative needs the
+                # incompleteness recorded here or it silently reports a complete
+                # k-fold design. Same reason `hyperopt_trials` is recorded.
+                cv_incomplete={
+                    name: [res['cv_results']['fold_failures']['n_scored'],
+                           res['cv_results']['fold_failures']['n_folds']]
+                    for name, res in _model_results_local.items()
+                    if isinstance(res, dict)
+                    and isinstance(res.get('cv_results'), dict)
+                    and res['cv_results'].get('fold_failures')
+                },
                 use_hyperopt=use_optimization,
                 # Same reason as `hyperopt_trials` in the methodology log
                 # above: `use_hyperopt` is the flag, and the flag alone let
@@ -2628,28 +2644,62 @@ if st.session_state.get('trained_models'):
     # CV results if available
     if use_cv:
         st.subheader("Cross-Validation Results")
+        # A fold that dies inside `cross_val_score` comes back as a NaN and
+        # poisons the mean and the SD (`ml.eval.cv_fold_disclosure`). This table
+        # used to print that NaN under "Mean Score", where it reads as a
+        # measurement rather than as the absence it is — the same defect as a
+        # 999.0 VIF sentinel. Incomplete rows now state the absence, carry the
+        # fold count they actually earned, and are explained underneath.
+        from ml.eval import describe_fold_failures as _describe_fold_failures
         cv_data = []
+        _cv_incomplete = []
         for name, results in st.session_state.model_results.items():
             if results.get('cv_results'):
+                _cv = results['cv_results']
+                _failed = _cv.get('fold_failures')
+                _n_folds = (_failed['n_folds'] if _failed
+                            else len(_cv.get('scores', [])) or _cv.get('folds'))
+                _n_scored = _failed['n_scored'] if _failed else _n_folds
                 cv_data.append({
                     'Model': name.upper(),
-                    'Mean Score': results['cv_results']['mean'],
-                    'Std Score': results['cv_results']['std']
+                    'Mean Score': '—' if _failed else f"{_cv['mean']:.4f}",
+                    'Std Score': '—' if _failed else f"{_cv['std']:.4f}",
+                    # A session restored from before this record existed knows
+                    # neither count; '—' rather than an invented denominator.
+                    'Folds Scored': f"{_n_scored} / {_n_folds}" if _n_folds else '—',
                 })
+                if _failed:
+                    _cv_incomplete.append((name, _failed))
         if cv_data:
             cv_df = pd.DataFrame(cv_data)
             st.dataframe(cv_df, width="stretch")
+            for _name, _failed in _cv_incomplete:
+                st.warning("⚠️ " + _describe_fold_failures(_name.upper(), _failed))
 
             # Boxplot of CV scores
             fig = go.Figure()
             for name, results in st.session_state.model_results.items():
                 if results.get('cv_results'):
+                    # Plotly drops the NaN fold silently, so a model that lost a
+                    # fold would otherwise draw a TIGHTER box than the models
+                    # that finished and look like the most stable of the set.
+                    # The trace name carries its own denominator.
+                    _failed = results['cv_results'].get('fold_failures')
+                    _label = name.upper()
+                    if _failed:
+                        _label += f" ({_failed['n_scored']}/{_failed['n_folds']} folds)"
                     fig.add_trace(go.Box(
                         y=results['cv_results']['scores'],
-                        name=name.upper()
+                        name=_label
                     ))
             fig.update_layout(title="CV Score Distribution", yaxis_title="Score")
             st.plotly_chart(fig, width="stretch")
+            if _cv_incomplete:
+                st.caption(
+                    "Boxes labeled with a fold count are drawn over the folds "
+                    "that completed only — they are not distributions over the "
+                    "full fold loop and their spread is understated."
+                )
 
             # Pairwise statistical comparison (paired t or Wilcoxon on fold-level metrics)
             from ml.eval import compare_models_paired_cv
@@ -2661,13 +2711,43 @@ if st.session_state.get('trained_models'):
             )
             if paired:
                 with st.expander("Statistical comparison of models (CV)", expanded=False):
-                    st.caption("Pairwise paired tests on fold-level CV scores. Mean Δ = mean(A) − mean(B); p < 0.05 suggests a significant difference.")
+                    st.caption("Pairwise paired tests on fold-level CV scores. Mean Δ = mean(A) − mean(B); p < 0.05 suggests a significant difference. "
+                               "A pair reads — throughout when either model lost a fold: ml/stats_tests.py drops the unpaired folds and would still return a p, but a test over the folds that survived is not a test over the fold loop, and it is not reported as one.")
                     rows = []
+                    _pair_incomplete = False
                     for (ma, mb), v in paired.items():
                         mean_d, stat, p, tname = v["mean_delta"], v["stat"], v["p"], v["test_name"]
-                        sig = " *" if (p is not None and np.isfinite(p) and p < 0.05) else ""
-                        rows.append({"Model A": ma.upper(), "Model B": mb.upper(), "Mean Δ": round(mean_d, 4), "Test": tname, "p": round(p, 4) if p is not None and np.isfinite(p) else None, "Significant": "Yes" if (p is not None and np.isfinite(p) and p < 0.05) else "No"})
+                        # A dead fold in EITHER model unpairs that fold. The
+                        # statistic is still computed — `paired_location_test`
+                        # strips the NaNs — but it is then a test over a
+                        # different, smaller and self-selected set of folds than
+                        # the header claims, so the whole comparison is withheld
+                        # rather than the Mean Δ alone. Blanking only Mean Δ left
+                        # a real-looking p and a confident "Significant: No"
+                        # beside the hole, which is the survivor statistic this
+                        # release exists to stop publishing.
+                        _complete = v.get("n_paired") == v.get("n_folds")
+                        if not _complete:
+                            _pair_incomplete = True
+                        _p_ok = _complete and p is not None and np.isfinite(p)
+                        rows.append({
+                            "Model A": ma.upper(),
+                            "Model B": mb.upper(),
+                            "Mean Δ": round(mean_d, 4) if (_complete and np.isfinite(mean_d)) else None,
+                            "Test": tname if _complete else "not run — unpaired folds",
+                            "Folds Paired": f"{v.get('n_paired', '?')} / {v.get('n_folds', '?')}",
+                            "p": round(p, 4) if _p_ok else None,
+                            "Significant": ("Yes" if (_p_ok and p < 0.05) else "No") if _complete else None,
+                        })
                     st.dataframe(pd.DataFrame(rows), width="stretch")
+                    if _pair_incomplete:
+                        st.warning(
+                            "One or more pairs could not be compared: a fold that "
+                            "produced no score for either model leaves that fold "
+                            "unpaired, and the remaining folds are not a random "
+                            "subset — they are the ones both models survived. No "
+                            "p-value is reported for those pairs."
+                        )
     # ================================================================
     # MODEL SELECTION GUIDANCE
     # ================================================================

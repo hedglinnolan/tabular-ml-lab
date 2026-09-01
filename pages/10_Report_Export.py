@@ -1651,13 +1651,38 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     if cv_results_exist:
         report_lines.append("### Cross-Validation Results")
         report_lines.append("")
-        report_lines.append("| Model | Mean Score | Std Dev |")
-        report_lines.append("|-------|------------|---------|")
+        # `{float('nan'):.4f}` renders the literal string 'nan', so a fold that
+        # died inside `cross_val_score` used to reach the manuscript as a score.
+        # The Folds column carries the denominator every row earned, and the
+        # footnote below states what is missing and why
+        # (`ml.eval.cv_fold_disclosure`).
+        from ml.eval import describe_fold_failures as _describe_fold_failures
+        report_lines.append("| Model | Mean Score | Std Dev | Folds Scored |")
+        report_lines.append("|-------|------------|---------|--------------|")
+        _cv_incomplete = []
         for name, results in model_results.items():
             if results.get('cv_results'):
                 cv = results['cv_results']
-                report_lines.append(f"| {_export_model_label(name)} | {cv['mean']:.4f} | ±{cv['std']:.4f} |")
+                failed = cv.get('fold_failures')
+                n_folds = (failed['n_folds'] if failed
+                           else len(cv.get('scores', [])) or cv.get('folds'))
+                n_scored = failed['n_scored'] if failed else n_folds
+                mean_str = "—" if failed else f"{cv['mean']:.4f}"
+                std_str = "—" if failed else f"±{cv['std']:.4f}"
+                # A session restored from before this record existed knows
+                # neither count; '—' rather than an invented denominator.
+                folds_str = f"{n_scored} / {n_folds}" if n_folds else "—"
+                report_lines.append(
+                    f"| {_export_model_label(name)} | {mean_str} | {std_str} | "
+                    f"{folds_str} |"
+                )
+                if failed:
+                    _cv_incomplete.append((name, failed))
         report_lines.append("")
+        for name, failed in _cv_incomplete:
+            report_lines.append(
+                _describe_fold_failures(_export_model_label(name), failed))
+            report_lines.append("")
 
         from ml.eval import compare_models_paired_cv
         cv_names = [n for n, r in model_results.items() if r.get("cv_results")]
@@ -1669,21 +1694,44 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
         if paired:
             report_lines.append("### Statistical comparison of models (CV)")
             report_lines.append("")
-            report_lines.append("Pairwise paired tests on fold-level CV scores. Mean Δ = mean(A) − mean(B); p < 0.05 suggests a significant difference.")
+            report_lines.append("Pairwise paired tests on fold-level CV scores. Mean Δ = mean(A) − mean(B); p < 0.05 suggests a significant difference. "
+                                "A pair reads — throughout when either model lost a fold: the unpaired folds are dropped before the test runs, and a test over the folds that survived is not a test over the fold loop.")
             report_lines.append("")
-            report_lines.append("| Model A | Model B | Mean Δ | Test | p | Significant |")
-            report_lines.append("|---------|---------|--------|------|---|-------------|")
+            report_lines.append("| Model A | Model B | Mean Δ | Test | Folds paired | p | Significant |")
+            report_lines.append("|---------|---------|--------|------|--------------|---|-------------|")
+            _pair_incomplete = False
             for (ma, mb), v in paired.items():
                 mean_d = v["mean_delta"]
                 tname = v["test_name"]
                 p = v["p"]
-                sig = "Yes" if (p is not None and np.isfinite(p) and p < 0.05) else "No"
-                p_str = (format_pvalue(p)
-                         if p is not None and np.isfinite(p) else "—")
+                # See pages/06: a fold that died for either model unpairs that
+                # fold, `paired_location_test` strips it, and what comes back is
+                # a statistic over a self-selected subset. The manuscript states
+                # the absence rather than a p-value it would have to caveat in
+                # the same sentence.
+                _complete = v.get("n_paired") == v.get("n_folds")
+                if not _complete:
+                    _pair_incomplete = True
+                _p_ok = _complete and p is not None and np.isfinite(p)
+                sig = ("Yes" if (_p_ok and p < 0.05) else "No") if _complete else "—"
+                p_str = format_pvalue(p) if _p_ok else "—"
+                # NaN whenever either model has a dead fold — an absence, and
+                # `f"{nan:.4f}"` would print it as the word 'nan'.
+                d_str = f"{mean_d:.4f}" if (_complete and np.isfinite(mean_d)) else "—"
+                t_str = tname if _complete else "not run — unpaired folds"
+                n_str = f"{v.get('n_paired', '?')} / {v.get('n_folds', '?')}"
                 report_lines.append(
-                    f"| {_export_model_label(ma)} | {_export_model_label(mb)} | {mean_d:.4f} | {tname} | {p_str} | {sig} |"
+                    f"| {_export_model_label(ma)} | {_export_model_label(mb)} | {d_str} | {t_str} | {n_str} | {p_str} | {sig} |"
                 )
             report_lines.append("")
+            if _pair_incomplete:
+                report_lines.append(
+                    "No p-value is reported for a pair whose fold counts differ: "
+                    "a fold that produced no score for either model leaves that "
+                    "fold unpaired, and the folds that remain are not a random "
+                    "subset of the loop — they are the ones both models survived."
+                )
+                report_lines.append("")
 
     # Baseline comparison — the "is your model better than trivial?" anchor
     _baselines_for_report = (export_ctx.get('manuscript_context') or {}).get('baseline_results')

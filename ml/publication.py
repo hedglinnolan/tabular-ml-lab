@@ -1645,6 +1645,37 @@ def generate_methods_section(
                     f"{_oxford_join([_publication_model_label(m) for m in _not_cv])}, "
                     f"whose reported performance comes from the held-out split alone."
                 )
+            # `cv_models_run` is truthiness on `cv_results`, and a fold loop
+            # that lost a fold produces a TRUTHY dict — so the sentence above
+            # was asserting a complete k-fold design for a run that did not
+            # complete one. The third state is derived here rather than added
+            # as a parameter: it is already in the same dicts
+            # (`ml.eval.cv_fold_disclosure`), so no caller has to learn a new
+            # argument for the Methods section to stop over-claiming.
+            _cv_partial = []
+            for _m in cv_models_run:
+                _res = (selected_model_results or {}).get(_m)
+                _cvr = _res.get('cv_results') if isinstance(_res, dict) else None
+                _ff = _cvr.get('fold_failures') if isinstance(_cvr, dict) else None
+                if _ff:
+                    _cv_partial.append((_m, _ff))
+            if _cv_partial:
+                _partial_txt = _oxford_join([
+                    f"{_publication_model_label(_m)} "
+                    f"({_ff['n_scored']} of {_ff['n_folds']} folds)"
+                    for _m, _ff in _cv_partial
+                ])
+                _one = len(_cv_partial) == 1
+                sections.append(
+                    f" The fold loop did not complete for {_partial_txt}: the "
+                    f"remaining folds produced no score, so no cross-validated "
+                    f"estimate is reported for "
+                    f"{'that model' if _one else 'those models'} and "
+                    f"{'its' if _one else 'their'} reported performance rests "
+                    f"on the held-out split. A mean over the folds that did "
+                    f"complete is not a {cv_to_use}-fold cross-validated "
+                    f"estimate and is not substituted for one."
+                )
 
     # Performance evaluation
     sections.append("\n\n### Performance Evaluation\n")

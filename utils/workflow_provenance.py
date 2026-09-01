@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +175,21 @@ class TrainingProvenance:
     # cross-validated. Reporting the first as the second would assert a fact
     # about a run nobody recorded.
     cv_models_run: Optional[List[str]] = None
+    # WHICH of those fold loops did not finish, `{model_key: [n_scored,
+    # n_folds]}`, and empty when every loop that ran completed.
+    #
+    # `cv_models_run` is built from the truthiness of `cv_results`, and a fold
+    # loop that lost a fold still produces a truthy dict — so on its own it
+    # reports a complete k-fold design for a run that did not perform one.
+    # ml/publication.py derives the third state in place from the per-model
+    # results, but that generator is the FALLBACK; page 10 reaches
+    # ml/narrative_engine.py first, and the narrative has only this record to
+    # read. So the incompleteness travels with the provenance for the same
+    # reason `hyperopt_trials` does.
+    #
+    # A list rather than a tuple because `asdict` -> JSON -> `from_dict`
+    # round-trips one and silently changes the other into the first.
+    cv_incomplete: Dict[str, List[int]] = field(default_factory=dict)
     use_hyperopt: bool = False
     # HOW MANY Optuna trials per tunable model, when the recorder knew.
     #
@@ -543,6 +558,7 @@ class WorkflowProvenance:
         use_cv: bool = False,
         cv_folds: Optional[int] = None,
         cv_models_run: Optional[List[str]] = None,
+        cv_incomplete: Optional[Dict[str, Sequence[int]]] = None,
         use_hyperopt: bool = False,
         hyperopt_trials: Optional[int] = None,
         class_weight_balanced: bool = False,
@@ -563,6 +579,8 @@ class WorkflowProvenance:
             cv_folds=cv_folds,
             cv_models_run=(list(cv_models_run)
                            if cv_models_run is not None else None),
+            cv_incomplete={str(k): [int(n) for n in v]
+                           for k, v in (cv_incomplete or {}).items()},
             use_hyperopt=use_hyperopt,
             hyperopt_trials=hyperopt_trials,
             class_weight_balanced=class_weight_balanced,
@@ -800,6 +818,10 @@ class WorkflowProvenance:
             ctx["cv_models_run"] = (list(self.training.cv_models_run)
                                     if self.training.cv_models_run is not None
                                     else None)
+            # Carried so the narrative can say a fold loop did not finish. Without
+            # it the only signal is `cv_models_run`, which lists a model whose CV
+            # lost a fold exactly as it lists one whose CV completed.
+            ctx["cv_incomplete"] = dict(self.training.cv_incomplete or {})
             ctx["use_hyperopt"] = self.training.use_hyperopt
             # Carried so the narrative can name the search budget the run used
             # instead of describing the search without one. `None` when the

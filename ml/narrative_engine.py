@@ -1291,6 +1291,34 @@ class NarrativeEngine:
                         f"whose reported performance comes from the held-out "
                         f"split alone."
                     )
+                # `MINE-027`, one level below `AUDIT-026`. `cv_models_run` is
+                # built from the truthiness of `cv_results`, and a fold loop
+                # that lost a fold leaves a truthy dict behind — so the sentence
+                # above asserted a complete k-fold design for a run that did not
+                # complete one. ml/publication.py states this too, but that
+                # generator is the fallback; this is the one page 10 reaches
+                # first and therefore the one a reader of the exported draft
+                # actually sees.
+                _cv_incomplete = self.ctx.get("cv_incomplete") or {}
+                _partial = [(m, v) for m, v in _cv_incomplete.items()
+                            if m in set(cv_models_run) and v and len(v) == 2]
+                if _partial:
+                    _txt = _oxford_join([
+                        f"{self._model_name(m)} ({v[0]} of {v[1]} folds)"
+                        for m, v in _partial
+                    ])
+                    _one = len(_partial) == 1
+                    parts.append(
+                        f"The fold loop did not complete for {_txt}: the "
+                        f"remaining folds produced no score, so no "
+                        f"cross-validated estimate is reported for "
+                        f"{'that model' if _one else 'those models'} and "
+                        f"{'its' if _one else 'their'} reported performance "
+                        f"rests on the held-out split. A mean over the folds "
+                        f"that did complete is not a {cv_folds}-fold "
+                        f"cross-validated estimate and is not substituted for "
+                        f"one."
+                    )
 
         # Hyperparameter optimization.
         #
