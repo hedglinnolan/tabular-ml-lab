@@ -275,14 +275,19 @@ class TestMine004LeakageScanCannotFailSilently:
         from ml import eda_recommender
 
         df = self._frame()
-        real_corr = pd.DataFrame.corr
+        # The fault is injected into `corrwith` because that is what the screen
+        # now calls. It used to build a (p+1)x(p+1) matrix with the target
+        # pasted in under the name `_target` and read one column back out, so
+        # the injection keyed on that scratch column; the O(p*n) rewrite
+        # deleted both the matrix and the name. MINE-004's claim is unchanged —
+        # a scan that did not run must not read as a clean bill of health — but
+        # a fault aimed at code the screen no longer executes tests nothing:
+        # before this was moved, the "failing" scan quietly succeeded and the
+        # assertion below was measuring a healthy run.
+        def exploding_corrwith(self, *a, **k):
+            raise MemoryError("feature-target correlation did not fit")
 
-        def exploding_corr(self, *a, **k):
-            if "_target" in self.columns:
-                raise MemoryError("correlation matrix did not fit")
-            return real_corr(self, *a, **k)
-
-        monkeypatch.setattr(pd.DataFrame, "corr", exploding_corr)
+        monkeypatch.setattr(pd.DataFrame, "corrwith", exploding_corrwith)
         signals = eda_recommender.compute_dataset_signals(
             df, "glucose", "regression", "cross_sectional", None)
 

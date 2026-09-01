@@ -35,7 +35,7 @@ same function. Nothing is copied, nothing is reimplemented, and a fix lands once
 | Feature selection | `ml/feature_selection.py` | 295 | yes |
 | NN configuration advice | `ml/nn_recommender.py` | 199 | yes |
 | Plot narration | `ml/plot_narrative.py` | 469 | yes |
-| Regime detection | `ml/regime.py` | 193 | yes |
+| Regime detection + compute caps | `ml/regime.py` | 892 | yes |
 | Clinical units + physiology reference | `ml/clinical_units.py`, `ml/physiology_reference.py` | 353 | yes |
 | Insight lifecycle (the coach's memory) | `utils/insight_ledger.py` | 1,408 | after singleton cut |
 | Provenance record | `utils/workflow_provenance.py` | 759 | after singleton cut |

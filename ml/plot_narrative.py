@@ -401,6 +401,15 @@ def narrative_eda_influence(stats: Dict[str, Any], findings: Optional[List[str]]
     """Interpretation for influence diagnostics (leverage, Cook's D)."""
     if not stats and not findings:
         return ""
+    # No leverage figure means the diagnostic did not run — it is refused above
+    # p = n - 2, where every observation has leverage 1 and Cook's distance is
+    # undefined. Without this guard the else-branch below fired on the empty
+    # stats dict and the page printed "No strongly influential points detected;
+    # OLS estimates are likely stable" — a confident negative result about an
+    # analysis that never happened, which is a worse thing to put in front of a
+    # scientist than the impossible numbers the refusal replaced.
+    if (stats or {}).get("max_leverage") is None:
+        return " ".join((findings or [])[:2])
     parts: List[str] = []
     n_high = (stats or {}).get("n_high_cooks", 0)
     max_cooks = (stats or {}).get("max_cooks", 0)
@@ -459,11 +468,23 @@ def narrative_eda_multicollinearity(stats: Dict[str, Any], findings: Optional[Li
     if not stats and not findings:
         return ""
     vifs = (stats or {}).get("vif", [])
-    high = [(c, v) for c, v in vifs if v > 10]
+    # Same guard as the influence narrative, same reason: with no VIF values the
+    # else-branch used to assert "No severe multicollinearity (VIF <= 10)" — an
+    # all-clear derived from an empty dict. VIF is refused above p = min(200,
+    # n/2), and a refusal must not read as a clean bill of health.
+    if not vifs:
+        return " ".join((findings or [])[:2])
+    # The flagging line travels with the numbers. A fixed 10 is not defensible
+    # across p/n: on features with no collinearity at all E[VIF] = (n-1)/(n-p),
+    # so the same "> 10" means "strongly collinear" at p/n = 0.05 and "ordinary"
+    # at p/n = 0.4. `ml.eda_actions.multicollinearity_vif` scales it and puts
+    # the scaled value in `stats`; 10.0 is the fallback for older stored results.
+    threshold = (stats or {}).get("vif_flag_threshold") or 10.0
+    high = [(c, v) for c, v in vifs if v is not None and v > threshold]
     parts: List[str] = []
     if high:
         names = [c for c, _ in high[:3]]
-        parts.append(f"VIF > 10 for {', '.join(names)}{'…' if len(high) > 3 else ''}; consider regularization or dropping correlated features.")
+        parts.append(f"VIF > {threshold:.1f} for {', '.join(names)}{'…' if len(high) > 3 else ''}; consider regularization or dropping correlated features.")
     else:
-        parts.append("No severe multicollinearity (VIF ≤ 10); coefficient stability is reasonable.")
+        parts.append(f"No severe multicollinearity (VIF ≤ {threshold:.1f}); coefficient stability is reasonable.")
     return " ".join(parts) if parts else (" ".join((findings or [])[:2]) or "")

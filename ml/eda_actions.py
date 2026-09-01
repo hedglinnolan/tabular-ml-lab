@@ -19,6 +19,11 @@ from ml.eval import calculate_regression_metrics, calculate_classification_metri
 from ml.clinical_units import infer_unit
 from ml.physiology_reference import load_reference_bundle, match_variable_key, get_improbability_band
 from ml.outliers import detect_outliers
+# The compute-cap axis. `ml.regime` holds the thresholds AND the sentence that
+# discloses each one, so the engine, the page and the tests quote the same
+# number and the same words. It imports nothing but pandas/numpy, so this stays
+# headless (`tests/test_engine_is_headless.py`).
+from ml.regime import ols_diagnostic_availability, vif_availability
 from ml.stats_tests import (
     correlation_test,
     two_sample_location_test,
@@ -1120,6 +1125,65 @@ def residual_analysis(
     return {'findings': findings, 'warnings': warnings, 'figures': figures, 'stats': stats_dict}
 
 
+def _refused_diagnostic(
+    reason: str,
+    insight_id: str,
+    implication: str,
+    recommended_action: str,
+    manuscript_text: str,
+    metadata: Dict[str, Any],
+    theory_anchor: str = "",
+) -> Dict[str, Any]:
+    """The result an OLS-family diagnostic returns when it declines to run.
+
+    Three things make this shape, and all three are the point of the change.
+
+    `findings` is EMPTY, deliberately. `ml.plot_narrative` composes the page's
+    **Summary:** line from `stats` and falls through to `findings`, and both the
+    VIF and the influence narrative used to end in an all-clear branch — "No
+    severe multicollinearity (VIF <= 10)", "No strongly influential points
+    detected" — reached whenever the numbers were absent. A refusal that fills
+    `findings` with a sentence is therefore worse than the bug it replaces: it
+    turns a garbage table into a confident negative result. The narratives are
+    now guarded as well (`ml/plot_narrative.py`), but the belt and the braces
+    are both cheap and this one is what the tests pin.
+
+    `warnings` carries the sentence, because the page already renders every
+    entry with `st.warning` — that is how a headless engine puts text on screen
+    without importing Streamlit (`tests/test_engine_is_headless.py`).
+
+    `insights` carries an UNRESOLVED `Insight` with `manuscript_text`, which is
+    what `InsightLedger.discussion_points_for_manuscript()` files as a Discussion
+    limitation. A refusal has to reach the record too: this app's output is a
+    manuscript, and a Methods section that is simply silent about a diagnostic
+    the workflow offered is the failure mode the caps exist to prevent.
+
+    `refused` lets the page tell "did not run" from "ran and found nothing" —
+    without it, running a refused VIF would still close every open
+    `eda_corr_cluster_*` insight on the strength of an analysis that never ran.
+    """
+    return {
+        'findings': [],
+        'warnings': [reason],
+        'figures': [],
+        'stats': {},
+        'refused': True,
+        'insights': [Insight(
+            id=insight_id,
+            source_page="02_EDA",
+            category="methodology",
+            severity="info",
+            finding=reason,
+            implication=implication,
+            recommended_action=recommended_action,
+            manuscript_text=manuscript_text,
+            relevant_pages=["04_Feature_Selection", "10_Report_Export"],
+            theory_anchor=theory_anchor,
+            metadata=dict(metadata),
+        )],
+    }
+
+
 def influence_diagnostics(
     df: pd.DataFrame,
     target: Optional[str],
@@ -1127,7 +1191,18 @@ def influence_diagnostics(
     signals: Any,
     session_state: Any
 ) -> Dict[str, Any]:
-    """Leverage and Cook's distance from OLS."""
+    """Leverage and Cook's distance from OLS, or a refusal that says why.
+
+    Refuses above `p = n - 2` (`ml.regime.ols_diagnostic_is_defined`). The
+    failure above that line is SILENT, which is why it needs a gate and not a
+    try/except: `np.linalg.solve` does not raise on the singular Gram matrix at
+    any p from 99 to 3,000, so the page's own except clause catches nothing.
+    Measured at n=100/p=99 the function returned max leverage
+    1.0000000000000566 — leverage is bounded by 1, so that is a mathematically
+    impossible statistic printed to four decimals — with max Cook's D 1.03e14
+    and a warning that 100 of 100 points are highly influential. At n=500/p=3000
+    it flagged 491 of 500.
+    """
     findings = []
     warnings = []
     figures = []
@@ -1143,6 +1218,34 @@ def influence_diagnostics(
     X = df[numeric].fillna(df[numeric].median())
     y = df[target]
     valid = ~(y.isna() | X.isna().any(axis=1))
+
+    # Gate on the rows that will actually be fitted, not on len(df) — the
+    # dropna above can move n a long way, and p vs n is the whole question.
+    # This sits BEFORE X_arr is built on purpose: the hat matrix below is n×n
+    # and the Gram matrix is (p+1)×(p+1), so a shape that cannot produce a
+    # meaningful answer should not be allocated for either.
+    n_obs = int(valid.sum())
+    gate = ols_diagnostic_availability(len(numeric), n_obs, "influence")
+    if not gate["available"]:
+        return _refused_diagnostic(
+            reason=gate["reason"],
+            insight_id="eda_cap_influence_undefined",
+            implication=(
+                "No observation was assessed for leverage or influence, so it is "
+                "not known whether individual rows drive the fitted relationship."
+            ),
+            recommended_action=(
+                "Reduce the predictor set on Feature Selection until it is "
+                f"smaller than the {n_obs:,} usable observations, then re-run."
+            ),
+            manuscript_text=(
+                "regression influence diagnostics were not performed; the number "
+                "of predictors exceeded the number of observations"
+            ),
+            metadata={"p": len(numeric), "n": n_obs,
+                      "limit_features": gate["limit_features"]},
+        )
+
     X_arr = np.column_stack([np.ones(valid.sum()), X[valid].values])
     y_arr = y[valid].values
     if len(X_arr) < 10:
@@ -1159,7 +1262,29 @@ def influence_diagnostics(
 
     stats_dict["max_leverage"] = float(np.max(h))
     stats_dict["max_cooks"] = float(np.max(cook))
-    stats_dict["n_high_leverage"] = int((h > 2 * k / len(X_arr)).sum())
+
+    # The conventional "high leverage" line is h > 2k/n with k = p+1. Leverage
+    # is bounded above by 1, so that line stops existing once 2(p+1)/n >= 1,
+    # i.e. for every p >= n/2 - 1 — and this band is INSIDE the gate above,
+    # which only refuses at p > n - 2. Measured at n=100/p=50 the threshold is
+    # 1.020 and the count came back 0 while the largest leverage was 0.68; at
+    # n=100/p=99 it came back 0 while every observation had leverage 1.0. The
+    # count was structurally zero exactly where leverage is most extreme, so
+    # "no high-leverage points" was a statement the arithmetic could not have
+    # produced any other answer to. Report the count only where the rule is
+    # defined, and say so where it is not.
+    lev_threshold = 2 * k / len(X_arr)
+    stats_dict["leverage_threshold"] = float(lev_threshold)
+    if lev_threshold < 1.0:
+        stats_dict["n_high_leverage"] = int((h > lev_threshold).sum())
+    else:
+        stats_dict["n_high_leverage"] = None
+        warnings.append(
+            f"High-leverage points were not counted: the usual 2k/n cut-off is "
+            f"{lev_threshold:.2f} at {k - 1:,} predictors and {len(X_arr):,} "
+            f"observations, and leverage cannot exceed 1, so no observation can "
+            f"cross it. Max leverage was {stats_dict['max_leverage']:.4f}."
+        )
     stats_dict["n_high_cooks"] = int((cook > 1).sum())
 
     fig = go.Figure()
@@ -1184,7 +1309,17 @@ def normality_residuals(
     signals: Any,
     session_state: Any
 ) -> Dict[str, Any]:
-    """Normality of OLS residuals (Q–Q, Shapiro–Wilk)."""
+    """Normality of OLS residuals (Q–Q, Shapiro–Wilk), or a refusal that says why.
+
+    Same gate as `influence_diagnostics`, for a different reason. At p >= n the
+    fit is exact — measured in-sample R² = 1.000000 with residual sd between
+    2.3e-15 and 3.2e-15 at n=500/p=3000, n=100/p=200 and n=100/p=99 — so
+    Shapiro–Wilk is applied to floating-point rounding error and its verdict is
+    a function of the rounding pattern rather than of the data. Re-measured
+    across seeds it came back p=0.79, 0.96 and 0.70 at n=500/p=3000 and p=0.15,
+    0.43 and 0.97 at n=100/p=200: noise in both directions, landing on either
+    side of 0.05 at random. Reporting either verdict is reporting nothing.
+    """
     findings = []
     warnings = []
     figures = []
@@ -1200,6 +1335,33 @@ def normality_residuals(
     X = df[numeric].fillna(df[numeric].median())
     y = df[target]
     valid = ~(y.isna() | X.isna().any(axis=1))
+
+    n_obs = int(valid.sum())
+    gate = ols_diagnostic_availability(len(numeric), n_obs, "normality")
+    if not gate["available"]:
+        return _refused_diagnostic(
+            reason=gate["reason"],
+            insight_id="eda_cap_normality_undefined",
+            implication=(
+                "Whether the residuals of a linear model on these data are "
+                "approximately normal is unknown, so parametric confidence "
+                "intervals and p-values from such a model are unverified."
+            ),
+            recommended_action=(
+                "Reduce the predictor set on Feature Selection until it is "
+                f"smaller than the {n_obs:,} usable observations, then re-run — "
+                "or prefer bootstrap intervals, which do not rest on this "
+                "assumption."
+            ),
+            manuscript_text=(
+                "residual normality was not tested; the number of predictors "
+                "exceeded the number of observations, so the diagnostic fit "
+                "reproduced the outcome exactly and left no residual to test"
+            ),
+            metadata={"p": len(numeric), "n": n_obs,
+                      "limit_features": gate["limit_features"]},
+        )
+
     X = X[valid].values
     y = y[valid].values
     if len(X) < 10:
@@ -1230,15 +1392,81 @@ def multicollinearity_vif(
     signals: Any,
     session_state: Any
 ) -> Dict[str, Any]:
-    """VIF table for numeric features."""
+    """VIF table for numeric features, or a refusal that says why.
+
+    Two gates, both held in `ml.regime.vif_availability` so that the threshold
+    and the sentence disclosing it live in one place.
+
+    The VALIDITY gate is the important half and it is a correctness fix, not a
+    cost cap. BEFORE, once p >= n every one of these regressions fit exactly,
+    `r2 == 1` for every feature, and the loop appended the literal 999.0 — a
+    sentinel that sorts, formats and reads exactly like a measurement, then
+    tripped the fixed "VIF > 10" alarm on every row. Measured on i.i.d. normals
+    whose true VIF is 1 BY CONSTRUCTION: n=100/p=100 returned 100 sentinels out
+    of 100 and flagged all 100; n=500/p=500 returned 497 sentinels beside three
+    finite values as large as 1.56e4, and flagged all 500. The table asserted
+    severe multicollinearity everywhere about data that contained none.
+
+    The estimator stops being readable well below that. On independent features
+    E[VIF] = (n-1)/(n-p), confirmed at two sample sizes, so at n=500 the measured
+    median is 2.02 at p=250 and 9.82 at p=450 — where 203 of 450 independent
+    features cross a fixed 10. That is why the gate is `p <= n/2` and why the
+    flag threshold below is scaled by the null baseline instead of being a
+    constant: "VIF > 10" means different things at p/n = 0.05 and p/n = 0.4, and
+    only the scaled version means the same thing at both.
+
+    The WALL-TIME gate is the cheap half: measured at n=500, 4.32 s at p=200,
+    202 s at p=800, and at p=1,000 it blew through a 900 s cap while saturating
+    nine cores — censored, not finished.
+    """
     findings = []
     warnings = []
     figures = []
     stats_dict: Dict[str, Any] = {}
 
     numeric = [f for f in features if f in signals.numeric_cols]
-    if len(numeric) < 2:
-        return {'findings': ["Need ≥2 numeric features for VIF"], 'warnings': [], 'figures': [], 'stats': {}}
+    # n is len(df) here rather than a post-dropna count because this function
+    # median-fills instead of dropping rows; every row below is fitted.
+    gate = vif_availability(len(numeric), len(df))
+    if not gate["available"]:
+        # Two very different refusals share this exit, and the record has to
+        # tell them apart: "too few predictors to ask the question" is not the
+        # same limitation as "too many for the estimator to answer it".
+        too_few = gate["n_features"] < 2
+        return _refused_diagnostic(
+            reason=gate["reason"],
+            insight_id="eda_cap_vif_refused",
+            implication=(
+                "Multicollinearity among the predictors was not quantified, so "
+                "the stability of the coefficients of any linear model fitted on "
+                "them is unknown from this page."
+            ),
+            recommended_action=(
+                "Select at least two numeric predictors and re-run."
+                if too_few else
+                "Reduce the predictor set on Feature Selection and re-run, or "
+                "read the pairwise collinearity screen above, which is defined "
+                "at any width."
+            ),
+            manuscript_text=(
+                "variance inflation factors were not computed; fewer than two "
+                "numeric predictors were available"
+                if too_few else
+                "variance inflation factors were not computed; the analysis "
+                "carried more predictors than the estimator supports"
+            ),
+            theory_anchor="collinearity",
+            metadata={
+                "p": gate["n_features"],
+                "n": gate["n_rows"],
+                "limit_features": gate["limit_features"],
+                "limit_ratio": gate["limit_ratio"],
+                "null_baseline_vif": gate["null_baseline_vif"],
+            },
+        )
+
+    baseline = float(gate["null_baseline_vif"])
+    flag_threshold = float(gate["flag_threshold"])
 
     X = df[numeric].fillna(df[numeric].median())
     vifs = []
@@ -1247,19 +1475,50 @@ def multicollinearity_vif(
         try:
             lm = LinearRegression().fit(X[other], X[col])
             r2 = r2_score(X[col], lm.predict(X[other]))
-            vif = 1 / (1 - r2) if r2 < 1 else np.inf
+            # Inside the gate p <= n/2, so an exact fit is no longer the
+            # arithmetic artifact it was above it: r2 == 1 here means the column
+            # genuinely IS a linear combination of the others. Report that as
+            # infinity, which is what it is. Never 999.0 — a finite number in
+            # this column is read as a measurement, and it sorted a degenerate
+            # fit in among real ones.
+            vif = 1 / (1 - r2) if r2 < 1 else float('inf')
         except Exception:
-            vif = np.nan
-        vifs.append((col, float(vif) if np.isfinite(vif) else 999.0))
+            vif = None  # the fit failed; None renders as blank, not as a value
+        vifs.append((col, float(vif) if vif is not None else None))
 
     stats_dict["vif"] = vifs
-    vif_df = pd.DataFrame([{"Feature": c, "VIF": v} for c, v in vifs])
+    stats_dict["vif_null_baseline"] = baseline
+    stats_dict["vif_flag_threshold"] = flag_threshold
+    stats_dict["n_rows"] = int(len(df))
+    stats_dict["n_features"] = len(numeric)
+    vif_df = pd.DataFrame([
+        {
+            "Feature": c,
+            "VIF": v,
+            # What this shape produces on features with no collinearity at all,
+            # so the reader can see how much of a VIF is the data and how much
+            # is p/n. At p/n = 0.5 the baseline is 2.0 and half of any reported
+            # VIF is sample size.
+            "VIF if uncorrelated": round(baseline, 2),
+            # Kept numeric (inf included) so the column sorts; a mixed
+            # float/string column silently stops sorting in the table widget.
+            "Ratio to that": (v / baseline) if v is not None else None,
+        }
+        for c, v in vifs
+    ])
     figures.append(('table', vif_df))
 
-    high = [c for c, v in vifs if v > 10]
-    findings.append(f"VIF computed for {len(numeric)} features.")
+    high = [c for c, v in vifs if v is not None and v > flag_threshold]
+    findings.append(
+        f"VIF computed for {len(numeric)} features on {len(df):,} observations "
+        f"(p/n = {len(numeric) / len(df):.2f}). With no collinearity at all this "
+        f"shape yields VIF ≈ {baseline:.2f}, so the flag threshold here is "
+        f"{flag_threshold:.1f} rather than a fixed 10."
+    )
     if high:
-        warnings.append(f"VIF > 10: {', '.join(high)}; consider dropping or regularizing.")
+        warnings.append(
+            f"VIF > {flag_threshold:.1f}: {', '.join(high)}; consider dropping or regularizing."
+        )
     return {'findings': findings, 'warnings': warnings, 'figures': figures, 'stats': stats_dict}
 
 
@@ -1788,6 +2047,12 @@ def record_diagnostic_on_insights(ledger, action_id: str, result: dict,
     """
     mapping = _ACTION_TO_INSIGHT_MAP.get(action_id)
     if not mapping:
+        return []
+    # A diagnostic that declined to run is not evidence about anything. Writing
+    # it into an insight's `diagnostics_run` history would leave a trail saying
+    # the collinearity clusters had been investigated when the investigation was
+    # refused — the same class of false credit as resolving them outright.
+    if result.get("refused"):
         return []
     if action_id not in DIAGNOSTIC_ONLY_ACTIONS:
         raise ValueError(
