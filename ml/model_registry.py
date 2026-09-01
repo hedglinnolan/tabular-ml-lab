@@ -210,6 +210,34 @@ def _create_svr(task_type: str, random_state: int):
 
 def _create_svc(task_type: str, random_state: int):
     """Factory for SVC (Support Vector Classification)."""
+    # `probability=True` is the most expensive keyword argument in this file.
+    # It runs an internal 5-fold Platt calibration, so ONE "SVC fit" is six
+    # libsvm solves — five calibration folds plus the final one — against
+    # SVR's one at :208, which has no such parameter. Measured on a dense
+    # 120-feature matrix: 0.084 s -> 0.54 s at n=1,000, 1.95 s -> 8.02 s at
+    # 5,000, and 79.4 s -> 548.7 s at 20,000, i.e. 6.4x / 4.1x / 6.9x. The
+    # cost is wall time and NOT memory (peak RSS 256.8 vs 258.1 MB — libsvm's
+    # kernel cache is capped at 200 MB), so anywhere the app discloses it,
+    # it must be denominated in minutes and never in GB.
+    #
+    # It stays anyway, and a caller must not "optimize" it away. ROC-AUC,
+    # LogLoss and PR-AUC (ml/eval.py), the calibration curve, the ROC and PR
+    # plots, and SVC's KernelExplainer path all gate on
+    # `hasattr(model, "predict_proba")`, and sklearn's `available_if` makes
+    # that False when the flag is off. Removing it would not raise — it would
+    # SILENTLY delete those outputs from the comparison table and from the
+    # exported manuscript, which is worse than a crash. The disclosure lives
+    # at the moment of choice instead, in `model_viability`
+    # (ml/model_coach.py), and again on the train page.
+    #
+    # DEADLINE, not a preference: sklearn deprecated this parameter in 1.9
+    # (the installed version) and removes it in 1.11 — `fit` already emits
+    # `FutureWarning: The 'probability' parameter was deprecated in 1.9 ...
+    # Use CalibratedClassifierCV(SVC(), ensemble=False) instead`. requirements
+    # pins only `scikit-learn>=1.3.0` with no upper bound, so a fresh install
+    # breaks this line the day 1.11 ships. The replacement is a real change of
+    # fitted output and of ~10 call sites, so it belongs to its own reviewed
+    # PR — but that PR has a date on it.
     return SVC(kernel='rbf', C=1.0, gamma='scale', probability=True, random_state=random_state)
 
 

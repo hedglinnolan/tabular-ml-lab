@@ -1291,12 +1291,65 @@ class NarrativeEngine:
                         f"whose reported performance comes from the held-out "
                         f"split alone."
                     )
+                # `MINE-027`, one level below `AUDIT-026`. `cv_models_run` is
+                # built from the truthiness of `cv_results`, and a fold loop
+                # that lost a fold leaves a truthy dict behind — so the sentence
+                # above asserted a complete k-fold design for a run that did not
+                # complete one. ml/publication.py states this too, but that
+                # generator is the fallback; this is the one page 10 reaches
+                # first and therefore the one a reader of the exported draft
+                # actually sees.
+                _cv_incomplete = self.ctx.get("cv_incomplete") or {}
+                _partial = [(m, v) for m, v in _cv_incomplete.items()
+                            if m in set(cv_models_run) and v and len(v) == 2]
+                if _partial:
+                    _txt = _oxford_join([
+                        f"{self._model_name(m)} ({v[0]} of {v[1]} folds)"
+                        for m, v in _partial
+                    ])
+                    _one = len(_partial) == 1
+                    parts.append(
+                        f"The fold loop did not complete for {_txt}: the "
+                        f"remaining folds produced no score, so no "
+                        f"cross-validated estimate is reported for "
+                        f"{'that model' if _one else 'those models'} and "
+                        f"{'its' if _one else 'their'} reported performance "
+                        f"rests on the held-out split. A mean over the folds "
+                        f"that did complete is not a {cv_folds}-fold "
+                        f"cross-validated estimate and is not substituted for "
+                        f"one."
+                    )
 
-        # Hyperparameter optimization
+        # Hyperparameter optimization.
+        #
+        # This said "using grid search", and the app has never run one: page 06
+        # builds an Optuna study whose default sampler is a tree-structured
+        # Parzen estimator, and its objective is a single fit scored on the
+        # held-out validation split rather than a fold loop. The sentence named
+        # a method the run did not use, which is the same class of fault as
+        # `AUDIT-026` — Methods asserting a design nobody performed — and this
+        # generator is the one page 10 reaches first, so it is the one a reader
+        # of the exported draft actually sees.
+        #
+        # The trial count comes from the record, never from a literal: it is a
+        # user control now, so a hardcoded number would go stale the first time
+        # someone moved the slider. Absent from the record, the method is named
+        # without a budget rather than given an invented one.
         if self.ctx.get("use_hyperopt"):
-            parts.append(
-                "Hyperparameter optimization was performed using grid search."
-            )
+            _hyperopt_trials = self.ctx.get("hyperopt_trials")
+            if _hyperopt_trials:
+                parts.append(
+                    f"Hyperparameter optimization was performed with Optuna "
+                    f"(tree-structured Parzen estimator sampler, "
+                    f"{_hyperopt_trials} trials per tunable model), with each "
+                    f"trial scored on the held-out validation split."
+                )
+            else:
+                parts.append(
+                    "Hyperparameter optimization was performed with Optuna "
+                    "(tree-structured Parzen estimator sampler), with each trial "
+                    "scored on the held-out validation split."
+                )
 
         # NN config rationale (#95)
         nn_config_source = self.ctx.get("nn_config_source", "")

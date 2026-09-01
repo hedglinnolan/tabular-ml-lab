@@ -1316,6 +1316,25 @@ def optimize_model_hyperparameters(model_name, spec, X_train_transformed, y_trai
                 return 1.0 - accuracy_score(y_val, y_pred)  # Convert to minimize
     
     direction = "minimize"  # Always minimize (we convert accuracy to error)
+    # NO PRUNER AND NO TIMEOUT HERE, DELIBERATELY, AND THIS IS THE RECORD OF WHY.
+    #
+    # Both are the obvious way to make an expensive search cheaper, and both
+    # would change which trials finish and therefore which hyperparameters win
+    # — a MODEL RESULT change, not a resource one, so neither belongs in the
+    # same change as the trial-count control. They are worth doing; they are
+    # worth doing where a reviewer can weigh the selection they alter.
+    #
+    # One correction for whoever picks that up: Optuna's default is not "no
+    # pruner". `create_study` attaches a `MedianPruner` already. It is inert
+    # because pruning requires the objective to call `trial.report()` and
+    # `trial.should_prune()`, and nothing in this repository does — so
+    # instrumenting the objective is the work, not passing `pruner=`.
+    #
+    # The sampler is likewise the default `TPESampler`, whose first 10 trials
+    # are random draws (`n_startup_trials=10`), which is why the slider's help
+    # text says a budget at or below 10 is pure random search. It is also
+    # unseeded, so the search is not reproducible between two runs of the same
+    # configuration — a separate, pre-existing fact about this path.
     study = optuna.create_study(direction=direction)
     _callbacks = []
     if progress_callback is not None:
@@ -1338,7 +1357,15 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
     
     progress_container = st.container()
     random_seed = st.session_state.get('random_seed', 42)
-    
+
+    # How many Optuna trials this run is allowed, read the same way as the seed
+    # above. The call site below used to pass the literal 30, which made the
+    # `n_trials=30` default in `optimize_model_hyperparameters`'s own signature
+    # unreachable — no session value, no config, nothing short of editing this
+    # file could change it. 30 stays the DEFAULT, so a run that leaves the
+    # slider alone reproduces every earlier result exactly.
+    n_optuna_trials = st.session_state.get('optuna_trials', 30)
+
     # Training time warning with cancel option
     slow_models = {'nn', 'extratrees', 'svc', 'svr'}
     has_slow = any(m in slow_models for m in models_to_train)
@@ -1379,10 +1406,39 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
         with progress_container:
             if use_optimization:
                 st.subheader(f"Optimizing and Training {model_name.upper()}")
-                if model_name in slow_models:
-                    st.info("⏱️ This model typically takes 2-5 minutes with optimization. Please be patient...")
+                # This said "typically takes 2-5 minutes with optimization" for
+                # every model in `slow_models`. That is not a missing
+                # disclosure, it is a specific WRONG one, and for the model it
+                # matters most on it is wrong by roughly sixty times: SVC is
+                # built with `probability=True` (ml/model_registry.py), so one
+                # "SVC fit" is six libsvm solves — five Platt calibration folds
+                # plus the final one — and libsvm is superquadratic in n. One
+                # such fit measured 9.1 minutes at 20,000 rows x 120 features
+                # against 79 seconds without the flag, which puts a 30-trial
+                # search there in hours. The line now states the work the run
+                # will actually do, in the trial count actually in force,
+                # rather than a constant that was never measured.
+                if model_name == 'svc':
+                    st.info(
+                        f"⏱️ SVC with optimization is {n_optuna_trials} trials x 6 "
+                        f"internal calibration fits = {n_optuna_trials * 6:,} kernel "
+                        f"solves. A single SVC fit measured 9.1 min at 20,000 rows "
+                        f"x 120 features; at that shape expect **hours, not "
+                        f"minutes**. Lower the Optuna Trials slider or deselect SVC "
+                        f"to cut this."
+                    )
+                elif model_name in slow_models:
+                    st.info(
+                        f"⏱️ {model_name.upper()} is one of the slower models: "
+                        f"{n_optuna_trials} Optuna trials, each a full fit on "
+                        f"{len(X_train):,} training rows. Expect minutes, and more "
+                        f"as rows or trials rise."
+                    )
                 else:
-                    st.info("⏱️ Hyperparameter optimization in progress...")
+                    st.info(
+                        f"⏱️ Hyperparameter optimization in progress: "
+                        f"{n_optuna_trials} trials, one fit each."
+                    )
             else:
                 st.subheader(f"Training {model_name.upper()}")
                 if model_name in slow_models:
@@ -1445,7 +1501,7 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
 
                     best_params = optimize_model_hyperparameters(
                         model_name, spec, X_train_model, y_train, X_val_model, y_val,
-                        task_type_final, random_seed, n_trials=30,
+                        task_type_final, random_seed, n_trials=n_optuna_trials,
                         progress_callback=_optuna_ui_progress,
                     )
                     _optuna_bar.empty()
@@ -1784,6 +1840,16 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 'use_cv': st.session_state.get('use_cv', False),
                 'cv_folds': st.session_state.get('cv_folds', 5) if st.session_state.get('use_cv', False) else None,
                 'hyperparameter_optimization': use_optimization,
+                # The COUNT, not just the flag. ml/publication.py hardcoded
+                # "(30 trials per model)" into the Methods section, which was
+                # accidentally true only for as long as the call site above
+                # hardcoded 30 as well. With the count now a slider, a run at
+                # 50 trials would have produced a manuscript asserting 30 —
+                # the same class of fault `AUDIT-026` fixed for cross-
+                # validation, where Methods described a fold loop the run
+                # never ran. Recorded here so both methods generators read the
+                # number this run used rather than a literal.
+                'hyperopt_trials': n_optuna_trials if use_optimization else None,
                 'class_weight_balanced': st.session_state.get('use_class_weight', False),
             }
         )
@@ -1823,7 +1889,31 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     name for name, res in _model_results_local.items()
                     if isinstance(res, dict) and res.get('cv_results')
                 ],
+                # The list above cannot distinguish a fold loop that finished
+                # from one that lost a fold — both leave a truthy `cv_results`.
+                # `ml.publication.generate_methods_section` derives the third
+                # state from the per-model dicts, but page 10 reaches
+                # ml/narrative_engine.py FIRST and falls back to publication.py
+                # only when this record is empty, so the narrative needs the
+                # incompleteness recorded here or it silently reports a complete
+                # k-fold design. Same reason `hyperopt_trials` is recorded.
+                cv_incomplete={
+                    name: [res['cv_results']['fold_failures']['n_scored'],
+                           res['cv_results']['fold_failures']['n_folds']]
+                    for name, res in _model_results_local.items()
+                    if isinstance(res, dict)
+                    and isinstance(res.get('cv_results'), dict)
+                    and res['cv_results'].get('fold_failures')
+                },
                 use_hyperopt=use_optimization,
+                # Same reason as `hyperopt_trials` in the methodology log
+                # above: `use_hyperopt` is the flag, and the flag alone let
+                # ml/narrative_engine.py describe the search without ever
+                # naming what it cost. The NarrativeEngine is the PRIMARY
+                # methods path (pages/10 falls back to
+                # ml.publication.generate_methods_section only when this
+                # record is empty), so the count has to reach both.
+                hyperopt_trials=n_optuna_trials if use_optimization else None,
                 class_weight_balanced=st.session_state.get('use_class_weight', False),
                 hyperparameters={name: selected_model_params.get(name, {}) for name in trained_models.keys()},
                 metrics_by_model={name: res.get('metrics', {}) for name, res in _model_results_local.items()} if _model_results_local else {},
@@ -1997,18 +2087,126 @@ if models_to_train and _n_train_features > 500:
     )
 
 if models_to_train:
+    # ── the Optuna budget, and what the two buttons cost ──────────────────
+    #
+    # The trial count was the literal 30 at the call site inside
+    # `_train_models`, which also made the `n_trials=30` default in
+    # `optimize_model_hyperparameters`'s signature unreachable: nothing short
+    # of editing this file could change it. 30 REMAINS THE DEFAULT — this is a
+    # resource control, not a methods change, and a run that leaves the slider
+    # alone samples the identical trial sequence and selects the identical
+    # hyperparameters as before.
+    #
+    # The range is not invented. docs/deployment-attic/compute_config.py — an
+    # abandoned tiering module nothing imports — sized the same knob at 15 for
+    # a "University VM 4-8 GB", 30 for a "Departmental server 16-32 GB", and
+    # 100 for enterprise. The shipped hardcode is the DEPARTMENTAL SERVER
+    # value; the researcher this app targets is on a 32 GB laptop with a
+    # browser competing for RAM, and was never that tier's audience. The
+    # slider spans the tiers the attic already reasoned about.
+    _n_trials_default = st.session_state.get('optuna_trials', 30)
+    optuna_trials = st.slider(
+        "Optuna Trials", 5, 100, _n_trials_default, key="train_optuna_trials",
+        help=(
+            "Trials per tunable model for the optimization button. Each trial is "
+            "ONE fit on the training split, scored on the held-out validation "
+            "split — the search does not cross-validate, so folds are added "
+            "after tuning rather than multiplied into it. Optuna's default TPE "
+            "sampler draws its first 10 trials at random, so anything at or "
+            "below 10 is pure random search. 30 is the shipped default and "
+            "reproduces earlier runs exactly."
+        ),
+    )
+    st.session_state.optuna_trials = optuna_trials
+
+    # What the click costs, BEFORE the click, in fits — the unit this app
+    # already uses for the same job (pages/08_Sensitivity_Analysis.py states a
+    # seed sweep as a model count and then its factorization;
+    # pages/04_Feature_Selection.py and pages/07_Explainability.py name the
+    # cost formula and then the lever that shrinks it). The optimized button
+    # carried only "this will take significantly longer", which is a mood.
+    #
+    # THE THREE TERMS ARE ADDITIVE, NOT NESTED, and writing them out is the
+    # point. The Optuna objective fits ONCE on the pre-transformed training
+    # matrix and scores the validation split; it never enters a fold loop. So
+    # per tunable model the count is `trials + 1 final fit + cv_folds`
+    # — 30 + 1 + 5 = 36 at the defaults. Stating it as trials x models x folds
+    # would report 900 fits for a six-model run whose true cost is about 216,
+    # in a caption whose only purpose is to be trusted.
+    _tunable_to_train = [m for m in models_to_train
+                         if registry.get(m) and registry[m].hyperparam_schema]
+    # The same predicate the model picker gates its hyperparameter expander on
+    # and the same one `_train_models` optimizes on, so this count cannot drift
+    # from what the run does. Gaussian NB, LDA and GLM ship an empty schema and
+    # cost zero trials however long the search runs.
+    _untunable_to_train = [m for m in models_to_train if m not in _tunable_to_train]
+    # `cv_folds` is bound only inside `if use_cv:` far above, so the bare local
+    # is undefined whenever the box is unchecked and reading it here would
+    # NameError the whole page. Read the recorded value and gate on the
+    # checkbox, which is also what makes the number right rather than merely
+    # non-crashing. The neural network is excluded because the fold loop skips
+    # it outright (PyTorch models run their own validation loop).
+    _cv_models_to_run = [m for m in models_to_train if m != 'nn'] if use_cv else []
+    _cv_folds_planned = st.session_state.get('cv_folds', 5)
+    _cv_fits = len(_cv_models_to_run) * _cv_folds_planned
+    _fits_standard = len(models_to_train) + _cv_fits
+    _fits_optimized = len(_tunable_to_train) * optuna_trials + _fits_standard
+
+    _cv_clause = (
+        f" + {len(_cv_models_to_run)} "
+        f"model{'' if len(_cv_models_to_run) == 1 else 's'} × "
+        f"{_cv_folds_planned} CV folds"
+        if _cv_models_to_run else ""
+    )
+    _untunable_clause = (
+        f" {', '.join(m.upper() for m in _untunable_to_train[:4])}"
+        f"{'…' if len(_untunable_to_train) > 4 else ''} "
+        f"{'has' if len(_untunable_to_train) == 1 else 'have'} no tunable "
+        f"hyperparameters and {'costs' if len(_untunable_to_train) == 1 else 'cost'} "
+        f"no trials."
+        if _untunable_to_train else ""
+    )
+    # SVC is singled out the way pages/04 singles out RFE: one selected item
+    # dominates the total, and the caption is useless if it hides that. Every
+    # SVC fit is six libsvm solves because the factory sets probability=True,
+    # and a measured single fit at 20,000 x 120 took 9.1 minutes.
+    _svc_clause = (
+        f" SVC alone is {optuna_trials * 6:,} kernel solves — each of its fits "
+        f"runs 6 internal calibration fits, and one measured 9.1 min at "
+        f"20,000 rows × 120 features."
+        if 'svc' in _tunable_to_train else ""
+    )
+    st.caption(
+        f"**Train Models** runs {_fits_standard} "
+        f"fit{'' if _fits_standard == 1 else 's'} "
+        f"({len(models_to_train)} final "
+        f"fit{'' if len(models_to_train) == 1 else 's'}{_cv_clause}). "
+        f"**Train Models with Hyperparameter Optimization** runs {_fits_optimized} "
+        f"({len(_tunable_to_train)} tunable "
+        f"model{'' if len(_tunable_to_train) == 1 else 's'} × {optuna_trials} "
+        f"Optuna trial{'' if optuna_trials == 1 else 's'}, then the same "
+        f"{_fits_standard})."
+        f"{_untunable_clause}{_svc_clause}"
+    )
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         train_standard = st.button("Train Models", type="primary", key="train_models_button", width="stretch")
-    
+
     with col2:
         train_optimized = st.button(
-            "Train Models with Hyperparameter Optimization", 
-            type="secondary", 
+            "Train Models with Hyperparameter Optimization",
+            type="secondary",
             key="train_models_optimized_button",
             width="stretch",
-            help="⚠️ This will take significantly longer as it searches for optimal hyperparameters using Optuna"
+            help=(
+                f"⚠️ Searches hyperparameters with Optuna: "
+                f"{len(_tunable_to_train)} tunable model(s) × {optuna_trials} "
+                f"trials = {len(_tunable_to_train) * optuna_trials} extra fits on "
+                f"top of the standard run. Lower the Optuna Trials slider above to "
+                f"shrink it."
+            )
         )
     
     if train_standard:
@@ -2446,28 +2644,62 @@ if st.session_state.get('trained_models'):
     # CV results if available
     if use_cv:
         st.subheader("Cross-Validation Results")
+        # A fold that dies inside `cross_val_score` comes back as a NaN and
+        # poisons the mean and the SD (`ml.eval.cv_fold_disclosure`). This table
+        # used to print that NaN under "Mean Score", where it reads as a
+        # measurement rather than as the absence it is — the same defect as a
+        # 999.0 VIF sentinel. Incomplete rows now state the absence, carry the
+        # fold count they actually earned, and are explained underneath.
+        from ml.eval import describe_fold_failures as _describe_fold_failures
         cv_data = []
+        _cv_incomplete = []
         for name, results in st.session_state.model_results.items():
             if results.get('cv_results'):
+                _cv = results['cv_results']
+                _failed = _cv.get('fold_failures')
+                _n_folds = (_failed['n_folds'] if _failed
+                            else len(_cv.get('scores', [])) or _cv.get('folds'))
+                _n_scored = _failed['n_scored'] if _failed else _n_folds
                 cv_data.append({
                     'Model': name.upper(),
-                    'Mean Score': results['cv_results']['mean'],
-                    'Std Score': results['cv_results']['std']
+                    'Mean Score': '—' if _failed else f"{_cv['mean']:.4f}",
+                    'Std Score': '—' if _failed else f"{_cv['std']:.4f}",
+                    # A session restored from before this record existed knows
+                    # neither count; '—' rather than an invented denominator.
+                    'Folds Scored': f"{_n_scored} / {_n_folds}" if _n_folds else '—',
                 })
+                if _failed:
+                    _cv_incomplete.append((name, _failed))
         if cv_data:
             cv_df = pd.DataFrame(cv_data)
             st.dataframe(cv_df, width="stretch")
+            for _name, _failed in _cv_incomplete:
+                st.warning("⚠️ " + _describe_fold_failures(_name.upper(), _failed))
 
             # Boxplot of CV scores
             fig = go.Figure()
             for name, results in st.session_state.model_results.items():
                 if results.get('cv_results'):
+                    # Plotly drops the NaN fold silently, so a model that lost a
+                    # fold would otherwise draw a TIGHTER box than the models
+                    # that finished and look like the most stable of the set.
+                    # The trace name carries its own denominator.
+                    _failed = results['cv_results'].get('fold_failures')
+                    _label = name.upper()
+                    if _failed:
+                        _label += f" ({_failed['n_scored']}/{_failed['n_folds']} folds)"
                     fig.add_trace(go.Box(
                         y=results['cv_results']['scores'],
-                        name=name.upper()
+                        name=_label
                     ))
             fig.update_layout(title="CV Score Distribution", yaxis_title="Score")
             st.plotly_chart(fig, width="stretch")
+            if _cv_incomplete:
+                st.caption(
+                    "Boxes labeled with a fold count are drawn over the folds "
+                    "that completed only — they are not distributions over the "
+                    "full fold loop and their spread is understated."
+                )
 
             # Pairwise statistical comparison (paired t or Wilcoxon on fold-level metrics)
             from ml.eval import compare_models_paired_cv
@@ -2479,13 +2711,43 @@ if st.session_state.get('trained_models'):
             )
             if paired:
                 with st.expander("Statistical comparison of models (CV)", expanded=False):
-                    st.caption("Pairwise paired tests on fold-level CV scores. Mean Δ = mean(A) − mean(B); p < 0.05 suggests a significant difference.")
+                    st.caption("Pairwise paired tests on fold-level CV scores. Mean Δ = mean(A) − mean(B); p < 0.05 suggests a significant difference. "
+                               "A pair reads — throughout when either model lost a fold: ml/stats_tests.py drops the unpaired folds and would still return a p, but a test over the folds that survived is not a test over the fold loop, and it is not reported as one.")
                     rows = []
+                    _pair_incomplete = False
                     for (ma, mb), v in paired.items():
                         mean_d, stat, p, tname = v["mean_delta"], v["stat"], v["p"], v["test_name"]
-                        sig = " *" if (p is not None and np.isfinite(p) and p < 0.05) else ""
-                        rows.append({"Model A": ma.upper(), "Model B": mb.upper(), "Mean Δ": round(mean_d, 4), "Test": tname, "p": round(p, 4) if p is not None and np.isfinite(p) else None, "Significant": "Yes" if (p is not None and np.isfinite(p) and p < 0.05) else "No"})
+                        # A dead fold in EITHER model unpairs that fold. The
+                        # statistic is still computed — `paired_location_test`
+                        # strips the NaNs — but it is then a test over a
+                        # different, smaller and self-selected set of folds than
+                        # the header claims, so the whole comparison is withheld
+                        # rather than the Mean Δ alone. Blanking only Mean Δ left
+                        # a real-looking p and a confident "Significant: No"
+                        # beside the hole, which is the survivor statistic this
+                        # release exists to stop publishing.
+                        _complete = v.get("n_paired") == v.get("n_folds")
+                        if not _complete:
+                            _pair_incomplete = True
+                        _p_ok = _complete and p is not None and np.isfinite(p)
+                        rows.append({
+                            "Model A": ma.upper(),
+                            "Model B": mb.upper(),
+                            "Mean Δ": round(mean_d, 4) if (_complete and np.isfinite(mean_d)) else None,
+                            "Test": tname if _complete else "not run — unpaired folds",
+                            "Folds Paired": f"{v.get('n_paired', '?')} / {v.get('n_folds', '?')}",
+                            "p": round(p, 4) if _p_ok else None,
+                            "Significant": ("Yes" if (_p_ok and p < 0.05) else "No") if _complete else None,
+                        })
                     st.dataframe(pd.DataFrame(rows), width="stretch")
+                    if _pair_incomplete:
+                        st.warning(
+                            "One or more pairs could not be compared: a fold that "
+                            "produced no score for either model leaves that fold "
+                            "unpaired, and the remaining folds are not a random "
+                            "subset — they are the ones both models survived. No "
+                            "p-value is reported for those pairs."
+                        )
     # ================================================================
     # MODEL SELECTION GUIDANCE
     # ================================================================

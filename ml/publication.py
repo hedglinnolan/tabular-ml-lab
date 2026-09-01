@@ -726,6 +726,19 @@ def generate_methods_section(
     # NEW: methods parameter precision
     model_hyperparameters: Optional[Dict[str, Dict]] = None,
     hyperparameter_optimization: bool = False,
+    # How many Optuna trials the run actually used, when the caller knows.
+    #
+    # The sentence below hardcoded "(30 trials per model)", which was true only
+    # because pages/06 hardcoded 30 at its call site as well. That count is now
+    # a user control, so the literal would have become the Methods section
+    # asserting a search budget the run did not use — the same fault as
+    # `AUDIT-026` below, where Methods described a cross-validation design
+    # nobody performed.
+    #
+    # `None` is not `0` and not a fallback to 30 (trap 9): `None` is a caller
+    # who did not record the count, and the sentence then names the method
+    # without inventing a number for it.
+    hyperparameter_optimization_trials: Optional[int] = None,
     split_strategy: Optional[str] = None,
     missing_data_summary: Optional[Dict] = None,
     ledger_narratives: Optional[Dict[str, str]] = None,
@@ -1519,9 +1532,17 @@ def generate_methods_section(
         if hp_details:
             sections.append(f" Key hyperparameters: {'; '.join(hp_details)}.")
     
-    # Add hyperparameter optimization note
+    # Add hyperparameter optimization note. The trial count is reported only
+    # when the record carries it; an unrecorded budget is left unstated rather
+    # than backfilled with the old literal.
     if hyperparameter_optimization:
-        sections.append(" Hyperparameter optimization was performed using Optuna (30 trials per model).")
+        if hyperparameter_optimization_trials:
+            sections.append(
+                f" Hyperparameter optimization was performed using Optuna "
+                f"({hyperparameter_optimization_trials} trials per model)."
+            )
+        else:
+            sections.append(" Hyperparameter optimization was performed using Optuna.")
     
     # FIX 5: Baseline model reporting
     if selected_model_results:
@@ -1623,6 +1644,37 @@ def generate_methods_section(
                     f" It was not run for "
                     f"{_oxford_join([_publication_model_label(m) for m in _not_cv])}, "
                     f"whose reported performance comes from the held-out split alone."
+                )
+            # `cv_models_run` is truthiness on `cv_results`, and a fold loop
+            # that lost a fold produces a TRUTHY dict — so the sentence above
+            # was asserting a complete k-fold design for a run that did not
+            # complete one. The third state is derived here rather than added
+            # as a parameter: it is already in the same dicts
+            # (`ml.eval.cv_fold_disclosure`), so no caller has to learn a new
+            # argument for the Methods section to stop over-claiming.
+            _cv_partial = []
+            for _m in cv_models_run:
+                _res = (selected_model_results or {}).get(_m)
+                _cvr = _res.get('cv_results') if isinstance(_res, dict) else None
+                _ff = _cvr.get('fold_failures') if isinstance(_cvr, dict) else None
+                if _ff:
+                    _cv_partial.append((_m, _ff))
+            if _cv_partial:
+                _partial_txt = _oxford_join([
+                    f"{_publication_model_label(_m)} "
+                    f"({_ff['n_scored']} of {_ff['n_folds']} folds)"
+                    for _m, _ff in _cv_partial
+                ])
+                _one = len(_cv_partial) == 1
+                sections.append(
+                    f" The fold loop did not complete for {_partial_txt}: the "
+                    f"remaining folds produced no score, so no cross-validated "
+                    f"estimate is reported for "
+                    f"{'that model' if _one else 'those models'} and "
+                    f"{'its' if _one else 'their'} reported performance rests "
+                    f"on the held-out split. A mean over the folds that did "
+                    f"complete is not a {cv_to_use}-fold cross-validated "
+                    f"estimate and is not substituted for one."
                 )
 
     # Performance evaluation
