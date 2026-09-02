@@ -158,20 +158,13 @@ def test_every_fixed_rows_named_test_actually_runs():
         wide = ["-n", "auto", "--dist", "load"]
     except ImportError:
         wide = []
-    out = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "--no-header", "-rs",
-         "--continue-on-collection-errors", "-p", "no:randomly",
-         *wide, *targets],
-        cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=2400)
-    text = out.stdout + out.stderr
+    text = _run_nodes(targets, wide)
 
     # `-rs` reports `SKIPPED [1] path:line: reason`, which names the FILE and a
     # line rather than the node. Ran/skipped is therefore resolved per file and
     # then narrowed per node by `_node_skips`, which is one targeted run for
     # each candidate rather than for all of them.
-    skipped_files = {line.split("] ", 1)[1].split(":")[0]
-                     for line in text.splitlines()
-                     if line.strip().startswith("SKIPPED [") and "] " in line}
+    skipped_files = _skipped_files(text)
 
     offenders = []
     for rid, nodes in resolved.items():
@@ -209,6 +202,47 @@ def _node_skips(node: str) -> bool:
 
 
 _NODE_CACHE: Dict[str, bool] = {}
+
+
+#: The nested session is entered through `pytest.main` with its targets on
+#: STDIN rather than on the command line. The targets are ~1,700 node ids —
+#: about 170 KB of argv — and Windows caps a command line at 32,767
+#: characters, so `python -m pytest *targets` raised `WinError 206, The
+#: filename or extension is too long` before one test ran. The guard was red
+#: for a reason that said nothing about whether any guard runs, and Linux's
+#: ~2 MB ARG_MAX is why it never showed there. A list handed to `pytest.main`
+#: has no such ceiling on any platform, and the session it starts is the one
+#: `-m pytest` would start: same flags, same rootdir, same plugins, `-n auto`
+#: included. Flags stay on argv; only the node list, which is the part that
+#: grows with the ledger, goes through the pipe.
+_RUNNER = ("import sys, pytest; sys.exit(pytest.main(sys.argv[1:] + "
+           "[line for line in sys.stdin.read().splitlines() if line]))")
+
+
+def _run_nodes(targets, wide) -> str:
+    """One pytest session over `targets`; its combined output."""
+    out = subprocess.run(
+        [sys.executable, "-c", _RUNNER, "-q", "--no-header", "-rs",
+         "--continue-on-collection-errors", "-p", "no:randomly", *wide],
+        input="\n".join(targets),
+        cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=2400)
+    return out.stdout + out.stderr
+
+
+def _skipped_files(text: str) -> set:
+    """The files `-rs` reported a skip in, spelled the way node ids are.
+
+    `-rs` writes the path with the OS separator — `tests\\test_x.py:12` on
+    Windows — while every node id pytest collects is `tests/test_x.py` on
+    every platform. Left as printed, this set never intersected a node,
+    `candidates` was empty for every row, and the assertion above was green
+    over a corpus it had not looked at: the vacuous pass this file's own
+    docstring is about, one layer down. The separator is normalized at the
+    boundary where pytest's summary hands the path back.
+    """
+    return {line.split("] ", 1)[1].split(":")[0].replace(os.sep, "/")
+            for line in text.splitlines()
+            if line.strip().startswith("SKIPPED [") and "] " in line}
 
 
 def test_the_exemption_list_is_argued_rather_than_a_list():
