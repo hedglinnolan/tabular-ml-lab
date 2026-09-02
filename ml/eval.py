@@ -247,12 +247,13 @@ def _inner_thread_overrides(estimator: Any) -> Dict[str, int]:
     comment claimed it was not, and was wrong about which object gets
     cross-validated. `RFWrapper` never reaches `cross_val_score`: pages/06
     cross-validates `_sklearn_clone(model.get_model())`, i.e. the bare
-    `RandomForestRegressor`/`Classifier` held inside the wrapper, which carries
-    the `n_jobs=-1` hardcoded at models/rf.py:34 and :42. So the composite does
-    expose `est__n_jobs = -1`, `set_params` does reach it, and the value would
-    survive the per-fold `clone()` — `_pin_inner_threads` sets it before
-    `cross_val_score` is ever handed the object, so there is nothing left for
-    the clone to undo.
+    `RandomForestRegressor`/`Classifier` held inside the wrapper, built with
+    the wrapper's `n_jobs` (a constructor argument since the F-08 follow-up;
+    it was a literal `-1` in the body before, which no clone or `set_params`
+    could reach). So the composite does expose `est__n_jobs = -1`,
+    `set_params` does reach it, and the value would survive the per-fold
+    `clone()` — `_pin_inner_threads` sets it before `cross_val_score` is ever
+    handed the object, so there is nothing left for the clone to undo.
 
     It is skipped anyway, and on measurement rather than on reachability. Five
     folds cannot saturate eight cores, so RandomForest's own thread pool is
@@ -286,7 +287,17 @@ def _inner_thread_overrides(estimator: Any) -> Dict[str, int]:
         owner = estimator if key == 'n_jobs' else params.get(key[:-len('__n_jobs')])
         if owner is None or value == 1:
             continue
-        if type(owner).__module__.split('.')[0] == 'sklearn':
+        # A wrapper from models/ is judged by the estimator it holds, not by
+        # its own module: `RFWrapper` now exposes `n_jobs` (it round-trips
+        # through `clone` and `set_params` since it became a constructor
+        # argument), and a wrapper around a scikit-learn forest is a
+        # scikit-learn forest for the purpose of the measurement above.
+        # Nothing cross-validates a wrapper today — pages/06 hands
+        # `get_model()` to CV — so this decides the answer for a caller that
+        # someday does, and decides it the same way.
+        held = owner.get_model() if hasattr(owner, 'get_model') else None
+        judged = held if held is not None else owner
+        if type(judged).__module__.split('.')[0] == 'sklearn':
             continue
         overrides[key] = 1
     return overrides
