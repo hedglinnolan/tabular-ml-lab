@@ -124,7 +124,7 @@ with col1:
     
     **Why:** Reviewers expect SHAP as gold standard. Calibration proves your probabilities are trustworthy.
     
-    **Time:** ~5 minutes
+    **Time:** quoted beside the control when your data's width makes it worth quoting
     """)
 
 with col2:
@@ -135,7 +135,7 @@ with col2:
     
     **Why:** Validates SHAP findings. Shows feature-outcome relationships.
     
-    **Time:** ~10 minutes
+    **Time:** quoted beside the control when your data's width makes it worth quoting
     """)
 
 with col3:

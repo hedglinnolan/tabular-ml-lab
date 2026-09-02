@@ -1417,12 +1417,21 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
     # A button that claims control it does not have is the app asserting
     # something false, which outranks the convenience of appearing to offer it.
     if has_slow or use_optimization:
-        st.warning("""
-        ⏱️ **Training in progress.** Some models (Neural Networks, ExtraTrees, SVM) or hyperparameter
-        optimization may take several minutes. Training progress is shown below.
-
-        This cannot be interrupted once started — close the tab to abandon the run.
-        """)
+        # The run's own quote, taken above the button, rather than "may take
+        # several minutes" — which was the same sentence for every dataset.
+        _cost_state = st.session_state.get('_train_cost') or {}
+        _run_seconds = _cost_state.get('optimized' if use_optimization else 'standard')
+        if _run_seconds is not None and _cost_state.get('per_model'):
+            from ml.cost_model import humanize_seconds as _humanize_run
+            _how_long = (f"{_humanize_run(_run_seconds)} on this machine "
+                         f"({_cost_state.get('provenance', '')})"
+                         f"{', a floor — Optuna explores larger settings than the ones timed' if use_optimization else ''}")
+        else:
+            _how_long = "not estimated — the sample fits could not be timed"
+        st.warning(
+            f"⏱️ **Training in progress: {_how_long}.** Training progress is shown below.\n\n"
+            f"This cannot be interrupted once started — close the tab to abandon the run."
+        )
 
     # One TRAINING RUN is one opening of the sealed set, however many models it
     # scores. Both train buttons are re-runnable and nothing counted the
@@ -1469,8 +1478,19 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     )
             else:
                 st.subheader(f"Training {model_name.upper()}")
-                if model_name in slow_models:
-                    st.info("⏱️ This model may take 30-90 seconds to train...")
+                # The quote this model got above the button, restated as it
+                # starts. This line used to read "30-90 seconds" for four
+                # models regardless of the data; a model with no quote gets
+                # no number, which is the honest absence.
+                _cost_state = st.session_state.get('_train_cost') or {}
+                _quoted = (_cost_state.get('per_model') or {}).get(model_name)
+                if _quoted:
+                    from ml.cost_model import humanize_seconds as _humanize_seconds
+                    st.info(
+                        f"⏱️ {model_name.upper()}: "
+                        f"{_humanize_seconds(_quoted['fit'] + _quoted['cv'])} on this "
+                        f"machine, {_cost_state.get('provenance', '')}."
+                    )
             progress_bar = st.progress(0)
             status_text = st.empty()
             
@@ -2163,6 +2183,67 @@ if models_to_train:
     # in a caption whose only purpose is to be trusted.
     _tunable_to_train = [m for m in models_to_train
                          if registry.get(m) and registry[m].hyperparam_schema]
+
+    def _probe_estimator_for(model_name, params):
+        """The unfitted estimator `_train_models` will build for this model.
+
+        The same branches with the same parameters, so the sample fit that
+        prices the run is a sample of the run — a probe of a default forest
+        would say nothing about the 1,000-tree one the user configured.
+        None for the neural network, which is not timed (its cost is epochs
+        and it states them itself while it trains).
+        """
+        if model_name == 'nn':
+            return None
+        params = dict(params) if params else {}
+        _seed = st.session_state.get('random_seed', 42)
+        _balanced = (st.session_state.get('use_class_weight', False)
+                     and task_type_final == 'classification')
+        if model_name == 'rf':
+            from models.rf import RFWrapper as _RF
+            est = _RF(
+                n_estimators=params.get('n_estimators', model_config.rf_n_estimators),
+                max_depth=params.get('max_depth', model_config.rf_max_depth),
+                min_samples_leaf=params.get('min_samples_leaf', model_config.rf_min_samples_leaf),
+                task_type=task_type_final,
+            ).get_model()
+            if _balanced:
+                est.class_weight = 'balanced'
+            return est
+        if model_name == 'glm':
+            from models.glm import GLMWrapper as _GLM
+            return _GLM(task_type=task_type_final).get_model()
+        if model_name == 'huber':
+            from models.huber_glm import HuberGLMWrapper as _Huber
+            return _Huber(epsilon=params.get('epsilon', model_config.huber_epsilon),
+                          alpha=params.get('alpha', model_config.huber_alpha)).get_model()
+        spec = registry.get(model_name)
+        if spec is None:
+            return None
+        if not params:
+            params = dict(spec.default_params)
+        estimator = spec.factory(task_type_final, _seed)
+        for param_name, param_value in params.items():
+            if hasattr(estimator, param_name):
+                if (param_name == 'gamma' and isinstance(param_value, str)
+                        and param_value not in ['scale', 'auto']):
+                    try:
+                        param_value = float(param_value)
+                    except (ValueError, TypeError):
+                        pass
+                setattr(estimator, param_name, param_value)
+        if _balanced and spec.capabilities.supports_class_weight and hasattr(estimator, 'class_weight'):
+            estimator.class_weight = 'balanced'
+        return estimator
+
+    def _probe_pipeline_for(model_name):
+        """The preprocessing the run will push this model's rows through —
+        resolved and reconciled exactly as `_train_models` does it."""
+        _pipe = get_preprocessing_pipeline(model_name) or pipeline
+        if _pipe is not None and isinstance(X_train, pd.DataFrame):
+            from ml.pipeline import reconcile_pipeline_columns as _reconcile
+            _pipe, _ = _reconcile(_pipe, X_train.columns)
+        return _pipe
     # The same predicate the model picker gates its hyperparameter expander on
     # and the same one `_train_models` optimizes on, so this count cannot drift
     # from what the run does. Gaussian NB, LDA and GLM ship an empty schema and
@@ -2216,6 +2297,44 @@ if models_to_train:
         f"{_fits_standard})."
         f"{_untunable_clause}{_svc_clause}"
     )
+
+    # ── the same click in seconds and bytes, measured on this machine ─────
+    #
+    # F-10 in the omics audit. The fit counts above were the only cost this
+    # page stated before the click, and inside the run it said "30-90
+    # seconds" for four models whatever the data. The seconds now come from
+    # a sample fit of each selected model, on this machine, through its own
+    # preprocessing, with the sample size and the extrapolation stated — see
+    # ml/cost_model.py for why a probe and not a formula. The bytes are
+    # arithmetic: one copy of the training matrix per fold worker.
+    from utils.fit_cost import price_training_run as _price_training_run
+    from utils.host_resources import cpu_count as _cpu_count
+    _probe_estimators, _probe_pipelines, _not_probed = {}, {}, []
+    for _m in models_to_train:
+        _pipe = _probe_pipeline_for(_m)
+        _est = _probe_estimator_for(_m, selected_model_params.get(_m))
+        if _est is None or _pipe is None:
+            _not_probed.append(_m)
+            continue
+        _probe_estimators[_m] = _est
+        _probe_pipelines[_m] = _pipe
+    _price = _price_training_run(
+        _probe_estimators, _probe_pipelines, X_train, y_train,
+        task_type=task_type_final,
+        cv_folds=_cv_folds_planned if use_cv else 0,
+        cv_models=_cv_models_to_run,
+        optuna_trials={_m: optuna_trials for _m in _tunable_to_train},
+        not_probed=_not_probed,
+    )
+    if _price is not None:
+        st.caption(f"⏱️ {_price.time_sentence(optimized_available=bool(_tunable_to_train))}")
+        _memory_line = _price.memory_sentence(_cpu_count())
+        if _memory_line:
+            st.caption(f"💾 {_memory_line}")
+        # Read back by `_train_models` to quote each model as it starts.
+        st.session_state['_train_cost'] = _price.as_state()
+    else:
+        st.session_state.pop('_train_cost', None)
 
     col1, col2 = st.columns(2)
 

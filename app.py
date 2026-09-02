@@ -110,7 +110,7 @@ with col_sol:
             <li>Applies best practices by default</li>
             <li>Keeps advanced options available when your study needs them</li>
         </ul>
-        <p><strong>Result:</strong> A manuscript-ready starting point in 30-60 minutes, with advanced analyses available when you want to go deeper.</p>
+        <p><strong>Result:</strong> A manuscript-ready starting point in a single sitting for a typical clinical table — the training and explanation steps state their cost on your data before you start them — with advanced analyses available when you want to go deeper.</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -229,9 +229,9 @@ with col_qs1:
 with col_qs2:
     st.markdown("""
     **⏱️ Time commitment:**
-    - Quick exploration: 10 minutes
-    - Full workflow: 30-60 minutes
-    - Iterative refinement: 2-4 hours
+    - Quick exploration: one pass through Upload, EDA and a baseline model
+    - Full workflow: one sitting for a typical clinical table; the training and explanation steps state their cost on your data before you start them
+    - Iterative refinement: as many sittings as the study needs — save and resume between them
     
     **💾 Save & resume:**
     - Download `.pkl` session file anytime
@@ -291,7 +291,7 @@ with st.expander("❓ Frequently Asked Questions", expanded=False):
     A: All data processing happens on the server running this application. No data is sent to third-party services (unless you enable optional AI features that use external APIs). If you are running this locally, your data never leaves your machine. On a shared or university server, your data is processed on that server — check with your administrator about data handling policies.
     
     **Q: How long does a complete workflow take?**  
-    A: 30-60 minutes for a full analysis. You can save and resume at any point.
+    A: It depends on your data, and the app says so where it matters: the training and explanation steps state their cost on your data before you start them. You can save and resume at any point.
     
     **Q: What file formats are supported?**  
     A: CSV and Excel (.xlsx, .xls). You can also merge multiple files.

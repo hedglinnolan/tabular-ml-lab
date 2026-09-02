@@ -181,6 +181,36 @@ with _sens_tabs[0]:
         f"This run fits {len(models_to_seed) * len(seed_list)} models "
         f"({len(models_to_seed)} model(s) × {len(seed_list)} seeds)."
     )
+    # The seconds beside that count, from a sample fit of each model on this
+    # machine through its own preprocessing (the loop below re-fits the
+    # pipeline per seed too). Rows per refit are the pooled rows less the
+    # test share, which is how the loop re-splits. See ml/cost_model.py.
+    from utils.fit_cost import price_refits as _price_refits, refits_sentence as _refits_sentence
+    from sklearn.base import clone as _clone_for_price
+    _price_pipelines = st.session_state.get("fitted_preprocessing_pipelines", {}) or {}
+    _price_estimators = {}
+    for _m in models_to_seed:
+        _wrapped = trained_models.get(_m)
+        _bare = _wrapped.get_model() if hasattr(_wrapped, "get_model") else _wrapped
+        if _bare is None:
+            continue
+        try:
+            _price_estimators[_m] = _clone_for_price(_bare)
+        except Exception:
+            pass
+    _pool_rows = sum(len(_part) for _part in (X_train, st.session_state.get("X_val"), X_test)
+                     if _part is not None)
+    _test_share = max(0.05, min(0.5, len(X_test) / max(1, _pool_rows)))
+    _seed_price = _price_refits(
+        _price_estimators, _price_pipelines, X_train, y_train,
+        task_type=task_type, refits_per_model=len(seed_list),
+        rows_per_refit=int(_pool_rows * (1 - _test_share)),
+        spinner_text="Timing a sample fit of each model to price the sweep…",
+    ) if _price_estimators else None
+    _seed_line = _refits_sentence(
+        _seed_price, f"{len(models_to_seed) * len(seed_list)} refits")
+    if _seed_line:
+        st.caption(f"⏱️ {_seed_line}")
 
     if st.button("▶️ Run Seed Sensitivity", type="primary", key="run_seed"):
         from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, accuracy_score, f1_score, roc_auc_score
@@ -557,6 +587,30 @@ with _sens_tabs[1]:
         help="Testing every feature can be slow. This tests the first N features in "
              "column order, not the N most important.",
     )
+
+    # The seconds beside the slider: one refit of the selected model per
+    # feature, each through a re-fit of its preprocessing, on the training rows.
+    from utils.fit_cost import price_refits as _price_refits, refits_sentence as _refits_sentence
+    from sklearn.base import clone as _clone_for_price
+    _drop_wrapped = trained_models.get(selected_model)
+    _drop_bare = _drop_wrapped.get_model() if hasattr(_drop_wrapped, "get_model") else _drop_wrapped
+    _drop_estimators = {}
+    if _drop_bare is not None and selected_model != 'nn':
+        try:
+            _drop_estimators[selected_model] = _clone_for_price(_drop_bare)
+        except Exception:
+            pass
+    _drop_refits = min(len(feature_names), int(max_features))
+    _drop_price = _price_refits(
+        _drop_estimators, st.session_state.get("fitted_preprocessing_pipelines", {}) or {},
+        X_train, y_train, task_type=task_type,
+        refits_per_model=_drop_refits, rows_per_refit=len(X_train),
+        spinner_text="Timing a sample fit to price the ablation…",
+    ) if _drop_estimators else None
+    _drop_line = _refits_sentence(
+        _drop_price, f"{_drop_refits} refits of {selected_model.upper()}")
+    if _drop_line:
+        st.caption(f"⏱️ {_drop_line}")
 
     if st.button("▶️ Run Feature Dropout", type="primary", key="run_dropout"):
         from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, f1_score
