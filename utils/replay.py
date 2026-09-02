@@ -38,9 +38,23 @@ import pandas as pd
 
 _RECIPE_KEY = "fe_recipe"
 _PENDING_KEY = "cohort_replay_pending"
+# The widget-shaped decisions — preprocessing settings, model picks and
+# hyperparameter choices — wait here until the page that owns each widget
+# renders. Kept apart from the recipe because run_pending_replay() clears
+# `_PENDING_KEY` the moment the engineered features are rebuilt, and that
+# happens on Train & Compare several reruns before anyone opens Preprocess.
+_DECISIONS_KEY = "cohort_decisions_pending"
 
 # Keys that share the widget prefix but describe STATE rather than a choice.
 _NOT_A_CHOICE = frozenset({"preprocess_built_model_keys"})
+
+# The Preprocess page's radio option, verbatim. Carried settings are only
+# read by the Advanced widgets; in Smart Defaults mode the page overwrites
+# every one of them from the new group's profile before the build can see
+# them, so a carry forces the mode. tests pin this string against the page.
+ADVANCED_MODE_LABEL = "🔧 Advanced (full control)"
+
+_PICK_PREFIX = "train_model_"
 
 PURE = "pure"
 REFIT = "refit"
@@ -110,11 +124,59 @@ def unrecorded_features(engineered: Sequence[str]) -> List[str]:
 
 # ── what a cohort switch hands to the next run ───────────────────────────
 
+def _picked_models() -> List[str]:
+    """The models ticked on Train & Compare, or the ones with pipelines.
+
+    The checkboxes are what the researcher actually chose, and they exist on
+    the run the switch button is pressed (they render above it). The built
+    list is the durable fallback for a switch pressed somewhere else.
+    """
+    import streamlit as st
+    ticked = sorted(k[len(_PICK_PREFIX):] for k, v in st.session_state.items()
+                    if isinstance(k, str) and k.startswith(_PICK_PREFIX)
+                    and v is True)
+    if ticked:
+        return ticked
+    return sorted(str(k) for k in (st.session_state.get("preprocess_built_model_keys") or []))
+
+
+def _hyperparam_widget_keys(model_keys: Sequence[str]) -> List[str]:
+    """Every widget key Train & Compare renders for these models' settings.
+
+    `{model}_{param}` for each schema entry, plus the `_none` checkbox the
+    int-or-None controls carry. The registry is the only source of the names;
+    if it cannot be imported there is nothing to capture, not a guess.
+    """
+    try:
+        from ml.model_registry import get_registry
+        registry = get_registry()
+    except Exception:
+        return []
+    keys: List[str] = []
+    for mk in model_keys:
+        spec = registry.get(mk)
+        schema = getattr(spec, "hyperparam_schema", None) or {}
+        for name in schema:
+            keys.append(f"{mk}_{name}")
+            keys.append(f"{mk}_{name}_none")
+    return keys
+
+
 def stage_for_replay(reason: str = "") -> Optional[Dict[str, Any]]:
     """Capture the decisions BEFORE a reset wipes them.
 
     Preprocessing choices ride along as configuration, not as pipelines: the
     pipelines are fits and must be rebuilt on the new rows.
+
+    Two things are staged, under two keys. The engineering recipe goes to
+    `_PENDING_KEY` and is replayed by run_pending_replay(). Everything that
+    lives in a widget — the per-model preprocessing settings, the mode and
+    interpretability radios, the model picks, the hyperparameter controls —
+    goes to `_DECISIONS_KEY`, to be claimed by the page that renders the
+    widget. Writing those keys here would not survive: Streamlit drops a
+    widget's value at the end of any run that does not render the widget,
+    and the rerun this switch triggers lands on Train & Compare, which stops
+    above its own widgets until the pipelines are rebuilt.
     """
     import streamlit as st
     steps = recipe()
@@ -126,6 +188,7 @@ def stage_for_replay(reason: str = "") -> Optional[Dict[str, Any]]:
     widget_choices = {k: v for k, v in st.session_state.items()
                       if isinstance(k, str) and k.startswith("preprocess_")
                       and k not in _NOT_A_CHOICE}
+    _stage_decisions(prep, widget_choices, reason)
     if not steps and not prep and not widget_choices:
         return None
     engineered = list(st.session_state.get("engineered_feature_names") or [])
@@ -143,6 +206,48 @@ def stage_for_replay(reason: str = "") -> Optional[Dict[str, Any]]:
     return pending
 
 
+def _stage_decisions(prep: Dict[str, Any], widget_choices: Dict[str, Any],
+                     reason: str) -> Optional[Dict[str, Any]]:
+    """Park the widget-shaped decisions for the pages that own them."""
+    import copy
+    import streamlit as st
+    try:
+        from utils.cohorts import active_cohort
+        run = active_cohort()
+    except Exception:
+        run = None
+    picks = _picked_models()
+    # Keyed by model, then by widget key: a model key can itself contain an
+    # underscore (`knn_clf`), so the widget key alone cannot name the model.
+    hyper: Dict[str, Dict[str, Any]] = {}
+    for mk in picks:
+        got = {k: st.session_state[k] for k in _hyperparam_widget_keys([mk])
+               if k in st.session_state}
+        if got:
+            hyper[mk] = got
+    mode = st.session_state.get("preprocess_config_mode")
+    imode = st.session_state.get("interpretability_mode")
+    if not prep and not widget_choices and not picks and not hyper:
+        st.session_state.pop(_DECISIONS_KEY, None)
+        return None
+    decisions: Dict[str, Any] = {
+        "from_label": str(run["label"]) if run else "",
+        "reason": reason,
+        "preprocess": {
+            # Deep-copied: the per-model sub-dicts are the same objects the
+            # page holds, and a later build mutates them in place.
+            "config_by_model": copy.deepcopy(dict(prep)),
+            "widgets": {k: v for k, v in widget_choices.items()
+                        if k != "preprocess_config_mode"},
+            "mode": mode if isinstance(mode, str) else None,
+            "interpretability_mode": imode if isinstance(imode, str) else None,
+        },
+        "models": {"picks": picks, "hyperparams": hyper},
+    }
+    st.session_state[_DECISIONS_KEY] = decisions
+    return decisions
+
+
 def pending() -> Optional[Dict[str, Any]]:
     import streamlit as st
     p = st.session_state.get(_PENDING_KEY)
@@ -155,20 +260,236 @@ def clear_pending() -> None:
 
 
 def restore_decisions() -> List[str]:
-    """Put the DECISIONS back after the reset. Returns what was restored."""
+    """Put the DECISIONS back after the reset. Returns what was restored.
+
+    Only the recipe is written here. The widget-shaped decisions stay parked
+    under `_DECISIONS_KEY` until their page claims them — see
+    claim_for_preprocess_page() and claim_for_train_page() — and the notes
+    say so, because "your preprocessing choices" used to be appended to this
+    list with nothing written back at all.
+    """
     import streamlit as st
-    p = pending()
-    if not p:
-        return []
     notes: List[str] = []
-    if p.get("steps"):
-        st.session_state[_RECIPE_KEY] = list(p["steps"])
-        notes.append(f"{len(p['steps'])} feature-engineering step(s)")
-    for k, v in (p.get("preprocess_widgets") or {}).items():
-        st.session_state.setdefault(k, v)
-    if p.get("preprocessing_config"):
-        notes.append("your preprocessing choices")
+    p = pending()
+    if p:
+        if p.get("steps"):
+            st.session_state[_RECIPE_KEY] = list(p["steps"])
+            notes.append(f"{len(p['steps'])} feature-engineering step(s)")
+        # Harmless when the keys were culled (they are re-seeded on claim),
+        # and the only route for a choice made outside a built config.
+        for k, v in (p.get("preprocess_widgets") or {}).items():
+            st.session_state.setdefault(k, v)
+    notes.extend(_decision_notes(decisions_pending()))
     return notes
+
+
+# ── the widget-shaped decisions, claimed by the page that renders them ──
+
+def decisions_pending() -> Optional[Dict[str, Any]]:
+    import streamlit as st
+    d = st.session_state.get(_DECISIONS_KEY)
+    return d if isinstance(d, dict) else None
+
+
+def clear_decisions() -> None:
+    import streamlit as st
+    st.session_state.pop(_DECISIONS_KEY, None)
+
+
+def _write_decisions(d: Optional[Dict[str, Any]]) -> None:
+    """Store what is still unclaimed, or nothing once every part is taken."""
+    import streamlit as st
+    live = d and (d.get("preprocess") or (d.get("models") or {}).get("picks")
+                  or (d.get("models") or {}).get("hyperparams"))
+    if live:
+        st.session_state[_DECISIONS_KEY] = d
+    else:
+        st.session_state.pop(_DECISIONS_KEY, None)
+
+
+def _names(keys: Sequence[str]) -> str:
+    return ", ".join(str(k).upper() for k in keys)
+
+
+def _decision_notes(d: Optional[Dict[str, Any]]) -> List[str]:
+    """What is parked, in the words the sidebar and the notes use."""
+    if not d:
+        return []
+    out: List[str] = []
+    prep = d.get("preprocess") or {}
+    cfgs = prep.get("config_by_model") or {}
+    if cfgs:
+        out.append(f"preprocessing settings for {_names(sorted(cfgs))}")
+    elif prep.get("widgets"):
+        out.append("preprocessing settings")
+    models = d.get("models") or {}
+    if models.get("picks"):
+        out.append(f"model picks ({_names(models['picks'])})")
+    if models.get("hyperparams"):
+        out.append(f"hyperparameter settings for "
+                   f"{_names(sorted(models['hyperparams']))}")
+    return out
+
+
+def describe_pending_decisions() -> str:
+    """One sentence for the sidebar while decisions wait to be applied.
+
+    Empty once everything has been claimed, so the caption cannot outlive
+    the thing it describes.
+    """
+    d = decisions_pending()
+    notes = _decision_notes(d)
+    if not d or not notes:
+        return ""
+    src = f"the {d['from_label']} run" if d.get("from_label") else "the previous run"
+    where = []
+    if d.get("preprocess") or (d.get("models") or {}).get("picks"):
+        where.append("Preprocess")
+    if (d.get("models") or {}).get("hyperparams"):
+        where.append("Train & Compare")
+    return (f"Carried from {src}: {'; '.join(notes)}. Applied when you open "
+            f"{' and '.join(where)}; the pipelines themselves are refit on "
+            f"this group's rows.")
+
+
+def _preprocess_widget_seeds(model_key: str, cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """The Preprocess widget keys that reproduce one built model config.
+
+    The mapping is not one-to-one: the config names some things differently
+    from the widgets (`use_kmeans_features` is the `use_kmeans` checkbox,
+    the outlier parameters are renamed on the way in, PCA's one number is a
+    radio plus either a number input or a slider). Anything the build derives
+    from the data — feature lists, unit factors, plausibility bounds, the
+    output width, the override notes — has no widget and is left to the
+    rebuild, which is where it belongs.
+    """
+    prefix = f"preprocess_{model_key}_"
+    out: Dict[str, Any] = {}
+
+    def put(suffix: str, value: Any) -> None:
+        out[prefix + suffix] = value
+
+    for key in ("numeric_imputation", "numeric_scaling", "categorical_imputation",
+                "categorical_encoding", "plausibility_mode"):
+        if isinstance(cfg.get(key), str):
+            put(key, cfg[key])
+    power = cfg.get("numeric_power_transform")
+    log = bool(cfg.get("numeric_log_transform", False))
+    if not isinstance(power, str) and log:
+        power = "log1p"
+    if isinstance(power, str):
+        put("numeric_power_transform", power)
+        put("numeric_log_transform", power == "log1p")
+    for key in ("numeric_missing_indicators", "plausibility_gating",
+                "unit_harmonization", "use_pca", "pca_whiten"):
+        if key in cfg:
+            put(key, bool(cfg[key]))
+    treatment = cfg.get("numeric_outlier_treatment")
+    if isinstance(treatment, str):
+        put("numeric_outlier_treatment", treatment)
+        params = cfg.get("numeric_outlier_params") or {}
+        if treatment == "percentile":
+            if "lower_q" in params:
+                put("outlier_lower_q", float(params["lower_q"]))
+            if "upper_q" in params:
+                put("outlier_upper_q", float(params["upper_q"]))
+        elif treatment == "mad" and "threshold" in params:
+            put("outlier_mad_threshold", float(params["threshold"]))
+    if cfg.get("use_pca"):
+        n = cfg.get("pca_n_components")
+        if isinstance(n, bool):
+            n = None
+        if isinstance(n, int) and n >= 1:
+            put("pca_mode", "Fixed Components")
+            put("pca_fixed_n", int(n))
+            put("pca_n_components", int(n))
+        elif isinstance(n, float) and 0.0 < n < 1.0:
+            put("pca_mode", "Variance Threshold")
+            put("pca_variance", float(n))
+            put("pca_n_components", float(n))
+    if "use_kmeans_features" in cfg:
+        put("use_kmeans", bool(cfg["use_kmeans_features"]))
+    if cfg.get("use_kmeans_features"):
+        if "kmeans_n_clusters" in cfg:
+            put("kmeans_n_clusters", int(cfg["kmeans_n_clusters"]))
+        if "kmeans_add_distances" in cfg:
+            put("kmeans_distances", bool(cfg["kmeans_add_distances"]))
+        if "kmeans_add_onehot" in cfg:
+            put("kmeans_onehot", bool(cfg["kmeans_add_onehot"]))
+    return out
+
+
+def claim_for_preprocess_page() -> Optional[Dict[str, Any]]:
+    """Seed the Preprocess page's widgets from the parked decisions. Once.
+
+    Must run before any of those widgets is instantiated on the same run —
+    Streamlit refuses a write to an instantiated widget's key, and a write
+    made on a run that never renders the widget is dropped at the end of it.
+    Returns what was applied, or None when nothing was waiting.
+    """
+    import streamlit as st
+    d = decisions_pending()
+    if not d:
+        return None
+    prep = d.pop("preprocess", None) or {}
+    models = d.get("models") or {}
+    picks = list(models.pop("picks", None) or [])
+
+    seeded: List[str] = []
+    for mk, cfg in (prep.get("config_by_model") or {}).items():
+        if not isinstance(cfg, dict):
+            continue
+        for k, v in _preprocess_widget_seeds(str(mk), cfg).items():
+            st.session_state[k] = v
+        seeded.append(str(mk))
+    # A choice made outside a built config only fills gaps: the built config
+    # is what the previous group's models actually used.
+    for k, v in (prep.get("widgets") or {}).items():
+        if k not in _NOT_A_CHOICE:
+            st.session_state.setdefault(k, v)
+    mode_forced = bool(seeded)
+    if mode_forced:
+        st.session_state["preprocess_config_mode"] = ADVANCED_MODE_LABEL
+    elif prep.get("mode"):
+        st.session_state["preprocess_config_mode"] = prep["mode"]
+    if prep.get("interpretability_mode"):
+        st.session_state["interpretability_mode"] = prep["interpretability_mode"]
+    for mk in picks:
+        st.session_state[f"{_PICK_PREFIX}{mk}"] = True
+    if picks:
+        # The coach re-applies its own top picks once per reset. The picks
+        # are the researcher's; do not let it add to them.
+        st.session_state["_coach_applied"] = True
+    _write_decisions(d)
+    if not seeded and not picks and not prep:
+        return None
+    return {"from_label": d.get("from_label", ""), "models": seeded,
+            "picks": picks, "mode_forced": mode_forced}
+
+
+def claim_for_train_page() -> Optional[Dict[str, Any]]:
+    """Seed Train & Compare's picks and hyperparameter controls. Once.
+
+    Call it only past the page's pipeline gate: the widgets must render on
+    the same run, or the values are dropped again at the end of it.
+    """
+    import streamlit as st
+    d = decisions_pending()
+    if not d:
+        return None
+    models = d.pop("models", None) or {}
+    picks = list(models.get("picks") or [])
+    hyper = dict(models.get("hyperparams") or {})
+    for mk in picks:
+        st.session_state.setdefault(f"{_PICK_PREFIX}{mk}", True)
+    for mk, values in hyper.items():
+        for k, v in (values or {}).items():
+            st.session_state[k] = v
+    _write_decisions(d)
+    if not picks and not hyper:
+        return None
+    return {"from_label": d.get("from_label", ""), "picks": picks,
+            "hyperparams": sorted(hyper)}
 
 
 # ── replaying ────────────────────────────────────────────────────────────

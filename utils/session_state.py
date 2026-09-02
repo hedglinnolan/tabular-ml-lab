@@ -697,6 +697,11 @@ def reset_data_dependent_state():
     from utils.cohorts import clear_cohort
     clear_cohort()
     st.session_state.pop("cohort_runs_done", None)
+    # Decisions staged by a cohort switch describe the old study's columns;
+    # replaying them onto a new file would rebuild features that may not
+    # exist and seed settings chosen for other data.
+    st.session_state.pop("cohort_replay_pending", None)
+    st.session_state.pop("cohort_decisions_pending", None)
     st.session_state.selected_features = []
     # Re-seed to the same default as init_session_state, not to False: a new
     # dataset returns the user to the shipped default, and the shipped default

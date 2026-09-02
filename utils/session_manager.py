@@ -127,6 +127,10 @@ _PLAIN_KEYS: Tuple[str, ...] = (
     "pre_fe_feature_cols",         # lets FE Reset/Skip restore the original list
     "preprocess_built_model_keys", # which models had pipelines configured
     "engineered_feature_transforms",  # double-transform guard's map
+    # Decisions a cohort switch parked for the next group's pages to claim
+    # (primitives only: widget values, model keys, one label). A save made
+    # between the switch and the rebuild used to drop them in silence.
+    "cohort_decisions_pending",
     # -- the quarantine watermark (`STATE-041`) --
     # A methodological fact about the artifacts in the same archive, not a UI
     # preference: it records that results here were computed with the test-set
