@@ -25,7 +25,8 @@ from utils.state_reconcile import reconcile_state_with_df
 from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.session_projects import get_project_manager
 from utils.column_utils import make_unique_columns
-from utils.admission import (admission_verdict, measured_frame_bytes,
+from utils.admission import (admission_verdict, excel_batch_price, excel_price,
+                             excel_sheet_cells, measured_frame_bytes,
                              prefilter_verdict)
 from utils.host_resources import available_memory_bytes
 from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
@@ -450,6 +451,20 @@ if uploaded_files and len(uploaded_files) > 1:
     st.info(f"**{len(uploaded_files)} files ready.** Add them all at once, or "
             f"open any file below to rename it, transpose it, or fix structural "
             f"problems first.")
+    # Excel is the one format whose parse is worth pricing before the click:
+    # the button below reads every file back to back under one spinner, and
+    # a large workbook is minutes of silence. The cell count comes from the
+    # sheet's dimension record, not from a parse — see `excel_sheet_cells`.
+    _excel_batch = excel_batch_price([
+        (_uf.name,
+         excel_sheet_cells(_uf.getvalue(),
+                           st.session_state.get(f"excel_sheet_{_file_key_for(_uf.name, _i)}", 0)),
+         getattr(_uf, "size", None))
+        for _i, _uf in enumerate(uploaded_files)
+        if detect_file_type(_uf.name) == 'excel'
+    ])
+    if _excel_batch:
+        st.caption(f"⏱️ {_excel_batch}")
     if st.button(f"Add all {len(uploaded_files)} files to project",
                  type="primary", key="add_all_files"):
         added, failed, notes = [], [], []
@@ -545,6 +560,16 @@ if uploaded_files:
                     except Exception:
                         excel_sheet_choice = 0
                     uploaded_file.seek(0)
+                    # The price, before the parse. The shape gate below cannot
+                    # run until the frame exists, and for Excel that is
+                    # minutes of silence on a large sheet; the sheet's
+                    # dimension record gives the cell count in milliseconds.
+                    _excel_note = excel_price(
+                        getattr(uploaded_file, "size", None), uploaded_file.name,
+                        excel_sheet_cells(uploaded_file.getvalue(), excel_sheet_choice),
+                    )
+                    if _excel_note:
+                        st.info(f"⏱️ {_excel_note}")
 
                 # JSON: say where the rows are being read from, and let the
                 # user correct it. The loader used to raise "pick which key

@@ -546,3 +546,133 @@ def test_the_admission_sits_above_the_merge_in_every_path():
     assert stack.index("_admit_combined(") < stack.index("execute_stack(")
     grouped = inspect.getsource(combine_ui._render_grouped)
     assert grouped.index("_admit_combined(") < grouped.index("execute_stack(")
+
+
+
+
+# ── Excel says its price before it is parsed ─────────────────────────────────
+#
+# The shape gate runs after the parse, and for Excel the parse is the cost:
+# measured ~7 s per million cells on the audit's box and 10.1 s on this one,
+# 56x slower than CSV. An .xlsx sheet's cell count is readable from its
+# dimension record without parsing a cell, so the price can be stated before
+# the wait rather than discovered during it.
+
+import io                                                         # noqa: E402
+import pathlib                                                    # noqa: E402
+
+import numpy as np                                                # noqa: E402
+import pandas as pd                                               # noqa: E402
+import inspect                                                    # noqa: E402
+
+from utils.admission import (                                     # noqa: E402
+    EXCEL_QUIET_BELOW_BYTES, EXCEL_QUIET_BELOW_CELLS,
+    EXCEL_SECONDS_PER_MILLION_CELLS, excel_batch_price, excel_parse_seconds,
+    excel_price, excel_sheet_cells,
+)
+
+
+PROJECT_ROOT_FOR_PIN = pathlib.Path(__file__).resolve().parent.parent
+
+
+def _workbook(**sheets):
+    """An .xlsx in memory with the given sheets, in the given order."""
+    pytest.importorskip("openpyxl")
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf) as writer:
+        for name, frame in sheets.items():
+            frame.to_excel(writer, sheet_name=name, index=False)
+    return buf.getvalue()
+
+
+def test_the_cell_count_comes_from_the_dimension_record_of_the_sheet_asked_for():
+    """Sheets are indexed in the workbook's own order — the order the page's
+    selector offers — and the count includes the header row the parser reads."""
+    book = _workbook(
+        second=pd.DataFrame({"a": [1, 2, 3]}),
+        first=pd.DataFrame({"a": range(100), "b": range(100), "c": range(100)}),
+    )
+    assert excel_sheet_cells(book, 0) == 4 * 1
+    assert excel_sheet_cells(book, 1) == 101 * 3
+    assert excel_sheet_cells(book, 2) is None
+    assert pd.ExcelFile(io.BytesIO(book)).sheet_names == ["second", "first"]
+
+
+def test_the_count_matches_what_the_parser_then_reads():
+    frame = pd.DataFrame(np.random.RandomState(0).rand(240, 7))
+    book = _workbook(data=frame)
+    parsed = pd.read_excel(io.BytesIO(book))
+    assert excel_sheet_cells(book, 0) == (parsed.shape[0] + 1) * parsed.shape[1]
+
+
+@pytest.mark.parametrize("payload", [
+    b"\xd0\xcf\x11\xe0 an old-format .xls is not a zip",
+    b"",
+    b"PK\x03\x04 a zip header and nothing else",
+])
+def test_a_workbook_that_cannot_be_counted_is_none_not_an_error(payload):
+    assert excel_sheet_cells(payload, 0) is None
+
+
+def test_the_two_measured_rates_are_the_range_at_one_million_cells():
+    lo, hi = excel_parse_seconds(1_000_000)
+    assert (lo, hi) == EXCEL_SECONDS_PER_MILLION_CELLS == (7.0, 10.0)
+
+
+def test_the_exponent_is_superlinear():
+    """Ten times the cells costs more than ten times the seconds — the audit's
+    1.21, and the reason Excel is the ingest path worth pricing."""
+    lo1, _ = excel_parse_seconds(1_000_000)
+    lo10, _ = excel_parse_seconds(10_000_000)
+    assert 10 * lo1 < lo10 < 20 * lo1
+
+
+def test_an_ordinary_spreadsheet_is_not_priced():
+    assert excel_price(200 * 1024, "survey.xlsx", 5_000) is None
+    assert excel_price(200 * 1024, "survey.xls", None) is None
+    assert excel_price(EXCEL_QUIET_BELOW_BYTES - 1, "survey.xls", None) is None
+
+
+def test_a_large_sheet_is_priced_in_cells_and_minutes_before_the_parse():
+    note = excel_price(150 * 1024 * 1024, "expression.xlsx", 12_000_000)
+    assert "**expression.xlsx**" in note
+    assert "12,000,000 cells" in note
+    assert "7 to 10 seconds per million cells" in note
+    lo, hi = excel_parse_seconds(12_000_000)
+    assert f"about {round(lo / 60)} to {round(hi / 60)} minutes" in note
+    assert "CSV" in note and "fifty times faster" in note
+
+
+def test_a_workbook_that_could_not_be_counted_is_priced_on_its_bytes():
+    note = excel_price(40 * 1024 * 1024, "legacy.xls", None)
+    assert "**legacy.xls** is a 40 MB Excel workbook" in note
+    assert "could not be counted" in note
+    assert "minutes rather than seconds" in note
+
+
+def test_the_batch_price_sums_the_counted_sheets_and_names_the_rest():
+    note = excel_batch_price([
+        ("a.xlsx", 600_000, 8 * 1024 * 1024),
+        ("b.xlsx", 2_000_000, 20 * 1024 * 1024),
+        ("c.xls", None, 9 * 1024 * 1024),
+        ("tiny.xls", None, 100 * 1024),
+    ])
+    assert "2 of these are Excel workbooks with 2,600,000 cells between them" in note
+    assert "c.xls is a large Excel workbook" in note
+    assert "tiny.xls" not in note
+
+
+def test_a_batch_of_small_spreadsheets_is_not_priced():
+    assert excel_batch_price([("a.xlsx", 1_000, 50_000), ("b.xlsx", None, 1_000)]) is None
+    assert excel_batch_price([]) is None
+
+
+def test_the_price_sits_above_the_parse_in_both_upload_paths():
+    """Source order, pinned: a price stated after the parse is a receipt."""
+    src = (PROJECT_ROOT_FOR_PIN / "pages" / "01_Upload_and_Audit.py").read_text(encoding="utf-8")
+    bulk = src.index('if st.button(f"Add all {len(uploaded_files)} files to project"')
+    assert 0 < src.index("excel_batch_price(") < bulk
+    expander = src.index('with st.expander(f"Configure: {uploaded_file.name}"')
+    price = src.index("excel_price(", expander)
+    parse = src.index("df_preview = cached_parse_upload(", expander)
+    assert expander < price < parse
