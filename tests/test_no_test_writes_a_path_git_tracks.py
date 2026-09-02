@@ -78,11 +78,17 @@ EXEMPT: dict = {}
 #: destination is composed from `tmp_path`, and the code under test reads a real
 #: path with `Path.read_text`.
 #:
+#: Raised 34 → 35 for `tests/test_the_upload_gate_measures_cells_not_formatting.py`'s
+#: `frame.to_excel(writer, ...)`, which writes an .xlsx into an in-memory
+#: `BytesIO` so the Excel cell counter can be tested against a workbook the
+#: parser then reads. A buffer is not a path, so the resolver cannot see that
+#: nothing on disk is touched; it is counted here rather than special-cased.
+#:
 #: A note for whoever ratchets this next: the sweep reads `git ls-files`, so an
 #: uncommitted test file contributes NOTHING to this count. A green run on a
 #: dirty tree is not evidence — stage the new files first, or this constant goes
 #: stale in the one direction that fails CI after the commit lands.
-UNRESOLVED_CEILING = 34
+UNRESOLVED_CEILING = 35
 
 
 def _relative(sites):
