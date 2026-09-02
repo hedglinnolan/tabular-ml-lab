@@ -323,3 +323,226 @@ def test_a_clean_verdict_is_the_default_shape():
     """`Verdict()` with nothing said is the ordinary case, and is falsy-clean."""
     assert Verdict().clean
     assert not Verdict().refused
+
+
+# ── the combined table is admitted at the join, not only at the door ─────────
+#
+# The gate above decides per file. Step 2 then links or stacks admitted files
+# into one working table, and the combine preview runs the REAL merge on every
+# rerun — so two files that each fit could be built into one that does not,
+# with the memory spent before anything could refuse. The projection is taken
+# from the change map's predicted shape and the inputs' real dtypes, before the
+# merge, and the verdict follows the door's rules.
+
+import numpy as np                                                # noqa: E402
+import pandas as pd                                               # noqa: E402
+
+from utils.admission import (                                     # noqa: E402
+    combination_verdict, projected_bytes_per_row, projected_join_bytes,
+    projected_stack_bytes,
+)
+
+
+def _numeric(rows, cols, seed=0):
+    rng = np.random.RandomState(seed)
+    df = pd.DataFrame(rng.rand(rows, cols), columns=[f"x{i}" for i in range(cols)])
+    df.insert(0, "id", np.arange(rows))
+    return df
+
+
+def test_a_numeric_row_weighs_eight_bytes_a_cell():
+    df = _numeric(500, 9)                     # 10 columns with the id
+    assert projected_bytes_per_row(df) == 10 * 8
+
+
+def test_a_text_row_weighs_what_its_strings_weigh_not_eight():
+    df = pd.DataFrame({"id": range(200), "site": ["a long site name"] * 200})
+    assert projected_bytes_per_row(df) > 2 * 8
+
+
+def test_a_link_is_projected_as_both_sides_times_the_predicted_rows():
+    left, right = _numeric(1_000, 9), _numeric(1_000, 9, seed=1)
+    # 1,000 matched rows, 10 + 10 - 1 shared key = 19 columns.
+    projected = projected_join_bytes(left, right, 1_000, 19)
+    per_row = projected_bytes_per_row(left) + projected_bytes_per_row(right)
+    assert projected == int(per_row * 1_000 * 4)
+    assert projected >= estimated_frame_bytes(1_000, 19)
+
+
+def test_a_many_to_many_link_is_projected_on_the_rows_it_will_produce():
+    """The change map predicts the multiplied row count; the projection has to
+    use that, not the inputs' sizes, or a key that pairs every row with every
+    row is admitted on the size of the two small files that cause it."""
+    left, right = _numeric(1_000, 9), _numeric(1_000, 9, seed=1)
+    modest = projected_join_bytes(left, right, 1_000, 19)
+    multiplied = projected_join_bytes(left, right, 1_000 * 1_000, 19)
+    assert multiplied == modest * 1_000
+
+
+def test_a_stack_is_projected_as_every_row_plus_the_blanks_plus_the_source_column():
+    a, b = _numeric(600, 9), _numeric(400, 9, seed=1)
+    b["only_in_b"] = 1.0
+    cm_rows, cm_cols = 1_000, 12                 # union of 11 columns + source
+    projected = projected_stack_bytes({"a": a, "b": b}, cm_rows, cm_cols)
+    own_rows = projected_bytes_per_row(a) * 600 + projected_bytes_per_row(b) * 400
+    blanks = 600 * 1 * 8                          # a lacks one column of b
+    source = 1_000 * 40
+    assert projected == int((own_rows + blanks + source) * 4)
+    assert projected >= estimated_frame_bytes(cm_rows, cm_cols)
+
+
+@pytest.mark.parametrize("available", [None, 2 * GB, 32 * GB])
+def test_an_ordinary_link_is_admitted_in_silence(available):
+    left, right = _numeric(500, 6), _numeric(500, 6, seed=1)
+    projected = projected_join_bytes(left, right, 500, 13)
+    verdict = combination_verdict(500, 13, projected, available,
+                                  "linking demo (500 rows) with labs (500 rows)")
+    assert verdict.clean
+
+
+def test_two_files_that_each_fit_are_refused_when_their_link_would_not():
+    """The case the door cannot see: each side is admitted on its own shape,
+    and the link of the two exceeds the headroom. The refusal is at the join,
+    before the merge, and it carries the numbers."""
+    available = 64 * 2 ** 20                     # 64 MB free
+    left, right = _numeric(20_000, 49), _numeric(20_000, 49, seed=1)
+    for side in (left, right):
+        assert not admission_verdict(*side.shape, "side.csv", available,
+                                     estimated_bytes=measured_frame_bytes(side)).refused, \
+            "each file fits on its own — that is the premise"
+    # A link on a key that pairs every row with every row: 400M rows.
+    projected = projected_join_bytes(left, right, 20_000 * 20_000, 99)
+    verdict = combination_verdict(20_000 * 20_000, 99, projected, available,
+                                  "linking left (20,000 rows) with right (20,000 rows)")
+    assert verdict.refused
+    assert "400,000,000 rows x 99 columns" in verdict.refusal
+    assert "GB to work with" in verdict.refusal
+    assert "0.1 GB is available" in verdict.refusal
+    assert "was not built" in verdict.refusal
+    assert verdict.warnings == (), "a refusal carries no load-anyway affordance"
+
+
+def test_an_unmeasurable_host_never_refuses_a_link_and_says_so_when_it_mattered():
+    left, right = _numeric(20_000, 49), _numeric(20_000, 49, seed=1)
+    big = projected_join_bytes(left, right, 20_000 * 200, 99)   # ~12 GB projected
+    verdict = combination_verdict(20_000 * 200, 99, big, None,
+                                  "linking left (20,000 rows) with right (20,000 rows)")
+    assert not verdict.refused
+    assert len(verdict.warnings) == 1
+    assert "could not be read" in verdict.warnings[0]
+    assert "4,000,000 rows x 99 columns" in verdict.warnings[0]
+
+
+def test_a_combined_table_wider_than_the_analysis_pages_are_built_for_is_warned():
+    left, right = _numeric(300, 1_200), _numeric(300, 1_200, seed=1)
+    cols = 1_201 + 1_201 - 1
+    verdict = combination_verdict(300, cols, projected_join_bytes(left, right, 300, cols),
+                                  32 * GB, "linking a (300 rows) with b (300 rows)")
+    assert not verdict.refused
+    assert any(f"{cols:,} columns" in w and "O(columns" in w for w in verdict.warnings)
+
+
+def test_the_description_opens_the_sentence_in_the_researchers_terms():
+    verdict = combination_verdict(10 ** 9, 50, 10 ** 12, GB,
+                                  "stacking 3 files (1,000,000,000 rows in all)")
+    assert verdict.refusal.startswith("**Not combined.** Stacking 3 files")
+
+
+# ── and the real combine step refuses BEFORE it runs the merge ───────────────
+
+class _Stub:
+    """Enough of Streamlit for `render_combine_step` to run; everything said
+    is recorded so the test can assert on the refusal it rendered."""
+
+    def __init__(self, relation_index=0):
+        self.session_state = {}
+        self.said = []
+        self.relation_index = relation_index
+
+    def selectbox(self, label, options, index=0, **kw):
+        return list(options)[index or 0]
+
+    def radio(self, label, options, index=0, **kw):
+        if label == "How do these files relate?":
+            return list(options)[self.relation_index]
+        return list(options)[index]
+
+    def multiselect(self, label, options, default=None, **kw):
+        return list(default if default is not None else options)
+
+    def button(self, *a, **kw):
+        return True
+
+    def columns(self, spec, **kw):
+        return [self] * (spec if isinstance(spec, int) else len(spec))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def __getattr__(self, name):
+        def _record(*a, **kw):
+            self.said.append((name, a[0] if a else None))
+            return self
+        return _record
+
+
+def _combine_step(monkeypatch, frames, available, relation_index=0):
+    import utils.combine_ui as combine_ui
+
+    stub = _Stub(relation_index=relation_index)
+    monkeypatch.setattr(combine_ui, "st", stub)
+    monkeypatch.setattr(combine_ui, "available_memory_bytes", lambda: available)
+
+    def _never(*a, **kw):
+        raise AssertionError("the merge ran on a table that was refused")
+    if available is not None and available < 2 ** 20:
+        monkeypatch.setattr(combine_ui, "execute_join", _never)
+        monkeypatch.setattr(combine_ui, "execute_stack", _never)
+    return combine_ui.render_combine_step(frames), stub
+
+
+def test_the_link_is_refused_before_the_merge_runs(monkeypatch):
+    demo = pd.DataFrame({"SEQN": [1, 2, 3], "age": [50, 60, 70]})
+    labs = pd.DataFrame({"SEQN": [1, 2, 3], "chol": [4.0, 5.0, 6.0]})
+    out, stub = _combine_step(monkeypatch, {"demo": demo, "labs": labs}, available=1)
+    assert out is None, "nothing to commit"
+    errors = [msg for kind, msg in stub.said if kind == "error"]
+    assert any("**Not combined.** Linking demo (3 rows) with labs (3 rows)" in e
+               for e in errors), errors
+
+
+def test_the_stack_is_refused_before_it_runs(monkeypatch):
+    a = pd.DataFrame({"SEQN": [1, 2, 3], "age": [50, 60, 70]})
+    b = pd.DataFrame({"SEQN": [4, 5, 6], "age": [51, 61, 71]})
+    out, stub = _combine_step(monkeypatch, {"a": a, "b": b}, available=1,
+                              relation_index=1)
+    assert out is None
+    errors = [msg for kind, msg in stub.said if kind == "error"]
+    assert any("**Not combined.** Stacking 2 files (6 rows in all)" in e
+               for e in errors), errors
+
+
+def test_an_ordinary_link_still_combines(monkeypatch):
+    demo = pd.DataFrame({"SEQN": [1, 2, 3], "age": [50, 60, 70]})
+    labs = pd.DataFrame({"SEQN": [1, 2, 3], "chol": [4.0, 5.0, 6.0]})
+    out, stub = _combine_step(monkeypatch, {"demo": demo, "labs": labs},
+                              available=32 * GB)
+    assert out is not None and "chol" in out.columns
+    assert not [msg for kind, msg in stub.said if kind == "error"]
+
+
+def test_the_admission_sits_above_the_merge_in_every_path():
+    """Source order, pinned: the projection is only worth anything if it runs
+    before the merge or the stack it is about to refuse."""
+    import inspect
+    import utils.combine_ui as combine_ui
+
+    link = inspect.getsource(combine_ui._render_link)
+    assert link.index("_admit_combined(") < link.index("execute_join(")
+    stack = inspect.getsource(combine_ui._render_stack)
+    assert stack.index("_admit_combined(") < stack.index("execute_stack(")
+    grouped = inspect.getsource(combine_ui._render_grouped)
+    assert grouped.index("_admit_combined(") < grouped.index("execute_stack(")
