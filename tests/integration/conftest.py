@@ -15,6 +15,25 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.insert(0, PROJECT_ROOT)
 
 
+#: Exception-message substrings that come from the AppTest harness rather than
+#: from the page under test. `st.page_link()` cannot resolve a page inside a
+#: single-file AppTest, which has no page registry, and page 05 renders one
+#: after every successful build. The words changed with the Streamlit version:
+#:   <= 1.62  KeyError: 'url_pathname'
+#:   >= 1.63  StreamlitAPIException: Could not find page: `pages/06_...`. You
+#:            must provide a `Page` object or file path relative to the
+#:            entrypoint file. Only pages previously defined by `st.Page` and
+#:            passed to `st.navigation` are allowed.
+#: CI installs whatever `streamlit>=1.28.0` resolves to, so the day 1.63.0
+#: shipped, seven tests that filtered on the old words went red on every branch
+#: while the pages they render were unchanged. One list, imported by every
+#: helper that filters, so the next rewording is one edit rather than a hunt.
+HARNESS_ONLY_EXCEPTIONS = (
+    "url_pathname",
+    "Could not find page",
+)
+
+
 def build_test_dataframe(n=200, seed=42):
     """Synthetic regression dataset for page rendering tests."""
     np.random.seed(seed)

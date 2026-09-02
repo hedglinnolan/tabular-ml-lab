@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from streamlit.testing.v1 import AppTest
 from tests.integration.conftest import (
+    HARNESS_ONLY_EXCEPTIONS,
     build_test_dataframe, build_classification_dataframe,
     inject_data_state, inject_trained_state,
 )
@@ -39,12 +40,13 @@ def assert_no_exception(at, page_name, ignore_patterns=None):
     """Assert no meaningful exceptions during page render.
 
     ignore_patterns: list of substrings to ignore in exception messages.
-    The url_pathname KeyError is a known Streamlit AppTest limitation
-    with st.page_link() — harmless in tests.
+    st.page_link() cannot resolve a page under a single-file AppTest; the
+    message it raises depends on the Streamlit version, and the shared
+    HARNESS_ONLY_EXCEPTIONS in conftest names every spelling seen so far.
     """
     if not at.exception:
         return
-    default_ignore = ['url_pathname']
+    default_ignore = list(HARNESS_ONLY_EXCEPTIONS)
     ignore = (ignore_patterns or []) + default_ignore
     real_exceptions = []
     for e in at.exception:

@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from streamlit.testing.v1 import AppTest
 from tests.integration.conftest import (
+    HARNESS_ONLY_EXCEPTIONS,
     build_test_dataframe, build_classification_dataframe,
     inject_data_state, inject_trained_state,
 )
@@ -32,7 +33,9 @@ from tests.integration.conftest import (
 def assert_no_exception(at, page_name, ignore_patterns=None):
     if not at.exception:
         return
-    default_ignore = ['url_pathname']
+    # st.page_link() under a single-file AppTest: the harness's failure, not
+    # the page's, in whichever words this Streamlit version uses for it.
+    default_ignore = list(HARNESS_ONLY_EXCEPTIONS)
     ignore = (ignore_patterns or []) + default_ignore
     real_exceptions = []
     for e in at.exception:
