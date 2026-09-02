@@ -865,7 +865,7 @@ And crucially: **Which of these structures persist as you zoom in/out?** Persist
 
 **Computational cost:** O(n³) for n samples. **Strongly recommend subsampling for >500 samples.**
 """)
-    st.warning("⚠️ **TDA is computationally intensive.** Expect 30 seconds to several minutes depending on dataset size.")
+    st.warning("⚠️ **TDA is computationally intensive** — O(n³) in the number of samples, so the wait is set by your row count, not by anything this page can promise. Subsample above 500 rows.")
     
     col1, col2, col3 = st.columns(3)
     
