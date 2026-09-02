@@ -86,15 +86,13 @@ def _state_of(at):
     return dict(at.session_state.filtered_state)
 
 
-# st.page_link() raises KeyError('url_pathname') under a single-file AppTest,
-# which has no page registry. Page 05 renders one after a successful build.
-# Every AppTest file in this suite ignores it; it is the harness, not the page.
-_HARNESS_ONLY = {"'url_pathname'"}
-
-
 def _ok(at, label):
+    # st.page_link() cannot resolve a page under a single-file AppTest, and
+    # page 05 renders one after a successful build. That is the harness's
+    # failure, not the page's; conftest names every wording it has had.
+    from tests.integration.conftest import HARNESS_ONLY_EXCEPTIONS
     real = [str(e.value)[:600] for e in at.exception
-            if str(e.value) not in _HARNESS_ONLY]
+            if not any(p in str(e.value) for p in HARNESS_ONLY_EXCEPTIONS)]
     assert not real, (label, real)
 
 
