@@ -34,7 +34,7 @@ checked.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 #: Bytes per cell in the shape-only floor. A pandas frame of float64 or int64 —
 #: what a numeric research matrix parses to — costs exactly this per cell, so it
@@ -270,6 +270,137 @@ def admission_verdict(rows: int, cols: int, filename: str,
             f"stop you or warn you again. Cutting to the columns you intend to "
             f"model on before Step 2 is the difference between minutes and "
             f"seconds."
+        )
+
+    return Verdict(warnings=tuple(warnings))
+
+
+# ── the combined table: admitted at the join, not only at the door ───────────
+#
+# The gate above decides per uploaded file. Step 2 then links or stacks the
+# admitted files into one working table, and until now nothing measured THAT
+# frame before it was built. Two files that each fit can add up to one that
+# does not — a link on a many-to-many key multiplies rows, an outer link and a
+# stack add every row of every file — and the combine preview runs the real
+# merge on every rerun, so the memory was spent before any check could have
+# run. These are projections from the inputs' real dtypes and the change map's
+# predicted shape, taken before the merge, so a refusal costs nothing and a
+# clean verdict costs one pass over data that is already resident.
+
+#: What one string cell costs at rest, measured by this module's own transpose
+#: work at a constant 40.0 bytes against 8 for a number. Used for the
+#: provenance column a stack adds (one short filename per row).
+_STRING_CELL_BYTES = 40
+
+
+def projected_bytes_per_row(df) -> float:
+    """What one row of `df` weighs at rest, from its real dtypes.
+
+    The index is excluded: a stack renumbers it and a link rebuilds it, so the
+    inputs' indexes do not survive into the combined table. Never less than
+    the shape floor's per-row figure, for the same reason `measured_frame_bytes`
+    keeps its floor — a categorical column weighs almost nothing until
+    something encodes it.
+    """
+    rows = max(int(df.shape[0]), 1)
+    cols = int(df.shape[1])
+    try:
+        at_rest = int(df.memory_usage(deep=True, index=False).sum())
+    except (TypeError, ValueError, AttributeError):  # pragma: no cover - exotic dtype
+        at_rest = 0
+    return max(at_rest / rows, cols * _BYTES_PER_CELL)
+
+
+def projected_join_bytes(left, right, after_rows: int, after_cols: int) -> int:
+    """Peak bytes a link of `left` and `right` would cost, projected before it runs.
+
+    A linked row carries one row of each side, so its cost is the sum of the
+    two sides' per-row costs (the shared key is counted twice, which
+    over-estimates by one column — the safe direction), times the rows the
+    change map predicts, times the same multiplier `measured_frame_bytes`
+    applies. Never less than the shape floor for the predicted shape.
+    """
+    per_row = projected_bytes_per_row(left) + projected_bytes_per_row(right)
+    rows = max(int(after_rows), 0)
+    return max(int(per_row * rows * _MEMORY_SAFETY_FACTOR),
+               estimated_frame_bytes(rows, after_cols))
+
+
+def projected_stack_bytes(frames: Dict[str, "object"], after_rows: int,
+                          after_cols: int) -> int:
+    """Peak bytes a stack of `frames` would cost, projected before it runs.
+
+    Every row keeps its own file's weight; a column a file lacks becomes a
+    blank cell in that file's rows (8 bytes each, since concat upcasts to a
+    float that can hold the blank); and the provenance column the stack adds is
+    one short string per row.
+    """
+    parts = [f for f in frames.values() if f is not None]
+    union = set()
+    for f in parts:
+        union.update(str(c) for c in f.columns)
+    total = 0.0
+    for f in parts:
+        rows = int(f.shape[0])
+        total += projected_bytes_per_row(f) * rows
+        total += max(len(union) - int(f.shape[1]), 0) * _BYTES_PER_CELL * rows
+    rows_after = max(int(after_rows), 0)
+    total += rows_after * _STRING_CELL_BYTES
+    return max(int(total * _MEMORY_SAFETY_FACTOR),
+               estimated_frame_bytes(rows_after, after_cols))
+
+
+def combination_verdict(rows: int, cols: int, projected_bytes: int,
+                        available_bytes: Optional[int], description: str) -> Verdict:
+    """Decide on the combined table's projected shape before it is built.
+
+    `description` reads as a gerund phrase in the researcher's terms —
+    "linking demographics (600 rows) with labs (480 rows)" — so the message can
+    say what was not done. The rules are the door's rules: a refusal on memory
+    carries no override and no warnings; `None` for available memory warns
+    when the answer would have mattered and never refuses; a table wider than
+    `WIDE_COLUMN_WARN` is told what the analysis pages will do with it.
+    """
+    est = max(int(projected_bytes), 0)
+    shape = f"{rows:,} rows x {cols:,} columns"
+    what = description.strip() or "combining these files"
+
+    if available_bytes is not None and est > available_bytes:
+        return Verdict(refusal=(
+            f"**Not combined.** {what[0].upper() + what[1:]} would produce "
+            f"{shape}, which needs about {_gb(est)} to work with, and only "
+            f"{_gb(available_bytes)} is available. Each file fit on its own; "
+            f"the combined table would not, so it was not built.\n\n"
+            f"Try one of:\n\n"
+            f"- keep only the people found in every file, if you were keeping "
+            f"everyone — a table with fewer rows costs less;\n"
+            f"- cut each file to the columns you intend to model on and "
+            f"upload those instead;\n"
+            f"- give the app more memory — in Docker, raise `APP_MEMORY_LIMIT` "
+            f"(see `UNIVERSITY_DEPLOYMENT.md`) and restart the container."
+        ))
+
+    warnings = []
+
+    if available_bytes is None and est >= _UNMEASURED_QUIET_BELOW_BYTES:
+        warnings.append(
+            f"{what[0].upper() + what[1:]} would produce {shape} and needs "
+            f"roughly {_gb(est)} to work with, but this machine's free memory "
+            f"could not be read, so that was not checked against anything. "
+            f"Combining anyway is fine; if the app becomes unresponsive or the "
+            f"tab goes blank afterwards, this is why."
+        )
+
+    if cols > WIDE_COLUMN_WARN:
+        pairs = (cols * (cols - 1)) // 2
+        warnings.append(
+            f"The combined table would have {cols:,} columns. It will be "
+            f"built, but the analysis pages are not built for this width yet: "
+            f"EDA's correlation and pairwise scans are O(columns²) and "
+            f"uncapped, so they will work through {pairs:,} column pairs and "
+            f"can take many minutes per page — Explainability longer still. "
+            f"Cutting each file to the columns you intend to model on before "
+            f"combining is the difference between minutes and seconds."
         )
 
     return Verdict(warnings=tuple(warnings))
