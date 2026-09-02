@@ -45,22 +45,54 @@ class UploadProvenance:
     cohort_value: str = ""
     cohort_n: int = 0
     study_n: int = 0
+    # The OTHER groups this same analysis has already been run in, and how
+    # many the split has. The app shows "report all k, not the one that
+    # worked" on screen when two runs sit side by side; that caveat is a fact
+    # about how many fits were made, and it has to leave with the export.
+    cohort_runs_completed: List[str] = field(default_factory=list)
+    cohort_runs_planned: int = 0
+    # Predictors that are constant inside this group. They stay in the
+    # predictor list and contribute nothing; a reader comparing two group
+    # models needs to know the two did not see the same predictors.
+    cohort_constant_features: List[str] = field(default_factory=list)
 
     @property
     def is_cohort_restricted(self) -> bool:
         return bool(self.cohort_column)
 
     def restriction_sentence(self) -> str:
-        """One sentence a manuscript can use verbatim, or '' when unrestricted."""
+        """One sentence a manuscript can use verbatim, or '' when unrestricted.
+
+        Grows by one sentence for each fact that changes how the result should
+        be read — other groups already analyzed, predictors flat in this group
+        — and by nothing otherwise. A caveat about a comparison that was never
+        made is the same class of error as a missing one.
+        """
         if not self.is_cohort_restricted:
             return ""
         of_study = (f" of {self.study_n:,} in the full study"
                     if self.study_n and self.study_n > self.cohort_n else "")
-        return (f"This analysis was restricted to participants with "
+        text = (f"This analysis was restricted to participants with "
                 f"{self.cohort_column} = {self.cohort_value} "
                 f"(n={self.cohort_n:,}{of_study}); the model was fitted and "
                 f"evaluated in that group only, and results should not be read "
                 f"as describing the whole study population.")
+        others = [g for g in self.cohort_runs_completed if g != self.cohort_value]
+        if others:
+            k = len(others) + 1
+            text += (f" The same analysis was also run separately in "
+                     f"{self.cohort_column} = {', '.join(others)}; all {k} "
+                     f"group-specific results should be reported together, "
+                     f"and the difference between groups was not tested "
+                     f"directly.")
+        flat = list(self.cohort_constant_features)
+        if flat:
+            shown = ", ".join(flat[:6]) + (f" and {len(flat) - 6} more" if len(flat) > 6 else "")
+            text += (f" Within this group {len(flat)} predictor"
+                     f"{'' if len(flat) == 1 else 's'} ({shown}) "
+                     f"{'was' if len(flat) == 1 else 'were'} constant and "
+                     f"contributed nothing to the model.")
+        return text
 
 
 @dataclass
@@ -376,11 +408,24 @@ class WorkflowProvenance:
             self.upload.cohort_value = ""
             self.upload.cohort_n = 0
             self.upload.study_n = 0
+            self.upload.cohort_runs_completed = []
+            self.upload.cohort_runs_planned = 0
+            self.upload.cohort_constant_features = []
         else:
             self.upload.cohort_column = str(run.get("column", ""))
             self.upload.cohort_value = str(run.get("label", ""))
             self.upload.cohort_n = int(run.get("n_rows", 0))
             self.upload.study_n = int(run.get("n_total", 0))
+            self.upload.cohort_runs_planned = int(run.get("of", 0) or 0)
+            self.upload.cohort_constant_features = [
+                str(c) for c in (run.get("dropped_features") or [])]
+            try:
+                from utils.cohorts import completed_runs
+                done = completed_runs(str(run.get("column", "")))
+            except Exception:
+                done = []
+            self.upload.cohort_runs_completed = [
+                str(r.label) for r in done if r.label != run.get("label")]
 
     def record_cleaning(self, action: str, rows_before: int, rows_after: int,
                         details: Optional[Dict[str, Any]] = None) -> None:

@@ -168,9 +168,21 @@ if data_config is None or not data_config.target_col:
 pipelines_by_model = st.session_state.get('preprocessing_pipelines_by_model', {})
 pipeline = get_preprocessing_pipeline()
 if pipeline is None and not pipelines_by_model:
-    st.warning("Please build your preprocessing pipelines first — open the **Preprocess** page "
-               "and click **🔨 Build Pipelines**. (If you just changed data or configuration, "
-               "downstream results were reset and pipelines need rebuilding.)")
+    _waiting = _replay.decisions_pending()
+    if _waiting and _waiting.get("preprocess"):
+        # The cohort switch landed here. The settings are not gone — they are
+        # waiting on the page that owns them, and this message has to say so
+        # or "pipelines need rebuilding" reads as "your choices were reset".
+        _src = f"the {_waiting['from_label']} run" if _waiting.get("from_label") else "the previous run"
+        st.warning(
+            f"Your preprocessing settings from {_src} are waiting on the "
+            f"**Preprocess** page. Open it and click **🔨 Build Pipelines** to refit "
+            f"them on this group's rows — the settings carry over, the fitted "
+            f"numbers do not.")
+    else:
+        st.warning("Please build your preprocessing pipelines first — open the **Preprocess** page "
+                   "and click **🔨 Build Pipelines**. (If you just changed data or configuration, "
+                   "downstream results were reset and pipelines need rebuilding.)")
     st.stop()
 
 # Get final detection values
@@ -856,6 +868,22 @@ available_models = {
     if (task_type_final == 'regression' and v.capabilities.supports_regression) or
        (task_type_final == 'classification' and v.capabilities.supports_classification)
 }
+
+# The previous group's model picks and hyperparameter choices, parked by the
+# cohort switch. Claimed here — past the pipeline gate, before any checkbox —
+# because the widgets below render on this run and only a value written on
+# the run its widget renders survives.
+_carried_models = _replay.claim_for_train_page()
+if _carried_models:
+    _src = f"the {_carried_models['from_label']} run" if _carried_models.get("from_label") else "the previous run"
+    st.caption(
+        f"🔁 Carried from {_src}: "
+        + "; ".join(filter(None, [
+            f"model picks ({', '.join(m.upper() for m in _carried_models['picks'])})" if _carried_models["picks"] else "",
+            f"hyperparameter settings for {', '.join(m.upper() for m in _carried_models['hyperparams'])}" if _carried_models["hyperparams"] else "",
+        ]))
+        + ". Hyperparameters tuned by Optuna on the previous group were not carried; run the optimization again here if you want them tuned for this group."
+    )
 
 # Sync Train & Compare selections from Preprocessing (before any checkbox)
 # Only set if not already set to avoid widget conflicts

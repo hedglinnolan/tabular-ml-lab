@@ -82,6 +82,59 @@ class TestProvenanceCarriesTheRestriction:
         assert cohort_restriction_sentence() == ""
 
 
+class TestTheSecondRunSaysItIsTheSecond:
+    """On screen, two runs side by side get "Report all 2, not the one that
+    worked — otherwise the result is a multiple-comparisons artifact". That
+    caveat is a fact about how many fits were made, and it reached no export.
+    """
+
+    def _switch_to_male(self, df):
+        from utils.cohorts import record_run
+        record_run({"ROC-AUC": 0.7})                       # Female is banked
+        plan = plan_cohorts(df, "sex", "diabetes", "classification")
+        cell = next(c for c in plan.viable if c.label == "Male")
+        start_cohort(df, plan, cell, "diabetes",
+                     dropped_features=["pregnancies", "hrt_use"])
+        get_provenance().record_cohort_restriction()
+
+    def test_a_single_run_makes_no_claim_about_other_groups(self):
+        begin_female_run()
+        text = cohort_restriction_sentence()
+        assert "also run separately" not in text
+        assert "not tested directly" not in text
+        assert "constant" not in text
+
+    def test_banking_the_current_group_does_not_list_it_as_another(self):
+        from utils.cohorts import record_run
+        begin_female_run()
+        record_run({"ROC-AUC": 0.7})
+        get_provenance().record_cohort_restriction()
+        assert "also run separately" not in cohort_restriction_sentence()
+
+    def test_the_second_run_names_the_first_and_the_count(self):
+        df, _ = begin_female_run()
+        self._switch_to_male(df)
+        text = cohort_restriction_sentence()
+        assert "sex = Male" in text
+        assert "also run separately in sex = Female" in text
+        assert "all 2 group-specific results should be reported together" in text
+        assert "the difference between groups was not tested directly" in text
+
+    def test_predictors_flat_in_this_group_are_named(self):
+        df, _ = begin_female_run()
+        self._switch_to_male(df)
+        text = cohort_restriction_sentence()
+        assert "2 predictors (pregnancies, hrt_use) were constant" in text
+
+    def test_the_record_survives_a_round_trip(self):
+        df, _ = begin_female_run()
+        self._switch_to_male(df)
+        again = WorkflowProvenance.from_dict(get_provenance().to_dict())
+        assert again.upload.cohort_runs_completed == ["Female"]
+        assert again.upload.cohort_constant_features == ["pregnancies", "hrt_use"]
+        assert again.upload.restriction_sentence() == cohort_restriction_sentence()
+
+
 class TestEveryExportSurfaceStatesIt:
     """Each of these rendered the bare N to a reviewer before this change."""
 
