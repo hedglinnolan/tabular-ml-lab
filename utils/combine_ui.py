@@ -31,10 +31,14 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from utils.admission import (
+    Verdict, combination_verdict, projected_join_bytes, projected_stack_bytes,
+)
 from utils.combine import (
     SOURCE_COLUMN, execute_stack, plan_combination, plan_stack, relationship_hint,
     set_reserved_columns,
 )
+from utils.host_resources import available_memory_bytes
 from ml.join_doctor import (
     KeyCandidate, _slug, diagnose_join, execute_join, find_key_candidates,
     plain_summary,
@@ -70,6 +74,34 @@ _MAX_PREVIEW_COLS = 12
 
 _JOIN_KEY_REASON = ("the ID these files were merged on — it identifies a row, "
                     "it does not explain the outcome")
+
+
+def _admit_combined(cm: ChangeMap, projected_bytes: int, description: str) -> bool:
+    """Whether the combined table `cm` predicts may be built at all.
+
+    The door in `utils/admission.py` decides per uploaded file; this is the
+    same decision for the table Step 2 is about to build, taken from the
+    change map's predicted shape and the inputs' real dtypes BEFORE the merge
+    or the stack runs. It has to be before: the preview below is the real
+    result, computed on every rerun, so a table this machine cannot hold would
+    otherwise be built in order to be shown — and the failure that follows is
+    an OOM kill that reaches the researcher as a blank tab.
+
+    Renders the verdict and returns False on a refusal. Warnings (a host whose
+    memory could not be read, a table wider than the analysis pages are built
+    for) are shown and do not block; a refusal carries no override, for the
+    reason `Verdict` gives.
+    """
+    verdict: Verdict = combination_verdict(
+        cm.after_rows, cm.after_cols, projected_bytes,
+        available_memory_bytes(), description,
+    )
+    if verdict.refused:
+        st.error(verdict.refusal)
+        return False
+    for w in verdict.warnings:
+        st.warning(w)
+    return True
 
 
 def _row_ledger(cm: ChangeMap) -> None:
@@ -316,6 +348,18 @@ def _render_link(frames: Dict[str, pd.DataFrame],
             # description of one — nothing is committed until the button.
             change = describe_join(result, frames[other], chosen.left_col,
                                    chosen.right_col, how, running, other)
+            # Admitted on the predicted shape before the merge is attempted,
+            # for the reason `_admit_combined` gives: the merge below is the
+            # real one.
+            if not _admit_combined(
+                change,
+                projected_join_bytes(result, frames[other],
+                                     change.after_rows, change.after_cols),
+                f"linking {running} ({len(result):,} rows) with {other} "
+                f"({len(frames[other]):,} rows)",
+            ):
+                blocked = True
+                continue
             preview, desc = execute_join(
                 result, frames[other], chosen.left_col, chosen.right_col, how,
                 base_name, other,
@@ -358,8 +402,14 @@ def _render_stack(frames: Dict[str, pd.DataFrame]) -> Optional[Tuple[pd.DataFram
     if not plan.can_proceed:
         return None
 
+    change = describe_stack(subset)
+    if not _admit_combined(
+        change, projected_stack_bytes(subset, change.after_rows, change.after_cols),
+        f"stacking {len(subset)} files ({change.after_rows:,} rows in all)",
+    ):
+        return None
     stacked, desc = execute_stack(subset)
-    render_change_map(describe_stack(subset), stacked)
+    render_change_map(change, stacked)
     return stacked, desc
 
 
@@ -420,6 +470,14 @@ def _render_grouped(frames: Dict[str, pd.DataFrame]) -> Optional[Tuple[pd.DataFr
         if not plan_s.can_proceed:
             return None
         st.caption(plan_s.summary())
+        change_s = describe_stack(subset)
+        if not _admit_combined(
+            change_s,
+            projected_stack_bytes(subset, change_s.after_rows, change_s.after_cols),
+            f"stacking {len(members)} files into {label} "
+            f"({change_s.after_rows:,} rows in all)",
+        ):
+            return None
         group_frame, desc = execute_stack(subset)
         # Name the bookkeeping column after the group. Two stacked groups both
         # carrying "__source_file" collide when linked, and the app then warned
