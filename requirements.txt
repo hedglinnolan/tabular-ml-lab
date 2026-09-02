@@ -1,4 +1,15 @@
-streamlit>=1.28.0
+# A window, not a floor. The floor is the oldest version this code has been
+# run against (1.60 locally, every tier green); 1.28 stopped being true long
+# ago — `width="stretch"`, `st.fragment` and the AppTest path patch in
+# tests/conftest.py all need far newer. The ceiling exists because CI installs
+# whatever this line resolves to, and twice an upstream minor release has
+# turned branches red over pages that had not changed: 1.62 made
+# AppTest.from_file resolve paths against the test file, and 1.63 reworded the
+# harness's own st.page_link failure so seven integration tests read it as the
+# page's. Bumping the ceiling is a deliberate PR: run Tier 2 under the new
+# version and extend tests/integration/conftest.py::HARNESS_ONLY_EXCEPTIONS if
+# the wording moved again.
+streamlit>=1.60,<1.64
 # Capped below 3.0 until T0-LIVE-004 is fixed. pandas 3 makes `str` the default
 # dtype for text columns, and eleven sites across the app decide behaviour by
 # testing dtype identity against 'object' — `ml/triage.py:41` among them. A text
