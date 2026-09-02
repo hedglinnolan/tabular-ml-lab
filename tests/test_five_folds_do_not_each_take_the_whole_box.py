@@ -17,9 +17,13 @@ must NOT touch:
 - scikit-learn's own `n_jobs=None` is left alone. It already means one worker,
   and setting it is not free — scikit-learn 1.9 deprecated
   `LogisticRegression.n_jobs` and warns for any value that is not None.
-- RandomForest is NOT covered. models/rf.py hardcodes `n_jobs=-1` and
-  `RFWrapper.get_params()` does not expose it; the test pins that fact down so
-  nobody reads the PR as having fixed it.
+- RandomForest is NOT pinned. `RFWrapper` now carries `n_jobs` as a real
+  constructor argument — it round-trips through `get_params`, `set_params` and
+  `clone`, where it used to be a literal `-1` in the body that no route could
+  reach — but the default is still every core, on the measured trade in
+  `_inner_thread_overrides`'s docstring. The tests at the end of the RF block
+  pin both halves: the parameter is reachable, and the forest is identical at
+  any `n_jobs`, so choosing is a resource decision and never a modeling one.
 
 **And the property that outranks every performance number here: no fitted model
 moves.** Thread count is a resource axis, not a modeling one, and the last two
@@ -208,19 +212,103 @@ def test_random_forest_reaches_cv_as_a_bare_forest_and_is_left_unpinned():
 
 
 def test_the_random_forest_that_reaches_cv_is_not_the_wrapper():
-    """The wrapper hides `n_jobs`; the estimator it hands to CV does not.
+    """The estimator the wrapper hands to CV is the bare forest, and the
+    wrapper is judged by it.
 
-    Kept as its own test because the wrapper's opaque parameter surface is real
-    and is what the original mistake was built on. It is simply not the object
-    that gets cross-validated.
+    Kept as its own test because the original mistake was built on the
+    wrapper's parameter surface. That surface now exposes `n_jobs`, so the pin
+    rule looks through `get_model()` and reaches the same answer for the
+    wrapper as for the forest it holds: scikit-learn, left alone.
     """
     from models.rf import RFWrapper
     wrapper = RFWrapper(n_estimators=5, task_type='regression')
-    assert "n_jobs" not in wrapper.get_params()
-    assert _inner_thread_overrides(wrapper) == {}
+    assert wrapper.get_params()["n_jobs"] == -1
+    assert _inner_thread_overrides(wrapper) == {},         "a wrapper around a scikit-learn forest is judged as scikit-learn"
     assert wrapper.model.n_jobs == -1
     assert wrapper.get_model() is wrapper.model
     assert clone(wrapper.get_model()).get_params()["n_jobs"] == -1
+
+
+# ── the remainder of F-08: the forest that could not be pinned ───────────────
+#
+# `n_jobs=-1` was a literal inside `RFWrapper.__init__`. `get_params()` is the
+# `__init__` signature, so `clone()` rebuilt every copy at -1 and
+# `set_params(n_jobs=1)` on the wrapper set an attribute the forest never read.
+# The pin above is not taken for RandomForest on measurement, and that stays;
+# what changes is that the choice is now expressible at all.
+
+def _rf_frame(n=300, p=5, seed=0):
+    rng = np.random.RandomState(seed)
+    X = rng.rand(n, p)
+    y = X @ rng.randn(p) + rng.randn(n) * 0.1
+    return X, y
+
+
+def test_the_default_forest_is_the_one_main_built():
+    """No result moves: the default constructor builds exactly the forest the
+    literal used to — every parameter, including the seed."""
+    from models.rf import RFWrapper
+    from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+
+    for task, cls in (("regression", RandomForestRegressor),
+                      ("classification", RandomForestClassifier)):
+        built = RFWrapper(task_type=task).model
+        as_before = cls(n_estimators=500, max_depth=None, min_samples_leaf=10,
+                        n_jobs=-1, random_state=42)
+        assert type(built) is cls
+        assert built.get_params() == as_before.get_params()
+
+
+def test_n_jobs_round_trips_through_get_params_set_params_and_clone():
+    from models.rf import RFWrapper
+
+    wrapper = RFWrapper(n_estimators=5, n_jobs=1)
+    assert wrapper.get_params()["n_jobs"] == 1
+    assert wrapper.model.n_jobs == 1, "the constructor argument reaches the forest"
+
+    copied = clone(wrapper)
+    assert copied.get_params()["n_jobs"] == 1
+    assert copied.model.n_jobs == 1, "a clone rebuilds the forest with the same value"
+
+    wrapper.set_params(n_jobs=2, n_estimators=7)
+    assert wrapper.model.n_jobs == 2 and wrapper.model.n_estimators == 7,         "set_params reaches the forest, not just the wrapper's attribute"
+
+    wrapper.set_params(task_type="classification")
+    assert type(wrapper.model).__name__ == "RandomForestClassifier"
+    assert wrapper.model.n_jobs == 2 and wrapper.model.n_estimators == 7,         "a rebuilt forest keeps every other parameter"
+
+
+@pytest.mark.parametrize("task", ["regression", "classification"])
+def test_the_forest_is_identical_at_one_thread_and_at_every_core(task):
+    """The property that makes `n_jobs` a resource axis and not a modeling one.
+
+    Thread count changes the order trees are BUILT in, not how any tree is
+    built: each tree draws its bootstrap and its feature subsets from a seed
+    derived from `random_state` and its own index. So the split arrays of every
+    tree compare equal, and predictions differ by at most the float
+    accumulation order of the ensemble average — ml/eval.py measured 1.8e-15,
+    the same magnitude two runs of the unchanged code differ by.
+    """
+    from models.rf import RFWrapper
+
+    X, y = _rf_frame()
+    if task == "classification":
+        y = (y > np.median(y)).astype(int)
+
+    one = RFWrapper(n_estimators=12, min_samples_leaf=3, task_type=task, n_jobs=1)
+    every = RFWrapper(n_estimators=12, min_samples_leaf=3, task_type=task, n_jobs=-1)
+    one.fit(X, y)
+    every.fit(X, y)
+
+    for t1, t2 in zip(one.model.estimators_, every.model.estimators_):
+        assert np.array_equal(t1.tree_.feature, t2.tree_.feature)
+        assert np.array_equal(t1.tree_.threshold, t2.tree_.threshold)
+        assert np.array_equal(t1.tree_.value, t2.tree_.value)
+
+    np.testing.assert_allclose(one.predict(X), every.predict(X), rtol=0, atol=1e-12)
+    if task == "classification":
+        np.testing.assert_allclose(one.predict_proba(X), every.predict_proba(X),
+                                   rtol=0, atol=1e-12)
 
 
 # ── the environment pin, including the case joblib's own guard misses ────────
