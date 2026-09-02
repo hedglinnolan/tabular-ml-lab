@@ -343,18 +343,17 @@ def test_no_page_states_a_fixed_number_of_minutes_about_the_users_run():
     assert not offences, "\n".join(offences)
 
 
-def test_the_pin_would_catch_the_literals_this_pr_removed(tmp_path):
-    """The control: the sentences that used to be in the pages are offences."""
-    sample = tmp_path / "sample.py"
-    sample.write_text(
+def test_the_pin_would_catch_the_literals_this_pr_removed():
+    """The control: the sentences that used to be in the pages are offences.
+    Parsed from a string rather than a written file, so the repo write guard
+    has nothing to count."""
+    src = (
         'a = "This model may take 30-90 seconds to train..."\n'
         'b = "**Time:** ~5 minutes"\n'
         'c = "Expect 30 seconds to several minutes depending on dataset size."\n'
         'd = "one measured 9.1 min at 20,000 rows"\n'
-        'e = f"about {n} minutes"\n',
-        encoding="utf-8",
+        'e = f"about {n} minutes"\n'
     )
-    src = sample.read_text(encoding="utf-8")
     hits = [n.value for n in ast.walk(ast.parse(src))
             if isinstance(n, ast.Constant) and isinstance(n.value, str)
             and _DURATION.search(n.value) and "measured" not in n.value.lower()]
