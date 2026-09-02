@@ -273,3 +273,188 @@ def admission_verdict(rows: int, cols: int, filename: str,
         )
 
     return Verdict(warnings=tuple(warnings))
+
+
+
+# ── Excel: the one ingest path whose price is worth quoting before the parse ─
+#
+# The shape gate above runs after the parse, because a frame's true shape is
+# not known until it exists. For CSV that is fine — read_csv measured ~2 s per
+# 100 MB. Excel is different: the audit measured ~7 s per million cells, 56x
+# slower than CSV and the only ingest path with a superlinear exponent (1.21),
+# so a large workbook is parsed in full, for minutes, before anything at all
+# can be said about it. An .xlsx sheet's cell count can be read WITHOUT
+# parsing a cell: the worksheet part opens with a `<dimension ref="A1:AX20001"/>`
+# record, and reading it costs a zip directory lookup and a few KB — measured
+# 3 ms against 10 s for the parse of the same 12 MB workbook.
+
+#: Seconds to parse one million .xlsx cells, measured twice on the same
+#: 20,000 x 50 float sheet: ~7 s on the audit's 14-core box and 10.1 s on the
+#: 8-core Windows laptop this app targets. Two machines, so a range rather
+#: than a constant — the exponent below is portable and the coefficient is
+#: not, which is the rule the runtime estimator (F-10) is built on.
+EXCEL_SECONDS_PER_MILLION_CELLS = (7.0, 10.0)
+
+#: The audit's fitted exponent for Excel ingest in cells. Superlinear, and the
+#: only ingest path that is.
+EXCEL_PARSE_EXPONENT = 1.21
+
+#: Below this many cells the parse is a few seconds and a notice is friction
+#: on the ordinary spreadsheet. 500,000 cells is ~4-5 s at the measured rates.
+EXCEL_QUIET_BELOW_CELLS = 500_000
+
+#: The same threshold for a workbook whose cells cannot be counted — a .xls is
+#: not a zip, and an .xlsx from an unusual writer may carry no dimension
+#: record. The float sheet above measured 12.6 bytes per cell on disk, so
+#: this is roughly the byte size of the cell threshold.
+EXCEL_QUIET_BELOW_BYTES = 6 * 1024 * 1024
+
+
+def _column_number(letters: str) -> int:
+    n = 0
+    for ch in letters:
+        n = n * 26 + (ord(ch) - ord("A") + 1)
+    return n
+
+
+def excel_sheet_cells(file_bytes: bytes, sheet: int = 0) -> Optional[int]:
+    """Cells in one sheet of an .xlsx, from the sheet's dimension record.
+
+    The sheet index follows the workbook's own order (`xl/workbook.xml`,
+    resolved through its relationships file), which is the order
+    `pd.ExcelFile.sheet_names` reports and the page's selector offers. The
+    count includes the header row, because the parser reads it too.
+
+    `None` for anything that is not a readable .xlsx — a .xls is not a zip —
+    or for a sheet part with no dimension record; the caller then falls back
+    to the byte size. Never raises: a workbook this cannot read is exactly the
+    workbook `pd.read_excel` is about to be handed, and the parse's own error
+    is the one worth showing.
+    """
+    import io
+    import re
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+            names = set(archive.namelist())
+            if "xl/workbook.xml" not in names or "xl/_rels/workbook.xml.rels" not in names:
+                return None
+            workbook = archive.read("xl/workbook.xml").decode("utf-8", "replace")
+            sheet_ids = re.findall(r'<(?:\w+:)?sheet\b[^>]*?\b\w+:id="([^"]+)"', workbook)
+            if not 0 <= int(sheet) < len(sheet_ids):
+                return None
+            rels = archive.read("xl/_rels/workbook.xml.rels").decode("utf-8", "replace")
+            target = None
+            for element in re.findall(r"<Relationship\b[^>]*/?>", rels):
+                if re.search(r'\bId="%s"' % re.escape(sheet_ids[int(sheet)]), element):
+                    found = re.search(r'\bTarget="([^"]+)"', element)
+                    target = found.group(1) if found else None
+                    break
+            if not target:
+                return None
+            part = target.lstrip("/")
+            if not part.startswith("xl/"):
+                part = "xl/" + part
+            if part not in names:
+                return None
+            with archive.open(part) as handle:
+                head = handle.read(16 * 1024)
+    except Exception:
+        return None
+    found = re.search(rb'<dimension\s+ref="([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?"', head)
+    if not found:
+        return None
+    first_col, first_row, last_col, last_row = found.groups()
+    if last_col is None:
+        return 1
+    cols = _column_number(last_col.decode()) - _column_number(first_col.decode()) + 1
+    rows = int(last_row) - int(first_row) + 1
+    return max(rows, 0) * max(cols, 0)
+
+
+def excel_parse_seconds(cells: int) -> Tuple[float, float]:
+    """The measured range of seconds to parse `cells` of .xlsx: slow box, fast box."""
+    millions = max(int(cells), 0) / 1e6
+    lo, hi = EXCEL_SECONDS_PER_MILLION_CELLS
+    return (lo * millions ** EXCEL_PARSE_EXPONENT, hi * millions ** EXCEL_PARSE_EXPONENT)
+
+
+def _span(lo_seconds: float, hi_seconds: float) -> str:
+    """'about 40 seconds', 'about 1 to 2 minutes', 'about 1.2 to 1.8 hours'."""
+    if hi_seconds < 90:
+        lo, hi = int(round(lo_seconds / 5.0) * 5), int(round(hi_seconds / 5.0) * 5)
+        return f"about {lo} seconds" if lo == hi else f"about {lo} to {hi} seconds"
+    if hi_seconds < 3 * 3600:
+        lo, hi = int(round(lo_seconds / 60.0)), int(round(hi_seconds / 60.0))
+        return f"about {lo} minutes" if lo == hi else f"about {lo} to {hi} minutes"
+    lo, hi = lo_seconds / 3600.0, hi_seconds / 3600.0
+    return f"about {lo:.1f} to {hi:.1f} hours"
+
+
+def excel_price(size_bytes: Optional[int], filename: str,
+                cells: Optional[int]) -> Optional[str]:
+    """The sentence to show BEFORE an Excel workbook is parsed, or None.
+
+    None when the parse is a few seconds and the sentence would be friction.
+    Worded to stay true after the parse as well, because the upload page
+    re-renders while the file sits in the uploader and the notice stays on
+    screen above a table that has since loaded.
+    """
+    if cells is not None:
+        if cells < EXCEL_QUIET_BELOW_CELLS:
+            return None
+        lo, hi = excel_parse_seconds(cells)
+        return (
+            f"**{filename}** is an Excel workbook, and the sheet being read "
+            f"holds {cells:,} cells. Excel is the slowest format this app "
+            f"reads — measured at 7 to 10 seconds per million cells — so "
+            f"reading this sheet takes {_span(lo, hi)}, during which nothing "
+            f"can be said about the file. The same table saved as CSV reads "
+            f"about fifty times faster."
+        )
+    if not size_bytes or size_bytes < EXCEL_QUIET_BELOW_BYTES:
+        return None
+    return (
+        f"**{filename}** is a {size_bytes / (1024 * 1024):,.0f} MB Excel "
+        f"workbook whose cells could not be counted without reading it. Excel "
+        f"is the slowest format this app reads — measured at 7 to 10 seconds "
+        f"per million cells — so expect minutes rather than seconds, during "
+        f"which nothing can be said about the file. The same table saved as "
+        f"CSV reads about fifty times faster."
+    )
+
+
+def excel_batch_price(entries) -> Optional[str]:
+    """One sentence for the 'Add all N files' button, from `(filename, cells,
+    size_bytes)` triples for the Excel files in the batch, or None.
+
+    Counted sheets are summed into one span; workbooks that could not be
+    counted are named as such, above the byte threshold.
+    """
+    counted = [(name, cells) for name, cells, _ in entries if cells is not None]
+    uncounted = [name for name, cells, size in entries
+                 if cells is None and size and size >= EXCEL_QUIET_BELOW_BYTES]
+    total = sum(cells for _, cells in counted)
+    if total < EXCEL_QUIET_BELOW_CELLS and not uncounted:
+        return None
+    parts = []
+    if total >= EXCEL_QUIET_BELOW_CELLS:
+        lo, hi = excel_parse_seconds(total)
+        n = len(counted)
+        parts.append(
+            f"{n} of these {'is an' if n == 1 else 'are'} Excel "
+            f"workbook{'' if n == 1 else 's'} with {total:,} cells "
+            f"{'on the sheet being read' if n == 1 else 'between them'}: "
+            f"reading {'it' if n == 1 else 'them'} takes {_span(lo, hi)} "
+            f"(Excel measured 7 to 10 seconds per million cells; the same "
+            f"tables as CSV read about fifty times faster)."
+        )
+    if uncounted:
+        parts.append(
+            f"{', '.join(uncounted)} {'is a large Excel workbook' if len(uncounted) == 1 else 'are large Excel workbooks'} "
+            f"whose cells could not be counted without reading "
+            f"{'it' if len(uncounted) == 1 else 'them'}; expect minutes rather "
+            f"than seconds."
+        )
+    return " ".join(parts)
