@@ -133,7 +133,20 @@ def _py_files() -> List[str]:
                                          "site-packages", "build", "dist")]
             for name in filenames:
                 if name.endswith(".py"):
-                    out.append(os.path.relpath(os.path.join(dirpath, name), ROOT))
+                    # POSIX-RELATIVE, ON EVERY PLATFORM. `os.path.relpath`
+                    # emits `turbotab\test_x.py` on Windows, and every path
+                    # this tool compares against is `/`-joined: `git` output,
+                    # the `--files` a caller types, `WEB_PREFIX`, `HARNESS`,
+                    # `RECORD_FILES`, and the `startswith("turbotab/test_")`
+                    # that decides what a test file IS. So on Windows the
+                    # walk found 176 files and zero of them were tests, no
+                    # changed path ever mapped to a module, and the tool
+                    # printed `scoped: true, selected: 0` with exit 0 for a
+                    # change to `deck_faces.py` — its own headline failure,
+                    # delivered silently. The separator is normalized here,
+                    # at the one boundary where the OS hands paths in.
+                    rel = os.path.relpath(os.path.join(dirpath, name), ROOT)
+                    out.append(rel.replace(os.sep, "/"))
     for name in os.listdir(ROOT):
         if name.endswith(".py"):
             out.append(name)
@@ -208,7 +221,11 @@ def reaches(graph: Dict[str, Set[str]], seeds: Set[str]) -> Set[str]:
 
 def changed_files(since: str | None, explicit: Sequence[str] | None) -> List[str]:
     if explicit:
-        return sorted(set(explicit))
+        # The other boundary paths cross. A Windows shell hands over
+        # `turbotab\deck_faces.py`; the graph is keyed `turbotab/deck_faces.py`.
+        # `git` already emits `/` on every platform, so only the typed form
+        # needs the same treatment as the walk above.
+        return sorted({c.replace(os.sep, "/") for c in explicit})
     if since:
         args = ["git", "diff", "--name-only", f"{since}...HEAD"]
     else:
@@ -254,9 +271,13 @@ def select(changed: Sequence[str], closure: bool = False
     """
     graph, by_module = build_graph()
     path_to_module = {v: k for k, v in by_module.items()}
+    # One spelling of the prefix. The `os.sep` alternative that used to sit
+    # beside this was the only place the tool anticipated Windows, and it was
+    # the wrong place: it made THIS filter see the tests while every other
+    # comparison in the file still could not. `_py_files` now emits `/`, so a
+    # test file has exactly one shape here.
     tests = sorted(m for m, p in by_module.items()
-                   if p.startswith("turbotab" + os.sep + "test_")
-                   or p.startswith("turbotab/test_"))
+                   if p.startswith("turbotab/test_"))
 
     escalations = [c for c in changed
                    if any(c.endswith(e) or c == e for e in ESCALATORS)]
@@ -427,6 +448,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--pytest-args", action="store_true",
                     help="print only the selected paths, for `xargs pytest`")
     args = ap.parse_args(argv)
+
+    # THE REPORT MUST NOT DIE HALFWAY. The reason lines carry `←` and `—`,
+    # and a Windows pipe is cp1252, which has neither: the first selected
+    # file raised `UnicodeEncodeError` at position 6 of its own reason and
+    # the blind-spot list — printed every run, or so the docstring promises —
+    # was never reached. An empty selection prints no reason and so never
+    # tripped it, which is why this surfaced only once the walk above could
+    # see a test file on Windows. Keep the stream's encoding; refuse to let a
+    # glyph decide whether the caveats get printed. A no-op on a UTF-8 locale.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="backslashreplace")
 
     changed = changed_files(args.since, args.files)
     selected, escalations, notes, counts = select(changed, closure=args.closure)

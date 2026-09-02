@@ -44,9 +44,9 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs" / "turbotab"
-FINDINGS = json.loads((DOCS / "data" / "findings.json").read_text())
-REGISTER = json.loads((DOCS / "data" / "register.json").read_text())
-SCIENCE = (DOCS / "DOMAIN_SCIENCE.md").read_text()
+FINDINGS = json.loads((DOCS / "data" / "findings.json").read_text(encoding="utf-8"))
+REGISTER = json.loads((DOCS / "data" / "register.json").read_text(encoding="utf-8"))
+SCIENCE = (DOCS / "DOMAIN_SCIENCE.md").read_text(encoding="utf-8")
 
 
 #: Findings that REPORT the absence of rows. A row saying *these four have no
@@ -197,7 +197,7 @@ def test_every_classic_page_has_a_register_row_or_a_written_exemption(page):
 
     rows = [r for r in REGISTER if pattern.search(str(r.get("classic") or ""))]
     assert rows, (
-        f"{page} ({len(( ROOT / 'pages' / page).read_text().splitlines()):,} "
+        f"{page} ({len(( ROOT / 'pages' / page).read_text(encoding='utf-8').splitlines()):,} "
         f"lines) has no register row naming `Step {step}`. Add rows for what "
         f"it does — `classic-only` with a reason is a complete answer, and "
         f"'not ported because X' is the answer the register exists to hold.")

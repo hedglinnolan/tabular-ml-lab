@@ -114,6 +114,31 @@ categorical_features = [f for f in all_features if f not in numeric_cols]
 
 st.info(f"**Numeric features:** {len(numeric_features)} | **Categorical features:** {len(categorical_features)}")
 
+# ── decisions carried from the previous group's run ─────────────────────
+# "Now run the same analysis on Male" stages the settings this page's widgets
+# held for the previous group. They are applied HERE, before any of those
+# widgets is instantiated: written any earlier they would be dropped at the
+# end of a run that did not render them, and any later Streamlit refuses the
+# write. Every gate above has passed, so every widget below will render.
+from utils import replay as _replay
+_carried = _replay.claim_for_preprocess_page()
+if _carried:
+    _src = f"the {_carried['from_label']} run" if _carried.get("from_label") else "the previous run"
+    _what = []
+    if _carried["models"]:
+        _what.append(f"preprocessing settings for {', '.join(m.upper() for m in _carried['models'])}")
+    if _carried["picks"]:
+        _what.append(f"model picks ({', '.join(m.upper() for m in _carried['picks'])})")
+    st.info(
+        f"**Carried from {_src}:** {'; '.join(_what) if _what else 'your preprocessing settings'}. "
+        f"These are the choices, not the fits — click **Build Pipelines** to refit "
+        f"them on this group's rows. "
+        + ("The page is in Advanced mode so you can see exactly what was carried; "
+           "Smart Defaults would have re-derived every setting from this group's data."
+           if _carried.get("mode_forced") else ""),
+        icon="🔁",
+    )
+
 # ── High-cardinality one-hot guardrail ──────────────────────────
 # An ID-like categorical (hundreds+ of levels) silently explodes into that
 # many one-hot columns inside the pipeline. Warn unconditionally (both

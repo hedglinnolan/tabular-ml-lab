@@ -60,13 +60,24 @@ resolve_python() {
     # SEARCHED, NOT REPLACED: a worktree with its own venv still prefers it,
     # and $TURBOTAB_PYTHON still wins over both.
     main=$(git worktree list --porcelain 2>/dev/null | head -1 | cut -d' ' -f2-)
-    local candidate_venv
+    local candidate_venv candidate_python
     for candidate_venv in "${root}/venv" "${root}/turbotab/.venv" \
                           "${main}/venv" "${main}/turbotab/.venv"; do
-        if [ -n "${candidate_venv}" ] && [ -x "${candidate_venv}/bin/python" ]; then
-            printf '%s\n' "${candidate_venv}/bin/python"
-            return 0
-        fi
+        # BOTH LAYOUTS. A virtualenv keeps its interpreter at `bin/python` on
+        # POSIX and at `Scripts/python.exe` on Windows, where git runs these
+        # hooks under the sh it ships with. With only the first spelling, a
+        # Windows checkout with a fully provisioned `venv/` fell straight
+        # through to whatever the shell offered — the Microsoft Store's
+        # `python3` alias, which is a download prompt rather than an
+        # interpreter — and the hook printed GATES CANNOT RUN over an
+        # environment that could run every one of them.
+        for candidate_python in "${candidate_venv}/bin/python" \
+                                "${candidate_venv}/Scripts/python.exe"; do
+            if [ -n "${candidate_venv}" ] && [ -x "${candidate_python}" ]; then
+                printf '%s\n' "${candidate_python}"
+                return 0
+            fi
+        done
     done
     local candidate
     for candidate in python3 python; do

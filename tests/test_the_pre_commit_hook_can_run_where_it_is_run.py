@@ -67,6 +67,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -108,12 +109,43 @@ def _crosses(out: str) -> dict:
     return {k: "\n".join(v) for k, v in failures.items()}
 
 
+def _git_bash() -> list:
+    """The argv prefix that makes `.githooks/pre-commit` runnable here.
+
+    Empty on POSIX, where the shebang and the mode bit do the job and the
+    hook is run exactly as git runs it. On Windows a `#!/usr/bin/env bash`
+    file is not an executable: `subprocess.run([hook])` raised `WinError 193,
+    %1 is not a valid Win32 application` before the hook printed a byte, so
+    every assertion in this file was red without ever meeting its subject.
+    Git for Windows runs hooks under the sh it ships with, and that is the one
+    to use — a bare `bash` on PATH may be WSL's `System32\\bash.exe`, which
+    would run the hook on a different operating system against a translated
+    path and answer a question nobody asked.
+    """
+    if os.name != "nt":
+        return []
+    git = shutil.which("git")
+    for ancestor in (Path(git).resolve().parents if git else ()):
+        for rel in ("bin/bash.exe", "usr/bin/bash.exe"):
+            if (ancestor / rel).exists():
+                return [str(ancestor / rel)]
+    pytest.skip("Windows without Git for Windows' bash: the hook is a bash "
+                "script and nothing on this machine can run it")
+
+
 def _run_the_hook(cwd: Path, env_extra: dict = None):
     env = dict(os.environ)
     env.pop("TURBOTAB_PYTHON", None)
     env.update(env_extra or {})
-    return subprocess.run([str(HOOK)], cwd=str(cwd), env=env,
-                          capture_output=True, text=True, timeout=600)
+    # DECODED AS UTF-8, WHICH IS WHAT THE HOOK WRITES. Its ticks and crosses
+    # are `printf` of a UTF-8 source file, on every platform. `text=True`
+    # decodes with the locale, and on Windows that is cp1252 — so `✓` came
+    # back as `âœ"`, no gate label matched `_TICK` or `_CROSS`, and the
+    # positive control reported that a hook which had just printed six ticks
+    # reported on nothing. Identical to `text=True` on a UTF-8 locale.
+    return subprocess.run([*_git_bash(), str(HOOK)], cwd=str(cwd), env=env,
+                          capture_output=True, encoding="utf-8",
+                          errors="replace", timeout=600)
 
 
 def _main_checkout() -> Path:
@@ -122,6 +154,24 @@ def _main_checkout() -> Path:
                          cwd=str(ROOT), capture_output=True, text=True,
                          check=True)
     return Path(out.stdout.splitlines()[0].split(" ", 1)[1])
+
+
+def _provisioned_python() -> Path:
+    """The main checkout's `venv/` interpreter, in the layout this platform
+    builds: `bin/python` on POSIX, `Scripts/python.exe` on Windows.
+
+    Read off the disk in both spellings for the same reason `lib.sh` now
+    searches both: a test that looks for the POSIX name only skips on every
+    Windows machine, including the ones where the venv is fully provisioned,
+    and a skip in the environment the row is about is the `PARTIAL` this
+    file's docstring opens with. When neither exists the POSIX path is
+    returned so the skip still names the location the resolver looks in first.
+    """
+    venv = _main_checkout() / "venv"
+    for rel in ("bin/python", "Scripts/python.exe"):
+        if (venv / rel).exists():
+            return venv / rel
+    return venv / "bin" / "python"
 
 
 # ── the assertion the row is owed ───────────────────────────────────────────
@@ -202,7 +252,7 @@ def test_the_resolver_reaches_the_main_checkouts_environment(tmp_path):
     defect. Here the absence is genuinely environmental: nothing is asserted
     about a clone where nobody has run `make venv`.
     """
-    provisioned = _main_checkout() / "venv" / "bin" / "python"
+    provisioned = _provisioned_python()
     if not provisioned.exists():                           # pragma: no cover
         pytest.skip(f"{provisioned} does not exist, so there is no "
                     f"environment for the resolver to reach")
@@ -312,7 +362,7 @@ def _probed_names() -> list:
 
 def _measure_direct_imports(tmp_path) -> dict:
     """`{gate label: {top-level package}}`, measured by running each gate."""
-    python = _main_checkout() / "venv" / "bin" / "python"
+    python = _provisioned_python()
     commands = {
         "python parses": ["docs/turbotab/tools/parsecheck.py"],
         "ledger schema": ["docs/turbotab/tools/ledger.py", "check"],
@@ -350,7 +400,7 @@ def test_the_probe_covers_every_package_the_gates_import_directly(tmp_path,
     sees. So each gate is run under an import recorder that logs only
     first-party -> third-party edges.
     """
-    provisioned = _main_checkout() / "venv" / "bin" / "python"
+    provisioned = _provisioned_python()
     if not provisioned.exists():                           # pragma: no cover
         pytest.skip(f"{provisioned} does not exist, so no gate can be run")
 
@@ -389,7 +439,7 @@ def test_the_coverage_check_fails_on_the_list_that_filed_the_row(tmp_path):
     `("pandas", "pytest")` — the list `lib.sh` carried when the row was filed —
     and requires it to come back short.
     """
-    provisioned = _main_checkout() / "venv" / "bin" / "python"
+    provisioned = _provisioned_python()
     if not provisioned.exists():                           # pragma: no cover
         pytest.skip(f"{provisioned} does not exist, so no gate can be run")
 

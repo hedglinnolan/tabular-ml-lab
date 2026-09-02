@@ -233,9 +233,7 @@ def _switch_to(payload) -> None:
     except Exception:
         pass
     reset_downstream_results(clear_feature_engineering=True)
-    _restored = _replay.restore_decisions()
-    if _restored:
-        st.session_state["_replay_note"] = ", ".join(_restored)
+    _replay.restore_decisions()
     st.rerun()
 
 
@@ -272,6 +270,14 @@ def render_cohort_chip() -> None:
         """,
         unsafe_allow_html=True,
     )
+    # The switch promises the decisions come along. Until the pages that own
+    # those widgets have applied them, say what is waiting and where — a
+    # promise the researcher cannot see being kept is indistinguishable from
+    # one that was not.
+    from utils import replay as _replay
+    waiting = _replay.describe_pending_decisions()
+    if waiting:
+        st.sidebar.caption(f"🔁 {waiting}")
 
 
 def render_cohort_note(context: str = "") -> None:
@@ -331,19 +337,43 @@ def render_next_cohort(task_type: str, metrics: Optional[Dict[str, Any]] = None)
     st.info(
         f"**Your decisions come with you; nothing fitted does.** The features "
         f"you engineered are rebuilt from their formulas on {nxt}'s rows, and "
-        f"your preprocessing choices are carried over — so the two runs really "
-        f"do answer the same question. What is NOT carried is anything with a "
-        f"number learned from these people: a scaler's mean, an imputer's "
-        f"median, a PCA's components. Those are refit on {nxt}'s own training "
-        f"rows, because reusing them would leak this group into {nxt}'s results "
-        f"and give you a number nobody could reproduce. Anything that cannot "
-        f"be rebuilt automatically is named on the Feature Engineering page "
-        f"rather than dropped in silence.",
+        f"your preprocessing settings, model picks and hyperparameter choices "
+        f"are carried over — so the two runs really do answer the same "
+        f"question. What is NOT carried is anything with a number learned from "
+        f"these people: a scaler's mean, an imputer's median, a PCA's "
+        f"components, a tuned hyperparameter. Those are refit on {nxt}'s own "
+        f"training rows, because reusing them would leak this group into "
+        f"{nxt}'s results and give you a number nobody could reproduce. "
+        f"Anything that cannot be rebuilt automatically is named on the "
+        f"Feature Engineering page rather than dropped in silence.",
         icon="🔁",
     )
+    kept_out = _report_artifacts_present()
+    if kept_out:
+        st.warning(
+            f"**The {', '.join(kept_out)} for {run['label']} will not be kept.** "
+            f"They describe models fitted on these people and would be wrong "
+            f"under {nxt}'s heading. Download them from Report & Export before "
+            f"switching if you want them.",
+            icon="📄",
+        )
     if st.button(f"Now run the same analysis on {nxt}", type="primary",
                  key="cohort_next_btn"):
         _advance_to(run["column"], nxt)
+
+
+_REPORT_ARTIFACTS = (
+    ("methods_section", "Methods draft"),
+    ("latex_report", "LaTeX report"),
+    ("compiled_pdf", "compiled PDF"),
+    ("manuscript_export_context", "manuscript export"),
+)
+
+
+def _report_artifacts_present() -> List[str]:
+    """Names of the export artifacts the switch is about to discard."""
+    return [name for key, name in _REPORT_ARTIFACTS
+            if st.session_state.get(key) is not None]
 
 
 def _runs_table(done: Sequence[Any]) -> pd.DataFrame:
@@ -353,12 +383,20 @@ def _runs_table(done: Sequence[Any]) -> pd.DataFrame:
         for k in r.metrics:
             if k not in metric_keys:
                 metric_keys.append(k)
+    any_constant = any(getattr(r, "dropped_features", None) for r in done)
     for r in done:
         row = {"Group": r.label, "Trained on": f"{r.n_train:,}",
                "Held out": f"{r.n_test:,}"}
         for k in metric_keys:
             v = r.metrics.get(k)
             row[k] = f"{v:.3f}" if isinstance(v, float) else ("—" if v is None else v)
+        # The chooser tells run 1 which predictors go flat inside its group
+        # and to "check both". This is the only place both runs are side by
+        # side, so this is where that check can actually be made.
+        if any_constant:
+            flat = list(getattr(r, "dropped_features", None) or [])
+            row["Constant in this group"] = ", ".join(flat[:6]) + (
+                f" (+{len(flat) - 6})" if len(flat) > 6 else "") if flat else "—"
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -394,7 +432,5 @@ def _advance_to(column: str, label: str) -> None:
     except Exception:
         pass
     reset_downstream_results(clear_feature_engineering=True)
-    _restored = _replay.restore_decisions()
-    if _restored:
-        st.session_state["_replay_note"] = ", ".join(_restored)
+    _replay.restore_decisions()
     st.rerun()
