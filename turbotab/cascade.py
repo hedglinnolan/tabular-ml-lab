@@ -79,6 +79,15 @@ STAGES: Sequence[Stage] = (
             # pipelines, or page 06 badges a model "tuned for this model" with
             # nothing left that tuned it.
             "preprocess_built_model_keys",
+            # What the recipe DID to this data — the counts page 10 prints
+            # beside the Methods' missing-data sentence. It describes one
+            # pipeline built on one set of rows.
+            "preprocessing_summary",
+            # WHO the results are about (`STATE-037`). The row filter is a
+            # preprocessing control (`pages/05_Preprocess.py:1098`), and
+            # `get_data()` masks every page's frame by it, so a filter left
+            # over from a superseded config keeps shrinking the study.
+            "filtered_data",
         }),
         provenance_sections=frozenset({"preprocessing"}),
     ),
@@ -93,6 +102,10 @@ STAGES: Sequence[Stage] = (
             "split_config", "target_transformer", "target_label_encoder",
             "y_train_original", "y_val_original", "y_test_original",
             "cv_strategy", "cv_groups_train",
+            # The realized target trim of one split (`CONTRACT-021`) — the
+            # thresholds actually applied, not the ones configured. Stale the
+            # moment the split is redrawn.
+            "split_trim_record",
         }),
         provenance_sections=frozenset({"split"}),
     ),
@@ -111,6 +124,13 @@ STAGES: Sequence[Stage] = (
         produces=frozenset({
             "permutation_importance", "partial_dependence",
             "explainability_robustness", "shap_results", "shap_matplotlib_figs",
+            # Written by pages/07 beside `partial_dependence` and drawn by
+            # pages/10. Kept apart from it once and survived a reset alone.
+            "pdp_results",
+            # External-cohort metrics, also pages/07. `ml/publication.py`
+            # states that external validation was performed on the strength
+            # of them, so they must not outlive the models they scored.
+            "external_validation_results",
         }),
         provenance_sections=frozenset({"explainability"}),
     ),
@@ -120,6 +140,11 @@ STAGES: Sequence[Stage] = (
         produces=frozenset({
             "bootstrap_results", "baseline_results", "calibration_results",
             "sensitivity_seed_results",
+            # pages/08's feature-dropout sensitivity. `ml/publication.py`
+            # asserts a sensitivity analysis was performed from these.
+            "sensitivity_dropout_results", "sensitivity_dropout_baseline",
+            # Agreement between predicted and observed values, per model pair.
+            "bland_altman_results",
         }),
     ),
     Stage(
@@ -129,8 +154,11 @@ STAGES: Sequence[Stage] = (
         depends_on=frozenset({"data"}),
         produces=frozenset({
             "eda_results", "eda_insights", "dataset_profile",
+            # WHICH ROWS `dataset_profile` describes. A scope note that
+            # outlives its profile labels the next one's numbers.
+            "dataset_profile_scope",
             "hypothesis_test_results", "table1_df", "table1_metadata",
-            "custom_table1_tests",
+            "custom_table1_tests", "table1_custom_test_footnotes",
         }),
         provenance_sections=frozenset({"eda"}),
     ),
@@ -153,6 +181,12 @@ STAGES: Sequence[Stage] = (
             "latex_report", "report_best_model", "report_model_selection",
             "report_explain_selection", "report_include_results",
             "report_include_llm", "manuscript_context",
+            # A stale `manuscript_export_context` WINS over rebuilding —
+            # pages/10 only rebuilds when it is None — so it is the most
+            # dangerous survivor here, not the least. The compiled PDF and
+            # the manuscript's Table 1 are artifacts of one dead model.
+            "manuscript_export_context", "compiled_pdf",
+            "manuscript_table1_df", "manuscript_table1_metadata",
         }),
     ),
 )
@@ -249,3 +283,81 @@ def missing_from(other_keys: Iterable[str],
     to-do list for reconciling it.
     """
     return keys_to_clear(changed, keep=keep) - set(other_keys)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Branch keys: which of the above belong to ONE COHORT rather than to the study
+#
+# A cohort run is "same question, different people" (`utils/cohorts.py`). When
+# the analysis switches from the women to the men, the *decisions* — the
+# engineering recipe, the preprocessing choices, the selection, the model picks
+# — are carried across unchanged, and everything that was FITTED or MEASURED is
+# rebuilt on the new rows. Persisting a cohort's work means archiving exactly
+# the second group, and the boundary between the two is one rule:
+#
+#     A key is per-branch iff its value was COMPUTED FROM ROWS.
+#
+# That cuts across the stages rather than at a stage boundary — `preprocessing`
+# owns both `preprocessing_config` (a choice) and `preprocessing_pipeline` (a
+# fit) — so the set is derived from the graph minus a named list of decisions,
+# not hand-maintained. A result key registered on a stage above is per-branch
+# by default; making it shared is the exception that has to be argued for here.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: The session key holding archived branches, `Dict[Tuple[str, str], Snapshot]`.
+#: Declared here, in the headless module, because the thing that must never
+#: forget it is `utils.session_state.reset_downstream_results` — see
+#: `SHARED_DECISION_KEYS` below for why the archive is dropped by default.
+BRANCH_ARCHIVE_KEY = "cohort_branch_archive"
+
+#: Results that are a CHOICE the researcher made, not a measurement of rows.
+#: They survive a cohort switch, so they are never archived and never restored.
+#:
+#: `feature_selection_results` / `consensus_features` are the arguable pair.
+#: Strictly the ranking was computed on whichever cohort's training rows were
+#: active when Feature Selection ran, so it is per-branch. But the *selection*
+#: it produced (`selected_features`) is shared by construction — same question,
+#: same predictors — and making the ranking per-branch would leave a freshly
+#: created branch with an empty page 04 inviting a re-selection that changes
+#: the shared decision under every other branch. Shared, with page 04 saying
+#: whose rows produced the ranking.
+SHARED_DECISION_KEYS: FrozenSet[str] = frozenset({
+    "preprocessing_config", "preprocessing_config_by_model",
+    "feature_selection_results", "consensus_features",
+})
+
+#: State describing `df_engineered` that no stage `produces`. The production
+#: reset writes these to `False` / `[]` rather than clearing them, which is why
+#: the equivalence gate excludes them by name — but they describe one cohort's
+#: engineered frame and travel with it.
+_FE_FRAME_STATE: FrozenSet[str] = frozenset({
+    "feature_engineering_applied", "engineered_feature_names",
+})
+
+#: Every key a cohort branch owns. Snapshot these, restore these, and the flat
+#: session keys are the active branch's view of the study.
+BRANCH_KEYS: FrozenSet[str] = frozenset(
+    (all_result_keys() | _FE_FRAME_STATE) - SHARED_DECISION_KEYS
+)
+
+#: Pages whose insights, methodology entries and provenance describe one
+#: cohort's rows. The ledger and the methodology log are keyed by page rather
+#: than by session key, so the branch/shared split for them is stated here in
+#: the same module, from the same rule.
+#:
+#: Pages 02–04 are excluded deliberately: under a branch model the EDA and the
+#: selection are shared work over the study, and the sequential flow that makes
+#: them look per-cohort is what the up-front cohort declaration retires.
+BRANCH_PAGES: FrozenSet[str] = frozenset({
+    "05_Preprocess", "06_Train_and_Compare", "07_Explainability",
+    "08_Sensitivity_Analysis", "09_Hypothesis_Testing",
+})
+
+#: Provenance sections a branch does NOT own, because they record a decision
+#: rather than a measurement. The branch's sections are
+#: `workflow_provenance.downstream_sections()` minus these — derived there
+#: rather than here, because that record's schema is the authority on which
+#: sections exist and this module must stay headless.
+SHARED_PROVENANCE_SECTIONS: FrozenSet[str] = frozenset({
+    "feature_engineering", "feature_selection",
+})

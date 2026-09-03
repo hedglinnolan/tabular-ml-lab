@@ -9,6 +9,9 @@ from sklearn.pipeline import Pipeline
 import pandas as pd
 import numpy as np
 
+# Headless — the key name lives with the graph that defines what a branch is.
+from turbotab.cascade import BRANCH_ARCHIVE_KEY
+
 
 @dataclass
 class TaskTypeDetection:
@@ -503,7 +506,8 @@ _REPORT_KEYS: tuple = (
 
 def reset_downstream_results(clear_feature_engineering: bool = True,
                              restore_pre_fe_features: bool = True,
-                             clear_feature_selection: bool = True):
+                             clear_feature_selection: bool = True,
+                             preserve_branches: bool = False):
     """Clear every RESULT computed from the current data, keeping configuration.
 
     Single source of truth for downstream invalidation — used by
@@ -537,7 +541,35 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
 
     Until then the rule is: a key that anything reads bare is emptied in place;
     everything else is popped.
+
+    **`preserve_branches` (`BRANCH-001`).** Archived cohort branches are dropped
+    here, by default, on every call. A branch is a set of results that answered
+    one question about one group of people; every caller that reaches this
+    function changed that question — the data, the target, the engineering
+    recipe, the selection, the preprocessing rule, the seal. The only caller
+    that has not is a cohort switch, which changes *who the rows are* and
+    nothing else, and it is the only one that may pass True.
+
+    The drop lives INSIDE the reset rather than beside its call sites so that a
+    caller written without knowing branches exist cannot leak a stale one by
+    omission. There are twelve such callers today and the thirteenth is the
+    dangerous one.
+
+    **Fresh objects, never `.clear()` (`BRANCH-002`).** Every line below assigns
+    a new container, sets None, or pops. Nothing is emptied in place. A cohort
+    switch snapshots the live objects and then calls this function, so clearing
+    one in place would empty the snapshot too and lose the branch it had just
+    banked. `tests/test_the_branch_archive_survives_the_reset.py` pins it.
     """
+    # Archived cohort branches, unless the caller is the cohort switch. See the
+    # `preserve_branches` note above: a branch is only comparable under the
+    # question it answered, and every caller that reaches here without the flag
+    # changed that question. Dropping it first also means the snapshot a switch
+    # took moments ago is already safe in the archive before anything below
+    # touches the live objects.
+    if not preserve_branches:
+        st.session_state.pop(BRANCH_ARCHIVE_KEY, None)
+
     # Feature engineering (df_engineered would otherwise keep serving stale
     # data through get_data()'s precedence)
     if clear_feature_engineering:

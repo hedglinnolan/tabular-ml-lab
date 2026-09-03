@@ -166,44 +166,44 @@ def test_the_dag_matches_the_production_cascade(flags):
         f"the DAG would clear keys the real cascade leaves: {sorted(only_declared)}")
 
 
-# Keys the production function clears that the DAG does not yet declare on any
-# stage. Naming them is the whole point: the gate above seeds only
-# `cascade.all_result_keys()`, so a key the graph has never heard of cannot fail
-# it — the equivalence reads green while the graph is incomplete, which is the
-# state `STATE-038`'s ledger note describes ("turbotab/cascade.py is that
-# registry; it is not yet authoritative for these keys").
+# The DAG now declares every key the production cascade clears. This list used
+# to name fourteen it did not, each found surviving a reset and reaching the
+# manuscript:
 #
-# Every one of these was found surviving a reset and reaching the manuscript,
-# and was added to the production registry in `utils/session_state.py`:
 #   pdp_results …………………………… pages/07 writes it, pages/10 draws it
 #   sensitivity_dropout_* ………… ml/publication asserts a sensitivity analysis
 #   manuscript_export_context … a stale one WINS over rebuilding
 #   compiled_pdf, manuscript_table1_* … export artifacts of a dead model
 #   bland_altman_results, preprocessing_summary, table1_custom_test_footnotes
+#   external_validation_results … ml/publication asserts external validation
+#   split_trim_record ……………… the realized target trim of one split
+#   dataset_profile_scope ……… WHICH ROWS `dataset_profile` describes
 #   filtered_data ……………………… WHO the results are about (`STATE-037`)
-# The DAG has to grow stages for them before it can replace the function.
-_NOT_YET_DECLARED_IN_THE_DAG = {
-    "pdp_results",
-    "sensitivity_dropout_results", "sensitivity_dropout_baseline",
-    "manuscript_export_context", "compiled_pdf",
-    "manuscript_table1_df", "manuscript_table1_metadata",
-    "bland_altman_results", "preprocessing_summary",
-    "table1_custom_test_footnotes",
-    "filtered_data",
-    # Registered when external validation gained persistence (IMPORT-213 wave):
-    # cleared by the production reset so a new dataset cannot inherit another
-    # cohort's external metrics; the DAG has no external-validation stage yet.
-    "external_validation_results",
-    # Registered in the STATE-037/040/044 repair wave. Both belong to stages the
-    # DAG already has — the split and the EDA profile — but as SECOND keys those
-    # stages do not declare:
-    #   split_trim_record ……… the realized target trim of one split
-    #                          (`CONTRACT-021`), stale the moment it is redrawn
-    #   dataset_profile_scope … WHICH ROWS `dataset_profile` describes; a scope
-    #                          note outliving its profile labels the next one
-    "split_trim_record",
-    "dataset_profile_scope",
-}
+#
+# They were promoted onto the stages that produce them so that
+# `cascade.all_result_keys()` is a complete inventory — which is what
+# `cascade.BRANCH_KEYS` is derived from, and a cohort branch that failed to
+# archive one of them would restore a stale value under the next group's
+# heading. The list stays, empty, because the invariant below is that it must
+# stay empty: a key added to the production registry without a stage lands
+# here as a failure rather than in silence.
+_NOT_YET_DECLARED_IN_THE_DAG: set = set()
+
+
+def test_the_dag_is_the_complete_inventory():
+    """Nothing is excused from the coverage gate below.
+
+    The exclusion list is the graph admitting it is incomplete, and
+    `cascade.BRANCH_KEYS` — the set a cohort switch snapshots and restores —
+    is derived from `all_result_keys()`. A key excused here is a key a branch
+    would not carry, which is a stale value under the next cohort's heading.
+    Re-populating this list is therefore a decision, not a stopgap.
+    """
+    assert _NOT_YET_DECLARED_IN_THE_DAG == set(), (
+        "the DAG is incomplete again for: "
+        f"{sorted(_NOT_YET_DECLARED_IN_THE_DAG)}. Give each one a stage in "
+        "turbotab/cascade.py — BRANCH_KEYS is derived from the stages, so an "
+        "undeclared key is one a cohort branch silently fails to archive.")
 
 
 def test_the_dag_declares_every_key_the_production_cascade_clears():
@@ -227,14 +227,17 @@ def test_the_dag_declares_every_key_the_production_cascade_clears():
 
     assert not undeclared, (
         "the production cascade clears keys no DAG stage declares: "
-        f"{sorted(undeclared)}. Give them a stage, or add them to "
-        "_NOT_YET_DECLARED_IN_THE_DAG with the reason.")
-    # And the exclusion list must not outlive its keys: one that the function
-    # no longer clears is a stale excuse hiding a real gap.
-    stale = _NOT_YET_DECLARED_IN_THE_DAG - cleared
-    assert not stale, (
-        f"these are excluded from the coverage gate but the cascade no longer "
-        f"clears them: {sorted(stale)}")
+        f"{sorted(undeclared)}. Give them a stage in turbotab/cascade.py.")
+    # And the other direction, which the exclusion list used to make
+    # unaskable: a stage that declares a key the production function does NOT
+    # clear is a key a cohort branch would archive and restore while the live
+    # analysis kept its own. Only the two feature-engineering flags are
+    # exempt, because the function resets them to False/[] rather than
+    # clearing them, which `_cleared` cannot see.
+    declared_but_kept = (set(cascade.all_result_keys()) - cleared) - _NOT_STAGE_RESULTS
+    assert not declared_but_kept, (
+        "the DAG declares keys the production cascade does not clear: "
+        f"{sorted(declared_but_kept)}")
 
 
 def test_keeping_a_stage_does_not_keep_its_descendants():
