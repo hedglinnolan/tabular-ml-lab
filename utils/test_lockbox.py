@@ -803,8 +803,111 @@ def record_lockbox_open(source: str = "") -> Optional[Dict[str, Any]]:
                  + (f" ({source})" if source else ""))
     lb["opened_at"] = opens
     lb["opened_count"] = int(lb.get("opened_count", 0)) + 1
+    # WHOSE slice was opened. One seal is drawn on the whole study before any
+    # cohort exists, so two runs open two DISJOINT halves of it — and a bare
+    # total of 2 reads as "the same rows were scored twice", which is the one
+    # thing it does not mean. The tag goes in a structured field rather than
+    # inside the `opened_at` string because the chip parses those strings for
+    # the source name (`render_lockbox_chip`), and a suffix outside the
+    # parenthetical would silently empty its source list.
+    by_cohort = lb.get("opened_by_cohort")
+    if not isinstance(by_cohort, dict):
+        by_cohort = {}
+    per_source = dict(by_cohort.get(open_tag()) or {})
+    _src = source or "unspecified"
+    per_source[_src] = int(per_source.get(_src, 0)) + 1
+    by_cohort[open_tag()] = per_source
+    lb["opened_by_cohort"] = by_cohort
     _state()["test_lockbox"] = lb
     return lb
+
+
+#: What a run with no cohort restriction is tagged as. Not "" — a blank tag in
+#: a breakdown reads as a missing value rather than as the whole study.
+EVERYONE_TAG = "everyone"
+
+#: Where a seal's counts go when the seal itself is destroyed. Kept OUTSIDE the
+#: lockbox dict, because one of the two destruction paths deletes that dict
+#: entirely rather than rebuilding it, and a count parked inside it would go
+#: with it — after which the Methods is free to say the set was "accessed only
+#: for the final evaluation" about a set that had been opened four times.
+RETIRED_KEY = "test_lockbox_retired"
+
+
+def open_tag(run: Optional[Dict[str, Any]] = None) -> str:
+    """The cohort an opening belongs to: `sex=Female`, or `everyone`."""
+    if run is None:
+        try:
+            from utils.cohorts import active_cohort
+            run = active_cohort()
+        except Exception:
+            run = None
+    if not run:
+        return EVERYONE_TAG
+    return f"{run.get('column')}={run.get('label')}"
+
+
+def opens_by_cohort() -> Dict[str, Dict[str, int]]:
+    """`{cohort tag: {source: count}}` for the CURRENT seal."""
+    lb = get_lockbox()
+    if lb is None:
+        return {}
+    by_cohort = lb.get("opened_by_cohort")
+    return by_cohort if isinstance(by_cohort, dict) else {}
+
+
+def opens_here(tag: Optional[str] = None, scoring_only: bool = False) -> int:
+    """Openings of ONE cohort's slice. Defaults to the active run's.
+
+    `scoring_only` excludes page 08's seed sweep, which re-partitions the
+    sealed rows and reports no held-out number — the same distinction the chip
+    already draws for the study total.
+    """
+    per_source = opens_by_cohort().get(tag if tag is not None else open_tag()) or {}
+    return sum(n for src, n in per_source.items()
+               if not (scoring_only and str(src).startswith(_SWEEP_SOURCE)))
+
+
+def cohort_open_breakdown() -> str:
+    """`Female 1, Male 1` — the counts a bare total cannot carry. '' if one."""
+    per = {tag: sum(counts.values()) for tag, counts in opens_by_cohort().items()}
+    per = {t: n for t, n in per.items() if n}
+    if len(per) < 2:
+        return ""
+    def _name(tag: str) -> str:
+        if tag == EVERYONE_TAG:
+            return "the whole study"
+        return tag.split("=", 1)[1] if "=" in tag else tag
+    return ", ".join(f"{_name(t)} {n}" for t, n in per.items())
+
+
+def retire_seal(lb: Optional[Dict[str, Any]]) -> None:
+    """Park a seal's access record before the seal stops existing.
+
+    Both paths that end a seal reach here: the stale-labels retirement, which
+    DELETES the dict, and the redraw, which rebuilds it with `opened_count: 0`.
+    Neither could otherwise leave any trace that a previous held-out set had
+    been opened at all.
+    """
+    if not lb or not int(lb.get("opened_count") or 0):
+        return
+    from datetime import datetime
+    record = {
+        "signature": lb.get("signature"),
+        "target_col": lb.get("target_col"),
+        "opened_count": int(lb.get("opened_count") or 0),
+        "opened_by_cohort": dict(lb.get("opened_by_cohort") or {}),
+        "retired_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    retired = list(_state().get(RETIRED_KEY) or [])
+    retired.append(record)
+    _state()[RETIRED_KEY] = retired
+
+
+def retired_seals() -> List[Dict[str, Any]]:
+    """Seals that were opened and then replaced or deleted, oldest first."""
+    out = _state().get(RETIRED_KEY)
+    return list(out) if isinstance(out, list) else []
 
 
 def reopen_notice(opens: Optional[int] = None) -> str:
@@ -895,6 +998,7 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
                      or not all(lbl in set(df.index) for lbl in lb["labels"]))
             if stale:
                 from utils.session_state import reset_downstream_results
+                retire_seal(lb)          # the dict is about to cease to exist
                 _state().pop("test_lockbox", None)
                 reset_downstream_results(clear_feature_engineering=False)
                 _state()["_lockbox_not_sealed"] = {
@@ -1191,6 +1295,12 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
     if existing is not None and existing.get("labels") != lockbox["labels"]:
         # Different test set → previous results are not comparable
         from utils.session_state import reset_downstream_results
+        # `lockbox` above is built with `opened_count: 0`. Carry the outgoing
+        # seal's record out first, or the Methods can go back to saying the set
+        # was "accessed only for the final evaluation" the moment a redraw
+        # happens — which is exactly what "run Female, run Male, go back to
+        # everyone, change the test fraction" does.
+        retire_seal(existing)
         reset_downstream_results(clear_feature_engineering=False)
         # Let the page disclose the redraw — a silent reset reads as data loss
         _state()["_lockbox_redrawn"] = True
@@ -1330,6 +1440,24 @@ def render_lockbox_status(context: str = "") -> None:
     else:
         _open_phrase = f"**opened {_opens} times** at {_where}"
 
+    # WHOSE slice each of those openings was. Computed once, above the branch,
+    # for the same reason `_scoreable_here` is: there are three captions below
+    # and the study-total wording matters most on the one that renders after
+    # *Go back to analyzing everyone* — the state in which two disjoint slices
+    # have been scored and nothing on screen says they were disjoint.
+    _breakdown = cohort_open_breakdown()
+    if _breakdown:
+        _open_phrase += (
+            f" — {_breakdown}, which are disjoint slices of it, so no row was "
+            f"scored twice")
+    _retired = retired_seals()
+    if _retired:
+        _prior = sum(int(r.get("opened_count") or 0) for r in _retired)
+        _open_phrase += (
+            f". An earlier held-out set was drawn and opened {_prior} "
+            f"time{'' if _prior == 1 else 's'} before this one replaced it"
+        )
+
     # WHAT WAS MEASURED, AND THE RISK THAT FOLLOWS FROM IT (`DRIVE-069`
     # finding 12). The warning below used to assert a mechanism — "once a
     # choice is made after seeing a held-out number, that number is part of
@@ -1421,11 +1549,23 @@ def render_lockbox_status(context: str = "") -> None:
                 f"for this outcome, go back to analyzing everyone first."
             )
             return
+        # THIS run's openings, not the study's. The two differ the moment a
+        # second group is analyzed, and the number a researcher writes in the
+        # Methods for this group is this one.
+        _here_opens = opens_here()
+        if _here_opens == 0:
+            _here_phrase = "This slice has not been scored yet"
+        elif _here_opens == 1:
+            _here_phrase = "This slice has been scored once"
+        else:
+            _here_phrase = f"**This slice has been scored {_here_opens} times**"
         st.caption(
             f"🔒 Test set for this run ({run['column']} = {run['label']}): "
             f"n={n_here:,} — this run's share of the {lb['n_test']:,} rows drawn "
-            f"once at upload, before the study was split, so every run is "
-            f"evaluated against the same held-out people. Sealed set "
+            f"once at upload, before the study was split. Each run is evaluated "
+            f"against its own slice of that one held-out set, which is what "
+            f"makes the runs comparable; they are not evaluated against the "
+            f"same people. {_here_phrase}. Across all groups the sealed set is "
             f"{_open_phrase}.{extra}"
         )
         return
