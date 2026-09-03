@@ -373,32 +373,45 @@ class TestTheWordsMatchWhatHappens:
             st.sidebar.caption = real
         assert not captions
 
-    def test_the_switch_warns_that_the_report_will_not_be_kept(self):
+    def test_the_switch_says_the_report_is_kept_with_its_branch(self):
+        """It used to say the opposite, and the opposite used to be true.
+
+        Before branches, switching cohorts destroyed the Methods draft, the
+        LaTeX report and the compiled PDF, and this page said so and told you
+        to download them first. They are now archived with the run that
+        produced them. The old warning would be a lie — and a lie that makes a
+        researcher do unnecessary work before every switch.
+        """
         from utils.cohort_ui import render_next_cohort
         _decide_in_female()
         st.session_state["latex_report"] = "\\documentclass{article}"
         st.session_state["compiled_pdf"] = b"%PDF"
-        warned, real = [], st.warning
-        st.warning = lambda body, **kw: warned.append(str(body))
+        said, real = [], st.success
+        st.success = lambda body, **kw: said.append(str(body))
         try:
             render_next_cohort("classification", {"Best model": "logreg", "ROC-AUC": 0.7})
         finally:
-            st.warning = real
-        hit = [w for w in warned if "will not be kept" in w]
-        assert hit, warned
+            st.success = real
+        hit = [w for w in said if "are kept" in w]
+        assert hit, said
         assert "LaTeX report" in hit[0] and "compiled PDF" in hit[0]
-        assert "Female" in hit[0] and "Report & Export" in hit[0]
+        assert "Female" in hit[0]
 
-    def test_no_report_means_no_warning_about_one(self):
+    def test_nothing_still_claims_the_artifacts_are_lost(self):
+        """The sentence this replaced must not survive anywhere on the page."""
+        import utils.cohort_ui as cu
+        assert "will not be kept" not in inspect.getsource(cu)
+
+    def test_no_report_means_no_claim_about_one(self):
         from utils.cohort_ui import render_next_cohort
         _decide_in_female()
-        warned, real = [], st.warning
-        st.warning = lambda body, **kw: warned.append(str(body))
+        said, real = [], st.success
+        st.success = lambda body, **kw: said.append(str(body))
         try:
             render_next_cohort("classification", {"Best model": "logreg", "ROC-AUC": 0.7})
         finally:
-            st.warning = real
-        assert not any("will not be kept" in w for w in warned)
+            st.success = real
+        assert not any("are kept" in w for w in said)
 
     def test_the_button_text_names_every_kind_of_decision_it_carries(self):
         import utils.cohort_ui as cu
