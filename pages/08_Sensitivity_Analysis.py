@@ -92,6 +92,12 @@ render_page_coaching("08_Sensitivity_Analysis")
 if st.session_state.get("workflow_mode", "quick") == "quick":
     st.info("🧭 **Advanced workflow step** — Return here after the quick workflow to demonstrate result robustness.")
 
+# ── Which group is this page about? ──────────────────────────────────
+# Above the trained-models gate: switching to a group that HAS models is the
+# way out of the state that gate describes.
+from utils.cohort_ui import render_branch_picker, render_cohort_note
+render_branch_picker("08_Sensitivity_Analysis")
+
 # ── Check prerequisites ──────────────────────────────────────────────
 data_config = st.session_state.get("data_config")
 trained_models = st.session_state.get("trained_models", {})
@@ -100,6 +106,12 @@ model_results = st.session_state.get("model_results", {})
 if not trained_models:
     st.warning("⚠️ No trained models found. Please run **Train & Compare** first.")
     st.stop()
+
+# Every number below describes one group. This page said so nowhere — its only
+# statement of scope was the lockbox chip, which talks about rows held out, not
+# about who the rows are.
+render_cohort_note("Every seed sweep and dropout below is measured on these "
+                   "people only.")
 
 X_train = st.session_state.get("X_train")
 X_test = st.session_state.get("X_test")

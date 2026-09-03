@@ -399,3 +399,64 @@ def _advance_to(column: str, label: str) -> None:
         list(getattr(dc, "feature_cols", []) or []))
     switch_branch((full, plan, cell, target_col, [c for c, _ in lost]))
     st.rerun()
+
+
+# ── picking a branch is switching to it ──────────────────────────────────
+
+def render_branch_picker(page_key: str) -> None:
+    """Choose which cohort this page explains, and switch to it.
+
+    Rendered ABOVE the page's "train a model first" gate on purpose. The whole
+    point of branches is that the researcher can be standing in an untrained
+    group and still reach the trained one; a picker below the gate would be
+    invisible in exactly the state it exists for.
+
+    THE PICKER *IS* THE SWITCH. It does not filter what this page displays out
+    of some per-cohort store — it calls `cohorts.switch_branch`, so the sidebar
+    chip, `get_data()`, the provenance record and the export all agree with
+    what the page shows. There is no second source of truth to drift.
+    """
+    from utils.cohorts import (
+        EVERYONE, branch_has_models, branch_key, branch_label, known_branches)
+
+    branches = known_branches()
+    if len(branches) < 2:
+        return                      # nothing to pick between; say nothing
+
+    current = branch_key(active_cohort())
+    if current not in branches:     # defensive: the live branch is always one
+        branches.append(current)
+
+    shown = {k: f"{branch_label(k)}  ({'trained' if branch_has_models(k) else 'not yet trained'})"
+             for k in branches}
+    options = [shown[k] for k in branches]
+    widget_key = f"branch_pick_{page_key}"
+    seed_key = f"_{widget_key}_seeded_for"
+
+    # Streamlit honors a positional/`value=` default only on a session's FIRST
+    # render; from then on `session_state[widget_key]` wins, and passing both a
+    # default and a key logs a conflict every render (`pages/07` documents the
+    # same trap for its permutation checkbox). So the value is SEEDED here —
+    # whenever the active branch changed underneath the widget, or the option
+    # it holds is no longer offered — and no default is passed below.
+    if (st.session_state.get(seed_key) != current
+            or st.session_state.get(widget_key) not in options):
+        st.session_state[seed_key] = current
+        st.session_state[widget_key] = shown[current]
+
+    choice = st.selectbox(
+        "Which group is this page about?", options, key=widget_key,
+        help="Every group you have analyzed is kept. Switching restores that "
+             "run's models, explanations and records exactly as you left them "
+             "— nothing is refitted.",
+    )
+    picked = next((k for k in branches if shown[k] == choice), current)
+    if picked == current:
+        return
+
+    # A branch that was never trained is still a legitimate destination: the
+    # switch happens and the page stops at its own gate, which says where to go.
+    if picked == EVERYONE:
+        _switch_to(None)
+    else:
+        _advance_to(picked[0], picked[1])
