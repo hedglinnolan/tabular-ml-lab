@@ -379,3 +379,124 @@ Each PR is independently mergeable and leaves the app no worse than before it.
 4. **The picker.** Pages 07/08; `render_cohort_note` on 08.
 5. **Export (b+).** `cohorts/` tree, comparison CSV, caveats into `report.md`, labeled counts, restriction-sentence clause.
 6. **Fix batch.** `dropped_features` applied; External Validation cohort filter. (The ledger leak and the access sentence are already closed by 2 and 3.)
+
+---
+
+## 12. Implementation notes — where the plan was wrong
+
+*Added 2026-09-03 after building all six PRs. Every item below is a place the
+plan above says something the code did not support. They are recorded rather
+than edited away, because the pattern in them is the useful part: every one is
+a case of a plan reading an interface and the code having a second one behind
+it.*
+
+**§1.2 undercounted the callers.** Fourteen listed, nineteen real, in nine
+files. The five missed were page 01's two new-file resets, page 02's staleness
+guard, `set_data`'s schema branch, and the session restore. A name grep also
+misses page 01's exploratory toggle, which calls the reset through the alias
+`_rdr` inside a nested callback — the AST scan in
+`tests/test_a_branch_does_not_outlive_its_question.py` resolves aliases for
+exactly that reason. The default-destructive rule covered all five for free,
+which is the argument for it made by its own author's undercount.
+
+**§9's "one test per caller" is not reachable, and a static gate is better.**
+Seven of the callers sit inside `if st.button(...)` bodies in page scripts, and
+one is a nested closure no test can call by name. More importantly, twelve
+page-boot tests pin the callers that exist *today*; an AST scan asserting *no
+call site outside `utils/cohorts.py` passes `preserve_branches=True`* pins the
+property, and keeps pinning it for callers written next year.
+
+**§3.2's `switch_branch` does not `st.rerun()`.** It returns a bool — restored,
+or built — and the two UI callers rerun. `st.rerun()` raises inside the
+function, which would make every test of the swap catch an exception.
+
+**§3.4's `BRANCH_PAGES` could not be `_rollback_pages`.** That set is seven
+pages at runtime, not five: it adds `03_Feature_Engineering` and
+`04_Feature_Selection` when `clear_feature_selection` is true, which it is on
+the cohort-switch path. Reusing it would have archived the FE recipe's and the
+selection's insights per branch — contradicting §2.3, which calls both shared.
+It is a literal in `turbotab/cascade.py`.
+
+**§3.4's ledger restore needed a new method.** `prune_auto_generated` filters on
+`auto_generated AND source_page`, so a hand-written note on 06–09 survived the
+removal and was then duplicated by the restored slice. The ledger gains
+`prune_pages` (page only) and `entries_from_pages`. The splice uses `upsert`,
+not `add` — `add` returns False and silently discards on an id collision. And
+the snapshot holds live `Insight` objects: `to_list()`/`from_list()` round-trip
+through dicts and re-run `__post_init__`, which refills an emptied
+`tripod_keys` from the category map, so a restored insight would not equal the
+archived one.
+
+**§3.4's provenance list comes from the record, not the cascade.**
+`downstream_sections()` is structural — it finds every `Optional[*Provenance]`
+field — and returns nine branch sections including `sensitivity`,
+`statistical_validation` and `external_validation`, three that
+`turbotab/cascade.py`'s own `provenance_sections` never declared. Deriving from
+the cascade would have silently failed to archive them.
+
+**§4.1's tag could not go in the `opened_at` string.** The chip parses those
+strings for the source name and requires each entry to END with `)`
+(`utils/test_lockbox.py`). A ` [sex=Female]` suffix empties `_source_counts`,
+which re-classifies page 08's seed sweep as a scoring run and flips its blue
+notice to a red warning. The tag lives in a structured `opened_by_cohort` field;
+a test pins the string format.
+
+**§4.2 named one destruction path; there are two.** The redraw rebuilds the dict
+with `opened_count: 0` — `existing` is still in scope there — but the
+stale-label refusal `pop`s the dict outright and returns None, with no successor
+to carry anything into. `retired_seals` is a session key beside the lockbox, not
+a field inside it, so both paths can reach it.
+
+**§5's picker had to go above the TASK-MODE gate, not the trained-models one.**
+Page 07 stops on task mode five lines earlier. And the selectbox is seeded
+rather than defaulted: passing both `index=` and `key=` makes Streamlit log a
+conflict every render, and the widget also has to re-seed when the branch
+changes underneath it, because the sidebar chooser and page 06's button switch
+too.
+
+**§6's "give each writer a `state: Mapping` parameter" was not viable.** Two of
+the three writers are not functions — the metrics CSV and the predictions loop
+are inline top-level code closing over module globals — and `generate_report`
+reads `st.session_state` at eleven points and the module-global `df`. Threading
+a mapping through all of it is a much larger change than the plan budgeted.
+Instead `utils/cohort_export.py` builds every other branch's artifacts from its
+`Snapshot`, and **does not import Streamlit at all**. That is a stronger
+guarantee than the rule §6 states: a module with no access to session state
+cannot swap a branch in, so the export cannot leave the researcher in a cohort
+they did not choose. A test asserts the import is absent.
+
+**§7.3's `dropped_features` has two application sites, not one.** The split
+builds `feature_cols`; `feature_names_by_model` re-reads `selected_features`
+from scratch several hundred lines later and shares no variable with it.
+Filtering only the first leaves the exported per-model feature names listing a
+column the model was never fitted on. Both go through one
+`cohorts.training_features()`. Applying it also made page 06's
+`reconcile_pipeline_columns` backstop warn about an intended decision on every
+training run, so that warning now separates a cohort's deliberate drops from a
+real drift.
+
+**§7.4's filter belongs on `ext_df`, not on the score inputs.** Both the stored
+`external_validation_results` record and the provenance event read
+`ext_df.shape[0]`, so filtering further down would have written the UNFILTERED
+external N into the manuscript — over-stating the validation cohort, which is
+the defect the fix exists to remove. The missing-column check also had to be
+new: the existing one tests `selected_features + target_col`, and the grouping
+column is in neither.
+
+**§10's persistence claim is false as written.** Seven per-branch keys ARE in
+`session_manager`'s save allowlist (`df_engineered`, `filtered_data`,
+`feature_engineering_applied`, `engineered_feature_names`,
+`preprocessing_config_by_model`, `methodology_log`,
+`preprocess_built_model_keys`). The narrower claim the MVP actually needs does
+hold and is what the test asserts: `cohort_branch_archive` is in none of the
+four allowlists, so branches live for the session.
+
+### Still open after this MVP
+
+Everything in §10, unchanged — the up-front declaration on page 01 is the
+scientifically stronger design and remains the next step. Plus one found while
+building: `tests/test_drive8_explainability.py` and
+`tests/test_paper_risk_report.py` read page sources without
+`encoding="utf-8"`, so 17 tests die with `UnicodeDecodeError` on Windows rather
+than checking anything. That predates this series and is a separate one-line
+fix.
