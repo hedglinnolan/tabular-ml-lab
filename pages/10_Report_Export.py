@@ -234,6 +234,11 @@ def generate_metadata() -> Dict[str, Any]:
     """Generate comprehensive metadata for export."""
     git_info = get_git_info()
     finalized_features = st.session_state.get('selected_features') or (data_config.feature_cols if data_config else [])
+    # `df` is the ACTIVE COHORT's frame — `get_data()` filters it — so
+    # `n_rows` below is that group's count, not the study's. A downstream
+    # reader with no way to tell them apart will take it for the study's.
+    from utils.cohorts import active_cohort as _active_cohort
+    _cohort_run = _active_cohort()
     
     metadata = {
         'export_timestamp': datetime.now().isoformat(),
@@ -243,6 +248,9 @@ def generate_metadata() -> Dict[str, Any]:
         'random_seed': st.session_state.get('random_seed', 42),
         'dataset': {
             'n_rows': len(df),
+            'cohort': (f"{_cohort_run['column']}={_cohort_run['label']}"
+                       if _cohort_run else None),
+            'n_study': (_cohort_run.get('n_total') if _cohort_run else len(df)),
             'n_features': len(finalized_features),
             'target': data_config.target_col,
             'task_type': data_config.task_type,
@@ -1466,7 +1474,18 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     report_lines.append("")
     report_lines.append("| Property | Value |")
     report_lines.append("|----------|-------|")
-    report_lines.append(f"| Rows | {len(df):,} |")
+    # WHOSE rows. `df` is the active cohort's frame — `get_data()` filters it —
+    # so an unlabelled "Rows: 319" beside a 600-person study is a number a
+    # reader takes for the study's N and a researcher copies into an abstract.
+    from utils.cohorts import active_cohort as _active_cohort
+    _run = _active_cohort()
+    if _run is not None:
+        report_lines.append(
+            f"| Rows | {len(df):,} "
+            f"({_run['column']} = {_run['label']}; "
+            f"{_run.get('n_total', len(df)):,} in the whole study) |")
+    else:
+        report_lines.append(f"| Rows | {len(df):,} |")
     report_lines.append(f"| Features | {len(st.session_state.get('selected_features') or data_config.feature_cols)} |")
     report_lines.append(f"| Target | `{data_config.target_col}` |")
     report_lines.append(f"| Task Type | {data_config.task_type.title()} |")
@@ -2164,6 +2183,40 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     report_lines.append(f"- Random seed: {st.session_state.get('random_seed', 42)} (for reproducibility)")
     report_lines.append("")
 
+    # ── Cohort analyses ──────────────────────────────────────────────
+    # Everything above describes ONE group. This section is where the report
+    # stops presenting that group as the study.
+    #
+    # The caveats are the load-bearing part. `cohorts.comparison_caveats` says
+    # what two AUCs side by side cannot be read as — different training sizes,
+    # different outcome rates, the multiplicity of fitting in k groups, and the
+    # fact that separate fits cannot test whether the difference is real — and
+    # until now all four existed only as an `st.warning` on page 06, which the
+    # reader of this file never saw.
+    try:
+        from utils.cohort_export import branch_dir, cohort_report_section
+        from utils.cohorts import (BRANCH_ARCHIVE_KEY as _ARCHIVE_KEY,
+                                   active_cohort, branch_key,
+                                   comparison_caveats, completed_runs)
+        _run = active_cohort()
+        _banked = completed_runs(_run["column"] if _run else "")
+        if len(_banked) >= 2:
+            _active = branch_key(_run)
+            _bundled = [
+                ("Everyone" if k == ("", "") else f"{k[0]} = {k[1]}", branch_dir(k))
+                for k in (st.session_state.get(_ARCHIVE_KEY) or {})
+                if k != _active
+            ]
+            report_lines.extend(cohort_report_section(
+                _banked,
+                comparison_caveats(_banked, data_config.task_type),
+                _bundled,
+            ))
+            report_lines.append("---")
+            report_lines.append("")
+    except Exception as _e:
+        logger.warning(f"Could not write the cohort section: {_e}")
+
     return "\n".join(report_lines)
 
 
@@ -2805,6 +2858,37 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
     
     # Metrics CSV
     zip_file.writestr("metrics.csv", comparison_df.to_csv(index=False))
+
+    # ── Every OTHER group that was analysed ──────────────────────────
+    # The top-level artifacts above describe the ACTIVE branch. The export used
+    # to stop there, so a two-cohort study downloaded whichever run happened to
+    # be open and the other one was simply not in the file. Each archived
+    # branch is written from its snapshot — see `utils/cohort_export.py`:
+    # nothing below swaps a branch into the live keys, so the export cannot
+    # leave the researcher in a cohort they did not choose.
+    _cohort_bundles = []
+    try:
+        from utils.cohort_export import add_cohort_bundles, comparison_csv
+        from utils.cohorts import (branch_key, completed_runs,
+                                   BRANCH_ARCHIVE_KEY as _ARCHIVE_KEY)
+        from utils.cohorts import active_cohort as _ac
+        from utils.test_lockbox import opens_by_cohort as _obc
+        _archive = st.session_state.get(_ARCHIVE_KEY) or {}
+        _seal_opens = {tag: sum(counts.values()) for tag, counts in _obc().items()}
+        _cohort_bundles = add_cohort_bundles(
+            zip_file, _archive, branch_key(_ac()),
+            model_dumper=export_model_artifact,
+            include_models=export_models,
+            include_predictions=export_predictions,
+            seal_opens=_seal_opens,
+        )
+        _run_now = _ac()
+        _banked = completed_runs(_run_now["column"] if _run_now else "")
+        _cmp = comparison_csv(_banked)
+        if _cmp:
+            zip_file.writestr("cohort_comparison.csv", _cmp)
+    except Exception as _e:      # an export must not be lost to a cohort bug
+        logger.warning(f"Could not write cohort bundles: {_e}")
     
     # Predictions CSV
     if export_predictions:

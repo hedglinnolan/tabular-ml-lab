@@ -374,6 +374,11 @@ class CohortRun:
     target_col: str = ""
     task_type: str = ""
     data_fingerprint: str = ""
+    #: How many times THIS group's slice of the sealed set was opened. The
+    #: study-wide `opened_count` is the sum over disjoint slices, so it is the
+    #: one number that must not appear in a per-group row: it reads as this
+    #: group having been scored k times when each group was scored once.
+    seal_opens: int = 0
 
     @property
     def question(self) -> Tuple[str, str, str, str]:
@@ -584,6 +589,7 @@ def record_run(metrics: Optional[Dict[str, Any]] = None) -> Optional[CohortRun]:
         dropped_features=list(run.get("dropped_features") or []),
         completed=True, metrics=dict(metrics or {}),
         target_col=_target, task_type=_task, data_fingerprint=_fp,
+        seal_opens=_slice_opens(),
     )
     # Replace by (question, group), so re-running the same group under the same
     # question updates it while a run of a DIFFERENT question is left alone —
@@ -593,6 +599,15 @@ def record_run(metrics: Optional[Dict[str, Any]] = None) -> Optional[CohortRun]:
     done.append(entry)
     st.session_state[_DONE_KEY] = done
     return entry
+
+
+def _slice_opens() -> int:
+    """Openings of the ACTIVE run's slice of the seal. 0 if unanswerable."""
+    try:
+        from utils.test_lockbox import opens_here
+        return int(opens_here())
+    except Exception:
+        return 0
 
 
 def comparison_caveats(runs: Sequence[CohortRun], task_type: str) -> List[str]:

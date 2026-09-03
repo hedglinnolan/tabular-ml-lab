@@ -84,7 +84,17 @@ class UploadProvenance:
                      f"{self.cohort_column} = {', '.join(others)}; all {k} "
                      f"group-specific results should be reported together, "
                      f"and the difference between groups was not tested "
-                     f"directly.")
+                     f"directly."
+                     # WHERE those other results are. The sentence has always
+                     # said they must be reported together; a reader holding
+                     # only the manuscript had no way to find them, and this
+                     # file is single-cohort by design. Naming the folder is
+                     # what makes "reported together" an instruction rather
+                     # than a hope.
+                     f" Full results for the other group"
+                     f"{'' if len(others) == 1 else 's'} are in `cohorts/` in "
+                     f"the accompanying analysis bundle, with a comparison "
+                     f"table in `cohort_comparison.csv`.")
         flat = list(self.cohort_constant_features)
         if flat:
             shown = ", ".join(flat[:6]) + (f" and {len(flat) - 6} more" if len(flat) > 6 else "")
