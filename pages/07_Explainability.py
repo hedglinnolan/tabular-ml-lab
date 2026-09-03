@@ -1889,8 +1889,55 @@ with _explain_tabs[2]:
                 selected_features = st.session_state.get('selected_features') or data_config.feature_cols
                 required_cols = list(selected_features) + [data_config.target_col]
                 missing_cols = [c for c in required_cols if c not in ext_df.columns]
+
+                # WHO the external file is about. The models being validated
+                # were fitted in one group; scoring them against everybody in
+                # the external cohort measures a different thing and reports it
+                # as external validation of this model.
+                #
+                # The filter is applied to `ext_df` itself, not to the score
+                # inputs: the stored record and the provenance event both read
+                # `ext_df.shape[0]`, so filtering further down would put the
+                # UNFILTERED external N into the manuscript — over-stating the
+                # validation cohort, which is the same class of defect this fix
+                # exists to remove.
+                from utils.cohorts import active_cohort as _ac
+                _run_now = _ac()
+                _ext_cohort_note = ""
+                if _run_now is not None:
+                    _col = _run_now["column"]
+                    if _col not in ext_df.columns:
+                        st.error(
+                            f"This analysis is restricted to {_col} = "
+                            f"{_run_now['label']}, and the external dataset has "
+                            f"no `{_col}` column — so there is no way to select "
+                            f"the same group in it. Validating a "
+                            f"{_run_now['label']}-only model against everybody "
+                            f"in this file would measure something else and "
+                            f"report it as external validation. Add the column, "
+                            f"or go back to analyzing everyone first."
+                        )
+                        missing_cols = missing_cols or [_col]
+                    else:
+                        from utils.cohorts import cohort_mask
+                        _before = int(ext_df.shape[0])
+                        ext_df = ext_df.loc[cohort_mask(ext_df, _col, _run_now["value"])]
+                        _ext_cohort_note = (
+                            f"Restricted to {_col} = {_run_now['label']}: "
+                            f"{int(ext_df.shape[0]):,} of {_before:,} rows.")
+                        if ext_df.empty:
+                            st.error(
+                                f"No rows in the external dataset have {_col} = "
+                                f"{_run_now['label']}, so this model has nobody "
+                                f"to be validated on."
+                            )
+                            missing_cols = missing_cols or [_col]
+                        else:
+                            st.caption(f"👥 {_ext_cohort_note}")
+
                 if missing_cols:
-                    st.error(f"Missing columns in external dataset: {missing_cols}")
+                    if not _run_now or _run_now["column"] in ext_df.columns:
+                        st.error(f"Missing columns in external dataset: {missing_cols}")
                 else:
                     ext_override = True
                     if ext_blocking:
@@ -1962,6 +2009,12 @@ with _explain_tabs[2]:
                                 'target_col': data_config.target_col,
                                 'features': list(selected_features),
                                 'task_type': data_config.task_type,
+                                # WHICH GROUP of the external file these numbers
+                                # describe. `n_rows` above is already the
+                                # filtered count; without this it reads as the
+                                # whole external cohort.
+                                'cohort': (f"{_run_now['column']}={_run_now['label']}"
+                                           if _run_now else None),
                                 'per_model': ext_per_model,
                                 'n_bootstrap': _n_boot,
                                 'records_key': ext_records_key,

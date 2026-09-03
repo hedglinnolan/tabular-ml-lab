@@ -483,6 +483,41 @@ def start_cohort(df: pd.DataFrame, plan: CohortPlan, cell: CohortCell,
     return run
 
 
+def training_features(feature_cols: Sequence[str]) -> List[str]:
+    """The predictors a model can actually learn from INSIDE the active cohort.
+
+    Filtering to the women makes `sex` constant, and anything that only varies
+    with it goes flat too. `start_cohort` has always recorded those columns in
+    `dropped_features` and the chooser has always named them — and nothing ever
+    removed them. Every use was display or serialization, so a single-sex model
+    was fitted with a constant column in it and page 07 ranked `sex` at
+    importance ~0 as though that were a finding about sex.
+
+    The SHARED decision is untouched: `data_config.feature_cols` and
+    `selected_features` still name the study's predictors, because they are the
+    question and it is the same question in both groups. This is the working
+    list for one fit.
+
+    Returns the full list unchanged when that would leave nothing to fit on — a
+    model with no predictors is a worse failure than a constant one, and it
+    would be a failure the researcher could not act on.
+    """
+    run = active_cohort()
+    if not run:
+        return list(feature_cols)
+    flat = {str(c) for c in (run.get("dropped_features") or [])}
+    if not flat:
+        return list(feature_cols)
+    kept = [c for c in feature_cols if str(c) not in flat]
+    return kept if kept else list(feature_cols)
+
+
+def constant_in_cohort(feature_cols: Sequence[str]) -> List[str]:
+    """Which of `feature_cols` `training_features` would leave out, and why it
+    matters that the page says so rather than silently shrinking the model."""
+    return [c for c in feature_cols if c not in training_features(feature_cols)]
+
+
 def apply_cohort(df: pd.DataFrame) -> pd.DataFrame:
     """Restrict a frame to the active run. Idempotent; no-op when none is set.
 
