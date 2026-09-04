@@ -63,11 +63,53 @@ class TestASwitchNeverYieldsSilentZeroRows:
             "an empty result with no flag is the silent-zero-rows case")
 
     def test_the_ui_switch_drops_the_previous_runs_row_filter(self):
+        """The two UI switches each used to pop `filtered_data` by hand, and
+        this asserted the pop was in their source.
+
+        It is not there any more, and it must not be: `filtered_data` is a
+        branch key, so `cohorts.switch_branch` takes it out of the flat keys
+        with everything else the previous cohort computed — and puts the
+        TARGET branch's frame back if it has one. Both callers now delegate
+        there, so a source check on them pins an implementation that no longer
+        exists while saying nothing about the hazard.
+
+        The hazard is what is checked instead, on the real path: after a
+        switch, no frame belonging to the previous run is left where
+        `apply_cohort` can find it and return the silent empty result the test
+        above describes.
+        """
+        df = study()
+        set_data(df)
+        st.session_state["data_config"] = DataConfig(
+            target_col="y", feature_cols=["age"], task_type="classification")
+        plan = plan_cohorts(df, "sex", "y", "classification")
+
+        from utils.cohorts import switch_branch
+        female = next(c for c in plan.viable if c.label == "Female")
+        switch_branch((df, plan, female, "y", []))
+        st.session_state["filtered_data"] = get_data()
+        assert set(st.session_state["filtered_data"]["sex"].unique()) == {"Female"}
+
+        male = next(c for c in plan.viable if c.label == "Male")
+        switch_branch((df, plan, male, "y", []))
+
+        left_over = st.session_state.get("filtered_data")
+        assert left_over is None or set(left_over["sex"].unique()) == {"Male"}, (
+            "the previous cohort's rows survived the switch")
+        assert not cohort_filter_broken(), (
+            "apply_cohort found a frame belonging to the other run")
+        assert set(get_data()["sex"].unique()) == {"Male"}
+
+    def test_both_switch_callers_go_through_the_one_door(self):
+        """And the reason the source check above could be dropped: neither
+        caller does its own state surgery any more, so there is one place where
+        the previous run's frame can be mishandled instead of two."""
         import inspect
         import utils.cohort_ui as cu
         for fn in (cu._switch_to, cu._advance_to):
-            assert 'pop("filtered_data"' in inspect.getsource(fn), (
-                f"{fn.__name__} leaves the previous cohort's rows in place")
+            src = inspect.getsource(fn)
+            assert "switch_branch(" in src, (
+                f"{fn.__name__} no longer delegates to cohorts.switch_branch")
 
 
 class TestBankedCountsMatchWhatTheChooserShowed:
