@@ -759,6 +759,11 @@ def reset_data_dependent_state():
     # New dataset → a fresh test lockbox is drawn on the next config save
     st.session_state.pop("test_lockbox", None)
     st.session_state.pop("_lockbox_ledger_noted", None)
+    # And the access record of every seal retired under the PREVIOUS data. It
+    # exists so a redraw cannot erase the fact that a held-out set was already
+    # opened; carried into a new dataset it would put that disclosure in the
+    # Methods of a study those openings never touched.
+    st.session_state.pop("test_lockbox_retired", None)
 
     # Reset insight ledger
     from utils.insight_ledger import InsightLedger

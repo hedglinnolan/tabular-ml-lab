@@ -321,6 +321,68 @@ def _lockbox_open_count(ctx: Dict[str, Any]) -> Optional[int]:
         return None
 
 
+def _lockbox_cohort_access() -> Optional[str]:
+    """How the sealed set was opened PER GROUP, or None when only one was.
+
+    One seal is drawn on the whole study before any cohort exists, so two
+    cohort runs open two disjoint halves of it. A bare "accessed 2 times" is
+    the one reading that is wrong — it says the same rows were scored twice —
+    and it is the reading a reviewer will take.
+    """
+    try:
+        from utils.test_lockbox import (cohort_open_breakdown,
+                                        opens_are_disjoint, opens_per_cohort)
+    except Exception:
+        return None
+    per = opens_per_cohort()
+    groups = list(per)
+    # `opens_are_disjoint` is False as soon as the whole study was scored once.
+    # That opening covers every sealed row, so it overlaps each group's slice
+    # and this sentence — whose whole point is that the slices do not overlap —
+    # would be false. The honest description of a mixed history is the plain
+    # "accessed N times" warning, so fall through to it.
+    if len(per) < 2 or not opens_are_disjoint():
+        return None
+    breakdown = cohort_open_breakdown()
+    column = groups[0].split("=", 1)[0] if "=" in groups[0] else ""
+    by = f" by {column}" if column else ""
+    return (
+        f"A single held-out set was drawn on the full study before it was "
+        f"split{by}; each group was evaluated against its own disjoint slice "
+        f"of that set, accessed {breakdown} time(s) respectively. Because the "
+        f"groups were analyzed sequentially rather than declared in advance, "
+        f"choices made for a later group could have followed an earlier "
+        f"group's held-out results."
+    )
+
+
+def _retired_seal_clause() -> Optional[str]:
+    """A previous held-out set existed and was opened, then replaced.
+
+    Redrawing the seal resets its counter to zero, so without this the Methods
+    would go back to claiming a single final evaluation of a study in which the
+    first held-out set had already been scored against several times.
+    """
+    try:
+        from utils.test_lockbox import retired_seals
+    except Exception:
+        return None
+    retired = retired_seals()
+    if not retired:
+        return None
+    prior = sum(int(r.get("opened_count") or 0) for r in retired)
+    if prior <= 0:
+        return None
+    n = len(retired)
+    return (
+        f"{n} earlier held-out set{'' if n == 1 else 's'} "
+        f"{'was' if n == 1 else 'were'} drawn and accessed {prior} "
+        f"time{'' if prior == 1 else 's'} before being replaced during this "
+        f"analysis, so the current set is not the only one these data have "
+        f"been evaluated against."
+    )
+
+
 #: Keys a hypothesis-test record carries when the parametric/non-parametric
 #: choice was made for it. Their presence is what marks two records of one
 #: comparison — the assumption check's run and the author's override re-run.
@@ -898,7 +960,13 @@ class NarrativeEngine:
                 # is now measured; the sentence may only make the claim the
                 # count supports (`SWEEP-008`).
                 _opens = _lockbox_open_count(self.ctx)
-                if _opens is not None and _opens > 1:
+                _per_group = _lockbox_cohort_access()
+                if _per_group is not None:
+                    # Cohort runs open disjoint slices. The count is stated per
+                    # group, because the study total describes no single
+                    # evaluation and reads as repeated scoring of one set.
+                    parts.append(_frozen + ". " + _per_group)
+                elif _opens is not None and _opens > 1:
                     parts.append(
                         _frozen + f", and was accessed {_opens} times during "
                         "model development. Because model, preprocessing or "
@@ -915,6 +983,13 @@ class NarrativeEngine:
                     # the freeze, which is recorded, and claim nothing about
                     # how often it was opened.
                     parts.append(_frozen + ".")
+
+                # A seal that was replaced took its counter to zero with it.
+                # Whatever the sentence above claims about the CURRENT set, it
+                # is not the whole access history unless this is said too.
+                _retired = _retired_seal_clause()
+                if _retired is not None:
+                    parts.append(_retired)
 
         return " ".join(parts)
 
@@ -1634,7 +1709,7 @@ class NarrativeEngine:
     def _gen_software_environment(self) -> str:
         """Software environment boilerplate."""
         return (
-            "All analyses were conducted using the Tabular ML Lab, "
+            "All analyzes were conducted using the Tabular ML Lab, "
             "an open-source research workbench for reproducible machine learning "
             "on tabular data (Python, scikit-learn, Streamlit). "
             "The complete analysis workflow, including all preprocessing configurations, "
@@ -1922,7 +1997,7 @@ class NarrativeEngine:
         if top_features:
             feature_phrase = self._human_join(top_features[:3])
             parts.append(
-                f"The strongest predictors in the explainability analyses were {feature_phrase}. "
+                f"The strongest predictors in the explainability analyzes were {feature_phrase}. "
             )
         
         parts.append("\n")
@@ -1991,12 +2066,45 @@ class NarrativeEngine:
                 # because `[:5]` removes the last one, and this one is about
                 # the whole evaluation rather than one column (`SWEEP-008`).
                 _opens = _lockbox_open_count(self.ctx)
-                if _opens is not None and _opens > 1:
+                _per_group = _lockbox_cohort_access()
+                if _per_group is not None:
+                    # Disjoint ACROSS groups is not the same as once EACH. A
+                    # group whose own slice was scored twice has the ordinary
+                    # repeated-evaluation problem inside it, and the sentence
+                    # that ends "no row was scored twice" would deny it.
+                    try:
+                        from utils.test_lockbox import opens_per_cohort
+                        _repeated = sorted(t for t, n in opens_per_cohort().items()
+                                           if n > 1)
+                    except Exception:
+                        _repeated = []
+                    _lim = ("the groups were analyzed one after another rather "
+                            "than declared in advance, so a modeling choice "
+                            "made for a later group could have followed an "
+                            "earlier group's held-out result")
+                    if _repeated:
+                        _lim += ("; the slices are disjoint across groups, but "
+                                 "at least one group's slice was scored against "
+                                 "more than once, so that group's held-out "
+                                 "performance is not a single untouched "
+                                 "evaluation and may be optimistically biased")
+                    else:
+                        _lim += ("; the slices themselves are disjoint and no "
+                                 "row was scored twice")
+                    limitations = [_lim] + list(limitations)
+                elif _opens is not None and _opens > 1:
                     limitations = [
                         f"the held-out test set was accessed {_opens} times "
                         f"during model development rather than once at the end, "
                         f"so the reported held-out performance is not a single "
                         f"untouched evaluation and may be optimistically biased"
+                    ] + list(limitations)
+                _retired_lim = _retired_seal_clause()
+                if _retired_lim is not None:
+                    limitations = [
+                        "the held-out set reported here is not the first one "
+                        "drawn for these data; an earlier one was accessed and "
+                        "then replaced"
                     ] + list(limitations)
 
             if limitations:
@@ -2035,7 +2143,7 @@ class NarrativeEngine:
             _feats_clause = self._human_join(top_features[:3])
             parts.append(
                 f"[AUTHOR REQUIRED — The leading predictors in the explainability "
-                f"analyses were {_feats_clause}. Discuss whether these associations "
+                f"analyzes were {_feats_clause}. Discuss whether these associations "
                 "are plausible and actionable in your domain, and what use "
                 "(screening, triage, hypothesis generation) the observed "
                 "performance would support. These are predictive associations, "
@@ -2460,6 +2568,6 @@ class NarrativeEngine:
         if not completeness.get("split"):
             warnings.append("Study design section requires split configuration.")
         if not completeness.get("eda"):
-            warnings.append("No EDA analyses were recorded in provenance.")
+            warnings.append("No EDA analyzes were recorded in provenance.")
 
         return warnings
