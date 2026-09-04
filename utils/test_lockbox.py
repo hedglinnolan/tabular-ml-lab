@@ -868,12 +868,40 @@ def opens_here(tag: Optional[str] = None, scoring_only: bool = False) -> int:
                if not (scoring_only and str(src).startswith(_SWEEP_SOURCE)))
 
 
-def cohort_open_breakdown() -> str:
-    """`Female 1, Male 1` — the counts a bare total cannot carry. '' if one."""
+def opens_per_cohort() -> Dict[str, int]:
+    """`{tag: total openings}`, reconciled against `opened_count`.
+
+    A seal restored from a save file, or written before `opened_by_cohort`
+    existed, has a non-zero count and an empty map. Printing the map's numbers
+    beside the total would then show a breakdown that does not add up — so any
+    unattributed openings are credited to the whole study, which is what an
+    opening with no cohort restriction was.
+    """
     per = {tag: sum(counts.values()) for tag, counts in opens_by_cohort().items()}
     per = {t: n for t, n in per.items() if n}
+    unattributed = lockbox_open_count() - sum(per.values())
+    if unattributed > 0:
+        per[EVERYONE_TAG] = per.get(EVERYONE_TAG, 0) + unattributed
+    return per
+
+
+def opens_are_disjoint() -> bool:
+    """Whether every recorded opening scored a DIFFERENT set of rows.
+
+    False as soon as the whole study was scored once, because that opening
+    covers every sealed row — so it overlaps every group's slice, and the
+    "no row was scored twice" claim the breakdown otherwise earns is false.
+    """
+    per = opens_per_cohort()
+    return not per.get(EVERYONE_TAG) and len(per) >= 2
+
+
+def cohort_open_breakdown() -> str:
+    """`Female 1, Male 1` — the counts a bare total cannot carry. '' if one."""
+    per = opens_per_cohort()
     if len(per) < 2:
         return ""
+
     def _name(tag: str) -> str:
         if tag == EVERYONE_TAG:
             return "the whole study"
@@ -1292,15 +1320,24 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
             if seal_basis == SEAL_UNDETERMINED else None),
     }
 
+    if existing is not None:
+        # Reaching here at all means the signature changed, so `lockbox` —
+        # built with `opened_count: 0` above — is about to replace `existing`,
+        # whether or not the draw landed on the same rows. Carry the outgoing
+        # seal's access record out FIRST, or the Methods can go back to saying
+        # the set was "accessed only for the final evaluation" the moment a
+        # redraw happens. That is what "run Female, run Male, go back to
+        # everyone, change the test fraction" does.
+        #
+        # Outside the labels guard on purpose: a re-draw that happens to
+        # reproduce the same labels still zeroes the counter, and the openings
+        # were real. `retire_seal` is a no-op on an unopened seal, so nothing
+        # is recorded where there is nothing to disclose.
+        retire_seal(existing)
+
     if existing is not None and existing.get("labels") != lockbox["labels"]:
         # Different test set → previous results are not comparable
         from utils.session_state import reset_downstream_results
-        # `lockbox` above is built with `opened_count: 0`. Carry the outgoing
-        # seal's record out first, or the Methods can go back to saying the set
-        # was "accessed only for the final evaluation" the moment a redraw
-        # happens — which is exactly what "run Female, run Male, go back to
-        # everyone, change the test fraction" does.
-        retire_seal(existing)
         reset_downstream_results(clear_feature_engineering=False)
         # Let the page disclose the redraw — a silent reset reads as data loss
         _state()["_lockbox_redrawn"] = True
@@ -1447,9 +1484,16 @@ def render_lockbox_status(context: str = "") -> None:
     # have been scored and nothing on screen says they were disjoint.
     _breakdown = cohort_open_breakdown()
     if _breakdown:
+        # The disjointness is what makes a total of 2 mean "two groups scored
+        # once" rather than "one set scored twice" — but it holds only while
+        # every opening was a cohort's. One whole-study opening scores every
+        # sealed row, so it overlaps each group's slice and the claim is false.
         _open_phrase += (
-            f" — {_breakdown}, which are disjoint slices of it, so no row was "
-            f"scored twice")
+            f" — {_breakdown}"
+            + (", which are disjoint slices of it, so no row was scored twice"
+               if opens_are_disjoint() else
+               ", and the whole-study opening covers every sealed row, so each "
+               "group's rows were scored inside it as well"))
     _retired = retired_seals()
     if _retired:
         _prior = sum(int(r.get("opened_count") or 0) for r in _retired)
@@ -1552,7 +1596,11 @@ def render_lockbox_status(context: str = "") -> None:
         # THIS run's openings, not the study's. The two differ the moment a
         # second group is analyzed, and the number a researcher writes in the
         # Methods for this group is this one.
-        _here_opens = opens_here()
+        # SCORING runs only, matching the notice above it: page 08's seed
+        # sweep re-partitions the sealed rows and reports no held-out number,
+        # so counting it here made the caption say "scored twice" beside a
+        # blue notice explaining that only one scoring run had happened.
+        _here_opens = opens_here(scoring_only=True)
         if _here_opens == 0:
             _here_phrase = "This slice has not been scored yet"
         elif _here_opens == 1:

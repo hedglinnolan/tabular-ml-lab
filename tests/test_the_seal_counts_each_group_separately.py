@@ -327,3 +327,135 @@ class TestTheChipStopsClaimingTheSamePeople:
         text = self._render(df)
         assert "Female 1" in text and "Male 1" in text, text
         assert "disjoint slices" in text, text
+
+
+# ── disjoint across groups is a claim, and it can be false ───────────────
+
+class TestTheDisjointnessClaimIsEarned:
+    """"Two groups, once each" is only *not* "one set scored twice" because the
+    slices do not overlap. That is a claim about the history, and there are two
+    histories where it is false — both reachable by ordinary use."""
+
+    def test_a_whole_study_opening_covers_every_slice(self):
+        """Train on everyone, then split by sex and train the women. The seal
+        has been opened twice, and the second opening's rows are a SUBSET of
+        the first's. Nothing here is disjoint."""
+        df = study()
+        st.session_state["raw_data"] = df
+        seal(df)
+        record_lockbox_open("Train & Compare")        # everyone
+        enter(df, "Female")
+        record_lockbox_open("Train & Compare")
+
+        from utils.test_lockbox import opens_are_disjoint
+        assert opens_are_disjoint() is False
+        assert cohort_open_breakdown(), "the counts are still worth showing"
+
+    def test_two_groups_alone_are_disjoint(self):
+        df = study()
+        st.session_state["raw_data"] = df
+        seal(df)
+        enter(df, "Female")
+        record_lockbox_open("Train & Compare")
+        enter(df, "Male")
+        record_lockbox_open("Train & Compare")
+
+        from utils.test_lockbox import opens_are_disjoint
+        assert opens_are_disjoint() is True
+
+    def test_the_methods_will_not_assert_disjointness_it_does_not_have(self):
+        """It falls through to the plain "accessed N times" warning, which is
+        the honest description of a history that includes a whole-study run."""
+        from ml.narrative_engine import _lockbox_cohort_access
+        df = study()
+        st.session_state["raw_data"] = df
+        seal(df)
+        record_lockbox_open("Train & Compare")
+        enter(df, "Female")
+        record_lockbox_open("Train & Compare")
+        assert _lockbox_cohort_access() is None
+
+    def test_the_chip_says_which_of_the_two_it_is(self):
+        df = study()
+        st.session_state["raw_data"] = df
+        seal(df)
+        record_lockbox_open("Train & Compare")
+        enter(df, "Female")
+        record_lockbox_open("Train & Compare")
+
+        said = TestTheChipStopsClaimingTheSamePeople()._render(df)
+        assert "no row was scored twice" not in said, said
+        assert "scored inside it as well" in said, said
+
+    def test_the_breakdown_always_adds_up_to_the_total(self):
+        """A seal restored from a save file has a count and no per-cohort map.
+        Printing a breakdown beside a total it does not sum to is worse than
+        printing no breakdown."""
+        from utils.test_lockbox import opens_per_cohort
+        df = study()
+        st.session_state["raw_data"] = df
+        seal(df)
+        record_lockbox_open("Train & Compare")
+        enter(df, "Female")
+        record_lockbox_open("Train & Compare")
+        get_lockbox().pop("opened_by_cohort")        # the pre-field shape
+
+        assert sum(opens_per_cohort().values()) == lockbox_open_count() == 2
+
+
+class TestScoredMeansScored:
+
+    def test_a_seed_sweep_does_not_make_the_caption_say_scored_twice(self):
+        """The chip's own notice explains that the sweep re-partitions the
+        sealed rows and reports no held-out number. The per-run caption beside
+        it counted the sweep anyway, so one sentence said "scored twice" while
+        the next said only one scoring run had happened."""
+        df = study()
+        st.session_state["raw_data"] = df
+        seal(df)
+        enter(df, "Female")
+        record_lockbox_open("Train & Compare")
+        record_lockbox_open(_SWEEP)
+
+        said = TestTheChipStopsClaimingTheSamePeople()._render(df)
+        assert "This slice has been scored once" in said, said
+
+
+class TestARedrawOnTheSameRowsStillZeroesTheCounter:
+
+    def test_the_record_survives_a_redraw_that_lands_on_the_same_labels(self):
+        """The retire was guarded by the LABELS changing; the counter is zeroed
+        whenever the dict is rebuilt.
+
+        The signature is stale-ed by hand rather than by changing a parameter,
+        because every parameter that moves the signature also moves the draw.
+        This is the shape of the bug, isolated: a rebuild whose split lands on
+        the same rows still resets `opened_count`, and under the old guard the
+        openings were simply gone.
+        """
+        df = study()
+        st.session_state["raw_data"] = df
+        seal(df, fraction=0.2)
+        record_lockbox_open("Train & Compare")
+        before = list(get_lockbox()["labels"])
+
+        get_lockbox()["signature"] = "stale-so-the-early-return-does-not-fire"
+        ensure_lockbox(df, "y", "classification", fraction=0.2, seed=7)
+
+        assert list(get_lockbox()["labels"]) == before, (
+            "the setup did not reproduce the same draw; the test is not "
+            "exercising the same-labels path")
+        assert lockbox_open_count() == 0, "a rebuilt seal starts at zero"
+        assert retired_seals(), (
+            "a redraw that reproduced the same rows zeroed the counter and "
+            "left no record that the set had ever been opened")
+        assert retired_seals()[0]["opened_count"] == 1
+
+
+class TestTheRecordSurvivesASavedSession:
+
+    def test_a_retired_seal_is_written_to_the_save_file(self):
+        """It exists so a redraw cannot erase a disclosure. A save that drops it
+        erases the same disclosure by a different route."""
+        from utils import session_manager as sm
+        assert "test_lockbox_retired" in sm._PLAIN_KEYS

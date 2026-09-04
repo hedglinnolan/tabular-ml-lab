@@ -330,13 +330,18 @@ def _lockbox_cohort_access() -> Optional[str]:
     and it is the reading a reviewer will take.
     """
     try:
-        from utils.test_lockbox import (EVERYONE_TAG, cohort_open_breakdown,
-                                        opens_by_cohort)
+        from utils.test_lockbox import (cohort_open_breakdown,
+                                        opens_are_disjoint, opens_per_cohort)
     except Exception:
         return None
-    per = opens_by_cohort()
-    groups = [t for t in per if t != EVERYONE_TAG]
-    if len(per) < 2 or not groups:
+    per = opens_per_cohort()
+    groups = list(per)
+    # `opens_are_disjoint` is False as soon as the whole study was scored once.
+    # That opening covers every sealed row, so it overlaps each group's slice
+    # and this sentence — whose whole point is that the slices do not overlap —
+    # would be false. The honest description of a mixed history is the plain
+    # "accessed N times" warning, so fall through to it.
+    if len(per) < 2 or not opens_are_disjoint():
         return None
     breakdown = cohort_open_breakdown()
     column = groups[0].split("=", 1)[0] if "=" in groups[0] else ""
@@ -345,7 +350,7 @@ def _lockbox_cohort_access() -> Optional[str]:
         f"A single held-out set was drawn on the full study before it was "
         f"split{by}; each group was evaluated against its own disjoint slice "
         f"of that set, accessed {breakdown} time(s) respectively. Because the "
-        f"groups were analysed sequentially rather than declared in advance, "
+        f"groups were analyzed sequentially rather than declared in advance, "
         f"choices made for a later group could have followed an earlier "
         f"group's held-out results."
     )
@@ -1704,7 +1709,7 @@ class NarrativeEngine:
     def _gen_software_environment(self) -> str:
         """Software environment boilerplate."""
         return (
-            "All analyses were conducted using the Tabular ML Lab, "
+            "All analyzes were conducted using the Tabular ML Lab, "
             "an open-source research workbench for reproducible machine learning "
             "on tabular data (Python, scikit-learn, Streamlit). "
             "The complete analysis workflow, including all preprocessing configurations, "
@@ -1992,7 +1997,7 @@ class NarrativeEngine:
         if top_features:
             feature_phrase = self._human_join(top_features[:3])
             parts.append(
-                f"The strongest predictors in the explainability analyses were {feature_phrase}. "
+                f"The strongest predictors in the explainability analyzes were {feature_phrase}. "
             )
         
         parts.append("\n")
@@ -2063,13 +2068,30 @@ class NarrativeEngine:
                 _opens = _lockbox_open_count(self.ctx)
                 _per_group = _lockbox_cohort_access()
                 if _per_group is not None:
-                    limitations = [
-                        "the groups were analysed one after another rather "
-                        "than declared in advance, so a modelling choice made "
-                        "for a later group could have followed an earlier "
-                        "group's held-out result; the slices themselves are "
-                        "disjoint and no row was scored twice"
-                    ] + list(limitations)
+                    # Disjoint ACROSS groups is not the same as once EACH. A
+                    # group whose own slice was scored twice has the ordinary
+                    # repeated-evaluation problem inside it, and the sentence
+                    # that ends "no row was scored twice" would deny it.
+                    try:
+                        from utils.test_lockbox import opens_per_cohort
+                        _repeated = sorted(t for t, n in opens_per_cohort().items()
+                                           if n > 1)
+                    except Exception:
+                        _repeated = []
+                    _lim = ("the groups were analyzed one after another rather "
+                            "than declared in advance, so a modeling choice "
+                            "made for a later group could have followed an "
+                            "earlier group's held-out result")
+                    if _repeated:
+                        _lim += ("; the slices are disjoint across groups, but "
+                                 "at least one group's slice was scored against "
+                                 "more than once, so that group's held-out "
+                                 "performance is not a single untouched "
+                                 "evaluation and may be optimistically biased")
+                    else:
+                        _lim += ("; the slices themselves are disjoint and no "
+                                 "row was scored twice")
+                    limitations = [_lim] + list(limitations)
                 elif _opens is not None and _opens > 1:
                     limitations = [
                         f"the held-out test set was accessed {_opens} times "
@@ -2121,7 +2143,7 @@ class NarrativeEngine:
             _feats_clause = self._human_join(top_features[:3])
             parts.append(
                 f"[AUTHOR REQUIRED — The leading predictors in the explainability "
-                f"analyses were {_feats_clause}. Discuss whether these associations "
+                f"analyzes were {_feats_clause}. Discuss whether these associations "
                 "are plausible and actionable in your domain, and what use "
                 "(screening, triage, hypothesis generation) the observed "
                 "performance would support. These are predictive associations, "
@@ -2546,6 +2568,6 @@ class NarrativeEngine:
         if not completeness.get("split"):
             warnings.append("Study design section requires split configuration.")
         if not completeness.get("eda"):
-            warnings.append("No EDA analyses were recorded in provenance.")
+            warnings.append("No EDA analyzes were recorded in provenance.")
 
         return warnings

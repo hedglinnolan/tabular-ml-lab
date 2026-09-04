@@ -143,6 +143,13 @@ _PLAIN_KEYS: Tuple[str, ...] = (
     # (exploratory_mode itself stays a deferred widget key — page 01's checkbox
     # binds to it and must not be assigned directly.)
     "exploratory_used",
+    # A PRIOR seal's access record. The lockbox itself is saved, but a redrawn
+    # seal's counter starts at zero and the history of the one it replaced
+    # lives in this sibling key. Drop it on save and a restored session's
+    # Methods goes back to claiming the held-out set was "accessed only for the
+    # final evaluation" about data whose first one had already been opened —
+    # the same disclosure `exploratory_used` above is persisted to protect.
+    "test_lockbox_retired",
 )
 
 # Deferred widget keys -- stored separately because Streamlit requires setting
