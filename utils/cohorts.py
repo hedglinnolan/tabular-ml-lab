@@ -627,3 +627,302 @@ def comparison_caveats(runs: Sequence[CohortRun], task_type: str) -> List[str]:
         "separate fits cannot answer. That needs one model on everyone with an "
         "interaction term, which tests the difference directly.")
     return out
+
+
+# ── branches: a cohort run that survives the next one ────────────────────
+#
+# A cohort run used to be a destructive sequence. "Now run the same analysis on
+# Male" rebuilt everything from the shared decisions and what the Female run had
+# produced was gone — its models, its SHAP, its sensitivity sweep, its Methods
+# draft — with a two-number `CohortRun` left behind as the only trace.
+#
+# A branch is the same run, kept. Switching archives what is live and restores
+# what the target had, so both analyses exist at once and either can be
+# explained, sensitivity-tested and exported without re-fitting.
+#
+# THE STORAGE RULE IS SWAP, NOT PREFIX. Namespacing every result key by cohort
+# (`trained_models[label]`) would change every read site — page 06 alone reads
+# `model_results` bare ten times. Instead the flat keys stay exactly what they
+# are, *the active branch's view*, and a switch swaps the contents underneath
+# them. Pages 02–10 do not change a line.
+#
+# THE BOUNDARY IS `cascade.BRANCH_KEYS`: a key is per-branch iff its value was
+# computed from rows. It is derived from the stage graph rather than listed
+# here, so a result key registered on a stage is archived without anyone
+# remembering to add it.
+
+from turbotab.cascade import (        # noqa: E402  (grouped with the feature)
+    BRANCH_ARCHIVE_KEY, BRANCH_KEYS, BRANCH_PAGES, SHARED_PROVENANCE_SECTIONS,
+)
+
+#: The key an unrestricted analysis is archived under. "Everyone" is a branch
+#: like any other: clicking *Go back to analyzing everyone* after two cohorts
+#: restores the whole-study analysis rather than presenting an empty app.
+EVERYONE = ("", "")
+
+
+@dataclass
+class Snapshot:
+    """One cohort's half of the session — everything computed from its rows.
+
+    Four slices, because per-branch state is not all keyed the same way. The
+    session keys are named by the cascade; the ledger and the methodology log
+    are keyed by the PAGE that produced an entry; the provenance record is a
+    set of section objects hanging off one dataclass.
+    """
+    keys: Dict[str, Any] = field(default_factory=dict)
+    ledger: List[Any] = field(default_factory=list)
+    methodology: List[Any] = field(default_factory=list)
+    provenance: Dict[str, Any] = field(default_factory=dict)
+    #: What this branch was, for the sidebar and the picker. `None` = everyone.
+    run: Optional[Dict[str, Any]] = None
+
+
+def branch_key(run: Optional[Dict[str, Any]]) -> Tuple[str, str]:
+    """The archive key for a run. `EVERYONE` when nothing is restricted."""
+    if not run:
+        return EVERYONE
+    return (str(run.get("column", "")), str(run.get("label", "")))
+
+
+def _archive() -> Dict[Tuple[str, str], "Snapshot"]:
+    import streamlit as st
+    arc = st.session_state.get(BRANCH_ARCHIVE_KEY)
+    if not isinstance(arc, dict):
+        arc = {}
+        st.session_state[BRANCH_ARCHIVE_KEY] = arc
+    return arc
+
+
+def _branch_provenance_sections() -> List[str]:
+    """Provenance sections a branch owns.
+
+    Derived from the record's own schema — `downstream_sections()` is
+    structural, not a list — minus the two that record a decision rather than a
+    measurement. A hand-typed list here would drift from the dataclass exactly
+    the way the reset's used to.
+    """
+    try:
+        from utils.workflow_provenance import downstream_sections
+    except Exception:
+        return []
+    return [s for s in downstream_sections() if s not in SHARED_PROVENANCE_SECTIONS]
+
+
+def _branch_methodology_entries(log: Sequence[Any]) -> List[Any]:
+    from utils.session_state import _STEP_TO_PAGE
+    return [e for e in log
+            if isinstance(e, dict)
+            and _STEP_TO_PAGE.get(e.get("step"), "") in BRANCH_PAGES]
+
+
+def snapshot_current() -> "Snapshot":
+    """Everything the live branch owns, captured BY REFERENCE.
+
+    Aliasing is intended. After a restore the live key and the archived
+    snapshot are the same object, so a page that resolves an insight or adds a
+    model to `trained_models` updates the archive too — which is what "the
+    archive tracks the live branch" has to mean. It is also why the reset must
+    keep assigning fresh containers instead of emptying them in place
+    (`session_state.reset_downstream_results`, `BRANCH-002`): one `.clear()`
+    there would empty this snapshot through its own reference.
+    """
+    import streamlit as st
+    snap = Snapshot(run=active_cohort())
+    for key in BRANCH_KEYS:
+        if key in st.session_state:
+            snap.keys[key] = st.session_state[key]
+
+    ledger = st.session_state.get("insight_ledger")
+    if ledger is not None and hasattr(ledger, "entries_from_pages"):
+        snap.ledger = ledger.entries_from_pages(set(BRANCH_PAGES))
+
+    snap.methodology = _branch_methodology_entries(
+        st.session_state.get("methodology_log") or [])
+
+    prov = st.session_state.get("workflow_provenance")
+    if prov is not None:
+        for name in _branch_provenance_sections():
+            if hasattr(prov, name):
+                snap.provenance[name] = getattr(prov, name)
+    return snap
+
+
+def archive_current() -> "Snapshot":
+    """Bank the live branch under its own key. Always safe to call twice."""
+    snap = snapshot_current()
+    _archive()[branch_key(active_cohort())] = snap
+    return snap
+
+
+def _clear_branch_keys() -> None:
+    """Take the live branch out of the flat keys without touching anything shared.
+
+    Every key here is popped rather than emptied, and no decision is read or
+    rewritten. This is deliberately NOT `reset_downstream_results`: a restore is
+    not an invalidation, and the reset would also rewrite `selected_features`
+    from `pre_fe_feature_cols`, roll back ledger resolutions and null provenance
+    sections the target branch is about to supply.
+    """
+    import streamlit as st
+    for key in BRANCH_KEYS:
+        st.session_state.pop(key, None)
+
+
+def _restore(snap: "Snapshot") -> None:
+    """Write a snapshot back into the flat keys.
+
+    Called only after `_clear_branch_keys()`, so what lands is exactly the state
+    that existed when this branch was archived — including the keys that were
+    *absent* then, which stay absent now. That is what makes a restored branch
+    safe for the pages that read `model_results` and `eda_results` bare: it was
+    a working state once, and it is reproduced rather than approximated.
+    """
+    import streamlit as st
+    for key, value in snap.keys.items():
+        st.session_state[key] = value
+
+    ledger = st.session_state.get("insight_ledger")
+    if ledger is not None and hasattr(ledger, "prune_pages"):
+        ledger.prune_pages(set(BRANCH_PAGES))
+        for insight in snap.ledger:
+            ledger.upsert(insight)   # add() would silently discard on an id clash
+
+    log = st.session_state.get("methodology_log")
+    if log is not None:
+        branch_entries = _branch_methodology_entries(log)
+        kept = [e for e in log if not any(e is b for b in branch_entries)]
+        st.session_state["methodology_log"] = kept + list(snap.methodology)
+
+    prov = st.session_state.get("workflow_provenance")
+    if prov is not None:
+        for name in _branch_provenance_sections():
+            if hasattr(prov, name):
+                setattr(prov, name, snap.provenance.get(name))
+
+
+def known_branches() -> List[Tuple[str, str]]:
+    """Archived branch keys, plus the live one. Order follows the run's own."""
+    keys = list(_archive().keys())
+    live = branch_key(active_cohort())
+    if live not in keys:
+        keys.append(live)
+    run = active_cohort()
+    order = list(run.get("order") or []) if run else []
+    column = run["column"] if run else next(
+        (k[0] for k in keys if k[0]), "")
+
+    def rank(k: Tuple[str, str]) -> Tuple[int, int, str]:
+        if k == EVERYONE:
+            return (2, 0, "")        # everyone last: it is not one of the groups
+        if k[0] == column and k[1] in order:
+            return (0, order.index(k[1]), k[1])
+        return (1, 0, f"{k[0]}={k[1]}")
+
+    return sorted(keys, key=rank)
+
+
+def branch_label(key: Tuple[str, str]) -> str:
+    return "Everyone" if key == EVERYONE else f"{key[0]} = {key[1]}"
+
+
+def branch_has_models(key: Tuple[str, str]) -> bool:
+    """Whether this branch has fitted models — read live for the active one."""
+    import streamlit as st
+    if key == branch_key(active_cohort()):
+        return bool(st.session_state.get("trained_models"))
+    snap = _archive().get(key)
+    return bool(snap and snap.keys.get("trained_models"))
+
+
+def _run_for(target: Optional[Sequence[Any]]) -> Optional[Dict[str, Any]]:
+    """The run dict a target WOULD produce, without starting it.
+
+    `branch_key` needs the column and the label before `start_cohort` has been
+    called, because the archive lookup is what decides which of the two paths
+    below runs.
+    """
+    if target is None:
+        return None
+    _df, plan, cell, _target_col, _dropped = target
+    return {"column": plan.column, "label": cell.label}
+
+
+def _record_restriction() -> None:
+    """Rewrite the manuscript's restriction sentence for the run now active.
+
+    Must come AFTER `start_cohort`/`clear_cohort`: `record_cohort_restriction`
+    reads `active_cohort()` and CLEARS all seven cohort fields when it finds
+    None, so calling it early would silently delete the sentence it exists to
+    write.
+    """
+    try:
+        from utils.workflow_provenance import get_provenance
+        get_provenance().record_cohort_restriction()
+    except Exception:
+        pass
+
+
+def switch_branch(target: Optional[Sequence[Any]]) -> bool:
+    """Change who the analysis is about. The one door; both callers use it.
+
+    `target` is `None` for the whole study, or
+    `(df, plan, cell, target_col, dropped_features)` for a cohort.
+
+    Returns True when the target was restored from the archive and False when
+    it had to be built — the difference between "the page can render now" and
+    "the shared decisions are staged and the pages must replay them". Does NOT
+    rerun; the caller does, so this stays callable from a test.
+    """
+    archive_current()                     # 1. never lose what is live
+    key = branch_key(_run_for(target))
+    snap = _archive().get(key)
+
+    if snap is not None:                  # 2a. a branch we have seen before
+        _clear_branch_keys()
+        if target is None:
+            clear_cohort()
+        else:
+            df, plan, cell, target_col, dropped = target
+            start_cohort(df, plan, cell, target_col, dropped_features=dropped)
+        _restore(snap)
+        _record_restriction()
+        return True
+
+    # 2b. a new branch: stage the shared decisions, make room, replay them.
+    from utils import replay as _replay
+    from utils.session_state import reset_downstream_results
+
+    _replay.stage_for_replay(reason="cohort switch")
+    if target is None:
+        clear_cohort()
+    else:
+        df, plan, cell, target_col, dropped = target
+        start_cohort(df, plan, cell, target_col, dropped_features=dropped)
+    _record_restriction()
+    # BEFORE the reset, not after, and the order is load-bearing.
+    #
+    # The reset does two things to the ledger: it prunes the AUTO-GENERATED
+    # insights of its cleared pages, and it ROLLS BACK the resolutions of
+    # others IN PLACE — `resolved = False`, `resolved_by = ""`. The snapshot
+    # taken at the top of this function holds those same `Insight` objects by
+    # reference, so a rollback reaches them through the alias and un-resolves a
+    # finding in a branch that is already archived. Switching back would then
+    # show a resolved finding reopened, and page 10 fills the manuscript's
+    # Limitations list from unresolved insights — so the previous group's
+    # exported report gains a limitation it had addressed.
+    #
+    # Pruning first means the reset walks a ledger the snapshot no longer
+    # shares anything with. The live end state is identical; only the archive
+    # is spared. (Pruning by page, rather than the reset's auto-generated-only
+    # rule, is also what moves a hand-written note with its branch: the note
+    # was written about one group of people.)
+    import streamlit as st
+    ledger = st.session_state.get("insight_ledger")
+    if ledger is not None and hasattr(ledger, "prune_pages"):
+        ledger.prune_pages(set(BRANCH_PAGES))
+    # The ONLY call in the tree that may keep the archive: this is the one
+    # change that leaves the question intact.
+    reset_downstream_results(clear_feature_engineering=True, preserve_branches=True)
+    _replay.restore_decisions()
+    return False

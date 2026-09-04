@@ -59,7 +59,7 @@ _CALLER_KIND = {
     "utils/session_state.py": "drop-all",           # set_data; the full data reset
     "utils/session_manager.py": "drop-all",         # a different session is being restored
     "utils/test_lockbox.py": "drop-all",            # the seal moved
-    "utils/cohort_ui.py": "archive/restore",        # who the rows are
+    "utils/cohorts.py": "archive/restore",          # who the rows are
 }
 
 _SOURCE_DIRS = ("pages", "utils", "ml", "turbotab", "launcher", "scripts")

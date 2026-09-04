@@ -29,8 +29,7 @@ import streamlit as st
 from utils.cohorts import (
     CohortCell, CohortPlan, active_cohort, clear_cohort, cohort_candidates,
     cohort_filter_broken, cohort_mask, comparison_caveats, completed_runs,
-    features_that_lose_variance, plan_cohorts, record_run, runs_remaining,
-    start_cohort,
+    features_that_lose_variance, plan_cohorts, record_run,
 )
 
 _KEEP_EVERYONE = "— keep everyone together (one model for the whole study) —"
@@ -199,41 +198,16 @@ def _n_for(plan: CohortPlan, label: str) -> int:
 
 
 def _switch_to(payload) -> None:
-    """Change who the analysis is about, and throw away what described others.
+    """Change who the analysis is about.
 
-    Every model, split, pipeline and figure in session state was computed from a
-    different set of people. Keeping any of it is how a run ends up reporting
-    the previous cohort's numbers under this cohort's heading.
+    Everything this used to do inline — pop the previous frame, stage the
+    decisions, reset, replay — now lives in `cohorts.switch_branch`, because
+    there are two callers and they must not be able to drift apart. The switch
+    also no longer THROWS AWAY what described the previous group: it archives
+    it, so coming back restores that run rather than rebuilding it.
     """
-    from utils.session_state import reset_downstream_results
-    # filtered_data is a row subset of the PREVIOUS cohort. reset_downstream_results
-    # clears it too now, but only after apply_cohort has already run on it — pop it
-    # here first so the switch cannot read the previous cohort's frame: apply_cohort
-    # would find no Male labels in the Female frame, fall through to the column
-    # path, and return an EMPTY frame with no broken flag set.
-    import streamlit as _st
-    from utils import replay as _replay
-    _st.session_state.pop("filtered_data", None)
-    # "Run the same analysis on the other group" means the same analysis. Take
-    # the DECISIONS across the reset — the engineering recipe and the
-    # preprocessing choices — while every FIT is left behind to be redone on
-    # the new rows.
-    _replay.stage_for_replay(reason="cohort switch")
-    if payload is None:
-        clear_cohort()
-    else:
-        df, plan, cell, target_col, dropped = payload
-        start_cohort(df, plan, cell, target_col, dropped_features=dropped)
-    # The restriction has to reach the manuscript, not just the sidebar. A chip
-    # inside the running app does not leave with the export, and every exported
-    # artifact otherwise reports this group's N as the study's.
-    try:
-        from utils.workflow_provenance import get_provenance
-        get_provenance().record_cohort_restriction()
-    except Exception:
-        pass
-    reset_downstream_results(clear_feature_engineering=True)
-    _replay.restore_decisions()
+    from utils.cohorts import switch_branch
+    switch_branch(payload)
     st.rerun()
 
 
@@ -350,11 +324,12 @@ def render_next_cohort(task_type: str, metrics: Optional[Dict[str, Any]] = None)
     )
     kept_out = _report_artifacts_present()
     if kept_out:
-        st.warning(
-            f"**The {', '.join(kept_out)} for {run['label']} will not be kept.** "
-            f"They describe models fitted on these people and would be wrong "
-            f"under {nxt}'s heading. Download them from Report & Export before "
-            f"switching if you want them.",
+        st.success(
+            f"**The {', '.join(kept_out)} for {run['label']} are kept.** They "
+            f"are archived with this run rather than shown under {nxt}'s "
+            f"heading, where they would be wrong. Switch back to "
+            f"{run['label']} at any time and they are there — and the export "
+            f"carries every group's, not just the one you finish on.",
             icon="📄",
         )
     if st.button(f"Now run the same analysis on {nxt}", type="primary",
@@ -403,7 +378,8 @@ def _runs_table(done: Sequence[Any]) -> pd.DataFrame:
 
 def _advance_to(column: str, label: str) -> None:
     """Switch to the next cohort without re-deriving the plan from a filtered frame."""
-    from utils.session_state import get_data, reset_downstream_results
+    from utils.cohorts import switch_branch
+    from utils.session_state import get_data
     from utils.test_lockbox import train_row_mask
 
     full = get_data(full_study=True)
@@ -421,16 +397,5 @@ def _advance_to(column: str, label: str) -> None:
     lost = features_that_lose_variance(
         full, cohort_mask(full, column, cell.value),
         list(getattr(dc, "feature_cols", []) or []))
-    st.session_state.pop("filtered_data", None)   # see _switch_to
-    from utils import replay as _replay
-    _replay.stage_for_replay(reason="cohort switch")
-    start_cohort(full, plan, cell, target_col,
-                 dropped_features=[c for c, _ in lost])
-    try:
-        from utils.workflow_provenance import get_provenance
-        get_provenance().record_cohort_restriction()
-    except Exception:
-        pass
-    reset_downstream_results(clear_feature_engineering=True)
-    _replay.restore_decisions()
+    switch_branch((full, plan, cell, target_col, [c for c, _ in lost]))
     st.rerun()

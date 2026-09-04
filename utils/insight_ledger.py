@@ -1045,6 +1045,33 @@ class InsightLedger:
         ]
         return before - len(self._insights)
 
+    def entries_from_pages(self, source_pages: set) -> List[Insight]:
+        """Every insight produced by one of `source_pages`, in insertion order.
+
+        The live objects, not copies: a cohort branch snapshot holds these and
+        the pages that own them go on resolving and annotating them in place
+        while that branch is the active one. Round-tripping through
+        `to_dict()`/`from_dict()` instead would re-run `__post_init__` and
+        refill an emptied `tripod_keys` from the category map, so the restored
+        insight would not equal the archived one.
+        """
+        return [i for i in self._insights if i.source_page in source_pages]
+
+    def prune_pages(self, source_pages: set) -> int:
+        """Drop EVERY insight from these pages — hand-written ones included.
+
+        `prune_auto_generated` deliberately spares what the researcher wrote,
+        because an invalidated *result* does not invalidate a human note about
+        it. A cohort switch is the other case: the note was written about one
+        group of people, and it must travel with that group rather than stay on
+        screen under the next group's heading. Leaving it would also duplicate
+        it the moment the branch it belongs to is restored.
+        """
+        before = len(self._insights)
+        self._insights = [i for i in self._insights
+                          if i.source_page not in source_pages]
+        return before - len(self._insights)
+
     def get_acknowledged(self) -> List[Insight]:
         """Return acknowledged-but-not-resolved insights."""
         return [i for i in self._insights if i.acknowledged and not i.resolved]

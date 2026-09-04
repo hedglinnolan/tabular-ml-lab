@@ -677,7 +677,15 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     }
     if clear_feature_selection:
         _rollback_pages |= {"03_Feature_Engineering", "04_Feature_Selection"}
-    _pruned_pages = {"02_EDA", "05_Preprocess", "06_Train_and_Compare"}
+    # 07/08/09 join the pruned set. They used to be rolled back only — their
+    # findings stayed on screen — which meant an explainability or sensitivity
+    # insight measured on the women survived the switch and was printed into
+    # the men's `report.md` (`pages/10_Report_Export.py`). Their producers
+    # re-detect on the next run, so absent is better than false here too, and
+    # a cohort branch now carries its own copy of them (`cascade.BRANCH_PAGES`).
+    _pruned_pages = {"02_EDA", "05_Preprocess", "06_Train_and_Compare",
+                     "07_Explainability", "08_Sensitivity_Analysis",
+                     "09_Hypothesis_Testing"}
 
     ledger = st.session_state.get("insight_ledger")
     if ledger is not None:

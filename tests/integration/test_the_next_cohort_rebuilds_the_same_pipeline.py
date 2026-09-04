@@ -20,6 +20,7 @@ import pandas as pd
 import pytest
 import streamlit as st
 
+from turbotab.cascade import BRANCH_ARCHIVE_KEY as _ARCHIVE
 from utils import replay as R
 
 pytestmark = pytest.mark.timeout(900)
@@ -165,6 +166,12 @@ def journey():
         # dict in place, and the state is carried between AppTests by reference.
         "pending": copy.deepcopy(at.session_state["cohort_decisions_pending"]),
         "trained": dict(at.session_state["trained_models"] or {}),
+        # What the switch BANKED, as opposed to what it cleared. The two used
+        # to be the same thing.
+        "archived": {
+            k: sorted(v.keys.keys())
+            for k, v in (at.session_state[_ARCHIVE] or {}).items()
+        } if _ARCHIVE in _state_of(at) else {},
     }
     out["sidebar_after_switch"] = [str(c.value) for c in at.sidebar.caption]
     state = _state_of(at)
@@ -231,10 +238,32 @@ class TestTheSwitchParksEveryDecisionAndFitsNothing:
         assert journey["after_switch"]["cohort"]["label"] == "Male"
 
     def test_nothing_fitted_on_the_women_survived(self, journey):
+        """Nothing fitted on the women is USED for the men.
+
+        The invariant was never "no Female fit exists" — it is that no Female
+        fit is in the keys the men's pages read. Branches make the difference
+        matter: the fits still exist, in the archive, under the women's key.
+        """
         a = journey["after_switch"]
         assert a["config_by_model"] == {}, "a config with no pipeline behind it"
         assert a["built"] == []
         assert a["trained"] == {}
+
+    def test_and_the_womens_run_was_banked_rather_than_destroyed(self, journey):
+        """The other half, which used not to be true at all.
+
+        Before branches this switch deleted the women's models, their splits
+        and their engineered frame outright; a two-number `CohortRun` was the
+        only trace. Now the switch archives them under `('sex', 'Female')` and
+        switching back restores them without re-fitting.
+        """
+        archived = journey["after_switch"]["archived"]
+        assert ("sex", "Female") in archived, (
+            f"the women's branch was not banked; archive holds {list(archived)}")
+        banked = archived[("sex", "Female")]
+        for key in ("trained_models", "model_results", "X_train", "X_test",
+                    "preprocessing_pipelines_by_model"):
+            assert key in banked, f"{key} did not travel with the Female branch"
 
     def test_the_decisions_are_waiting_with_their_origin(self, journey):
         p = journey["after_switch"]["pending"]

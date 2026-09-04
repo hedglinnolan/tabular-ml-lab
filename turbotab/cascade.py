@@ -340,15 +340,25 @@ BRANCH_KEYS: FrozenSet[str] = frozenset(
     (all_result_keys() | _FE_FRAME_STATE) - SHARED_DECISION_KEYS
 )
 
-#: Pages whose insights, methodology entries and provenance describe one
-#: cohort's rows. The ledger and the methodology log are keyed by page rather
-#: than by session key, so the branch/shared split for them is stated here in
-#: the same module, from the same rule.
+#: Pages whose insights and methodology entries describe one cohort's rows.
+#: The ledger and the methodology log are keyed by page rather than by session
+#: key, so the branch/shared split for them is stated here, from the same rule.
 #:
-#: Pages 02–04 are excluded deliberately: under a branch model the EDA and the
-#: selection are shared work over the study, and the sequential flow that makes
-#: them look per-cohort is what the up-front cohort declaration retires.
+#: **This set must follow the KEYS.** Page 02 is here because everything it
+#: produces — `eda_results`, `eda_insights`, `dataset_profile`,
+#: `dataset_profile_scope`, `table1_df` — is a per-branch key above, measured on
+#: whichever cohort's rows were active. Leaving 02 out while its results were
+#: swapped meant a restored branch showed its own profile numbers beside the
+#: OTHER group's distributional findings, which is the exact confusion
+#: `dataset_profile_scope` was added to prevent.
+#:
+#: Pages 03 and 04 are excluded deliberately, and they are the only exclusions:
+#: the engineering recipe and the feature selection are decisions shared by
+#: every branch (see `SHARED_DECISION_KEYS`), so their findings are the
+#: study's. That is also why this set is a literal and not
+#: `session_state._rollback_pages`, which adds those two at runtime.
 BRANCH_PAGES: FrozenSet[str] = frozenset({
+    "02_EDA",
     "05_Preprocess", "06_Train_and_Compare", "07_Explainability",
     "08_Sensitivity_Analysis", "09_Hypothesis_Testing",
 })
