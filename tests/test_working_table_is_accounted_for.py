@@ -265,7 +265,7 @@ def test_a_transpose_and_a_repair_reach_the_sign_off():
 def test_the_commit_carries_the_import_doctor_key():
     """The last moment the file key and the dataset id coexist."""
     import ast
-    src = open("pages/01_Upload_and_Audit.py").read()
+    src = open("pages/01_Upload_and_Audit.py", encoding="utf-8").read()
     tree = ast.parse(src)
     fn = next(n for n in ast.walk(tree)
               if isinstance(n, ast.FunctionDef) and n.name == "_commit_dataset")
@@ -283,8 +283,8 @@ def test_the_commit_carries_the_import_doctor_key():
 
 def test_only_the_card_states_the_shape():
     """Two places invited the drift this whole change exists to end."""
-    page = open("pages/01_Upload_and_Audit.py").read()
-    combine = open("utils/combine_ui.py").read()
+    page = open("pages/01_Upload_and_Audit.py", encoding="utf-8").read()
+    combine = open("utils/combine_ui.py", encoding="utf-8").read()
     assert "Combined table ready" not in combine, (
         "the combine summary restates the shape beside the card")
     assert 'st.caption(f"Shape: {working_df.shape[0]:,} rows' not in page, (
@@ -370,7 +370,7 @@ def test_forgetting_the_table_forgets_its_account_too():
     combine then appended a second "Combined N files" step to an account that
     still described the first, giving a chain that did not join up."""
     import ast
-    src = open("pages/01_Upload_and_Audit.py").read()
+    src = open("pages/01_Upload_and_Audit.py", encoding="utf-8").read()
     tree = ast.parse(src)
     fn = next(n for n in ast.walk(tree)
               if isinstance(n, ast.FunctionDef) and n.name == "_forget_working_table")
@@ -388,7 +388,7 @@ def test_forgetting_the_table_forgets_its_account_too():
 
 
 def test_removing_a_file_says_what_it_costs():
-    src = open("pages/01_Upload_and_Audit.py").read()
+    src = open("pages/01_Upload_and_Audit.py", encoding="utf-8").read()
     assert "is discarded and you will combine the remaining files" in src, (
         "Remove destroys the working table on one unlabeled click")
 
@@ -397,14 +397,14 @@ def test_removing_a_file_says_what_it_costs():
 
 def test_the_committed_combine_step_stops_rendering_as_a_control():
     """Its headline described the inputs and looked current forever."""
-    src = open("pages/01_Upload_and_Audit.py").read()
+    src = open("pages/01_Upload_and_Audit.py", encoding="utf-8").read()
     assert "_combine_reopen" in src
     assert "Change how these files are combined" in src
 
 
 def test_every_shape_changing_site_records_a_step():
     import ast
-    src = open("pages/01_Upload_and_Audit.py").read()
+    src = open("pages/01_Upload_and_Audit.py", encoding="utf-8").read()
     tree = ast.parse(src)
     records = [n for n in ast.walk(tree)
                if isinstance(n, ast.Call)
@@ -418,7 +418,7 @@ def test_every_shape_changing_site_records_a_step():
 
 def test_the_page_states_the_table_before_it_asks_what_to_do_with_it():
     """The sign-off must sit above the st.stop() that gates Step 4."""
-    src = open("pages/01_Upload_and_Audit.py").read()
+    src = open("pages/01_Upload_and_Audit.py", encoding="utf-8").read()
     signoff = src.index("render_exit_assurance(")
     step4 = src.index('st.header("Step 4: Configure Analysis")')
     assert signoff < step4, (

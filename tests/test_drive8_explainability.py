@@ -54,7 +54,7 @@ PAGE_07 = "pages/07_Explainability.py"
 
 
 def source(path):
-    with open(os.path.join(PROJECT_ROOT, path)) as fh:
+    with open(os.path.join(PROJECT_ROOT, path), encoding="utf-8") as fh:
         return fh.read()
 
 

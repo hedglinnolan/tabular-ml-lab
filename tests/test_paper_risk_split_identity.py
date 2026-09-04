@@ -177,7 +177,7 @@ def test_mine_014_the_positional_split_keys_are_gone(session):
     The keys are the trap: while they exist, any future page can index a fresh
     frame with them and be wrong without an error.
     """
-    page06 = (REPO / "pages" / "06_Train_and_Compare.py").read_text()
+    page06 = (REPO / "pages" / "06_Train_and_Compare.py").read_text(encoding="utf-8")
     for part in ("train", "val", "test"):
         assert not re.search(rf"session_state\.{part}_indices\s*=", page06), (
             f"page 06 still writes {part}_indices as positions")
@@ -187,7 +187,7 @@ def test_mine_014_the_positional_split_keys_are_gone(session):
         assert f"{part}_row_labels" in page06, (
             f"page 06 no longer records the {part} row labels")
 
-    page07 = (REPO / "pages" / "07_Explainability.py").read_text()
+    page07 = (REPO / "pages" / "07_Explainability.py").read_text(encoding="utf-8")
     assert "test_indices" not in page07, (
         "page 07 still reads the positional test set")
     assert ".iloc[test_indices]" not in page07
