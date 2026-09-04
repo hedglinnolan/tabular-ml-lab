@@ -73,7 +73,11 @@ def test_the_module_has_a_consumer_outside_its_own_tests(module, page):
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")
         if re.search(rf"(from\s+{re.escape(module)}\s+import|import\s+{re.escape(module)}\b)", text):
-            importers.append(str(path.relative_to(ROOT)))
+            # `as_posix()`, not `str()`: on Windows `str()` yields
+            # `pages\10_Report_Export.py` and the `page` this is compared
+            # against is written with forward slashes, so the assertion
+            # below failed for every module that HAD its consumer.
+            importers.append(path.relative_to(ROOT).as_posix())
     assert importers, (
         f"{module} is imported by nothing outside its own tests. It was "
         f"written for an OPEN row and left unwired for a loop, which is the "

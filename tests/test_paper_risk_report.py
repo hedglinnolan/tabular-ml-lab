@@ -65,7 +65,7 @@ def _page10_source(func: str) -> str:
     The page is a Streamlit script and cannot be imported; its cohort rule is
     pinned at the source level, which is also where the defect lived.
     """
-    src = (REPO / "pages" / "10_Report_Export.py").read_text()
+    src = (REPO / "pages" / "10_Report_Export.py").read_text(encoding="utf-8")
     start = src.index(f"def {func}(")
     nxt = src.find("\ndef ", start + 1)
     return src[start:nxt if nxt != -1 else len(src)]
@@ -275,7 +275,7 @@ class TestState008RecipeOmitsNothing:
         assert "unrecorded step: mystery_transform (QuantileTransformer)" in recipe
 
     def test_row_filtering_is_part_of_the_recipe_in_the_export(self):
-        page10 = (REPO / "pages" / "10_Report_Export.py").read_text()
+        page10 = (REPO / "pages" / "10_Report_Export.py").read_text(encoding="utf-8")
         assert page10.count("get_pipeline_recipe(") >= 2
         assert not re.search(r"get_pipeline_recipe\(pl\)", page10), (
             "the export drops the 'rows filtered' line by omitting the mode")
@@ -286,7 +286,7 @@ class TestState008RecipeOmitsNothing:
         fitted object. Page 06's "Preprocessing used" panel omitted the mode, so
         the recipe a researcher READS lost the 'rows filtered to NHANES range'
         line that the recipe they EXPORT keeps: two descriptions of one run."""
-        page06 = (REPO / "pages" / "06_Train_and_Compare.py").read_text()
+        page06 = (REPO / "pages" / "06_Train_and_Compare.py").read_text(encoding="utf-8")
         assert not re.search(r"get_pipeline_recipe\(fitted_prep\)", page06)
         assert 'plausibility_mode=_recipe_cfg.get("plausibility_mode")' in page06
 
@@ -305,7 +305,7 @@ class TestModels009TheBaselineRecipeReachesTheManuscript:
     say the recipe differed."""
 
     def test_the_summary_carries_it(self):
-        page10 = (REPO / "pages" / "10_Report_Export.py").read_text()
+        page10 = (REPO / "pages" / "10_Report_Export.py").read_text(encoding="utf-8")
         body = _page10_source("_summarize_baselines")
         assert "'preprocessing'" in body, (
             "the comparator's preprocessing does not travel with its numbers")
