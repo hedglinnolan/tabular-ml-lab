@@ -238,7 +238,13 @@ def generate_metadata() -> Dict[str, Any]:
     # `n_rows` below is that group's count, not the study's. A downstream
     # reader with no way to tell them apart will take it for the study's.
     from utils.cohorts import active_cohort as _active_cohort
+    from utils.cohorts import training_features as _training_features
     _cohort_run = _active_cohort()
+    # `finalized_features` is the SELECTION. Inside a cohort the models were
+    # fitted on fewer, because the predictors that go constant in this group
+    # are left out — so a downstream reader counting `features` would attribute
+    # a column to a model that never saw it.
+    _fitted_features = _training_features(finalized_features)
     
     metadata = {
         'export_timestamp': datetime.now().isoformat(),
@@ -251,10 +257,14 @@ def generate_metadata() -> Dict[str, Any]:
             'cohort': (f"{_cohort_run['column']}={_cohort_run['label']}"
                        if _cohort_run else None),
             'n_study': (_cohort_run.get('n_total') if _cohort_run else len(df)),
-            'n_features': len(finalized_features),
+            'n_features': len(_fitted_features),
+            'n_features_selected': len(finalized_features),
             'target': data_config.target_col,
             'task_type': data_config.task_type,
-            'features': finalized_features
+            'features': _fitted_features,
+            'features_selected': finalized_features,
+            'features_constant_in_cohort': [c for c in finalized_features
+                                            if c not in _fitted_features],
         },
         'splits': {
             'train_size': split_config.train_size,
@@ -1486,7 +1496,24 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
             f"{_run.get('n_total', len(df)):,} in the whole study) |")
     else:
         report_lines.append(f"| Rows | {len(df):,} |")
-    report_lines.append(f"| Features | {len(st.session_state.get('selected_features') or data_config.feature_cols)} |")
+    # Labeled the same way the Rows line above it is, and for the same
+    # reason: inside a cohort the number of predictors the models were fitted
+    # on is not the number selected, because the ones that go constant in this
+    # group are left out. An unlabeled count is the one a reader writes down.
+    from utils.cohorts import training_features as _training_features
+    _sel_features = list(st.session_state.get('selected_features')
+                         or data_config.feature_cols)
+    _fit_features = _training_features(_sel_features)
+    _flat_features = [c for c in _sel_features if c not in _fit_features]
+    if _flat_features and _run is not None:
+        report_lines.append(
+            f"| Features | {len(_fit_features)} "
+            f"({len(_sel_features)} selected; "
+            f"{', '.join(map(str, _flat_features))} constant in "
+            f"{_run['column']} = {_run['label']} and left out of this group's "
+            f"models) |")
+    else:
+        report_lines.append(f"| Features | {len(_sel_features)} |")
     report_lines.append(f"| Target | `{data_config.target_col}` |")
     report_lines.append(f"| Task Type | {data_config.task_type.title()} |")
     

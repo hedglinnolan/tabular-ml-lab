@@ -250,7 +250,7 @@ def _cohort_warnings(plan: CohortPlan, task_type: str) -> List[str]:
 
     if len(viable) > MAX_SENSIBLE_CELLS:
         out.append(
-            f"**{len(viable)} separate analyses is a lot.** Every extra group is "
+            f"**{len(viable)} separate analyzes is a lot.** Every extra group is "
             f"another chance for one of them to look significant by accident. If "
             f"you report the one that worked, that is the multiple-comparisons "
             f"problem, and it needs disclosing.")
@@ -288,14 +288,14 @@ def _cohort_warnings(plan: CohortPlan, task_type: str) -> List[str]:
             out.append(
                 f"**{plan.n_excluded_missing:,} row(s) ({share:.0%}) have no "
                 f"'{plan.column}' recorded**, so they appear in none of these "
-                f"analyses. If who is missing that value is related to your "
+                f"analyzes. If who is missing that value is related to your "
                 f"outcome, every cohort here is a selected sample.")
 
     if plan.blocked:
         names = ", ".join(f"{c.label} ({c.blocked_reason})" for c in plan.blocked[:3])
         out.append(
             f"**Some groups are too small to model on their own:** {names}. They stay "
-            f"in your data — they are simply not offered as separate analyses, "
+            f"in your data — they are simply not offered as separate analyzes, "
             f"because a number computed from that few people would mislead you.")
     return out
 
@@ -449,7 +449,7 @@ def clear_cohort() -> None:
     # Refresh the record HERE rather than at each call site. Two of the four
     # clear paths — the sidebar repair button and the data-fingerprint branch in
     # set_data — did not, so a study that had gone back to analyzing everyone
-    # kept exporting "Analyses were restricted to sex = Female (n=319)" beside
+    # kept exporting "Analyzes were restricted to sex = Female (n=319)" beside
     # a Results section reporting all 600 people.
     try:
         from utils.workflow_provenance import get_provenance
@@ -481,6 +481,41 @@ def start_cohort(df: pd.DataFrame, plan: CohortPlan, cell: CohortCell,
     st.session_state[_ACTIVE_KEY] = run
     st.session_state.pop(_BROKEN_KEY, None)
     return run
+
+
+def training_features(feature_cols: Sequence[str]) -> List[str]:
+    """The predictors a model can actually learn from INSIDE the active cohort.
+
+    Filtering to the women makes `sex` constant, and anything that only varies
+    with it goes flat too. `start_cohort` has always recorded those columns in
+    `dropped_features` and the chooser has always named them — and nothing ever
+    removed them. Every use was display or serialization, so a single-sex model
+    was fitted with a constant column in it and page 07 ranked `sex` at
+    importance ~0 as though that were a finding about sex.
+
+    The SHARED decision is untouched: `data_config.feature_cols` and
+    `selected_features` still name the study's predictors, because they are the
+    question and it is the same question in both groups. This is the working
+    list for one fit.
+
+    Returns the full list unchanged when that would leave nothing to fit on — a
+    model with no predictors is a worse failure than a constant one, and it
+    would be a failure the researcher could not act on.
+    """
+    run = active_cohort()
+    if not run:
+        return list(feature_cols)
+    flat = {str(c) for c in (run.get("dropped_features") or [])}
+    if not flat:
+        return list(feature_cols)
+    kept = [c for c in feature_cols if str(c) not in flat]
+    return kept if kept else list(feature_cols)
+
+
+def constant_in_cohort(feature_cols: Sequence[str]) -> List[str]:
+    """Which of `feature_cols` `training_features` would leave out, and why it
+    matters that the page says so rather than silently shrinking the model."""
+    return [c for c in feature_cols if c not in training_features(feature_cols)]
 
 
 def apply_cohort(df: pd.DataFrame) -> pd.DataFrame:
@@ -652,7 +687,7 @@ def comparison_caveats(runs: Sequence[CohortRun], task_type: str) -> List[str]:
 # draft — with a two-number `CohortRun` left behind as the only trace.
 #
 # A branch is the same run, kept. Switching archives what is live and restores
-# what the target had, so both analyses exist at once and either can be
+# what the target had, so both analyzes exist at once and either can be
 # explained, sensitivity-tested and exported without re-fitting.
 #
 # THE STORAGE RULE IS SWAP, NOT PREFIX. Namespacing every result key by cohort

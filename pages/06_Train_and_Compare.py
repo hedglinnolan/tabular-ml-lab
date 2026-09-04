@@ -524,7 +524,28 @@ if st.button("Prepare Splits", type="primary"):
 
         # Get feature columns - use engineered features if applied
         target_col = data_config.target_col
-        feature_cols = st.session_state.get('selected_features') or data_config.feature_cols
+        # A predictor that is constant inside this cohort carries no signal in
+        # it. `dropped_features` has always recorded them; nothing applied them
+        # until now. The shared selection is untouched — this is the working
+        # list for this group's fit.
+        from utils.cohorts import (active_cohort, constant_in_cohort,
+                                   training_features)
+        _selected = st.session_state.get('selected_features') or data_config.feature_cols
+        feature_cols = training_features(_selected)
+        _flat_here = constant_in_cohort(_selected)
+        if _flat_here:
+            _run_now = active_cohort()
+            st.info(
+                f"🚻 {len(_flat_here)} predictor{'' if len(_flat_here) == 1 else 's'} "
+                f"({', '.join(map(str, _flat_here[:6]))}"
+                f"{'…' if len(_flat_here) > 6 else ''}) "
+                f"{'is' if len(_flat_here) == 1 else 'are'} constant inside "
+                f"{_run_now['column']} = {_run_now['label']}, so "
+                f"{'it is' if len(_flat_here) == 1 else 'they are'} left out of "
+                f"this group's models. Your feature selection is unchanged — the "
+                f"other group may lose a different set, which is why the "
+                f"comparison table names both."
+            )
 
         # Reconcile the feature list against the actual data. If features were
         # engineered and later dropped (e.g. Feature Selection or a Reset/Skip
@@ -1513,12 +1534,22 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     model_pipeline, _dropped_cols = reconcile_pipeline_columns(
                         model_pipeline, X_train.columns
                     )
-                    if _dropped_cols:
+                    # The pipeline was built on page 05 over the whole
+                    # study's predictors, so a column this cohort drops on
+                    # purpose reaches here looking exactly like a state drift.
+                    # Telling the researcher to "reconfigure intentionally"
+                    # about a decision the app just made for them, on every
+                    # training run, is how a correct app teaches distrust.
+                    from utils.cohorts import active_cohort as _ac
+                    _run_now = _ac()
+                    _intended = {str(c) for c in ((_run_now or {}).get('dropped_features') or [])}
+                    _unexpected = [c for c in _dropped_cols if str(c) not in _intended]
+                    if _unexpected:
                         st.warning(
                             f"⚠️ {model_name.upper()}'s preprocessing referenced "
                             f"features no longer in the data "
-                            f"({', '.join(map(str, _dropped_cols[:8]))}"
-                            f"{'…' if len(_dropped_cols) > 8 else ''}) and was rebuilt "
+                            f"({', '.join(map(str, _unexpected[:8]))}"
+                            f"{'…' if len(_unexpected) > 8 else ''}) and was rebuilt "
                             f"without them. Re-run Preprocess to reconfigure intentionally."
                         )
 
@@ -1843,8 +1874,15 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 # Store preprocessing pipeline for all models (needed for explainability)
                 st.session_state.fitted_preprocessing_pipelines[model_name] = model_pipeline
                 from ml.pipeline import get_feature_names_after_transform
+                # The SAME working list the split used. This site re-read the
+                # selection from scratch, so filtering only at the split would
+                # have left `feature_names_by_model` naming a column the model
+                # was never fitted on — and pages 06 and 10 both print it.
+                from utils.cohorts import training_features as _training_features
                 st.session_state.feature_names_by_model[model_name] = get_feature_names_after_transform(
-                    model_pipeline, st.session_state.get('selected_features') or data_config.feature_cols
+                    model_pipeline,
+                    _training_features(st.session_state.get('selected_features')
+                                       or data_config.feature_cols)
                 )
                 
                 progress_bar.progress(1.0)
@@ -2393,7 +2431,14 @@ if st.session_state.get('trained_models'):
     # Get feature information
     selected_features = st.session_state.get('selected_features')
     feature_cols = data_config.feature_cols if data_config else []
-    n_features_used = len(selected_features) if selected_features else len(feature_cols)
+    # What was FITTED, not what was selected. `set_splits` stored the list the
+    # split was actually built from — the selection minus this cohort's constant
+    # predictors, minus any column that had left the frame — so a one-group run
+    # no longer reports "Training on these: 8" over a model fitted on 7.
+    _fitted_on = st.session_state.get('feature_names')
+    n_features_used = (
+        len(_fitted_on) if _fitted_on
+        else (len(selected_features) if selected_features else len(feature_cols)))
     n_original_features = len(feature_cols)
     n_engineered = len(st.session_state.get('engineered_feature_names', []))
     
