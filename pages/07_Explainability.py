@@ -153,6 +153,14 @@ with col3:
 
 st.markdown("---")
 
+# ── Which group is this page about? ─────────────────────────────
+# ABOVE every gate below, including the task-mode one. A researcher whose
+# active branch has no models is exactly the person who needs to switch to the
+# one that does, and a picker rendered after `st.stop()` is invisible to them.
+# It renders nothing at all until a second branch exists.
+from utils.cohort_ui import render_branch_picker
+render_branch_picker("07_Explainability")
+
 # ── Guardrails ──────────────────────────────────────────────────
 task_mode = st.session_state.get('task_mode')
 if task_mode != 'prediction':
