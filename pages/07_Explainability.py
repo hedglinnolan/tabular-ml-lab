@@ -1904,6 +1904,13 @@ with _explain_tabs[2]:
                 from utils.cohorts import active_cohort as _ac
                 _run_now = _ac()
                 _ext_cohort_note = ""
+                # A separate flag, not an entry pushed into `missing_cols`.
+                # Overloading that list made the empty-group refusal print
+                # "Missing columns in external dataset: ['sex']" about a column
+                # the file plainly HAS — sending the researcher to fix a schema
+                # that is already correct, when the real answer is that nobody
+                # in the file belongs to this group.
+                _cohort_blocked = False
                 if _run_now is not None:
                     _col = _run_now["column"]
                     if _col not in ext_df.columns:
@@ -1917,7 +1924,7 @@ with _explain_tabs[2]:
                             f"report it as external validation. Add the column, "
                             f"or go back to analyzing everyone first."
                         )
-                        missing_cols = missing_cols or [_col]
+                        _cohort_blocked = True
                     else:
                         from utils.cohorts import cohort_mask
                         _before = int(ext_df.shape[0])
@@ -1931,12 +1938,16 @@ with _explain_tabs[2]:
                                 f"{_run_now['label']}, so this model has nobody "
                                 f"to be validated on."
                             )
-                            missing_cols = missing_cols or [_col]
+                            _cohort_blocked = True
                         else:
                             st.caption(f"👥 {_ext_cohort_note}")
 
-                if missing_cols:
-                    if not _run_now or _run_now["column"] in ext_df.columns:
+                if missing_cols or _cohort_blocked:
+                    # Both reasons block validation, and each is reported for
+                    # what it is: genuinely absent required columns are named
+                    # even when the cohort refusal also fired, so a file with
+                    # two problems does not have to be fixed twice.
+                    if missing_cols:
                         st.error(f"Missing columns in external dataset: {missing_cols}")
                 else:
                     ext_override = True

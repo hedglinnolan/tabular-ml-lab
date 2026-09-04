@@ -211,3 +211,56 @@ class TestExternalValidationRespectsTheGroup:
         kept = external.loc[cohort_mask(external, run["column"], run["value"])]
         assert list(kept["sex"]) == ["Female", "Female"], (
             "a missing value must belong to no group, not to this one")
+
+
+# ── the counts have to describe the fit, not the selection ───────────────
+
+class TestTheFeatureCountIsTheFitsCount:
+    """Applying `dropped_features` made the models smaller than the selection.
+    Three places went on printing the selection's size as the model's, so a
+    one-group run said "Training on these: 8" over a model fitted on 7."""
+
+    def test_page_06_counts_what_the_split_was_built_from(self):
+        src = (ROOT / "pages" / "06_Train_and_Compare.py").read_text(encoding="utf-8")
+        assert "_fitted_on = st.session_state.get('feature_names')" in src, (
+            "the training summary counts the selection, not the fit")
+        assert "len(_fitted_on) if _fitted_on" in src
+
+    def test_the_report_names_the_predictors_this_group_lost(self):
+        """Labelled the same way the Rows line above it is. An unlabelled count
+        is the one a reader writes down."""
+        src = (ROOT / "pages" / "10_Report_Export.py").read_text(encoding="utf-8")
+        assert "and left out of this group's " in src
+        assert "_fit_features = _training_features(_sel_features)" in src
+
+    def test_the_metadata_separates_fitted_from_selected(self):
+        src = (ROOT / "pages" / "10_Report_Export.py").read_text(encoding="utf-8")
+        assert "'n_features': len(_fitted_features)" in src, (
+            "metadata.json attributes a column to a model that never saw it")
+        assert "'n_features_selected':" in src
+        assert "'features_constant_in_cohort':" in src
+
+
+class TestTheExternalRefusalNamesTheRealProblem:
+    """Both cohort refusals blocked validation by pushing the grouping column
+    into `missing_cols`, so the empty-group case printed "Missing columns in
+    external dataset: ['sex']" about a column the file plainly HAS — sending
+    the researcher to fix a schema that is already correct."""
+
+    def _source(self):
+        return (ROOT / "pages" / "07_Explainability.py").read_text(encoding="utf-8")
+
+    def test_the_block_flag_is_not_the_missing_column_list(self):
+        src = self._source()
+        assert "_cohort_blocked = False" in src
+        assert "missing_cols = missing_cols or [_col]" not in src, (
+            "the refusal still fabricates a missing column")
+        assert "if missing_cols or _cohort_blocked:" in src
+
+    def test_genuinely_missing_columns_are_still_named(self):
+        """A file with two problems must not have to be fixed twice."""
+        src = self._source()
+        i = src.index("if missing_cols or _cohort_blocked:")
+        after = src[i:i + 900]
+        assert "if missing_cols:" in after
+        assert "Missing columns in external dataset" in after

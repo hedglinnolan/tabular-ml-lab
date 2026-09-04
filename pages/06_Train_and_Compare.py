@@ -2431,7 +2431,14 @@ if st.session_state.get('trained_models'):
     # Get feature information
     selected_features = st.session_state.get('selected_features')
     feature_cols = data_config.feature_cols if data_config else []
-    n_features_used = len(selected_features) if selected_features else len(feature_cols)
+    # What was FITTED, not what was selected. `set_splits` stored the list the
+    # split was actually built from — the selection minus this cohort's constant
+    # predictors, minus any column that had left the frame — so a one-group run
+    # no longer reports "Training on these: 8" over a model fitted on 7.
+    _fitted_on = st.session_state.get('feature_names')
+    n_features_used = (
+        len(_fitted_on) if _fitted_on
+        else (len(selected_features) if selected_features else len(feature_cols)))
     n_original_features = len(feature_cols)
     n_engineered = len(st.session_state.get('engineered_feature_names', []))
     
