@@ -478,3 +478,113 @@ class TestTheArchiveIsNotSaved:
         reset_data_dependent_state()        # what _clear_downstream_state calls
         assert BRANCH_ARCHIVE_KEY not in st.session_state
         assert active_cohort() is None
+
+
+# ── the archive must survive the reset that runs beside it ───────────────
+
+class TestTheResetCannotReachIntoTheArchive:
+    """The snapshot holds live objects on purpose, and the reset mutates some
+    of them IN PLACE. Those two facts collided.
+
+    `reset_downstream_results` rolls back resolutions — `resolved = False`,
+    `resolved_by = ""` — on the insights of its cleared pages. The snapshot
+    taken moments earlier holds those same `Insight` objects, so the rollback
+    reached a branch that was already archived and un-resolved a finding in it.
+    Switching back showed a resolved finding reopened; worse, page 10 fills the
+    manuscript's Limitations from unresolved insights, so the previous group's
+    exported report gained a limitation it had addressed.
+    """
+
+    def _ledger(self):
+        from utils.insight_ledger import InsightLedger
+        ledger = InsightLedger()
+        st.session_state["insight_ledger"] = ledger
+        return ledger
+
+    def test_a_resolved_finding_stays_resolved_in_the_branch_it_belongs_to(self):
+        df = study()
+        st.session_state["raw_data"] = df
+        ledger = self._ledger()
+
+        switch_branch(target_for(df, "Female"))
+        found = _insight("05_Preprocess", "imbalance")
+        ledger.add(found)
+        found.resolved = True
+        found.resolved_by = "class_weight=balanced"
+        found.resolved_on_page = "06_Train_and_Compare"
+
+        switch_branch(target_for(df, "Male"))      # the reset runs here
+
+        archived = st.session_state[BRANCH_ARCHIVE_KEY][("sex", "Female")]
+        banked = [i for i in archived.ledger if i.id == "imbalance"]
+        assert banked, "the finding was not archived at all"
+        assert banked[0].resolved is True, (
+            "the reset un-resolved an insight inside an already-archived branch")
+        assert banked[0].resolved_by == "class_weight=balanced"
+
+        switch_branch(target_for(df, "Female"))
+        live = ledger.get("imbalance")
+        assert live is not None and live.resolved is True, (
+            "the restored branch shows a finding the researcher had resolved as open")
+
+    def test_the_live_ledger_is_still_rolled_back_for_the_new_branch(self):
+        """The fix must not stop the reset doing its job. A finding on a page
+        OUTSIDE the branch set — resolved on a cleared page — is still rolled
+        back, because the new branch has not earned that resolution."""
+        df = study()
+        st.session_state["raw_data"] = df
+        ledger = self._ledger()
+
+        switch_branch(target_for(df, "Female"))
+        shared = _insight("04_Feature_Selection", "collinear")
+        ledger.add(shared)
+        shared.resolved = True
+        shared.resolved_on_page = "04_Feature_Selection"
+
+        switch_branch(target_for(df, "Male"))
+        live = ledger.get("collinear")
+        assert live is not None, "a shared-page finding must not be pruned"
+        assert live.resolved is False, (
+            "a resolution earned on a cleared page survived the reset")
+
+
+class TestPageTwoTravelsWithItsResults:
+    """Page 02's keys are per-branch — `eda_results`, `dataset_profile`,
+    `dataset_profile_scope`, `table1_df` are all in `BRANCH_KEYS` — so its
+    ledger and methodology entries have to be too. They were not, so a restored
+    branch showed its own profile numbers beside the OTHER group's
+    distributional findings: the exact confusion `dataset_profile_scope` exists
+    to prevent.
+    """
+
+    def test_an_eda_finding_does_not_outlive_its_cohort(self):
+        from utils.insight_ledger import InsightLedger
+        df = study()
+        st.session_state["raw_data"] = df
+        ledger = InsightLedger()
+        st.session_state["insight_ledger"] = ledger
+
+        switch_branch(target_for(df, "Female"))
+        st.session_state["eda_results"] = {"profile": "the women"}
+        ledger.add(_insight("02_EDA", "skew-in-the-women"))
+
+        switch_branch(target_for(df, "Male"))
+        assert "skew-in-the-women" not in {i.id for i in ledger.insights}, (
+            "the women's EDA finding is on screen under the men's heading")
+
+        switch_branch(target_for(df, "Female"))
+        assert st.session_state["eda_results"] == {"profile": "the women"}
+        assert "skew-in-the-women" in {i.id for i in ledger.insights}, (
+            "the finding did not come back with the results it describes")
+
+    def test_the_page_set_follows_the_key_set(self):
+        """The rule, asserted rather than remembered: a page whose results are
+        per-branch keys must be a branch page, or its findings and its numbers
+        get separated."""
+        from turbotab.cascade import BRANCH_PAGES
+        assert "02_EDA" in BRANCH_PAGES, (
+            "eda_results and dataset_profile are branch keys; page 02's "
+            "insights must travel with them")
+        for shared in ("03_Feature_Engineering", "04_Feature_Selection"):
+            assert shared not in BRANCH_PAGES, (
+                f"{shared} records a decision shared by every branch")

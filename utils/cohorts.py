@@ -900,18 +900,29 @@ def switch_branch(target: Optional[Sequence[Any]]) -> bool:
         df, plan, cell, target_col, dropped = target
         start_cohort(df, plan, cell, target_col, dropped_features=dropped)
     _record_restriction()
-    # The ONLY call in the tree that may keep the archive: this is the one
-    # change that leaves the question intact.
-    reset_downstream_results(clear_feature_engineering=True, preserve_branches=True)
-    # And one thing the reset deliberately does not do. It prunes only the
-    # AUTO-GENERATED insights, because an invalidated result does not
-    # invalidate a note a person wrote about it. A cohort switch is the other
-    # case: that note was written about one group of people. It is already
-    # banked in the snapshot taken above, so dropping it here moves it with its
-    # branch rather than leaving it on screen under the next group's heading.
+    # BEFORE the reset, not after, and the order is load-bearing.
+    #
+    # The reset does two things to the ledger: it prunes the AUTO-GENERATED
+    # insights of its cleared pages, and it ROLLS BACK the resolutions of
+    # others IN PLACE — `resolved = False`, `resolved_by = ""`. The snapshot
+    # taken at the top of this function holds those same `Insight` objects by
+    # reference, so a rollback reaches them through the alias and un-resolves a
+    # finding in a branch that is already archived. Switching back would then
+    # show a resolved finding reopened, and page 10 fills the manuscript's
+    # Limitations list from unresolved insights — so the previous group's
+    # exported report gains a limitation it had addressed.
+    #
+    # Pruning first means the reset walks a ledger the snapshot no longer
+    # shares anything with. The live end state is identical; only the archive
+    # is spared. (Pruning by page, rather than the reset's auto-generated-only
+    # rule, is also what moves a hand-written note with its branch: the note
+    # was written about one group of people.)
     import streamlit as st
     ledger = st.session_state.get("insight_ledger")
     if ledger is not None and hasattr(ledger, "prune_pages"):
         ledger.prune_pages(set(BRANCH_PAGES))
+    # The ONLY call in the tree that may keep the archive: this is the one
+    # change that leaves the question intact.
+    reset_downstream_results(clear_feature_engineering=True, preserve_branches=True)
     _replay.restore_decisions()
     return False
