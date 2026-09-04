@@ -44,10 +44,18 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 _SWEPT = ("tests", "tools", "scripts")
 
 
-def _text_reads_without_an_encoding(path: pathlib.Path):
-    """Every text-mode `open()` / `read_text()` in one file that names none."""
+def _text_reads_in(source: str):
+    """Every text-mode `open()` / `read_text()` in `source` that names none.
+
+    Takes SOURCE, not a path, so the self-test below can exercise it without
+    writing a file. That is not only tidier: `test_no_test_writes_a_path_git_tracks`
+    counts write destinations it cannot statically resolve and bounds them, and
+    a `write_text` into a `TemporaryDirectory` is exactly one of those. A guard
+    that has to weaken another guard to test itself is paying for its coverage
+    with someone else's.
+    """
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree = ast.parse(source)
     except SyntaxError:
         return []
     out = []
@@ -70,6 +78,10 @@ def _text_reads_without_an_encoding(path: pathlib.Path):
     # `ast.walk` is breadth-first, so the offender list would otherwise come out
     # in an order that has nothing to do with the file a reader is about to open.
     return sorted(out)
+
+
+def _text_reads_without_an_encoding(path: pathlib.Path):
+    return _text_reads_in(path.read_text(encoding="utf-8"))
 
 
 def _swept_files():
@@ -130,8 +142,6 @@ def test_this_guard_would_have_caught_the_reads_it_was_written_for():
     shape — the two that were actually found, plus a binary read and an
     encoded read that must NOT be reported.
     """
-    import tempfile
-
     sample = (
         'import pathlib\n'
         'a = open("pages/01_Upload_and_Audit.py").read()\n'          # line 2
@@ -140,10 +150,6 @@ def test_this_guard_would_have_caught_the_reads_it_was_written_for():
         'd = open("w.py", encoding="utf-8").read()\n'                # ok
         'e = pathlib.Path("v.py").read_text(encoding="utf-8")\n'     # ok
     )
-    with tempfile.TemporaryDirectory() as tmp:
-        probe = pathlib.Path(tmp) / "probe.py"
-        probe.write_text(sample, encoding="utf-8")
-        found = _text_reads_without_an_encoding(probe)
-
+    found = _text_reads_in(sample)
     assert [line for line, _ in found] == [2, 3], found
     assert {kind for _, kind in found} == {"open()", "read_text()"}
