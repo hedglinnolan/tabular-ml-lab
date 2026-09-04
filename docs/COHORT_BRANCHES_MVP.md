@@ -294,7 +294,7 @@ cohort_comparison.csv           one row per banked CohortRun under completed_run
 
 And in `report.md`:
 
-- A **"Cohort analyses"** section listing every branch with its n, its best model and metric, and its seal-opens — the table `utils/cohort_ui.py::_runs_table` already builds and today renders only as a `st.dataframe` on page 06 with no download.
+- A **"Cohort analyzes"** section listing every branch with its n, its best model and metric, and its seal-opens — the table `utils/cohort_ui.py::_runs_table` already builds and today renders only as a `st.dataframe` on page 06 with no download.
 - The `comparison_caveats` sentences (`utils/cohorts.py:598-629`), which currently exist only as `st.warning` at `utils/cohort_ui.py:319` and reach no artifact.
 - The `| Rows | N |` line under "Dataset Summary" (`:1469`) gains the cohort label; `metadata.json`'s `dataset.n_rows` (`:244-250`) gains `cohort` and `n_study`.
 
@@ -329,7 +329,7 @@ Deferred, with reasons: page 07 Subgroup Analysis offering a constant stratifier
 | `ml/narrative_engine.py` | Per-cohort access sentence and Limitations entry; sequential-order disclosure. |
 | `utils/workflow_provenance.py` | Restriction sentence's bundle pointer clause. |
 | `pages/07_Explainability.py`, `pages/08_Sensitivity_Analysis.py` | `render_branch_picker` above the `trained_models` gate; `render_cohort_note` on 08; external-validation cohort filter on 07. |
-| `pages/10_Report_Export.py` | `cohorts/` tree, `cohort_comparison.csv`, "Cohort analyses" section + caveats in `report.md`, labeled row counts. |
+| `pages/10_Report_Export.py` | `cohorts/` tree, `cohort_comparison.csv`, "Cohort analyzes" section + caveats in `report.md`, labeled row counts. |
 | `pages/04_Feature_Selection.py` | One caption (§2.4). |
 | `pages/06_Train_and_Compare.py` | Apply `dropped_features` to the training feature list; bank `seal_opens` into `CohortRun`. |
 

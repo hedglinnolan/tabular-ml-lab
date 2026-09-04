@@ -1496,10 +1496,10 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
             f"{_run.get('n_total', len(df)):,} in the whole study) |")
     else:
         report_lines.append(f"| Rows | {len(df):,} |")
-    # Labelled the same way the Rows line above it is, and for the same
+    # Labeled the same way the Rows line above it is, and for the same
     # reason: inside a cohort the number of predictors the models were fitted
     # on is not the number selected, because the ones that go constant in this
-    # group are left out. An unlabelled count is the one a reader writes down.
+    # group are left out. An unlabeled count is the one a reader writes down.
     from utils.cohorts import training_features as _training_features
     _sel_features = list(st.session_state.get('selected_features')
                          or data_config.feature_cols)

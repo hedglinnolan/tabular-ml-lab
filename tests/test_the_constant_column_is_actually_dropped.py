@@ -227,7 +227,7 @@ class TestTheFeatureCountIsTheFitsCount:
         assert "len(_fitted_on) if _fitted_on" in src
 
     def test_the_report_names_the_predictors_this_group_lost(self):
-        """Labelled the same way the Rows line above it is. An unlabelled count
+        """Labeled the same way the Rows line above it is. An unlabeled count
         is the one a reader writes down."""
         src = (ROOT / "pages" / "10_Report_Export.py").read_text(encoding="utf-8")
         assert "and left out of this group's " in src

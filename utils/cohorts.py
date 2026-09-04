@@ -250,7 +250,7 @@ def _cohort_warnings(plan: CohortPlan, task_type: str) -> List[str]:
 
     if len(viable) > MAX_SENSIBLE_CELLS:
         out.append(
-            f"**{len(viable)} separate analyses is a lot.** Every extra group is "
+            f"**{len(viable)} separate analyzes is a lot.** Every extra group is "
             f"another chance for one of them to look significant by accident. If "
             f"you report the one that worked, that is the multiple-comparisons "
             f"problem, and it needs disclosing.")
@@ -288,14 +288,14 @@ def _cohort_warnings(plan: CohortPlan, task_type: str) -> List[str]:
             out.append(
                 f"**{plan.n_excluded_missing:,} row(s) ({share:.0%}) have no "
                 f"'{plan.column}' recorded**, so they appear in none of these "
-                f"analyses. If who is missing that value is related to your "
+                f"analyzes. If who is missing that value is related to your "
                 f"outcome, every cohort here is a selected sample.")
 
     if plan.blocked:
         names = ", ".join(f"{c.label} ({c.blocked_reason})" for c in plan.blocked[:3])
         out.append(
             f"**Some groups are too small to model on their own:** {names}. They stay "
-            f"in your data — they are simply not offered as separate analyses, "
+            f"in your data — they are simply not offered as separate analyzes, "
             f"because a number computed from that few people would mislead you.")
     return out
 
@@ -449,7 +449,7 @@ def clear_cohort() -> None:
     # Refresh the record HERE rather than at each call site. Two of the four
     # clear paths — the sidebar repair button and the data-fingerprint branch in
     # set_data — did not, so a study that had gone back to analyzing everyone
-    # kept exporting "Analyses were restricted to sex = Female (n=319)" beside
+    # kept exporting "Analyzes were restricted to sex = Female (n=319)" beside
     # a Results section reporting all 600 people.
     try:
         from utils.workflow_provenance import get_provenance
@@ -687,7 +687,7 @@ def comparison_caveats(runs: Sequence[CohortRun], task_type: str) -> List[str]:
 # draft — with a two-number `CohortRun` left behind as the only trace.
 #
 # A branch is the same run, kept. Switching archives what is live and restores
-# what the target had, so both analyses exist at once and either can be
+# what the target had, so both analyzes exist at once and either can be
 # explained, sensitivity-tested and exported without re-fitting.
 #
 # THE STORAGE RULE IS SWAP, NOT PREFIX. Namespacing every result key by cohort
