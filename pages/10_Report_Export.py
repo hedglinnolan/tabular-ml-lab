@@ -1475,7 +1475,7 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     report_lines.append("| Property | Value |")
     report_lines.append("|----------|-------|")
     # WHOSE rows. `df` is the active cohort's frame — `get_data()` filters it —
-    # so an unlabelled "Rows: 319" beside a 600-person study is a number a
+    # so an unlabeled "Rows: 319" beside a 600-person study is a number a
     # reader takes for the study's N and a researcher copies into an abstract.
     from utils.cohorts import active_cohort as _active_cohort
     _run = _active_cohort()
@@ -2183,7 +2183,7 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     report_lines.append(f"- Random seed: {st.session_state.get('random_seed', 42)} (for reproducibility)")
     report_lines.append("")
 
-    # ── Cohort analyses ──────────────────────────────────────────────
+    # ── Cohort analyzes ──────────────────────────────────────────────
     # Everything above describes ONE group. This section is where the report
     # stops presenting that group as the study.
     #
@@ -2194,18 +2194,27 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     # until now all four existed only as an `st.warning` on page 06, which the
     # reader of this file never saw.
     try:
-        from utils.cohort_export import branch_dir, cohort_report_section
+        from utils.cohort_export import (branch_dir, cohort_report_section,
+                                         same_partition)
         from utils.cohorts import (BRANCH_ARCHIVE_KEY as _ARCHIVE_KEY,
                                    active_cohort, branch_key,
                                    comparison_caveats, completed_runs)
         _run = active_cohort()
-        _banked = completed_runs(_run["column"] if _run else "")
+        # The grouping column, which is NOT always the active run's: going back
+        # to analyzing everyone clears the run, and `completed_runs("")` then
+        # matches no banked run at all — so the comparison table and every
+        # caveat silently vanished from the report of a two-cohort study, on
+        # the one screen where the researcher has finished and is downloading.
+        # The archive still knows which column the branches came from.
+        _col = _run["column"] if _run else next(
+            (k[0] for k in (st.session_state.get(_ARCHIVE_KEY) or {}) if k[0]), "")
+        _banked = completed_runs(_col)
         if len(_banked) >= 2:
             _active = branch_key(_run)
             _bundled = [
                 ("Everyone" if k == ("", "") else f"{k[0]} = {k[1]}", branch_dir(k))
                 for k in (st.session_state.get(_ARCHIVE_KEY) or {})
-                if k != _active
+                if k != _active and same_partition(k, _active)
             ]
             report_lines.extend(cohort_report_section(
                 _banked,
@@ -2227,7 +2236,7 @@ export_ctx = build_export_context()
 # SECTION 3: MANUSCRIPT SETUP (metadata + scope)
 # ============================================================================
 st.header("📋 Manuscript Setup")
-st.caption("Set manuscript metadata and choose which models/analyses to include in all exports.")
+st.caption("Set manuscript metadata and choose which models/analyzes to include in all exports.")
 
 col_meta1, col_meta2 = st.columns(2)
 with col_meta1:
@@ -2270,7 +2279,7 @@ if available_explain:
         options=available_explain,
         default=available_explain,
         key="report_explain_selection",
-        help="Select which analyses to describe in the methods section.",
+        help="Select which analyzes to describe in the methods section.",
     )
 else:
     selected_explain = []
@@ -2859,7 +2868,7 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
     # Metrics CSV
     zip_file.writestr("metrics.csv", comparison_df.to_csv(index=False))
 
-    # ── Every OTHER group that was analysed ──────────────────────────
+    # ── Every OTHER group that was analyzed ──────────────────────────
     # The top-level artifacts above describe the ACTIVE branch. The export used
     # to stop there, so a two-cohort study downloaded whichever run happened to
     # be open and the other one was simply not in the file. Each archived
@@ -2883,7 +2892,11 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             seal_opens=_seal_opens,
         )
         _run_now = _ac()
-        _banked = completed_runs(_run_now["column"] if _run_now else "")
+        # Same fallback as the report section: "everyone" is a valid place to
+        # be standing when you download, and it must not erase the comparison.
+        _cmp_col = _run_now["column"] if _run_now else next(
+            (k[0] for k in _archive if k[0]), "")
+        _banked = completed_runs(_cmp_col)
         _cmp = comparison_csv(_banked)
         if _cmp:
             zip_file.writestr("cohort_comparison.csv", _cmp)

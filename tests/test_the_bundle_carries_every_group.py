@@ -1,4 +1,4 @@
-"""The export describes every group that was analysed, not the one you ended on.
+"""The export describes every group that was analyzed, not the one you ended on.
 
 Run the women, run the men, download. The zip held the men's models, the men's
 metrics, and a `report.md` whose "Rows: 319" was the men's N sitting under the
@@ -191,8 +191,8 @@ class TestTheBundleTree:
         assert not any("predictions/" in n for n in names)
 
     def test_a_branch_that_produced_nothing_is_still_visible(self):
-        """An empty folder with a reason. An absence reads as 'not analysed',
-        and this group WAS analysed — it just has nothing to show."""
+        """An empty folder with a reason. An absence reads as 'not analyzed',
+        and this group WAS analyzed — it just has nothing to show."""
         archive = {("sex", "Female"): Snapshot(run={"column": "sex", "label": "Female"})}
         zf, _ = write_zip(archive, active_key=("sex", "Male"))
         manifest = json.loads(zf.read("cohorts/sex=Female/manifest.json"))
@@ -288,8 +288,8 @@ class TestTheExportNeverTouchesTheLiveBranch:
 
 # ── page 10 says whose rows it is describing ─────────────────────────────
 
-def test_the_report_row_count_is_labelled_with_its_cohort():
-    """`df` on page 10 is the ACTIVE COHORT's frame. An unlabelled "Rows: 319"
+def test_the_report_row_count_is_labeled_with_its_cohort():
+    """`df` on page 10 is the ACTIVE COHORT's frame. An unlabeled "Rows: 319"
     beside a 600-person study is a number a researcher copies into an abstract."""
     src = (ROOT / "pages" / "10_Report_Export.py").read_text(encoding="utf-8")
     assert "in the whole study) |" in src, (
@@ -402,3 +402,67 @@ class TestPageTenActuallyWritesTheTree:
         written = self._run_page(df, {}, None, monkeypatch)
         assert "report.md" in written, "the ordinary bundle stopped being built"
         assert not [w for w in written if w.startswith("cohorts/")]
+
+
+# ── the bundle describes ONE study, not every split ever tried ───────────
+
+class TestTheBundleIsScopedToOnePartition:
+    """Splitting by sex, then splitting by smoking status, leaves branches from
+    both in the archive. They are overlapping row sets whose counts
+    double-count the same people. `completed_runs()` has always scoped the
+    comparison table to one grouping column — `render_next_cohort` documents
+    exactly this bug on screen — and the folders beside it have to agree, or
+    the bundle lists three "groups" of a two-group study under a caveat
+    announcing "you fitted this model in 3 groups"."""
+
+    def test_a_branch_from_another_grouping_variable_is_not_bundled(self):
+        archive = {
+            ("sex", "Female"): snap_for("Female"),
+            ("smoker", "never"): snap_for("never"),
+            ("", ""): snap_for("everyone"),
+        }
+        zf, written = write_zip(archive, active_key=("sex", "Male"))
+        names = zf.namelist()
+        assert "cohorts/sex=Female/metrics.csv" in names
+        assert not any(n.startswith("cohorts/smoker=") for n in names), (
+            "a superseded split's groups are in the bundle beside this study's")
+        assert "cohorts/everyone/metrics.csv" in names, (
+            "the whole study belongs to every partition")
+
+    def test_standing_on_everyone_still_bundles_the_groups(self):
+        """The whole-study branch has no column, so it must not be read as a
+        partition that excludes everything else."""
+        archive = {("sex", "Female"): snap_for("Female"),
+                   ("sex", "Male"): snap_for("Male")}
+        zf, _ = write_zip(archive, active_key=("", ""))
+        names = zf.namelist()
+        assert "cohorts/sex=Female/metrics.csv" in names
+        assert "cohorts/sex=Male/metrics.csv" in names
+
+
+class TestTheWholeStudyFolderDoesNotClaimDisjointness:
+
+    def test_the_everyone_manifest_says_it_contains_the_others(self):
+        """Its held-out set is every sealed row, so it CONTAINS each group's
+        slice rather than sitting beside it. A reader pooling the folders on
+        the strength of the group wording would double-count."""
+        note = branch_manifest(("", ""), snap_for("everyone"))["note"]
+        assert "not disjoint" in note, note
+        assert "contains them" in note, note
+
+    def test_a_group_manifest_still_claims_it(self):
+        note = branch_manifest(("sex", "Female"), snap_for("Female"))["note"]
+        assert "disjoint" in note and "not disjoint" not in note, note
+
+
+def test_going_back_to_everyone_does_not_erase_the_comparison():
+    """`completed_runs("")` matches no banked run, so the comparison table and
+    every multiplicity caveat vanished from the report — on the one screen
+    where the researcher has finished and is downloading. The grouping column
+    has to come from the archive when no run is active."""
+    src = (ROOT / "pages" / "10_Report_Export.py").read_text(encoding="utf-8")
+    assert src.count("if k[0]), \"\")") >= 2, (
+        "both completed_runs() call sites must fall back to the archive's "
+        "grouping column when no cohort is active")
+    assert "completed_runs(_col)" in src
+    assert "completed_runs(_cmp_col)" in src

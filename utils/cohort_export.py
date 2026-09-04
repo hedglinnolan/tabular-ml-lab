@@ -45,6 +45,17 @@ def branch_dir(key: Tuple[str, str]) -> str:
     return f"cohorts/{safe}"
 
 
+def same_partition(key: Tuple[str, str], active: Tuple[str, str]) -> bool:
+    """Whether two branch keys belong to the same split of the study.
+
+    The whole-study branch belongs to every partition — it is the population
+    the others were carved out of — so it is never excluded by this.
+    """
+    if not key[0] or not active[0]:
+        return True
+    return key[0] == active[0]
+
+
 def _metrics_rows(model_results: Any) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     if not isinstance(model_results, dict):
@@ -107,10 +118,11 @@ def branch_manifest(key: Tuple[str, str], snap: Any,
         except TypeError:
             return None
 
+    whole = key == ("", "")
     return {
         "cohort_column": key[0] or None,
         "cohort_label": key[1] or None,
-        "is_whole_study": key == ("", ""),
+        "is_whole_study": whole,
         "n_rows_in_group": run.get("n_rows"),
         "n_rows_in_study": run.get("n_total"),
         "n_train": _len("y_train"),
@@ -120,9 +132,17 @@ def branch_manifest(key: Tuple[str, str], snap: Any,
         "constant_in_this_group": list(run.get("dropped_features") or []),
         "held_out_slice_opened": seal_opens,
         "note": (
+            # The whole-study folder is the one place the disjointness claim is
+            # false: its held-out set is every sealed row, so it CONTAINS each
+            # group's slice rather than sitting beside it. A reader pooling the
+            # folders on the strength of that sentence would double-count.
+            "Metrics here were computed on the WHOLE study's held-out set. "
+            "Every group folder beside this one scores a subset of these same "
+            "rows, so this folder is not disjoint from them — it contains them."
+            if whole else
             "Metrics here were computed on this group's slice of the one "
             "held-out set drawn on the whole study before it was split. The "
-            "slices are disjoint: no row is scored in two folders."
+            "group folders are disjoint: no row is scored in two of them."
         ),
     }
 
@@ -160,7 +180,7 @@ def comparison_csv(runs: Sequence[Any]) -> Optional[str]:
 
 def cohort_report_section(runs: Sequence[Any], caveats: Sequence[str],
                           bundled: Sequence[Tuple[str, str]]) -> List[str]:
-    """The "Cohort analyses" section of `report.md`.
+    """The "Cohort analyzes" section of `report.md`.
 
     The caveats are the point. `cohorts.comparison_caveats` says what NOT to
     conclude from two AUCs side by side — different training sizes, different
@@ -170,9 +190,9 @@ def cohort_report_section(runs: Sequence[Any], caveats: Sequence[str],
     """
     if not runs:
         return []
-    lines: List[str] = ["## Cohort analyses", ""]
+    lines: List[str] = ["## Cohort analyzes", ""]
     lines.append(
-        f"This study was analysed separately in {len(runs)} groups. "
+        f"This study was analyzed separately in {len(runs)} groups. "
         f"**Report all {len(runs)}, not the one that worked.**")
     lines.append("")
     table = comparison_table(runs)
@@ -222,6 +242,14 @@ def add_cohort_bundles(
     for key, snap in archive.items():
         if key == active_key:
             continue
+        if not same_partition(key, active_key):
+            # A branch from a DIFFERENT grouping variable. Splitting by sex,
+            # then splitting by smoking status, leaves both in the archive —
+            # and they are overlapping row sets whose counts double-count the
+            # same people. `completed_runs()` already scopes the comparison
+            # table to one column; the folders beside it have to agree, or the
+            # bundle lists three "groups" of a two-group study.
+            continue
         base = branch_dir(key)
         label = "Everyone" if key == ("", "") else f"{key[0]} = {key[1]}"
         wrote_anything = False
@@ -264,7 +292,7 @@ def add_cohort_bundles(
         # The manifest is written even for a branch that produced nothing, so a
         # group that was entered and abandoned appears in the bundle as an
         # empty folder with a reason rather than as an absence a reader would
-        # read as "not analysed".
+        # read as "not analyzed".
         tag = "everyone" if key == ("", "") else f"{key[0]}={key[1]}"
         manifest = branch_manifest(key, snap, (seal_opens or {}).get(tag))
         if not wrote_anything:
