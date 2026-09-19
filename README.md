@@ -504,8 +504,10 @@ read it as the engine's design notes rather than a current file listing.
 
 ## Contributing
 
-Issues and PRs welcome. `make ci` runs the same test tiers as GitHub Actions
-before you push (it expects a `venv/` built with `pip install -r requirements.txt -r requirements-dev.txt`),
+Issues and PRs welcome; [CONTRIBUTING.md](CONTRIBUTING.md) says how to report
+a bug usefully, set up to develop, and run the tests the way CI does. `make ci`
+runs the same test tiers as GitHub Actions before you push (it expects a
+`venv/` built with `pip install -r requirements.txt -r requirements-dev.txt`),
 and [ARCHITECTURE.md](ARCHITECTURE.md) has the engine's design notes.
 
 ## Citing this tool

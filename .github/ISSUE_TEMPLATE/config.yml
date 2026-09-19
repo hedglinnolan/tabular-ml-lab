@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a question
+    url: https://github.com/hedglinnolan/tabular-ml-lab/discussions
+    about: 'Questions such as "can it do X?" or "which model should I pick?", and anything that is not a bug, go to Discussions.'
+  - name: Report a security problem privately
+    url: https://github.com/hedglinnolan/tabular-ml-lab/security/advisories/new
+    about: Please do not open a public issue for a vulnerability; see SECURITY.md.
