@@ -10,7 +10,7 @@ Nothing yet. `main` is at the 1.0.0 tag.
 
 ## [1.0.0] - 2026-09-19
 
-The first tagged release, published alongside the journal manuscript. It is
+The first tagged release, and the version the journal manuscript describes. It is
 the Classic Streamlit workbench: upload to LaTeX manuscript in ten steps, with
 the test set sealed at upload, bootstrap confidence intervals, and every cap or
 limit disclosed on the page and in the manuscript.
