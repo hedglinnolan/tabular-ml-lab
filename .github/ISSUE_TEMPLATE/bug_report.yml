@@ -1,0 +1,71 @@
+name: Bug report
+description: Something did not work the way the app or the README said it would.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The four questions below are what make a report
+        actionable; a screenshot helps too. Please do not attach data that
+        contains real participants.
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other / not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: install_path
+    attributes:
+      label: How did you start the app?
+      description: The three install paths behave differently, so this decides where to look.
+      options:
+        - Double-click starter from the release zip
+        - Terminal install (setup.sh / setup.ps1, then run.sh / run.ps1)
+        - Docker container on a server
+        - Other / not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release you downloaded, or the `version:` line in `CITATION.cff` in your copy of the folder.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What did you click?
+      description: The page you were on and the steps that led to the problem.
+      placeholder: |
+        1. Upload & Audit, uploaded a 2,000-row CSV
+        2. Picked "outcome" as the target
+        3. Clicked Train on Train & Compare
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened?
+      description: The exact message if there was one; paste it rather than paraphrasing.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot (optional)
+      description: Drag an image here. Please check it shows no participant data.
