@@ -151,8 +151,7 @@ tells you what's happening. Then the app opens in your browser automatically.
 **Coming back later:** setup never repeats. On Windows, a **Tabular ML Lab**
 icon is now on your Desktop and Start Menu; on Mac, a **Tabular ML Lab** app
 appeared inside the folder (drag it to your Dock if you like). One click starts
-the app in seconds, with **no internet needed after the first launch** (only the
-app's fonts come from the web, and they fall back to your system font offline).
+the app in seconds, with **no internet needed after the first launch.**
 The browser tab is just the app's window: the icon starts the app and the tab
 shows it. On Windows, the app runs in a small console window minimized to your
 taskbar — closing that window quits it.
@@ -207,8 +206,6 @@ astral.sh
 releases.astral.sh           <- astral.sh redirects here to serve the installer
 pypi.org
 files.pythonhosted.org
-fonts.googleapis.com         <- cosmetic only; the app runs fine without it
-fonts.gstatic.com            <- cosmetic only
 ```
 
 **4. Install from a terminal** (nothing goes through your browser). This is the

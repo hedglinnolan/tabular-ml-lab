@@ -5,6 +5,9 @@ address = "localhost"
 headless = true
 enableCORS = true
 enableXsrfProtection = true
+# Serves ./static at app/static/ — the fonts in static/fonts, so the UI makes
+# no request to Google and the app is genuinely offline after first launch.
+enableStaticServing = true
 # The server is deliberately no longer the admission gate.
 #
 # These were both 50 — 4x stricter than Streamlit's own 200 MB default, and the
