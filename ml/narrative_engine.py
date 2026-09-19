@@ -1709,7 +1709,7 @@ class NarrativeEngine:
     def _gen_software_environment(self) -> str:
         """Software environment boilerplate."""
         return (
-            "All analyzes were conducted using the Tabular ML Lab, "
+            "All analyses were conducted using the Tabular ML Lab, "
             "an open-source research workbench for reproducible machine learning "
             "on tabular data (Python, scikit-learn, Streamlit). "
             "The complete analysis workflow, including all preprocessing configurations, "
@@ -1997,7 +1997,7 @@ class NarrativeEngine:
         if top_features:
             feature_phrase = self._human_join(top_features[:3])
             parts.append(
-                f"The strongest predictors in the explainability analyzes were {feature_phrase}. "
+                f"The strongest predictors in the explainability analyses were {feature_phrase}. "
             )
         
         parts.append("\n")
@@ -2143,7 +2143,7 @@ class NarrativeEngine:
             _feats_clause = self._human_join(top_features[:3])
             parts.append(
                 f"[AUTHOR REQUIRED — The leading predictors in the explainability "
-                f"analyzes were {_feats_clause}. Discuss whether these associations "
+                f"analyses were {_feats_clause}. Discuss whether these associations "
                 "are plausible and actionable in your domain, and what use "
                 "(screening, triage, hypothesis generation) the observed "
                 "performance would support. These are predictive associations, "
@@ -2568,6 +2568,6 @@ class NarrativeEngine:
         if not completeness.get("split"):
             warnings.append("Study design section requires split configuration.")
         if not completeness.get("eda"):
-            warnings.append("No EDA analyzes were recorded in provenance.")
+            warnings.append("No EDA analyses were recorded in provenance.")
 
         return warnings

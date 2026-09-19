@@ -2210,7 +2210,7 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     report_lines.append(f"- Random seed: {st.session_state.get('random_seed', 42)} (for reproducibility)")
     report_lines.append("")
 
-    # ── Cohort analyzes ──────────────────────────────────────────────
+    # ── Cohort analyses ──────────────────────────────────────────────
     # Everything above describes ONE group. This section is where the report
     # stops presenting that group as the study.
     #
@@ -2263,7 +2263,7 @@ export_ctx = build_export_context()
 # SECTION 3: MANUSCRIPT SETUP (metadata + scope)
 # ============================================================================
 st.header("📋 Manuscript Setup")
-st.caption("Set manuscript metadata and choose which models/analyzes to include in all exports.")
+st.caption("Set manuscript metadata and choose which models/analyses to include in all exports.")
 
 col_meta1, col_meta2 = st.columns(2)
 with col_meta1:
@@ -2306,7 +2306,7 @@ if available_explain:
         options=available_explain,
         default=available_explain,
         key="report_explain_selection",
-        help="Select which analyzes to describe in the methods section.",
+        help="Select which analyses to describe in the methods section.",
     )
 else:
     selected_explain = []
