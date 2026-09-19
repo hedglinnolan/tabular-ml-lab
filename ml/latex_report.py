@@ -377,7 +377,10 @@ def _build_structured_abstract_sections(
                 results_bits.append(
                     f"The best-performing model was {model_label} ({primary_metric} {primary_val:.4f})."
                 )
-            auc = metrics_dict.get('AUC')
+            # ml/eval.py stores the metric as 'ROC-AUC'; 'AUC' is the key the
+            # bootstrap and the baselines use. Reading only 'AUC' here kept this
+            # sentence silent for every classification manuscript.
+            auc = metrics_dict.get('ROC-AUC', metrics_dict.get('AUC'))
             if auc is not None:
                 results_bits.append(f"Discrimination was supported by an AUC of {auc:.4f}.")
 
@@ -570,6 +573,12 @@ def _convert_markdown_to_latex(markdown_text: str) -> Dict[str, Any]:
     return out
 
 
+#: Metric names as ml/eval.py writes them -> the key ml/bootstrap.py stores the
+#: interval under. The two modules named the ROC AUC differently and nothing in
+#: between renamed it.
+_BOOTSTRAP_METRIC_ALIAS = {"ROC-AUC": "AUC"}
+
+
 def _metrics_to_latex_table(
     model_results: Dict[str, Dict],
     task_type: str = "regression",
@@ -580,7 +589,11 @@ def _metrics_to_latex_table(
         metric_names = ["RMSE", "MAE", "R2", "MedianAE"]
         caption = "Model performance on the held-out test set (regression metrics)."
     else:
-        metric_names = ["Accuracy", "F1", "AUC"]
+        # 'ROC-AUC' is the key ml/eval.py writes. This list said 'AUC', which
+        # no classification result ever contained, so the filter below dropped
+        # the discipline's headline metric from every manuscript table while
+        # the app and the markdown report showed it.
+        metric_names = ["Accuracy", "F1", "ROC-AUC"]
         caption = "Model performance on the held-out test set (classification metrics)."
 
     # Determine which metrics are actually present
@@ -631,7 +644,9 @@ def _metrics_to_latex_table(
         cells = [_escape_latex(_model_display_name(name))]
         for m in metric_names:
             val = metrics.get(m)
-            ci = cis.get(m)
+            # ml/bootstrap.py keys the interval 'AUC' for the metric eval calls
+            # 'ROC-AUC'; look the interval up under both names.
+            ci = cis.get(m) if m in cis else cis.get(_BOOTSTRAP_METRIC_ALIAS.get(m, m))
             if val is not None:
                 if ci and hasattr(ci, 'ci_lower') and hasattr(ci, 'ci_upper'):
                     cells.append(f"{val:.4f} [{ci.ci_lower:.4f}, {ci.ci_upper:.4f}]")
