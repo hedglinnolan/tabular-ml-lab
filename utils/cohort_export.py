@@ -180,7 +180,7 @@ def comparison_csv(runs: Sequence[Any]) -> Optional[str]:
 
 def cohort_report_section(runs: Sequence[Any], caveats: Sequence[str],
                           bundled: Sequence[Tuple[str, str]]) -> List[str]:
-    """The "Cohort analyzes" section of `report.md`.
+    """The "Cohort analyses" section of `report.md`.
 
     The caveats are the point. `cohorts.comparison_caveats` says what NOT to
     conclude from two AUCs side by side — different training sizes, different
@@ -190,7 +190,7 @@ def cohort_report_section(runs: Sequence[Any], caveats: Sequence[str],
     """
     if not runs:
         return []
-    lines: List[str] = ["## Cohort analyzes", ""]
+    lines: List[str] = ["## Cohort analyses", ""]
     lines.append(
         f"This study was analyzed separately in {len(runs)} groups. "
         f"**Report all {len(runs)}, not the one that worked.**")
