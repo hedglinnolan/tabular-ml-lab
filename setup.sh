@@ -13,9 +13,11 @@ if command -v uv &>/dev/null; then
     echo "📥 Installing dependencies..."
     uv pip install -r requirements.txt
 
-    # Install optional packages that need Python <=3.12
+    # Optional extras, resolved AROUND the installed core: giotto-tda pins
+    # scikit-learn==1.3.2 and would downgrade it without the overrides (see
+    # requirements-optional.txt). Best-effort — a failure here costs two tabs.
     echo "📥 Installing optional packages (TDA, UMAP)..."
-    uv pip install giotto-tda umap-learn 2>/dev/null || \
+    uv pip install -r requirements-optional.txt --override overrides-optional.txt 2>/dev/null || \
         echo "⚠️  Optional packages (giotto-tda, umap-learn) failed — TDA/UMAP features will be unavailable."
 
     mkdir -p .cache

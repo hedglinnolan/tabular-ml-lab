@@ -1,0 +1,8 @@
+# Overrides applied when installing requirements-optional.txt (the note there
+# has the measurement). uv's --override REPLACES a dependency's own specifier,
+# so giotto-tda's `scikit-learn==1.3.2` becomes the range the app is tested
+# against instead of a forced downgrade. Keep these in step with the floors in
+# requirements.txt; they must never be tighter than what is installed.
+scikit-learn>=1.3.0
+numpy>=1.24.0
+scipy>=1.10.0

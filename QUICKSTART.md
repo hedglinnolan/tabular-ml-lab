@@ -15,8 +15,8 @@ size — reading is fast (a 194 MB, 60,000 × 1,000 matrix parses in ~4.3 s at ~
 peak).
 
 - **Up to ~500 columns:** comfortable, any reasonable row count.
-- **~500-2,000 columns:** works, but EDA is slow.
-- **Above ~2,000 columns:** you get a warning, not a refusal. The EDA and explainability pages do uncapped O(columns²) work and may not finish. Known gap, under active work — subset your features before uploading.
+- **~500-2,000 columns:** works, but the exploratory pages slow down and start reporting on declared subsets — every cap names itself on the page.
+- **Above ~2,000 columns:** you get a warning, not a refusal. Nothing hangs — the pairwise work is budgeted, so the exploratory pages report on the 1,000 highest-variance columns and say so — but you trade completeness for the run. Subset to the features you intend to model before uploading.
 
 The "4GB RAM minimum" above is also your data ceiling. Uploads are admitted by
 measuring the parsed frame against free memory, budgeting ~32 bytes per cell for

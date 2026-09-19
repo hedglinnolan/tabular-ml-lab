@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this software in your research, please cite it as below."
+type: software
+title: "Tabular ML Lab"
+abstract: "An interactive research workbench that takes tabular data from upload to a manuscript-ready starting point: guided exploratory analysis, feature engineering and selection, model comparison with bootstrap confidence intervals, explainability, sensitivity analysis, and a generated LaTeX manuscript draft with a TRIPOD checklist."
+authors:
+  - family-names: Hedglin
+    given-names: Nolan
+version: 1.0.0
+date-released: 2026-09-19
+license: MIT
+repository-code: "https://github.com/hedglinnolan/tabular-ml-lab"
+url: "https://github.com/hedglinnolan/tabular-ml-lab"
+keywords:
+  - machine learning
+  - tabular data
+  - clinical prediction models
+  - reproducible research
+  - TRIPOD
+  - Streamlit

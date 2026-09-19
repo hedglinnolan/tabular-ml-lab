@@ -253,10 +253,10 @@ def test_a_wide_frame_that_fits_comfortably_still_warns():
     """Memory is not the only way a frame can be unusable.
 
     3,000 columns of 1,000 rows is under a hundred megabytes and will load
-    instantly — and then EDA's uncapped O(p²) scans will work through four and
-    a half million column pairs. This warning is the only protection there is
-    until those paths get their caps, so it must not be conditional on memory
-    pressure.
+    instantly — and then the exploratory pages work on declared subsets of it
+    (ml/regime.py caps the four and a half million column pairs to the 1,000
+    highest-variance columns). The warning is what tells the user that before
+    page 2 does, so it must not be conditional on memory pressure.
     """
     verdict = admission_verdict(1_000, 3_000, "expr.csv", 64 * GB)
     assert not verdict.refused
@@ -439,7 +439,7 @@ def test_a_combined_table_wider_than_the_analysis_pages_are_built_for_is_warned(
     verdict = combination_verdict(300, cols, projected_join_bytes(left, right, 300, cols),
                                   32 * GB, "linking a (300 rows) with b (300 rows)")
     assert not verdict.refused
-    assert any(f"{cols:,} columns" in w and "O(columns" in w for w in verdict.warnings)
+    assert any(f"{cols:,} columns" in w and "declared subsets" in w for w in verdict.warnings)
 
 
 def test_the_description_opens_the_sentence_in_the_researchers_terms():

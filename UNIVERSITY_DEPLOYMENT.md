@@ -151,6 +151,11 @@ minutes, so a VPN blip does not destroy a session) worth anything at all.
 
 The AI interpretation feature is optional. Without it, the app works fully — it just won't generate plain-language analysis summaries.
 
+The variables below set the default for every session; each person can still
+choose another backend in the app's sidebar. Keys set in `.env` stay on the
+server — the app reads them at call time and never shows or saves them, so
+students get the feature without handling a key.
+
 ### Option 1: Local Ollama (bundled)
 
 ```bash
@@ -245,19 +250,26 @@ which is why usage is subtracted rather than the limit being used whole. As a
 rough figure, a 4 GB container admits float64 frames on the order of a hundred
 million cells; 16 GB roughly quadruples that.
 
-### Width is a separate limit, and a harder one
+### Width is a separate limit, and a softer one than it was
 
 A frame wider than **2,000 columns** is admitted with a warning rather than
-refused, and the warning is not a formality. The EDA and explainability pages
-still do uncapped O(p²) work — 20,000 columns is 200 million column pairs, and
-no amount of RAM makes that finish. Raising `APP_MEMORY_LIMIT` will let a very
-wide frame *load*; it will not make the analysis pages return.
+refused. Nothing hangs at that width any more: since Sep 2026 every pairwise
+computation is budgeted (`ml/regime.py`). Above 1,000 numeric columns the
+correlation screen works from the 1,000 highest-variance of them and states how
+many of the possible pairs that covered; VIF is withheld above 200 numeric
+features; the model-agnostic SHAP explainer is declined above 1,000 features
+while tree and linear models are explained normally; and above 5,000 columns
+the correlation section waits to be asked rather than running on every rerun.
+Every cap that fires is named on the page and carried into the manuscript's
+Discussion as a limitation, so a reduced analysis cannot become an unqualified
+claim. What width costs a user is completeness, not the run.
 
-So if your study is a full expression matrix, subset to the features you
-actually intend to model before uploading. This app is a good fit for cohort
-tables and for targeted panels of hundreds to a couple of thousand features. It
-is not, today, a viable workbench for a 20,000-gene matrix, and we would rather
-say so here than have you find out on page 3.
+`APP_MEMORY_LIMIT` decides whether a very wide frame *loads* — a 500 × 20,000
+matrix is a few hundred megabytes, a tall one at that width is not — but it does
+not widen the caps. This app is a good fit for cohort tables and for targeted
+panels of hundreds to a couple of thousand features; a full 20,000-gene matrix
+loads and finishes as a screening pass on a declared subset, and the user is
+better served by cutting to the candidate set before modeling.
 
 Everything compute-intensive (SHAP, bootstrap confidence intervals, hyperparameter
 search) is controlled by sliders inside the app, per analysis. There is no
@@ -334,3 +346,16 @@ docker compose up --build
 ```
 
 Your `.env` file and any local configuration are preserved (they're in `.gitignore`).
+
+Every restart ends every session in progress — uploads, fitted models and audit
+trails live only in the container's memory — so update at a time nobody is
+mid-analysis. For a class or a long study, pin the deployment to a release
+instead of tracking `main`, so a mid-semester pull cannot change behavior:
+
+```bash
+git fetch --tags
+git checkout v1.0.0
+docker compose up --build
+```
+
+Releases are listed at https://github.com/hedglinnolan/tabular-ml-lab/releases.

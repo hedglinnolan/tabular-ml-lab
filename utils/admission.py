@@ -73,13 +73,15 @@ _MEMORY_SAFETY_FACTOR = 4
 #: Column count above which the analysis pages are warned about.
 #:
 #: Not a memory number — a frame this wide can fit in RAM comfortably and still
-#: make the app unusable. The EDA and explainability pages carry uncapped
-#: O(p^2) work (a full correlation matrix, pairwise scans), and this PR is
-#: deliberately not touching those paths: their caps depend on timings the
-#: audit never measured, and guessing them here would bake unverified numbers
-#: into the abstraction everything downstream reads. Until that measurement
-#: exists, telling the user plainly is the only protection there is, so this
-#: warning is load-bearing rather than advisory.
+#: cost the user completeness. Above this width the exploratory and
+#: explainability pages work on declared subsets (ml/regime.py): the
+#: correlation screen keeps the DENSE_PAIRWISE_MAX_FEATURES highest-variance
+#: columns, VIF is withheld above VIF_MAX_FEATURES, the model-agnostic SHAP
+#: explainer is declined above KERNEL_SHAP_MAX_FEATURES, and every cap that
+#: fires says so on the page and in the manuscript. The warning tells the user
+#: that before they find out on page 2. It used to say the pairwise work was
+#: uncapped, which was true until PR #154 (Sep 2026) and is not now — a warning
+#: that overstates the danger is read as noise the next time it is right.
 WIDE_COLUMN_WARN = 2000
 
 #: File size above which the file is refused WITHOUT being parsed.
@@ -262,14 +264,17 @@ def admission_verdict(rows: int, cols: int, filename: str,
         # it told the user nothing they could act on.
         pairs = (cols * (cols - 1)) // 2
         warnings.append(
-            f"**{filename}** has {cols:,} columns. It will load, but the "
-            f"analysis pages are not built for this width yet: EDA's "
-            f"correlation and pairwise scans are O(columns²) and uncapped, so "
-            f"they will work through {pairs:,} column pairs and can take many "
-            f"minutes per page — Explainability longer still. Nothing will "
-            f"stop you or warn you again. Cutting to the columns you intend to "
-            f"model on before Step 2 is the difference between minutes and "
-            f"seconds."
+            f"**{filename}** has {cols:,} columns. It will load and nothing "
+            f"hangs, but above {WIDE_COLUMN_WARN:,} columns the analysis pages "
+            f"work on declared subsets rather than on everything: the "
+            f"correlation screen keeps the 1,000 highest-variance columns and "
+            f"says how many of the {pairs:,} possible column pairs that "
+            f"covered, VIF is withheld, and the model-agnostic SHAP explainer "
+            f"is declined (tree and linear models are explained normally). "
+            f"Every cap that fires is named on the page and in your "
+            f"manuscript. Cutting to the columns you intend to model on "
+            f"before Step 2 buys a complete analysis instead of a screening "
+            f"pass."
         )
 
     return Verdict(warnings=tuple(warnings))
@@ -395,12 +400,15 @@ def combination_verdict(rows: int, cols: int, projected_bytes: int,
         pairs = (cols * (cols - 1)) // 2
         warnings.append(
             f"The combined table would have {cols:,} columns. It will be "
-            f"built, but the analysis pages are not built for this width yet: "
-            f"EDA's correlation and pairwise scans are O(columns²) and "
-            f"uncapped, so they will work through {pairs:,} column pairs and "
-            f"can take many minutes per page — Explainability longer still. "
-            f"Cutting each file to the columns you intend to model on before "
-            f"combining is the difference between minutes and seconds."
+            f"built and nothing hangs, but above {WIDE_COLUMN_WARN:,} columns "
+            f"the analysis pages work on declared subsets rather than on "
+            f"everything: the correlation screen keeps the 1,000 "
+            f"highest-variance columns and says how many of the {pairs:,} "
+            f"possible column pairs that covered, VIF is withheld, and the "
+            f"model-agnostic SHAP explainer is declined. Every cap that fires "
+            f"is named on the page and in your manuscript. Cutting each file "
+            f"to the columns you intend to model on before combining buys a "
+            f"complete analysis instead of a screening pass."
         )
 
     return Verdict(warnings=tuple(warnings))
