@@ -517,8 +517,9 @@ def _determine_best_model(selected_model_results: Dict[str, Dict], task_type: st
             metrics = item[1].get('metrics', {})
             if 'F1' in metrics:
                 return metrics['F1']
-            elif 'AUC' in metrics:
-                return metrics['AUC']
+            elif 'ROC-AUC' in metrics or 'AUC' in metrics:
+                # eval writes 'ROC-AUC'; bootstrap and baselines write 'AUC'.
+                return metrics.get('ROC-AUC', metrics.get('AUC'))
             elif 'Accuracy' in metrics:
                 return metrics['Accuracy']
             else:

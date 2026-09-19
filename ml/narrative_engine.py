@@ -1804,7 +1804,8 @@ class NarrativeEngine:
             elif task_type == "classification":
                 acc = best_metrics.get("Accuracy")
                 f1 = best_metrics.get("F1")
-                auc = best_metrics.get("AUC")
+                # eval writes 'ROC-AUC'; bootstrap and baselines write 'AUC'.
+                auc = best_metrics.get("ROC-AUC", best_metrics.get("AUC"))
 
                 if not metric_best or primary_model == metric_best:
                     parts.append(f"{model_label} demonstrated the best overall performance.")
