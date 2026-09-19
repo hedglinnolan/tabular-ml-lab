@@ -45,9 +45,11 @@ if ($uv) {
         exit 1
     }
 
-    # Install optional packages that need Python <=3.12
+    # Optional extras, resolved AROUND the installed core: giotto-tda pins
+    # scikit-learn==1.3.2 and would downgrade it without the overrides (see
+    # requirements-optional.txt). Best-effort - a failure here costs two tabs.
     Write-Host "📥 Installing optional packages (TDA, UMAP)..." -ForegroundColor Yellow
-    uv pip install --link-mode=copy giotto-tda umap-learn 2>$null
+    uv pip install --link-mode=copy -r requirements-optional.txt --override overrides-optional.txt 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Host "⚠️  Optional packages (giotto-tda, umap-learn) failed — TDA/UMAP features will be unavailable." -ForegroundColor Yellow
     }

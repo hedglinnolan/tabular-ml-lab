@@ -1,0 +1,25 @@
+# Optional extras: TDA features (giotto-tda) and UMAP embeddings (umap-learn).
+#
+# Installed best-effort by setup.sh / setup.ps1, by the double-click starters
+# and by the Dockerfile — never by a plain `pip install -r requirements.txt`,
+# and never in a way that can change the core stack:
+#
+#   uv pip install -r requirements-optional.txt --override overrides-optional.txt
+#
+# giotto-tda 0.6.2 is the final release of an unmaintained package and it pins
+# `scikit-learn==1.3.2`. A plain `uv pip install giotto-tda` into a working
+# environment therefore DOWNGRADES scikit-learn 1.9 -> 1.3.2, numpy 2.x -> 1.26
+# and scipy with it (measured with --dry-run on 2026-09-19): a silent
+# replacement of the tested stack, which is what the setup scripts and the
+# Dockerfile risked whenever the best-effort install happened to succeed. The
+# overrides file beside this one replaces that pin with the ranges
+# requirements.txt already promises, so the extras are resolved AROUND the
+# installed core rather than on top of it; ml/compat.py bridges the one
+# scikit-learn API rename giotto-tda never caught up with.
+#
+# giotto-tda ships wheels for CPython 3.10-3.12 on Windows, macOS (universal2)
+# and Linux x86_64 only. Anywhere else the install fails, is meant to fail
+# rather than compile, and the Feature Engineering page says so when the TDA
+# tab is opened. umap-learn is pure Python and installs everywhere.
+giotto-tda>=0.6.2; python_version < "3.13"
+umap-learn>=0.5.3

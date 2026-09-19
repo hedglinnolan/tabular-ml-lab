@@ -2,7 +2,8 @@
 #
 # 1. Downloads uv (the environment manager) into .\.tools (first run, ~35 MB).
 # 2. Creates a private Python 3.12 environment in .\.venv and installs the
-#    app's libraries (first run, ~600 MB, several minutes).
+#    app's libraries (first run, about 400 MB, several minutes), then the
+#    optional extras (TDA, UMAP) best-effort.
 # 3. Creates "Tabular ML Lab" shortcuts (Desktop + Start Menu) with the app
 #    icon, so future launches are one double-click.
 # 4. Starts the app; the default browser opens automatically.
@@ -17,6 +18,8 @@ $Venv  = Join-Path $Root ".venv"
 $Py    = Join-Path $Venv "Scripts\python.exe"
 $Stamp = Join-Path $Root ".venv-stamp"
 $Reqs  = Join-Path $Root "requirements.txt"
+$ReqsOptional = Join-Path $Root "requirements-optional.txt"
+$Overrides    = Join-Path $Root "overrides-optional.txt"
 
 function Say($msg)  { Write-Host "`n$msg" -ForegroundColor Cyan }
 function Note($msg) { Write-Host $msg -ForegroundColor Gray }
@@ -41,16 +44,23 @@ try {
     }
 
     # -- 2. Python environment -------------------------------------------
-    $reqHash = (Get-FileHash -Algorithm SHA256 $Reqs).Hash
+    # All three files, so a change to the optional extras re-runs setup too.
+    $reqHash = ((Get-FileHash -Algorithm SHA256 $Reqs).Hash +
+                (Get-FileHash -Algorithm SHA256 $ReqsOptional).Hash +
+                (Get-FileHash -Algorithm SHA256 $Overrides).Hash)
     $stampOk = (Test-Path $Stamp) -and ((Get-Content $Stamp -Raw).Trim() -eq $reqHash)
     if (-not (Test-Path $Py) -or -not $stampOk) {
         Say "First-time setup 2/2: installing Python and the analysis libraries..."
-        Note "This downloads about 600 MB and takes a few minutes - ONE TIME ONLY."
+        Note "This downloads about 400 MB and takes a few minutes - ONE TIME ONLY."
         Note "Every launch after this one takes seconds and works offline."
         & $Uv venv --python 3.12 $Venv
         if ($LASTEXITCODE -ne 0) { throw "Python environment creation failed." }
         & $Uv pip install --python $Py -r $Reqs
         if ($LASTEXITCODE -ne 0) { throw "Library installation failed - check your internet connection and re-run." }
+        # Optional extras (TDA, UMAP), resolved around the installed core - see
+        # requirements-optional.txt. Best-effort: a failure costs two tabs, not the app.
+        & $Uv pip install --python $Py -r $ReqsOptional --override $Overrides
+        if ($LASTEXITCODE -ne 0) { Note "Optional extras (TDA, UMAP) did not install on this machine - everything else works." }
         Set-Content -Path $Stamp -Value $reqHash -NoNewline
         Say "Setup complete."
     }

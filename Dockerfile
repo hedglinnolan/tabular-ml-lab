@@ -18,13 +18,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install uv for fast dependency resolution
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-COPY requirements.txt .
+COPY requirements.txt requirements-optional.txt overrides-optional.txt ./
 
 # Install core dependencies
 RUN uv pip install --system --link-mode=copy -r requirements.txt
 
-# Install optional dependencies (TDA, UMAP) — non-fatal if they fail
-RUN uv pip install --system --link-mode=copy giotto-tda umap-learn 2>/dev/null || \
+# Optional extras (TDA, UMAP), resolved AROUND the installed core: giotto-tda
+# pins scikit-learn==1.3.2 and would downgrade it without the overrides (see
+# requirements-optional.txt). Non-fatal if they fail.
+RUN uv pip install --system --link-mode=copy -r requirements-optional.txt --override overrides-optional.txt 2>/dev/null || \
     echo "Optional: giotto-tda/umap-learn unavailable — TDA and UMAP features disabled"
 
 # ── Production image ──────────────────────────────────────────────

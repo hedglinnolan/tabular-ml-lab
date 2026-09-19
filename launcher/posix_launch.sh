@@ -7,7 +7,8 @@
 # What it does:
 #   1. Installs uv into ./.tools (first run only; ~35 MB).
 #   2. Creates a private Python 3.12 environment in ./.venv and installs the
-#      app's dependencies (first run only; ~600 MB, several minutes).
+#      app's dependencies (first run only; a few hundred MB, several minutes),
+#      then the optional extras (TDA, UMAP) best-effort.
 #   3. On macOS, generates "Tabular ML Lab.app" next to this folder's
 #      launcher so future launches are a double-click on a real app icon.
 #      The .app is created ON THIS MACHINE, so it carries no quarantine
@@ -34,10 +35,12 @@ notify_mac() {
 }
 
 req_hash() {
+    # All three files, so a change to the optional extras re-runs setup too.
+    local files=("$ROOT/requirements.txt" "$ROOT/requirements-optional.txt" "$ROOT/overrides-optional.txt")
     if command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "$ROOT/requirements.txt" | cut -d' ' -f1
+        cat "${files[@]}" | shasum -a 256 | cut -d' ' -f1
     else
-        sha256sum "$ROOT/requirements.txt" | cut -d' ' -f1
+        cat "${files[@]}" | sha256sum | cut -d' ' -f1
     fi
 }
 
@@ -79,11 +82,16 @@ PY_SPEC="${TML_PYTHON:-3.12}"
 CURRENT_HASH="$(req_hash)"
 if [[ ! -x "$VENV/bin/python" || ! -f "$STAMP" || "$(cat "$STAMP")" != "$CURRENT_HASH" ]]; then
     say "First-time setup 2/2: installing Python and the analysis libraries…"
-    note "This downloads about 600 MB and takes a few minutes — ONE TIME ONLY."
+    note "This downloads a few hundred megabytes (about 350 MB on a Mac, more on Linux) — ONE TIME ONLY."
     note "Every launch after this one takes seconds and works offline."
     notify_mac "One-time setup in progress — this takes a few minutes."
     "$UV" venv --python "$PY_SPEC" "$VENV"
     "$UV" pip install --python "$VENV/bin/python" -r "$ROOT/requirements.txt"
+    # Optional extras (TDA, UMAP), resolved around the installed core — see
+    # requirements-optional.txt. Best-effort: a failure costs two tabs, not the app.
+    "$UV" pip install --python "$VENV/bin/python" \
+        -r "$ROOT/requirements-optional.txt" --override "$ROOT/overrides-optional.txt" \
+        || note "Optional extras (TDA, UMAP) did not install on this machine — everything else works."
     printf '%s' "$CURRENT_HASH" > "$STAMP"
     say "Setup complete."
 fi
