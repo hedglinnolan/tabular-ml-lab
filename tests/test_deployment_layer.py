@@ -28,7 +28,7 @@ DEPLOYMENT_FILES = [
     ".env.example", "UNIVERSITY_DEPLOYMENT.md",
 ]
 # Docs a researcher or an admin actually reads.
-DOCS = ["README.md", "DEPLOYMENT.md", "UNIVERSITY_DEPLOYMENT.md", "QUICKSTART.md"]
+DOCS = ["README.md", "UNIVERSITY_DEPLOYMENT.md", "QUICKSTART.md"]
 
 
 def _read(name):

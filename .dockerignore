@@ -37,7 +37,6 @@ docker-compose.yml
 # Documentation (not needed at runtime)
 ARCHITECTURE.md
 QUICKSTART.md
-DEPLOYMENT.md
 UNIVERSITY_DEPLOYMENT.md
 DOCKER_DEPLOYMENT.md
 COMPUTE_PROFILES.md
