@@ -19,13 +19,32 @@ THEME = ROOT / "utils" / "theme.py"
 CONFIG = ROOT / ".streamlit" / "config.toml"
 
 
-def test_no_page_imports_a_font_from_the_web():
+#: A CSS `@import` rule, or a `url(...)` whose target has a scheme or is
+#: protocol-relative — anything that would make the browser leave localhost.
+#: Matching the mechanism rather than a hostname is what makes this a test of
+#: "loads nothing over the network" rather than "does not load Google".
+WEB_RESOURCE = re.compile(
+    r"""@import\s+(?:url\()?\s*['"]?\s*(?:https?:)?//"""
+    r"""|url\(\s*['"]?\s*(?:https?:)?//""",
+    re.IGNORECASE,
+)
+
+
+def test_no_page_loads_a_stylesheet_or_font_over_the_network():
     offenders = []
     for path in [THEME, ROOT / "app.py", *(ROOT / "pages").glob("*.py")]:
-        text = path.read_text(encoding="utf-8")
-        if "fonts.googleapis.com" in text or "fonts.gstatic.com" in text:
-            offenders.append(path.relative_to(ROOT).as_posix())
-    assert not offenders, f"web font imports in {offenders}"
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if WEB_RESOURCE.search(line):
+                offenders.append(f"{path.relative_to(ROOT).as_posix()}:{lineno}")
+    assert not offenders, f"resources loaded over the network: {offenders}"
+
+
+def test_the_matcher_recognizes_the_import_that_shipped():
+    """Negative-space assertions need a positive control."""
+    assert WEB_RESOURCE.search(
+        "@import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');")
+    assert WEB_RESOURCE.search("src: url(//cdn.example.org/font.woff2)")
+    assert not WEB_RESOURCE.search("src: url('app/static/fonts/inter-latin.woff2') format('woff2');")
 
 
 def _referenced_font_files():
