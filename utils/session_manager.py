@@ -159,6 +159,7 @@ _PLAIN_KEYS: Tuple[str, ...] = (
 _SAFE_WIDGET_KEYS: Set[str] = {
     "llm_backend",
     "ollama_model",
+    "ollama_url",
     "openai_model",
     "anthropic_model",
     "workflow_mode_selector",

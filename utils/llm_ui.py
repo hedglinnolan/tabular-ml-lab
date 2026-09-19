@@ -1,13 +1,27 @@
 """
 Reusable UI for LLM-powered interpretation of analysis results.
 
-Supports: Ollama (default), OpenAI API, Anthropic API.
-Sends rich context with a system prompt that demands actionable, specific interpretation.
+Supports: Ollama (default), OpenAI API (or any OpenAI-compatible endpoint such
+as vLLM), Anthropic API. Sends rich context with a system prompt that demands
+actionable, specific interpretation.
+
+Configuration has two layers. The ENVIRONMENT sets the defaults for a
+deployment — `LLM_BACKEND`, `OLLAMA_BASE_URL`, `VLLM_BASE_URL`,
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, the variables docker-compose.yml and
+.env.example have always set — and the SIDEBAR overrides them per session.
+Until Sep 2026 nothing read the environment: the compose file pointed the app
+at an Ollama sidecar (`http://ollama:11434`) while this module dialed a
+hard-coded `localhost:11434`, so inside the container the sidecar was
+unreachable and the feature failed with a message about running `ollama serve`.
+Server-side API keys are resolved at call time and never copied into session
+state, so they cannot reach a saved session (utils/session_manager.py scrubs
+the sidebar keys for the same reason).
 """
 from __future__ import annotations
 
 from typing import Optional, Dict, Any, List
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +34,53 @@ _MAX_TABLE_CHARS = 2000
 
 DEFAULT_OLLAMA_MODEL = "qwen3.5:9b"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
-DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
+# The undated alias tracks the current Sonnet generation. The previous default,
+# `claude-sonnet-4-20250514`, is a deprecated dated snapshot that will stop
+# resolving; a default that expires is a feature that breaks on a date nobody
+# in this repository chose.
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
+DEFAULT_OLLAMA_URL = "http://localhost:11434"
+
+#: Backends the sidebar offers. "disabled" is a deployment setting, not a
+#: choice a user makes, so it is deliberately not in this tuple.
+LLM_BACKENDS = ("ollama", "openai", "anthropic")
+
+# ============================================================================
+# Deployment configuration — the environment sets defaults, the sidebar
+# overrides them. tests/test_the_llm_reads_the_environment_it_documents.py
+# holds this list and docker-compose.yml's together.
+# ============================================================================
+
+
+def env_llm_backend() -> str:
+    """The backend the deployment asks for: a value of `LLM_BACKENDS`, or
+    "disabled". An unrecognized value falls back to ollama rather than to a
+    backend nobody named."""
+    raw = (os.environ.get("LLM_BACKEND") or "ollama").strip().lower()
+    return raw if raw in LLM_BACKENDS or raw == "disabled" else "ollama"
+
+
+def llm_disabled() -> bool:
+    """True when the deployment switched the feature off (`LLM_BACKEND=disabled`)."""
+    return env_llm_backend() == "disabled"
+
+
+def env_ollama_url() -> str:
+    """Where Ollama answers. `OLLAMA_BASE_URL` in the environment (the compose
+    stack sets it to the sidecar), else this machine."""
+    return (os.environ.get("OLLAMA_BASE_URL") or DEFAULT_OLLAMA_URL).strip().rstrip("/")
+
+
+def env_openai_base_url() -> Optional[str]:
+    """An OpenAI-compatible endpoint to use instead of api.openai.com — vLLM,
+    an institutional gateway. None means the real OpenAI API."""
+    return (os.environ.get("VLLM_BASE_URL") or "").strip().rstrip("/") or None
+
+
+def env_api_key(backend: str) -> str:
+    """The server-side key for a cloud backend, or "" when none is configured."""
+    var = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}.get(backend)
+    return (os.environ.get(var) or "").strip() if var else ""
 
 # When True, first try a thinking-enabled call before falling back to no-think.
 # Empirically (qwen3.5:9b on Pascal-class GPUs) the thinking attempt either
@@ -490,19 +550,23 @@ def _call_llm(
     backend: str = "ollama",
     model: str = "",
     api_key: str = "",
-    ollama_url: str = "http://localhost:11434",
+    ollama_url: str = DEFAULT_OLLAMA_URL,
+    openai_base_url: Optional[str] = None,
 ) -> Optional[str]:
     """Call LLM backend with context and system prompt.
 
-    Supports: ollama, openai, anthropic.
-    Returns the response text or None on error.
+    Supports: ollama, openai (optionally against an OpenAI-compatible
+    `openai_base_url`), anthropic. Returns the response text or None on error.
     """
     if backend == "ollama":
         return _call_ollama(context, system_prompt, model or DEFAULT_OLLAMA_MODEL, ollama_url)
     elif backend == "openai":
-        return _call_openai(context, system_prompt, model or DEFAULT_OPENAI_MODEL, api_key)
+        return _call_openai(context, system_prompt, model or DEFAULT_OPENAI_MODEL, api_key,
+                            base_url=openai_base_url)
     elif backend == "anthropic":
         return _call_anthropic(context, system_prompt, model or DEFAULT_ANTHROPIC_MODEL, api_key)
+    elif backend == "disabled":
+        return None
     else:
         logger.warning(f"Unknown LLM backend: {backend}")
         return None
@@ -622,11 +686,13 @@ def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Opti
         return None
 
 
-def _call_openai(context: str, system_prompt: str, model: str, api_key: str) -> Optional[str]:
-    """Call OpenAI API."""
+def _call_openai(context: str, system_prompt: str, model: str, api_key: str,
+                 base_url: Optional[str] = None) -> Optional[str]:
+    """Call the OpenAI API, or an OpenAI-compatible endpoint when `base_url`
+    is given (vLLM and similar servers accept any non-empty key)."""
     try:
         import openai
-        client = openai.OpenAI(api_key=api_key)
+        client = openai.OpenAI(api_key=api_key or "not-needed", base_url=base_url)
         resp = client.chat.completions.create(
             model=model,
             messages=[
@@ -643,7 +709,14 @@ def _call_openai(context: str, system_prompt: str, model: str, api_key: str) -> 
 
 
 def _call_anthropic(context: str, system_prompt: str, model: str, api_key: str) -> Optional[str]:
-    """Call Anthropic API."""
+    """Call the Anthropic Messages API.
+
+    No sampling parameters: current Claude models reject `temperature` with a
+    400. No `thinking` parameter either, so the call is valid on every model a
+    user might type into the sidebar; the models that think adaptively return
+    a `thinking` block ahead of the text, which is why the text is gathered
+    from the typed blocks rather than read off `content[0]`.
+    """
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
@@ -651,10 +724,13 @@ def _call_anthropic(context: str, system_prompt: str, model: str, api_key: str) 
             model=model,
             system=system_prompt,
             messages=[{"role": "user", "content": context}],
-            max_tokens=800,
-            temperature=0.3,
+            max_tokens=4000,
         )
-        return resp.content[0].text.strip()
+        text = "".join(
+            getattr(block, "text", "") for block in resp.content
+            if getattr(block, "type", "") == "text"
+        ).strip()
+        return text or None
     except Exception as e:
         logger.warning(f"Anthropic call failed: {e}")
         return None
@@ -675,6 +751,7 @@ def _apply_pending_llm_widget_restore():
     llm_keys = {
         "llm_backend",
         "ollama_model",
+        "ollama_url",
         "openai_api_key",
         "openai_model",
         "anthropic_api_key",
@@ -697,12 +774,22 @@ def render_llm_settings_sidebar():
     _apply_pending_llm_widget_restore()
 
     with st.sidebar.expander("🤖 LLM Settings", expanded=False):
+        if llm_disabled():
+            st.caption(
+                "AI interpretation is switched off on this server "
+                "(`LLM_BACKEND=disabled`). Everything else works without it."
+            )
+            return
+
+        # The deployment's default is only a default: a user who picks another
+        # backend here keeps it for the session.
+        default_backend = st.session_state.get("llm_backend", env_llm_backend())
+        if default_backend not in LLM_BACKENDS:
+            default_backend = "ollama"
         backend = st.selectbox(
             "LLM Backend",
-            ["ollama", "openai", "anthropic"],
-            index=["ollama", "openai", "anthropic"].index(
-                st.session_state.get("llm_backend", "ollama")
-            ),
+            list(LLM_BACKENDS),
+            index=LLM_BACKENDS.index(default_backend),
             key="llm_backend",
             help="Choose which LLM to use for interpretation. Ollama runs locally (free), OpenAI and Anthropic require API keys.",
         )
@@ -714,7 +801,15 @@ def render_llm_settings_sidebar():
                 key="ollama_model",
                 help="Model name (e.g., qwen3.5:9b, llama3.1:8b, gemma2)",
             )
-            st.caption("Ollama is running locally on this server — no API key needed.")
+            st.text_input(
+                "Ollama URL",
+                value=st.session_state.get("ollama_url", env_ollama_url()),
+                key="ollama_url",
+                help="Where Ollama answers. On a shared server this is set by the "
+                     "administrator (OLLAMA_BASE_URL); on your own machine it is "
+                     "http://localhost:11434.",
+            )
+            st.caption("No API key needed — Ollama runs at the address above.")
         elif backend == "openai":
             st.text_input(
                 "OpenAI API Key",
@@ -722,6 +817,11 @@ def render_llm_settings_sidebar():
                 key="openai_api_key",
                 type="password",
             )
+            if env_api_key("openai"):
+                st.caption("A key is configured on this server; leave the field blank to use it.")
+            if env_openai_base_url():
+                st.caption(f"Requests go to `{env_openai_base_url()}` (an OpenAI-compatible "
+                           f"endpoint set by your administrator).")
             st.text_input(
                 "Model",
                 value=st.session_state.get("openai_model", DEFAULT_OPENAI_MODEL),
@@ -734,6 +834,8 @@ def render_llm_settings_sidebar():
                 key="anthropic_api_key",
                 type="password",
             )
+            if env_api_key("anthropic"):
+                st.caption("A key is configured on this server; leave the field blank to use it.")
             st.text_input(
                 "Model",
                 value=st.session_state.get("anthropic_model", DEFAULT_ANTHROPIC_MODEL),
@@ -745,22 +847,30 @@ def _run_llm_call(context: str, plot_type: str, sk: str) -> None:
     """Execute LLM call and store result in session state."""
     import streamlit as st
 
-    backend = st.session_state.get("llm_backend", "ollama")
+    if llm_disabled():
+        return
+
+    backend = st.session_state.get("llm_backend", env_llm_backend())
+    if backend not in LLM_BACKENDS:
+        backend = "ollama"
     model = ""
     api_key = ""
-    ollama_url = "http://localhost:11434"
+    # The sidebar wins when it has a value; the environment is the default.
+    ollama_url = (st.session_state.get("ollama_url") or env_ollama_url()).rstrip("/")
+    openai_base_url = env_openai_base_url()
 
     if backend == "ollama":
         model = st.session_state.get("ollama_model", DEFAULT_OLLAMA_MODEL)
     elif backend == "openai":
         model = st.session_state.get("openai_model", DEFAULT_OPENAI_MODEL)
-        api_key = st.session_state.get("openai_api_key", "")
-        if not api_key:
+        api_key = st.session_state.get("openai_api_key", "") or env_api_key("openai")
+        # An OpenAI-compatible endpoint (vLLM) needs no real key.
+        if not api_key and not openai_base_url:
             st.session_state[sk] = "__no_key__"
             return
     elif backend == "anthropic":
         model = st.session_state.get("anthropic_model", DEFAULT_ANTHROPIC_MODEL)
-        api_key = st.session_state.get("anthropic_api_key", "")
+        api_key = st.session_state.get("anthropic_api_key", "") or env_api_key("anthropic")
         if not api_key:
             st.session_state[sk] = "__no_key__"
             return
@@ -770,6 +880,7 @@ def _run_llm_call(context: str, plot_type: str, sk: str) -> None:
         result = _call_llm(
             context, sys_prompt,
             backend=backend, model=model, api_key=api_key, ollama_url=ollama_url,
+            openai_base_url=openai_base_url,
         )
 
     if result:
@@ -794,6 +905,11 @@ def render_interpretation_with_llm_button(
        (only shown after first result, not before)
     """
     import streamlit as st
+
+    # A deployment that switched the feature off shows nothing at all — not a
+    # button that explains itself away when clicked.
+    if llm_disabled():
+        return
 
     sk = result_session_key or f"llm_result_{key}"
     user_ctx_key = f"{key}_user_context"
@@ -825,12 +941,26 @@ def render_interpretation_with_llm_button(
             + " Pull it with `ollama pull <model>` or enter an installed model in the sidebar (🤖 LLM Settings)."
         )
     elif res == "__error__":
-        st.warning(
-            f"Could not get interpretation. Check sidebar LLM Settings. "
-            f"Current: backend={st.session_state.get('llm_backend', 'ollama')}, "
-            f"model={st.session_state.get('ollama_model', DEFAULT_OLLAMA_MODEL)}. "
-            f"Verify Ollama is running: `curl http://localhost:11434/api/tags`"
-        )
+        # Name the backend that actually failed. This used to tell every user
+        # to check whether Ollama was running, including users of the two
+        # cloud backends — whose real failure was a missing SDK or a bad key.
+        _backend = st.session_state.get("llm_backend", env_llm_backend())
+        if _backend == "ollama":
+            _url = (st.session_state.get("ollama_url") or env_ollama_url()).rstrip("/")
+            st.warning(
+                f"Could not get interpretation from Ollama at `{_url}` "
+                f"(model `{st.session_state.get('ollama_model', DEFAULT_OLLAMA_MODEL)}`). "
+                f"Check the address and model in the sidebar (🤖 LLM Settings), and "
+                f"verify Ollama is running: `curl {_url}/api/tags`"
+            )
+        else:
+            _model_key = f"{_backend}_model"
+            st.warning(
+                f"Could not get interpretation from {_backend.title()} "
+                f"(model `{st.session_state.get(_model_key, '')}`). Check the API key "
+                f"and model name in the sidebar (🤖 LLM Settings); the provider's "
+                f"error is in the app log."
+            )
         # Allow retry
         if st.button("🔄 Retry", key=f"{key}_retry"):
             st.session_state.pop(sk, None)
