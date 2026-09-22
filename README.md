@@ -12,6 +12,7 @@
     <a href="https://github.com/hedglinnolan/tabular-ml-lab/issues">Report Bug</a>
   </p>
   <p align="center">
+    <a href="https://github.com/hedglinnolan/tabular-ml-lab/actions/workflows/ci.yml"><img src="https://github.com/hedglinnolan/tabular-ml-lab/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
     <img src="https://img.shields.io/badge/python-3.12-blue?logo=python&logoColor=white" alt="Python 3.12">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   </p>

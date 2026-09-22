@@ -1,0 +1,60 @@
+# Deploy main to the self-hosted demo server — on request, not on every push.
+#
+# This job used to sit at the bottom of ci.yml behind `needs: test` and
+# `if: push to main`. The runner it targets (`clawserver`) has been offline,
+# so every main-branch run sat queued on this job for 24 hours and was then
+# cancelled, which made the CI workflow's status — and any badge on it — read
+# "failing" for a suite that had passed in 13 minutes. Two things were wrong
+# with that shape: a deploy is an act somebody performs, not a side effect of
+# merging; and a workflow's status should describe its tests.
+#
+# Dispatch it when the server is up and main is green:
+#
+#     gh workflow run deploy.yml
+#
+# CI (ci.yml) is the gate; this workflow assumes it has passed on main.
+name: Deploy to the demo server
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, clawserver]
+    steps:
+      - name: Pull latest code
+        run: |
+          cd /home/claw/.openclaw/workspace/glucose-mlp-interactive
+          git pull origin main
+
+      - name: Install LaTeX (for PDF compilation)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra
+
+      - name: Update dependencies
+        run: |
+          cd /home/claw/.openclaw/workspace/glucose-mlp-interactive
+          ./venv/bin/pip install -r requirements.txt
+          ./venv/bin/pip install -r requirements-optional.txt --override overrides-optional.txt || \
+            echo "Optional extras (TDA, UMAP) did not install — everything else works"
+
+      - name: Restart service
+        run: |
+          sudo systemctl restart tabular-ml-lab
+
+      - name: Wait for service to come up
+        timeout-minutes: 2
+        run: |
+          until curl -sf http://localhost:8501/_stcore/health | grep -q ok; do
+            sleep 1
+          done
+
+      - name: E2E smoke test against live service
+        timeout-minutes: 5
+        run: |
+          cd /home/claw/.openclaw/workspace/glucose-mlp-interactive
+          ./venv/bin/python scripts/integration_test.py
