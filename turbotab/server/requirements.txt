@@ -1,0 +1,22 @@
+# TurboTab Next — the new stack's Python dependencies (docs/turbotab-next/BLUEPRINT.md §1).
+#
+# The engine's domain code (ml/, turbotab/*.py) brings its own requirements;
+# these are what turbotab/core and turbotab/server add on top.
+
+# ── data layer (turbotab/core/datastore.py) ─────────────────────────────────
+duckdb>=1.1            # read_csv/sniff_csv, Parquet COPY, approx_top_k, query_progress
+pyarrow>=15            # Parquet metadata, row-group windows, Arrow → pandas
+pandas>=2.2,<3         # see turbotab/requirements.txt for why pandas 3 is excluded
+numpy>=1.24
+openpyxl>=3.1          # .xlsx ingest through pandas.read_excel
+# psutil is optional: turbotab/core/config.py uses it for available RAM when
+# installed and otherwise reads /proc/meminfo, vm_stat or GlobalMemoryStatusEx.
+
+# ── server (turbotab/server) ─────────────────────────────────────────────────
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9   # multipart uploads
+
+# ── tests ────────────────────────────────────────────────────────────────────
+pytest>=8.0
+httpx>=0.27               # FastAPI TestClient
