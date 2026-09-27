@@ -203,4 +203,17 @@ Launch: `venv/bin/python -m turbotab.server --port 8787 [--open] [--mode local|s
 | **M5 Report & ship** | manuscript + checklists + journal-format figure export; desktop launcher; university server deployment (Docker, auth) |
 
 Each milestone runs as: build (parallel agents by area, in worktrees) → integrate → one review
-drive (blockers only) → fix → Nolan drives it.
+drive (blockers only) → fix → the orchestrator drives it with Playwright → Nolan drives it when he
+can (his findings jump the queue; the next milestone does not wait for him).
+
+## 10 · Source control — so v2 ships as one clean merge
+
+- `main` is the released Classic app (v1.0.0). Classic fixes keep landing there.
+- `turbotab-next` is the v2 integration branch, pushed to `origin` after every merged phase. Agents
+  work in worktree branches and merge in; merged worktree branches are deleted.
+- Merge `main` into `turbotab-next` at each milestone boundary so the final merge stays small.
+- Classic must keep working on `turbotab-next`: do not edit its code (§0), so merging v2 never breaks
+  v1 users before we decide Classic's fate.
+- **Never push a `v*` tag from this branch** — `.github/workflows/release.yml` publishes a release for
+  any `v*` tag. Milestone markers are `next-m0`, `next-m1`, ….
+- v2 release: PR `turbotab-next` → `main`, CI green, tag `v2.0.0`.
