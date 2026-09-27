@@ -68,7 +68,7 @@ from turbotab.core.jobs import current as current_job
 log = logging.getLogger(__name__)
 
 StatusName = Literal["idle", "queued", "running", "fresh", "stale", "blocked", "error"]
-ArtifactFormat = Literal["json", "parquet", "joblib"]
+ArtifactFormat = Literal["json", "parquet", "joblib", "bundle"]
 
 PROGRESS_EVENT_INTERVAL = 0.25  # seconds between progress-only stage events
 
@@ -277,7 +277,25 @@ _FILES: dict[str, str] = {
     "json": "artifact.json",
     "parquet": "artifact.parquet",
     "joblib": "artifact.joblib",
+    "bundle": "artifact.json",
 }
+
+
+@dataclass
+class Bundle:
+    """A stage artifact in parts, for stages whose output is more than JSON.
+
+    ``data`` is plain JSON data and is the only part a client ever sees
+    (``StageResult.artifact``). ``frames`` are DataFrames stored as Parquet —
+    row ids, fold assignments, predictions. ``objects`` are anything else,
+    stored with joblib — fitted pipelines. Downstream stages receive the whole
+    Bundle as their input; the cache stays disposable, so fitted objects never
+    leave it (BLUEPRINT §2).
+    """
+
+    data: Any
+    frames: dict[str, Any] = field(default_factory=dict)
+    objects: dict[str, Any] = field(default_factory=dict)
 LATEST = "latest"
 
 
@@ -293,12 +311,31 @@ def read_meta(cache_root: str | os.PathLike[str], stage: str, key: str) -> dict[
     return json.loads((artifact_dir(cache_root, stage, key) / "meta.json").read_text("utf-8"))
 
 
-def read_artifact(cache_root: str | os.PathLike[str], stage: str, key: str) -> Any:
+def read_artifact(
+    cache_root: str | os.PathLike[str], stage: str, key: str, *, public: bool = False
+) -> Any:
+    """The artifact for ``stage`` at ``key``.
+
+    ``public=True`` returns only what a client may see: a Bundle's ``data``.
+    """
     folder = artifact_dir(cache_root, stage, key)
     fmt = read_meta(cache_root, stage, key)["format"]
     path = folder / _FILES[fmt]
     if fmt == "json":
         return json.loads(path.read_text("utf-8"))
+    if fmt == "bundle":
+        data = json.loads(path.read_text("utf-8"))
+        if public:
+            return data
+        import pandas as pd
+
+        frames = {p.stem: pd.read_parquet(p) for p in sorted((folder / "frames").glob("*.parquet"))}
+        objects: dict[str, Any] = {}
+        if (folder / "objects").is_dir():
+            import joblib
+
+            objects = {p.stem: joblib.load(p) for p in sorted((folder / "objects").glob("*.joblib"))}
+        return Bundle(data=data, frames=frames, objects=objects)
     if fmt == "parquet":
         import pandas as pd
 
@@ -358,6 +395,24 @@ def _json_like(obj: Any) -> bool:
 
 
 def _dump(obj: Any, folder: Path) -> ArtifactFormat:
+    if isinstance(obj, Bundle):
+        text = json.dumps(_jsonable(obj.data), ensure_ascii=False, allow_nan=False)
+        (folder / _FILES["bundle"]).write_text(text, "utf-8")
+        for kind, parts in (("frames", obj.frames), ("objects", obj.objects)):
+            for name in parts:
+                if not name or "/" in name or name.startswith("."):
+                    raise ValueError(f"a Bundle part cannot be named {name!r}")
+        if obj.frames:
+            (folder / "frames").mkdir()
+            for name, frame in obj.frames.items():
+                frame.to_parquet(folder / "frames" / f"{name}.parquet")
+        if obj.objects:
+            import joblib
+
+            (folder / "objects").mkdir()
+            for name, thing in obj.objects.items():
+                joblib.dump(thing, folder / "objects" / f"{name}.joblib")
+        return "bundle"
     if _json_like(obj):
         try:
             text = json.dumps(_jsonable(obj), ensure_ascii=False, allow_nan=False)
@@ -566,7 +621,7 @@ class Engine:
             assert p.ctx is not None
             cache_root = p.ctx.cache_root
         if status.status == "fresh" and status.key is not None:
-            artifact = read_artifact(cache_root, stage, status.key)
+            artifact = read_artifact(cache_root, stage, status.key, public=True)
             return StageResult(stage=stage, key=status.key, fresh=True, status="fresh", artifact=artifact)
         if allow_stale:
             old = latest_key(cache_root, stage, exclude=status.key)
@@ -576,7 +631,7 @@ class Engine:
                     key=old,
                     fresh=False,
                     status=status.status,
-                    artifact=read_artifact(cache_root, stage, old),
+                    artifact=read_artifact(cache_root, stage, old, public=True),
                 )
         return StageResult(stage=stage, key=None, fresh=False, status=status.status, artifact=None)
 

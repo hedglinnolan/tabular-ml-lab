@@ -28,6 +28,7 @@ function record(seq: number): DecisionRecord {
     seq,
     at: "2026-09-27T10:00:00.000Z",
     note: null,
+    sentence: null,
     decision: { kind: "set_target", column: `c${seq}` },
   };
 }
@@ -44,7 +45,19 @@ function view(): ProjectView {
       n_cols: 17,
       ingest: null,
     },
-    state: { lens: null, target: "c1", task: null, purpose: null },
+    state: {
+      lens: null,
+      target: "c1",
+      task: null,
+      purpose: null,
+      roles: null,
+      energy_adjustment: null,
+      exclusions: null,
+      missing: null,
+      split: null,
+      models: null,
+      substitution: null,
+    },
     decisions: [record(1)],
     stages: {
       ingest: status("ingest"),

@@ -29,6 +29,11 @@ export type DecisionRecord = S["DecisionRecord"];
 
 export type ProjectState = S["ProjectState"];
 export type Slot = keyof ProjectState;
+/** Every slot of ProjectState, in asking order (M1_CONTRACT.md). */
+export const SLOTS: readonly Slot[] = [
+  "lens", "target", "task", "purpose", "roles", "exclusions", "missing", "split",
+  "energy_adjustment", "models", "substitution",
+];
 
 export type StageStatus = S["StageStatus"];
 export type StageState = StageStatus["status"];

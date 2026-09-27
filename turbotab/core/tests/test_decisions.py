@@ -148,6 +148,7 @@ def test_records_are_json_lines_with_utc_times_and_survive_reopening(tmp_path):
         "seq": 1,
         "at": line["at"],
         "note": "the outcome",
+        "sentence": None,
         "decision": {"kind": "set_target", "column": "a"},
     }
     assert line["at"].endswith("Z")

@@ -337,6 +337,27 @@
                   },
                   {
                     "$ref": "#/components/schemas/Revert"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetRoles"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEnergyAdjustment-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExclusions-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMissing"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSplit-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SelectModels"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSubstitution-Input"
                   }
                 ],
                 "discriminator": {
@@ -346,7 +367,14 @@
                     "set_target": "#/components/schemas/SetTarget",
                     "set_task": "#/components/schemas/SetTask",
                     "set_purpose": "#/components/schemas/SetPurpose",
-                    "revert": "#/components/schemas/Revert"
+                    "revert": "#/components/schemas/Revert",
+                    "set_roles": "#/components/schemas/SetRoles",
+                    "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Input",
+                    "set_exclusions": "#/components/schemas/SetExclusions-Input",
+                    "set_missing": "#/components/schemas/SetMissing",
+                    "set_split": "#/components/schemas/SetSplit-Input",
+                    "select_models": "#/components/schemas/SelectModels",
+                    "set_substitution": "#/components/schemas/SetSubstitution-Input"
                   }
                 },
                 "title": "Decision"
@@ -1145,6 +1173,17 @@
             ],
             "title": "Note"
           },
+          "sentence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentence"
+          },
           "decision": {
             "oneOf": [
               {
@@ -1161,6 +1200,27 @@
               },
               {
                 "$ref": "#/components/schemas/Revert"
+              },
+              {
+                "$ref": "#/components/schemas/SetRoles"
+              },
+              {
+                "$ref": "#/components/schemas/SetEnergyAdjustment-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetExclusions-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetMissing"
+              },
+              {
+                "$ref": "#/components/schemas/SetSplit-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SelectModels"
+              },
+              {
+                "$ref": "#/components/schemas/SetSubstitution-Output"
               }
             ],
             "title": "Decision",
@@ -1168,8 +1228,15 @@
               "propertyName": "kind",
               "mapping": {
                 "revert": "#/components/schemas/Revert",
+                "select_models": "#/components/schemas/SelectModels",
+                "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
+                "set_exclusions": "#/components/schemas/SetExclusions-Output",
                 "set_lens": "#/components/schemas/SetLens",
+                "set_missing": "#/components/schemas/SetMissing",
                 "set_purpose": "#/components/schemas/SetPurpose",
+                "set_roles": "#/components/schemas/SetRoles",
+                "set_split": "#/components/schemas/SetSplit-Output",
+                "set_substitution": "#/components/schemas/SetSubstitution-Output",
                 "set_target": "#/components/schemas/SetTarget",
                 "set_task": "#/components/schemas/SetTask"
               }
@@ -1183,9 +1250,192 @@
           "seq",
           "at",
           "note",
+          "sentence",
           "decision"
         ],
         "title": "DecisionRecord"
+      },
+      "EnergyAdjustment": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "standard",
+              "residual",
+              "density_multivariate",
+              "density",
+              "partition"
+            ],
+            "title": "Method"
+          },
+          "energy_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Energy Column"
+          },
+          "nutrients": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Nutrients"
+          },
+          "log_transform": {
+            "type": "boolean",
+            "title": "Log Transform",
+            "default": false
+          },
+          "strata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strata"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "method",
+          "energy_column",
+          "nutrients",
+          "log_transform",
+          "strata"
+        ],
+        "title": "EnergyAdjustment"
+      },
+      "ExclusionRule-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "range",
+            "title": "Kind",
+            "default": "range"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RangeByLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "reason"
+        ],
+        "title": "ExclusionRule"
+      },
+      "ExclusionRule-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "range",
+            "title": "Kind",
+            "default": "range"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RangeByLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "low",
+          "high",
+          "by",
+          "reason"
+        ],
+        "title": "ExclusionRule"
       },
       "Exit": {
         "properties": {
@@ -1211,14 +1461,42 @@
                   },
                   {
                     "$ref": "#/components/schemas/Revert"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetRoles"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEnergyAdjustment-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExclusions-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMissing"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSplit-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SelectModels"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSubstitution-Output"
                   }
                 ],
                 "discriminator": {
                   "propertyName": "kind",
                   "mapping": {
                     "revert": "#/components/schemas/Revert",
+                    "select_models": "#/components/schemas/SelectModels",
+                    "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
+                    "set_exclusions": "#/components/schemas/SetExclusions-Output",
                     "set_lens": "#/components/schemas/SetLens",
+                    "set_missing": "#/components/schemas/SetMissing",
                     "set_purpose": "#/components/schemas/SetPurpose",
+                    "set_roles": "#/components/schemas/SetRoles",
+                    "set_split": "#/components/schemas/SetSplit-Output",
+                    "set_substitution": "#/components/schemas/SetSubstitution-Output",
                     "set_target": "#/components/schemas/SetTarget",
                     "set_task": "#/components/schemas/SetTask"
                   }
@@ -1522,6 +1800,103 @@
               }
             ],
             "title": "Purpose"
+          },
+          "roles": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "identifier",
+                    "exposure",
+                    "energy",
+                    "covariate",
+                    "design",
+                    "flag",
+                    "time",
+                    "excluded"
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roles"
+          },
+          "energy_adjustment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnergyAdjustment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exclusions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ExclusionRule-Output"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusions"
+          },
+          "missing": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "complete_case",
+                  "impute"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing"
+          },
+          "split": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SplitSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "models": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Models"
+          },
+          "substitution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -1529,7 +1904,14 @@
           "lens",
           "target",
           "task",
-          "purpose"
+          "purpose",
+          "roles",
+          "energy_adjustment",
+          "exclusions",
+          "missing",
+          "split",
+          "models",
+          "substitution"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -1639,6 +2021,54 @@
         ],
         "title": "ProjectView"
       },
+      "RangeByLevel": {
+        "properties": {
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "ranges": {
+            "additionalProperties": {
+              "prefixItems": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "object",
+            "title": "Ranges"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "ranges"
+        ],
+        "title": "RangeByLevel",
+        "description": "Different plausible ranges per level of another column (e.g. by sex)."
+      },
       "Refusal": {
         "properties": {
           "error": {
@@ -1700,6 +2130,211 @@
         ],
         "title": "Revert"
       },
+      "SelectModels": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "select_models",
+            "title": "Kind",
+            "default": "select_models"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Models"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "models"
+        ],
+        "title": "SelectModels"
+      },
+      "SetEnergyAdjustment-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_energy_adjustment",
+            "title": "Kind",
+            "default": "set_energy_adjustment"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "standard",
+              "residual",
+              "density_multivariate",
+              "density",
+              "partition"
+            ],
+            "title": "Method"
+          },
+          "energy_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Energy Column"
+          },
+          "nutrients": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Nutrients"
+          },
+          "log_transform": {
+            "type": "boolean",
+            "title": "Log Transform",
+            "default": false
+          },
+          "strata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strata"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "method"
+        ],
+        "title": "SetEnergyAdjustment"
+      },
+      "SetEnergyAdjustment-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_energy_adjustment",
+            "title": "Kind",
+            "default": "set_energy_adjustment"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "standard",
+              "residual",
+              "density_multivariate",
+              "density",
+              "partition"
+            ],
+            "title": "Method"
+          },
+          "energy_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Energy Column"
+          },
+          "nutrients": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Nutrients"
+          },
+          "log_transform": {
+            "type": "boolean",
+            "title": "Log Transform",
+            "default": false
+          },
+          "strata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strata"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "method",
+          "energy_column",
+          "nutrients",
+          "log_transform",
+          "strata"
+        ],
+        "title": "SetEnergyAdjustment"
+      },
+      "SetExclusions-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_exclusions",
+            "title": "Kind",
+            "default": "set_exclusions"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/ExclusionRule-Input"
+            },
+            "type": "array",
+            "title": "Rules"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "rules"
+        ],
+        "title": "SetExclusions",
+        "description": "Row exclusions; an empty list is the answer \"keep every row\"."
+      },
+      "SetExclusions-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_exclusions",
+            "title": "Kind",
+            "default": "set_exclusions"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/ExclusionRule-Output"
+            },
+            "type": "array",
+            "title": "Rules"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "rules"
+        ],
+        "title": "SetExclusions",
+        "description": "Row exclusions; an empty list is the answer \"keep every row\"."
+      },
       "SetLens": {
         "properties": {
           "kind": {
@@ -1732,6 +2367,31 @@
         ],
         "title": "SetLens"
       },
+      "SetMissing": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_missing",
+            "title": "Kind",
+            "default": "set_missing"
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "complete_case",
+              "impute"
+            ],
+            "title": "Strategy"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "strategy"
+        ],
+        "title": "SetMissing"
+      },
       "SetPurpose": {
         "properties": {
           "kind": {
@@ -1756,6 +2416,183 @@
           "purpose"
         ],
         "title": "SetPurpose"
+      },
+      "SetRoles": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_roles",
+            "title": "Kind",
+            "default": "set_roles"
+          },
+          "roles": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "identifier",
+                "exposure",
+                "energy",
+                "covariate",
+                "design",
+                "flag",
+                "time",
+                "excluded"
+              ]
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Roles"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "roles"
+        ],
+        "title": "SetRoles",
+        "description": "The confirmed reading of every column except the outcome."
+      },
+      "SetSplit-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_split",
+            "title": "Kind",
+            "default": "set_split"
+          },
+          "holdout": {
+            "type": "number",
+            "maximum": 0.4,
+            "minimum": 0.0,
+            "title": "Holdout"
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": 0
+          },
+          "folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Folds",
+            "default": 5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "holdout"
+        ],
+        "title": "SetSplit"
+      },
+      "SetSplit-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_split",
+            "title": "Kind",
+            "default": "set_split"
+          },
+          "holdout": {
+            "type": "number",
+            "maximum": 0.4,
+            "minimum": 0.0,
+            "title": "Holdout"
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": 0
+          },
+          "folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Folds",
+            "default": 5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "holdout",
+          "seed",
+          "folds"
+        ],
+        "title": "SetSplit"
+      },
+      "SetSubstitution-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_substitution",
+            "title": "Kind",
+            "default": "set_substitution"
+          },
+          "donor": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Donor"
+          },
+          "recipient": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Recipient"
+          },
+          "step_kcal": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Step Kcal",
+            "default": 100.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "donor",
+          "recipient"
+        ],
+        "title": "SetSubstitution"
+      },
+      "SetSubstitution-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_substitution",
+            "title": "Kind",
+            "default": "set_substitution"
+          },
+          "donor": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Donor"
+          },
+          "recipient": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Recipient"
+          },
+          "step_kcal": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Step Kcal",
+            "default": 100.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "donor",
+          "recipient",
+          "step_kcal"
+        ],
+        "title": "SetSubstitution"
       },
       "SetTarget": {
         "properties": {
@@ -1811,6 +2648,36 @@
         ],
         "title": "SetTask",
         "description": "An override of task detection, for the outcome column it names.\n\nIt stands only while ``column`` is the target (see :func:`fold`)."
+      },
+      "SplitSpec": {
+        "properties": {
+          "holdout": {
+            "type": "number",
+            "maximum": 0.4,
+            "minimum": 0.0,
+            "title": "Holdout"
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": 0
+          },
+          "folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Folds",
+            "default": 5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "holdout",
+          "seed",
+          "folds"
+        ],
+        "title": "SplitSpec"
       },
       "StageResult": {
         "properties": {
@@ -1977,6 +2844,34 @@
           "cancelled"
         ],
         "title": "StageStatus"
+      },
+      "SubstitutionSpec": {
+        "properties": {
+          "donor": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Donor"
+          },
+          "recipient": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Recipient"
+          },
+          "step_kcal": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Step Kcal",
+            "default": 100.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "donor",
+          "recipient",
+          "step_kcal"
+        ],
+        "title": "SubstitutionSpec"
       },
       "TableWindow": {
         "properties": {

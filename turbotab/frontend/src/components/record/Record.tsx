@@ -22,6 +22,7 @@ import type {
   StageStatus,
   TargetInfoArtifact,
 } from "../../api/schema";
+import { SLOTS } from "../../api/schema";
 import { useRunStage } from "../../api/queries";
 import { useTransitions } from "../../motion/prefs";
 import { StaleVeil, veilFor } from "../../motion/StaleVeil";
@@ -118,6 +119,13 @@ const SUBJECT: Record<Slot, string> = {
   target: "the outcome",
   task: "the task",
   purpose: "the purpose",
+  roles: "the column roles",
+  energy_adjustment: "the energy adjustment",
+  exclusions: "the exclusions",
+  missing: "the missing values",
+  split: "the split",
+  models: "the models",
+  substitution: "the substitution",
 };
 
 export function Record({ pid, view, ingest, profile, targetInfo, findings, summaries }: Props) {
@@ -129,7 +137,10 @@ export function Record({ pid, view, ingest, profile, targetInfo, findings, summa
   const { state, decisions, stages } = view;
 
   const bySlot = useMemo(() => {
-    const out: Record<Slot, DecisionRecord[]> = { lens: [], target: [], task: [], purpose: [] };
+    const out = Object.fromEntries(SLOTS.map((s) => [s, []])) as unknown as Record<
+      Slot,
+      DecisionRecord[]
+    >;
     for (const r of decisions) {
       const slot = slotOf(r.decision, decisions);
       if (slot) out[slot].push(r);

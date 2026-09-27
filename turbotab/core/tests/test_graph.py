@@ -360,3 +360,22 @@ def test_status_serializes_to_the_contract_shape():
         "stage", "status", "key", "fresh", "missing", "error", "job_id", "progress", "updated_at",
         "cancelled",
     }
+
+
+def test_a_bundle_round_trips_and_clients_see_only_its_data(tmp_path):
+    import pandas as pd
+    from sklearn.linear_model import LinearRegression
+
+    from turbotab.core.graph import Bundle, read_artifact, write_artifact
+
+    frame = pd.DataFrame({"row_id": [3, 1, 2], "partition": ["train", "holdout", "train"]})
+    model = LinearRegression().fit([[0.0], [1.0]], [0.0, 2.0])
+    fmt = write_artifact(tmp_path, "split", "k1", 1,
+                         Bundle(data={"n_train": 2}, frames={"assignment": frame},
+                                objects={"model": model}))
+    assert fmt == "bundle"
+    assert read_artifact(tmp_path, "split", "k1", public=True) == {"n_train": 2}
+    whole = read_artifact(tmp_path, "split", "k1")
+    assert isinstance(whole, Bundle) and whole.data == {"n_train": 2}
+    pd.testing.assert_frame_equal(whole.frames["assignment"], frame)
+    assert whole.objects["model"].predict([[0.5]])[0] == pytest.approx(1.0)

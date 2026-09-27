@@ -330,15 +330,72 @@ export interface components {
             at: string;
             /** Note */
             note: string | null;
+            /** Sentence */
+            sentence: string | null;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"];
+        };
+        /** EnergyAdjustment */
+        EnergyAdjustment: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "none" | "standard" | "residual" | "density_multivariate" | "density" | "partition";
+            /** Energy Column */
+            energy_column: string | null;
+            /** Nutrients */
+            nutrients: string[];
+            /**
+             * Log Transform
+             * @default false
+             */
+            log_transform: boolean;
+            /** Strata */
+            strata: string | null;
+        };
+        /** ExclusionRule */
+        "ExclusionRule-Input": {
+            /**
+             * Kind
+             * @default range
+             * @constant
+             */
+            kind: "range";
+            /** Column */
+            column: string;
+            /** Low */
+            low?: number | null;
+            /** High */
+            high?: number | null;
+            by?: components["schemas"]["RangeByLevel"] | null;
+            /** Reason */
+            reason: string;
+        };
+        /** ExclusionRule */
+        "ExclusionRule-Output": {
+            /**
+             * Kind
+             * @default range
+             * @constant
+             */
+            kind: "range";
+            /** Column */
+            column: string;
+            /** Low */
+            low: number | null;
+            /** High */
+            high: number | null;
+            by: components["schemas"]["RangeByLevel"] | null;
+            /** Reason */
+            reason: string;
         };
         /** Exit */
         Exit: {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"]) | null;
         };
         /** FsEntry */
         FsEntry: {
@@ -421,6 +478,19 @@ export interface components {
             task: ("regression" | "binary" | "multiclass") | null;
             /** Purpose */
             purpose: ("prediction" | "inference") | null;
+            /** Roles */
+            roles: {
+                [key: string]: "identifier" | "exposure" | "energy" | "covariate" | "design" | "flag" | "time" | "excluded";
+            } | null;
+            energy_adjustment: components["schemas"]["EnergyAdjustment"] | null;
+            /** Exclusions */
+            exclusions: components["schemas"]["ExclusionRule-Output"][] | null;
+            /** Missing */
+            missing: ("complete_case" | "impute") | null;
+            split: components["schemas"]["SplitSpec"] | null;
+            /** Models */
+            models: string[] | null;
+            substitution: components["schemas"]["SubstitutionSpec"] | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -458,6 +528,21 @@ export interface components {
             };
         };
         /**
+         * RangeByLevel
+         * @description Different plausible ranges per level of another column (e.g. by sex).
+         */
+        RangeByLevel: {
+            /** Column */
+            column: string;
+            /** Ranges */
+            ranges: {
+                [key: string]: [
+                    number | null,
+                    number | null
+                ];
+            };
+        };
+        /**
          * Refusal
          * @description Every error the API answers itself; HTTP 409 when a decision is refused.
          */
@@ -483,6 +568,90 @@ export interface components {
             /** Decision Id */
             decision_id: string;
         };
+        /** SelectModels */
+        SelectModels: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "select_models";
+            /** Models */
+            models: string[];
+        };
+        /** SetEnergyAdjustment */
+        "SetEnergyAdjustment-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_energy_adjustment";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "none" | "standard" | "residual" | "density_multivariate" | "density" | "partition";
+            /** Energy Column */
+            energy_column?: string | null;
+            /** Nutrients */
+            nutrients?: string[];
+            /**
+             * Log Transform
+             * @default false
+             */
+            log_transform: boolean;
+            /** Strata */
+            strata?: string | null;
+        };
+        /** SetEnergyAdjustment */
+        "SetEnergyAdjustment-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_energy_adjustment";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "none" | "standard" | "residual" | "density_multivariate" | "density" | "partition";
+            /** Energy Column */
+            energy_column: string | null;
+            /** Nutrients */
+            nutrients: string[];
+            /**
+             * Log Transform
+             * @default false
+             */
+            log_transform: boolean;
+            /** Strata */
+            strata: string | null;
+        };
+        /**
+         * SetExclusions
+         * @description Row exclusions; an empty list is the answer "keep every row".
+         */
+        "SetExclusions-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_exclusions";
+            /** Rules */
+            rules: components["schemas"]["ExclusionRule-Input"][];
+        };
+        /**
+         * SetExclusions
+         * @description Row exclusions; an empty list is the answer "keep every row".
+         */
+        "SetExclusions-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_exclusions";
+            /** Rules */
+            rules: components["schemas"]["ExclusionRule-Output"][];
+        };
         /** SetLens */
         SetLens: {
             /**
@@ -492,6 +661,19 @@ export interface components {
             kind: "set_lens";
             /** Lenses */
             lenses: ("metabolomics" | "genomics" | "dietary" | "clinical" | "survey")[];
+        };
+        /** SetMissing */
+        SetMissing: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_missing";
+            /**
+             * Strategy
+             * @enum {string}
+             */
+            strategy: "complete_case" | "impute";
         };
         /** SetPurpose */
         SetPurpose: {
@@ -505,6 +687,95 @@ export interface components {
              * @enum {string}
              */
             purpose: "prediction" | "inference";
+        };
+        /**
+         * SetRoles
+         * @description The confirmed reading of every column except the outcome.
+         */
+        SetRoles: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_roles";
+            /** Roles */
+            roles: {
+                [key: string]: "identifier" | "exposure" | "energy" | "covariate" | "design" | "flag" | "time" | "excluded";
+            };
+        };
+        /** SetSplit */
+        "SetSplit-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_split";
+            /** Holdout */
+            holdout: number;
+            /**
+             * Seed
+             * @default 0
+             */
+            seed: number;
+            /**
+             * Folds
+             * @default 5
+             */
+            folds: number;
+        };
+        /** SetSplit */
+        "SetSplit-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_split";
+            /** Holdout */
+            holdout: number;
+            /**
+             * Seed
+             * @default 0
+             */
+            seed: number;
+            /**
+             * Folds
+             * @default 5
+             */
+            folds: number;
+        };
+        /** SetSubstitution */
+        "SetSubstitution-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_substitution";
+            /** Donor */
+            donor: string;
+            /** Recipient */
+            recipient: string;
+            /**
+             * Step Kcal
+             * @default 100
+             */
+            step_kcal: number;
+        };
+        /** SetSubstitution */
+        "SetSubstitution-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_substitution";
+            /** Donor */
+            donor: string;
+            /** Recipient */
+            recipient: string;
+            /**
+             * Step Kcal
+             * @default 100
+             */
+            step_kcal: number;
         };
         /** SetTarget */
         SetTarget: {
@@ -535,6 +806,21 @@ export interface components {
              * @enum {string}
              */
             task: "regression" | "binary" | "multiclass";
+        };
+        /** SplitSpec */
+        SplitSpec: {
+            /** Holdout */
+            holdout: number;
+            /**
+             * Seed
+             * @default 0
+             */
+            seed: number;
+            /**
+             * Folds
+             * @default 5
+             */
+            folds: number;
         };
         /** StageResult */
         StageResult: {
@@ -588,6 +874,18 @@ export interface components {
              * @default false
              */
             cancelled: boolean;
+        };
+        /** SubstitutionSpec */
+        SubstitutionSpec: {
+            /** Donor */
+            donor: string;
+            /** Recipient */
+            recipient: string;
+            /**
+             * Step Kcal
+             * @default 100
+             */
+            step_kcal: number;
         };
         /** TableWindow */
         TableWindow: {
@@ -999,7 +1297,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"];
             };
         };
         responses: {

@@ -223,6 +223,7 @@ export class MockServer {
       seq: p.records.length + 1,
       at: now(),
       note: null,
+      sentence: null,
       decision,
     };
     p.records.push(record);
@@ -302,6 +303,8 @@ export class MockServer {
           );
         return null;
       }
+      default:
+        return null; // M1 kinds: validated by the M1 mock work
     }
   }
 
@@ -585,6 +588,20 @@ function slotOf(d: Decision): Slot | null {
       return "task";
     case "set_purpose":
       return "purpose";
+    case "set_roles":
+      return "roles";
+    case "set_energy_adjustment":
+      return "energy_adjustment";
+    case "set_exclusions":
+      return "exclusions";
+    case "set_missing":
+      return "missing";
+    case "set_split":
+      return "split";
+    case "select_models":
+      return "models";
+    case "set_substitution":
+      return "substitution";
     case "revert":
       return null;
   }
@@ -600,6 +617,22 @@ function valueOf(d: Decision): ProjectState[Slot] {
       return d.task as Task;
     case "set_purpose":
       return d.purpose;
+    case "set_roles":
+      return d.roles;
+    case "set_energy_adjustment": {
+      const { kind: _kind, ...value } = d;
+      return value;
+    }
+    case "set_exclusions":
+      return d.rules;
+    case "set_missing":
+      return d.strategy;
+    case "set_split":
+      return { holdout: d.holdout, seed: d.seed ?? 0, folds: d.folds ?? 5 };
+    case "select_models":
+      return d.models;
+    case "set_substitution":
+      return { donor: d.donor, recipient: d.recipient, step_kcal: d.step_kcal ?? 100 };
     case "revert":
       return null;
   }
@@ -612,7 +645,19 @@ function valueOf(d: Decision): ProjectState[Slot] {
  */
 export function fold(records: DecisionRecord[]): ProjectState {
   type Slots = Omit<ProjectState, "task"> & { task: ReadonlyMap<string, Task> };
-  const state: Slots = { lens: null, target: null, task: new Map(), purpose: null };
+  const state: Slots = {
+    lens: null,
+    target: null,
+    task: new Map(),
+    purpose: null,
+    roles: null,
+    energy_adjustment: null,
+    exclusions: null,
+    missing: null,
+    split: null,
+    models: null,
+    substitution: null,
+  };
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }>();
   for (const r of [...records].sort((a, b) => a.seq - b.seq)) {
     const d = r.decision;

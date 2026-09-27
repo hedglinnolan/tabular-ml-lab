@@ -221,3 +221,33 @@ can (his findings jump the queue; the next milestone does not wait for him).
 - **Never push a `v*` tag from this branch** — `.github/workflows/release.yml` publishes a release for
   any `v*` tag. Milestone markers are `next-m0`, `next-m1`, ….
 - v2 release: PR `turbotab-next` → `main`, CI green, tag `v2.0.0`.
+
+## 11 · Guidance without walls — the design doctrine
+
+The hardest design problem in this product, in Nolan's words: *"It's hard to present all of the
+options and guidance for each without inundating a user with information they will likely not
+read."* The answer is not better prose. **The explanation of an option is its effect on the user's
+own data.** Rules, in priority order:
+
+1. **Show the consequence, then say only what the picture can't.** Hovering or focusing an option
+   asks the consequence planner (`turbotab/core/consequences.py`) what that option would do and
+   renders it as a labeled *preview* — nothing is recorded. Arrow keys move through options, so
+   the user learns by contrast: flip, watch, flip back.
+2. **A closed vocabulary of views, chosen by measured change.** Rows (`row_flow`), columns
+   (`lineage`), values (`distribution`, `table_focus`), relationships (`relationship`), and later
+   structure (`embedding`) and outputs (`metric`, `curve`). At most three per preview, one primary.
+   A new decision kind declares how it transforms a sample; the generic diff picks what changed most.
+   Domain builders override only where a specific picture *is* the teaching.
+3. **Wide data shows what the choice touched** — the affected columns (≤ 12) with a count of the
+   rest; never the whole table.
+4. **Word budgets, enforced by tests:** question ≤ 14 words · one-line why ≤ 22 · option
+   consequence ≤ 16 · in-place *why?* ≤ 60 · finding summary ≤ 20 · preview caption ≤ 20.
+5. **Four opt-in layers:** (0) question + one line; (1) each option's one-line consequence and its
+   preview; (2) *why?* in place; (3) the concept drawer (pack content, sourced, badged). Nothing past
+   layer 1 is needed to answer.
+6. **Their data before theory.** A sentence citing their table ("`fat_total` correlates 0.71 with
+   `kcal`") beats a general one; general theory lives in the drawer.
+7. **One voice at a time.** One open question; ≤ 3 pushed findings, the rest counted and typed;
+   same-kind findings share one paged card; a finding is a one-line claim plus its lever.
+8. **Terms define themselves:** dotted underline → a one-sentence card on hover/focus.
+9. **Judgment is order and emphasis, never absence** — usual choices first, the rest one step away.

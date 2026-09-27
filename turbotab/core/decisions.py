@@ -111,8 +111,123 @@ class Revert(_DecisionModel):
     decision_id: str = Field(min_length=1)
 
 
+# ── M1 kinds (docs/turbotab-next/M1_CONTRACT.md) ─────────────────────────────
+# The shapes are fixed here so every M1 agent builds on one definition; their
+# validators, sentences and the stages that read them are the agents' work.
+
+Role = Literal["identifier", "exposure", "energy", "covariate", "design", "flag", "time", "excluded"]
+EnergyMethod = Literal["none", "standard", "residual", "density_multivariate", "density", "partition"]
+MissingStrategy = Literal["complete_case", "impute"]
+
+
+class _Value(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True,
+                              json_schema_serialization_defaults_required=True)
+
+
+class RangeByLevel(_Value):
+    """Different plausible ranges per level of another column (e.g. by sex)."""
+
+    column: str = Field(min_length=1)
+    ranges: dict[str, tuple[float | None, float | None]]
+
+
+class ExclusionRule(_Value):
+    kind: Literal["range"] = "range"
+    column: str = Field(min_length=1)
+    low: float | None = None
+    high: float | None = None
+    by: RangeByLevel | None = None
+    reason: str = Field(min_length=1)
+
+
+class EnergyAdjustment(_Value):
+    method: EnergyMethod
+    energy_column: str | None = None
+    nutrients: list[str] = Field(default_factory=list)
+    log_transform: bool = False
+    strata: str | None = None
+
+
+class SplitSpec(_Value):
+    holdout: float = Field(ge=0.0, le=0.4)
+    seed: int = 0
+    folds: int = Field(default=5, ge=2, le=10)
+
+    @field_validator("holdout")
+    @classmethod
+    def _holdout(cls, value: float) -> float:
+        if value != 0.0 and value < 0.1:
+            raise ValueError("a holdout is 0 (cross-validation only) or between 0.1 and 0.4")
+        return value
+
+
+class SubstitutionSpec(_Value):
+    donor: str = Field(min_length=1)
+    recipient: str = Field(min_length=1)
+    step_kcal: float = Field(default=100.0, gt=0)
+
+
+class SetRoles(_DecisionModel):
+    """The confirmed reading of every column except the outcome."""
+
+    kind: Literal["set_roles"] = "set_roles"
+    roles: dict[str, Role] = Field(min_length=1)
+
+
+class SetEnergyAdjustment(_DecisionModel):
+    kind: Literal["set_energy_adjustment"] = "set_energy_adjustment"
+    method: EnergyMethod
+    energy_column: str | None = None
+    nutrients: list[str] = Field(default_factory=list)
+    log_transform: bool = False
+    strata: str | None = None
+
+
+class SetExclusions(_DecisionModel):
+    """Row exclusions; an empty list is the answer "keep every row"."""
+
+    kind: Literal["set_exclusions"] = "set_exclusions"
+    rules: list[ExclusionRule]
+
+
+class SetMissing(_DecisionModel):
+    kind: Literal["set_missing"] = "set_missing"
+    strategy: MissingStrategy
+
+
+class SetSplit(_DecisionModel):
+    kind: Literal["set_split"] = "set_split"
+    holdout: float = Field(ge=0.0, le=0.4)
+    seed: int = 0
+    folds: int = Field(default=5, ge=2, le=10)
+
+
+class SelectModels(_DecisionModel):
+    kind: Literal["select_models"] = "select_models"
+    models: list[str] = Field(min_length=1)
+
+    @field_validator("models")
+    @classmethod
+    def _unique(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("each model family may be named only once")
+        return value
+
+
+class SetSubstitution(_DecisionModel):
+    kind: Literal["set_substitution"] = "set_substitution"
+    donor: str = Field(min_length=1)
+    recipient: str = Field(min_length=1)
+    step_kcal: float = Field(default=100.0, gt=0)
+
+
 Decision = Annotated[
-    Union[SetLens, SetTarget, SetTask, SetPurpose, Revert],
+    Union[
+        SetLens, SetTarget, SetTask, SetPurpose, Revert,
+        SetRoles, SetEnergyAdjustment, SetExclusions, SetMissing, SetSplit,
+        SelectModels, SetSubstitution,
+    ],
     Field(discriminator="kind"),
 ]
 DECISION_ADAPTER: TypeAdapter[Any] = TypeAdapter(Decision)
@@ -130,6 +245,10 @@ class DecisionRecord(BaseModel):
     seq: int = Field(ge=1)
     at: AwareDatetime
     note: str | None = None
+    # The sentence the Record shows, authored by the server when the decision is
+    # recorded (DESIGN_LANGUAGE §05.1: the receipt is a quotation, never a
+    # composition). Backticks mark data values. None only for M0-era records.
+    sentence: str | None = None
     decision: Decision
 
     @field_validator("at")
@@ -147,6 +266,13 @@ class ProjectState(BaseModel):
     target: str | None = None
     task: Task | None = None
     purpose: Purpose | None = None
+    roles: dict[str, Role] | None = None
+    energy_adjustment: EnergyAdjustment | None = None
+    exclusions: list[ExclusionRule] | None = None
+    missing: MissingStrategy | None = None
+    split: SplitSpec | None = None
+    models: list[str] | None = None
+    substitution: SubstitutionSpec | None = None
 
 
 class Refusal(Exception):
@@ -321,6 +447,15 @@ register_kind(
     holds=lambda decision, slots: slots.get("target") == decision.column,
 )
 register_kind(SetPurpose, "purpose")
+register_kind(SetRoles, "roles")
+register_kind(SetEnergyAdjustment, "energy_adjustment",
+              value=lambda d: EnergyAdjustment(**d.model_dump(exclude={"kind"})))
+register_kind(SetExclusions, "exclusions")
+register_kind(SetMissing, "missing")
+register_kind(SetSplit, "split", value=lambda d: SplitSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SelectModels, "models")
+register_kind(SetSubstitution, "substitution",
+              value=lambda d: SubstitutionSpec(**d.model_dump(exclude={"kind"})))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 

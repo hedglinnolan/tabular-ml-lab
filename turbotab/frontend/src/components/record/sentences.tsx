@@ -5,7 +5,7 @@
  */
 import type { ReactNode } from "react";
 import type { Decision, DecisionRecord, Lens, Purpose, Slot, Task } from "../../api/schema";
-import { V } from "../Prose";
+import { Prose, V } from "../Prose";
 
 export const LENS_LABEL: Record<Lens, string> = {
   metabolomics: "Metabolomics or proteomics",
@@ -47,6 +47,20 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "task";
     case "set_purpose":
       return "purpose";
+    case "set_roles":
+      return "roles";
+    case "set_energy_adjustment":
+      return "energy_adjustment";
+    case "set_exclusions":
+      return "exclusions";
+    case "set_missing":
+      return "missing";
+    case "set_split":
+      return "split";
+    case "select_models":
+      return "models";
+    case "set_substitution":
+      return "substitution";
     case "revert": {
       const undone = records.find((r) => r.id === d.decision_id);
       return undone ? slotOf(undone.decision, records) : null;
@@ -101,5 +115,8 @@ export function sentence(record: DecisionRecord, records: DecisionRecord[]): Rea
         </>
       );
     }
+    default:
+      // M1 kinds: the server authors the sentence (DecisionRecord.sentence).
+      return record.sentence ? <Prose text={record.sentence} /> : null;
   }
 }
