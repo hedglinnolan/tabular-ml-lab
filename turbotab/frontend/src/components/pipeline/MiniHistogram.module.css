@@ -1,0 +1,21 @@
+.fig {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.area {
+  fill: color-mix(in srgb, var(--c1) 30%, transparent);
+  stroke: var(--c1);
+  stroke-width: 1;
+}
+
+.axis {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}

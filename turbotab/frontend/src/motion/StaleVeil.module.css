@@ -1,0 +1,63 @@
+.root {
+  position: relative;
+}
+
+.body {
+  transition:
+    opacity var(--dur-veil) ease,
+    filter var(--dur-veil) ease;
+  transition-delay: 0ms;
+}
+
+.root::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 12px;
+  background: var(--veil);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-veil) ease;
+  transition-delay: 0ms;
+}
+
+.veiled .body {
+  opacity: 0.55;
+  filter: saturate(0.25);
+  transition-delay: var(--veil-delay, 0ms);
+}
+
+.veiled::after {
+  opacity: 1;
+  transition-delay: var(--veil-delay, 0ms);
+}
+
+.tagSlot {
+  position: absolute;
+  top: -10px;
+  right: 14px;
+  z-index: 2;
+}
+
+.tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--warn);
+  background: var(--warn-tint);
+  border: 1px solid var(--warn-line);
+  border-radius: 10px;
+  padding: 1px 9px;
+  animation: tag-in var(--dur-veil) ease both;
+  animation-delay: var(--veil-delay, 0ms);
+}
+
+@keyframes tag-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

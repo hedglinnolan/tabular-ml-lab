@@ -1,0 +1,9 @@
+node_modules
+dist
+test-results
+playwright-report
+blob-report
+*.tsbuildinfo
+# The repository root ignores CLAUDE.md everywhere; this one is the
+# frontend's maintenance guide and is meant to be versioned.
+!CLAUDE.md

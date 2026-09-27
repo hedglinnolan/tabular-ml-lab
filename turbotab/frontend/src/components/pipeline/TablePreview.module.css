@@ -1,0 +1,113 @@
+.wrap {
+  margin-top: 12px;
+}
+
+.caption {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+
+.caption :global(.num) {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.scroll {
+  position: relative;
+  height: 210px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  overscroll-behavior: contain;
+}
+
+.head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.hcell,
+.cell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hcell {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  display: block;
+  line-height: 28px;
+}
+
+.target {
+  color: var(--ok);
+  background: var(--ok-tint);
+  box-shadow: inset 0 -2px 0 var(--ok);
+}
+
+.row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.cell {
+  color: var(--ink);
+}
+
+.numeric {
+  justify-content: flex-end;
+}
+
+.targetCell {
+  background: color-mix(in srgb, var(--ok-tint) 70%, transparent);
+}
+
+.missing {
+  color: var(--muted);
+}
+
+.idx {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: 54px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-right: 1px solid var(--line);
+  font-size: 10px;
+}
+
+.corner {
+  font-weight: 600;
+  z-index: 4;
+}

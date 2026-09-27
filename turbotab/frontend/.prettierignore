@@ -1,0 +1,8 @@
+dist
+node_modules
+mock-public
+public
+test-results
+playwright-report
+package-lock.json
+src/api/generated.ts

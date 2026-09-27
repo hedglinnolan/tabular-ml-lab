@@ -1,0 +1,172 @@
+/* Open question — the current one wears the accent (§02: "now"). */
+.question {
+  background: var(--surface);
+  border: 1.5px solid var(--accent);
+  box-shadow: var(--shadow-lift);
+  overflow: hidden;
+}
+
+.inner {
+  padding: 20px 23px 18px;
+}
+
+.kicker {
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  margin-bottom: 6px;
+}
+
+.title {
+  font-family: var(--serif);
+  font-size: var(--fs-question);
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 0 0 6px;
+}
+
+.why {
+  font-size: 13.5px;
+  color: var(--muted);
+  margin: 0 0 16px;
+  line-height: 1.5;
+  max-width: 62ch;
+}
+
+.consumer {
+  margin-top: 14px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.consumer summary {
+  cursor: pointer;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.consumer p {
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 8px 0 0;
+  max-width: 62ch;
+}
+
+/* Recorded decision — one serif sentence, mono values, green keyline (§04). */
+.decision {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ok);
+  box-shadow: var(--shadow);
+  padding: 13px 16px;
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+}
+
+.prose {
+  font-family: var(--serif);
+  font-size: var(--fs-decision);
+  line-height: 1.55;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.aside {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.meta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.change {
+  flex: 0 0 auto;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.change:hover {
+  color: var(--accent-ink);
+}
+
+/* Not asked — muted and neutral; green is reserved for what a human recorded (§09). */
+.skip {
+  background: var(--surface-2);
+  border: 1px dashed var(--line);
+  padding: 11px 16px;
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+}
+
+.skipText {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.history {
+  list-style: none;
+  margin: 6px 0 0 3px;
+  padding: 0 0 0 14px;
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.historyItem {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.historyMeta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.historyText {
+  font-family: var(--serif);
+  flex: 1;
+  min-width: 0;
+}
+
+.superseded {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 0 7px;
+  flex: 0 0 auto;
+}
+
+.pending {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 11px 16px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
