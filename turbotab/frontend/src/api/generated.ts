@@ -295,6 +295,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Models
+         * @description Every registered model family: what it assumes, what it is good at, what to watch for.
+         */
+        get: operations["list_models_api_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teaching": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Teaching
+         * @description One entry per question, in asking order: the question, its one line, each option's
+         *     consequence, the terms it uses, and the pack content behind it with evidence badges.
+         */
+        get: operations["get_teaching_api_teaching_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -381,6 +422,19 @@ export interface components {
             /** Cuts */
             cuts: number[];
         };
+        /** Drawer */
+        Drawer: {
+            /** Sections */
+            sections: components["schemas"]["DrawerSection"][];
+        };
+        /** DrawerSection */
+        DrawerSection: {
+            /** Heading */
+            heading: string;
+            /** Body */
+            body: string;
+            evidence: components["schemas"]["Evidence"] | null;
+        };
         /** EnergyAdjustment */
         EnergyAdjustment: {
             /**
@@ -399,6 +453,19 @@ export interface components {
             log_transform: boolean;
             /** Strata */
             strata: string | null;
+        };
+        /**
+         * Evidence
+         * @description A pack's badge: where the field stands, and the section that says so.
+         */
+        Evidence: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "SETTLED" | "CONVENTION" | "DISPUTED";
+            /** Source */
+            source: string;
         };
         /** ExclusionRule */
         "ExclusionRule-Input": {
@@ -442,6 +509,28 @@ export interface components {
             label: string;
             /** Decision */
             decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"]) | null;
+        };
+        /**
+         * FamilyInfo
+         * @description What ``GET /api/models`` says about one family.
+         */
+        FamilyInfo: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Tasks */
+            tasks: ("regression" | "binary" | "multiclass")[];
+            /** Inductive Bias */
+            inductive_bias: string;
+            /** Strengths */
+            strengths: string[];
+            /** Cautions */
+            cautions: string[];
+            /** Needs Scaling */
+            needs_scaling: boolean;
+            /** Handles Missing */
+            handles_missing: boolean;
         };
         /** FsEntry */
         FsEntry: {
@@ -1172,6 +1261,46 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** TeachingEntry */
+        TeachingEntry: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "lens" | "target" | "task" | "purpose" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution";
+            /** Title */
+            title: string;
+            /** Question */
+            question: string;
+            /** One Liner */
+            one_liner: string;
+            /** Why */
+            why: string;
+            /** Consumer */
+            consumer: string;
+            /** Options */
+            options: components["schemas"]["TeachingOption"][];
+            /** Terms */
+            terms: components["schemas"]["TeachingTerm"][];
+            drawer: components["schemas"]["Drawer"] | null;
+            evidence: components["schemas"]["Evidence"] | null;
+        };
+        /** TeachingOption */
+        TeachingOption: {
+            /** Value */
+            value: string;
+            /** Label */
+            label: string;
+            /** Consequence */
+            consequence: string;
+        };
+        /** TeachingTerm */
+        TeachingTerm: {
+            /** Term */
+            term: string;
+            /** Definition */
+            definition: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1191,6 +1320,19 @@ export interface components {
             value: unknown;
             /** Count */
             count: number;
+        };
+        /** Coefficient */
+        Coefficient: {
+            /** Feature */
+            feature: string;
+            /** Estimate */
+            estimate: number | null;
+            /** Ci Low */
+            ci_low: number | null;
+            /** Ci High */
+            ci_high: number | null;
+            /** P */
+            p: number | null;
         };
         /**
          * CohortArtifact
@@ -1244,6 +1386,104 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
+        /**
+         * DesignArtifact
+         * @description The ``design`` artifact: each model's pipeline and the columns it will see.
+         */
+        DesignArtifact: {
+            lineage: components["schemas"]["Lineage"];
+            matrix: components["schemas"]["MatrixShape"];
+            /** Models */
+            models: components["schemas"]["DesignModel"][];
+            /** Estimand */
+            estimand: string | null;
+            /** Substitution Pairs */
+            substitution_pairs: components["schemas"]["SubstitutionPair"][];
+            /** Warnings */
+            warnings: string[];
+        };
+        /** DesignModel */
+        DesignModel: {
+            /** Family */
+            family: string;
+            /** Label */
+            label: string;
+            /** Steps */
+            steps: components["schemas"]["DesignStep"][];
+        };
+        /** DesignStep */
+        DesignStep: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Detail */
+            detail: string;
+        };
+        /**
+         * EnergyReading
+         * @description What the energy-adjustment question can offer on this table (NUTRITION_PACK §04).
+         */
+        EnergyReading: {
+            /** Energy Column */
+            energy_column: string | null;
+            /** Nutrients */
+            nutrients: string[];
+            /** Strata Candidates */
+            strata_candidates: string[];
+            /** Applicability */
+            applicability: {
+                [key: string]: components["schemas"]["MethodVerdict"];
+            };
+            /** Usual */
+            usual: ("none" | "standard" | "residual" | "density_multivariate" | "density" | "partition") | null;
+            usual_evidence: components["schemas"]["FindingEvidence"] | null;
+            /** R With Energy */
+            r_with_energy: {
+                [key: string]: number;
+            };
+            /** Notes */
+            notes: string[];
+        };
+        /**
+         * ExclusionProposal
+         * @description One of the pack's exclusion rules, with the rows it would remove. Never pre-selected.
+         */
+        ExclusionProposal: {
+            /** Key */
+            key: string;
+            rule: components["schemas"]["ExclusionRule"];
+            /** Label */
+            label: string;
+            /** Affected */
+            affected: number;
+            evidence: components["schemas"]["FindingEvidence"];
+        };
+        /** ExclusionRule */
+        ExclusionRule: {
+            /**
+             * Kind
+             * @default range
+             * @constant
+             */
+            kind: "range";
+            /** Column */
+            column: string;
+            /**
+             * Low
+             * @default null
+             */
+            low: number | null;
+            /**
+             * High
+             * @default null
+             */
+            high: number | null;
+            /** @default null */
+            by: components["schemas"]["RangeByLevel"] | null;
+            /** Reason */
+            reason: string;
+        };
         /** Finding */
         Finding: {
             /** Id */
@@ -1269,6 +1509,14 @@ export interface components {
             /** Lens */
             lens: ("metabolomics" | "genomics" | "dietary" | "clinical" | "survey") | null;
             evidence: components["schemas"]["FindingEvidence"] | null;
+            /** Summary */
+            summary: string;
+            /** Routes To */
+            routes_to: ("lens" | "target" | "task" | "purpose" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution") | null;
+            /** Lever Label */
+            lever_label: string | null;
+            /** Group */
+            group: string | null;
         };
         /** FindingEvidence */
         FindingEvidence: {
@@ -1287,6 +1535,50 @@ export interface components {
             /** Basis */
             basis: string;
         };
+        /**
+         * FitArtifact
+         * @description The ``fit`` artifact: cross-validated and held-out performance per model.
+         */
+        FitArtifact: {
+            /**
+             * Task
+             * @enum {string}
+             */
+            task: "regression" | "binary" | "multiclass";
+            /** Primary Metric */
+            primary_metric: string;
+            /** Metric Labels */
+            metric_labels: {
+                [key: string]: string;
+            };
+            /** N Train */
+            n_train: number;
+            /** N Holdout */
+            n_holdout: number;
+            /** Models */
+            models: components["schemas"]["FittedModel"][];
+        };
+        /** FittedModel */
+        FittedModel: {
+            /** Family */
+            family: string;
+            /** Label */
+            label: string;
+            /** Cv */
+            cv: {
+                [key: string]: components["schemas"]["MetricSummary"];
+            };
+            /** Holdout */
+            holdout: {
+                [key: string]: number | null;
+            } | null;
+            /** Coefficients */
+            coefficients: components["schemas"]["Coefficient"][] | null;
+            /** Fit Seconds */
+            fit_seconds: number;
+            /** Concerns */
+            concerns: string[];
+        };
         /** LensHint */
         LensHint: {
             /**
@@ -1297,6 +1589,29 @@ export interface components {
             /** Because */
             because: string;
         };
+        /** MatrixShape */
+        MatrixShape: {
+            /** N Rows */
+            n_rows: number;
+            /** N Cols */
+            n_cols: number;
+        };
+        /** MethodVerdict */
+        MethodVerdict: {
+            /** Ok */
+            ok: boolean;
+            /** Reason */
+            reason: string;
+        };
+        /** MetricSummary */
+        MetricSummary: {
+            /** Mean */
+            mean: number | null;
+            /** Sd */
+            sd: number | null;
+            /** Folds */
+            folds: (number | null)[];
+        };
         /**
          * ProfileArtifact
          * @description The ``profile`` artifact.
@@ -1306,6 +1621,17 @@ export interface components {
             columns: components["schemas"]["ColumnSummary"][];
             /** Lens Hints */
             lens_hints: components["schemas"]["LensHint"][];
+            /** Basis */
+            basis: string;
+        };
+        /**
+         * ProposalsArtifact
+         * @description The ``proposals`` artifact: offered for the exclusions and energy questions.
+         */
+        ProposalsArtifact: {
+            /** Exclusions */
+            exclusions: components["schemas"]["ExclusionProposal"][];
+            energy: components["schemas"]["EnergyReading"] | null;
             /** Basis */
             basis: string;
         };
@@ -1349,6 +1675,34 @@ export interface components {
             repeats: components["schemas"]["Repeats"] | null;
         };
         /**
+         * ShelfArtifact
+         * @description The ``shelf`` artifact: every family that can model the task, best first.
+         */
+        ShelfArtifact: {
+            /** Families */
+            families: components["schemas"]["ShelfFamily"][];
+            /** Basis */
+            basis: string;
+        };
+        /** ShelfFamily */
+        ShelfFamily: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Rank */
+            rank: number;
+            /**
+             * Fit
+             * @enum {string}
+             */
+            fit: "good" | "fair" | "poor";
+            /** Concerns */
+            concerns: string[];
+            /** Inductive Bias */
+            inductive_bias: string;
+        };
+        /**
          * SplitArtifact
          * @description The ``split`` artifact (a Bundle's ``data``): held-out rows and folds.
          */
@@ -1371,6 +1725,59 @@ export interface components {
             stratified: boolean;
             /** Note */
             note: string;
+        };
+        /**
+         * SubstitutionArtifact
+         * @description The ``substitution`` artifact: one curve per fitted model.
+         */
+        SubstitutionArtifact: {
+            /** Donor */
+            donor: string;
+            /** Recipient */
+            recipient: string;
+            /** Step Kcal */
+            step_kcal: number;
+            /** Ks */
+            ks: number[];
+            /**
+             * Total Kind
+             * @enum {string}
+             */
+            total_kind: "fixed" | "variable";
+            /** Estimand */
+            estimand: string | null;
+            /** Note */
+            note: string;
+            /** Basis */
+            basis: string;
+            /** Models */
+            models: components["schemas"]["SubstitutionModel"][];
+        };
+        /** SubstitutionModel */
+        SubstitutionModel: {
+            /** Family */
+            family: string;
+            /** Label */
+            label: string;
+            /** Delta */
+            delta: (number | null)[];
+            /** Ci Low */
+            ci_low: (number | null)[] | null;
+            /** Ci High */
+            ci_high: (number | null)[] | null;
+            /** On Support Fraction */
+            on_support_fraction: number[];
+            /** Stopped At */
+            stopped_at: number | null;
+            /** Effect Label */
+            effect_label: string | null;
+        };
+        /** SubstitutionPair */
+        SubstitutionPair: {
+            /** Donor */
+            donor: string;
+            /** Recipient */
+            recipient: string;
         };
         /**
          * TargetInfo
@@ -2105,6 +2512,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_models_api_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FamilyInfo"][];
+                };
+            };
+        };
+    };
+    get_teaching_api_teaching_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeachingEntry"][];
                 };
             };
         };

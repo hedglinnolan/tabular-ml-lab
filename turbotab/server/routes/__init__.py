@@ -34,9 +34,18 @@ def refusal(description: str) -> dict[str, Any]:
 
 
 def build_router() -> APIRouter:
-    from turbotab.server.routes import data, events, jobs, models, preview, projects, system
+    from turbotab.server.routes import (
+        data,
+        events,
+        jobs,
+        models,
+        preview,
+        projects,
+        system,
+        teaching,
+    )
 
     api = APIRouter(prefix="/api")
-    for module in (system, projects, preview, data, jobs, events, models):
+    for module in (system, projects, preview, data, jobs, events, models, teaching):
         api.include_router(module.router)
     return api

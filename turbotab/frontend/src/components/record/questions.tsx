@@ -167,8 +167,8 @@ export function TaskAnswers({
   return (
     <>
       <p className={c.detected}>
-        TurboTab read <V>{info.column}</V> as <V>{info.detected_task}</V> with{" "}
-        <V>{info.confidence}</V> confidence: <Prose text={info.reason} />.
+        TurboTab read <V>{info.column}</V> with <V>{info.confidence}</V> confidence.{" "}
+        <Prose text={info.reason} />
         {info.confidence !== "high" ? " That is not certain enough to assume, so it is asked." : ""}
       </p>
       <div className={c.cards} role="group" aria-label="Task">

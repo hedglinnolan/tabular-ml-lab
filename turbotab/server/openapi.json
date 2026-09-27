@@ -1141,6 +1141,32 @@
           }
         }
       }
+    },
+    "/api/teaching": {
+      "get": {
+        "tags": [
+          "teaching"
+        ],
+        "summary": "Get Teaching",
+        "description": "One entry per question, in asking order: the question, its one line, each option's\nconsequence, the terms it uses, and the pack content behind it with evidence badges.",
+        "operationId": "get_teaching_api_teaching_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TeachingEntry"
+                  },
+                  "type": "array",
+                  "title": "Response Get Teaching Api Teaching Get"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1474,6 +1500,53 @@
         ],
         "title": "DistributionView"
       },
+      "Drawer": {
+        "properties": {
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/DrawerSection"
+            },
+            "type": "array",
+            "title": "Sections"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sections"
+        ],
+        "title": "Drawer"
+      },
+      "DrawerSection": {
+        "properties": {
+          "heading": {
+            "type": "string",
+            "title": "Heading"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Evidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "heading",
+          "body",
+          "evidence"
+        ],
+        "title": "DrawerSection"
+      },
       "EnergyAdjustment": {
         "properties": {
           "method": {
@@ -1533,6 +1606,31 @@
           "strata"
         ],
         "title": "EnergyAdjustment"
+      },
+      "Evidence": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "SETTLED",
+              "CONVENTION",
+              "DISPUTED"
+            ],
+            "title": "Status"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "source"
+        ],
+        "title": "Evidence",
+        "description": "A pack's badge: where the field stands, and the section that says so."
       },
       "ExclusionRule-Input": {
         "properties": {
@@ -3885,6 +3983,139 @@
         ],
         "title": "TableWindow"
       },
+      "TeachingEntry": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "lens",
+              "target",
+              "task",
+              "purpose",
+              "roles",
+              "exclusions",
+              "missing",
+              "split",
+              "energy_adjustment",
+              "models",
+              "substitution"
+            ],
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "one_liner": {
+            "type": "string",
+            "title": "One Liner"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why"
+          },
+          "consumer": {
+            "type": "string",
+            "title": "Consumer"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/TeachingOption"
+            },
+            "type": "array",
+            "title": "Options"
+          },
+          "terms": {
+            "items": {
+              "$ref": "#/components/schemas/TeachingTerm"
+            },
+            "type": "array",
+            "title": "Terms"
+          },
+          "drawer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Drawer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Evidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "question",
+          "one_liner",
+          "why",
+          "consumer",
+          "options",
+          "terms",
+          "drawer",
+          "evidence"
+        ],
+        "title": "TeachingEntry"
+      },
+      "TeachingOption": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "consequence": {
+            "type": "string",
+            "title": "Consequence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "label",
+          "consequence"
+        ],
+        "title": "TeachingOption"
+      },
+      "TeachingTerm": {
+        "properties": {
+          "term": {
+            "type": "string",
+            "title": "Term"
+          },
+          "definition": {
+            "type": "string",
+            "title": "Definition"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "term",
+          "definition"
+        ],
+        "title": "TeachingTerm"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -4241,6 +4472,196 @@
         "title": "DesignStep",
         "type": "object"
       },
+      "EnergyReading": {
+        "description": "What the energy-adjustment question can offer on this table (NUTRITION_PACK §04).",
+        "properties": {
+          "energy_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Energy Column"
+          },
+          "nutrients": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Nutrients",
+            "type": "array"
+          },
+          "strata_candidates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Strata Candidates",
+            "type": "array"
+          },
+          "applicability": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MethodVerdict"
+            },
+            "title": "Applicability",
+            "type": "object"
+          },
+          "usual": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "standard",
+                  "residual",
+                  "density_multivariate",
+                  "density",
+                  "partition"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usual"
+          },
+          "usual_evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FindingEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "r_with_energy": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "R With Energy",
+            "type": "object"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "energy_column",
+          "nutrients",
+          "strata_candidates",
+          "applicability",
+          "usual",
+          "usual_evidence",
+          "r_with_energy",
+          "notes"
+        ],
+        "title": "EnergyReading",
+        "type": "object"
+      },
+      "ExclusionProposal": {
+        "description": "One of the pack's exclusion rules, with the rows it would remove. Never pre-selected.",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "rule": {
+            "$ref": "#/components/schemas/ExclusionRule"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "affected": {
+            "title": "Affected",
+            "type": "integer"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/FindingEvidence"
+          }
+        },
+        "required": [
+          "key",
+          "rule",
+          "label",
+          "affected",
+          "evidence"
+        ],
+        "title": "ExclusionProposal",
+        "type": "object"
+      },
+      "ExclusionRule": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "range",
+            "default": "range",
+            "title": "Kind",
+            "type": "string"
+          },
+          "column": {
+            "minLength": 1,
+            "title": "Column",
+            "type": "string"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "High"
+          },
+          "by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RangeByLevel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "column",
+          "low",
+          "high",
+          "by",
+          "reason"
+        ],
+        "title": "ExclusionRule",
+        "type": "object"
+      },
       "Finding": {
         "properties": {
           "id": {
@@ -4318,6 +4739,56 @@
                 "type": "null"
               }
             ]
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "routes_to": {
+            "anyOf": [
+              {
+                "enum": [
+                  "lens",
+                  "target",
+                  "task",
+                  "purpose",
+                  "roles",
+                  "exclusions",
+                  "missing",
+                  "split",
+                  "energy_adjustment",
+                  "models",
+                  "substitution"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routes To"
+          },
+          "lever_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lever Label"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
           }
         },
         "required": [
@@ -4329,7 +4800,11 @@
           "affected_columns",
           "source",
           "lens",
-          "evidence"
+          "evidence",
+          "summary",
+          "routes_to",
+          "lever_label",
+          "group"
         ],
         "title": "Finding",
         "type": "object"
@@ -4546,6 +5021,24 @@
         "title": "MatrixShape",
         "type": "object"
       },
+      "MethodVerdict": {
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "reason"
+        ],
+        "title": "MethodVerdict",
+        "type": "object"
+      },
       "MetricSummary": {
         "additionalProperties": false,
         "properties": {
@@ -4622,6 +5115,39 @@
           "basis"
         ],
         "title": "ProfileArtifact",
+        "type": "object"
+      },
+      "ProposalsArtifact": {
+        "description": "The ``proposals`` artifact: offered for the exclusions and energy questions.",
+        "properties": {
+          "exclusions": {
+            "items": {
+              "$ref": "#/components/schemas/ExclusionProposal"
+            },
+            "title": "Exclusions",
+            "type": "array"
+          },
+          "energy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnergyReading"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exclusions",
+          "energy",
+          "basis"
+        ],
+        "title": "ProposalsArtifact",
         "type": "object"
       },
       "Repeats": {
