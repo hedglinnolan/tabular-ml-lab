@@ -271,12 +271,24 @@ From the screenshots of `explore/stage`, `explore/inline` and `explore/scrub`:
   option, and the big window morphs.
 - **`stage`'s lineage diagram is the canonical lineage** — *"the best version I have seen of that
   lineage diagram design."* It is also the modeling-decision-provenance figure (North star 4).
-- **The slider (`scrub`) is not yet ruled.** Nolan asked what it gains and what it sacrifices. The
-  orchestrator's answer: it serializes before and after in time, where `stage` shows both in space.
-  Its in-between states are not real states. It adds a drag per option, which slows rifling. It does
-  not generalize to model or split choices. Recommendation: drop the slider, but keep `scrub`'s
-  column-identity morph in the table view (`fat_total` → `fat_total_adj` → `fat_total_per_kcal`).
-  **Awaiting Nolan's confirmation.**
+- **The slider is ruled in, as a global control over a multi-view stage.** Nolan: *"comparing from
+  memory is honestly not a bad idea… It could allow us to show a multi-lens view of the transformation
+  from different plots with one large slider at the top, so the user can focus on one plot at a time…
+  It would also open up the aperture for what we are allowed to display by default by giving us more
+  space to work since we are not cutting the 'widgets' window in half… As long as users get the option
+  to save any plot they desire during that slider action."* So: one slider at the top of `stage`'s
+  window drives every view at once (scatter, distribution, lineage, table); each view shows one state
+  and gets the full width. The orchestrator's conditions, which keep the design honest:
+  1. **A save captures a real state, never a frame from mid-slide** — *before*, *after*, or a
+     publication-ready *before/after pair*, captioned with the choice that produced it (a provenance
+     figure). An interpolated frame is not a state of the data; saving it would assert falsely.
+  2. **Two axes, two controls:** arrow keys move between options; the slider moves between before and
+     after. The slider keeps its position when the option changes, so at *after*, flipping options
+     morphs one method's result into the next.
+  3. **Headline numbers stay pinned** in a small readout (r 0.86 → 0.14; n 21,348 → 2,943), so what
+     matters is never compared from memory.
+  4. **The ends are labeled real states** — "your data now" and "with this choice (preview)" — and
+     releasing the slider snaps to the nearer end. The table keeps `scrub`'s column-identity morph.
 - **Direction to prototype: a pipeline banner.** `stage` gives up the "once over the world look at
   the pipeline you built". Nolan's idea: put that overview into the banner at the top of the app,
   so that *"everything below the banner image is the working window."* The banner is a compact,

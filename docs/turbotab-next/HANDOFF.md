@@ -18,7 +18,7 @@ Paused at Nolan's request (weekly usage limit). Everything is committed and push
 
 ## The design decision — mostly made (see BLUEPRINT §11.1)
 
-Nolan ruled from the screenshots: `stage` is the base; no per-option preview thumbnails; `stage`'s lineage diagram is canonical; prototype a **pipeline banner** (the whole pipeline as a compact strip at the top, everything below is the working window). The slider (`scrub`) awaits his answer to the trade-off in §11.1. Recommended: drop it, keep its column-identity morph.
+Nolan ruled from the screenshots: `stage` is the base; no per-option preview thumbnails; `stage`'s lineage diagram is canonical; prototype a **pipeline banner** (the whole pipeline as a compact strip at the top, everything below is the working window). **Then he ruled the slider in:** one global slider over `stage`'s window drives a multi-view stage (each view full width, one state at a time), with savable plots. Four conditions are in §11.1: saves capture real states only (before / after / pair); arrow keys move between options while the slider moves between before and after; headline numbers stay pinned; the ends are labeled and releasing snaps to the nearer one. **The design is fully ruled — build it.**
 
 ### Background: the three prototypes
 
