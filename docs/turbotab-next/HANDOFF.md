@@ -16,7 +16,11 @@ Paused at Nolan's request (weekly usage limit). Everything is committed and push
 - **M1 part 2 has not started.** That's the frontend: the Record and the pipeline panel rebuilt on
   the chosen design, then integration, two reviewers, and fixes.
 
-## The design decision waiting to be made
+## The design decision — mostly made (see BLUEPRINT §11.1)
+
+Nolan ruled from the screenshots: `stage` is the base; no per-option preview thumbnails; `stage`'s lineage diagram is canonical; prototype a **pipeline banner** (the whole pipeline as a compact strip at the top, everything below is the working window). The slider (`scrub`) awaits his answer to the trade-off in §11.1. Recommended: drop it, keep its column-identity morph.
+
+### Background: the three prototypes
 
 Three prototypes answer the wall-of-text problem (BLUEPRINT §11) on the same real NHANES fixture.
 Branches are on origin:

@@ -258,3 +258,28 @@ own data.** Rules, in priority order:
    same-kind findings share one paged card; a finding is a one-line claim plus its lever.
 8. **Terms define themselves:** dotted underline → a one-sentence card on hover/focus.
 9. **Judgment is order and emphasis, never absence** — usual choices first, the rest one step away.
+
+### 11.1 · Rulings on the consequence-preview prototypes (Nolan, 2026-09-27)
+
+From the screenshots of `explore/stage`, `explore/inline` and `explore/scrub`:
+
+- **`stage` is the base.** *"It provides a larger window for visualizing the change with each
+  decision."*
+- **No per-option preview thumbnails** (`inline`'s small multiples are rejected): *"the typical user
+  for this app during exploratory mode will rifle through each option regardless and can see the
+  effects of a decision in the larger window."* The design should make rifling fast: one key per
+  option, and the big window morphs.
+- **`stage`'s lineage diagram is the canonical lineage** — *"the best version I have seen of that
+  lineage diagram design."* It is also the modeling-decision-provenance figure (North star 4).
+- **The slider (`scrub`) is not yet ruled.** Nolan asked what it gains and what it sacrifices. The
+  orchestrator's answer: it serializes before and after in time, where `stage` shows both in space.
+  Its in-between states are not real states. It adds a drag per option, which slows rifling. It does
+  not generalize to model or split choices. Recommendation: drop the slider, but keep `scrub`'s
+  column-identity morph in the table view (`fat_total` → `fat_total_adj` → `fat_total_per_kcal`).
+  **Awaiting Nolan's confirmation.**
+- **Direction to prototype: a pipeline banner.** `stage` gives up the "once over the world look at
+  the pipeline you built". Nolan's idea: put that overview into the banner at the top of the app,
+  so that *"everything below the banner image is the working window."* The banner is a compact,
+  always-visible strip: row counts through the flow, the column path to the model matrix, the
+  models, the result. It doubles as the map of where you are (DRIVE_RUBRIC §2.4) and as a
+  provenance summary. Clicking a node navigates there.
