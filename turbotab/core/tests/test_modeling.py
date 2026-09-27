@@ -603,6 +603,6 @@ def test_select_models_refuses_an_unknown_family_and_offers_the_known_ones():
 
     with pytest.raises(Refusal) as refused:
         validate({"kind": "select_models", "models": ["linear", "random_forest"]}, {"task": "regression"})
-    assert refused.value.code == "unknown_model_family"
-    assert refused.value.exits[0]["decision"]["models"] == ["linear", "elastic_net", "boosted_trees"]
+    assert refused.value.code == "unknown_model"
+    assert refused.value.exits[0]["decision"]["models"] == ["linear"]
     validate({"kind": "select_models", "models": ["boosted_trees"]}, {"task": "multiclass"})

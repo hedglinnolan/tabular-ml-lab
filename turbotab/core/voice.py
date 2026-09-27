@@ -20,7 +20,8 @@ optional; a sentence says only what its context can support and never prints a p
     n_cohort         rows entering the split (for its sentence)
     n_complete       rows left after complete cases, with ``n_before`` the rows before
     repeats          ``{column, n_units, max_rows_per_unit}`` when the identifier repeats
-    detected_task    the task detection's answer, for ``set_task``
+    detected_task    the task detection's answer: ``set_task`` names an override, and the split
+                     and model sentences use it when no task was answered
     model_labels     ``{family key: label}``, overriding the built-in labels
 """
 from __future__ import annotations
@@ -535,7 +536,7 @@ def _set_missing(d: Any, state: Any, ctx: Any) -> str:
 
 @register_sentence("set_split")
 def _set_split(d: Any, state: Any, ctx: Any) -> str:
-    task = getattr(state, "task", None)
+    task = getattr(state, "task", None) or _get(ctx, "detected_task")  # answered, else detected
     target = getattr(state, "target", None)
     repeats = _get(ctx, "repeats")
     group = _attr(repeats, "column") if repeats else None
@@ -624,7 +625,7 @@ _NUMBER_WORD = {1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five"}
 
 @register_sentence("select_models")
 def _select_models(d: Any, state: Any, ctx: Any) -> str:
-    task = getattr(state, "task", None)
+    task = getattr(state, "task", None) or _get(ctx, "detected_task")  # answered, else detected
     labels = [_family_label(k, task, ctx) for k in d.models]
     n = len(labels)
     head = _NUMBER_WORD.get(n, tick(n))

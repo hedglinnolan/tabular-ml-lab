@@ -12,6 +12,7 @@ import tempfile
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Callable
 
@@ -91,6 +92,111 @@ def _target_needs_columns(decision: Any, ctx: Any) -> None:
 
 for _kind in ("set_target", "set_roles", "set_exclusions", "set_energy_adjustment", "set_substitution"):
     decisions.register_validator(_kind, _target_needs_columns)
+
+
+class SentenceFacts:
+    """The facts ``voice.sentence_for`` reads (its documented ``ctx`` keys), gathered lazily.
+
+    Each is read only when the decision's sentence asks for it. Row counts come from the same
+    participant flow the ``cohort`` stage runs (``stages.rows.compute_cohort``), so a sentence
+    and the Rows panel never disagree. Anything that cannot be known yet is None: the sentence
+    then says less.
+    """
+
+    def __init__(self, ctx: DecisionContext, decision: Any, records: list[Any]):
+        self._ctx = ctx
+        self._decision = decision
+        self.records = records
+        self.n_rows = ctx.n_rows
+        self._flow: tuple[list[dict[str, Any]], list[str]] | None | bool = False
+
+    @cached_property
+    def columns(self) -> list[dict[str, Any]] | None:
+        if self._ctx.columns is None:
+            return None
+        info = self._ctx.column_info or {}
+        return [{"name": c, "n_missing": (info.get(c) or {}).get("n_missing")}
+                for c in self._ctx.columns]
+
+    def _artifact(self, stage: str) -> Any:
+        try:
+            return self._ctx.artifact(stage) if self._ctx.artifact else None
+        except Exception:  # noqa: BLE001 - a sentence never fails a decision
+            return None
+
+    @cached_property
+    def datastore(self) -> Any:
+        return self._ctx.store() if self._ctx.store else None
+
+    @cached_property
+    def detected_task(self) -> str | None:
+        info = self._artifact("target_info")
+        state = self._ctx.state
+        if isinstance(info, dict) and state is not None and info.get("column") == state.target:
+            return info.get("detected_task") or info.get("task")
+        return None
+
+    @cached_property
+    def repeats(self) -> dict[str, Any] | None:
+        roles = self._artifact("roles")
+        repeats = roles.get("repeats") if isinstance(roles, dict) else None
+        state = self._ctx.state
+        if repeats and state is not None and (state.roles or {}).get(repeats["column"]) == "identifier":
+            return repeats
+        return None
+
+    @cached_property
+    def n_cohort(self) -> int | None:
+        cohort = self._artifact("cohort")
+        return int(cohort["n_final"]) if isinstance(cohort, dict) and "n_final" in cohort else None
+
+    def _steps(self) -> list[dict[str, Any]] | None:
+        """The flow's steps with this decision's exclusions or missing-value answer in place."""
+        if self._flow is not False:
+            return self._flow  # type: ignore[return-value]
+        self._flow = None
+        state, store, ingest = self._ctx.state, self.datastore, self._artifact("ingest")
+        d = self._decision
+        if state is None or store is None or not isinstance(ingest, dict):
+            return None
+        if d.kind == "set_exclusions":
+            state = state.model_copy(update={"exclusions": d.rules, "missing": None})
+        elif d.kind == "set_missing":
+            state = state.model_copy(update={"missing": d.strategy})
+        else:
+            return None
+        try:
+            from turbotab.core.stages.rows import compute_cohort
+
+            steps, _, _ = compute_cohort(store, state, ingest)
+        except Exception:  # noqa: BLE001 - a sentence never fails a decision; it says less
+            return None
+        self._flow = steps
+        return steps
+
+    @property
+    def exclusion_counts(self) -> list[int] | None:
+        steps = self._steps() if self._decision.kind == "set_exclusions" else None
+        if steps is None:
+            return None
+        return [int(s["dropped"]) for s in steps if str(s["key"]).startswith("exclusion:")]
+
+    @property
+    def n_before(self) -> int | None:
+        steps = self._steps()
+        if not steps:
+            return None
+        if self._decision.kind == "set_missing":
+            done = [s for s in steps if s["key"] != "complete_cases"]
+            return int(done[-1]["n"]) if done else None
+        first = next((i for i, s in enumerate(steps) if str(s["key"]).startswith("exclusion:")), None)
+        return int(steps[first - 1]["n"]) if first else None
+
+    @property
+    def n_complete(self) -> int | None:
+        steps = self._steps() if self._decision.kind == "set_missing" else None
+        last = steps[-1] if steps else None
+        return int(last["n"]) if last is not None and last["key"] == "complete_cases" else None
 
 
 # ── events ───────────────────────────────────────────────────────────────────
@@ -385,8 +491,10 @@ class ProjectService:
         self.workspace.get(pid)
         ctx = self.decision_context(pid)
         parsed = decisions.validate(decision, ctx)  # raises Refusal
-        record = self.log(pid).append(  # raises Refusal for a revert it cannot make
-            parsed, sentence=lambda d, before: voice.sentence_for(d, before, ctx))
+        log = self.log(pid)
+        facts = SentenceFacts(ctx, parsed, log.records())
+        record = log.append(  # raises Refusal for a revert it cannot make
+            parsed, sentence=lambda d, before: voice.sentence_for(d, before, facts))
         self.bus.publish(pid, "decision", record.model_dump(mode="json"))
         self.engine.on_decision(pid)
         return self.view(pid)

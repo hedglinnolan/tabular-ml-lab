@@ -114,3 +114,27 @@ def test_each_record_carries_the_sentence_the_voice_writes(client, monkeypatch):
     view = decide(client, pid, {"kind": "set_purpose", "purpose": "prediction"})
     assert [r["sentence"] for r in view["decisions"]] == ["Recorded `set_lens`.", "Recorded `set_purpose`."]
     assert seen == [("set_lens", None, True), ("set_purpose", ["dietary"], True)]
+
+
+def test_recorded_sentences_count_rows_as_the_participant_flow_does(client):
+    pid = open_by_path(client)
+    wait_for(client, pid, {"ingest": "fresh", "profile": "fresh"})
+    decide(client, pid, {"kind": "set_lens", "lenses": ["dietary"]})
+    decide(client, pid, {"kind": "set_target", "column": "hba1c"})
+    wait_for(client, pid, {"roles": "fresh", "target_info": "fresh", "cohort": "fresh"})
+    roles = client.get(f"/api/projects/{pid}/stages/roles").json()["artifact"]
+    decide(client, pid, {"kind": "set_roles", "roles": {c["column"]: c["proposed"] for c in roles["columns"]}})
+    rule = {"column": "energy_kcal", "low": 500, "high": 5000, "reason": "implausible intake"}
+    decide(client, pid, {"kind": "set_exclusions", "rules": [rule]})
+    decide(client, pid, {"kind": "set_missing", "strategy": "complete_case"})
+    wait_for(client, pid, {"cohort": "fresh"})
+    steps = {s["key"]: s for s in client.get(f"/api/projects/{pid}/stages/cohort").json()["artifact"]["steps"]}
+    view = decide(client, pid, {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5})
+    said = {r["decision"]["kind"]: r["sentence"] for r in view["decisions"]}
+
+    assert said["set_exclusions"].startswith(f"`{steps['exclusion:0']['dropped']}` rows with `energy_kcal`")
+    done = steps["complete_cases"]
+    assert f"`{done['n']:,}` of `{done['n'] + done['dropped']:,}` rows remain" in said["set_missing"]
+    assert f"of the `{done['n']:,}` rows" in said["set_split"]
+    assert "keeping each `participant_id`'s rows together" in said["set_split"]
+    assert all(not voice.machinery(s) for s in said.values()), said
