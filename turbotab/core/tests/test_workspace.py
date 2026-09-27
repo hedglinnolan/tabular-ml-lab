@@ -9,7 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from turbotab.core.config import Settings, parse_bytes, total_memory_bytes
+from turbotab.core.config import (
+    WORKER_CAP, Settings, default_workers, parse_bytes, total_memory_bytes,
+)
 from turbotab.core.workspace import PROJECT_ID_RE, ProjectMeta, ProjectNotFound, Workspace
 
 SAMPLE = Path(__file__).resolve().parents[2] / "sample_data" / "clinical_risk.csv"
@@ -44,7 +46,9 @@ def test_settings_defaults(monkeypatch, tmp_path):
     s = Settings.from_env({})
     assert s.home == Path(os.path.expanduser("~/.turbotab")).absolute()
     assert s.mode == "local"
-    assert s.workers == max(1, (os.cpu_count() or 2) - 1)
+    # capped by memory as well as cores: an idle worker holds ~200 MB
+    assert s.workers == default_workers()
+    assert 1 <= s.workers <= min(WORKER_CAP, max(1, (os.cpu_count() or 2) - 1))
     total = total_memory_bytes()
     assert 0 < s.memory_budget_bytes and (total is None or s.memory_budget_bytes <= total)
 

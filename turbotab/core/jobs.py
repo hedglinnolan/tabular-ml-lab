@@ -206,11 +206,12 @@ class _Job:
 
 
 def default_workers() -> int:
-    """``TURBOTAB_WORKERS`` if set, else one fewer than the CPU count (at least 1)."""
+    """``TURBOTAB_WORKERS`` if set, else the memory- and core-capped default."""
     configured = os.environ.get("TURBOTAB_WORKERS", "").strip()
     if configured:
         return max(1, int(configured))
-    return max(1, (os.cpu_count() or 2) - 1)
+    from turbotab.core.config import default_workers as capped
+    return capped()
 
 
 def _check_importable(fn: Callable[..., Any]) -> None:

@@ -36,8 +36,19 @@ def parse_bytes(text: str) -> int:
     return value
 
 
+# Each worker holds the scientific stack after its preload — about 200 MB,
+# measured at M0 — before it has done any work. At one worker per core a
+# 10-core, 16 GB laptop gave up ~1.8 GB to an idle app, so the default is
+# capped by memory as well as by cores: one worker per 4 GB of RAM, at most 4.
+WORKER_CAP = 4
+BYTES_PER_WORKER_SLOT = 4 * 1024 ** 3
+
+
 def default_workers() -> int:
-    return max(1, (os.cpu_count() or 2) - 1)
+    by_cpu = max(1, (os.cpu_count() or 2) - 1)
+    total = total_memory_bytes()
+    by_ram = max(1, total // BYTES_PER_WORKER_SLOT) if total else 1
+    return max(1, min(by_cpu, by_ram, WORKER_CAP))
 
 
 def total_memory_bytes() -> int | None:
