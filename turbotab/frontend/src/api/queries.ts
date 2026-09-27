@@ -73,7 +73,18 @@ export function useFsListing(path: string | null, enabled = true) {
 }
 
 export function useProjectView(pid: string) {
-  return useQuery({ queryKey: keys.view(pid), queryFn: ({ signal }) => api.project(pid, signal) });
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: keys.view(pid),
+    // A refetch can answer with statuses older than the SSE events that arrived while it
+    // was in flight (the server builds the view before the stage finishes). Merge newest-wins
+    // so a late response never puts a finished stage back to "running".
+    queryFn: async ({ signal }) => {
+      const next = await api.project(pid, signal);
+      // Read the cache after the response, not before: SSE may have patched it meanwhile.
+      return mergeView(qc.getQueryData<ProjectView>(keys.view(pid)), next);
+    },
+  });
 }
 
 export function useStageResult<S extends StageName>(pid: string, stage: S, enabled = true) {
@@ -147,7 +158,17 @@ export function mergeView(prev: ProjectView | undefined, next: ProjectView): Pro
   const byId = new Map(prev.decisions.map((d) => [d.id, d]));
   for (const d of next.decisions) byId.set(d.id, d);
   const decisions = [...byId.values()].sort((a, b) => a.seq - b.seq);
-  return { ...next, stages, decisions };
+  // The folded state belongs to the newest decision each side has seen. A response
+  // built before a decision the cache already holds (from the POST that made it, or a
+  // response that came back first) must not roll the state back.
+  const behind = lastSeq(next) < lastSeq(prev);
+  // The size comes from the ingest artifact; keep the side whose ingest status won.
+  const summary = stages.ingest === prev.stages.ingest ? prev.summary : next.summary;
+  return { ...next, summary, state: behind ? prev.state : next.state, stages, decisions };
+}
+
+function lastSeq(view: ProjectView): number {
+  return view.decisions.reduce((m, d) => Math.max(m, d.seq), 0);
 }
 
 export function useDecide(pid: string) {

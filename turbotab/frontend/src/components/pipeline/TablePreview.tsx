@@ -6,7 +6,7 @@
 import { useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTablePages, type TablePage } from "../../api/queries";
-import type { Dtype, Scalar } from "../../api/schema";
+import type { Dtype } from "../../api/schema";
 import { cx, fmtInt, fmtValue } from "../../util/format";
 import styles from "./TablePreview.module.css";
 
@@ -68,7 +68,7 @@ export function TablePreview({ pid, columns, dtypes, nRows, target }: Props) {
 
   const results = useTablePages(pid, pages);
 
-  const cell = (r: number, c: number): Scalar | undefined => {
+  const cell = (r: number, c: number): unknown => {
     const pi = pages.findIndex(
       (p) => r >= p.offset && r < p.offset + PAGE && p.chunk === Math.floor(c / CHUNK),
     );

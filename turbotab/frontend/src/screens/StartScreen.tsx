@@ -10,7 +10,8 @@ import { Link, navigate, projectPath } from "../router";
 import { cx, fmtBytes, fmtInt, fmtWhen } from "../util/format";
 import styles from "./StartScreen.module.css";
 
-const TABLE_EXT = /\.(csv|tsv|parquet|xlsx)$/i;
+// The server's readable types (turbotab/core/datastore.py: CSV_SUFFIXES and friends).
+const TABLE_EXT = /\.((csv|tsv|txt)(\.gz|\.zst)?|parquet|pq|xlsx|xls)$/i;
 
 function Crumbs({ path, onGo }: { path: string; onGo: (p: string) => void }) {
   const parts = path.split("/").filter(Boolean);
@@ -121,7 +122,7 @@ function FileBrowser() {
         {others > 0 ? (
           <p className={styles.others}>
             {fmtInt(others)} other {others === 1 ? "file is" : "files are"} not a table TurboTab
-            reads (CSV, TSV, Parquet, Excel).
+            reads (CSV, TSV or TXT, optionally .gz; Parquet; Excel).
           </p>
         ) : null}
       </div>
@@ -205,7 +206,7 @@ function UploadZone({ only }: { only: boolean }) {
         <input
           ref={inputRef}
           type="file"
-          accept=".csv,.tsv,.txt,.parquet,.xlsx"
+          accept=".csv,.tsv,.txt,.gz,.zst,.parquet,.pq,.xlsx,.xls"
           className="visually-hidden"
           tabIndex={-1}
           aria-hidden="true"

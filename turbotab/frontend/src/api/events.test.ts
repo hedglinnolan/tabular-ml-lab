@@ -257,4 +257,32 @@ describe("mergeView", () => {
     expect(merged.stages.target_info!.status).toBe("running");
     expect(merged.decisions.map((d) => d.seq)).toEqual([1, 2, 3]);
   });
+
+  it("does not let a view built before the last decision roll the state back", () => {
+    // The cache holds the POST's answer (decision 2 folded in, the stage already fresh);
+    // a GET that the server answered before decision 2 lands afterwards.
+    const prev = view();
+    prev.decisions = [record(1), record(2)];
+    prev.state = { ...prev.state, target: "c2" };
+    prev.stages.target_info = status("target_info", {
+      key: "t2",
+      updated_at: "2026-09-27T10:00:05.000Z",
+    });
+    const late = view();
+    late.stages.target_info = status("target_info", {
+      status: "running",
+      fresh: false,
+      key: "t1",
+      updated_at: "2026-09-27T10:00:04.000Z",
+    });
+    const merged = mergeView(prev, late);
+    expect(merged.state.target).toBe("c2");
+    expect(merged.stages.target_info!.status).toBe("fresh");
+    expect(merged.stages.target_info!.key).toBe("t2");
+    // A response that has seen every decision is taken as it is.
+    const current = view();
+    current.decisions = [record(1), record(2)];
+    current.state = { ...current.state, target: "c2", purpose: "prediction" };
+    expect(mergeView(prev, current).state.purpose).toBe("prediction");
+  });
 });

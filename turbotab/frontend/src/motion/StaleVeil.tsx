@@ -51,12 +51,14 @@ export function StaleVeil({ state, order = 0, children, className, label, testId
 
 /** A stage's display state from its status and whether an (older) result is on screen. */
 export function veilFor(
-  status: { status: string; fresh: boolean } | undefined,
-  result: { fresh: boolean; artifact: unknown } | undefined,
+  status: { status: string; fresh: boolean; key: string | null } | undefined,
+  result: { fresh: boolean; key: string | null; artifact: unknown } | undefined,
 ): VeilState {
   if (!result?.artifact) return "fresh"; // nothing on screen to veil
   if (!status) return "fresh";
-  if (status.status === "fresh" && result.fresh) return "fresh";
+  // A result is current only for the key the stage has now: one fetched fresh for an
+  // earlier answer is not fresh for this one.
+  if (status.status === "fresh" && result.fresh && result.key === status.key) return "fresh";
   if (status.status === "queued" || status.status === "running") return "recomputing";
   if (status.status === "fresh") return "recomputing"; // fresh result is on its way
   return "stale";

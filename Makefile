@@ -87,6 +87,42 @@ turbotab-check:
 
 PORT ?= 8777
 
+# ── TurboTab Next (v2: docs/turbotab-next/BLUEPRINT.md) ──────────────
+#
+# `make turbotab-next` builds the React frontend when its bundle is missing or
+# older than any of its sources, then serves app and API together on
+# $(NEXT_PORT) and opens a browser. `make turbotab-next-dev` prints how to run
+# the Vite dev server (hot reload) beside the API instead.
+.PHONY: turbotab-next turbotab-next-dev
+
+NEXT_PORT ?= 8787
+NEXT_FRONTEND := turbotab/frontend
+NEXT_DIST := $(NEXT_FRONTEND)/dist/index.html
+NEXT_SOURCES := $(shell find $(NEXT_FRONTEND)/src -type f 2>/dev/null) \
+	$(wildcard $(NEXT_FRONTEND)/index.html $(NEXT_FRONTEND)/package.json \
+	$(NEXT_FRONTEND)/package-lock.json $(NEXT_FRONTEND)/vite.config.ts $(NEXT_FRONTEND)/tsconfig*.json)
+
+$(NEXT_DIST): $(NEXT_SOURCES)
+	cd $(NEXT_FRONTEND) && { test -d node_modules || npm ci; } && npm run build
+
+turbotab-next: $(NEXT_DIST)
+	$(PYTHON) -m turbotab.server --port $(NEXT_PORT) --mode local --open
+
+turbotab-next-dev:
+	@echo "TurboTab Next with hot reload: two terminals, from the repository root."
+	@echo ""
+	@echo "  1. The API (FastAPI + SSE) on :8787, which the Vite dev server proxies /api to:"
+	@echo "       $(PYTHON) -m turbotab.server --port 8787 --mode local"
+	@echo ""
+	@echo "  2. The frontend (Vite, hot reload) on :5173 — open http://localhost:5173/"
+	@echo "       cd $(NEXT_FRONTEND) && npm install && npm run dev"
+	@echo ""
+	@echo "  No Python at hand? The frontend alone, against an in-browser mock API:"
+	@echo "       cd $(NEXT_FRONTEND) && npm run dev:mock"
+	@echo ""
+	@echo "  After changing a server model, regenerate the contract types:"
+	@echo "       $(PYTHON) -m turbotab.server.openapi --write && (cd $(NEXT_FRONTEND) && npm run gen:api)"
+
 lint:
 	$(PYTHON) -m py_compile app.py
 	@for f in pages/*.py; do $(PYTHON) -m py_compile "$$f" && echo "  ✓ $$f"; done

@@ -26,8 +26,16 @@ GRAPH_FACTORY = "turbotab.core.stages:build_graph"
 def build_graph() -> Graph:
     return Graph(
         [
-            Stage("ingest", 1, (), (), ingest_stage, heavy=True),
-            Stage("profile", 1, ("ingest",), (), profile_stage, heavy=True),
+            Stage("ingest", 1, (), (), ingest_stage, heavy=True, label="Reading the file"),
+            Stage(
+                "profile",
+                1,
+                ("ingest",),
+                (),
+                profile_stage,
+                heavy=True,
+                label="Summarizing every column",
+            ),
             Stage(
                 "target_info",
                 1,
@@ -35,6 +43,7 @@ def build_graph() -> Graph:
                 ("target", "task"),
                 target_info_stage,
                 requires=("target",),
+                label="Reading the outcome column",
             ),
             Stage(
                 "findings",
@@ -44,6 +53,7 @@ def build_graph() -> Graph:
                 findings_stage,
                 heavy=True,
                 requires=("lens",),
+                label="Checking the table against the chosen lenses",
             ),
         ]
     )

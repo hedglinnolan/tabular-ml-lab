@@ -21,7 +21,7 @@ const TREE: Node = {
                 "dietary_recalls.csv": { size: 58_214, dataset: dietaryRecalls },
                 "genomics_counts_wide.csv": { size: 612_880, dataset: () => genomicsWide() },
                 "codebook.pdf": { size: 184_320 },
-                "README.txt": { size: 2_048 },
+                "README.md": { size: 2_048 },
                 nhanes: {
                   children: {
                     "dietary_recalls_2017.parquet": { size: 41_902, dataset: dietaryRecalls },

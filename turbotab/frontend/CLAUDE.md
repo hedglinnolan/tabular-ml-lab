@@ -6,7 +6,8 @@ Vite + React 19 + TypeScript (strict). Read `docs/turbotab-next/BLUEPRINT.md` (�
 ## Layout
 
 ```
-src/api/schema.ts     the JSON contract (hand-written until `npm run gen:api` replaces it)
+src/api/generated.ts  the JSON contract, generated from turbotab/server/openapi.json (never edit)
+src/api/schema.ts     thin named aliases over generated.ts, the enum lists, typed StageResult, SSE events
 src/api/client.ts     the ONLY module that calls fetch; one typed function per route; 409 -> RefusalError
 src/api/queries.ts    TanStack Query hooks; every project key starts with the pid: [pid, ...]
 src/api/events.ts     SSE -> cache (applyProjectEvent is pure; useProjectEvents opens the stream)
@@ -17,7 +18,7 @@ src/components/pipeline  Rows / Columns / Results panel, 2-D virtualized table p
 src/screens/          Start, Project, Lab (/lab demonstrates every motion primitive)
 src/mocks/            MSW handlers + an in-memory server with a stage graph (dev:mock only)
 src/styles/tokens.css the palette and the three voices; base.css global rules
-e2e/                  one Playwright journey per milestone, writes review screenshots
+e2e/                  one Playwright journey per milestone (mock or real server), review screenshots
 ```
 
 ## Rules
@@ -25,8 +26,10 @@ e2e/                  one Playwright journey per milestone, writes review screen
 - **Server state lives only in TanStack Query.** No polling: SSE events patch or invalidate.
   Small UI state stays in components. No global mutable singletons.
 - **Network access only through `src/api/client.ts`** (eslint enforces `fetch`).
-- **Contract names match the server exactly.** When the server's OpenAPI lands, run
-  `npm run gen:api` and make `schema.ts` re-export the generated types.
+- **The contract is generated.** After any server model change run
+  `venv/bin/python -m turbotab.server.openapi --write` (repo root), then `npm run gen:api`.
+  `generated.test.ts` fails when generated.ts drifts from openapi.json; a Python test fails
+  when openapi.json drifts from the app. Import types from `schema.ts`, never from generated.ts.
 - **Every hue is a claim** (§02): `--accent` now/primary, `--ok` recorded, `--warn` the coach and
   staleness, `--stop` only the blocker band. Style through tokens; never hard-code colors.
 - **Three voices** (§03): the app speaks serif (`--serif`), the user acts sans (`--sans`), data is
@@ -50,7 +53,7 @@ npm run dev        # Vite; proxies /api to the Python server on 127.0.0.1:8787
 npm run dev:mock   # Vite + MSW mock API (no server needed)
 npm run check      # tsc + eslint + vitest — keep it under a minute
 npm run test:e2e   # Playwright against the mock dev server (port E2E_PORT, default 5391)
-E2E_BASE_URL=http://127.0.0.1:5173 E2E_SCREEN_PREFIX=real npm run test:e2e   # a running app
+E2E_BASE_URL=http://127.0.0.1:8792 npm run test:e2e   # a running server (screens: real-*)
 npm run build      # typecheck + bundle to dist/ (served by turbotab/server)
 npm run gen:api    # openapi-typescript ../../turbotab/server/openapi.json -> src/api/generated.ts
 ```
@@ -60,5 +63,6 @@ First e2e run on a machine: `npx playwright install chromium`. Screenshots are w
 
 ## Tests (proportional — BLUEPRINT §8)
 
-Vitest for real logic only: client refusal parsing, event -> cache patching, column filtering.
+Vitest for real logic only: client refusal parsing, event -> cache patching (and late responses
+merging newest-wins), column filtering, contract drift.
 Do not add a test per visual tweak. Never run the legacy Python suites from here.

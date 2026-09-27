@@ -84,6 +84,8 @@ class Stage:
     fn: Callable[["StageContext"], Any]
     heavy: bool = False
     requires: tuple[str, ...] = ()
+    # What a job chip calls this work, in plain language; not part of the key.
+    label: str | None = None
 
     def __post_init__(self) -> None:
         for attr in ("deps", "reads", "requires"):  # accept lists, store tuples
@@ -741,7 +743,7 @@ class Engine:
             run.job_id = self._runner.submit(
                 run_stage_job,
                 spec,
-                label=stage.name,
+                label=stage.label or stage.name,
                 stage=stage.name,
                 on_progress=partial(self._on_job_progress, p, run),
                 on_done=partial(self._on_job_done, p, run),
