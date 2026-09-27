@@ -2,5 +2,7 @@
 
 Submodules are imported explicitly (``from turbotab.core.datastore import
 DataStore``); this package file imports nothing, so ``import turbotab.core``
-stays cheap for the server, the worker processes and the tests alike.
+stays cheap for the server, the worker processes and the tests alike. Worker
+processes are spawned and import this package on startup, so nothing heavy may
+happen here.
 """
