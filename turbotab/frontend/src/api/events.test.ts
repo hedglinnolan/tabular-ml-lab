@@ -63,6 +63,7 @@ function view(): ProjectView {
       ingest: status("ingest"),
       target_info: status("target_info", { key: "t1" }),
     },
+    interview: [],
   };
 }
 

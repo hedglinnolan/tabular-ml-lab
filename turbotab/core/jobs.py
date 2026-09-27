@@ -1,8 +1,11 @@
 """Jobs: work in persistent worker processes that can be watched and stopped
 (docs/turbotab-next/BLUEPRINT.md §5).
 
-* Workers are spawned once (``spawn`` context) and pre-import numpy, pandas and
-  scikit-learn, so a job starts in milliseconds rather than seconds.
+* Workers are spawned on demand (``spawn`` context), never at startup: a job
+  that finds no idle worker starts one, up to the configured maximum. Each
+  pre-imports numpy, pandas and scikit-learn, so once it is up a job starts in
+  milliseconds. A worker idle for longer than ``TURBOTAB_WORKER_IDLE`` seconds
+  (default 300) is retired, so an idle TurboTab holds no worker processes.
 * Each worker talks to the runner over its own pipe, never a shared queue: a
   worker that is killed can only break its own channel.
 * Cancel is two-step. The job's shared flag is set (``current().cancelled()``
@@ -47,6 +50,7 @@ JobState = Literal["queued", "running", "done", "error", "cancelled"]
 TERMINAL: frozenset[str] = frozenset({"done", "error", "cancelled"})
 
 GRACE_SECONDS = 1.0  # cooperative window after cancel, before terminate
+IDLE_SECONDS = 300.0  # a worker idle this long is retired (TURBOTAB_WORKER_IDLE)
 KILL_SECONDS = 0.5  # SIGTERM -> SIGKILL window
 PROGRESS_INTERVAL = 0.1  # worker-side throttle for progress messages
 KEEP_FINISHED = 1000  # finished jobs remembered for get()
@@ -176,6 +180,8 @@ class _Worker:
         self.deadline: float | None = None  # terminate at this time (after cancel)
         self.kill_at: float | None = None  # SIGKILL at this time (after terminate)
         self.failed_starts = failed_starts
+        self.idle_since = time.monotonic()  # meaningful while ready and without a job
+        self.stop_by: float | None = None  # once retired: terminate if still alive then
 
 
 @dataclass(eq=False)
@@ -214,6 +220,14 @@ def default_workers() -> int:
     return capped()
 
 
+def default_idle_seconds() -> float:
+    """``TURBOTAB_WORKER_IDLE`` (seconds) if set, else :data:`IDLE_SECONDS`."""
+    configured = os.environ.get("TURBOTAB_WORKER_IDLE", "").strip()
+    if configured:
+        return max(0.0, float(configured))
+    return IDLE_SECONDS
+
+
 def _check_importable(fn: Callable[..., Any]) -> None:
     if inspect.isfunction(fn) and ("<locals>" in fn.__qualname__ or fn.__name__ == "<lambda>"):
         raise ValueError(
@@ -223,7 +237,11 @@ def _check_importable(fn: Callable[..., Any]) -> None:
 
 
 class JobRunner:
-    """A fixed pool of worker processes running one job each at a time, FIFO."""
+    """Up to ``workers`` worker processes, each running one job at a time, FIFO.
+
+    Workers start when there is work for them and retire after ``idle_seconds``
+    without any (default: ``TURBOTAB_WORKER_IDLE``, else 300 s).
+    """
 
     def __init__(
         self,
@@ -231,12 +249,14 @@ class JobRunner:
         *,
         preload: tuple[str, ...] = PRELOAD,
         grace: float = GRACE_SECONDS,
+        idle_seconds: float | None = None,
     ):
         if workers < 1:
             raise ValueError("a JobRunner needs at least one worker")
         self._ctx = mp.get_context("spawn")
         self._preload = tuple(preload)
         self._grace = grace
+        self._idle = default_idle_seconds() if idle_seconds is None else max(0.0, float(idle_seconds))
         self._lock = threading.Lock()
         self._changed = threading.Condition(self._lock)
         self._jobs: dict[str, _Job] = {}
@@ -244,9 +264,11 @@ class JobRunner:
         self._outbox: deque[Callable[[], Any]] = deque()
         self._closed = False
         self._wake_r, self._wake_w = self._ctx.Pipe(duplex=False)
-        self._workers: list[_Worker | None] = [
-            _Worker(self._ctx, i, self._preload) for i in range(workers)
-        ]
+        # A slot is None until work needs a worker there, and again once its
+        # worker retires or dies; `_failed` counts a slot's failed starts.
+        self._workers: list[_Worker | None] = [None] * workers
+        self._failed: list[int] = [0] * workers
+        self._retired: list[_Worker] = []  # stopped by us, not yet reaped
         self._thread = threading.Thread(target=self._loop, name="turbotab-jobs", daemon=True)
         self._thread.start()
 
@@ -254,7 +276,14 @@ class JobRunner:
 
     @property
     def workers(self) -> int:
+        """The most worker processes this runner will run at once."""
         return len(self._workers)
+
+    @property
+    def live_workers(self) -> int:
+        """Worker processes running now (starting, busy or idle)."""
+        with self._lock:
+            return sum(1 for w in self._workers if w is not None and w.alive)
 
     def submit(
         self,
@@ -344,6 +373,8 @@ class JobRunner:
         self._wake()
         self._thread.join(timeout=5)
         workers = [w for w in self._workers if w is not None and w.alive]
+        for w in self._retired:
+            w.process.terminate()
         for w in workers:
             if w.job is None:
                 try:
@@ -360,6 +391,13 @@ class JobRunner:
                 w.process.join(timeout=1.0)
             w.alive = False
             w.conn.close()
+        for w in self._retired:
+            w.process.join(timeout=1.0)
+            if w.process.is_alive():
+                w.process.kill()
+                w.process.join(timeout=1.0)
+            w.conn.close()
+        self._retired.clear()
         self._wake_r.close()
         self._wake_w.close()
 
@@ -389,9 +427,15 @@ class JobRunner:
                         watch[w.conn] = ("conn", w)
                         watch[w.process.sentinel] = ("exit", w)
                         pending_deadline = pending_deadline or w.deadline is not None
+                for w in self._retired:
+                    watch[w.process.sentinel] = ("reap", w)
+                timeout = 0.05 if pending_deadline or self._retired else 2.0
+                retire_at = self._next_retirement()
+                if retire_at is not None:
+                    timeout = min(timeout, max(0.0, retire_at - time.monotonic()) + 0.01)
             # Everything else wakes us (pipes, exits, the wake channel); only a
-            # pending cancel deadline needs a clock.
-            ready = mp_wait(list(watch), timeout=0.05 if pending_deadline else 2.0)
+            # pending cancel deadline, a retirement or a reaping needs a clock.
+            ready = mp_wait(list(watch), timeout=timeout)
             with self._lock:
                 if self._closed:
                     return
@@ -399,12 +443,16 @@ class JobRunner:
                     what, w = watch[obj]
                     if what == "wake":
                         self._drain_wake()
+                    elif what == "reap":
+                        pass  # joined by _reap below
                     elif w is not None and w.alive:
                         self._drain(w)
                         if what == "exit":
                             self._on_exit(w)
                 self._check_deadlines()
                 self._dispatch()
+                self._retire_idle()
+                self._reap()
                 outbox = list(self._outbox)
                 self._outbox.clear()
             for callback in outbox:
@@ -433,6 +481,8 @@ class JobRunner:
             w.ready = True
             w.pid = message[1]
             w.failed_starts = 0
+            w.idle_since = time.monotonic()
+            self._failed[w.index] = 0
             return
         job = w.job
         if job is None or job.id != message[1]:
@@ -460,6 +510,7 @@ class JobRunner:
             worker.job = None
             worker.deadline = None
             worker.kill_at = None
+            worker.idle_since = time.monotonic()
         job.payload = b""
         self._changed.notify_all()
         if job.on_done is not None:
@@ -483,13 +534,11 @@ class JobRunner:
                     error=f"The worker process running this job stopped unexpectedly (exit code {code}).",
                 )
         failed = w.failed_starts + (0 if w.ready else 1)
-        if self._closed:
-            return
-        if failed >= MAX_FAILED_STARTS:
+        if self._workers[w.index] is w:
+            self._workers[w.index] = None  # _dispatch starts another when there is work
+        self._failed[w.index] = failed
+        if failed >= MAX_FAILED_STARTS and not self._closed:
             log.error("worker slot %d failed to start %d times; giving it up", w.index, failed)
-            self._workers[w.index] = None
-            return
-        self._workers[w.index] = _Worker(self._ctx, w.index, self._preload, failed)
 
     def _check_deadlines(self) -> None:
         now = time.monotonic()
@@ -504,6 +553,7 @@ class JobRunner:
                 w.kill_at = now + 60.0
 
     def _dispatch(self) -> None:
+        self._spawn_for_queue()
         live = [w for w in self._workers if w is not None and w.alive]
         if not live:
             while self._queue:
@@ -528,6 +578,66 @@ class JobRunner:
             w.kill_at = None
             if job.on_progress is not None:
                 self._outbox.append(_bind(job.on_progress, job.view()))
+
+    def _spawn_for_queue(self) -> None:
+        """Start workers for queued jobs that no idle or starting worker will take."""
+        if not self._queue or self._closed:
+            return
+        live = [w for w in self._workers if w is not None and w.alive]
+        free = sum(1 for w in live if w.job is None)  # idle, or still starting
+        need = len(self._queue) - free
+        for index, slot in enumerate(self._workers):
+            if need <= 0:
+                return
+            if slot is None and self._failed[index] < MAX_FAILED_STARTS:
+                self._workers[index] = _Worker(self._ctx, index, self._preload, self._failed[index])
+                need -= 1
+
+    def _next_retirement(self) -> float | None:
+        """When the next idle worker is due to retire (monotonic clock), or None."""
+        due = [w.idle_since + self._idle for w in self._workers
+               if w is not None and w.alive and w.ready and w.job is None]
+        return min(due) if due else None
+
+    def _retire_idle(self) -> None:
+        """Stop the workers that have had nothing to do for ``idle_seconds``."""
+        if self._queue or self._closed:
+            return
+        now = time.monotonic()
+        for index, w in enumerate(self._workers):
+            if w is None or not w.alive or not w.ready or w.job is not None:
+                continue
+            if now - w.idle_since < self._idle:
+                continue
+            self._workers[index] = None
+            w.alive = False
+            w.stop_by = now + 2.0
+            try:
+                w.conn.send(("stop",))
+            except OSError:
+                w.process.terminate()
+            self._retired.append(w)
+
+    def _reap(self) -> None:
+        """Join retired workers that have exited; stop any that linger past ``stop_by``."""
+        if not self._retired:
+            return
+        now = time.monotonic()
+        keep: list[_Worker] = []
+        for w in self._retired:
+            if w.process.is_alive():
+                if w.stop_by is not None and now >= w.stop_by + 1.0:
+                    w.process.kill()
+                elif w.stop_by is not None and now >= w.stop_by:
+                    w.process.terminate()
+                keep.append(w)
+                continue
+            w.process.join(timeout=0)
+            try:
+                w.conn.close()
+            except OSError:
+                pass
+        self._retired = keep
 
     def _prune(self) -> None:
         finished = sum(1 for j in self._jobs.values() if j.state in TERMINAL)

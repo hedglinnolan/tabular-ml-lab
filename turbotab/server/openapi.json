@@ -550,6 +550,134 @@
         }
       }
     },
+    "/api/projects/{pid}/preview": {
+      "post": {
+        "tags": [
+          "previews"
+        ],
+        "summary": "Preview",
+        "description": "The views that show what recording ``decision`` would change. Nothing is recorded.\n\nAt most three views, the first primary. Once the split exists, held-out rows are never read.",
+        "operationId": "preview_api_projects__pid__preview_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SetLens"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTarget"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTask"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetPurpose"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Revert"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetRoles"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEnergyAdjustment-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExclusions-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMissing"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSplit-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SelectModels"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSubstitution-Input"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "set_lens": "#/components/schemas/SetLens",
+                    "set_target": "#/components/schemas/SetTarget",
+                    "set_task": "#/components/schemas/SetTask",
+                    "set_purpose": "#/components/schemas/SetPurpose",
+                    "revert": "#/components/schemas/Revert",
+                    "set_roles": "#/components/schemas/SetRoles",
+                    "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Input",
+                    "set_exclusions": "#/components/schemas/SetExclusions-Input",
+                    "set_missing": "#/components/schemas/SetMissing",
+                    "set_split": "#/components/schemas/SetSplit-Input",
+                    "select_models": "#/components/schemas/SelectModels",
+                    "set_substitution": "#/components/schemas/SetSubstitution-Input"
+                  }
+                },
+                "title": "Decision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The decision would be refused, or the table is not read yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/table": {
       "get": {
         "tags": [
@@ -1255,6 +1383,71 @@
         ],
         "title": "DecisionRecord"
       },
+      "DistributionView": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "caption": {
+            "type": "string",
+            "title": "Caption"
+          },
+          "emphasis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Emphasis"
+          },
+          "kind": {
+            "type": "string",
+            "const": "distribution",
+            "title": "Kind",
+            "default": "distribution"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "before": {
+            "$ref": "#/components/schemas/HistogramData"
+          },
+          "after": {
+            "$ref": "#/components/schemas/HistogramData"
+          },
+          "before_label": {
+            "type": "string",
+            "title": "Before Label"
+          },
+          "after_label": {
+            "type": "string",
+            "title": "After Label"
+          },
+          "cuts": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Cuts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "caption",
+          "emphasis",
+          "kind",
+          "column",
+          "before",
+          "after",
+          "before_label",
+          "after_label",
+          "cuts"
+        ],
+        "title": "DistributionView"
+      },
       "EnergyAdjustment": {
         "properties": {
           "method": {
@@ -1658,6 +1851,108 @@
         ],
         "title": "Histogram"
       },
+      "HistogramData": {
+        "properties": {
+          "edges": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Edges"
+          },
+          "counts": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Counts"
+          },
+          "n_missing": {
+            "type": "integer",
+            "title": "N Missing",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "edges",
+          "counts",
+          "n_missing"
+        ],
+        "title": "HistogramData"
+      },
+      "InterviewStep": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "lens",
+              "target",
+              "task",
+              "purpose",
+              "roles",
+              "exclusions",
+              "missing",
+              "split",
+              "energy_adjustment",
+              "models",
+              "substitution"
+            ],
+            "title": "Key"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "answered",
+              "open",
+              "waiting",
+              "skipped",
+              "not_applicable"
+            ],
+            "title": "Status"
+          },
+          "decision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "waiting_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Waiting On",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "status",
+          "decision_id",
+          "reason",
+          "waiting_on"
+        ],
+        "title": "InterviewStep"
+      },
       "JobView": {
         "properties": {
           "job_id": {
@@ -1735,6 +2030,268 @@
           "error"
         ],
         "title": "JobView"
+      },
+      "Lineage": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/LineageNode"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/LineageLink"
+            },
+            "type": "array",
+            "title": "Links"
+          },
+          "collapsed": {
+            "type": "boolean",
+            "title": "Collapsed",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "nodes",
+          "links",
+          "collapsed"
+        ],
+        "title": "Lineage"
+      },
+      "LineageLink": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "operation": {
+            "type": "string",
+            "title": "Operation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "target",
+          "operation"
+        ],
+        "title": "LineageLink"
+      },
+      "LineageNode": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "lane": {
+            "type": "string",
+            "enum": [
+              "raw",
+              "adjusted",
+              "matrix"
+            ],
+            "title": "Lane"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "identifier",
+                  "exposure",
+                  "energy",
+                  "covariate",
+                  "design",
+                  "flag",
+                  "time",
+                  "excluded"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "formula": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formula"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "default": 1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "column",
+          "lane",
+          "role",
+          "label",
+          "formula",
+          "group",
+          "count"
+        ],
+        "title": "LineageNode"
+      },
+      "LineageView": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "caption": {
+            "type": "string",
+            "title": "Caption"
+          },
+          "emphasis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Emphasis"
+          },
+          "kind": {
+            "type": "string",
+            "const": "lineage",
+            "title": "Kind",
+            "default": "lineage"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lineage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "after": {
+            "$ref": "#/components/schemas/Lineage"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "caption",
+          "emphasis",
+          "kind",
+          "before",
+          "after"
+        ],
+        "title": "LineageView"
+      },
+      "PreviewResult": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "views": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RowFlowView"
+                },
+                {
+                  "$ref": "#/components/schemas/LineageView"
+                },
+                {
+                  "$ref": "#/components/schemas/TableFocusView"
+                },
+                {
+                  "$ref": "#/components/schemas/DistributionView"
+                },
+                {
+                  "$ref": "#/components/schemas/RelationshipView"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "kind",
+                "mapping": {
+                  "distribution": "#/components/schemas/DistributionView",
+                  "lineage": "#/components/schemas/LineageView",
+                  "relationship": "#/components/schemas/RelationshipView",
+                  "row_flow": "#/components/schemas/RowFlowView",
+                  "table_focus": "#/components/schemas/TableFocusView"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Views"
+          },
+          "basis": {
+            "type": "string",
+            "title": "Basis"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "views",
+          "basis",
+          "note"
+        ],
+        "title": "PreviewResult"
       },
       "ProjectState": {
         "properties": {
@@ -2010,6 +2567,13 @@
             },
             "type": "object",
             "title": "Stages"
+          },
+          "interview": {
+            "items": {
+              "$ref": "#/components/schemas/InterviewStep"
+            },
+            "type": "array",
+            "title": "Interview"
           }
         },
         "type": "object",
@@ -2017,7 +2581,8 @@
           "summary",
           "state",
           "decisions",
-          "stages"
+          "stages",
+          "interview"
         ],
         "title": "ProjectView"
       },
@@ -2108,6 +2673,116 @@
         ],
         "title": "RefusalDetail"
       },
+      "RelationshipView": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "caption": {
+            "type": "string",
+            "title": "Caption"
+          },
+          "emphasis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Emphasis"
+          },
+          "kind": {
+            "type": "string",
+            "const": "relationship",
+            "title": "Kind",
+            "default": "relationship"
+          },
+          "x_label": {
+            "type": "string",
+            "title": "X Label"
+          },
+          "y_label_before": {
+            "type": "string",
+            "title": "Y Label Before"
+          },
+          "y_label_after": {
+            "type": "string",
+            "title": "Y Label After"
+          },
+          "points_before": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Points Before"
+          },
+          "points_after": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Points After"
+          },
+          "r_before": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "R Before"
+          },
+          "r_after": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "R After"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "caption",
+          "emphasis",
+          "kind",
+          "x_label",
+          "y_label_before",
+          "y_label_after",
+          "points_before",
+          "points_after",
+          "r_before",
+          "r_after"
+        ],
+        "title": "RelationshipView",
+        "description": "A before/after scatter, e.g. a nutrient against energy before and after adjustment."
+      },
       "Revert": {
         "properties": {
           "kind": {
@@ -2129,6 +2804,111 @@
           "decision_id"
         ],
         "title": "Revert"
+      },
+      "RowFlowView": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "caption": {
+            "type": "string",
+            "title": "Caption"
+          },
+          "emphasis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Emphasis"
+          },
+          "kind": {
+            "type": "string",
+            "const": "row_flow",
+            "title": "Kind",
+            "default": "row_flow"
+          },
+          "before": {
+            "items": {
+              "$ref": "#/components/schemas/RowStep"
+            },
+            "type": "array",
+            "title": "Before"
+          },
+          "after": {
+            "items": {
+              "$ref": "#/components/schemas/RowStep"
+            },
+            "type": "array",
+            "title": "After"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "caption",
+          "emphasis",
+          "kind",
+          "before",
+          "after"
+        ],
+        "title": "RowFlowView"
+      },
+      "RowStep": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "dropped": {
+            "type": "integer",
+            "title": "Dropped",
+            "default": 0
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "decision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "n",
+          "dropped",
+          "reason",
+          "decision_id"
+        ],
+        "title": "RowStep",
+        "description": "One step of the participant flow (CONSORT/STROBE style)."
       },
       "SelectModels": {
         "properties": {
@@ -2873,6 +3653,114 @@
         ],
         "title": "SubstitutionSpec"
       },
+      "TableFocusView": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "caption": {
+            "type": "string",
+            "title": "Caption"
+          },
+          "emphasis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Emphasis"
+          },
+          "kind": {
+            "type": "string",
+            "const": "table_focus",
+            "title": "Kind",
+            "default": "table_focus"
+          },
+          "columns_before": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns Before"
+          },
+          "columns_after": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns After"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TableRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "changed": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Changed"
+          },
+          "n_affected_columns": {
+            "type": "integer",
+            "title": "N Affected Columns"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "caption",
+          "emphasis",
+          "kind",
+          "columns_before",
+          "columns_after",
+          "rows",
+          "changed",
+          "n_affected_columns"
+        ],
+        "title": "TableFocusView",
+        "description": "The working table narrowed to the columns this choice touches (≤ 12 shown, ≤ 8 rows)."
+      },
+      "TableRow": {
+        "properties": {
+          "row_id": {
+            "type": "integer",
+            "title": "Row Id"
+          },
+          "before": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Before"
+          },
+          "after": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "After"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "row_id",
+          "before",
+          "after"
+        ],
+        "title": "TableRow"
+      },
       "TableWindow": {
         "properties": {
           "columns": {
@@ -2964,6 +3852,36 @@
           "count"
         ],
         "title": "ValueCount"
+      },
+      "CohortArtifact": {
+        "description": "The ``cohort`` artifact (a Bundle's ``data``): the participant flow.",
+        "properties": {
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/RowStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "n_final": {
+            "title": "N Final",
+            "type": "integer"
+          },
+          "predictors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Predictors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "steps",
+          "n_final",
+          "predictors"
+        ],
+        "title": "CohortArtifact",
+        "type": "object"
       },
       "ColumnInfo": {
         "properties": {
@@ -3253,6 +4171,192 @@
           "basis"
         ],
         "title": "ProfileArtifact",
+        "type": "object"
+      },
+      "Repeats": {
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "n_units": {
+            "title": "N Units",
+            "type": "integer"
+          },
+          "max_rows_per_unit": {
+            "title": "Max Rows Per Unit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "column",
+          "n_units",
+          "max_rows_per_unit"
+        ],
+        "title": "Repeats",
+        "type": "object"
+      },
+      "RoleProposal": {
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "proposed": {
+            "enum": [
+              "identifier",
+              "exposure",
+              "energy",
+              "covariate",
+              "design",
+              "flag",
+              "time",
+              "excluded"
+            ],
+            "title": "Proposed",
+            "type": "string"
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "linked_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linked To"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "column",
+          "proposed",
+          "confidence",
+          "reason",
+          "linked_to",
+          "unit"
+        ],
+        "title": "RoleProposal",
+        "type": "object"
+      },
+      "RolesArtifact": {
+        "description": "The ``roles`` artifact: a proposed role for every column but the outcome.",
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/RoleProposal"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "repeats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Repeats"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "columns",
+          "repeats"
+        ],
+        "title": "RolesArtifact",
+        "type": "object"
+      },
+      "SplitArtifact": {
+        "description": "The ``split`` artifact (a Bundle's ``data``): held-out rows and folds.",
+        "properties": {
+          "n_train": {
+            "title": "N Train",
+            "type": "integer"
+          },
+          "n_holdout": {
+            "title": "N Holdout",
+            "type": "integer"
+          },
+          "holdout": {
+            "title": "Holdout",
+            "type": "number"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          },
+          "folds": {
+            "title": "Folds",
+            "type": "integer"
+          },
+          "grouped_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grouped By"
+          },
+          "n_groups": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Groups"
+          },
+          "stratified": {
+            "title": "Stratified",
+            "type": "boolean"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "n_train",
+          "n_holdout",
+          "holdout",
+          "seed",
+          "folds",
+          "grouped_by",
+          "n_groups",
+          "stratified",
+          "note"
+        ],
+        "title": "SplitArtifact",
         "type": "object"
       },
       "TargetInfo": {

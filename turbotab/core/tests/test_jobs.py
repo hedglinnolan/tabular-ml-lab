@@ -108,3 +108,30 @@ def test_a_local_function_is_refused_up_front(runner):
         runner.submit(local, label="local")
     with pytest.raises(KeyError):
         runner.get("no-such-job")
+
+
+def test_workers_start_on_demand_and_retire_when_idle():
+    """No worker at startup; one per job needed, up to the maximum; gone after the idle timeout."""
+    from turbotab.core.jobs import JobRunner
+
+    with JobRunner(workers=2, idle_seconds=0.6) as pool:
+        assert pool.worker_pids() == [None, None] and pool.live_workers == 0
+        first = pool.submit(toy.add, 1, 2, label="first")
+        assert pool.wait(first, timeout=20).state == "done"
+        assert pool.live_workers == 1  # one job needed one worker
+        pid = next(p for p in pool.worker_pids() if p is not None)
+        assert _wait_until(lambda: pool.live_workers == 0, timeout=5.0), "the idle worker was not retired"
+        assert _wait_until(lambda: _gone(pid), timeout=5.0), "the retired worker process is still alive"
+        # Work after retirement starts a worker again.
+        again = pool.submit(toy.add, 2, 2, label="again")
+        assert pool.wait(again, timeout=20).state == "done"
+        assert pool.live_workers == 1
+
+
+def test_a_worker_with_work_is_not_retired(tmp_path: Path):
+    from turbotab.core.jobs import JobRunner
+
+    with JobRunner(workers=1, idle_seconds=0.2) as pool:
+        job = pool.submit(toy.cooperative, 20, label="busy")  # longer than the idle timeout
+        assert pool.wait(job, timeout=30).state == "done"
+        # A retirement mid-job would have killed it and reported an error.

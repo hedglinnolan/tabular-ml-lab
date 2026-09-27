@@ -11,15 +11,15 @@ import shutil
 import tempfile
 import threading
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-from turbotab.core import decisions
+from turbotab.core import consequences, decisions, voice
 from turbotab.core.config import Settings
 from turbotab.core.datastore import DataStore, fingerprint_file
 from turbotab.core.datastore import _source_kind as source_kind  # the one list of readable types
-from turbotab.core.decisions import DecisionLog, Refusal
+from turbotab.core.decisions import DecisionLog, ProjectState, Refusal
 from turbotab.core.events import EventBus
 from turbotab.core.graph import (
     Engine,
@@ -28,6 +28,7 @@ from turbotab.core.graph import (
     latest_key,
     read_artifact,
 )
+from turbotab.core.interview import InterviewStep, route
 from turbotab.core.jobs import PRELOAD, JobRunner, JobView
 from turbotab.core.stages import GRAPH_FACTORY
 from turbotab.core.workspace import ProjectMeta, Workspace
@@ -50,17 +51,28 @@ MAX_REMEMBERED_JOBS = 10_000
 
 @dataclass(frozen=True)
 class DecisionContext:
-    """What ``decisions.validate`` is told about a project.
+    """What ``decisions.validate`` and ``voice.sentence_for`` are told about a project.
 
     ``columns`` is None until the ingest stage is fresh: before that the
     dataset's columns are not known. ``target`` is the current target (None:
-    none chosen), which a task answer must name.
+    none chosen), which a task answer must name. ``column_info`` maps each
+    column to ``{dtype, n_unique, n_missing}`` (from the ingest artifact);
+    ``state`` is the state before the decision; ``task`` the answered task, else
+    the detected one. ``store()`` returns the DataStore (None before ingest) and
+    ``artifact(stage)`` a stage's fresh public artifact (None when not fresh):
+    both are for sentences that count rows, and cost nothing until called.
     """
 
     columns: list[str] | None
     ingest_status: str
     ingest_error: str | None = None
     target: str | None = None
+    column_info: dict[str, dict[str, Any]] | None = None
+    state: ProjectState | None = None
+    task: str | None = None
+    n_rows: int | None = None
+    store: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
+    artifact: Callable[[str], Any] | None = field(default=None, repr=False, compare=False)
 
 
 def _target_needs_columns(decision: Any, ctx: Any) -> None:
@@ -77,7 +89,8 @@ def _target_needs_columns(decision: Any, ctx: Any) -> None:
     )
 
 
-decisions.register_validator("set_target", _target_needs_columns)
+for _kind in ("set_target", "set_roles", "set_exclusions", "set_energy_adjustment", "set_substitution"):
+    decisions.register_validator(_kind, _target_needs_columns)
 
 
 # ── events ───────────────────────────────────────────────────────────────────
@@ -117,6 +130,12 @@ class IngestFacts:
     n_rows: int
     n_cols: int
     columns: list[str]
+    column_info: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
+PREVIEW_CELLS = 20_000_000  # the before-frame's budget: rows x columns
+MAX_CACHED_ARTIFACTS = 16
+MAX_CACHED_FRAMES = 4
 
 
 def _write_json_atomic(path: Path, payload: Any) -> None:
@@ -151,6 +170,8 @@ class ProjectService:
         self._fingerprints: dict[str, str] = {}
         self._facts: dict[str, IngestFacts] = {}
         self._stores: dict[str, tuple[str, DataStore]] = {}
+        self._artifacts: OrderedDict[tuple[str, str, str], Any] = OrderedDict()
+        self._frames: OrderedDict[tuple[Any, ...], Any] = OrderedDict()
 
     def close(self) -> None:
         self.engine.shutdown()
@@ -256,6 +277,11 @@ class ProjectService:
             n_rows=int(info["n_rows"]),
             n_cols=int(info["n_cols"]),
             columns=[str(c["name"]) for c in info["columns"]],
+            column_info={
+                str(c["name"]): {"dtype": c["dtype"], "n_unique": int(c["n_unique"]),
+                                 "n_missing": int(c["n_missing"])}
+                for c in info["columns"]
+            },
         )
         with self._lock:
             self._facts[pid] = facts
@@ -302,32 +328,169 @@ class ProjectService:
         meta = self.workspace.get(pid)
         stages = self.engine.status(pid)
         records = self.log(pid).records()
+        state = decisions.fold(records)
         return {
             "summary": self.summary(meta, stages["ingest"]),
-            "state": decisions.fold(records),
+            "state": state,
             "decisions": records,
             "stages": stages,
+            "interview": self.interview(pid, state, stages, records),
         }
+
+    def interview(self, pid: str, state: ProjectState, stages: dict[str, StageStatus],
+                  records: list[Any]) -> list[InterviewStep]:
+        """The Router's answer (turbotab/core/interview.py) for this project now."""
+        artifacts: dict[str, Any] = {}
+        info = stages.get("target_info")
+        if info is not None and info.status == "fresh" and info.key:
+            artifacts["target_info"] = self._artifact(pid, "target_info", info.key, public=True)
+        return route(state, stages, artifacts, records)
 
     # ── deciding ──
 
-    def decide(self, pid: str, decision: Any) -> dict[str, Any]:
-        self.workspace.get(pid)
-        ingest = self.engine.status(pid)["ingest"]
-        columns = None
+    def decision_context(self, pid: str, stages: dict[str, StageStatus] | None = None) -> DecisionContext:
+        stages = self.engine.status(pid) if stages is None else stages
+        ingest = stages["ingest"]
+        facts = None
         if ingest.status == "fresh" and ingest.key:
-            columns = self._ingest_facts(pid, ingest.key).columns
-        ctx = DecisionContext(
-            columns=columns,
+            facts = self._ingest_facts(pid, ingest.key)
+        state = self.log(pid).state()
+        task = state.task
+        info = stages.get("target_info")
+        if task is None and info is not None and info.status == "fresh" and info.key:
+            detected = self._artifact(pid, "target_info", info.key, public=True)
+            if isinstance(detected, dict) and detected.get("column") == state.target:
+                task = detected.get("task")
+
+        def store() -> Any:
+            try:
+                return self.store(pid)
+            except ApiError:
+                return None
+
+        return DecisionContext(
+            columns=facts.columns if facts else None,
             ingest_status=ingest.status,
             ingest_error=ingest.error,
-            target=self.log(pid).state().target,
+            target=state.target,
+            column_info=facts.column_info if facts else None,
+            state=state,
+            task=task,
+            n_rows=facts.n_rows if facts else None,
+            store=store,
+            artifact=lambda stage: self._fresh(pid, stage, public=True),
         )
+
+    def decide(self, pid: str, decision: Any) -> dict[str, Any]:
+        self.workspace.get(pid)
+        ctx = self.decision_context(pid)
         parsed = decisions.validate(decision, ctx)  # raises Refusal
-        record = self.log(pid).append(parsed)  # raises Refusal for a revert it cannot make
+        record = self.log(pid).append(  # raises Refusal for a revert it cannot make
+            parsed, sentence=lambda d, before: voice.sentence_for(d, before, ctx))
         self.bus.publish(pid, "decision", record.model_dump(mode="json"))
         self.engine.on_decision(pid)
         return self.view(pid)
+
+    # ── previews ──
+
+    def preview(self, pid: str, decision: Any) -> consequences.PreviewResult:
+        """What recording ``decision`` would do to this project's data. Nothing is recorded.
+
+        A decision that would be refused is refused here too (409), so an option that
+        cannot be taken says why instead of previewing.
+        """
+        from turbotab.core import row_previews  # noqa: F401 - registers the row builders
+
+        self.workspace.get(pid)
+        stages = self.engine.status(pid)
+        ctx = self.decision_context(pid, stages)
+        parsed = decisions.validate(decision, ctx)
+        store = self.store(pid)
+        state = ctx.state if ctx.state is not None else self.log(pid).state()
+
+        def artifact(stage: str) -> Any:
+            status = stages.get(stage)
+            if status is None or status.status != "fresh" or not status.key:
+                return None
+            return self._artifact(pid, stage, status.key)
+
+        split = artifact("split")
+        cohort = artifact("cohort")
+        training = None
+        n_held = 0
+        if split is not None:
+            frame = split.frames["assignment"]
+            training = frame.loc[frame["partition"] == "train", "row_id"].to_numpy(dtype="int64")
+            n_held = len(row_previews.sealed_rows(split))
+        cohort_ids = cohort.frames["rows"]["row_id"].to_numpy(dtype="int64") if cohort is not None else None
+        used: dict[str, int] = {}
+        pctx = consequences.PreviewContext(
+            project_id=pid,
+            state=state,
+            datastore=store,
+            artifact=artifact,
+            training_row_ids=training,
+            cohort_row_ids=cohort_ids,
+        )
+        pctx.before = lambda: self._before_frame(pid, pctx, stages, used)
+        result = consequences.plan(parsed, pctx, basis="")
+        if training is not None:
+            parts = [f"Counts on the {store.n_rows - n_held:,} rows not held out"]
+        else:
+            parts = [f"Counts on all {store.n_rows:,} rows"]
+        if used:
+            parts.append(f"values on a sample of {used['rows']:,} "
+                         f"{'training ' if training is not None else ''}rows")
+        if training is not None:
+            parts.append("held-out rows stay sealed")
+        result.basis = "; ".join(parts) + "."
+        return result
+
+    def _before_frame(self, pid: str, ctx: consequences.PreviewContext,
+                      stages: dict[str, StageStatus], used: dict[str, int]) -> Any:
+        """The sampled working frame: the columns the models would get now, on sampled pool rows."""
+        from turbotab.core.stages.rows import predictors
+
+        store = ctx.datastore
+        state = ctx.state
+        order = [c for c in store.columns if c != decisions.ROW_ID]
+        columns = predictors(state.roles, order) or [c for c in order if c != state.target]
+        n = max(200, min(ctx.sample_size, PREVIEW_CELLS // max(1, len(columns))))
+        pool_key = next((stages[s].key for s in ("split", "cohort")
+                         if s in stages and stages[s].status == "fresh"), None)
+        key = (pid, stages["ingest"].key, pool_key, tuple(columns), n)
+        with self._lock:
+            frame = self._frames.get(key)
+            if frame is not None:
+                self._frames.move_to_end(key)
+        if frame is None:
+            frame = store.materialize(columns, ctx.sample_row_ids(n=n))
+            with self._lock:
+                self._frames[key] = frame
+                while len(self._frames) > MAX_CACHED_FRAMES:
+                    self._frames.popitem(last=False)
+        used["rows"] = len(frame)
+        return frame
+
+    def _artifact(self, pid: str, stage: str, key: str, public: bool = False) -> Any:
+        """A stage's artifact by key, remembered (an artifact at a key never changes)."""
+        cache_key = (pid, f"{stage}#public" if public else stage, key)
+        with self._lock:
+            if cache_key in self._artifacts:
+                self._artifacts.move_to_end(cache_key)
+                return self._artifacts[cache_key]
+        value = read_artifact(self.workspace.cache_dir(pid), stage, key, public=public)
+        with self._lock:
+            self._artifacts[cache_key] = value
+            while len(self._artifacts) > MAX_CACHED_ARTIFACTS:
+                self._artifacts.popitem(last=False)
+        return value
+
+    def _fresh(self, pid: str, stage: str, public: bool = False) -> Any:
+        status = self.engine.status(pid).get(stage)
+        if status is None or status.status != "fresh" or not status.key:
+            return None
+        return self._artifact(pid, stage, status.key, public=public)
 
     # ── stages and jobs ──
 
