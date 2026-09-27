@@ -165,6 +165,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview
+         * @description The views that show what recording ``decision`` would change. Nothing is recorded.
+         *
+         *     At most three views, the first primary. Once the split exists, held-out rows are never read.
+         */
+        post: operations["preview_api_projects__pid__preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/table": {
         parameters: {
             query?: never;
@@ -335,6 +357,30 @@ export interface components {
             /** Decision */
             decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"];
         };
+        /** DistributionView */
+        DistributionView: {
+            /** Title */
+            title: string;
+            /** Caption */
+            caption: string;
+            /** Emphasis */
+            emphasis: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "distribution";
+            /** Column */
+            column: string;
+            before: components["schemas"]["HistogramData"];
+            after: components["schemas"]["HistogramData"];
+            /** Before Label */
+            before_label: string;
+            /** After Label */
+            after_label: string;
+            /** Cuts */
+            cuts: number[];
+        };
         /** EnergyAdjustment */
         EnergyAdjustment: {
             /**
@@ -445,6 +491,40 @@ export interface components {
             /** N Missing */
             n_missing: number;
         };
+        /** HistogramData */
+        HistogramData: {
+            /** Edges */
+            edges: number[];
+            /** Counts */
+            counts: number[];
+            /**
+             * N Missing
+             * @default 0
+             */
+            n_missing: number;
+        };
+        /** InterviewStep */
+        InterviewStep: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "lens" | "target" | "task" | "purpose" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "answered" | "open" | "waiting" | "skipped" | "not_applicable";
+            /** Decision Id */
+            decision_id: string | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Waiting On
+             * @default []
+             */
+            waiting_on: string[];
+        };
         /** JobView */
         JobView: {
             /** Job Id */
@@ -464,6 +544,79 @@ export interface components {
             message: string | null;
             /** Error */
             error: string | null;
+        };
+        /** Lineage */
+        Lineage: {
+            /** Nodes */
+            nodes: components["schemas"]["LineageNode"][];
+            /** Links */
+            links: components["schemas"]["LineageLink"][];
+            /**
+             * Collapsed
+             * @default false
+             */
+            collapsed: boolean;
+        };
+        /** LineageLink */
+        LineageLink: {
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /** Operation */
+            operation: string;
+        };
+        /** LineageNode */
+        LineageNode: {
+            /** Id */
+            id: string;
+            /** Column */
+            column: string | null;
+            /**
+             * Lane
+             * @enum {string}
+             */
+            lane: "raw" | "adjusted" | "matrix";
+            /** Role */
+            role: ("identifier" | "exposure" | "energy" | "covariate" | "design" | "flag" | "time" | "excluded") | null;
+            /** Label */
+            label: string;
+            /** Formula */
+            formula: string | null;
+            /** Group */
+            group: string | null;
+            /**
+             * Count
+             * @default 1
+             */
+            count: number;
+        };
+        /** LineageView */
+        LineageView: {
+            /** Title */
+            title: string;
+            /** Caption */
+            caption: string;
+            /** Emphasis */
+            emphasis: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "lineage";
+            before: components["schemas"]["Lineage"] | null;
+            after: components["schemas"]["Lineage"];
+        };
+        /** PreviewResult */
+        PreviewResult: {
+            /** Kind */
+            kind: string;
+            /** Views */
+            views: (components["schemas"]["RowFlowView"] | components["schemas"]["LineageView"] | components["schemas"]["TableFocusView"] | components["schemas"]["DistributionView"] | components["schemas"]["RelationshipView"])[];
+            /** Basis */
+            basis: string;
+            /** Note */
+            note: string | null;
         };
         /**
          * ProjectState
@@ -526,6 +679,8 @@ export interface components {
             stages: {
                 [key: string]: components["schemas"]["StageStatus"];
             };
+            /** Interview */
+            interview: components["schemas"]["InterviewStep"][];
         };
         /**
          * RangeByLevel
@@ -558,6 +713,43 @@ export interface components {
             /** Exits */
             exits: components["schemas"]["Exit"][];
         };
+        /**
+         * RelationshipView
+         * @description A before/after scatter, e.g. a nutrient against energy before and after adjustment.
+         */
+        RelationshipView: {
+            /** Title */
+            title: string;
+            /** Caption */
+            caption: string;
+            /** Emphasis */
+            emphasis: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "relationship";
+            /** X Label */
+            x_label: string;
+            /** Y Label Before */
+            y_label_before: string;
+            /** Y Label After */
+            y_label_after: string;
+            /** Points Before */
+            points_before: [
+                number,
+                number
+            ][];
+            /** Points After */
+            points_after: [
+                number,
+                number
+            ][];
+            /** R Before */
+            r_before: number | null;
+            /** R After */
+            r_after: number | null;
+        };
         /** Revert */
         Revert: {
             /**
@@ -567,6 +759,45 @@ export interface components {
             kind: "revert";
             /** Decision Id */
             decision_id: string;
+        };
+        /** RowFlowView */
+        RowFlowView: {
+            /** Title */
+            title: string;
+            /** Caption */
+            caption: string;
+            /** Emphasis */
+            emphasis: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "row_flow";
+            /** Before */
+            before: components["schemas"]["RowStep"][];
+            /** After */
+            after: components["schemas"]["RowStep"][];
+        };
+        /**
+         * RowStep
+         * @description One step of the participant flow (CONSORT/STROBE style).
+         */
+        RowStep: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** N */
+            n: number;
+            /**
+             * Dropped
+             * @default 0
+             */
+            dropped: number;
+            /** Reason */
+            reason: string | null;
+            /** Decision Id */
+            decision_id: string | null;
         };
         /** SelectModels */
         SelectModels: {
@@ -887,6 +1118,49 @@ export interface components {
              */
             step_kcal: number;
         };
+        /**
+         * TableFocusView
+         * @description The working table narrowed to the columns this choice touches (≤ 12 shown, ≤ 8 rows).
+         */
+        TableFocusView: {
+            /** Title */
+            title: string;
+            /** Caption */
+            caption: string;
+            /** Emphasis */
+            emphasis: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "table_focus";
+            /** Columns Before */
+            columns_before: string[];
+            /** Columns After */
+            columns_after: string[];
+            /** Rows */
+            rows: components["schemas"]["TableRow"][];
+            /** Changed */
+            changed: [
+                number,
+                string
+            ][];
+            /** N Affected Columns */
+            n_affected_columns: number;
+        };
+        /** TableRow */
+        TableRow: {
+            /** Row Id */
+            row_id: number;
+            /** Before */
+            before: {
+                [key: string]: unknown;
+            };
+            /** After */
+            after: {
+                [key: string]: unknown;
+            };
+        };
         /** TableWindow */
         TableWindow: {
             /** Columns */
@@ -917,6 +1191,18 @@ export interface components {
             value: unknown;
             /** Count */
             count: number;
+        };
+        /**
+         * CohortArtifact
+         * @description The ``cohort`` artifact (a Bundle's ``data``): the participant flow.
+         */
+        CohortArtifact: {
+            /** Steps */
+            steps: components["schemas"]["RowStep"][];
+            /** N Final */
+            n_final: number;
+            /** Predictors */
+            predictors: string[];
         };
         /** ColumnInfo */
         ColumnInfo: {
@@ -1022,6 +1308,69 @@ export interface components {
             lens_hints: components["schemas"]["LensHint"][];
             /** Basis */
             basis: string;
+        };
+        /** Repeats */
+        Repeats: {
+            /** Column */
+            column: string;
+            /** N Units */
+            n_units: number;
+            /** Max Rows Per Unit */
+            max_rows_per_unit: number;
+        };
+        /** RoleProposal */
+        RoleProposal: {
+            /** Column */
+            column: string;
+            /**
+             * Proposed
+             * @enum {string}
+             */
+            proposed: "identifier" | "exposure" | "energy" | "covariate" | "design" | "flag" | "time" | "excluded";
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "high" | "medium" | "low";
+            /** Reason */
+            reason: string;
+            /** Linked To */
+            linked_to: string | null;
+            /** Unit */
+            unit: string | null;
+        };
+        /**
+         * RolesArtifact
+         * @description The ``roles`` artifact: a proposed role for every column but the outcome.
+         */
+        RolesArtifact: {
+            /** Columns */
+            columns: components["schemas"]["RoleProposal"][];
+            repeats: components["schemas"]["Repeats"] | null;
+        };
+        /**
+         * SplitArtifact
+         * @description The ``split`` artifact (a Bundle's ``data``): held-out rows and folds.
+         */
+        SplitArtifact: {
+            /** N Train */
+            n_train: number;
+            /** N Holdout */
+            n_holdout: number;
+            /** Holdout */
+            holdout: number;
+            /** Seed */
+            seed: number;
+            /** Folds */
+            folds: number;
+            /** Grouped By */
+            grouped_by: string | null;
+            /** N Groups */
+            n_groups: number | null;
+            /** Stratified */
+            stratified: boolean;
+            /** Note */
+            note: string;
         };
         /**
          * TargetInfo
@@ -1403,6 +1752,59 @@ export interface operations {
             };
             /** @description No such project or stage */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_api_projects__pid__preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewResult"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description The decision would be refused, or the table is not read yet */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

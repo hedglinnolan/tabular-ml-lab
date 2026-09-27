@@ -16,15 +16,18 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from turbotab.core.consequences import PreviewResult, RowStep  # noqa: F401 - re-exported
 from turbotab.core.decisions import (  # noqa: F401 - re-exported contract models
     Decision,
     DecisionRecord,
     Lens,
     ProjectState,
     Purpose,
+    Role,
     Task,
 )
 from turbotab.core.graph import StageStatus, StatusName  # noqa: F401
+from turbotab.core.interview import InterviewStep  # noqa: F401
 from turbotab.core.jobs import JobView  # noqa: F401
 
 Mode = Literal["local", "server"]
@@ -79,6 +82,8 @@ class ProjectView(Model):
     state: ProjectState
     decisions: list[DecisionRecord]
     stages: dict[str, StageStatus]
+    # The questions in asking order, with which one is open now (turbotab/core/interview.py).
+    interview: list[InterviewStep]
 
 
 class StageResult(Model):
@@ -237,9 +242,56 @@ class FindingsArtifact(Model):
     basis: str
 
 
+class RoleProposal(Model):
+    column: str
+    proposed: Role
+    confidence: Confidence
+    reason: str  # ≤ 16 words, plain language
+    linked_to: str | None  # a flag's base column
+    unit: str | None
+
+
+class Repeats(Model):
+    column: str
+    n_units: int
+    max_rows_per_unit: int
+
+
+class RolesArtifact(Model):
+    """The ``roles`` artifact: a proposed role for every column but the outcome."""
+
+    columns: list[RoleProposal]
+    repeats: Repeats | None
+
+
+class CohortArtifact(Model):
+    """The ``cohort`` artifact (a Bundle's ``data``): the participant flow."""
+
+    steps: list[RowStep]
+    n_final: int
+    predictors: list[str]
+
+
+class SplitArtifact(Model):
+    """The ``split`` artifact (a Bundle's ``data``): held-out rows and folds."""
+
+    n_train: int
+    n_holdout: int
+    holdout: float
+    seed: int
+    folds: int
+    grouped_by: str | None
+    n_groups: int | None
+    stratified: bool
+    note: str
+
+
 ARTIFACT_MODELS: dict[str, type[BaseModel]] = {
     "ingest": DatasetInfo,
     "profile": ProfileArtifact,
     "target_info": TargetInfo,
     "findings": FindingsArtifact,
+    "roles": RolesArtifact,
+    "cohort": CohortArtifact,
+    "split": SplitArtifact,
 }

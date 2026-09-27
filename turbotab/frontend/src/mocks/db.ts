@@ -203,6 +203,7 @@ export class MockServer {
       state: fold(p.records),
       decisions: [...p.records],
       stages: { ...p.stages },
+      interview: [], // the Router is the server's; the M1 mock work may mirror it
     };
   }
 

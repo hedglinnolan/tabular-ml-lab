@@ -460,6 +460,299 @@ register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 
 
+# ── M1 validators (M1_CONTRACT.md §2) ────────────────────────────────────────
+# Each reads only what ``ctx`` names; what it does not name is not checked. The
+# server's ctx (turbotab/server/service.py DecisionContext) carries ``columns``,
+# ``column_info`` ({name: {dtype, n_unique, n_missing}}), ``state`` (the state
+# before this decision), ``task`` (the answered or detected task) and ``target``.
+
+NUMERIC_DTYPES = ("numeric", "integer")
+MAX_CLASSES_MULTICLASS = 20
+MAX_STRATA_LEVELS = 10
+PREDICTOR_ROLES = ("exposure", "covariate", "energy")
+
+
+def _ctx(ctx: Any, name: str, default: Any = None) -> Any:
+    if ctx is None:
+        return default
+    if isinstance(ctx, Mapping):
+        return ctx.get(name, default)
+    return getattr(ctx, name, default)
+
+
+def _info(ctx: Any, column: str) -> Mapping[str, Any] | None:
+    info = _ctx(ctx, "column_info")
+    if not info:
+        return None
+    return info.get(column)
+
+
+def _state(ctx: Any) -> "ProjectState | None":
+    return _ctx(ctx, "state")
+
+
+def _and(items: Sequence[str]) -> str:
+    items = [f"`{i}`" for i in items]
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _task_fits_the_outcome(decision: SetTask, ctx: Any) -> None:
+    info = _info(ctx, decision.column)
+    if info is None:
+        return
+    n_unique = int(info.get("n_unique") or 0)
+    numeric = info.get("dtype") in NUMERIC_DTYPES
+    fits: list[str] = []
+    if n_unique == 2:
+        fits.append("binary")
+    if 2 < n_unique <= MAX_CLASSES_MULTICLASS:
+        fits.append("multiclass")
+    if numeric and n_unique > 2:
+        fits.append("regression")
+    exits = [{"label": f"Treat it as {task}", "decision": SetTask(column=decision.column, task=task)}
+             for task in fits]
+    if decision.task == "binary" and n_unique != 2:
+        raise Refusal(
+            "task_mismatch",
+            f"`{decision.column}` has {n_unique:,} distinct values; a binary outcome has exactly 2.",
+            exits=exits or [{"label": "Choose another outcome", "decision": None}],
+        )
+    if decision.task == "multiclass" and n_unique > MAX_CLASSES_MULTICLASS:
+        raise Refusal(
+            "task_mismatch",
+            f"`{decision.column}` has {n_unique:,} distinct values; multiclass takes at most "
+            f"{MAX_CLASSES_MULTICLASS}.",
+            exits=exits or [{"label": "Choose another outcome", "decision": None}],
+        )
+
+
+def _roles_name_real_columns(decision: SetRoles, ctx: Any) -> None:
+    columns = _columns_of(ctx)
+    if columns is not None:
+        unknown = [c for c in decision.roles if c not in columns or c == ROW_ID]
+        if unknown:
+            rest = {c: r for c, r in decision.roles.items() if c not in unknown}
+            exits = [{"label": "Keep the roles of the real columns", "decision": SetRoles(roles=rest)}] \
+                if rest else []
+            raise Refusal(
+                "unknown_column",
+                f"This dataset has no column named {_and(unknown)}.",
+                exits=exits + [{"label": "Choose roles for the dataset's columns", "decision": None}],
+            )
+    target = _target_of(ctx)
+    if target is not _UNKNOWN and target is not None and target in decision.roles:
+        rest = {c: r for c, r in decision.roles.items() if c != target}
+        raise Refusal(
+            "target_has_role",
+            f"`{target}` is the outcome, so it cannot also be {decision.roles[target]!s}.",
+            exits=[{"label": "Leave the outcome out of the roles", "decision": SetRoles(roles=rest)}]
+            if rest else [],
+        )
+    if not any(role in PREDICTOR_ROLES for role in decision.roles.values()):
+        raise Refusal(
+            "no_predictors",
+            "No column is an exposure, a covariate or energy, so the models would have nothing to use.",
+            exits=[{"label": "Mark at least one column as an exposure or a covariate", "decision": None}],
+        )
+
+
+def _rule_without(decision: SetExclusions, index: int) -> SetExclusions:
+    return SetExclusions(rules=[r for i, r in enumerate(decision.rules) if i != index])
+
+
+def _exclusions_are_ranges_on_numbers(decision: SetExclusions, ctx: Any) -> None:
+    columns = _columns_of(ctx)
+    for i, rule in enumerate(decision.rules):
+        drop = {"label": f"Drop the rule on `{rule.column}`", "decision": _rule_without(decision, i)}
+        for name in [rule.column] + ([rule.by.column] if rule.by is not None else []):
+            if columns is not None and (name not in columns or name == ROW_ID):
+                raise Refusal("unknown_column", f"This dataset has no column named `{name}`.", exits=[drop])
+        info = _info(ctx, rule.column)
+        if info is not None and info.get("dtype") not in NUMERIC_DTYPES:
+            raise Refusal(
+                "not_numeric",
+                f"`{rule.column}` is {info.get('dtype')}, not numbers, so it has no range to keep.",
+                exits=[drop],
+            )
+        if rule.low is None and rule.high is None and not (rule.by and rule.by.ranges):
+            raise Refusal("no_bounds", f"The rule on `{rule.column}` sets no lower or upper bound.",
+                          exits=[drop])
+        bounds = [(None, rule.low, rule.high)]
+        if rule.by is not None:
+            bounds += [(level, lo, hi) for level, (lo, hi) in rule.by.ranges.items()]
+        for level, low, high in bounds:
+            if low is not None and high is not None and low >= high:
+                where = f" for `{level}`" if level is not None else ""
+                exits = [drop]
+                if level is None and low > high:
+                    swapped = list(decision.rules)
+                    swapped[i] = rule.model_copy(update={"low": high, "high": low})
+                    exits.insert(0, {"label": "Swap the bounds", "decision": SetExclusions(rules=swapped)})
+                raise Refusal(
+                    "empty_range",
+                    f"The range on `{rule.column}`{where} runs from {low:g} to {high:g}; "
+                    f"the lower bound must be below the upper.",
+                    exits=exits,
+                )
+
+
+def _energy_adjustment_fits_the_roles(decision: SetEnergyAdjustment, ctx: Any) -> None:
+    if decision.method == "none":
+        return
+    state = _state(ctx)
+    columns = _columns_of(ctx)
+    if state is None:
+        return
+    roles = state.roles or {}
+    base = decision.model_dump(exclude={"kind"})
+
+    def with_(**changes: Any) -> SetEnergyAdjustment:
+        return SetEnergyAdjustment(**{**base, **changes})
+
+    if not roles:
+        raise Refusal(
+            "roles_first",
+            "Energy adjustment works on the column roles; confirm them first.",
+            exits=[{"label": "Confirm the column roles", "decision": None},
+                   {"label": "Do not adjust for energy", "decision": with_(method="none")}],
+        )
+    energy_columns = [c for c, r in roles.items() if r == "energy"]
+    if decision.energy_column is None or roles.get(decision.energy_column) != "energy":
+        exits = [{"label": f"Adjust against `{c}`", "decision": with_(energy_column=c)} for c in energy_columns]
+        named = f"`{decision.energy_column}` does not" if decision.energy_column else "No column was named that"
+        raise Refusal(
+            "energy_role",
+            f"{named} has the energy role, and adjustment is computed against total energy.",
+            exits=exits + [{"label": "Give a column the energy role", "decision": None}],
+        )
+    exposures = [n for n in decision.nutrients if roles.get(n) == "exposure"]
+    if not decision.nutrients or len(exposures) != len(decision.nutrients):
+        others = [n for n in decision.nutrients if n not in exposures]
+        message = ("Name the nutrients to adjust." if not decision.nutrients else
+                   f"{_and(others)} {'is' if len(others) == 1 else 'are'} not an exposure; only exposures are adjusted.")
+        exits = [{"label": "Adjust only the exposures", "decision": with_(nutrients=exposures)}] if exposures else []
+        raise Refusal("nutrients_not_exposures", message,
+                      exits=exits + [{"label": "Choose the nutrients to adjust", "decision": None}])
+    from turbotab.core.methods.energy import METHOD_TABLE, applicable_methods
+
+    table = applicable_methods(sorted(columns or roles), decision.energy_column, decision.nutrients)
+    verdict = table.get(decision.method, {"ok": True})
+    if not verdict["ok"]:
+        exits = [{"label": METHOD_TABLE[m]["label"], "decision": with_(method=m)}
+                 for m, v in table.items() if v["ok"] and m != decision.method]
+        raise Refusal("method_not_applicable", str(verdict["reason"]), exits=exits)
+    if decision.strata is not None:
+        info = _info(ctx, decision.strata)
+        known = columns is None or decision.strata in columns
+        levels = int(info.get("n_unique") or 0) if info else None
+        categorical = info is None or info.get("dtype") in ("categorical", "boolean", "integer")
+        if not known or not categorical or (levels is not None and levels > MAX_STRATA_LEVELS):
+            raise Refusal(
+                "strata_not_categorical",
+                f"Strata need a category with at most {MAX_STRATA_LEVELS} levels; "
+                f"`{decision.strata}` is not one.",
+                exits=[{"label": "Adjust without strata", "decision": with_(strata=None)}],
+            )
+
+
+def model_families() -> dict[str, set[str]]:
+    """Model family key -> the tasks it can model, from ``turbotab.core.models`` when present.
+
+    The registry is the modeling agent's (M1_CONTRACT.md §7); until it is importable the M1
+    families stand in, so a validator never refuses a family that exists.
+    """
+    fallback = {key: {"regression", "binary", "multiclass"}
+                for key in ("linear", "elastic_net", "boosted_trees")}
+    try:
+        import importlib
+
+        module = importlib.import_module("turbotab.core.models")
+    except Exception:
+        return fallback
+    found: Any = None
+    for name in ("FAMILIES", "REGISTRY", "families", "all_families", "registry"):
+        value = getattr(module, name, None)
+        if value is None:
+            continue
+        found = value() if callable(value) and not isinstance(value, Mapping) else value
+        break
+    if found is None:
+        return fallback
+    items = found.values() if isinstance(found, Mapping) else found
+    out: dict[str, set[str]] = {}
+    for family in items:
+        key = _ctx(family, "key")
+        if key:
+            out[str(key)] = {str(t) for t in (_ctx(family, "tasks") or ())}
+    return out or fallback
+
+
+def _models_can_fit_the_task(decision: SelectModels, ctx: Any) -> None:
+    families = model_families()
+    unknown = [m for m in decision.models if m not in families]
+    known = [m for m in decision.models if m in families]
+    if unknown:
+        raise Refusal(
+            "unknown_model",
+            f"There is no model family called {_and(unknown)}.",
+            exits=([{"label": "Keep the families that exist", "decision": SelectModels(models=known)}]
+                   if known else []) + [{"label": "Choose from the shelf", "decision": None}],
+        )
+    task = _ctx(ctx, "task")
+    if task is None:
+        return
+    unable = [m for m in decision.models if families[m] and task not in families[m]]
+    if unable:
+        able = [m for m in decision.models if m not in unable]
+        raise Refusal(
+            "model_cannot_fit_task",
+            f"{_and(unable)} cannot model a {task} outcome.",
+            exits=([{"label": "Keep the families that can", "decision": SelectModels(models=able)}]
+                   if able else []) + [{"label": "Choose from the shelf", "decision": None}],
+        )
+
+
+def _substitution_swaps_energy(decision: SetSubstitution, ctx: Any) -> None:
+    if decision.donor == decision.recipient:
+        raise Refusal(
+            "same_nutrient",
+            f"A substitution swaps one nutrient for another; `{decision.donor}` cannot replace itself.",
+            exits=[{"label": "Choose a different recipient", "decision": None}],
+        )
+    state = _state(ctx)
+    if state is None:
+        return
+    from turbotab.core.stages.rows import energy_bearing
+
+    roles = state.roles or {}
+    candidates = [c for c, r in roles.items() if r == "exposure" and energy_bearing(c)]
+    bad = [c for c in (decision.donor, decision.recipient) if c not in candidates]
+    if bad:
+        base = decision.model_dump(exclude={"kind"})
+        exits = []
+        for other in candidates:
+            if other not in (decision.donor, decision.recipient) and len(exits) < 3:
+                fixed = {**base, **({"donor": other} if decision.donor in bad else {"recipient": other})}
+                if fixed["donor"] != fixed["recipient"] and fixed["donor"] in candidates \
+                        and fixed["recipient"] in candidates:
+                    exits.append({"label": f"Swap `{fixed['donor']}` for `{fixed['recipient']}`",
+                                  "decision": SetSubstitution(**fixed)})
+        raise Refusal(
+            "not_energy_bearing",
+            f"{_and(bad)} {'is' if len(bad) == 1 else 'are'} not an energy-bearing nutrient in the "
+            f"model; a substitution moves kcal between two of them.",
+            exits=exits + [{"label": "Choose two energy-bearing nutrients", "decision": None}],
+        )
+
+
+register_validator("set_task", _task_fits_the_outcome)
+register_validator("set_roles", _roles_name_real_columns)
+register_validator("set_exclusions", _exclusions_are_ranges_on_numbers)
+register_validator("set_energy_adjustment", _energy_adjustment_fits_the_roles)
+register_validator("select_models", _models_can_fit_the_task)
+register_validator("set_substitution", _substitution_swaps_energy)
+
+
 # ── the fold ─────────────────────────────────────────────────────────────────
 
 def _check_revertable(target_id: str, earlier: Mapping[str, DecisionRecord]) -> None:
@@ -551,7 +844,17 @@ class DecisionLog:
     def state(self) -> ProjectState:
         return fold(self.records())
 
-    def append(self, decision: Any, note: str | None = None) -> DecisionRecord:
+    def append(
+        self,
+        decision: Any,
+        note: str | None = None,
+        sentence: Callable[[Any, ProjectState], str | None] | None = None,
+    ) -> DecisionRecord:
+        """Append ``decision``; ``sentence(decision, state_before)`` authors the record's sentence.
+
+        ``state_before`` is the fold of the log as it stands under the lock, just before this
+        record. A sentence that fails is logged and left unset: the answer is still recorded.
+        """
         decision = parse_decision(decision)
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -562,11 +865,19 @@ class DecisionLog:
                 existing = self._load()
                 if isinstance(decision, Revert):
                     _check_revert(existing, decision)
+                text: str | None = None
+                if sentence is not None:
+                    try:
+                        text = sentence(decision, fold(existing))
+                    except Exception:  # noqa: BLE001 - a missing sentence never loses an answer
+                        log.exception("no sentence for a %s decision", decision.kind)
+                        text = None
                 record = DecisionRecord(
                     id=uuid.uuid4().hex,
                     seq=max((r.seq for r in existing), default=0) + 1,
                     at=datetime.now(timezone.utc),
                     note=note,
+                    sentence=text if isinstance(text, str) and text.strip() else None,
                     decision=decision,
                 )
                 data = (record.model_dump_json() + "\n").encode("utf-8")

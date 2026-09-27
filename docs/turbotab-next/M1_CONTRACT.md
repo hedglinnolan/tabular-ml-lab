@@ -19,8 +19,10 @@ InterviewStep { key: QuestionKey, status: "answered"|"open"|"waiting"|"skipped"|
                 decision_id: string|null, reason: string|null, waiting_on: string[] }
 ```
 
-- Exactly one step is `open`: the first applicable unanswered one. Later ones are `waiting`, and
-  `waiting_on` names what they wait for (a question key or a stage).
+- At most one step is `open`: the first applicable unanswered one. Later ones are `waiting`, and
+  `waiting_on` names what they wait for (a question key or a stage). While a stage the first one
+  needs is still computing, it is `waiting` on that stage and none is open; a stage that failed
+  or was stopped holds nothing back.
 - `task` is `skipped` when detection is high-confidence; `reason` is the detection in the app's
   voice. The client's "Ask me anyway" reopens it (as in M0).
 - `energy_adjustment` is `not_applicable` unless the lens includes `dietary`, a column has the role
@@ -65,12 +67,15 @@ the cache.
   covariates (age, sex, gender, BMI, race, education, income…), excluded (free text, constants).
 - **proposals** → `{ exclusions: [{ rule: ExclusionRule, label, affected: int, evidence: {status, source} }], energy: { energy_column|null, nutrients: string[], strata_candidates: string[], applicability: {method: {ok, reason}}, usual: string|null, usual_evidence: {status, source}|null }|null }`
   Pack-sourced (NUTRITION_PACK §02 for implausible intake, §04 for energy). Offered, never pre-selected.
-- **cohort** → `Bundle(data={ steps: RowStep[], n_final, predictors: string[] }, frames={"rows": row_id})`
+- **cohort** → `Bundle(data={ steps: RowStep[], n_final, predictors: string[] }, frames={"rows": row_id, "measured": row_id})`
   Steps: `loaded` → `outcome_measured` → one step per exclusion rule → `complete_cases` (only when
   `missing == "complete_case"`). Predictors = columns with role exposure, covariate or energy.
-- **split** → `Bundle(data={ n_train, n_holdout, holdout, seed, folds, grouped_by|null, n_groups|null, stratified, note }, frames={"assignment": row_id, partition, fold})`
+  `measured` is every row whose outcome is recorded.
+- **split** → `Bundle(data={ n_train, n_holdout, holdout, seed, folds, grouped_by|null, n_groups|null, stratified, note }, frames={"assignment": row_id, partition, fold, "sealed": row_id})`
   Grouped by the identifier when it repeats; stratified for classification; seeded; CV folds
-  assigned on training rows, also grouped. `holdout == 0` → cross-validation only.
+  assigned on training rows, also grouped. `holdout == 0` → cross-validation only. The held-out
+  rows are drawn over `measured`, not the cohort, so an exclusion or missing-values answer never
+  moves a row across the seal; `sealed` lists them all, in the cohort or not, and no preview reads them.
 - **shelf** → `{ families: [{ key, label, rank, fit: "good"|"fair"|"poor", concerns: string[], inductive_bias }] }`
   Every family that can model the task, ordered; concerns stated (n, p, events), never hidden.
 - **design** → `Bundle(data={ lineage: Lineage, matrix: {n_rows, n_cols}, models: [{ family, label, steps: [{key, label, detail}] }], estimand: string|null, substitution_pairs: [{donor, recipient}], warnings: string[] }, objects={"pipelines": ...})`
@@ -99,7 +104,9 @@ the cache.
 | `set_energy_adjustment` | relationship (the nutrient most correlated with energy, against energy, before/after) · lineage · distribution | modeling agent |
 | `select_models` | lineage of the model matrix per family (e.g. trees skip scaling) | modeling agent |
 
-Everything else falls through to `diff_views` via `register_transform`.
+Everything else falls through to `diff_views` via `register_transform`. A preview of a decision
+that would be refused answers with the refusal (409). `DistributionView.cuts` marks values on the
+axis (a rule's bounds).
 
 ## 5 · Teaching
 

@@ -174,11 +174,13 @@ def test_decisions_are_refused_recorded_and_reverted(client):
     assert (info.task, info.detected_task, info.confidence) == ("regression", "regression", "high")
     assert info.histogram is not None and sum(info.histogram.counts) == 600 and info.classes is None
 
-    task = decide(client, pid, {"kind": "set_task", "column": "hba1c", "task": "binary"}).json()
+    mismatch = decide(client, pid, {"kind": "set_task", "column": "hba1c", "task": "binary"})
+    assert mismatch.status_code == 409 and mismatch.json()["error"]["code"] == "task_mismatch"  # 40 values
+    task = decide(client, pid, {"kind": "set_task", "column": "hba1c", "task": "regression"}).json()
     wait_for(client, pid, {"target_info": "fresh"})
     info = schemas.TargetInfo.model_validate(client.get(f"/api/projects/{pid}/stages/target_info").json()["artifact"])
-    assert (info.task, info.detected_task) == ("binary", "regression")  # the answer overrides detection
-    assert info.classes and info.histogram is None
+    assert (info.task, info.detected_task) == ("regression", "regression")
+    assert info.histogram is not None and info.classes is None
 
     reverted = decide(client, pid, {"kind": "revert", "decision_id": task["decisions"][-1]["id"]}).json()
     assert reverted["state"]["task"] is None and reverted["state"]["target"] == "hba1c"
@@ -198,6 +200,10 @@ def test_a_task_answer_belongs_to_the_column_it_was_given_for(client):
     assert decide(client, pid, {"kind": "set_target", "column": "sex"}).status_code == 200
     answered = decide(client, pid, {"kind": "set_task", "column": "sex", "task": "multiclass"})
     assert answered.json()["state"]["task"] == "multiclass"
+    wait_for(client, pid, {"target_info": "fresh"})
+    info = schemas.TargetInfo.model_validate(client.get(f"/api/projects/{pid}/stages/target_info").json()["artifact"])
+    assert (info.task, info.detected_task) == ("multiclass", "binary")  # the answer overrides detection
+    assert info.classes and info.histogram is None
 
     view = decide(client, pid, {"kind": "set_target", "column": "energy_kcal"}).json()
     assert (view["state"]["target"], view["state"]["task"]) == ("energy_kcal", None)
