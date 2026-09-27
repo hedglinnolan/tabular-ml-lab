@@ -231,7 +231,8 @@ def register_transform(kind: str, transform: Transform) -> Transform:
     ``transform(decision, before, ctx) -> after`` takes the sampled frame (indexed by row id, the
     columns the current state would feed the models) and returns the frame the decision would
     produce: rows may be dropped, columns added, removed, renamed or changed. Fitting inside a
-    transform uses ``before`` only — which is training rows once the split exists.
+    transform uses ``before`` only — which is training rows once the split exists. ``before`` is
+    shared between requests (the server caches it): build ``after`` from a copy, never in place.
     """
     _TRANSFORMS[kind] = transform
     return transform
