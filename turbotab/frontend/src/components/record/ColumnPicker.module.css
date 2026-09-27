@@ -1,0 +1,131 @@
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.search {
+  flex: 1;
+  min-width: 0;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  border-radius: 9px;
+  padding: 8px 12px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.search:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.scroll {
+  position: relative;
+  height: 238px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  contain: strict;
+}
+
+.list {
+  position: relative;
+  width: 100%;
+}
+
+.option {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 12.5px;
+}
+
+/* The keyboard position shows only while the picker has focus: it is not a choice. */
+.picker:focus-within .option[data-active] {
+  background: var(--accent-tint);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.selected .name {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.selected::after {
+  content: "chosen";
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--accent-ink);
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  padding: 0 6px;
+}
+
+.name {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dtype {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 0 6px;
+}
+
+.stats {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.empty {
+  margin: 0;
+  padding: 14px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.detail {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.picker:not(:focus-within) .activeOnly {
+  visibility: hidden;
+}

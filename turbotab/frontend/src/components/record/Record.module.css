@@ -1,0 +1,70 @@
+.record {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.opener {
+  margin-bottom: 6px;
+}
+
+.h1 {
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0 0 6px;
+}
+
+.lede {
+  margin: 0;
+  color: var(--muted);
+  max-width: 60ch;
+  font-size: 14px;
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+}
+
+.notAsked {
+  font-weight: 600;
+}
+
+.closing {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 0 4px;
+}
+
+.findings {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.h2 {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 8px;
+  font-variant-numeric: tabular-nums;
+}

@@ -1,0 +1,192 @@
+/*
+ * DESIGN_LANGUAGE §02 — every hue is a claim.
+ *   --accent  now: the open question, the primary action, the current position
+ *   --ok      recorded: decided, sealed, provenance-backed (decision keylines)
+ *   --warn    the coach's voice: noticings, deferrals, staleness — advisory only
+ *   --stop    invalid downstream: the blocker band and nothing else
+ *   --ink / --ground  the page
+ * §03 — three voices: the app speaks serif, the user acts sans, the data speaks mono.
+ * Style components through these tokens only; never inside a media query.
+ */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url("../../../../static/fonts/inter-latin.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url("../../../../static/fonts/inter-latin-ext.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("../../../../static/fonts/jetbrains-mono-latin.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("../../../../static/fonts/jetbrains-mono-latin-ext.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+:root {
+  color-scheme: light;
+
+  --ground: #f7f8f6;
+  --surface: #ffffff;
+  --surface-2: #eff3f1;
+  --ink: #1c2b29;
+  --muted: #5b6b68;
+  --faint: #7d8c89;
+  --line: #dce3e0;
+  --line-soft: #e7ecea;
+
+  --accent: #0e7368;
+  --accent-ink: #0a5a51;
+  --accent-tint: #e9f2f0;
+  --on-accent: #ffffff;
+
+  --ok: #2f7d46;
+  --ok-tint: #e9f2eb;
+
+  --warn: #9a6b0f;
+  --warn-tint: #fbf3de;
+  --warn-line: #ead9ac;
+
+  --stop: #8c2b2b;
+  --stop-tint: #f7e9e7;
+
+  --veil: rgba(247, 248, 246, 0.62);
+
+  /* chart ramp — categorical only, so semantic color stays semantic */
+  --c1: #0e7368;
+  --c2: #4a5fa5;
+  --c3: #a85c3c;
+  --c4: #6b7f8c;
+
+  --shadow: 0 1px 2px rgba(28, 43, 41, 0.05), 0 4px 14px rgba(28, 43, 41, 0.06);
+  --shadow-lift: 0 2px 4px rgba(28, 43, 41, 0.08), 0 12px 30px rgba(28, 43, 41, 0.11);
+
+  /* §03 — three voices */
+  --serif: "Charter", "Iowan Old Style", "Source Serif Pro", Georgia, serif;
+  --sans: "Inter", "Seravek", "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+
+  --fs-question: 19px;
+  --fs-decision: 16px;
+  --fs-body: 14px;
+  --fs-control: 13.5px;
+  --fs-kicker: 10.5px;
+  --fs-data: 12px;
+
+  --radius: 10px;
+  --radius-lg: 14px;
+  --header-h: 54px;
+
+  /* §05 — durations (unsourced per §05.0; kept short and in one place) */
+  --dur-settle: 250ms;
+  --dur-arrive: 300ms;
+  --dur-propagate: 120ms;
+  --dur-veil: 220ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --ground: #111917;
+    --surface: #19231f;
+    --surface-2: #202c28;
+    --ink: #e7eeeb;
+    --muted: #9baba7;
+    --faint: #7a8c88;
+    --line: #2a3733;
+    --line-soft: #232e2a;
+
+    --accent: #45bfaf;
+    --accent-ink: #6fd4c6;
+    --accent-tint: #1b2e2a;
+    --on-accent: #08201c;
+
+    --ok: #5cb877;
+    --ok-tint: #1c2e22;
+
+    --warn: #e0b45c;
+    --warn-tint: #2b2415;
+    --warn-line: #4a3d1c;
+
+    --stop: #d97a6c;
+    --stop-tint: #2e1c1a;
+
+    --veil: rgba(17, 25, 23, 0.62);
+
+    --c1: #45bfaf;
+    --c2: #8c9ee0;
+    --c3: #d98e6e;
+    --c4: #9bb0bc;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 4px 14px rgba(0, 0, 0, 0.3);
+    --shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.3), 0 12px 30px rgba(0, 0, 0, 0.42);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ground: #111917;
+  --surface: #19231f;
+  --surface-2: #202c28;
+  --ink: #e7eeeb;
+  --muted: #9baba7;
+  --faint: #7a8c88;
+  --line: #2a3733;
+  --line-soft: #232e2a;
+
+  --accent: #45bfaf;
+  --accent-ink: #6fd4c6;
+  --accent-tint: #1b2e2a;
+  --on-accent: #08201c;
+
+  --ok: #5cb877;
+  --ok-tint: #1c2e22;
+
+  --warn: #e0b45c;
+  --warn-tint: #2b2415;
+  --warn-line: #4a3d1c;
+
+  --stop: #d97a6c;
+  --stop-tint: #2e1c1a;
+
+  --veil: rgba(17, 25, 23, 0.62);
+
+  --c1: #45bfaf;
+  --c2: #8c9ee0;
+  --c3: #d98e6e;
+  --c4: #9bb0bc;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 4px 14px rgba(0, 0, 0, 0.3);
+  --shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.3), 0 12px 30px rgba(0, 0, 0, 0.42);
+}

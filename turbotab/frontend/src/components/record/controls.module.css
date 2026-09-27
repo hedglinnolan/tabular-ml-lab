@@ -1,0 +1,241 @@
+.options {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.option {
+  display: contents;
+}
+
+.option > .chip {
+  grid-column: 1;
+  justify-self: stretch;
+}
+
+.option > .hint {
+  grid-column: 2;
+}
+
+@media (max-width: 640px) {
+  .options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .option > .hint {
+    grid-column: 1;
+    margin-top: -4px;
+  }
+}
+
+/* The user acts in sans (§03). */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 9px;
+  padding: 8px 14px;
+  font-size: var(--fs-control);
+  font-weight: 600;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.chip:hover {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+.check {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.chip[aria-pressed="true"] .check {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.chip[aria-pressed="true"] .check::after {
+  content: "";
+  width: 7px;
+  height: 4px;
+  border-left: 2px solid var(--on-accent);
+  border-bottom: 2px solid var(--on-accent);
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+.key {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* A detection hint beside an option: the app speaking, never a pre-selection. */
+.hint {
+  font-family: var(--serif);
+  font-size: 13.5px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.hintLabel {
+  font-family: var(--sans);
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: 6px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.primary {
+  border-radius: 9px;
+  padding: 9px 16px;
+  font-size: var(--fs-control);
+  font-weight: 650;
+  border: 1.5px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.primary:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+
+.primary:disabled {
+  opacity: 0.45;
+}
+
+.ghost {
+  border-radius: 9px;
+  padding: 9px 16px;
+  font-size: var(--fs-control);
+  font-weight: 600;
+  border: 1.5px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+}
+
+.ghost:hover {
+  border-color: var(--muted);
+  color: var(--ink);
+}
+
+.reason {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* Two symmetric outcome-labeled answers (§09 CHOICE: declining is as easy as accepting). */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: left;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 11px;
+  padding: 13px 15px;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.card:hover {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.card[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.cardTitle {
+  font-size: 14px;
+  font-weight: 650;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.cardBody {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.tag {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 0 7px;
+  color: var(--muted);
+}
+
+.detected {
+  margin: 0 0 14px;
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+.refusal {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+}
+
+.refusalText {
+  font-family: var(--serif);
+  font-size: 14.5px;
+  margin: 0 0 10px;
+}
+
+.refusalExits {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
