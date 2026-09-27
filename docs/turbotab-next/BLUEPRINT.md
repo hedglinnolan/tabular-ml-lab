@@ -5,7 +5,7 @@ test, not in a new essay. Branch: `turbotab-next`. Owner: Nolan. Orchestrator: C
 
 ## North star — "This app is supposed to be beautiful and useful" (Nolan, 2026-09-27)
 
-Every milestone serves three ambitions at once; a feature that serves one while failing another is
+Every milestone serves these ambitions at once; a feature that serves one while failing another is
 not done.
 
 1. **The full breadth of modeling nutrition research needs** — prediction and inference;
@@ -22,6 +22,13 @@ not done.
 3. **The design communicates.** Motion shows cause and effect, type separates the app's voice from
    the user's actions and the data, every color is a claim. A milestone that works but reads badly is
    not done: the orchestrator reviews the screenshots and the `/lab` motion before Nolan drives it.
+4. **Modeling decision provenance.** Nolan's term (2026-09-27) for a reproducibility problem in the
+   field: a published result rarely lets a reader reconstruct which choices turned the raw columns
+   and rows into the model's inputs. TurboTab records every choice as a decision, and the lineage
+   diagram and participant flow *draw* it. That makes provenance a deliverable, not a by-product.
+   The export carries it: the lineage and row flow as figures, and a machine-readable provenance
+   record (decisions, lineage, software versions) that a reviewer can replay to regenerate the
+   same model matrix.
 
 ## 0 · Rulings (2026-09-27) — do not re-litigate
 

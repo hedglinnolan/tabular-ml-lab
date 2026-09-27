@@ -62,6 +62,14 @@ Also fix the weaknesses the designers named:
 
 The other 36 notes from this run are in `INBOX.md` under "From M1 workflow 1", untriaged.
 
+## A framing Nolan added at the pause
+
+*Modeling decision provenance* — his name for a reproducibility problem in nutrition research:
+readers can't reconstruct which choices turned raw data into a model's inputs. He noted the lineage
+diagram illustrates it well. It is now North star item 4 in the BLUEPRINT. It raises the lineage
+and the row flow from teaching aids to deliverables: M1 part 2 should make them publication-quality;
+M5's export carries them as figures plus a replayable provenance record.
+
 ## Next session, in order
 
 1. Look at the three prototypes side by side (their screenshots and frames). Rule on the design and
