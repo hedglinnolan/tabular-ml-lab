@@ -45,6 +45,37 @@ def test_the_host_guard_turns_away_other_hostnames(client):
     assert client.get("/api/health", headers={"host": "localhost:8787"}).status_code == 200
 
 
+def test_the_guard_refuses_changes_sent_by_a_page_on_another_site(client):
+    """A form post is sent cross-site without a preflight, with Host 127.0.0.1."""
+    before = len(client.get("/api/projects").json())
+    evil = {"origin": "https://evil.example", "sec-fetch-site": "cross-site"}
+    upload = client.post(
+        "/api/projects/upload", files={"file": ("x.csv", b"a,b\n1,2\n", "text/csv")}, headers=evil
+    )
+    assert upload.status_code == 403 and upload.json()["error"]["code"] == "cross_site"
+    assert len(client.get("/api/projects").json()) == before  # nothing was created
+
+    cancel = "/api/projects/p0000000000/jobs/j0/cancel"
+    for headers in (
+        {"origin": "https://evil.example"},
+        {"sec-fetch-site": "cross-site"},
+        {"origin": "null"},  # a sandboxed frame or a file:// page
+        {"origin": "http://127.0.0.1.evil.example:8787"},
+    ):
+        refused = client.post(cancel, headers=headers)
+        assert (refused.status_code, refused.json()["error"]["code"]) == (403, "cross_site"), headers
+
+    # The app's own pages, the Vite dev server, and clients that name no page get through.
+    for headers in (
+        {"origin": "http://127.0.0.1:8787", "sec-fetch-site": "same-origin"},
+        {"origin": "http://localhost:5173"},
+        {},
+    ):
+        assert client.post(cancel, headers=headers).json()["error"]["code"] == "unknown_project"
+    # Reads are left alone: without CORS headers the page cannot see the answer.
+    assert client.get("/api/health", headers=evil).status_code == 200
+
+
 def test_server_mode_refuses_paths_and_browsing_but_takes_uploads(server_client):
     refused = server_client.post("/api/projects", json={"path": str(DIETARY)})
     assert refused.status_code == 403
@@ -143,7 +174,7 @@ def test_decisions_are_refused_recorded_and_reverted(client):
     assert (info.task, info.detected_task, info.confidence) == ("regression", "regression", "high")
     assert info.histogram is not None and sum(info.histogram.counts) == 600 and info.classes is None
 
-    task = decide(client, pid, {"kind": "set_task", "task": "binary"}).json()
+    task = decide(client, pid, {"kind": "set_task", "column": "hba1c", "task": "binary"}).json()
     wait_for(client, pid, {"target_info": "fresh"})
     info = schemas.TargetInfo.model_validate(client.get(f"/api/projects/{pid}/stages/target_info").json()["artifact"])
     assert (info.task, info.detected_task) == ("binary", "regression")  # the answer overrides detection
@@ -159,6 +190,24 @@ def test_decisions_are_refused_recorded_and_reverted(client):
     assert view["stages"]["target_info"]["status"] == "blocked"
     assert view["stages"]["target_info"]["missing"] == ["target"]
     assert [d["seq"] for d in view["decisions"]] == [1, 2, 3, 4]
+
+
+def test_a_task_answer_belongs_to_the_column_it_was_given_for(client):
+    pid = open_by_path(client)
+    wait_for(client, pid, {"ingest": "fresh"})
+    assert decide(client, pid, {"kind": "set_target", "column": "sex"}).status_code == 200
+    answered = decide(client, pid, {"kind": "set_task", "column": "sex", "task": "multiclass"})
+    assert answered.json()["state"]["task"] == "multiclass"
+
+    view = decide(client, pid, {"kind": "set_target", "column": "energy_kcal"}).json()
+    assert (view["state"]["target"], view["state"]["task"]) == ("energy_kcal", None)
+    wait_for(client, pid, {"target_info": "fresh"})
+    info = schemas.TargetInfo.model_validate(client.get(f"/api/projects/{pid}/stages/target_info").json()["artifact"])
+    assert (info.column, info.task, info.detected_task) == ("energy_kcal", "regression", "regression")
+    assert info.histogram is not None and info.classes is None
+
+    stale = decide(client, pid, {"kind": "set_task", "column": "sex", "task": "binary"})
+    assert stale.status_code == 409 and stale.json()["error"]["code"] == "not_the_target"
 
 
 def test_the_target_cannot_be_chosen_before_the_columns_are_known():
@@ -309,3 +358,29 @@ def test_over_the_memory_budget_hints_sample_and_findings_refuse(tmp_path):
         decide(small, pid, {"kind": "set_lens", "lenses": ["dietary"]})
         view = wait_for(small, pid, {"findings": "error"})
         assert "run TurboTab on a server" in view["stages"]["findings"]["error"]
+
+        # Trying again runs it again (and fails the same way).
+        again = small.post(f"/api/projects/{pid}/stages/findings/run")
+        assert again.status_code == 200
+        assert schemas.StageStatus.model_validate(again.json()).status in {"queued", "running"}
+        wait_for(small, pid, {"findings": "error"})
+        assert small.post(f"/api/projects/{pid}/stages/nope/run").status_code == 404
+
+
+def test_a_file_that_cannot_be_read_says_why_and_can_be_tried_again(client, tmp_path):
+    ragged = tmp_path / "ragged.csv"
+    ragged.write_text('a,b\n1,2\n3\n"unterminated,4\n')
+    pid = open_by_path(client, ragged)
+    view = wait_for(client, pid, {"ingest": "error"})
+    error = view["stages"]["ingest"]["error"]
+    assert "unterminated quote" in error
+    assert view["summary"]["ingest"]["status"] == "error" and view["summary"]["n_rows"] is None
+    listed = next(p for p in client.get("/api/projects").json() if p["id"] == pid)
+    assert listed["ingest"]["error"] == error
+
+    refused = decide(client, pid, {"kind": "set_target", "column": "a"})
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "table_unreadable"
+
+    retried = client.post(f"/api/projects/{pid}/stages/ingest/run").json()
+    assert retried["status"] in {"queued", "running"} and retried["error"] is None
+    assert wait_for(client, pid, {"ingest": "error"})["stages"]["ingest"]["error"] == error

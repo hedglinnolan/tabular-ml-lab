@@ -16,6 +16,7 @@ import type {
   StageArtifacts,
   StageName,
   StageResult,
+  StageStatus,
   TableWindow,
 } from "./schema";
 
@@ -156,6 +157,10 @@ export const api = {
     request<StageResult<StageArtifacts[S]>>(`/projects/${enc(pid)}/stages/${enc(stage)}`, {
       signal,
     }),
+
+  /** Compute a stage again after it failed or was cancelled (and whatever it waits on). */
+  runStage: (pid: string, stage: StageName) =>
+    request<StageStatus>(`/projects/${enc(pid)}/stages/${enc(stage)}/run`, { method: "POST" }),
 
   table: (
     pid: string,

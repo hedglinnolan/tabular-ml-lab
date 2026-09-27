@@ -460,6 +460,68 @@
         }
       }
     },
+    "/api/projects/{pid}/stages/{stage}/run": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Run Stage",
+        "description": "Compute a stage for the current answers again, after it failed or was cancelled.\n\nStages it waits on that failed or were cancelled are retried too. A stage\nthat is fresh, in flight or blocked is left as it is. Returns its status.",
+        "operationId": "run_stage_api_projects__pid__stages__stage__run_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          },
+          {
+            "name": "stage",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project or stage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/table": {
       "get": {
         "tags": [
@@ -1520,6 +1582,16 @@
               }
             ],
             "title": "N Cols"
+          },
+          "ingest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StageStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -1530,7 +1602,8 @@
           "source_kind",
           "source_name",
           "n_rows",
-          "n_cols"
+          "n_cols",
+          "ingest"
         ],
         "title": "ProjectSummary"
       },
@@ -1714,6 +1787,11 @@
             "title": "Kind",
             "default": "set_task"
           },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
           "task": {
             "type": "string",
             "enum": [
@@ -1728,10 +1806,11 @@
         "type": "object",
         "required": [
           "kind",
+          "column",
           "task"
         ],
         "title": "SetTask",
-        "description": "An override of task detection."
+        "description": "An override of task detection, for the outcome column it names.\n\nIt stands only while ``column`` is the target (see :func:`fold`)."
       },
       "StageResult": {
         "properties": {
@@ -1877,6 +1956,11 @@
               }
             ],
             "title": "Updated At"
+          },
+          "cancelled": {
+            "type": "boolean",
+            "title": "Cancelled",
+            "default": false
           }
         },
         "type": "object",
@@ -1889,7 +1973,8 @@
           "error",
           "job_id",
           "progress",
-          "updated_at"
+          "updated_at",
+          "cancelled"
         ],
         "title": "StageStatus"
       },

@@ -22,14 +22,18 @@ import type {
   StageStatus,
   TargetInfoArtifact,
 } from "../../api/schema";
+import { useRunStage } from "../../api/queries";
 import { useTransitions } from "../../motion/prefs";
 import { StaleVeil, veilFor } from "../../motion/StaleVeil";
-import { fmtClock, fmtInt } from "../../util/format";
+import { Link } from "../../router";
+import { cx, fmtClock, fmtInt } from "../../util/format";
 import { V } from "../Prose";
+import { StageRetry, needsRetry } from "../StageRetry";
 import { DecisionSentence, History, Pending, QuestionBlock, SkipRow } from "./blocks";
 import { FindingsList } from "./Findings";
 import { LensAnswers, PurposeAnswers, RefusalNote, TargetAnswers, TaskAnswers } from "./questions";
 import { sentence, slotOf } from "./sentences";
+import c from "./controls.module.css";
 import styles from "./Record.module.css";
 
 interface Props {
@@ -42,19 +46,71 @@ interface Props {
   summaries?: ColumnSummary[];
 }
 
-/** What a section says while its stage has no result to show. Never claims work that is not happening. */
-function waiting(status: StageStatus | undefined, working: ReactNode): ReactNode {
+/**
+ * What a section says while its stage has no result to show. Never claims work that is
+ * not happening; work that will not restart by itself says why and offers `retry`.
+ */
+function waiting(
+  status: StageStatus | undefined,
+  working: ReactNode,
+  retry?: ReactNode,
+): ReactNode {
   switch (status?.status) {
     case "queued":
     case "running":
       return working;
     case "error":
-      return <>This did not finish: {status.error ?? "the server gave no reason"}.</>;
+      return (
+        <>
+          This did not finish: {status.error ?? "the server gave no reason"}. {retry}
+        </>
+      );
     case "blocked":
       return <>Waits on an answer to: {status.missing.join(", ")}.</>;
     default:
+      if (status?.cancelled) return <>You stopped this before it finished. {retry}</>;
       return <>Not computed yet.</>;
   }
+}
+
+/**
+ * The file could not be read, or reading it was stopped: nothing can be asked about a
+ * table that does not exist yet, so this stands where the first question would.
+ */
+function Unread({ pid, status }: { pid: string; status: StageStatus }) {
+  const run = useRunStage(pid);
+  const failed = status.status === "error";
+  return (
+    <QuestionBlock
+      layoutId="ingest-unread"
+      kicker="The file"
+      title={failed ? "This file could not be read." : "Reading the file was stopped."}
+      why={
+        failed
+          ? "Nothing can be asked about a table TurboTab has not read. The reader stopped here:"
+          : "You stopped it before the table was ready. Nothing can be asked about the table until it is read."
+      }
+      testId="ingest-unread"
+    >
+      {failed ? (
+        <pre className={styles.reason}>{status.error ?? "The server gave no reason."}</pre>
+      ) : null}
+      <div className={c.actions}>
+        <button
+          type="button"
+          className={c.primary}
+          disabled={run.isPending}
+          onClick={() => run.mutate("ingest")}
+          title="Reads the same file again, from where it is on disk."
+        >
+          {failed ? "Try reading it again" : "Read it again"}
+        </button>
+        <Link href="/" className={cx(c.ghost, styles.linkButton)}>
+          Open another file
+        </Link>
+      </div>
+    </QuestionBlock>
+  );
 }
 
 const SUBJECT: Record<Slot, string> = {
@@ -113,21 +169,47 @@ export function Record({ pid, view, ingest, profile, targetInfo, findings, summa
       />
     ) : null;
 
-  const historyFor = (slot: Slot) =>
-    bySlot[slot].slice(0, -1).map((r) => ({
+  /**
+   * The record behind a slot's current value. For most slots that is the latest one. A
+   * task answer names its column and counts only while that column is the outcome, so
+   * the task's is the latest answer for this outcome with this value (none when unset).
+   */
+  const current = (slot: Slot): DecisionRecord | undefined => {
+    const recs = bySlot[slot];
+    if (slot !== "task") return recs[recs.length - 1];
+    if (state.task === null) return undefined;
+    return recs.findLast(
+      (r) =>
+        r.decision.kind === "set_task" &&
+        r.decision.column === state.target &&
+        r.decision.task === state.task,
+    );
+  };
+
+  const historyFor = (slot: Slot) => {
+    const now = current(slot);
+    const earlier =
+      slot === "task" ? bySlot.task.filter((r) => r !== now) : bySlot[slot].slice(0, -1);
+    return earlier.map((r) => ({
       id: r.id,
       seq: r.seq,
       when: fmtClock(r.at),
       sentence: sentence(r, decisions),
+      tag:
+        r.decision.kind === "set_task" && r.decision.column !== state.target
+          ? "another outcome"
+          : undefined,
     }));
+  };
 
-  const current = (slot: Slot) => bySlot[slot][bySlot[slot].length - 1];
   const settled = (slot: Slot, value: unknown) =>
     value !== null && !reopened[slot] && current(slot);
   const arrive = (slot: Slot) => bySlot[slot].length === 0;
 
   const hints = profile?.artifact?.lens_hints ?? [];
-  const columns = ingest?.artifact?.columns.filter((c) => c.name !== "__row_id");
+  const columns = ingest?.artifact?.columns.filter((col) => col.name !== "__row_id");
+  // No table, and none on its way: the file failed to read, or reading it was stopped.
+  const unread = !columns && needsRetry(stages.ingest) ? stages.ingest : undefined;
   const ti = targetInfo?.artifact ?? null;
   const tiVeil = veilFor(stages.target_info, targetInfo);
   const taskResolved =
@@ -137,6 +219,14 @@ export function Record({ pid, view, ingest, profile, targetInfo, findings, summa
   // ─── blocks ────────────────────────────────────────────────────────────────
   const lensBlock = (() => {
     const rec = settled("lens", state.lens);
+    if (!rec && !columns) {
+      // Questions about the table wait for the table.
+      return unread ? null : (
+        <Pending testId="pending-lens">
+          Reading the file. The first question comes once its columns are known.
+        </Pending>
+      );
+    }
     if (rec) {
       return (
         <DecisionSentence
@@ -166,6 +256,14 @@ export function Record({ pid, view, ingest, profile, targetInfo, findings, summa
           onSubmit={(lenses) => submit("lens", { kind: "set_lens", lenses })}
           onKeep={state.lens ? keep("lens") : undefined}
         />
+        {needsRetry(stages.profile) ? (
+          <p className={styles.hintsMissing} data-testid="hints-missing">
+            {stages.profile!.status === "error"
+              ? `No lens hints: summarizing the columns did not finish (${stages.profile!.error ?? "no reason given"}).`
+              : "No lens hints: you stopped the column summaries they come from."}{" "}
+            <StageRetry pid={pid} status={stages.profile} />
+          </p>
+        ) : null}
         {refusalFor("lens")}
       </QuestionBlock>
     );
@@ -210,6 +308,8 @@ export function Record({ pid, view, ingest, profile, targetInfo, findings, summa
             onSubmit={(column) => submit("target", { kind: "set_target", column })}
             onKeep={state.target ? keep("target") : undefined}
           />
+        ) : unread ? (
+          <Pending>There are no columns to choose from until the file is read.</Pending>
         ) : (
           <Pending>The file is still being read; its columns appear here when it is done.</Pending>
         )}
@@ -231,7 +331,7 @@ export function Record({ pid, view, ingest, profile, targetInfo, findings, summa
           testId="decision-task"
         >
           {sentence(rec, decisions)}
-          {ti && ti.detected_task !== state.task ? (
+          {ti && ti.column === state.target && ti.detected_task !== state.task ? (
             <>
               {" "}
               TurboTab had detected <V>{ti.detected_task}</V>.
@@ -257,7 +357,7 @@ export function Record({ pid, view, ingest, profile, targetInfo, findings, summa
             info={ti}
             current={state.task}
             pending={decide.isPending}
-            onSubmit={(task) => submit("task", { kind: "set_task", task })}
+            onSubmit={(task) => submit("task", { kind: "set_task", column: ti.column, task })}
             onKeep={reopened.task ? keep("task") : undefined}
           />
           {refusalFor("task")}
@@ -278,12 +378,18 @@ export function Record({ pid, view, ingest, profile, targetInfo, findings, summa
             <>
               Reading <V>{state.target}</V> to detect the task…
             </>,
+            <StageRetry pid={pid} status={stages.target_info} />,
           )}
         </Pending>
       );
     }
     return (
-      <StaleVeil state={ti ? tiVeil : "fresh"} order={0} testId="veil-task">
+      <StaleVeil
+        state={ti ? tiVeil : "fresh"}
+        order={0}
+        testId="veil-task"
+        action={<StageRetry pid={pid} status={stages.target_info} />}
+      >
         {body}
       </StaleVeil>
     );
@@ -330,14 +436,23 @@ export function Record({ pid, view, ingest, profile, targetInfo, findings, summa
     const status = stages.findings;
     if (f) {
       return (
-        <StaleVeil state={veilFor(status, findings)} order={1} testId="veil-findings">
+        <StaleVeil
+          state={veilFor(status, findings)}
+          order={1}
+          testId="veil-findings"
+          action={<StageRetry pid={pid} status={status} />}
+        >
           <FindingsList artifact={f} />
         </StaleVeil>
       );
     }
     return (
       <Pending testId="pending-findings">
-        {waiting(status, "Checking the table against the chosen lenses…")}
+        {waiting(
+          status,
+          "Checking the table against the chosen lenses…",
+          <StageRetry pid={pid} status={status} />,
+        )}
       </Pending>
     );
   })();
@@ -366,6 +481,7 @@ export function Record({ pid, view, ingest, profile, targetInfo, findings, summa
             nothing earlier is deleted.
           </p>
         </header>
+        {unread ? <Unread pid={pid} status={unread} /> : null}
         {slots
           .filter((s) => s.show)
           .map((s) => (

@@ -142,6 +142,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/stages/{stage}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Stage
+         * @description Compute a stage for the current answers again, after it failed or was cancelled.
+         *
+         *     Stages it waits on that failed or were cancelled are retried too. A stage
+         *     that is fresh, in flight or blocked is left as it is. Returns its status.
+         */
+        post: operations["run_stage_api_projects__pid__stages__stage__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/table": {
         parameters: {
             query?: never;
@@ -421,6 +444,7 @@ export interface components {
             n_rows: number | null;
             /** N Cols */
             n_cols: number | null;
+            ingest: components["schemas"]["StageStatus"] | null;
         };
         /** ProjectView */
         ProjectView: {
@@ -494,7 +518,9 @@ export interface components {
         };
         /**
          * SetTask
-         * @description An override of task detection.
+         * @description An override of task detection, for the outcome column it names.
+         *
+         *     It stands only while ``column`` is the target (see :func:`fold`).
          */
         SetTask: {
             /**
@@ -502,6 +528,8 @@ export interface components {
              * @enum {string}
              */
             kind: "set_task";
+            /** Column */
+            column: string;
             /**
              * Task
              * @enum {string}
@@ -555,6 +583,11 @@ export interface components {
             progress: number | null;
             /** Updated At */
             updated_at: string | null;
+            /**
+             * Cancelled
+             * @default false
+             */
+            cancelled: boolean;
         };
         /** TableWindow */
         TableWindow: {
@@ -1027,6 +1060,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StageResult"];
+                };
+            };
+            /** @description No such project or stage */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_stage_api_projects__pid__stages__stage__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+                stage: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StageStatus"];
                 };
             };
             /** @description No such project or stage */

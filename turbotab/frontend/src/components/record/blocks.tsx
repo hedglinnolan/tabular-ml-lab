@@ -159,7 +159,8 @@ export function SkipRow({ layoutId, children, onAsk, testId }: SkipProps) {
 export function History({
   items,
 }: {
-  items: { id: string; seq: number; when: string; sentence: ReactNode }[];
+  /** `tag` says why an answer is not in force; "superseded" unless given. */
+  items: { id: string; seq: number; when: string; sentence: ReactNode; tag?: string }[];
 }) {
   if (items.length === 0) return null;
   return (
@@ -170,7 +171,7 @@ export function History({
             #{h.seq} · {h.when}
           </span>
           <span className={styles.historyText}>{h.sentence}</span>
-          <span className={styles.superseded}>superseded</span>
+          <span className={styles.superseded}>{h.tag ?? "superseded"}</span>
         </li>
       ))}
     </ol>

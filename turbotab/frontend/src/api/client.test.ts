@@ -20,7 +20,10 @@ const refusal: Refusal = {
     code: "task_mismatch",
     message: "`hba1c` has 57 distinct values; a binary task needs exactly two.",
     exits: [
-      { label: "Model it as regression", decision: { kind: "set_task", task: "regression" } },
+      {
+        label: "Model it as regression",
+        decision: { kind: "set_task", column: "hba1c", task: "regression" },
+      },
       { label: "Keep the current answer", decision: null },
     ],
   },
@@ -29,14 +32,20 @@ const refusal: Refusal = {
 describe("a decision the server refuses (409)", () => {
   it("is thrown as a RefusalError carrying the typed refusal and its exits", async () => {
     respond(409, refusal);
-    const err = await api.decide("p1", { kind: "set_task", task: "binary" }).catch((e) => e);
+    const err = await api
+      .decide("p1", { kind: "set_task", column: "hba1c", task: "binary" })
+      .catch((e) => e);
     expect(isRefusalError(err)).toBe(true);
     expect(err).toBeInstanceOf(RefusalError);
     const r = (err as RefusalError).refusal;
     expect(r.error.code).toBe("task_mismatch");
     expect(r.error.message).toContain("binary task needs exactly two");
     expect(r.error.exits).toHaveLength(2);
-    expect(r.error.exits[0]!.decision).toEqual({ kind: "set_task", task: "regression" });
+    expect(r.error.exits[0]!.decision).toEqual({
+      kind: "set_task",
+      column: "hba1c",
+      task: "regression",
+    });
     expect(r.error.exits[1]!.decision).toBeNull();
     expect((err as Error).message).toBe(refusal.error.message);
   });

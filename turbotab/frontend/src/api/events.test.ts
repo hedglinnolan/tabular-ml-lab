@@ -17,6 +17,7 @@ function status(stage: string, patch: Partial<StageStatus> = {}): StageStatus {
     job_id: null,
     progress: null,
     updated_at: "2026-09-27T10:00:00.000Z",
+    cancelled: false,
     ...patch,
   };
 }
@@ -41,6 +42,7 @@ function view(): ProjectView {
       source_name: "dietary_recalls.csv",
       n_rows: 600,
       n_cols: 17,
+      ingest: null,
     },
     state: { lens: null, target: "c1", task: null, purpose: null },
     decisions: [record(1)],

@@ -7,7 +7,7 @@ import { useFsListing, useHealth, useOpenPath, useProjects, useUpload } from "..
 import type { FsEntry } from "../api/schema";
 import { Header } from "../components/Header";
 import { Link, navigate, projectPath } from "../router";
-import { cx, fmtBytes, fmtInt, fmtWhen } from "../util/format";
+import { cx, fmtBytes, fmtInt, fmtWhen, readingText } from "../util/format";
 import styles from "./StartScreen.module.css";
 
 // The server's readable types (turbotab/core/datastore.py: CSV_SUFFIXES and friends).
@@ -236,10 +236,12 @@ function Recent() {
             <Link href={projectPath(p.id)} className={styles.recentItem}>
               <span className={styles.recentName}>{p.name}</span>
               <span className={styles.recentSource}>{p.source_name}</span>
-              <span className={styles.recentSize}>
+              <span className={styles.recentSize} title={p.ingest?.error ?? undefined}>
                 {p.n_rows !== null && p.n_cols !== null
                   ? `${fmtInt(p.n_rows)} × ${fmtInt(p.n_cols)}`
-                  : "reading…"}
+                  : p.ingest === null
+                    ? "not read yet"
+                    : readingText(p.ingest)}
               </span>
               <span className={styles.recentWhen}>{fmtWhen(p.created_at)}</span>
             </Link>

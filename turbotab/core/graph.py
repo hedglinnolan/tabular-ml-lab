@@ -34,7 +34,8 @@ Status rules (per stage, for its current key):
 * ``idle`` — never computed.
 
 A job cancelled by request (not superseded) is not rerun automatically either;
-``ensure`` reruns it.
+``ensure`` reruns it. Until then the stage (and every stage waiting on it) is
+``stale`` or ``idle`` with ``cancelled: true``, so the UI can say who stopped it.
 """
 from __future__ import annotations
 
@@ -227,6 +228,9 @@ class StageStatus(BaseModel):
     job_id: str | None = None
     progress: float | None = None
     updated_at: datetime | None = None
+    # The work for the current key (or for a stage it waits on) was cancelled by
+    # request: it restarts only through Engine.ensure (POST .../stages/{stage}/run).
+    cancelled: bool = False
 
 
 class StageResult(BaseModel):
@@ -580,6 +584,15 @@ class Engine:
         """Bring ``pid`` up to date with its (new) state; call after every decision."""
         self._project(pid, refresh=True)
 
+    def peek(self, pid: str) -> dict[str, StageStatus] | None:
+        """Statuses for a project the engine already holds; None, without loading it, otherwise."""
+        with self._lock:
+            p = self._projects.get(pid)
+        if p is None:
+            return None
+        with p.lock:
+            return self._statuses(p) if p.ctx is not None else None
+
     def ensure(self, pid: str, stage: str) -> str | None:
         """Compute ``stage`` for its current key, retrying errors and cancellations.
 
@@ -851,7 +864,12 @@ class Engine:
                 error = f"Needs {failed!r}, which failed."
         if error is not None:
             return StageStatus(status="error", error=error, **common)
-        return StageStatus(status="stale" if self._has_older(p, name, key) else "idle", **common)
+        cancelled = (name, key) in p.held or any(upstream[d].cancelled for d in stage.deps)
+        return StageStatus(
+            status="stale" if self._has_older(p, name, key) else "idle",
+            cancelled=cancelled,
+            **common,
+        )
 
     def _publish(self, p: _Project, progress_of: str | None = None) -> None:
         """Publish a ``stage`` event for each stage whose status changed."""
@@ -865,6 +883,7 @@ class Engine:
                 tuple(status.missing),
                 status.error,
                 status.job_id,
+                status.cancelled,
             )
             if p.published.get(name) != signature:
                 p.published[name] = signature

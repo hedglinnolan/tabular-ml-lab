@@ -93,6 +93,13 @@ export function makeHandlers(server: MockServer): HttpHandler[] {
       return result ? HttpResponse.json(result) : notFound("No such project.");
     }),
 
+    http.post("/api/projects/:pid/stages/:stage/run", ({ params }) => {
+      const stage = String(params.stage) as StageName;
+      if (!STAGES.includes(stage)) return notFound(`No stage named '${stage}'.`);
+      const status = server.runStage(String(params.pid), stage);
+      return status ? HttpResponse.json(status) : notFound("No such project.");
+    }),
+
     http.get("/api/projects/:pid/table", ({ params, request }) => {
       const pid = String(params.pid);
       const p = server.get(pid);

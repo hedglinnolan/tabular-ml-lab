@@ -59,3 +59,12 @@ export function listJoin(items: string[]): string {
   if (items.length === 2) return `${items[0]} and ${items[1]}`;
   return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }
+
+/** What to say about a table that has no size yet. Never claims work that has stopped. */
+export function readingText(
+  ingest: { status: string; cancelled: boolean } | null | undefined,
+): string {
+  if (ingest?.status === "error") return "could not be read";
+  if (ingest?.cancelled) return "reading stopped";
+  return "reading…";
+}

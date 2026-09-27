@@ -290,11 +290,15 @@ def test_a_job_cancelled_by_request_waits_for_ensure(make_engine, runner):
     runner.cancel(status["H"].job_id)
     status = wait_for(engine, pid, lambda s: s["H"].status not in {"queued", "running"})
     assert status["H"].status == "idle"
+    # The status says who stopped it, and so does the stage waiting on it.
+    assert status["H"].cancelled and status["K"].cancelled and status["K"].status == "idle"
     engine.on_decision(pid)  # nothing changed: the cancel is respected
     assert engine.status(pid)["H"].status == "idle"
-    job_id = engine.ensure(pid, "H")
-    assert job_id is not None and engine.status(pid)["H"].job_id == job_id
-    runner.cancel(job_id)
+    job_id = engine.ensure(pid, "K")  # ensuring the dependent reruns what it waits on
+    status = engine.status(pid)
+    assert job_id is None and status["H"].job_id is not None
+    assert not status["H"].cancelled and not status["K"].cancelled
+    runner.cancel(status["H"].job_id)
 
 
 # ── failures stay where they happen ──────────────────────────────────────────
@@ -353,5 +357,6 @@ def test_artifacts_round_trip_in_the_three_formats(tmp_path):
 def test_status_serializes_to_the_contract_shape():
     fields = set(StageStatus(stage="s", status="idle").model_dump(mode="json"))
     assert fields == {
-        "stage", "status", "key", "fresh", "missing", "error", "job_id", "progress", "updated_at"
+        "stage", "status", "key", "fresh", "missing", "error", "job_id", "progress", "updated_at",
+        "cancelled",
     }

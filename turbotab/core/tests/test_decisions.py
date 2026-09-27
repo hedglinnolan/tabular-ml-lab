@@ -35,7 +35,7 @@ def test_later_writes_win_and_each_kind_writes_its_own_slot(log):
     log.append(SetTarget(column="a"))
     log.append(SetLens(lenses=["dietary", "clinical"]))
     log.append(SetTarget(column="b"))
-    log.append({"kind": "set_task", "task": "binary"})
+    log.append({"kind": "set_task", "column": "b", "task": "binary"})
     log.append(SetPurpose(purpose="inference"))
     assert log.state() == ProjectState(
         lens=["dietary", "clinical"], target="b", task="binary", purpose="inference"
@@ -51,6 +51,40 @@ def test_revert_restores_the_value_before_and_revert_of_revert_reapplies(log):
     assert log.state().target == "b"
     log.append(Revert(decision_id=redo.id))
     assert log.state().target == "a"
+
+
+def test_a_task_answer_stands_only_while_its_column_is_the_target(log):
+    log.append(SetTarget(column="sex"))
+    log.append(SetTask(column="sex", task="multiclass"))
+    assert log.state().task == "multiclass"
+    kcal = log.append(SetTarget(column="energy_kcal"))
+    # The answer was about sex: energy_kcal gets detection (task None), not multiclass.
+    assert (log.state().target, log.state().task) == ("energy_kcal", None)
+    undo = log.append(Revert(decision_id=kcal.id))
+    assert (log.state().target, log.state().task) == ("sex", "multiclass")
+    log.append(Revert(decision_id=undo.id))
+    assert (log.state().target, log.state().task) == ("energy_kcal", None)
+
+    log.append(SetTask(column="energy_kcal", task="regression"))
+    assert log.state().task == "regression"
+    log.append(SetTarget(column="sex"))  # back to sex: its own latest answer applies
+    assert log.state().task == "multiclass"
+    log.append(SetTarget(column="age"))  # never answered for age
+    assert log.state().task is None
+
+
+def test_a_task_answer_must_name_the_current_target():
+    task = {"kind": "set_task", "column": "sex", "task": "binary"}
+    assert validate(task, {"target": "sex"}) == SetTask(column="sex", task="binary")
+    with pytest.raises(Refusal) as refused:
+        validate(task, {"target": "energy_kcal"})
+    assert refused.value.code == "not_the_target"
+    with pytest.raises(Refusal) as refused:
+        validate(task, {"target": None})
+    assert refused.value.code == "no_target"
+    validate(task, {"columns": ["sex"]})  # a context that does not know the target
+    with pytest.raises(ValidationError):
+        parse_decision({"kind": "set_task", "task": "binary"})  # the column is required
 
 
 def test_reverting_the_only_write_unsets_the_slot(log):
@@ -107,7 +141,7 @@ def test_records_are_json_lines_with_utc_times_and_survive_reopening(tmp_path):
     path = tmp_path / "p" / "decisions.jsonl"
     first = DecisionLog(path)
     rec = first.append(SetTarget(column="a"), note="the outcome")
-    first.append(SetTask(task="regression"))
+    first.append(SetTask(column="a", task="regression"))
     line = json.loads(path.read_text().splitlines()[0])
     assert line == {
         "id": rec.id,

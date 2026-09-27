@@ -7,6 +7,7 @@ import { PipelinePanel } from "../components/pipeline/PipelinePanel";
 import { Record } from "../components/record/Record";
 import { NumberTween } from "../motion/NumberTween";
 import { Link } from "../router";
+import { readingText } from "../util/format";
 import styles from "./ProjectScreen.module.css";
 
 export function ProjectScreen({ pid }: { pid: string }) {
@@ -61,7 +62,9 @@ function Loaded({ pid, view, stream }: { pid: string; view: ProjectView; stream:
             columns
           </span>
         ) : (
-          <span className={styles.size}>reading…</span>
+          <span className={styles.size} data-testid="dataset-size">
+            {readingText(stages.ingest)}
+          </span>
         )}
         {stream === "reconnecting" ? (
           <span className={styles.stream} role="status">

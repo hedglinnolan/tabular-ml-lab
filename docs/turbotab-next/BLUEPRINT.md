@@ -96,9 +96,10 @@ Node 25 / npm 11.
 - Refusals (the "refuse" rung) are HTTP 409 `{error: {code, message, exits: [...]}}` and are not
   recorded.
 - M0 kinds: `set_lens {lenses: Lens[]}` (non-empty), `set_target {column}`,
-  `set_task {task: regression|binary|multiclass}` (override of detection), `set_purpose
-  {purpose: prediction|inference}`, `revert {decision_id}`. Later milestones add kinds; adding a
-  kind must not require editing a giant if-chain — one handler per kind, registered.
+  `set_task {column, task: regression|binary|multiclass}` (override of detection for that
+  column; the `task` slot holds the latest answer naming the current target, else null),
+  `set_purpose {purpose: prediction|inference}`, `revert {decision_id}`. Later milestones add
+  kinds; adding a kind must not require editing a giant if-chain — one handler per kind, registered.
 
 ## 4 · The stage graph — what makes "live" possible
 
@@ -148,6 +149,7 @@ types are generated from it (`npm run gen:api` ← `python -m turbotab.server.op
 | `GET /api/projects/{pid}` | `ProjectView {summary, state, decisions: DecisionRecord[], stages: {name: StageStatus}}` |
 | `POST /api/projects/{pid}/decisions` `Decision` | `ProjectView` · 409 refusal |
 | `GET /api/projects/{pid}/stages/{stage}` | `StageResult {stage, key, fresh, status, artifact}` |
+| `POST /api/projects/{pid}/stages/{stage}/run` — retry after `error` or a cancel (`cancelled: true`) | `StageStatus` |
 | `GET /api/projects/{pid}/table?offset&limit&columns` | `TableWindow {columns, rows, total_rows}` |
 | `GET /api/projects/{pid}/columns` | `ColumnSummary[]` |
 | `GET /api/projects/{pid}/columns/{name}/histogram?bins=` | `Histogram {edges, counts, n_missing}` |
@@ -156,7 +158,9 @@ types are generated from it (`npm run gen:api` ← `python -m turbotab.server.op
 | `GET /api/fs/list?path=` — local mode only | `{path, parent, entries: [{name, is_dir, size}]}` |
 
 Local mode binds `127.0.0.1` only and rejects requests whose `Host` is not `localhost`/`127.0.0.1`
-(DNS-rebinding guard). No CORS in production; the Vite dev server proxies `/api`.
+(DNS-rebinding guard), and any non-GET request a page on another site sent (`Origin` not
+localhost/127.0.0.1, or `Sec-Fetch-Site: cross-site`): a form upload needs no preflight.
+No CORS in production; the Vite dev server proxies `/api`.
 Launch: `venv/bin/python -m turbotab.server --port 8787 [--open] [--mode local|server]`.
 
 ## 7 · Frontend

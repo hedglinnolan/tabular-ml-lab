@@ -8,7 +8,11 @@ import type { CSSProperties, ReactNode } from "react";
 import { DUR, useMotionPrefs } from "./prefs";
 import styles from "./StaleVeil.module.css";
 
-export type VeilState = "fresh" | "stale" | "recomputing";
+/**
+ * `stopped` and `failed` are stale too, with the reason named: the recompute was
+ * cancelled by the user, or it did not finish. Neither restarts by itself.
+ */
+export type VeilState = "fresh" | "stale" | "recomputing" | "stopped" | "failed";
 
 interface Props {
   state: VeilState;
@@ -18,14 +22,18 @@ interface Props {
   className?: string;
   label?: string;
   testId?: string;
+  /** A way forward shown beside the tag while veiled (outside the inert body). */
+  action?: ReactNode;
 }
 
 const TAG: Record<Exclude<VeilState, "fresh">, string> = {
   stale: "stale — an earlier answer changed",
   recomputing: "recomputing",
+  stopped: "stale — you stopped the recompute",
+  failed: "stale — the recompute did not finish",
 };
 
-export function StaleVeil({ state, order = 0, children, className, label, testId }: Props) {
+export function StaleVeil({ state, order = 0, children, className, label, testId, action }: Props) {
   const { reduced } = useMotionPrefs();
   const veiled = state !== "fresh";
   const delay = veiled && !reduced ? order * DUR.propagateStepMs : 0;
@@ -41,6 +49,7 @@ export function StaleVeil({ state, order = 0, children, className, label, testId
     >
       <div className={styles.tagSlot} aria-live="polite">
         {veiled ? <span className={styles.tag}>{TAG[state]}</span> : null}
+        {veiled && action ? action : null}
       </div>
       <div className={styles.body} inert={veiled}>
         {children}
@@ -51,7 +60,7 @@ export function StaleVeil({ state, order = 0, children, className, label, testId
 
 /** A stage's display state from its status and whether an (older) result is on screen. */
 export function veilFor(
-  status: { status: string; fresh: boolean; key: string | null } | undefined,
+  status: { status: string; fresh: boolean; key: string | null; cancelled?: boolean } | undefined,
   result: { fresh: boolean; key: string | null; artifact: unknown } | undefined,
 ): VeilState {
   if (!result?.artifact) return "fresh"; // nothing on screen to veil
@@ -61,5 +70,7 @@ export function veilFor(
   if (status.status === "fresh" && result.fresh && result.key === status.key) return "fresh";
   if (status.status === "queued" || status.status === "running") return "recomputing";
   if (status.status === "fresh") return "recomputing"; // fresh result is on its way
+  if (status.status === "error") return "failed";
+  if (status.cancelled) return "stopped";
   return "stale";
 }

@@ -11,6 +11,7 @@ from turbotab.server.schemas import (
     ProjectSummary,
     ProjectView,
     StageResult,
+    StageStatus,
 )
 from turbotab.server.uploads import FIELD, receive_upload
 
@@ -98,3 +99,17 @@ def decide(request: Request, pid: str, decision: Decision) -> dict:
 def stage_result(request: Request, pid: str, stage: str) -> dict:
     """A stage's artifact: the current one (``fresh``), else the newest older one, else null."""
     return get_service(request).stage_result(pid, stage)
+
+
+@router.post(
+    "/projects/{pid}/stages/{stage}/run",
+    response_model=StageStatus,
+    responses={404: refusal("No such project or stage")},
+)
+def run_stage(request: Request, pid: str, stage: str) -> StageStatus:
+    """Compute a stage for the current answers again, after it failed or was cancelled.
+
+    Stages it waits on that failed or were cancelled are retried too. A stage
+    that is fresh, in flight or blocked is left as it is. Returns its status.
+    """
+    return get_service(request).run_stage(pid, stage)

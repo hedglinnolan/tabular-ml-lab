@@ -225,7 +225,9 @@ test("open -> lens -> outcome -> purpose, then a changed outcome propagates", as
   const asked = await ask.isVisible();
   if (asked) {
     await page.getByTestId("task-regression").click();
-    await expect(page.getByTestId("decision-task")).toContainText("regression");
+    await expect(page.getByTestId("decision-task")).toContainText(
+      "hba1c was modeled as a regression task.",
+    );
   } else {
     await expect(skip).toContainText("Not asked");
     await expect(skip).toContainText("regression");
@@ -292,6 +294,16 @@ test("open -> lens -> outcome -> purpose, then a changed outcome propagates", as
     await expect(page.getByTestId(id)).toHaveAttribute("data-veil", "fresh", { timeout: 60_000 });
   }
   await expect(page.getByTestId("decision-target")).toContainText("bmi was chosen as the outcome.");
+  // A task answer belongs to the outcome it was given for: bmi's task is detected or asked
+  // anew, and an answer given for hba1c stays in the history, marked for another outcome.
+  const taskSlot = page.locator('[data-slot="task"]');
+  await expect(taskSlot.locator("[data-block]").first()).toContainText("bmi", { timeout: 30_000 });
+  if (asked) {
+    await expect(taskSlot.getByLabel("Earlier answers")).toContainText(
+      "hba1c was modeled as a regression task.",
+    );
+    await expect(taskSlot.getByLabel("Earlier answers")).toContainText("another outcome");
+  }
   await expect(page.getByTestId("columns-target")).toContainText("bmi");
   await expect(page.locator("[data-target]")).toHaveText("bmi");
   // The earlier answer stays in the record, marked superseded.

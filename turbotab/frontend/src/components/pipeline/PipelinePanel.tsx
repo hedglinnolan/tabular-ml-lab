@@ -15,8 +15,9 @@ import type {
 import { DTYPES } from "../../api/schema";
 import { NumberTween } from "../../motion/NumberTween";
 import { StaleVeil, veilFor, type VeilState } from "../../motion/StaleVeil";
-import { cx, fmtInt } from "../../util/format";
+import { cx, fmtInt, readingText } from "../../util/format";
 import { V } from "../Prose";
+import { StageRetry, needsRetry } from "../StageRetry";
 import { MiniHistogram } from "./MiniHistogram";
 import { TablePreview } from "./TablePreview";
 import styles from "./PipelinePanel.module.css";
@@ -59,11 +60,23 @@ function ingestVeil(view: ProjectView, ingest?: StageResult<DatasetInfo>): VeilS
   return veilFor(view.stages.ingest, ingest);
 }
 
-function Rows({ view, ingest }: { view: ProjectView; ingest?: StageResult<DatasetInfo> }) {
+function Rows({
+  pid,
+  view,
+  ingest,
+}: {
+  pid: string;
+  view: ProjectView;
+  ingest?: StageResult<DatasetInfo>;
+}) {
   const n = ingest?.artifact?.n_rows ?? view.summary.n_rows;
   return (
     <Section title="Rows" testId="rows">
-      <StaleVeil state={ingestVeil(view, ingest)} order={2}>
+      <StaleVeil
+        state={ingestVeil(view, ingest)}
+        order={2}
+        action={<StageRetry pid={pid} status={view.stages.ingest} />}
+      >
         <ol className={styles.flow} aria-label="Participant flow">
           <li className={styles.node} data-testid="rows-node-loaded">
             <span className={styles.dot} aria-hidden="true" />
@@ -73,9 +86,7 @@ function Rows({ view, ingest }: { view: ProjectView; ingest?: StageResult<Datase
             </div>
             <span className={styles.nodeCount}>
               {n === null || n === undefined ? (
-                <span className={styles.muted}>
-                  {view.stages.ingest?.status === "error" ? "could not be read" : "reading…"}
-                </span>
+                <span className={styles.muted}>{readingText(view.stages.ingest)}</span>
               ) : (
                 <>
                   <NumberTween value={n} data-testid="rows-n" />{" "}
@@ -99,7 +110,9 @@ function Columns({ pid, view, ingest, targetInfo }: Props) {
   const target = view.state.target;
   const ti = targetInfo?.artifact;
   const tiVeil = target ? veilFor(view.stages.target_info, targetInfo) : "fresh";
-  const veil: VeilState = ingestVeil(view, ingest) !== "fresh" ? ingestVeil(view, ingest) : tiVeil;
+  const byIngest = ingestVeil(view, ingest) !== "fresh";
+  const veil: VeilState = byIngest ? ingestVeil(view, ingest) : tiVeil;
+  const veilCause = byIngest ? view.stages.ingest : view.stages.target_info;
   const cols = info?.columns.filter((c) => c.name !== "__row_id") ?? [];
   const groups = DTYPES.map((d) => ({ dtype: d, cols: cols.filter((c) => c.dtype === d) })).filter(
     (g) => g.cols.length > 0,
@@ -118,9 +131,18 @@ function Columns({ pid, view, ingest, targetInfo }: Props) {
       }
     >
       {!info ? (
-        <p className={styles.note}>Columns appear once the file has been read.</p>
+        <p className={styles.note}>
+          {needsRetry(view.stages.ingest)
+            ? "There are no columns until the file is read."
+            : "Columns appear once the file has been read."}
+        </p>
       ) : (
-        <StaleVeil state={veil} order={3} testId="veil-columns">
+        <StaleVeil
+          state={veil}
+          order={3}
+          testId="veil-columns"
+          action={<StageRetry pid={pid} status={veilCause} />}
+        >
           {target ? (
             <div className={styles.target} data-testid="columns-target">
               <div className={styles.targetText}>
@@ -229,7 +251,7 @@ export function PipelinePanel(props: Props) {
         <span className={styles.panelTitle}>Pipeline</span>
         <span className={styles.panelSub}>what is true of the working data now</span>
       </div>
-      <Rows view={props.view} ingest={props.ingest} />
+      <Rows pid={props.pid} view={props.view} ingest={props.ingest} />
       <Columns {...props} />
       <Results view={props.view} />
     </div>

@@ -53,12 +53,14 @@ class DecisionContext:
     """What ``decisions.validate`` is told about a project.
 
     ``columns`` is None until the ingest stage is fresh: before that the
-    dataset's columns are not known.
+    dataset's columns are not known. ``target`` is the current target (None:
+    none chosen), which a task answer must name.
     """
 
     columns: list[str] | None
     ingest_status: str
     ingest_error: str | None = None
+    target: str | None = None
 
 
 def _target_needs_columns(decision: Any, ctx: Any) -> None:
@@ -260,12 +262,19 @@ class ProjectService:
         return facts
 
     def summary(self, meta: ProjectMeta, ingest: StageStatus | None = None) -> dict[str, Any]:
-        """ProjectSummary. The size comes from the ingest artifact once it exists."""
+        """ProjectSummary. The size comes from the ingest artifact once it exists.
+
+        Without ``ingest`` (the project list) nothing wakes the engine: the size
+        is read from disk, and the ingest status is the engine's only if it
+        already holds the project.
+        """
         facts: IngestFacts | None = None
         if ingest is not None:
             if ingest.status == "fresh" and ingest.key:
                 facts = self._ingest_facts(meta.id, ingest.key)
-        else:  # the project list: read what is on disk, without waking the engine
+        else:
+            held = self.engine.peek(meta.id)
+            ingest = held.get("ingest") if held else None
             with self._lock:
                 facts = self._facts.get(meta.id)
             if facts is None:
@@ -283,6 +292,7 @@ class ProjectService:
             "source_name": meta.source_name,
             "n_rows": facts.n_rows if facts else None,
             "n_cols": facts.n_cols if facts else None,
+            "ingest": ingest,
         }
 
     def list(self) -> list[dict[str, Any]]:
@@ -307,7 +317,12 @@ class ProjectService:
         columns = None
         if ingest.status == "fresh" and ingest.key:
             columns = self._ingest_facts(pid, ingest.key).columns
-        ctx = DecisionContext(columns=columns, ingest_status=ingest.status, ingest_error=ingest.error)
+        ctx = DecisionContext(
+            columns=columns,
+            ingest_status=ingest.status,
+            ingest_error=ingest.error,
+            target=self.log(pid).state().target,
+        )
         parsed = decisions.validate(decision, ctx)  # raises Refusal
         record = self.log(pid).append(parsed)  # raises Refusal for a revert it cannot make
         self.bus.publish(pid, "decision", record.model_dump(mode="json"))
@@ -331,6 +346,14 @@ class ProjectService:
             "status": result.status,
             "artifact": artifact,
         }
+
+    def run_stage(self, pid: str, stage: str) -> StageStatus:
+        """Compute ``stage`` for the current answers, retrying a failure or a cancel upstream too."""
+        self.workspace.get(pid)
+        if stage not in self.engine.graph:
+            raise ApiError(404, "unknown_stage", f"There is no stage named {stage!r}.")
+        self.engine.ensure(pid, stage)
+        return self.engine.status(pid)[stage]
 
     def job(self, pid: str, job_id: str) -> JobView:
         self.workspace.get(pid)

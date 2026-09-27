@@ -148,6 +148,7 @@ export class MockServer {
       job_id: null,
       progress: null,
       updated_at: null,
+      cancelled: false,
     });
     const p: MockProject = {
       summary: {
@@ -158,6 +159,7 @@ export class MockServer {
         source_name: source.name,
         n_rows: null,
         n_cols: null,
+        ingest: null,
       },
       source,
       fingerprint: hash(`${source.name}:${source.nRows}:${source.columns.length}`),
@@ -255,11 +257,16 @@ export class MockServer {
           return refuse("no_target", "Choose the outcome first; the task describes it.");
         const col = findColumn(p.source, state.target)!;
         const unique = nUnique(col);
+        if (d.column !== state.target)
+          return refuse(
+            "not_the_target",
+            `The outcome is '${state.target}', not '${d.column}'; a task answers for the outcome.`,
+          );
         const detected = targetInfo(p.source, state.target, null).detected_task;
         const exits = [
           {
             label: `Model it as ${detected}`,
-            decision: { kind: "set_task" as const, task: detected },
+            decision: { kind: "set_task" as const, column: state.target, task: detected },
           },
           { label: "Keep the current answer", decision: null },
         ];
@@ -330,7 +337,14 @@ export class MockServer {
         (j) => j.view.stage === def.name && j.key === key && isActive(j.view),
       );
       let next: Omit<StageStatus, "stage" | "updated_at">;
-      const base = { key, missing: [] as string[], error: null, job_id: null, progress: null };
+      const base = {
+        key,
+        missing: [] as string[],
+        error: null,
+        job_id: null,
+        progress: null,
+        cancelled: false,
+      };
       if (missing.length) {
         next = { ...base, status: "blocked", fresh: false, missing };
       } else if (p.artifacts.has(ak)) {
@@ -346,9 +360,15 @@ export class MockServer {
       } else if (p.errors.has(ak)) {
         next = { ...base, status: "error", fresh: false, error: p.errors.get(ak)! };
       } else if (p.cancelled.has(ak)) {
-        next = { ...base, status: hasOld ? "stale" : "idle", fresh: false };
+        next = { ...base, status: hasOld ? "stale" : "idle", fresh: false, cancelled: true };
       } else if (!def.deps.every((d) => p.stages[d].status === "fresh")) {
-        next = { ...base, status: hasOld ? "stale" : "queued", fresh: false };
+        const stopped = def.deps.some((d) => p.stages[d].cancelled);
+        next = {
+          ...base,
+          status: hasOld ? "stale" : stopped ? "idle" : "queued",
+          fresh: false,
+          cancelled: stopped,
+        };
       } else if (hasOld && !p.staleReady.has(ak)) {
         // Announce staleness first, so the panel can veil before the recompute starts.
         if (!p.staleSeen.has(ak)) {
@@ -369,9 +389,11 @@ export class MockServer {
         prev.key !== next.key ||
         prev.job_id !== next.job_id ||
         prev.error !== next.error ||
+        prev.cancelled !== next.cancelled ||
         prev.missing.join() !== next.missing.join();
       if (changed) {
         p.stages[def.name] = { stage: def.name, ...next, updated_at: now() };
+        if (def.name === "ingest") p.summary = { ...p.summary, ingest: p.stages.ingest };
         this.emit(p.summary.id, "stage", p.stages[def.name]);
       }
     }
@@ -447,6 +469,22 @@ export class MockServer {
       this.reconcile(p);
     }
     return job.view;
+  }
+
+  /** Compute a stage again after a failure or a cancel, and whatever it waits on. */
+  runStage(pid: string, stage: StageName): StageStatus | null {
+    const p = this.projects.get(pid);
+    if (!p) return null;
+    const todo: StageName[] = [stage];
+    while (todo.length) {
+      const name = todo.pop()!;
+      const ak = `${name}@${p.stages[name].key}`;
+      p.errors.delete(ak);
+      p.cancelled.delete(ak);
+      todo.push(...STAGE_DEFS.find((d) => d.name === name)!.deps);
+    }
+    this.reconcile(p);
+    return p.stages[stage];
   }
 
   job(pid: string, jid: string): JobView | null {
@@ -567,10 +605,15 @@ function valueOf(d: Decision): ProjectState[Slot] {
   }
 }
 
-/** State is a fold of the log: each decision writes one slot; a revert restores its prior value. */
+/**
+ * State is a fold of the log: each decision writes one slot; a revert restores its prior
+ * value. A task answer names its column, so the task slot holds the answers by column and
+ * reads the one for the current target (as the server's fold does).
+ */
 export function fold(records: DecisionRecord[]): ProjectState {
-  const state: ProjectState = { lens: null, target: null, task: null, purpose: null };
-  const before = new Map<string, { slot: Slot; prior: ProjectState[Slot] }>();
+  type Slots = Omit<ProjectState, "task"> & { task: ReadonlyMap<string, Task> };
+  const state: Slots = { lens: null, target: null, task: new Map(), purpose: null };
+  const before = new Map<string, { slot: Slot; prior: Slots[Slot] }>();
   for (const r of [...records].sort((a, b) => a.seq - b.seq)) {
     const d = r.decision;
     if (d.kind === "revert") {
@@ -582,7 +625,9 @@ export function fold(records: DecisionRecord[]): ProjectState {
     }
     const slot = slotOf(d)!;
     before.set(r.id, { slot, prior: state[slot] });
-    (state as Record<Slot, unknown>)[slot] = valueOf(d);
+    (state as Record<Slot, unknown>)[slot] =
+      d.kind === "set_task" ? new Map(state.task).set(d.column, d.task as Task) : valueOf(d);
   }
-  return state;
+  const task = state.target === null ? null : (state.task.get(state.target) ?? null);
+  return { ...state, task };
 }

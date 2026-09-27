@@ -84,7 +84,7 @@ export function sentence(record: DecisionRecord, records: DecisionRecord[]): Rea
     case "set_task":
       return (
         <>
-          The outcome was modeled as a <V>{d.task}</V> task.
+          <V>{d.column}</V> was modeled as a <V>{d.task}</V> task.
         </>
       );
     case "set_purpose":

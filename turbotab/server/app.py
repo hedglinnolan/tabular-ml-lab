@@ -10,6 +10,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
@@ -43,11 +44,18 @@ code{font:14px ui-monospace,monospace;background:#f2f2f4;padding:.1rem .3rem;bor
 
 
 class LocalHostGuard:
-    """Refuse any request whose ``Host`` is not localhost / 127.0.0.1.
+    """Refuse what a web page elsewhere could make a TurboTab on this machine do.
 
-    In local mode the server binds 127.0.0.1, but a web page elsewhere can still
-    point a hostname it controls at 127.0.0.1 (DNS rebinding) and read the
-    answers. Its requests carry that hostname, so they stop here.
+    * Any request whose ``Host`` is not localhost / 127.0.0.1. The server binds
+      127.0.0.1, but a page can point a hostname it controls at 127.0.0.1 (DNS
+      rebinding) and read the answers; its requests carry that hostname.
+    * Any request that changes something (every method but GET, HEAD and
+      OPTIONS) sent by a page on another site. A form post or a multipart upload
+      is a CORS "simple" request, sent without asking and with Host 127.0.0.1,
+      so the Host check lets it through. The browser names where it came from:
+      ``Origin`` must be localhost / 127.0.0.1 (any port, so the Vite dev server
+      works), and ``Sec-Fetch-Site`` must not be ``cross-site``. Clients that
+      send neither (curl, scripts) are this machine's own programs.
     """
 
     def __init__(self, app: ASGIApp):
@@ -58,24 +66,57 @@ class LocalHostGuard:
             if scope["type"] == "websocket":
                 await send({"type": "websocket.close", "code": 1008})
                 return
-            body = ApiError(
-                403,
-                "host_not_allowed",
-                "This TurboTab answers only at localhost or 127.0.0.1.",
-            ).body()
-            await JSONResponse(body, status_code=403)(scope, receive, send)
+            message = "This TurboTab answers only at localhost or 127.0.0.1."
+            await refuse(scope, receive, send, "host_not_allowed", message)
+            return
+        if scope["type"] == "http" and scope["method"] not in SAFE_METHODS and cross_site(scope):
+            await refuse(
+                scope,
+                receive,
+                send,
+                "cross_site",
+                "This request came from a page on another website. TurboTab takes changes "
+                "only from its own pages; open it at localhost or 127.0.0.1 and do it there.",
+            )
             return
         await self.app(scope, receive, send)
 
 
-def request_host(scope: Scope) -> str:
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+async def refuse(scope: Scope, receive: Receive, send: Send, code: str, message: str) -> None:
+    body = ApiError(403, code, message).body()
+    await JSONResponse(body, status_code=403)(scope, receive, send)
+
+
+def header(scope: Scope, wanted: bytes) -> str | None:
     for name, value in scope.get("headers") or ():
-        if name == b"host":
-            host = value.decode("latin-1").strip().lower()
-            if host.startswith("["):  # [::1]:8787
-                return host[: host.find("]") + 1]
-            return host.rsplit(":", 1)[0] if ":" in host else host
-    return ""
+        if name == wanted:
+            return value.decode("latin-1").strip()
+    return None
+
+
+def request_host(scope: Scope) -> str:
+    host = (header(scope, b"host") or "").lower()
+    if host.startswith("["):  # [::1]:8787
+        return host[: host.find("]") + 1]
+    return host.rsplit(":", 1)[0] if ":" in host else host
+
+
+def cross_site(scope: Scope) -> bool:
+    """True when the browser says the request came from a page on another site."""
+    if (header(scope, b"sec-fetch-site") or "").lower() == "cross-site":
+        return True
+    origin = header(scope, b"origin")
+    if origin is None:
+        return False
+    try:
+        parts = urlsplit(origin)
+        hostname = parts.hostname
+    except ValueError:
+        return True
+    return parts.scheme not in ("http", "https") or hostname not in LOCAL_HOSTS  # "null" too
 
 
 def install_frontend(app: FastAPI, dist: Path) -> None:

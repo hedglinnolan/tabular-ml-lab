@@ -181,6 +181,21 @@ export function useDecide(pid: string) {
   });
 }
 
+/** Try a failed stage again, or recompute one whose work was cancelled. */
+export function useRunStage(pid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (stage: StageName) => api.runStage(pid, stage),
+    onSuccess: (status: StageStatus) => {
+      qc.setQueryData<ProjectView>(keys.view(pid), (prev) =>
+        prev && stamp(status) >= stamp(prev.stages[status.stage])
+          ? { ...prev, stages: { ...prev.stages, [status.stage]: status } }
+          : prev,
+      );
+    },
+  });
+}
+
 export function useCancelJob(pid: string) {
   const qc = useQueryClient();
   return useMutation({

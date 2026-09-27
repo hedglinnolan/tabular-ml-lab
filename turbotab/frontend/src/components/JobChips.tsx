@@ -54,7 +54,7 @@ export function JobChips({ pid, stages }: { pid: string; stages: Record<string, 
               className={styles.cancel}
               onClick={() => cancel.mutate(s.job_id!)}
               aria-label={`Cancel: ${label}`}
-              title="Stops this computation. Results already on screen stay, marked stale."
+              title="Stops this computation. Results already on screen stay, marked stale, with a way to recompute them."
             >
               Cancel
             </button>

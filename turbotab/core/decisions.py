@@ -9,8 +9,9 @@ Adding a decision kind is two steps in one place, never an if-chain:
 1. define its model (a ``kind`` literal plus its payload) and add it to the
    :data:`Decision` union below, so the API and the log can parse it;
 2. call :func:`register_kind` with the slot it writes (and, when the payload has
-   more than one field, a ``value=`` function), plus :func:`register_validator`
-   for any refusal that needs project context.
+   more than one field, a ``value=`` function; when the answer is about another
+   slot's value, a ``holds=`` condition), plus :func:`register_validator` for
+   any refusal that needs project context.
 
 Revert semantics (Tier A, pinned by ``tests/test_decisions.py``): a reverted
 record is folded as though it had never been made, so ``revert(X)`` restores
@@ -18,6 +19,11 @@ X's slot to the value it had before X (when X was that slot's latest write);
 reverting a revert reinstates what it reverted. A revert may target only an
 earlier record that writes a slot, or an earlier revert; anything else is
 refused with ``unknown_decision`` and nothing is recorded.
+
+Conditional writes (Tier A, same file): a ``set_task`` answers for the column
+it names, so the ``task`` slot holds the latest ``set_task`` for the *current*
+target and is unset while no answer names it. Choosing another target never
+carries one column's task over to the next.
 """
 from __future__ import annotations
 
@@ -85,9 +91,13 @@ class SetTarget(_DecisionModel):
 
 
 class SetTask(_DecisionModel):
-    """An override of task detection."""
+    """An override of task detection, for the outcome column it names.
+
+    It stands only while ``column`` is the target (see :func:`fold`).
+    """
 
     kind: Literal["set_task"] = "set_task"
+    column: str = Field(min_length=1)
     task: Task
 
 
@@ -172,6 +182,7 @@ SLOTS: dict[str, str] = {}
 """kind -> the ProjectState slot it writes. ``revert`` writes no slot."""
 
 _SLOT_VALUE: dict[str, Callable[[Any], Any]] = {}
+_HOLDS: dict[str, Callable[[Any, Mapping[str, Any]], bool]] = {}
 _VALIDATORS: dict[str, list[Callable[[Any, Any], None]]] = {}
 
 
@@ -183,13 +194,19 @@ def kind_of(model_cls: type[BaseModel]) -> str:
 
 
 def register_kind(
-    model_cls: type[BaseModel], slot: str, *, value: Callable[[Any], Any] | None = None
+    model_cls: type[BaseModel],
+    slot: str,
+    *,
+    value: Callable[[Any], Any] | None = None,
+    holds: Callable[[Any, Mapping[str, Any]], bool] | None = None,
 ) -> type[BaseModel]:
     """Declare that decisions of ``model_cls`` write ``slot``.
 
     ``value(decision)`` gives the slot's new value; by default it is the model's
-    single payload field. Returns the class, so it also works as a decorator
-    via ``functools.partial``.
+    single payload field. ``holds(decision, slots)``, when given, makes the write
+    conditional: it stands only while it is true of the slots that
+    unconditional kinds wrote, and the slot holds its latest write that stands.
+    Returns the class, so it also works as a decorator via ``functools.partial``.
     """
     kind = kind_of(model_cls)
     if kind == "revert":
@@ -207,6 +224,10 @@ def register_kind(
 
     SLOTS[kind] = slot
     _SLOT_VALUE[kind] = value
+    if holds is not None:
+        _HOLDS[kind] = holds
+    else:
+        _HOLDS.pop(kind, None)
     return model_cls
 
 
@@ -219,7 +240,7 @@ def validate(decision: Any, ctx: Any = None) -> Any:
     """Parse ``decision`` and run its kind's validators; returns the parsed decision.
 
     ``ctx`` is whatever the caller knows about the project (for M0: an object or
-    mapping with ``columns``). Revert targets are checked by
+    mapping with ``columns`` and ``target``); what it does not name is not checked. Revert targets are checked by
     :meth:`DecisionLog.append`, which holds the log.
     """
     decision = parse_decision(decision)
@@ -261,11 +282,47 @@ def _target_is_a_column(decision: SetTarget, ctx: Any) -> None:
         )
 
 
+_UNKNOWN = object()
+
+
+def _target_of(ctx: Any) -> Any:
+    """The current target as ``ctx`` knows it (None: unset), or ``_UNKNOWN``."""
+    if ctx is None:
+        return _UNKNOWN
+    if isinstance(ctx, Mapping):
+        return ctx.get("target", _UNKNOWN)
+    return getattr(ctx, "target", _UNKNOWN)
+
+
+def _task_is_for_the_target(decision: SetTask, ctx: Any) -> None:
+    target = _target_of(ctx)
+    if target is _UNKNOWN:
+        return
+    if target is None:
+        raise Refusal(
+            "no_target",
+            "Choose the outcome first; the task describes it.",
+            exits=[{"label": "Choose the outcome", "decision": None}],
+        )
+    if decision.column != target:
+        raise Refusal(
+            "not_the_target",
+            f"The outcome is {target!r}, not {decision.column!r}; a task answers for the outcome.",
+            exits=[{"label": f"Answer the task question for {target}", "decision": None}],
+        )
+
+
 register_kind(SetLens, "lens")
 register_kind(SetTarget, "target")
-register_kind(SetTask, "task")
+register_kind(
+    SetTask,
+    "task",
+    value=lambda decision: decision.task,
+    holds=lambda decision, slots: slots.get("target") == decision.column,
+)
 register_kind(SetPurpose, "purpose")
 register_validator("set_target", _target_is_a_column)
+register_validator("set_task", _task_is_for_the_target)
 
 
 # ── the fold ─────────────────────────────────────────────────────────────────
@@ -304,17 +361,24 @@ def reverted(records: Sequence[DecisionRecord]) -> dict[str, str]:
 
 
 def fold(records: Sequence[DecisionRecord]) -> ProjectState:
-    """The project state: each slot holds its latest write that is not reverted."""
+    """The project state: each slot holds its latest write that is not reverted.
+
+    A conditional write (``register_kind(..., holds=)``) counts only while its
+    condition holds on the unconditional slots: the ``task`` slot is the latest
+    ``set_task`` naming the current target, or unset.
+    """
     ordered = sorted(records, key=lambda r: r.seq)
     cancelled = reverted(ordered)
+    live = [r.decision for r in ordered if r.id not in cancelled and r.decision.kind in SLOTS]
     slots: dict[str, Any] = {}
-    for record in ordered:
-        if record.id in cancelled:
-            continue
-        kind = record.decision.kind
-        slot = SLOTS.get(kind)
-        if slot is not None:
-            slots[slot] = _SLOT_VALUE[kind](record.decision)
+    for decision in live:
+        if decision.kind not in _HOLDS:
+            slots[SLOTS[decision.kind]] = _SLOT_VALUE[decision.kind](decision)
+    base = dict(slots)
+    for decision in live:
+        holds = _HOLDS.get(decision.kind)
+        if holds is not None and holds(decision, base):
+            slots[SLOTS[decision.kind]] = _SLOT_VALUE[decision.kind](decision)
     return ProjectState(**slots)
 
 

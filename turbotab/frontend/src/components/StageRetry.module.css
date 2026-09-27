@@ -1,0 +1,21 @@
+/* The user acts sans; the primary action wears the accent (§02 "now"). */
+.retry {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.5;
+  color: var(--accent-ink);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 0 9px;
+  white-space: nowrap;
+}
+
+.retry:hover:not(:disabled) {
+  background: var(--accent-tint);
+}
+
+.retry:disabled {
+  opacity: 0.5;
+}

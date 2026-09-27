@@ -68,3 +68,30 @@
   padding: 0 8px;
   font-variant-numeric: tabular-nums;
 }
+
+/* The reader's own words about why the file could not be read: data voice. */
+.reason {
+  font-family: var(--mono);
+  font-size: var(--fs-data);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  max-height: 12em;
+  overflow: auto;
+}
+
+.hintsMissing {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.linkButton {
+  display: inline-block;
+  text-decoration: none;
+}

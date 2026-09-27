@@ -61,6 +61,9 @@ class ProjectSummary(Model):
     source_name: str
     n_rows: int | None = None
     n_cols: int | None = None
+    # Whether the file is being read, was read, failed or was stopped. Null in the
+    # project list for a project not opened since the server started.
+    ingest: StageStatus | None = None
 
 
 class CreateProject(BaseModel):
