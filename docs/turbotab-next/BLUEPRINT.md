@@ -3,6 +3,26 @@
 The contract every agent builds against. Short on purpose: if a rule matters, it lives here or in a
 test, not in a new essay. Branch: `turbotab-next`. Owner: Nolan. Orchestrator: Claude.
 
+## North star — "This app is supposed to be beautiful and useful" (Nolan, 2026-09-27)
+
+Every milestone serves three ambitions at once; a feature that serves one while failing another is
+not done.
+
+1. **The full breadth of modeling nutrition research needs** — prediction and inference;
+   regression, binary, multiclass, ordinal, time-to-event; repeated measures; p ≫ n omics;
+   compositional and substitution models; survey-weighted estimation. A model family is a plug-in
+   that declares what it needs, what it assumes (its inductive bias), and when it is a poor fit, so
+   the shelf can grow wide without the app getting harder to use.
+2. **Every choice is domain-informed and teaches while it asks.** Each question carries the one
+   sentence needed to answer it; a *why?* that opens in place; and **the consequence shown on the
+   user's own data in the pipeline panel**. The pipeline panel is the main teaching surface: *what
+   did my choice just do to my rows, my columns, my model?* Deeper concept pages open in a drawer and
+   are never required. The packs (`docs/turbotab/research/`) are the source of what is taught, with
+   their evidence badges.
+3. **The design communicates.** Motion shows cause and effect, type separates the app's voice from
+   the user's actions and the data, every color is a claim. A milestone that works but reads badly is
+   not done: the orchestrator reviews the screenshots and the `/lab` motion before Nolan drives it.
+
 ## 0 · Rulings (2026-09-27) — do not re-litigate
 
 - **Keep the Python engine and domain packs; replace the frontend.** React + TypeScript + Vite.
