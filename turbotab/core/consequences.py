@@ -131,6 +131,14 @@ class TableFocusView(_View):
     n_affected_columns: int
 
 
+class Mark(_Model):
+    """A value drawn on a distribution's axis, e.g. an exclusion cut-off."""
+
+    value: float
+    label: str
+    group: str | None = None  # the level a by-level cut applies to (e.g. "female"); None = all rows
+
+
 class DistributionView(_View):
     kind: Literal["distribution"] = "distribution"
     column: str
@@ -138,6 +146,7 @@ class DistributionView(_View):
     after: HistogramData
     before_label: str
     after_label: str
+    marks: list[Mark] = Field(default_factory=list)  # cut values, marked on the axis
 
 
 class RelationshipView(_View):
@@ -276,7 +285,7 @@ def words(text: str) -> int:
 
 __all__ = [
     "CAPTION_WORDS", "MAX_VIEWS", "TITLE_WORDS", "ConsequenceView", "DistributionView",
-    "HistogramData", "Lineage", "LineageLink", "LineageNode", "LineageView", "PreviewContext",
+    "HistogramData", "Lineage", "LineageLink", "LineageNode", "LineageView", "Mark", "PreviewContext",
     "PreviewResult", "RelationshipView", "RowFlowView", "RowStep", "TableFocusView", "TableRow",
     "diff_views", "plan", "register_consequence", "register_transform", "words",
 ]
