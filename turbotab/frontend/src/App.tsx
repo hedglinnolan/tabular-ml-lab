@@ -10,6 +10,7 @@ import { ThemeProvider } from "./theme";
 
 // The motion lab is a review surface, not part of the analysis: load it on demand.
 const LabScreen = lazy(() => import("./screens/LabScreen").then((m) => ({ default: m.LabScreen })));
+const ScrubScreen = lazy(() => import("./explore/scrub/ScrubScreen"));
 
 function Routes() {
   const route = useRoute();
@@ -22,6 +23,12 @@ function Routes() {
       return (
         <Suspense fallback={<Header />}>
           <LabScreen />
+        </Suspense>
+      );
+    case "explore-scrub":
+      return (
+        <Suspense fallback={<Header />}>
+          <ScrubScreen />
         </Suspense>
       );
     case "missing":

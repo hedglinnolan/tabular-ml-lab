@@ -1,0 +1,42 @@
+.title {
+  font-family: var(--sans);
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.scenarios {
+  display: flex;
+  gap: 2px;
+  margin-left: 6px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+
+.scenario {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 3px 10px;
+  border-radius: 7px;
+  white-space: nowrap;
+}
+
+.scenario:hover {
+  color: var(--ink);
+}
+
+.scenario[aria-current="page"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.main {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 22px 28px 48px;
+}

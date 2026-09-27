@@ -1,0 +1,247 @@
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 16px 16px 14px;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 4px 10px;
+}
+
+.kicker {
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--warn);
+}
+
+.total {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  outline: none;
+  border-radius: 10px;
+}
+
+.list:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* A finding: the coach's voice (amber keyline for a warning), a one-line claim, its lever. */
+.card {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: 9px;
+  padding: 10px 12px 9px;
+  cursor: pointer;
+  background: var(--surface);
+}
+
+.card[data-severity="warning"] {
+  border-left-color: var(--warn);
+}
+
+.card:hover {
+  background: var(--surface-2);
+}
+
+.on,
+.on:hover {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+}
+
+.card[data-severity="warning"].on {
+  border-left-color: var(--warn);
+}
+
+.claim {
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.45;
+  margin: 0 0 7px;
+  color: var(--ink);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lever {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 7px;
+  padding: 3px 10px;
+}
+
+.lever:hover {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.noLever {
+  font-size: 12px;
+  color: var(--faint);
+  font-style: italic;
+}
+
+.badge {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  border-radius: 9px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.more {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  text-align: left;
+  border: 1px dashed var(--line);
+  background: transparent;
+  border-radius: 9px;
+  padding: 8px 12px;
+  margin-top: 2px;
+}
+
+.more:hover {
+  border-color: var(--muted);
+}
+
+.moreCount {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.moreKinds {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.moreToggle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-ink);
+}
+
+.groupHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+.pageButton {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 5px;
+  width: 20px;
+  height: 20px;
+  line-height: 16px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.receipt {
+  margin: 10px 4px 0;
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.energy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 200px;
+  gap: 18px;
+  align-items: start;
+}
+
+.rList {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 10px;
+}
+
+.rHead {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.rRow {
+  display: grid;
+  grid-template-columns: 70px 1fr 34px;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.rName {
+  color: var(--ink);
+}
+
+.rBar {
+  height: 6px;
+  background: var(--surface-2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.rBar span {
+  display: block;
+  height: 100%;
+  background: var(--c4);
+}
+
+.rVal {
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.levels {
+  padding: 24px 0 8px 40px;
+  min-height: 300px;
+}

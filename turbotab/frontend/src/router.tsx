@@ -8,6 +8,7 @@ export type Route =
   | { name: "start" }
   | { name: "project"; pid: string }
   | { name: "lab" }
+  | { name: "explore-scrub" }
   | { name: "missing"; path: string };
 
 const EVENT = "turbotab:navigate";
@@ -26,6 +27,7 @@ const getPath = () => window.location.pathname;
 export function parseRoute(path: string): Route {
   if (path === "/" || path === "") return { name: "start" };
   if (path === "/lab" || path === "/lab/") return { name: "lab" };
+  if (path === "/lab/explore/scrub" || path === "/lab/explore/scrub/") return { name: "explore-scrub" };
   const m = /^\/p\/([^/]+)\/?$/.exec(path);
   if (m) return { name: "project", pid: decodeURIComponent(m[1]!) };
   return { name: "missing", path };

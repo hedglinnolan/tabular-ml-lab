@@ -1,0 +1,594 @@
+/* The scrubbed views. Positions are written per frame by the morph engine (transform/opacity);
+   nothing here transitions in CSS, so reduced motion and a paused clock both hold. */
+
+/* ── relationship ───────────────────────────────────────────── */
+.scatter {
+  position: relative;
+  width: 100%;
+}
+
+.canvas,
+.overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.tick {
+  stroke: var(--line);
+}
+
+.gridLine {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+}
+
+.tickText {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  fill: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.axisName {
+  font-family: var(--mono);
+  font-size: 11px;
+  fill: var(--muted);
+}
+
+.fit {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  opacity: 0.55;
+}
+
+.yLabels {
+  position: absolute;
+  left: 50px;
+  top: -4px;
+  display: grid;
+}
+
+.yLabel {
+  grid-area: 1 / 1;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface);
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+/* Sidenotes ride with the thing they describe: the line's right end. */
+.notes {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.note {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 14px;
+  white-space: nowrap;
+}
+
+.note::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 11px;
+  width: 9px;
+  border-top: 1px solid var(--muted);
+}
+
+.noteR {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 22px;
+}
+
+.noteText {
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+/* ── the working table ──────────────────────────────────────── */
+.table {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Borrow the section's gutter so a side note can hang left of the first column. */
+  margin-left: -18px;
+  padding-left: 18px;
+}
+
+.headnotes {
+  position: relative;
+  height: 24px;
+  /* Notes roll vertically inside their row; a side note may still hang left of the table. */
+  clip-path: inset(0 -20px 0 -40px);
+}
+
+.headnote {
+  position: absolute;
+  left: 0;
+  bottom: 4px;
+  height: 18px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--c2);
+}
+
+.headnote::before,
+.headnote::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  height: 5px;
+  border-left: 1px solid var(--c2);
+}
+
+.headnote::before {
+  left: 0;
+}
+
+.headnote::after {
+  right: 0;
+}
+
+.headnoteText {
+  font-family: var(--serif);
+  font-size: 12.5px;
+  line-height: 16px;
+  color: var(--c2);
+  background: var(--surface);
+  padding: 0 6px;
+  white-space: nowrap;
+  font-style: italic;
+}
+
+.headnote[data-tone="formula"] .headnoteText {
+  font-style: normal;
+}
+
+/* A note on one column (e.g. "leaves the model") hangs left from the column's right edge. */
+.headnote[data-tone="side"] {
+  justify-content: flex-end;
+  border-bottom: 0;
+}
+
+.headnote[data-tone="side"]::before {
+  display: none;
+}
+
+.headnote[data-tone="side"]::after {
+  height: 8px;
+  bottom: -4px;
+}
+
+.headnote[data-tone="side"] .headnoteText {
+  padding-right: 5px;
+}
+
+.formula {
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+.headnoteText :global(.v) {
+  font-style: normal;
+}
+
+.grid {
+  position: relative;
+}
+
+.gutter {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.rowHead {
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.rowId {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--faint);
+  border-top: 1px solid var(--line-soft);
+}
+
+.rowId[data-hot],
+.cell[data-hot] {
+  background: var(--surface-2);
+}
+
+.col {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.hdrCell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 1ch;
+  border-bottom: 1px solid var(--line);
+}
+
+.hdrName {
+  display: inline-flex;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.affix {
+  display: inline-block;
+  overflow: hidden;
+  color: var(--c2);
+  white-space: nowrap;
+}
+
+.coreStack {
+  display: inline-grid;
+}
+
+.core {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+}
+
+.strike {
+  position: absolute;
+  left: 0.6ch;
+  right: 0.6ch;
+  top: 50%;
+  border-top: 1.5px solid var(--muted);
+}
+
+/* A changed value rolls: the old one leaves upward, the new one rises in, clipped to the cell. */
+.cell {
+  position: relative;
+  display: grid;
+  align-items: center;
+  justify-items: end;
+  padding-right: 1ch;
+  border-top: 1px solid var(--line-soft);
+  color: var(--ink);
+  overflow: hidden;
+}
+
+.cell > .value {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+}
+
+.tint {
+  position: absolute;
+  inset: 2px 2px 2px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--c2) 13%, transparent);
+}
+
+.value {
+  position: relative;
+}
+
+/* ── distribution ───────────────────────────────────────────── */
+.hist {
+  position: relative;
+  width: 100%;
+}
+
+.histSvg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+}
+
+.bar {
+  fill: var(--c4);
+}
+
+.ghost {
+  fill: url(#tt-hatch);
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.hatchLine {
+  stroke: var(--muted);
+  stroke-width: 1;
+  opacity: 0.7;
+}
+
+.breakMask {
+  fill: var(--surface);
+}
+
+.breakGlyph {
+  stroke: var(--muted);
+  stroke-width: 1.2;
+  fill: none;
+}
+
+.rug {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.rug[data-hot] {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.markLine {
+  stroke: var(--ink);
+  stroke-width: 1.2;
+}
+
+.markLine[data-group="male"] {
+  stroke-dasharray: 4 3;
+}
+
+.laneLabel {
+  position: absolute;
+  right: 14px;
+  top: 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 16px;
+  color: var(--muted);
+}
+
+.markLabel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 16px;
+}
+
+.markInner {
+  display: inline-flex;
+  gap: 5px;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  padding: 0 4px;
+}
+
+.markLabel[data-side="below"] .markInner {
+  transform: translateX(calc(-100% + 4px));
+}
+
+.markLabel[data-side="above"] .markInner {
+  transform: translateX(-4px);
+}
+
+.markValue {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cut {
+  color: var(--muted);
+}
+
+.histLabels {
+  position: absolute;
+  left: 14px;
+  bottom: 0;
+  display: grid;
+  justify-items: start;
+}
+
+.histLabel {
+  grid-area: 1 / 1;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.histNote {
+  position: absolute;
+  right: 14px;
+  top: 2px;
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ── row flow ───────────────────────────────────────────────── */
+.flow {
+  position: relative;
+}
+
+.step {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stepLabel {
+  display: inline-grid;
+  font-size: 13px;
+  color: var(--ink);
+  flex: 0 0 auto;
+}
+
+.stack {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+}
+
+.barTrack {
+  position: relative;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.flowBar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  background: var(--c4);
+}
+
+.flowDrop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 0 2px 2px 0;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--faint) 55%, transparent) 0 1px,
+    transparent 1px 4px
+  );
+  border: 1px dashed var(--faint);
+}
+
+.flowDropN {
+  position: absolute;
+  left: 0;
+  top: -1px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.stepN {
+  display: inline-grid;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-left: auto;
+  min-width: 64px;
+  justify-items: end;
+}
+
+.flowNote {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: center;
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  padding-left: 14px;
+}
+
+.flowNote::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 9px;
+  border-top: 1px solid var(--muted);
+}
+
+/* ── lineage ────────────────────────────────────────────────── */
+.lineage {
+  position: relative;
+  width: 100%;
+}
+
+.laneHead {
+  position: absolute;
+  top: 0;
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.lineageSvg {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.link {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+
+.node {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+  padding: 0 7px;
+}
+
+.node[data-group] {
+  box-shadow:
+    2px 2px 0 -1px var(--surface),
+    2px 2px 0 0 var(--line),
+    4px 4px 0 -1px var(--surface),
+    4px 4px 0 0 var(--line);
+}
+
+.node[data-group] .nodeLabel {
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.nodeLabel {
+  grid-area: 1 / 1;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -1,0 +1,283 @@
+/*
+ * The stage. Two colors carry the scrub everywhere on it, and the scrub bar's ends are their key:
+ *   --c4 (slate)  your data now
+ *   --c2 (indigo) with this choice — a preview, never "recorded" (that is --ok, and only after Record)
+ */
+.stage {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+
+/* ── pipeline strip ─────────────────────────────────────────── */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.lane {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  column-gap: 10px;
+  padding: 11px 18px 10px;
+}
+
+.lane + .lane {
+  border-left: 1px solid var(--line-soft);
+}
+
+.laneHot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--c2);
+}
+
+.laneLabel {
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.laneValue,
+.laneSub {
+  display: inline-grid;
+  justify-items: start;
+}
+
+.laneValue {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.laneSub {
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.stackItem {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+}
+
+/* ── scrub bar ──────────────────────────────────────────────── */
+.scrub {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 1fr) auto 160px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.end {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: none;
+  padding: 3px 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.end[data-on] {
+  color: var(--ink);
+}
+
+.end:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+
+.dotNow,
+.dotAfter {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.dotNow {
+  background: var(--c4);
+}
+
+.dotAfter {
+  background: var(--c2);
+}
+
+.scrub[data-disabled] .dotAfter {
+  background: transparent;
+  border: 1.5px dashed var(--faint);
+}
+
+.track {
+  position: relative;
+  height: 26px;
+  cursor: grab;
+  touch-action: none;
+  border-radius: 13px;
+}
+
+.track[aria-disabled] {
+  cursor: default;
+}
+
+.track:active {
+  cursor: grabbing;
+}
+
+.rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 12px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--line);
+}
+
+.fill {
+  position: absolute;
+  left: 0;
+  top: 12px;
+  height: 2px;
+  border-radius: 1px;
+  width: 0;
+  background: linear-gradient(90deg, var(--c4), var(--c2));
+}
+
+.thumb {
+  position: absolute;
+  top: 5px;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.thumb[data-dragging] {
+  box-shadow: var(--shadow-lift);
+}
+
+.scrub[data-disabled] .thumb {
+  border-color: var(--faint);
+  box-shadow: none;
+}
+
+.tag {
+  justify-self: end;
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.tag[data-tone="preview"] {
+  color: var(--c2);
+}
+
+.tag[data-tone="ok"] {
+  color: var(--ok);
+}
+
+/* ── sections ───────────────────────────────────────────────── */
+.section {
+  padding: 10px 18px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  min-width: 0;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  min-height: 20px;
+}
+
+.kicker {
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.aside {
+  font-family: var(--serif);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* ── record bar ─────────────────────────────────────────────── */
+.recordBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 18px 12px;
+  min-height: 56px;
+}
+
+.basis {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+  min-width: 0;
+}
+
+.primary,
+.secondary {
+  flex: 0 0 auto;
+  font-size: var(--fs-control);
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 7px 14px;
+  white-space: nowrap;
+}
+
+.primary {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.primary:hover {
+  background: var(--accent-ink);
+}
+
+.secondary {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}

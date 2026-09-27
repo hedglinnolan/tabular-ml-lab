@@ -1,0 +1,37 @@
+{
+  "s1-idle": {
+    "total": 208,
+    "prose": 98,
+    "data": 110
+  },
+  "s1-residual": {
+    "total": 243,
+    "prose": 121,
+    "data": 122
+  },
+  "s1-density": {
+    "total": 238,
+    "prose": 118,
+    "data": 120
+  },
+  "s2-sex-specific": {
+    "total": 154,
+    "prose": 106,
+    "data": 48
+  },
+  "s3-findings": {
+    "total": 165,
+    "prose": 104,
+    "data": 61
+  },
+  "s3-findings-paged": {
+    "total": 175,
+    "prose": 133,
+    "data": 42
+  },
+  "s4-wide": {
+    "total": 284,
+    "prose": 111,
+    "data": 173
+  }
+}

@@ -1,0 +1,147 @@
+/* Record on the left (the one open question), the stage on the right (its consequence). */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(340px, 392px) minmax(0, 1fr);
+  gap: 26px;
+  align-items: start;
+}
+
+.record {
+  position: sticky;
+  top: calc(var(--header-h) + 18px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+@media (max-width: 1080px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .record {
+    position: static;
+  }
+}
+
+.tabs {
+  display: inline-flex;
+  gap: 2px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.tab {
+  border: 0;
+  background: none;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--faint);
+  padding: 1px 8px 3px;
+  border-radius: 6px;
+}
+
+.tab:hover {
+  color: var(--ink);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.viewBox {
+  position: relative;
+}
+
+/* A refusal is not a dead control: it states why, and offers the exit, in place of the picture. */
+.refusal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 12% 0 64px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.refusalTitle {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--ink);
+}
+
+.refusalWhy {
+  font-family: var(--serif);
+  font-size: 15px;
+  margin: 0 0 6px;
+  color: var(--muted);
+}
+
+.exitButton {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+.exitButton:hover {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.legend i {
+  display: inline-block;
+  width: 12px;
+  height: 9px;
+  margin-left: 8px;
+  border-radius: 1px;
+}
+
+.swKept {
+  background: var(--c2);
+}
+
+.swCut {
+  border: 1px dashed var(--muted);
+  background: repeating-linear-gradient(45deg, var(--muted) 0 1px, transparent 1px 3px);
+}
+
+.legend i.swFemale,
+.legend i.swMale {
+  width: 14px;
+  height: 0;
+  border-radius: 0;
+  border-top: 1.5px solid var(--ink);
+}
+
+.legend i.swMale {
+  border-top-style: dashed;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+}
+
+.split > * + * {
+  border-left: 1px solid var(--line-soft);
+}
