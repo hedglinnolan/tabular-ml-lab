@@ -1,0 +1,60 @@
+{
+  "viewport": "1440x900",
+  "method": "Playwright, in the page: every text node whose box is inside the viewport, visible, and not clipped by a scrolling ancestor; a word is a whitespace-separated token containing a letter or digit. Split by voice from the computed font: app = serif (the app speaking), action = sans (controls, labels), data = mono (column names, values, ticks).",
+  "counts": {
+    "s1-idle": {
+      "total": 242,
+      "app": 83,
+      "action": 82,
+      "data": 77
+    },
+    "s1-residual": {
+      "total": 269,
+      "app": 83,
+      "action": 72,
+      "data": 114
+    },
+    "s1-density": {
+      "total": 271,
+      "app": 83,
+      "action": 72,
+      "data": 116
+    },
+    "s1-partition": {
+      "total": 285,
+      "app": 98,
+      "action": 72,
+      "data": 115
+    },
+    "s2-sex-specific": {
+      "total": 172,
+      "app": 61,
+      "action": 55,
+      "data": 56
+    },
+    "s3-findings": {
+      "total": 210,
+      "app": 68,
+      "action": 54,
+      "data": 88
+    },
+    "s3-paged": {
+      "total": 149,
+      "app": 64,
+      "action": 42,
+      "data": 43
+    },
+    "s3-idle": {
+      "total": 204,
+      "app": 70,
+      "action": 60,
+      "data": 74
+    },
+    "s4-wide": {
+      "total": 300,
+      "app": 56,
+      "action": 47,
+      "data": 197
+    }
+  }
+}

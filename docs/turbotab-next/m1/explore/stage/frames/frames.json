@@ -1,0 +1,35 @@
+{
+  "slow": 10,
+  "frames": [
+    {
+      "at_ms": 0,
+      "file": "frames/residual-to-density-000ms.png",
+      "captured_ms": 3.3
+    },
+    {
+      "at_ms": 60,
+      "file": "frames/residual-to-density-060ms.png",
+      "captured_ms": 62.9
+    },
+    {
+      "at_ms": 120,
+      "file": "frames/residual-to-density-120ms.png",
+      "captured_ms": 122.9
+    },
+    {
+      "at_ms": 180,
+      "file": "frames/residual-to-density-180ms.png",
+      "captured_ms": 182.7
+    },
+    {
+      "at_ms": 260,
+      "file": "frames/residual-to-density-260ms.png",
+      "captured_ms": 262.5
+    },
+    {
+      "at_ms": 400,
+      "file": "frames/residual-to-density-400ms.png",
+      "captured_ms": 401.6
+    }
+  ]
+}
