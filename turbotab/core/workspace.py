@@ -135,6 +135,10 @@ class Workspace:
         _write_json_atomic(pdir / "project.json", meta.to_dict())
         return meta
 
+    def save(self, meta: ProjectMeta) -> None:
+        """Rewrite an existing project's ``project.json`` (atomically)."""
+        _write_json_atomic(self.project_dir(meta.id) / "project.json", meta.to_dict())
+
     def get(self, pid: str) -> ProjectMeta:
         path = self.project_dir(pid) / "project.json"
         try:

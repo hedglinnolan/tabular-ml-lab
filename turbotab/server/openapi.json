@@ -1,0 +1,2355 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TurboTab",
+    "description": "TurboTab Next: the HTTP and SSE contract between the engine and the frontend.",
+    "version": "2.0.0.dev0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Health",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fs/list": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Fs List",
+        "description": "The entries of one folder on this machine (local mode only). Hidden entries are left out.",
+        "operationId": "fs_list_api_fs_list_get",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A folder; default: your home folder",
+              "title": "Path"
+            },
+            "description": "A folder; default: your home folder"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FsListing"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Server mode, or a folder TurboTab may not read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such folder",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "List Projects",
+        "description": "Every project in the workspace, newest first.",
+        "operationId": "list_projects_api_projects_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Projects Api Projects Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Create Project",
+        "description": "Open a file on this machine by its path (local mode only). Ingest starts as a job.",
+        "operationId": "create_project_api_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProject"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a readable data file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Server mode: open files by uploading them",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No file at that path",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/upload": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Upload Project",
+        "description": "Upload a data file (multipart field ``file``). It is streamed to disk as it arrives.",
+        "operationId": "upload_project_api_projects_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No file, or not a readable data file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Get Project",
+        "operationId": "get_project_api_projects__pid__get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/decisions": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Decide",
+        "description": "Record a decision. Stages downstream of the slot it writes recompute.",
+        "operationId": "decide_api_projects__pid__decisions_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SetLens"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTarget"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTask"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetPurpose"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Revert"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "set_lens": "#/components/schemas/SetLens",
+                    "set_target": "#/components/schemas/SetTarget",
+                    "set_task": "#/components/schemas/SetTask",
+                    "set_purpose": "#/components/schemas/SetPurpose",
+                    "revert": "#/components/schemas/Revert"
+                  }
+                },
+                "title": "Decision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectView"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The decision was refused and not recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/stages/{stage}": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Stage Result",
+        "description": "A stage's artifact: the current one (``fresh``), else the newest older one, else null.",
+        "operationId": "stage_result_api_projects__pid__stages__stage__get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          },
+          {
+            "name": "stage",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project or stage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/table": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Table",
+        "description": "Rows ``[offset, offset + limit)`` in file order.",
+        "operationId": "table_api_projects__pid__table_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 0,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "columns",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated column names; default: all",
+              "title": "Columns"
+            },
+            "description": "Comma-separated column names; default: all"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableWindow"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project or column",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The table has not been read yet (the ingest stage is not fresh)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/columns": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Columns",
+        "operationId": "columns_api_projects__pid__columns_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ColumnSummary"
+                  },
+                  "title": "Response Columns Api Projects  Pid  Columns Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The table has not been read yet (the ingest stage is not fresh)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/columns/{name}/histogram": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Histogram",
+        "operationId": "histogram_api_projects__pid__columns__name__histogram_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "bins",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 30,
+              "title": "Bins"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Histogram"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a numeric column",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project or column",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The table has not been read yet (the ingest stage is not fresh)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/jobs/{jid}": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Get Job",
+        "operationId": "get_job_api_projects__pid__jobs__jid__get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          },
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/jobs/{jid}/cancel": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Cancel Job",
+        "description": "Stop a job. It is not rerun by itself; the returned view may still say running for ~1 s.",
+        "operationId": "cancel_job_api_projects__pid__jobs__jid__cancel_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          },
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/events": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Events",
+        "operationId": "events_api_projects__pid__events_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "An SSE stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ColumnSummary": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "dtype": {
+            "type": "string",
+            "enum": [
+              "numeric",
+              "integer",
+              "boolean",
+              "categorical",
+              "datetime",
+              "text"
+            ],
+            "title": "Dtype"
+          },
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "n_missing": {
+            "type": "integer",
+            "title": "N Missing"
+          },
+          "n_unique": {
+            "type": "integer",
+            "title": "N Unique"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "std": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Std"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "q25": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q25"
+          },
+          "median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median"
+          },
+          "q75": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q75"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "top": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ValueCount"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "dtype",
+          "n",
+          "n_missing",
+          "n_unique",
+          "mean",
+          "std",
+          "min",
+          "q25",
+          "median",
+          "q75",
+          "max",
+          "top"
+        ],
+        "title": "ColumnSummary"
+      },
+      "CreateProject": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "CreateProject",
+        "description": "Open a file on this machine by its path (local mode only)."
+      },
+      "DecisionRecord": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Seq"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "decision": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SetLens"
+              },
+              {
+                "$ref": "#/components/schemas/SetTarget"
+              },
+              {
+                "$ref": "#/components/schemas/SetTask"
+              },
+              {
+                "$ref": "#/components/schemas/SetPurpose"
+              },
+              {
+                "$ref": "#/components/schemas/Revert"
+              }
+            ],
+            "title": "Decision",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "revert": "#/components/schemas/Revert",
+                "set_lens": "#/components/schemas/SetLens",
+                "set_purpose": "#/components/schemas/SetPurpose",
+                "set_target": "#/components/schemas/SetTarget",
+                "set_task": "#/components/schemas/SetTask"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "seq",
+          "at",
+          "note",
+          "decision"
+        ],
+        "title": "DecisionRecord"
+      },
+      "Exit": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SetLens"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTarget"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTask"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetPurpose"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Revert"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "revert": "#/components/schemas/Revert",
+                    "set_lens": "#/components/schemas/SetLens",
+                    "set_purpose": "#/components/schemas/SetPurpose",
+                    "set_target": "#/components/schemas/SetTarget",
+                    "set_task": "#/components/schemas/SetTask"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "decision"
+        ],
+        "title": "Exit"
+      },
+      "FsEntry": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "is_dir": {
+            "type": "boolean",
+            "title": "Is Dir"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "path",
+          "is_dir",
+          "size"
+        ],
+        "title": "FsEntry"
+      },
+      "FsListing": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/FsEntry"
+            },
+            "type": "array",
+            "title": "Entries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "parent",
+          "entries"
+        ],
+        "title": "FsListing"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "local",
+              "server"
+            ],
+            "title": "Mode"
+          },
+          "workers": {
+            "type": "integer",
+            "title": "Workers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "mode",
+          "workers"
+        ],
+        "title": "Health"
+      },
+      "Histogram": {
+        "properties": {
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "edges": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Edges"
+          },
+          "counts": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Counts"
+          },
+          "n_missing": {
+            "type": "integer",
+            "title": "N Missing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "column",
+          "edges",
+          "counts",
+          "n_missing"
+        ],
+        "title": "Histogram"
+      },
+      "JobView": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "error",
+              "cancelled"
+            ],
+            "title": "State"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "label",
+          "stage",
+          "state",
+          "progress",
+          "message",
+          "error"
+        ],
+        "title": "JobView"
+      },
+      "ProjectState": {
+        "properties": {
+          "lens": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "metabolomics",
+                    "genomics",
+                    "dietary",
+                    "clinical",
+                    "survey"
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lens"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "regression",
+                  "binary",
+                  "multiclass"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "prediction",
+                  "inference"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lens",
+          "target",
+          "task",
+          "purpose"
+        ],
+        "title": "ProjectState",
+        "description": "The fold of the decision log. Later milestones add slots as fields."
+      },
+      "ProjectSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "source_kind": {
+            "type": "string",
+            "enum": [
+              "path",
+              "upload"
+            ],
+            "title": "Source Kind"
+          },
+          "source_name": {
+            "type": "string",
+            "title": "Source Name"
+          },
+          "n_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Rows"
+          },
+          "n_cols": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Cols"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "source_kind",
+          "source_name",
+          "n_rows",
+          "n_cols"
+        ],
+        "title": "ProjectSummary"
+      },
+      "ProjectView": {
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/ProjectSummary"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProjectState"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionRecord"
+            },
+            "type": "array",
+            "title": "Decisions"
+          },
+          "stages": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StageStatus"
+            },
+            "type": "object",
+            "title": "Stages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "summary",
+          "state",
+          "decisions",
+          "stages"
+        ],
+        "title": "ProjectView"
+      },
+      "Refusal": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/RefusalDetail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "title": "Refusal",
+        "description": "Every error the API answers itself; HTTP 409 when a decision is refused."
+      },
+      "RefusalDetail": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "exits": {
+            "items": {
+              "$ref": "#/components/schemas/Exit"
+            },
+            "type": "array",
+            "title": "Exits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "exits"
+        ],
+        "title": "RefusalDetail"
+      },
+      "Revert": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "revert",
+            "title": "Kind",
+            "default": "revert"
+          },
+          "decision_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Decision Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "decision_id"
+        ],
+        "title": "Revert"
+      },
+      "SetLens": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_lens",
+            "title": "Kind",
+            "default": "set_lens"
+          },
+          "lenses": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "metabolomics",
+                "genomics",
+                "dietary",
+                "clinical",
+                "survey"
+              ]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Lenses"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "lenses"
+        ],
+        "title": "SetLens"
+      },
+      "SetPurpose": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_purpose",
+            "title": "Kind",
+            "default": "set_purpose"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "prediction",
+              "inference"
+            ],
+            "title": "Purpose"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "purpose"
+        ],
+        "title": "SetPurpose"
+      },
+      "SetTarget": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_target",
+            "title": "Kind",
+            "default": "set_target"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column"
+        ],
+        "title": "SetTarget"
+      },
+      "SetTask": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_task",
+            "title": "Kind",
+            "default": "set_task"
+          },
+          "task": {
+            "type": "string",
+            "enum": [
+              "regression",
+              "binary",
+              "multiclass"
+            ],
+            "title": "Task"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "task"
+        ],
+        "title": "SetTask",
+        "description": "An override of task detection."
+      },
+      "StageResult": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "fresh": {
+            "type": "boolean",
+            "title": "Fresh"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "queued",
+              "running",
+              "fresh",
+              "stale",
+              "blocked",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "artifact": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage",
+          "key",
+          "fresh",
+          "status",
+          "artifact"
+        ],
+        "title": "StageResult"
+      },
+      "StageStatus": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "queued",
+              "running",
+              "fresh",
+              "stale",
+              "blocked",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "fresh": {
+            "type": "boolean",
+            "title": "Fresh",
+            "default": false
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing",
+            "default": []
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage",
+          "status",
+          "key",
+          "fresh",
+          "missing",
+          "error",
+          "job_id",
+          "progress",
+          "updated_at"
+        ],
+        "title": "StageStatus"
+      },
+      "TableWindow": {
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "items": {},
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total_rows": {
+            "type": "integer",
+            "title": "Total Rows"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "columns",
+          "rows",
+          "total_rows",
+          "offset"
+        ],
+        "title": "TableWindow"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "ValueCount": {
+        "properties": {
+          "value": {
+            "title": "Value"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "count"
+        ],
+        "title": "ValueCount"
+      },
+      "ColumnInfo": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "dtype": {
+            "enum": [
+              "numeric",
+              "integer",
+              "boolean",
+              "categorical",
+              "datetime",
+              "text"
+            ],
+            "title": "Dtype",
+            "type": "string"
+          },
+          "physical_type": {
+            "title": "Physical Type",
+            "type": "string"
+          },
+          "n_missing": {
+            "title": "N Missing",
+            "type": "integer"
+          },
+          "n_unique": {
+            "title": "N Unique",
+            "type": "integer"
+          },
+          "sample": {
+            "items": {},
+            "title": "Sample",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "dtype",
+          "physical_type",
+          "n_missing",
+          "n_unique",
+          "sample"
+        ],
+        "title": "ColumnInfo",
+        "type": "object"
+      },
+      "DatasetInfo": {
+        "description": "The ``ingest`` artifact.",
+        "properties": {
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "n_cols": {
+            "title": "N Cols",
+            "type": "integer"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnInfo"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "source_bytes": {
+            "title": "Source Bytes",
+            "type": "integer"
+          },
+          "parquet_bytes": {
+            "title": "Parquet Bytes",
+            "type": "integer"
+          },
+          "ingest_seconds": {
+            "title": "Ingest Seconds",
+            "type": "number"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "n_rows",
+          "n_cols",
+          "columns",
+          "source_bytes",
+          "parquet_bytes",
+          "ingest_seconds",
+          "fingerprint",
+          "warnings"
+        ],
+        "title": "DatasetInfo",
+        "type": "object"
+      },
+      "Finding": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "why_it_matters": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why It Matters"
+          },
+          "affected_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected Columns",
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "profile",
+              "pack",
+              "structural"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "lens": {
+            "anyOf": [
+              {
+                "enum": [
+                  "metabolomics",
+                  "genomics",
+                  "dietary",
+                  "clinical",
+                  "survey"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lens"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FindingEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "severity",
+          "title",
+          "detail",
+          "why_it_matters",
+          "affected_columns",
+          "source",
+          "lens",
+          "evidence"
+        ],
+        "title": "Finding",
+        "type": "object"
+      },
+      "FindingEvidence": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "source"
+        ],
+        "title": "FindingEvidence",
+        "type": "object"
+      },
+      "FindingsArtifact": {
+        "description": "The ``findings`` artifact.",
+        "properties": {
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "findings",
+          "basis"
+        ],
+        "title": "FindingsArtifact",
+        "type": "object"
+      },
+      "LensHint": {
+        "properties": {
+          "lens": {
+            "enum": [
+              "metabolomics",
+              "genomics",
+              "dietary",
+              "clinical",
+              "survey"
+            ],
+            "title": "Lens",
+            "type": "string"
+          },
+          "because": {
+            "title": "Because",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lens",
+          "because"
+        ],
+        "title": "LensHint",
+        "type": "object"
+      },
+      "ProfileArtifact": {
+        "description": "The ``profile`` artifact.",
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnSummary"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "lens_hints": {
+            "items": {
+              "$ref": "#/components/schemas/LensHint"
+            },
+            "title": "Lens Hints",
+            "type": "array"
+          },
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "columns",
+          "lens_hints",
+          "basis"
+        ],
+        "title": "ProfileArtifact",
+        "type": "object"
+      },
+      "TargetInfo": {
+        "description": "The ``target_info`` artifact.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "task": {
+            "enum": [
+              "regression",
+              "binary",
+              "multiclass"
+            ],
+            "title": "Task",
+            "type": "string"
+          },
+          "detected_task": {
+            "enum": [
+              "regression",
+              "binary",
+              "multiclass"
+            ],
+            "title": "Detected Task",
+            "type": "string"
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "histogram": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Histogram"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "classes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ValueCount"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classes"
+          }
+        },
+        "required": [
+          "column",
+          "task",
+          "detected_task",
+          "confidence",
+          "reason",
+          "histogram",
+          "classes"
+        ],
+        "title": "TargetInfo",
+        "type": "object"
+      }
+    }
+  }
+}

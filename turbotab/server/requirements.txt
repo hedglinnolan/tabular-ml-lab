@@ -15,7 +15,7 @@ openpyxl>=3.1          # .xlsx ingest through pandas.read_excel
 # ── server (turbotab/server) ─────────────────────────────────────────────────
 fastapi>=0.110
 uvicorn[standard]>=0.27
-python-multipart>=0.0.9   # multipart uploads
+python-multipart>=0.0.13  # streamed multipart uploads (the `python_multipart` import name)
 
 # ── tests ────────────────────────────────────────────────────────────────────
 pytest>=8.0
