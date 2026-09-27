@@ -271,24 +271,30 @@ From the screenshots of `explore/stage`, `explore/inline` and `explore/scrub`:
   option, and the big window morphs.
 - **`stage`'s lineage diagram is the canonical lineage** — *"the best version I have seen of that
   lineage diagram design."* It is also the modeling-decision-provenance figure (North star 4).
-- **The slider is ruled in, as a global control over a multi-view stage.** Nolan: *"comparing from
-  memory is honestly not a bad idea… It could allow us to show a multi-lens view of the transformation
-  from different plots with one large slider at the top, so the user can focus on one plot at a time…
-  It would also open up the aperture for what we are allowed to display by default by giving us more
-  space to work since we are not cutting the 'widgets' window in half… As long as users get the option
-  to save any plot they desire during that slider action."* So: one slider at the top of `stage`'s
-  window drives every view at once (scatter, distribution, lineage, table); each view shows one state
-  and gets the full width. The orchestrator's conditions, which keep the design honest:
-  1. **A save captures a real state, never a frame from mid-slide** — *before*, *after*, or a
-     publication-ready *before/after pair*, captioned with the choice that produced it (a provenance
-     figure). An interpolated frame is not a state of the data; saving it would assert falsely.
-  2. **Two axes, two controls:** arrow keys move between options; the slider moves between before and
-     after. The slider keeps its position when the option changes, so at *after*, flipping options
-     morphs one method's result into the next.
-  3. **Headline numbers stay pinned** in a small readout (r 0.86 → 0.14; n 21,348 → 2,943), so what
-     matters is never compared from memory.
-  4. **The ends are labeled real states** — "your data now" and "with this choice (preview)" — and
-     releasing the slider snaps to the nearer end. The table keeps `scrub`'s column-identity morph.
+- **A transform player, not a slider** (settled over three exchanges). Nolan first ruled in a global
+  slider over a multi-view stage: *"It could allow us to show a multi-lens view of the transformation
+  from different plots with one large slider at the top… giving us more space to work since we are not
+  cutting the 'widgets' window in half… As long as users get the option to save any plot."* He then
+  refined it: *"maybe a slider is not the right button design for the actions to show a transformation
+  since it is ultimately a binary decision, but something is. And the animation between the states is a
+  useful tool to see the transformation in action. I genuinely believe in that as a pedagogical
+  vehicle."* The design:
+  1. **Flip** — a two-state toggle, *Your data now ⇄ With this choice (preview)*, in the stage's header.
+     Click or Space flips it, and every flip animates. It drives every view at once (scatter,
+     distribution, lineage, table); each view shows one state at full width.
+  2. **▶ Watch it happen** — plays the transformation as a **storyboard of the method's own real,
+     labeled steps**, never an interpolated half-state. For example, residual: fit each nutrient on
+     energy (the line draws) → keep what energy does not explain (points drop to residuals) → add back
+     the average (the cloud re-centers; r settles at 0.00). A method declares its storyboard; a generic
+     transform's storyboard is just before → after. Consequence views therefore gain an optional
+     `steps: [{label, …view data}]`.
+  3. **Save** captures any labeled state — now, a storyboard step, after, or a before/after pair —
+     captioned with the choice that produced it (a provenance figure).
+  4. **Two axes, two controls:** arrow keys move between options; the flip moves between before and
+     after, and its position holds across options, so at *after* flipping options morphs one method's
+     result into the next.
+  5. **Headline numbers stay pinned** in a small readout (r 0.86 → 0.14; n 21,348 → 2,943).
+  The table keeps `scrub`'s column-identity morph (`fat_total` → `fat_total_adj`).
 - **Direction to prototype: a pipeline banner.** `stage` gives up the "once over the world look at
   the pipeline you built". Nolan's idea: put that overview into the banner at the top of the app,
   so that *"everything below the banner image is the working window."* The banner is a compact,
