@@ -295,3 +295,9 @@ ARTIFACT_MODELS: dict[str, type[BaseModel]] = {
     "cohort": CohortArtifact,
     "split": SplitArtifact,
 }
+
+# The model-side artifacts (shelf, design, fit, substitution) are defined beside the stages that
+# build them; they join the published shapes here.
+from turbotab.core.models.artifacts import MODELING_ARTIFACTS  # noqa: E402
+
+ARTIFACT_MODELS.update(MODELING_ARTIFACTS)

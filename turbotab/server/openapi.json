@@ -1115,6 +1115,32 @@
           }
         }
       }
+    },
+    "/api/models": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "List Models",
+        "description": "Every registered model family: what it assumes, what it is good at, what to watch for.",
+        "operationId": "list_models_api_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FamilyInfo"
+                  },
+                  "type": "array",
+                  "title": "Response List Models Api Models Get"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1708,6 +1734,69 @@
           "decision"
         ],
         "title": "Exit"
+      },
+      "FamilyInfo": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "tasks": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "regression",
+                "binary",
+                "multiclass"
+              ]
+            },
+            "type": "array",
+            "title": "Tasks"
+          },
+          "inductive_bias": {
+            "type": "string",
+            "title": "Inductive Bias"
+          },
+          "strengths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Strengths"
+          },
+          "cautions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cautions"
+          },
+          "needs_scaling": {
+            "type": "boolean",
+            "title": "Needs Scaling"
+          },
+          "handles_missing": {
+            "type": "boolean",
+            "title": "Handles Missing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "tasks",
+          "inductive_bias",
+          "strengths",
+          "cautions",
+          "needs_scaling",
+          "handles_missing"
+        ],
+        "title": "FamilyInfo",
+        "description": "What ``GET /api/models`` says about one family."
       },
       "FsEntry": {
         "properties": {
@@ -3853,6 +3942,68 @@
         ],
         "title": "ValueCount"
       },
+      "Coefficient": {
+        "additionalProperties": false,
+        "properties": {
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci High"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
+          }
+        },
+        "required": [
+          "feature",
+          "estimate",
+          "ci_low",
+          "ci_high",
+          "p"
+        ],
+        "title": "Coefficient",
+        "type": "object"
+      },
       "CohortArtifact": {
         "description": "The ``cohort`` artifact (a Bundle's ``data``): the participant flow.",
         "properties": {
@@ -3983,6 +4134,111 @@
           "warnings"
         ],
         "title": "DatasetInfo",
+        "type": "object"
+      },
+      "DesignArtifact": {
+        "additionalProperties": false,
+        "description": "The ``design`` artifact: each model's pipeline and the columns it will see.",
+        "properties": {
+          "lineage": {
+            "$ref": "#/components/schemas/Lineage"
+          },
+          "matrix": {
+            "$ref": "#/components/schemas/MatrixShape"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/DesignModel"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "estimand": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimand"
+          },
+          "substitution_pairs": {
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionPair"
+            },
+            "title": "Substitution Pairs",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "lineage",
+          "matrix",
+          "models",
+          "estimand",
+          "substitution_pairs",
+          "warnings"
+        ],
+        "title": "DesignArtifact",
+        "type": "object"
+      },
+      "DesignModel": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/DesignStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "family",
+          "label",
+          "steps"
+        ],
+        "title": "DesignModel",
+        "type": "object"
+      },
+      "DesignStep": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "detail"
+        ],
+        "title": "DesignStep",
         "type": "object"
       },
       "Finding": {
@@ -4118,6 +4374,134 @@
         "title": "FindingsArtifact",
         "type": "object"
       },
+      "FitArtifact": {
+        "additionalProperties": false,
+        "description": "The ``fit`` artifact: cross-validated and held-out performance per model.",
+        "properties": {
+          "task": {
+            "enum": [
+              "regression",
+              "binary",
+              "multiclass"
+            ],
+            "title": "Task",
+            "type": "string"
+          },
+          "primary_metric": {
+            "title": "Primary Metric",
+            "type": "string"
+          },
+          "metric_labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Metric Labels",
+            "type": "object"
+          },
+          "n_train": {
+            "title": "N Train",
+            "type": "integer"
+          },
+          "n_holdout": {
+            "title": "N Holdout",
+            "type": "integer"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/FittedModel"
+            },
+            "title": "Models",
+            "type": "array"
+          }
+        },
+        "required": [
+          "task",
+          "primary_metric",
+          "metric_labels",
+          "n_train",
+          "n_holdout",
+          "models"
+        ],
+        "title": "FitArtifact",
+        "type": "object"
+      },
+      "FittedModel": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "cv": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MetricSummary"
+            },
+            "title": "Cv",
+            "type": "object"
+          },
+          "holdout": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdout"
+          },
+          "coefficients": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Coefficient"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coefficients"
+          },
+          "fit_seconds": {
+            "title": "Fit Seconds",
+            "type": "number"
+          },
+          "concerns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "family",
+          "label",
+          "cv",
+          "holdout",
+          "coefficients",
+          "fit_seconds",
+          "concerns"
+        ],
+        "title": "FittedModel",
+        "type": "object"
+      },
       "LensHint": {
         "properties": {
           "lens": {
@@ -4141,6 +4525,73 @@
           "because"
         ],
         "title": "LensHint",
+        "type": "object"
+      },
+      "MatrixShape": {
+        "additionalProperties": false,
+        "properties": {
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "n_cols": {
+            "title": "N Cols",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "n_rows",
+          "n_cols"
+        ],
+        "title": "MatrixShape",
+        "type": "object"
+      },
+      "MetricSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sd"
+          },
+          "folds": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Folds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mean",
+          "sd",
+          "folds"
+        ],
+        "title": "MetricSummary",
         "type": "object"
       },
       "ProfileArtifact": {
@@ -4291,6 +4742,76 @@
         "title": "RolesArtifact",
         "type": "object"
       },
+      "ShelfArtifact": {
+        "additionalProperties": false,
+        "description": "The ``shelf`` artifact: every family that can model the task, best first.",
+        "properties": {
+          "families": {
+            "items": {
+              "$ref": "#/components/schemas/ShelfFamily"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "families",
+          "basis"
+        ],
+        "title": "ShelfArtifact",
+        "type": "object"
+      },
+      "ShelfFamily": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "fit": {
+            "enum": [
+              "good",
+              "fair",
+              "poor"
+            ],
+            "title": "Fit",
+            "type": "string"
+          },
+          "concerns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          },
+          "inductive_bias": {
+            "title": "Inductive Bias",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "rank",
+          "fit",
+          "concerns",
+          "inductive_bias"
+        ],
+        "title": "ShelfFamily",
+        "type": "object"
+      },
       "SplitArtifact": {
         "description": "The ``split`` artifact (a Bundle's ``data``): held-out rows and folds.",
         "properties": {
@@ -4357,6 +4878,207 @@
           "note"
         ],
         "title": "SplitArtifact",
+        "type": "object"
+      },
+      "SubstitutionArtifact": {
+        "additionalProperties": false,
+        "description": "The ``substitution`` artifact: one curve per fitted model.",
+        "properties": {
+          "donor": {
+            "title": "Donor",
+            "type": "string"
+          },
+          "recipient": {
+            "title": "Recipient",
+            "type": "string"
+          },
+          "step_kcal": {
+            "title": "Step Kcal",
+            "type": "number"
+          },
+          "ks": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Ks",
+            "type": "array"
+          },
+          "total_kind": {
+            "enum": [
+              "fixed",
+              "variable"
+            ],
+            "title": "Total Kind",
+            "type": "string"
+          },
+          "estimand": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimand"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionModel"
+            },
+            "title": "Models",
+            "type": "array"
+          }
+        },
+        "required": [
+          "donor",
+          "recipient",
+          "step_kcal",
+          "ks",
+          "total_kind",
+          "estimand",
+          "note",
+          "basis",
+          "models"
+        ],
+        "title": "SubstitutionArtifact",
+        "type": "object"
+      },
+      "SubstitutionModel": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "delta": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Delta",
+            "type": "array"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci High"
+          },
+          "on_support_fraction": {
+            "items": {
+              "type": "number"
+            },
+            "title": "On Support Fraction",
+            "type": "array"
+          },
+          "stopped_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped At"
+          },
+          "effect_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effect Label"
+          }
+        },
+        "required": [
+          "family",
+          "label",
+          "delta",
+          "ci_low",
+          "ci_high",
+          "on_support_fraction",
+          "stopped_at",
+          "effect_label"
+        ],
+        "title": "SubstitutionModel",
+        "type": "object"
+      },
+      "SubstitutionPair": {
+        "additionalProperties": false,
+        "properties": {
+          "donor": {
+            "title": "Donor",
+            "type": "string"
+          },
+          "recipient": {
+            "title": "Recipient",
+            "type": "string"
+          }
+        },
+        "required": [
+          "donor",
+          "recipient"
+        ],
+        "title": "SubstitutionPair",
         "type": "object"
       },
       "TargetInfo": {
