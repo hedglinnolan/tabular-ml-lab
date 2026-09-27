@@ -13,6 +13,12 @@ Two legacy streams, each passed through unchanged apart from its shape:
 The whole table is materialized under the memory budget. A table that does
 not fit fails the stage with the budget's message; findings count rows, so a
 sample would state wrong numbers.
+
+M1 (M1_CONTRACT §6): every finding also carries ``summary`` (≤ 20 words),
+``routes_to`` (the question that acts on it), ``lever_label`` (≤ 5 words) and
+``group`` (a pager key for same-kind findings), and its text is normalized —
+see :mod:`turbotab.core.stages.finding_words`, which also adds the app's own
+findings (identifiers, flags, survey design, pooled cycles).
 """
 from __future__ import annotations
 
@@ -20,6 +26,15 @@ from typing import Any, Iterable
 
 from turbotab.core.graph import StageContext
 from turbotab.core.stages.data import LENSES, open_store
+from turbotab.core.stages.finding_words import (
+    FindingContext,
+    family,
+    flag_columns,
+    own_findings,
+    restate_energy,
+    settle_groups,
+    speak,
+)
 
 SEVERITY_RANK = {"critical": 0, "warning": 1, "info": 2}
 _SEVERITY = {"critical": "critical", "warning": "warning", "caution": "warning", "info": "info"}
@@ -78,6 +93,34 @@ def pack_finding(f: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def speak_for(frame: Any, lens: list[str], target: str | None, structural: list[dict[str, Any]],
+              from_packs: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Both legacy streams in the app's voice, plus the app's own findings, as (raw, finding).
+
+    One column, one card: a flag column the app speaks for (``imputed_weight`` → ``weight``) is
+    not also reported as "a binary variable written as true/false", and a column the binary-text
+    check already reports is not reported again as "true/false stored as text".
+    """
+    fc = FindingContext(frame=frame, lens=tuple(lens), target=target)
+    legacy = [(f, structural_finding(f)) for f in structural] + [(f, pack_finding(f)) for f in from_packs]
+    own = own_findings(fc, [finding for _, finding in legacy])
+    flags = flag_columns(own)
+    two_level = {c for _, f in legacy if family(f["id"]) == "binary_text" for c in f["affected_columns"]}
+    out: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for raw, finding in legacy:
+        kind = family(finding["id"])
+        columns = set(finding["affected_columns"])
+        if kind in ("binary_text", "boolean_as_text") and columns & flags:
+            continue
+        if kind == "boolean_as_text" and columns and columns <= two_level:
+            continue
+        if kind == "pack::dietary::energy_adjustment":
+            restate_energy(finding, raw, fc)
+        out.append((raw, speak(finding, raw, fc)))
+    out.extend(({"confidence": "high"}, finding) for finding in own)
+    return out
+
+
 def _lens_phrase(lens: list[str]) -> str:
     if len(lens) == 1:
         return f"the {lens[0]} lens"
@@ -105,8 +148,7 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
     ctx.progress(0.95, "Ranking the findings")
 
     ranked = sorted(
-        [(f, structural_finding(f)) for f in structural]
-        + [(f, pack_finding(f)) for f in from_packs],
+        speak_for(frame, lens, target, structural, from_packs),
         key=lambda pair: (
             SEVERITY_RANK[pair[1]["severity"]],
             _CONFIDENCE_RANK.get(str(pair[0].get("confidence")), 1),
@@ -122,6 +164,7 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
             finding["id"] = f"{base}#{n}"
         seen.add(finding["id"])
         findings.append(finding)
+    settle_groups(findings)
 
     n_rows, n_cols = frame.shape
     about = f", with {target!r} as the target" if target else ", before a target was chosen"

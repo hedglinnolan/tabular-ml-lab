@@ -28,7 +28,7 @@ import { useTransitions } from "../../motion/prefs";
 import { StaleVeil, veilFor } from "../../motion/StaleVeil";
 import { Link } from "../../router";
 import { cx, fmtClock, fmtInt } from "../../util/format";
-import { V } from "../Prose";
+import { Prose, V } from "../Prose";
 import { StageRetry, needsRetry } from "../StageRetry";
 import { DecisionSentence, History, Pending, QuestionBlock, SkipRow } from "./blocks";
 import { FindingsList } from "./Findings";
@@ -377,8 +377,8 @@ export function Record({ pid, view, ingest, profile, targetInfo, findings, summa
     } else if (ti) {
       body = (
         <SkipRow layoutId="slot-task" onAsk={() => reopen("task")} testId="skip-task">
-          <span className={styles.notAsked}>Not asked:</span> <V>{ti.column}</V> read as{" "}
-          <V>{ti.detected_task}</V> — <V>{ti.confidence}</V> confidence, {ti.reason}.
+          <span className={styles.notAsked}>Not asked:</span> <V>{ti.column}</V>,{" "}
+          <V>{ti.confidence}</V> confidence. <Prose text={ti.reason} />
         </SkipRow>
       );
     } else {

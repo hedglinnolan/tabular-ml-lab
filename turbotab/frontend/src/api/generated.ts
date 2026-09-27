@@ -273,6 +273,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/teaching": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Teaching
+         * @description One entry per question, in asking order: the question, its one line, each option's
+         *     consequence, the terms it uses, and the pack content behind it with evidence badges.
+         */
+        get: operations["get_teaching_api_teaching_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -335,6 +356,19 @@ export interface components {
             /** Decision */
             decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"];
         };
+        /** Drawer */
+        Drawer: {
+            /** Sections */
+            sections: components["schemas"]["DrawerSection"][];
+        };
+        /** DrawerSection */
+        DrawerSection: {
+            /** Heading */
+            heading: string;
+            /** Body */
+            body: string;
+            evidence: components["schemas"]["Evidence"] | null;
+        };
         /** EnergyAdjustment */
         EnergyAdjustment: {
             /**
@@ -353,6 +387,19 @@ export interface components {
             log_transform: boolean;
             /** Strata */
             strata: string | null;
+        };
+        /**
+         * Evidence
+         * @description A pack's badge: where the field stands, and the section that says so.
+         */
+        Evidence: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "SETTLED" | "CONVENTION" | "DISPUTED";
+            /** Source */
+            source: string;
         };
         /** ExclusionRule */
         "ExclusionRule-Input": {
@@ -898,6 +945,46 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** TeachingEntry */
+        TeachingEntry: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "lens" | "target" | "task" | "purpose" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution";
+            /** Title */
+            title: string;
+            /** Question */
+            question: string;
+            /** One Liner */
+            one_liner: string;
+            /** Why */
+            why: string;
+            /** Consumer */
+            consumer: string;
+            /** Options */
+            options: components["schemas"]["TeachingOption"][];
+            /** Terms */
+            terms: components["schemas"]["TeachingTerm"][];
+            drawer: components["schemas"]["Drawer"] | null;
+            evidence: components["schemas"]["Evidence"] | null;
+        };
+        /** TeachingOption */
+        TeachingOption: {
+            /** Value */
+            value: string;
+            /** Label */
+            label: string;
+            /** Consequence */
+            consequence: string;
+        };
+        /** TeachingTerm */
+        TeachingTerm: {
+            /** Term */
+            term: string;
+            /** Definition */
+            definition: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -958,6 +1045,70 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
+        /**
+         * EnergyReading
+         * @description What the energy-adjustment question can offer on this table (NUTRITION_PACK §04).
+         */
+        EnergyReading: {
+            /** Energy Column */
+            energy_column: string | null;
+            /** Nutrients */
+            nutrients: string[];
+            /** Strata Candidates */
+            strata_candidates: string[];
+            /** Applicability */
+            applicability: {
+                [key: string]: components["schemas"]["MethodVerdict"];
+            };
+            /** Usual */
+            usual: ("none" | "standard" | "residual" | "density_multivariate" | "density" | "partition") | null;
+            usual_evidence: components["schemas"]["FindingEvidence"] | null;
+            /** R With Energy */
+            r_with_energy: {
+                [key: string]: number;
+            };
+            /** Notes */
+            notes: string[];
+        };
+        /**
+         * ExclusionProposal
+         * @description One of the pack's exclusion rules, with the rows it would remove. Never pre-selected.
+         */
+        ExclusionProposal: {
+            /** Key */
+            key: string;
+            rule: components["schemas"]["ExclusionRule"];
+            /** Label */
+            label: string;
+            /** Affected */
+            affected: number;
+            evidence: components["schemas"]["FindingEvidence"];
+        };
+        /** ExclusionRule */
+        ExclusionRule: {
+            /**
+             * Kind
+             * @default range
+             * @constant
+             */
+            kind: "range";
+            /** Column */
+            column: string;
+            /**
+             * Low
+             * @default null
+             */
+            low: number | null;
+            /**
+             * High
+             * @default null
+             */
+            high: number | null;
+            /** @default null */
+            by: components["schemas"]["RangeByLevel"] | null;
+            /** Reason */
+            reason: string;
+        };
         /** Finding */
         Finding: {
             /** Id */
@@ -983,6 +1134,14 @@ export interface components {
             /** Lens */
             lens: ("metabolomics" | "genomics" | "dietary" | "clinical" | "survey") | null;
             evidence: components["schemas"]["FindingEvidence"] | null;
+            /** Summary */
+            summary: string;
+            /** Routes To */
+            routes_to: ("lens" | "target" | "task" | "purpose" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution") | null;
+            /** Lever Label */
+            lever_label: string | null;
+            /** Group */
+            group: string | null;
         };
         /** FindingEvidence */
         FindingEvidence: {
@@ -1011,6 +1170,13 @@ export interface components {
             /** Because */
             because: string;
         };
+        /** MethodVerdict */
+        MethodVerdict: {
+            /** Ok */
+            ok: boolean;
+            /** Reason */
+            reason: string;
+        };
         /**
          * ProfileArtifact
          * @description The ``profile`` artifact.
@@ -1020,6 +1186,17 @@ export interface components {
             columns: components["schemas"]["ColumnSummary"][];
             /** Lens Hints */
             lens_hints: components["schemas"]["LensHint"][];
+            /** Basis */
+            basis: string;
+        };
+        /**
+         * ProposalsArtifact
+         * @description The ``proposals`` artifact: offered for the exclusions and energy questions.
+         */
+        ProposalsArtifact: {
+            /** Exclusions */
+            exclusions: components["schemas"]["ExclusionProposal"][];
+            energy: components["schemas"]["EnergyReading"] | null;
             /** Basis */
             basis: string;
         };
@@ -1703,6 +1880,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_teaching_api_teaching_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeachingEntry"][];
                 };
             };
         };

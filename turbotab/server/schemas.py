@@ -19,6 +19,8 @@ from pydantic import BaseModel, ConfigDict
 from turbotab.core.decisions import (  # noqa: F401 - re-exported contract models
     Decision,
     DecisionRecord,
+    EnergyMethod,
+    ExclusionRule,
     Lens,
     ProjectState,
     Purpose,
@@ -26,6 +28,10 @@ from turbotab.core.decisions import (  # noqa: F401 - re-exported contract model
 )
 from turbotab.core.graph import StageStatus, StatusName  # noqa: F401
 from turbotab.core.jobs import JobView  # noqa: F401
+from turbotab.core.teaching import (  # noqa: F401 - re-exported contract models
+    QuestionKey,
+    TeachingEntry,
+)
 
 Mode = Literal["local", "server"]
 SourceKind = Literal["path", "upload"]
@@ -228,6 +234,13 @@ class Finding(Model):
     source: FindingSource
     lens: Lens | None
     evidence: FindingEvidence | None
+    # M1 (M1_CONTRACT §6): the one-line claim (≤ 20 words), the question that acts on it and
+    # what that question will do (≤ 5 words), and a pager key shared by same-kind findings.
+    # With no lever, routes_to and lever_label are null and the summary says so.
+    summary: str
+    routes_to: QuestionKey | None
+    lever_label: str | None
+    group: str | None
 
 
 class FindingsArtifact(Model):
@@ -237,9 +250,46 @@ class FindingsArtifact(Model):
     basis: str
 
 
+class ExclusionProposal(Model):
+    """One of the pack's exclusion rules, with the rows it would remove. Never pre-selected."""
+
+    key: str
+    rule: ExclusionRule
+    label: str
+    affected: int
+    evidence: FindingEvidence
+
+
+class MethodVerdict(Model):
+    ok: bool
+    reason: str
+
+
+class EnergyReading(Model):
+    """What the energy-adjustment question can offer on this table (NUTRITION_PACK §04)."""
+
+    energy_column: str | None
+    nutrients: list[str]
+    strata_candidates: list[str]
+    applicability: dict[str, MethodVerdict]
+    usual: EnergyMethod | None
+    usual_evidence: FindingEvidence | None
+    r_with_energy: dict[str, float]
+    notes: list[str]
+
+
+class ProposalsArtifact(Model):
+    """The ``proposals`` artifact: offered for the exclusions and energy questions."""
+
+    exclusions: list[ExclusionProposal]
+    energy: EnergyReading | None
+    basis: str
+
+
 ARTIFACT_MODELS: dict[str, type[BaseModel]] = {
     "ingest": DatasetInfo,
     "profile": ProfileArtifact,
     "target_info": TargetInfo,
     "findings": FindingsArtifact,
+    "proposals": ProposalsArtifact,
 }

@@ -52,7 +52,7 @@ def build_graph() -> Graph:
             ),
             Stage(
                 "target_info",
-                1,
+                2,
                 ("ingest",),
                 ("target", "task"),
                 target_info_stage,
@@ -61,7 +61,7 @@ def build_graph() -> Graph:
             ),
             Stage(
                 "findings",
-                1,
+                2,
                 ("ingest",),
                 ("lens", "target"),
                 findings_stage,

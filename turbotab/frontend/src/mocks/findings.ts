@@ -69,13 +69,13 @@ export function detectTask(
   const col = findColumn(ds, target);
   if (!col) return { task: "regression", confidence: "low", reason: "The column was not found." };
   const unique = nUnique(col);
+  // The server's voice (turbotab/core/stages/target.py task_reason): one sentence, data first.
   if (unique === 2) {
+    const [a, b] = topValues(col, 2).map((t) => `\`${String(t.value)}\``);
     return {
       task: "binary",
       confidence: "high",
-      reason: `exactly two distinct values (${topValues(col, 2)
-        .map((t) => String(t.value))
-        .join(", ")})`,
+      reason: `Two values, ${a} and ${b} — read as a binary outcome.`,
     };
   }
   if (isNumericDtype(col.dtype)) {
@@ -83,26 +83,26 @@ export function detectTask(
       return {
         task: "multiclass",
         confidence: "medium",
-        reason: `${fmt(unique)} distinct whole numbers, which could be classes or a count`,
+        reason: `Whole numbers with ${fmt(unique)} distinct values; class codes, counts and ordinal scores all look like this — read as a multiclass outcome.`,
       };
     }
     return {
       task: "regression",
       confidence: "high",
-      reason: `${fmt(unique)} distinct numeric values`,
+      reason: `Continuous, with ${fmt(unique)} distinct values — read as a regression outcome.`,
     };
   }
   if (unique <= 20) {
     return {
       task: "multiclass",
       confidence: "high",
-      reason: `${fmt(unique)} distinct labels`,
+      reason: `Text with ${fmt(unique)} distinct values — read as a multiclass outcome.`,
     };
   }
   return {
     task: "multiclass",
     confidence: "low",
-    reason: `${fmt(unique)} distinct text values; this reads more like an identifier than an outcome`,
+    reason: `Text with ${fmt(unique)} distinct values, which reads more like an identifier than an outcome.`,
   };
 }
 
@@ -150,12 +150,41 @@ function constantWithin(ds: MockDataset, idCol: string, target: string): boolean
 
 const SEVERITY_ORDER = { critical: 0, warning: 1, info: 2 } as const;
 
+type Draft = Omit<Finding, "summary" | "routes_to" | "lever_label" | "group">;
+
+/** Where the mock's findings route, mirroring turbotab/core/stages/finding_words.py. */
+const LEVERS: Record<string, [NonNullable<Finding["routes_to"]>, string]> = {
+  implausible_energy: ["exclusions", "Choose an exclusion rule"],
+  energy_adjustment: ["energy_adjustment", "Adjust for energy"],
+  compositional_macros: ["roles", "Leave one part out"],
+  repeats: ["roles", "Mark as identifier"],
+  p_much_greater_than_n: ["models", "Choose penalized models"],
+};
+
+/** The M1 fields the server adds: a one-line summary, its lever (or saying there is none), a pager key. */
+function voiced(drafts: Draft[]): Finding[] {
+  const kind = (id: string) => id.split("__")[0]!;
+  const sizes = new Map<string, number>();
+  for (const d of drafts) sizes.set(kind(d.id), (sizes.get(kind(d.id)) ?? 0) + 1);
+  return drafts.map((d) => {
+    const lever = LEVERS[kind(d.id)];
+    const claim = d.title.endsWith(".") ? d.title : `${d.title}.`;
+    return {
+      ...d,
+      summary: lever ? claim : `${claim} No control for this yet.`,
+      routes_to: lever ? lever[0] : null,
+      lever_label: lever ? lever[1] : null,
+      group: (sizes.get(kind(d.id)) ?? 0) > 1 ? kind(d.id) : null,
+    };
+  });
+}
+
 export function findings(
   ds: MockDataset,
   lenses: Lens[],
   target: string | null,
 ): { findings: Finding[]; basis: string } {
-  const out: Finding[] = [];
+  const out: Draft[] = [];
   const checked: string[] = ["structural diagnosis"];
 
   // Structural: two-valued text columns, repeating ids, missing cells.
@@ -344,7 +373,7 @@ export function findings(
 
   out.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
   return {
-    findings: out,
+    findings: voiced(out),
     basis: `Checked on all ${fmt(ds.nRows)} rows: ${checked.join(", ")}.`,
   };
 }
