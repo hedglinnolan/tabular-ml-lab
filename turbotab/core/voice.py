@@ -574,7 +574,7 @@ def _set_energy_adjustment(d: Any, state: Any, ctx: Any) -> str:
     if d.method == "none":
         who = nutrients or "nutrients"
         return f"No energy adjustment was applied: {who} enter the models as absolute intakes"
-    each = f"{nutrients} are each" if len(d.nutrients) > 1 else (f"{nutrients} is" if nutrients else "each nutrient is")
+    each = f"{nutrients} were each" if len(d.nutrients) > 1 else (f"{nutrients} was" if nutrients else "each nutrient was")
     where = f" within levels of {tick(d.strata)}" if d.strata else ""
     name = _METHOD_NAME[d.method]
     if d.method == "residual":
