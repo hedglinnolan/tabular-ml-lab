@@ -279,15 +279,20 @@ From the screenshots of `explore/stage`, `explore/inline` and `explore/scrub`:
   since it is ultimately a binary decision, but something is. And the animation between the states is a
   useful tool to see the transformation in action. I genuinely believe in that as a pedagogical
   vehicle."* The design:
-  1. **Flip** — a two-state toggle, *Your data now ⇄ With this choice (preview)*, in the stage's header.
-     Click or Space flips it, and every flip animates. It drives every view at once (scatter,
-     distribution, lineage, table); each view shows one state at full width.
-  2. **▶ Watch it happen** — plays the transformation as a **storyboard of the method's own real,
-     labeled steps**, never an interpolated half-state. For example, residual: fit each nutrient on
-     energy (the line draws) → keep what energy does not explain (points drop to residuals) → add back
-     the average (the cloud re-centers; r settles at 0.00). A method declares its storyboard; a generic
-     transform's storyboard is just before → after. Consequence views therefore gain an optional
-     `steps: [{label, …view data}]`.
+  1. **One control: the flip plays the transformation.** A two-state toggle, *Your data now ⇄ With
+     this choice (preview)*, sits in the stage's header and drives every view at once (scatter,
+     distribution, lineage, table), each at full width. Nolan: *"I dont think we should separate the two
+     state toggle from the animation playing. It should play automatically when you toggle back and
+     forth."* Flipping to *with this choice* plays the method's **storyboard** forward, briskly (under a
+     second in total); flipping back plays it in reverse. Any new input interrupts and continues from
+     what is on screen. `prefers-reduced-motion` makes it instant.
+  2. **The storyboard is the method's own real, labeled steps**, never an interpolated half-state. For
+     example, residual: fit each nutrient on energy (the line draws) → keep what energy does not explain
+     (points drop to residuals) → add back the average (the cloud re-centers; r settles at 0.00). Each
+     step shows as a dot beside the toggle; clicking a dot pauses on that step. A method declares its
+     storyboard; a generic transform's storyboard is just before → after. Consequence views therefore
+     gain an optional `steps: [{label, …view data}]`. **Switching options (arrow keys) morphs directly
+     between results without replaying the storyboard**, so flipping through options stays fast.
   3. **Save** captures any labeled state — now, a storyboard step, after, or a before/after pair —
      captioned with the choice that produced it (a provenance figure).
   4. **Two axes, two controls:** arrow keys move between options; the flip moves between before and
