@@ -1,0 +1,230 @@
+/* The preview views. Chart color uses the categorical ramp (§02): --c1 the option in view,
+   --c2 a pinned option, --c3 rows a choice removes. Semantic hues never appear in a chart. */
+
+[data-tone="c1"] {
+  --tone: var(--c1);
+}
+[data-tone="c2"] {
+  --tone: var(--c2);
+}
+[data-tone="faint"] {
+  --tone: var(--faint);
+}
+
+.scatterStage,
+.scatterSpark,
+.histStage,
+.histSpark,
+.grid2,
+.barcode,
+.share {
+  display: block;
+  overflow: visible;
+}
+
+.axis text {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.axis .axisName {
+  fill: var(--muted);
+  font-weight: 600;
+}
+
+.grid {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+}
+
+.dots circle {
+  fill: var(--tone);
+  fill-opacity: 0.5;
+}
+
+.scatterSpark .dots circle {
+  fill-opacity: 0.42;
+}
+
+.ghost circle {
+  fill: var(--faint);
+  fill-opacity: 0.22;
+}
+
+.ghostLine {
+  stroke: var(--faint);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+  opacity: 0.9;
+}
+
+.trend {
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+
+.scatterSpark .trend {
+  stroke: var(--tone);
+  stroke-width: 1.6;
+  opacity: 1;
+  filter: saturate(1.2) brightness(0.8);
+}
+
+:root[data-theme="dark"] .scatterSpark .trend {
+  filter: brightness(1.2);
+}
+
+.baseline {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.bar {
+  fill: var(--tone);
+  fill-opacity: 0.82;
+}
+
+.barGone {
+  fill: var(--c3);
+  fill-opacity: 0.85;
+}
+
+.histSpark .bar {
+  fill-opacity: 0.7;
+}
+
+.mark line {
+  stroke: var(--ink);
+  stroke-width: 1.25;
+  stroke-dasharray: 3 3;
+}
+
+.mark[data-group="male"] line {
+  stroke-dasharray: 1 2.5;
+  stroke-width: 1.6;
+}
+
+.histSpark .mark line {
+  stroke-width: 1;
+  opacity: 0.55;
+}
+
+.mark text {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.markGroup {
+  fill: var(--muted);
+  font-family: var(--sans);
+  font-size: 10.5px;
+}
+
+.overflow {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--muted);
+}
+
+/* table_focus as a heat grid: color is the value's place within its column. */
+.grid2 .cell {
+  fill: var(--c1);
+}
+
+.grid2 .cellEmph {
+  fill: var(--c1);
+}
+
+.grid2 .cellFrame {
+  fill: none;
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.grid2 text {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.grid2 .colHead {
+  fill: var(--muted);
+}
+
+.grid2 .colHeadEmph {
+  fill: var(--ink);
+  font-weight: 600;
+}
+
+.grid2 .cellText {
+  fill: var(--ink);
+}
+
+.grid2 .emphBox {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.25;
+}
+
+.barcode rect {
+  fill: var(--line);
+  transition: fill 220ms ease-out;
+}
+
+.barcode rect[data-on="true"] {
+  fill: var(--c1);
+  fill-opacity: 0.55;
+}
+
+.barcode rect[data-shown="true"] {
+  fill: var(--ink);
+  fill-opacity: 1;
+}
+
+.share rect[data-tone="on"] {
+  fill: var(--c1);
+}
+
+.share rect[data-tone="off"] {
+  fill: var(--c4);
+  fill-opacity: 0.35;
+}
+
+.share rect[data-tone="blank"] {
+  fill: url(#blank-hatch);
+}
+
+.hatchLine {
+  stroke: var(--faint);
+  stroke-width: 1.2;
+}
+
+.hatchGround {
+  fill: var(--surface-2);
+}
+
+.levels rect {
+  fill: var(--c4);
+  fill-opacity: 0.55;
+}
+
+.levels text {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--muted);
+}
+
+.levels .levelName {
+  fill: var(--ink);
+}
+
+.levels .levelQ {
+  fill: var(--ink);
+  font-weight: 600;
+}

@@ -1,0 +1,79 @@
+{
+  "S1 energy · idle": {
+    "total": 170,
+    "voice": 37,
+    "action": 44,
+    "data": 75,
+    "chrome": 14
+  },
+  "S1 energy · previewing residual": {
+    "total": 181,
+    "voice": 33,
+    "action": 46,
+    "data": 88,
+    "chrome": 14
+  },
+  "S1 energy · previewing density + energy": {
+    "total": 181,
+    "voice": 35,
+    "action": 44,
+    "data": 88,
+    "chrome": 14
+  },
+  "S1 energy · residual pinned, density + energy in view": {
+    "total": 168,
+    "voice": 22,
+    "action": 54,
+    "data": 78,
+    "chrome": 14
+  },
+  "S1 energy · the refused partition method": {
+    "total": 139,
+    "voice": 33,
+    "action": 41,
+    "data": 51,
+    "chrome": 14
+  },
+  "S2 exclusions · idle": {
+    "total": 126,
+    "voice": 35,
+    "action": 42,
+    "data": 35,
+    "chrome": 14
+  },
+  "S2 exclusions · previewing the sex-specific rule": {
+    "total": 154,
+    "voice": 41,
+    "action": 40,
+    "data": 59,
+    "chrome": 14
+  },
+  "S3 findings · default": {
+    "total": 133,
+    "voice": 54,
+    "action": 36,
+    "data": 29,
+    "chrome": 14
+  },
+  "S3 findings · a same-kind group paged open": {
+    "total": 163,
+    "voice": 65,
+    "action": 47,
+    "data": 37,
+    "chrome": 14
+  },
+  "S4 wide · idle": {
+    "total": 146,
+    "voice": 18,
+    "action": 39,
+    "data": 75,
+    "chrome": 14
+  },
+  "S4 wide · previewing log2(x + 1) on 495 columns": {
+    "total": 160,
+    "voice": 25,
+    "action": 35,
+    "data": 86,
+    "chrome": 14
+  }
+}
