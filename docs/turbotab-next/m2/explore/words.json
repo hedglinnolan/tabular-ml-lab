@@ -1,0 +1,140 @@
+{
+  "viewport": "1440x900",
+  "method": "Playwright, in the page: every text node whose box is inside the viewport, visible, and not clipped by a scrolling ancestor; a word is a whitespace-separated token containing a letter or digit. Split by voice from the computed font: app = serif, action = sans, data = mono.",
+  "counts": {
+    "reshape-mean": {
+      "total": 376,
+      "voice": {
+        "app": 132,
+        "action": 102,
+        "data": 142
+      }
+    },
+    "reshape-first": {
+      "total": 371,
+      "voice": {
+        "app": 128,
+        "action": 103,
+        "data": 140
+      }
+    },
+    "reshape-gathered": {
+      "total": 378,
+      "voice": {
+        "app": 102,
+        "action": 99,
+        "data": 177
+      }
+    },
+    "wide-20000-columns": {
+      "total": 357,
+      "voice": {
+        "app": 115,
+        "action": 101,
+        "data": 141
+      }
+    },
+    "orientation-turned": {
+      "total": 314,
+      "voice": {
+        "app": 68,
+        "action": 96,
+        "data": 150
+      }
+    },
+    "seal-grouped-recorded": {
+      "total": 205,
+      "voice": {
+        "app": 68,
+        "action": 71,
+        "data": 66
+      }
+    },
+    "seal-chronological-ordered": {
+      "total": 273,
+      "voice": {
+        "app": 120,
+        "action": 102,
+        "data": 51
+      }
+    },
+    "seal-chronological": {
+      "total": 291,
+      "voice": {
+        "app": 122,
+        "action": 115,
+        "data": 54
+      }
+    },
+    "seal-abandoned": {
+      "total": 308,
+      "voice": {
+        "app": 143,
+        "action": 104,
+        "data": 61
+      }
+    },
+    "seal-undetermined": {
+      "total": 254,
+      "voice": {
+        "app": 107,
+        "action": 100,
+        "data": 47
+      }
+    },
+    "results-sealed": {
+      "total": 283,
+      "voice": {
+        "app": 121,
+        "action": 104,
+        "data": 58
+      }
+    },
+    "results-opened": {
+      "total": 254,
+      "voice": {
+        "app": 109,
+        "action": 73,
+        "data": 72
+      }
+    },
+    "results-post-seal": {
+      "total": 316,
+      "voice": {
+        "app": 148,
+        "action": 85,
+        "data": 83
+      }
+    }
+  },
+  "kb": {
+    "screens/reshape-mean-light.png": 210,
+    "screens/reshape-first-light.png": 207,
+    "screens/reshape-gathered-light.png": 212,
+    "screens/wide-20000-columns-light.png": 207,
+    "screens/orientation-turned-light.png": 178,
+    "screens/seal-grouped-recorded-light.png": 135,
+    "screens/seal-chronological-ordered-light.png": 176,
+    "screens/seal-chronological-light.png": 184,
+    "screens/seal-abandoned-light.png": 197,
+    "screens/seal-undetermined-light.png": 161,
+    "screens/results-sealed-light.png": 169,
+    "screens/results-opened-light.png": 150,
+    "screens/results-post-seal-light.png": 180,
+    "screens/coach-notes-light.png": 21,
+    "screens/reshape-mean-dark.png": 213,
+    "screens/reshape-first-dark.png": 210,
+    "screens/reshape-gathered-dark.png": 214,
+    "screens/wide-20000-columns-dark.png": 210,
+    "screens/orientation-turned-dark.png": 181,
+    "screens/seal-grouped-recorded-dark.png": 138,
+    "screens/seal-chronological-ordered-dark.png": 179,
+    "screens/seal-chronological-dark.png": 187,
+    "screens/seal-abandoned-dark.png": 199,
+    "screens/seal-undetermined-dark.png": 163,
+    "screens/results-sealed-dark.png": 170,
+    "screens/results-opened-dark.png": 151,
+    "screens/results-post-seal-dark.png": 181,
+    "screens/coach-notes-dark.png": 22
+  }
+}

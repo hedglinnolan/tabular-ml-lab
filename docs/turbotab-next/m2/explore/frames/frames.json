@@ -1,0 +1,120 @@
+{
+  "clock": "manual: the production player's setManual/advance; pos is exact at each offset",
+  "total_ms": 900,
+  "flips": {
+    "reshape-mean": [
+      {
+        "at_ms": 0,
+        "file": "frames/reshape-mean-000ms.png",
+        "pos": 0,
+        "label": "Your data now →"
+      },
+      {
+        "at_ms": 150,
+        "file": "frames/reshape-mean-150ms.png",
+        "pos": 0.5,
+        "label": "Gather rows by participant_id →"
+      },
+      {
+        "at_ms": 300,
+        "file": "frames/reshape-mean-300ms.png",
+        "pos": 1,
+        "label": "Gather rows by participant_id →"
+      },
+      {
+        "at_ms": 450,
+        "file": "frames/reshape-mean-450ms.png",
+        "pos": 1.5,
+        "label": "Average each column →"
+      },
+      {
+        "at_ms": 600,
+        "file": "frames/reshape-mean-600ms.png",
+        "pos": 2,
+        "label": "Average each column →"
+      },
+      {
+        "at_ms": 900,
+        "file": "frames/reshape-mean-900ms.png",
+        "pos": 3,
+        "label": "One row per person: 300 rows"
+      }
+    ],
+    "orientation": [
+      {
+        "at_ms": 0,
+        "file": "frames/orientation-000ms.png",
+        "pos": 0,
+        "label": "Your data now →"
+      },
+      {
+        "at_ms": 150,
+        "file": "frames/orientation-150ms.png",
+        "pos": 0.5,
+        "label": "Read feature_id as the names →"
+      },
+      {
+        "at_ms": 300,
+        "file": "frames/orientation-300ms.png",
+        "pos": 1,
+        "label": "Read feature_id as the names →"
+      },
+      {
+        "at_ms": 450,
+        "file": "frames/orientation-450ms.png",
+        "pos": 1.5,
+        "label": "Turn: each sample column becomes a row →"
+      },
+      {
+        "at_ms": 600,
+        "file": "frames/orientation-600ms.png",
+        "pos": 2,
+        "label": "Turn: each sample column becomes a row →"
+      },
+      {
+        "at_ms": 900,
+        "file": "frames/orientation-900ms.png",
+        "pos": 3,
+        "label": "80 rows × 397 columns"
+      }
+    ],
+    "wide-stacked-gather": [
+      {
+        "at_ms": 0,
+        "file": "frames/wide-stacked-gather-000ms.png",
+        "pos": 0,
+        "label": "Your data now →"
+      },
+      {
+        "at_ms": 150,
+        "file": "frames/wide-stacked-gather-150ms.png",
+        "pos": 0.5,
+        "label": "Gather rows by sample_id →"
+      },
+      {
+        "at_ms": 300,
+        "file": "frames/wide-stacked-gather-300ms.png",
+        "pos": 1,
+        "label": "Gather rows by sample_id →"
+      },
+      {
+        "at_ms": 450,
+        "file": "frames/wide-stacked-gather-450ms.png",
+        "pos": 1.5,
+        "label": "Average each column →"
+      },
+      {
+        "at_ms": 600,
+        "file": "frames/wide-stacked-gather-600ms.png",
+        "pos": 2,
+        "label": "Average each column →"
+      },
+      {
+        "at_ms": 900,
+        "file": "frames/wide-stacked-gather-900ms.png",
+        "pos": 3,
+        "label": "One row per sample: 300 rows"
+      }
+    ]
+  }
+}
