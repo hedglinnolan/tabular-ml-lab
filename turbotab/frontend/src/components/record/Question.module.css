@@ -1,0 +1,162 @@
+/*
+ * Two silhouettes (DESIGN_LANGUAGE §09). Color marks state, never type:
+ *   FACT    flat — no border, no tint, no shadow; the teal marker only while asked
+ *   CHOICE  a bordered card, neutral while open
+ * The teal marker (§02 "now") is a keyline on the left edge of the question being asked.
+ */
+
+.question {
+  position: relative;
+}
+
+.fact {
+  background: transparent;
+}
+
+.choice {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  overflow: visible;
+}
+
+.now::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.choice.now::before {
+  top: 10px;
+  bottom: 10px;
+  left: -1px;
+}
+
+.inner {
+  padding: 4px 4px 8px 19px;
+}
+
+.choice .inner {
+  padding: 16px 20px 14px 22px;
+}
+
+.kickerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+  min-height: 18px;
+}
+
+.kicker {
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.now .kicker {
+  color: var(--accent-ink);
+}
+
+.reopened {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.title {
+  font-family: var(--serif);
+  font-size: var(--fs-question);
+  font-weight: 700;
+  line-height: 1.33;
+  margin: 0 0 5px;
+  outline: none;
+}
+
+.title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.oneLiner {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 62ch;
+}
+
+.whyButton {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+.why {
+  margin: -4px 0 12px;
+  padding: 10px 13px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.whyText {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink);
+  max-width: 62ch;
+}
+
+.consumer {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.consumerLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+
+.drawerButton {
+  margin-top: 9px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.data {
+  margin: -2px 0 12px;
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  max-width: 62ch;
+}
+
+.body {
+  min-width: 0;
+}

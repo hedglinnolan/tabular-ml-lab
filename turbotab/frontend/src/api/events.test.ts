@@ -165,6 +165,27 @@ describe("a stage event", () => {
     expect(isInvalid(keys.stage(PID, "target_info"))).toBe(false);
   });
 
+  it("refetches the view when a status changes, so the Router's interview stays current", () => {
+    applyProjectEvent(qc, PID, {
+      type: "stage",
+      data: status("target_info", {
+        status: "running",
+        fresh: false,
+        key: "t2",
+        updated_at: "2026-09-27T10:00:01.000Z",
+      }),
+    });
+    expect(isInvalid(keys.view(PID))).toBe(true);
+  });
+
+  it("does not refetch the view for a repeat of the same status", () => {
+    applyProjectEvent(qc, PID, {
+      type: "stage",
+      data: status("target_info", { key: "t1", updated_at: "2026-09-27T10:00:02.000Z" }),
+    });
+    expect(isInvalid(keys.view(PID))).toBe(false);
+  });
+
   it("refetches the table and column summaries when ingest turns fresh", () => {
     qc.setQueryData(keys.table(PID, 0, 50, "a,b"), {
       columns: [],

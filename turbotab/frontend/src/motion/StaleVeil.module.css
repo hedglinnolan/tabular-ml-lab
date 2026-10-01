@@ -56,6 +56,28 @@
   animation-delay: var(--veil-delay, 0ms);
 }
 
+/* Compact: a dot instead of the words (they are still read out). */
+.compact::after {
+  inset: -2px -4px;
+  border-radius: 6px;
+}
+
+.compact .tagSlot {
+  top: -4px;
+  right: -6px;
+}
+
+.dot {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--surface);
+  animation: tag-in var(--dur-veil) ease both;
+  animation-delay: var(--veil-delay, 0ms);
+}
+
 @keyframes tag-in {
   from {
     opacity: 0;

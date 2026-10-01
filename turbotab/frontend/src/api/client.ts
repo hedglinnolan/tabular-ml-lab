@@ -13,12 +13,11 @@ import type {
   ProjectSummary,
   ProjectView,
   Refusal,
-  StageArtifacts,
-  StageName,
   StageResult,
   StageStatus,
   TableWindow,
 } from "./schema";
+import type { AnyStageArtifacts, AnyStageName, TeachingEntry } from "./m1-types";
 
 export const API_BASE = "/api";
 
@@ -153,13 +152,13 @@ export const api = {
   decide: (pid: string, decision: Decision) =>
     request<ProjectView>(`/projects/${enc(pid)}/decisions`, { method: "POST", json: decision }),
 
-  stage: <S extends StageName>(pid: string, stage: S, signal?: AbortSignal) =>
-    request<StageResult<StageArtifacts[S]>>(`/projects/${enc(pid)}/stages/${enc(stage)}`, {
+  stage: <S extends AnyStageName>(pid: string, stage: S, signal?: AbortSignal) =>
+    request<StageResult<AnyStageArtifacts[S]>>(`/projects/${enc(pid)}/stages/${enc(stage)}`, {
       signal,
     }),
 
   /** Compute a stage again after it failed or was cancelled (and whatever it waits on). */
-  runStage: (pid: string, stage: StageName) =>
+  runStage: (pid: string, stage: AnyStageName) =>
     request<StageStatus>(`/projects/${enc(pid)}/stages/${enc(stage)}/run`, { method: "POST" }),
 
   table: (
@@ -193,6 +192,9 @@ export const api = {
 
   listDir: (path?: string, signal?: AbortSignal) =>
     request<FsListing>("/fs/list", { query: { path }, signal }),
+
+  /** The words every interview question carries, in asking order (M1_CONTRACT §5). */
+  teaching: (signal?: AbortSignal) => request<TeachingEntry[]>("/teaching", { signal }),
 };
 
 /** The SSE endpoint's URL. The EventSource itself is opened in events.ts. */

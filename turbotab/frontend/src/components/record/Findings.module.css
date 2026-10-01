@@ -1,173 +1,197 @@
-.list {
+/* Findings (lifted from the prototype's S3): a claim in serif, its lever in sans. */
+
+.cards {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow);
+  gap: 9px;
 }
 
+/* The coach's voice is amber (§02): the keyline says "noticed", never "error". */
 .card {
-  padding: 15px 18px 14px;
-  border-left: 3px solid transparent;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 11px 15px 12px 14px;
+  outline: none;
 }
 
-.card + .card {
-  border-top: 1px solid var(--line-soft);
+.card[data-severity="info"] {
+  border-left-color: var(--line);
 }
 
-/* The coach's voice is amber; advisory, never an error (§02). */
-.card[data-severity="warning"],
-.card[data-severity="critical"] {
+.card[data-shown] {
+  border-color: var(--accent);
   border-left-color: var(--warn);
+  box-shadow: var(--shadow-lift);
 }
 
-.card:first-child {
-  border-top-left-radius: var(--radius-lg);
+.card[data-severity="info"][data-shown] {
+  border-left-color: var(--line);
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .top {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 5px;
-  flex-wrap: wrap;
+  min-height: 20px;
 }
 
-.severity {
+.origin {
   font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.03em;
-  border-radius: 9px;
-  padding: 0 7px;
-  border: 1px solid var(--line);
+  font-size: 10.5px;
   color: var(--muted);
 }
 
-.severity[data-severity="warning"] {
-  color: var(--warn);
-  background: var(--warn-tint);
-  border-color: var(--warn-line);
-}
-
-.severity[data-severity="critical"] {
-  color: var(--surface);
-  background: var(--warn);
-  border-color: var(--warn);
-  font-weight: 600;
-}
-
-.source {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--muted);
-}
-
-/* §11 evidence badge: a mono token inside the card, not a component. */
 .badge {
-  margin-left: auto;
   font-family: var(--mono);
   font-size: 9.5px;
   letter-spacing: 0.05em;
+  border: 1px solid var(--line);
   border-radius: 9px;
   padding: 0 7px;
+  color: var(--muted);
+}
+
+.pager {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pageBtn {
+  width: 22px;
+  height: 20px;
   border: 1px solid var(--line);
-  cursor: help;
-}
-
-.settled {
-  color: var(--ok);
-  background: var(--ok-tint);
-  border-color: var(--ok);
-}
-
-.convention {
-  color: var(--warn);
-  background: var(--warn-tint);
-  border-color: var(--warn-line);
-}
-
-.disputed {
+  border-radius: 6px;
+  background: var(--surface);
   color: var(--ink);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+}
+
+.pageBtn:disabled {
+  color: var(--faint);
+  opacity: 0.5;
+}
+
+.pageText {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  min-width: 42px;
+  text-align: center;
+}
+
+.claim {
+  margin: 4px 0 9px;
+  font-family: var(--serif);
+  font-size: 15.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.levers {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lever {
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 3px 11px;
+  border-radius: 8px;
+}
+
+.lever:hover {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  background: var(--accent-tint);
+}
+
+.rest {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 9px;
+  padding: 9px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
   background: var(--surface-2);
 }
 
-.title {
+.restOpen {
+  background: transparent;
+}
+
+.restText {
+  flex: 1;
   font-family: var(--serif);
-  font-size: 15.5px;
-  font-weight: 700;
-  line-height: 1.4;
-  margin: 0 0 3px;
-}
-
-.detail {
-  font-size: 13px;
-  color: var(--muted);
-  margin: 0 0 6px;
-  line-height: 1.5;
-  max-width: 68ch;
-}
-
-.why {
-  font-size: 13px;
-  margin: 0 0 8px;
-  line-height: 1.5;
-  max-width: 68ch;
-}
-
-.whyLabel {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 14px;
   color: var(--muted);
 }
 
-.cols {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  align-items: center;
-}
-
-.more,
-.expand {
+.restButton {
   border: 0;
   background: none;
   padding: 0;
-  font-size: 12px;
+  font-size: 12.5px;
+  font-weight: 600;
   color: var(--accent-ink);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-.footer {
+.keys {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  color: var(--faint);
   display: flex;
-  align-items: baseline;
-  gap: 14px;
+  align-items: center;
+  gap: 5px;
   flex-wrap: wrap;
-  margin-top: 9px;
-  padding: 0 4px;
 }
 
-.expand {
-  font-weight: 600;
-  font-size: 12.5px;
+.keys kbd {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 0 5px;
+  background: var(--surface);
+  margin-left: 4px;
+}
+
+.keys kbd:first-child {
+  margin-left: 0;
 }
 
 .basis {
+  margin: 8px 0 0;
   font-size: 11.5px;
-  color: var(--muted);
+  color: var(--faint);
 }
 
 .none {
-  font-size: 13px;
-  color: var(--muted);
-  border: 1px dashed var(--line);
-  border-radius: 10px;
-  padding: 12px 14px;
   margin: 0;
+  font-family: var(--serif);
+  font-size: 14px;
+  color: var(--muted);
 }

@@ -2,7 +2,8 @@
  * Server-sent events -> the query cache. The server pushes; the client never polls.
  *
  *   decision  append the record to the cached view; refetch the view for the folded state
- *   stage     patch the stage status in place; when a stage turns fresh with a key the
+ *   stage     patch the stage status in place; refetch the view when the status changed
+ *             (the Router's interview reads it); when a stage turns fresh with a key the
  *             cached result does not have, refetch that stage (and the table after ingest)
  *   job       store the JobView and mirror its progress onto the stage it serves
  *   resync    refetch everything under [pid]
@@ -50,6 +51,11 @@ function applyStage(qc: QueryClient, pid: string, status: StageStatus): void {
       ...view,
       stages: { ...view.stages, [status.stage]: status },
     });
+    // The Router's interview reads stage statuses (a question waits while a stage it needs
+    // computes), and no event carries it: refetch the view when a status really changes.
+    if (current?.status !== status.status || current?.cancelled !== status.cancelled) {
+      void qc.invalidateQueries({ queryKey: keys.view(pid), exact: true });
+    }
   }
   if (status.status !== "fresh") return; // an older artifact stays cached and is shown veiled
   const cached = qc.getQueryData<StageResult>(keys.stage(pid, status.stage));

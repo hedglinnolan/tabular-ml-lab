@@ -105,6 +105,7 @@
   --radius: 10px;
   --radius-lg: 14px;
   --header-h: 54px;
+  --banner-h: 60px;
 
   /* §05 — durations (unsourced per §05.0; kept short and in one place) */
   --dur-settle: 250ms;

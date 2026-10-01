@@ -77,7 +77,13 @@ function joinNodes(items: ReactNode[]): ReactNode[] {
   return out;
 }
 
+/**
+ * The record's sentence. The server authors it when the decision is recorded and the
+ * Record quotes it verbatim (DESIGN_LANGUAGE §05.1); only records made before the server
+ * wrote sentences are composed here.
+ */
 export function sentence(record: DecisionRecord, records: DecisionRecord[]): ReactNode {
+  if (record.sentence) return <Prose text={record.sentence} />;
   const d = record.decision;
   switch (d.kind) {
     case "set_lens": {
@@ -117,6 +123,24 @@ export function sentence(record: DecisionRecord, records: DecisionRecord[]): Rea
     }
     default:
       // M1 kinds: the server authors the sentence (DecisionRecord.sentence).
-      return record.sentence ? <Prose text={record.sentence} /> : null;
+      return null;
+  }
+}
+
+/** The sentence as plain words, for a screen reader's announcement. */
+export function sentenceText(record: DecisionRecord): string {
+  if (record.sentence) return record.sentence.replace(/`/g, "");
+  const d = record.decision;
+  switch (d.kind) {
+    case "set_lens":
+      return `The table was read through the ${d.lenses.join(" and ")} ${d.lenses.length === 1 ? "lens" : "lenses"}.`;
+    case "set_target":
+      return `${d.column} was chosen as the outcome.`;
+    case "set_task":
+      return `${d.column} was modeled as a ${d.task} task.`;
+    case "set_purpose":
+      return `The analysis was declared for ${d.purpose}.`;
+    default:
+      return "The answer was recorded.";
   }
 }
