@@ -29,6 +29,9 @@ export interface OptionItem {
   decision: Decision | null;
   /** How the stage names the preview; defaults to the label when it is a string. */
   previewLabel?: string;
+  /** What the stage's record button records, when it differs from `decision` (multi-select). */
+  record?: Decision;
+  recordLabel?: string;
   tags?: OptionTag[];
   /** Data beside the label, e.g. the rows a rule removes. */
   data?: ReactNode;
@@ -61,7 +64,13 @@ function previewOf(item: OptionItem): StageFocus | null {
   if (!item.decision) return null;
   const label =
     item.previewLabel ?? (typeof item.label === "string" ? item.label : String(item.key));
-  return { kind: "option", decision: item.decision, label };
+  return {
+    kind: "option",
+    decision: item.decision,
+    label,
+    ...(item.record ? { record: item.record } : {}),
+    ...(item.recordLabel ? { recordLabel: item.recordLabel } : {}),
+  };
 }
 
 export function Options({
@@ -116,8 +125,8 @@ export function Options({
     e.preventDefault();
     if (action === "escape") reset();
     else if (action === "toggle") onToggle?.(item.key);
-    else if (mode === "multi") onRecord(item);
-    else if (!pending) onRecord(item);
+    else if (!pending) onRecord(item); // multi: the chosen set, or the shown option if none is
+
   };
 
   return (

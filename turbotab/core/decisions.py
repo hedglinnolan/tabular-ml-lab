@@ -698,6 +698,8 @@ def _energy_adjustment_fits_the_roles(decision: SetEnergyAdjustment, ctx: Any) -
         exits = [{"label": METHOD_TABLE[m]["label"], "decision": with_(method=m)}
                  for m, v in table.items() if v["ok"] and m != decision.method]
         raise Refusal("method_not_applicable", str(verdict["reason"]), exits=exits)
+    if decision.method == "partition":
+        _partition_runs_on_the_data(decision, ctx, with_, table)
     if decision.strata is not None:
         info = _info(ctx, decision.strata)
         known = columns is None or decision.strata in columns
@@ -710,6 +712,62 @@ def _energy_adjustment_fits_the_roles(decision: SetEnergyAdjustment, ctx: Any) -
                 f"`{decision.strata}` is not one.",
                 exits=[{"label": "Adjust without strata", "decision": with_(strata=None)}],
             )
+
+
+PARTITION_CHECK_ROWS = 5_000
+
+
+def _partition_runs_on_the_data(decision: SetEnergyAdjustment, ctx: Any,
+                                with_: Callable[..., SetEnergyAdjustment],
+                                table: Mapping[str, Mapping[str, Any]]) -> None:
+    """Refuse a partition the fit would refuse, or one that counts a total and its parts twice.
+
+    The same checks the fit makes (energy.partition_refusal), on a sample of the rows outside the
+    held-out set: a unit question, asked of the data before the answer is recorded, so the design
+    never fails on it afterwards.
+    """
+    import numpy as np
+
+    from turbotab.core.methods.energy import METHOD_TABLE, partition_refusal
+    from turbotab.core.methods.nesting import nested_components
+
+    opener = _ctx(ctx, "store")
+    try:
+        store = opener() if callable(opener) else None
+    except Exception:  # noqa: BLE001 - no data to check: the fit decides
+        store = None
+    E, nutrients = decision.energy_column, list(decision.nutrients)
+    if store is None or E is None or not {E, *nutrients} <= set(store.columns):
+        return
+    pool = np.arange(int(store.n_rows), dtype=np.int64)
+    sealed_of = _ctx(ctx, "sealed")
+    sealed = sealed_of() if callable(sealed_of) else None
+    if sealed is not None and len(sealed):
+        pool = np.setdiff1d(pool, np.asarray(sealed, dtype=np.int64), assume_unique=True)
+    if len(pool) > PARTITION_CHECK_ROWS:
+        pool = np.sort(np.random.default_rng(0).choice(pool, size=PARTITION_CHECK_ROWS, replace=False))
+    frame = store.materialize([E, *nutrients], pool)
+    nested = nesting_of(ctx) or nested_components(frame, nutrients)
+    refused = partition_refusal(frame, E, nutrients, nested=nested)
+    if refused is None:
+        return
+    exits: list[dict[str, Any]] = []
+    if refused["nutrients"]:
+        exits.append({"label": f"Partition {_and(refused['nutrients'])}",
+                      "decision": with_(nutrients=refused["nutrients"])})
+    exits += [{"label": METHOD_TABLE[m]["label"], "decision": with_(method=m)}
+              for m in ("residual", "standard") if table.get(m, {}).get("ok")]
+    raise Refusal("method_not_applicable", _ticked(str(refused["reason"]), [E, *nutrients]),
+                  exits=exits)
+
+
+def _ticked(text: str, columns: Sequence[str]) -> str:
+    """Wrap these column names in backticks (data chips), longest first, whole words only."""
+    import re
+
+    for c in sorted(set(columns), key=len, reverse=True):
+        text = re.sub(rf"(?<![`\w]){re.escape(c)}(?![`\w])", f"`{c}`", text)
+    return text
 
 
 def model_families() -> dict[str, set[str]]:

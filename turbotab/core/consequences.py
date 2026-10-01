@@ -222,11 +222,25 @@ ConsequenceView = Annotated[
 ]
 
 
+class CautionExit(_Model):
+    label: str
+    decision: dict[str, Any]  # the decision the way out would record (a Decision's JSON)
+
+
+class Caution(_Model):
+    """A concern the preview itself shows, inside the stage, with the control that acts on it
+    (DESIGN_LANGUAGE §09: a caveat arrives with its lever, in the same place)."""
+
+    text: str
+    exits: list[CautionExit] = Field(default_factory=list)
+
+
 class PreviewResult(_Model):
     kind: str  # the decision kind previewed
     views: list[ConsequenceView]  # ≤ MAX_VIEWS; the first is primary
-    basis: str  # e.g. "5,000 of 17,478 training rows"
+    basis: str  # e.g. "Values on a sample of 5,000 of the 17,084 training rows."
     note: str | None = None  # e.g. why there is nothing to show yet
+    caution: Caution | None = None  # e.g. what imputing a "not asked" column would assert
 
 
 # ── the planner ──────────────────────────────────────────────────────────────
@@ -244,6 +258,13 @@ class PreviewContext:
     cohort_row_ids: Any | None  # numpy array once the cohort exists, else None
     settings: dict[str, Any] = field(default_factory=dict)
     sample_size: int = 5000
+    # Every held-out row of the newest split, current or still recomputing (None: no split yet).
+    # Nothing a preview reads may include them (M1_CONTRACT §3), whatever the split's status.
+    sealed_row_ids: Any | None = None
+    caution: Caution | None = None  # a builder may set one (see PreviewResult.caution)
+    # What the builders read, for the basis line: ``sample`` (pool kind, pool size, rows drawn)
+    # from :meth:`sample_row_ids`, ``counted`` (rows) from an exact count over the pool.
+    read: dict[str, Any] = field(default_factory=dict)
 
     before: Callable[[], Any] | None = None  # the server supplies: the sampled working frame
 
@@ -259,13 +280,33 @@ class PreviewContext:
 
         if pool is None:
             pool = self.training_row_ids if self.training_row_ids is not None else self.cohort_row_ids
+        if pool is self.training_row_ids and pool is not None:
+            kind = "training"
+        elif pool is self.cohort_row_ids and pool is not None:
+            kind = "cohort"
+        elif pool is None:
+            kind = "all"
+        else:
+            kind = "given"
         if pool is None:
-            pool = np.arange(self.datastore.n_rows)
+            pool = self.unsealed_row_ids()
+            kind = "unsealed" if self.sealed_row_ids is not None and len(self.sealed_row_ids) else "all"
         pool = np.asarray(pool)
         n = self.sample_size if n is None else n
-        if len(pool) <= n:
-            return pool
-        return np.sort(np.random.default_rng(seed).choice(pool, size=n, replace=False))
+        drawn = pool if len(pool) <= n else np.sort(
+            np.random.default_rng(seed).choice(pool, size=n, replace=False))
+        self.read["sample"] = (kind, int(len(pool)), int(len(drawn)))
+        return drawn
+
+    def unsealed_row_ids(self) -> Any:
+        """Every row but the held-out ones (every row before a split exists)."""
+        import numpy as np
+
+        everything = np.arange(int(self.datastore.n_rows), dtype=np.int64)
+        if self.sealed_row_ids is None or not len(self.sealed_row_ids):
+            return everything
+        return np.setdiff1d(everything, np.asarray(self.sealed_row_ids, dtype=np.int64),
+                            assume_unique=True)
 
 
 Builder = Callable[[Any, PreviewContext], list[Any]]
@@ -780,8 +821,11 @@ def plan(decision: Any, ctx: PreviewContext, basis: str) -> PreviewResult:
         after = transform(decision, before, ctx)
         taken = {v.kind for v in views}
         views.extend(v for v in diff_views(before, after, ctx) if v.kind not in taken)
-    note = None if views else "Nothing about this choice can be shown on your data yet."
-    return PreviewResult(kind=decision.kind, views=views[:MAX_VIEWS], basis=basis, note=note)
+    # A builder may say in words what its views cannot (``ctx.read["note"]``).
+    note = ctx.read.get("note") or (None if views else
+                                    "Nothing about this choice can be shown on your data yet.")
+    return PreviewResult(kind=decision.kind, views=views[:MAX_VIEWS], basis=basis, note=note,
+                         caution=ctx.caution)
 
 
 def words(text: str) -> int:
@@ -789,7 +833,8 @@ def words(text: str) -> int:
 
 
 __all__ = [
-    "CAPTION_WORDS", "FRAME_WORDS", "MAX_VIEWS", "TITLE_WORDS", "ConsequenceView",
+    "CAPTION_WORDS", "FRAME_WORDS", "MAX_VIEWS", "TITLE_WORDS", "Caution", "CautionExit",
+    "ConsequenceView",
     "DistributionFrame", "DistributionView", "FitLine", "FrameRow", "HistogramData", "Lineage",
     "LineageFrame", "LineageLink", "LineageNode", "LineageView", "Mark", "PreviewContext",
     "PreviewResult", "RelationshipFrame", "RelationshipView", "RowFlowFrame", "RowFlowView",

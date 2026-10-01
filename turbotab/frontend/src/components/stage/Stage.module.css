@@ -355,6 +355,26 @@
   border-radius: 10px;
 }
 
+/* A concern the preview itself raises, with its lever, in the coach's amber (§09 CHOICE). */
+.caution {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 13px;
+  border: 1px solid var(--warn-line);
+  border-left: 3px solid var(--warn);
+  border-radius: 10px;
+  background: var(--warn-tint);
+}
+
+.cautionText {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
 .refusal {
   display: flex;
   flex-direction: column;
@@ -598,4 +618,54 @@
   .grid > * {
     grid-area: auto !important;
   }
+}
+
+/* The design's warnings: the coach speaking (§02 --warn), a list under the figure it qualifies. */
+.warnings {
+  margin-top: 10px;
+  padding: 9px 12px 10px;
+  border: 1px solid var(--warn-line);
+  border-left: 3px solid var(--warn);
+  border-radius: 10px;
+  background: var(--warn-tint);
+}
+
+.warningsHead {
+  margin: 0 0 4px;
+  font-family: var(--sans);
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--warn);
+}
+
+.warningsList {
+  margin: 0;
+  padding-left: 18px;
+  font-family: var(--serif);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.warningsList li + li {
+  margin-top: 3px;
+}
+
+.concernsLink {
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--warn);
+  cursor: pointer;
+}
+
+.concernsLink:hover {
+  text-decoration: underline;
 }

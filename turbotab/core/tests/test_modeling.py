@@ -520,7 +520,9 @@ def test_substitution_names_its_assumptions_and_skips_nothing_it_can_draw(table)
     assert "fat_sat, fat_mon and fat_poly are parts of fat_total" in sub["note"]
     assert set(sub["carried"]) == {"fat_sat", "fat_mon", "fat_poly", "sugar"}
     assert {"donor": "fat_total", "recipient": "carb"} in design.data["substitution_pairs"]
-    assert not any("sugar" in (p["donor"], p["recipient"]) for p in design.data["substitution_pairs"])
+    # Sugar carries energy (carbohydrate, 4 kcal/g) and is part of carb: never paired with it.
+    assert not any({p["donor"], p["recipient"]} == {"sugar", "carb"}
+                   for p in design.data["substitution_pairs"])
 
 
 # ── stratified residuals ─────────────────────────────────────────────────────

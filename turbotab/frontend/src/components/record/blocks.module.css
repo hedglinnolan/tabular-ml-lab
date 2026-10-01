@@ -67,6 +67,25 @@
   align-items: baseline;
 }
 
+.sentenceBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sentenceNote {
+  font-family: var(--serif);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--warn);
+}
+
+.sentenceNote > [role="alert"] {
+  color: var(--ink);
+}
+
 .prose {
   font-family: var(--serif);
   font-size: var(--fs-decision);

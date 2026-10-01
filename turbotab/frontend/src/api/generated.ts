@@ -363,6 +363,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * Caution
+         * @description A concern the preview itself shows, inside the stage, with the control that acts on it
+         *     (DESIGN_LANGUAGE §09: a caveat arrives with its lever, in the same place).
+         */
+        Caution: {
+            /** Text */
+            text: string;
+            /** Exits */
+            exits: components["schemas"]["CautionExit"][];
+        };
+        /** CautionExit */
+        CautionExit: {
+            /** Label */
+            label: string;
+            /** Decision */
+            decision: {
+                [key: string]: unknown;
+            };
+        };
         /** ColumnSummary */
         ColumnSummary: {
             /** Name */
@@ -788,6 +808,7 @@ export interface components {
             basis: string;
             /** Note */
             note: string | null;
+            caution: components["schemas"]["Caution"] | null;
         };
         /**
          * ProjectState
@@ -1647,6 +1668,8 @@ export interface components {
             };
             /** Notes */
             notes: string[];
+            /** Not Adjusted */
+            not_adjusted: components["schemas"]["NotAdjusted"][];
         };
         /**
          * ExclusionProposal
@@ -1864,6 +1887,16 @@ export interface components {
             parent: string;
         };
         /**
+         * NotAdjusted
+         * @description An exposure energy adjustment leaves as it is, and why (it carries no energy, it is a share).
+         */
+        NotAdjusted: {
+            /** Column */
+            column: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
          * ProfileArtifact
          * @description The ``profile`` artifact.
          */
@@ -1884,6 +1917,8 @@ export interface components {
             exclusions: components["schemas"]["ExclusionProposal"][];
             energy: components["schemas"]["EnergyReading"] | null;
             missing: components["schemas"]["MissingReading"];
+            /** N Base */
+            n_base: number;
             /** Basis */
             basis: string;
         };

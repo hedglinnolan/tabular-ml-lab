@@ -16,6 +16,8 @@ import {
 import { useCancelJob, useDecide } from "../../../api/queries";
 import type { ProjectView } from "../../../api/schema";
 import { StaleVeil, type VeilState } from "../../../motion/StaleVeil";
+import { StageRetry } from "../../StageRetry";
+import { DesignWarnings, warningsAbout } from "../DesignWarnings";
 import { plain } from "../format";
 import { comparisonFigure, curvesFigure, forestFigure } from "../save/resultsJournal";
 import { SaveMenu } from "../save/SaveMenu";
@@ -101,7 +103,12 @@ export function Results({ pid, view, data }: Props) {
 
   return (
     <div className={s.results} data-testid="results">
-      <StaleVeil state={data.fit.veil} order={0} label="Model comparison">
+      <StaleVeil
+        state={data.fit.veil}
+        order={0}
+        label="Model comparison"
+        action={<StageRetry pid={pid} status={view.stages.fit} />}
+      >
         <section className={s.section}>
           <header className={s.sectionHead}>
             <h3 className={s.kicker}>Models compared</h3>
@@ -122,7 +129,12 @@ export function Results({ pid, view, data }: Props) {
       </StaleVeil>
 
       {linear.length ? (
-        <StaleVeil state={data.fit.veil} order={1} label="Coefficients">
+        <StaleVeil
+          state={data.fit.veil}
+          order={1}
+          label="Coefficients"
+          action={<StageRetry pid={pid} status={view.stages.fit} />}
+        >
           <section className={s.section}>
             <header className={s.sectionHead}>
               <h3 className={s.kicker}>Coefficients of the exposures</h3>
@@ -147,8 +159,13 @@ export function Results({ pid, view, data }: Props) {
       ) : null}
 
       {sub ? (
-        <StaleVeil state={data.substitution.veil} order={2} label="Substitution curves">
-          <section className={s.section}>
+        <section className={s.section} aria-label="Substitution curves">
+          <StaleVeil
+            state={data.substitution.veil}
+            order={2}
+            label="Substitution curves"
+            action={<StageRetry pid={pid} status={subStatus} />}
+          >
             <header className={s.sectionHead}>
               <h3 className={s.kicker}>
                 Substitution: <code className="v">{sub.donor}</code> → <code className="v">{sub.recipient}</code>
@@ -166,7 +183,27 @@ export function Results({ pid, view, data }: Props) {
               />
             </header>
             <Curves sub={sub} target={target} />
-            <div className={s.bandRow}>
+            {carriedSentence(sub.carried, data.design?.nested ?? []) ? (
+              <p className={s.caption} data-testid="carried">
+                <Rich text={carriedSentence(sub.carried, data.design?.nested ?? [])!} />
+              </p>
+            ) : null}
+            <p className={s.caption}>
+              <Rich text={energyProvenance(view, data.design)} />
+            </p>
+            {sub.note ? (
+              <details className={s.details}>
+                <summary>How this curve was drawn</summary>
+                <p className={s.basis}>
+                  <Rich text={sub.note} />
+                </p>
+              </details>
+            ) : null}
+            <DesignWarnings warnings={warningsAbout(data.design?.warnings ?? [], "substitution")} />
+          </StaleVeil>
+          {/* The levers stay live under a veil: a stopped band can be asked for again, and
+              another pair is a new answer, whatever the state of this curve. */}
+          <div className={s.bandRow}>
               {hasBand(sub) ? (
                 <p className={s.bandNote}>
                   Bands: 95% intervals from {nBoot || "bootstrap"} refits of each family on{" "}
@@ -199,22 +236,6 @@ export function Results({ pid, view, data }: Props) {
                 </span>
               ) : null}
             </div>
-            {carriedSentence(sub.carried, data.design?.nested ?? []) ? (
-              <p className={s.caption} data-testid="carried">
-                <Rich text={carriedSentence(sub.carried, data.design?.nested ?? [])!} />
-              </p>
-            ) : null}
-            <p className={s.caption}>
-              <Rich text={energyProvenance(view, data.design)} />
-            </p>
-            {sub.note ? (
-              <details className={s.details}>
-                <summary>How this curve was drawn</summary>
-                <p className={s.basis}>
-                  <Rich text={sub.note} />
-                </p>
-              </details>
-            ) : null}
             {data.design ? (
               <PairNavigator
                 pairs={data.design.substitution_pairs}
@@ -224,8 +245,7 @@ export function Results({ pid, view, data }: Props) {
                 onPick={(d, r) => record(d, r)}
               />
             ) : null}
-          </section>
-        </StaleVeil>
+        </section>
       ) : data.design && data.design.substitution_pairs.length ? (
         <section className={s.section}>
           <header className={s.sectionHead}>

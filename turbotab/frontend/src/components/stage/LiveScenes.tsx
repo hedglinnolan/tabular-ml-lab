@@ -15,6 +15,10 @@ import type {
 } from "../../api/m1-stage-types";
 import type { DecisionKind, ProjectView } from "../../api/schema";
 import { StaleVeil, type VeilState } from "../../motion/StaleVeil";
+import { useStageFocus } from "../../state/focus";
+import { StageFailure, rootFailure } from "../Failure";
+import { StageRetry } from "../StageRetry";
+import { DesignWarnings } from "./DesignWarnings";
 import { fmtInt, plain } from "./format";
 import { Results, type ResultsData } from "./results/Results";
 import { Shelf } from "./results/Shelf";
@@ -26,6 +30,7 @@ import { RowFlow } from "./views/RowFlow";
 import s from "./Stage.module.css";
 
 export interface LiveData extends ResultsData {
+  pid: string;
   cohort: { artifact: CohortArtifact | null; veil: VeilState };
   splitVeil: VeilState;
   designVeil: VeilState;
@@ -89,8 +94,14 @@ function RowsCard({ view, data, full }: { view: ProjectView; data: LiveData; ful
       : null;
   const provenance = recordedSentences(view, ROW_KINDS);
   const veil: VeilState = data.cohort.veil !== "fresh" ? data.cohort.veil : data.splitVeil;
+  const retry = data.cohort.veil !== "fresh" ? view.stages.cohort : view.stages.split;
   return (
-    <StaleVeil state={veil} order={0} label="Rows">
+    <StaleVeil
+      state={veil}
+      order={0}
+      label="Rows"
+      action={<StageRetry pid={data.pid} status={retry} />}
+    >
       <section className={full ? s.liveFull : s.liveCard} data-card="rows">
         <header className={s.cardHead}>
           <h3 className={s.kicker}>Rows</h3>
@@ -135,6 +146,8 @@ function Provenance({ text }: { text: string }) {
 }
 
 function ColumnsCard({ view, data, full }: { view: ProjectView; data: LiveData; full: boolean }) {
+  const { toggle } = useStageFocus();
+  const warnings = data.design?.warnings ?? [];
   const lineage =
     data.design?.lineage ??
     (data.cohort.artifact ? predictorsLineage(data.cohort.artifact.predictors, view.state.roles) : null);
@@ -157,7 +170,12 @@ function ColumnsCard({ view, data, full }: { view: ProjectView; data: LiveData; 
     );
   }
   return (
-    <StaleVeil state={data.design ? data.designVeil : "fresh"} order={1} label="Columns">
+    <StaleVeil
+      state={data.design ? data.designVeil : "fresh"}
+      order={1}
+      label="Columns"
+      action={<StageRetry pid={data.pid} status={view.stages.design} />}
+    >
       <section className={full ? s.liveFull : s.liveCard} data-card="lineage">
         <header className={s.cardHead}>
           <h3 className={s.kicker}>Columns</h3>
@@ -184,6 +202,18 @@ function ColumnsCard({ view, data, full }: { view: ProjectView; data: LiveData; 
         >
           <Lineage lineage={lineage} openLabel={openLabel} />
         </div>
+        {full ? (
+          <DesignWarnings warnings={warnings} />
+        ) : warnings.length ? (
+          <button
+            type="button"
+            className={s.concernsLink}
+            onClick={() => toggle({ kind: "banner", segment: "columns" })}
+            data-testid="design-warnings-count"
+          >
+            {warnings.length} {warnings.length === 1 ? "concern" : "concerns"} about this design →
+          </button>
+        ) : null}
         {full ? <Provenance text={provenance} /> : null}
       </section>
     </StaleVeil>
@@ -191,7 +221,6 @@ function ColumnsCard({ view, data, full }: { view: ProjectView; data: LiveData; 
 }
 
 export function NowScene({ view, data }: { view: ProjectView; data: LiveData }) {
-  const waiting = view.interview.filter((i) => i.status === "open" || i.status === "waiting").map((i) => i.key.replace(/_/g, " "));
   if (!data.cohort.artifact) {
     return (
       <p className={s.emptyLine}>
@@ -207,9 +236,7 @@ export function NowScene({ view, data }: { view: ProjectView; data: LiveData }) 
         <header className={s.cardHead}>
           <h3 className={s.kicker}>Results</h3>
         </header>
-        <p className={s.captionText}>
-          Nothing has been fit yet.{waiting.length ? ` It waits on ${waiting.slice(0, 3).join(", then ")}.` : ""}
-        </p>
+        <NotFitted view={view} data={data} />
       </section>
     </div>
   );
@@ -238,14 +265,39 @@ export function ModelsScene({
 
 export function ResultsScene({ pid, view, data }: { pid: string; view: ProjectView; data: LiveData }) {
   if (!data.fit.artifact) {
-    const waiting = view.interview.filter((i) => i.status === "open" || i.status === "waiting").map((i) => i.key.replace(/_/g, " "));
     return (
-      <p className={s.emptyLine}>
-        Nothing has been fit yet.{waiting.length ? ` It waits on ${waiting.slice(0, 3).join(", then ")}.` : ""}
-      </p>
+      <div className={s.emptyLine}>
+        <NotFitted view={view} data={data} />
+      </div>
     );
   }
   return <Results pid={pid} view={view} data={data} />;
+}
+
+/** Why nothing is fitted, truly: a failure or a stop with its levers, the fit under way, or the
+ *  questions still to answer before it (never "waits on substitution", which comes after). */
+function NotFitted({ view, data }: { view: ProjectView; data: LiveData }) {
+  if (rootFailure(view.stages, "fit") || view.stages.fit?.cancelled) {
+    return <StageFailure pid={data.pid} view={view} stage="fit" lead="Nothing was fitted." testId="fit-failure" />;
+  }
+  const fit = view.stages.fit?.status;
+  if (fit === "running" || fit === "queued") {
+    const design = view.stages.design?.status;
+    return (
+      <p className={s.captionText}>
+        {design === "running" || design === "queued" ? "Building each model's pipeline…" : "Fitting the models…"}
+      </p>
+    );
+  }
+  const before = new Set(["exclusions", "missing", "split", "energy_adjustment", "models", "roles", "target", "task", "purpose", "lens"]);
+  const waiting = view.interview
+    .filter((i) => (i.status === "open" || i.status === "waiting") && before.has(i.key))
+    .map((i) => i.key.replace(/_/g, " "));
+  return (
+    <p className={s.captionText}>
+      Nothing has been fit yet.{waiting.length ? ` The fit waits on ${waiting.slice(0, 3).join(", then ")}.` : ""}
+    </p>
+  );
 }
 
 export type { DesignArtifact };

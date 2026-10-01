@@ -9,7 +9,7 @@
  * arriving question takes the keyboard focus, and the recorded sentence is announced.
  * Below the questions: what the lenses noticed, each finding a claim plus its lever.
  */
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { LayoutGroup, motion } from "motion/react";
 import { isRefusalError } from "../../api/client";
 import { useColumnSummaries, useDecide, useRunStage, useTeaching } from "../../api/queries";
@@ -23,6 +23,8 @@ import { useStage } from "../../state/stages";
 import { fmtClock, fmtInt } from "../../util/format";
 import { Prose, V } from "../Prose";
 import { STAGE_LABEL } from "../JobChips";
+import { REOPEN_EVENT, StageFailure, rootFailure } from "../Failure";
+import { DesignWarnings, warningsAbout } from "../stage/DesignWarnings";
 import { StageRetry, needsRetry } from "../StageRetry";
 import { DecisionSentence, History, Pending, SkipRow } from "./blocks";
 import {
@@ -59,6 +61,29 @@ const SUBJECT: Record<QuestionKey, string> = {
 
 /** What each stage is doing while a question waits on it: the job chip's own words. */
 const STAGE_WORK = STAGE_LABEL;
+
+/** The stage that carries out each answer: where "it did not run" is read. */
+const RUNS_IN: Partial<Record<QuestionKey, string>> = {
+  exclusions: "cohort",
+  missing: "cohort",
+  split: "split",
+  energy_adjustment: "design",
+  models: "fit",
+  substitution: "substitution",
+};
+/** The stages each of those waits on: a stop inherited from them is said there, not here. */
+const STAGE_DEPS: Record<string, string[]> = {
+  cohort: [],
+  split: ["cohort"],
+  design: ["split"],
+  fit: ["design", "split"],
+  substitution: ["fit", "design"],
+};
+/** Sentences whose counts are made under earlier answers, and which ones. */
+const COUNTED_UNDER: Partial<Record<QuestionKey, QuestionKey[]>> = {
+  exclusions: ["target"],
+  missing: ["target", "roles", "exclusions"],
+};
 
 interface Answer {
   key: QuestionKey;
@@ -195,6 +220,16 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
     window.setTimeout(() => setFlash((f) => (f === key ? null : f)), 1600);
     goTo(key, st.status !== "waiting" && st.status !== "not_applicable");
   };
+  // "Change the energy adjustment" pressed on the stage or the banner reopens it here.
+  const routeRef = useRef(route);
+  useEffect(() => {
+    routeRef.current = route;
+  });
+  useEffect(() => {
+    const onReopen = (e: Event) => routeRef.current((e as CustomEvent<QuestionKey>).detail);
+    window.addEventListener(REOPEN_EVENT, onReopen);
+    return () => window.removeEventListener(REOPEN_EVENT, onReopen);
+  }, []);
 
   const answerFor = (key: QuestionKey): AskProps["answerAt"] => {
     if (!answer || answer.key !== key) return null;
@@ -347,12 +382,69 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
   };
 
   // ─── one slot per step, in the Router's order ─────────────────────────────
+  /** What is true of a recorded answer now that its sentence cannot say. */
+  const sentenceNote = (key: QuestionKey, rec: DecisionRecord): ReactNode => {
+    const stage = RUNS_IN[key];
+    if (stage) {
+      const failure = rootFailure(stages, stage);
+      if (failure && failure.stage === stage) {
+        return (
+          <StageFailure
+            pid={pid}
+            view={view}
+            stage={stage}
+            compact
+            changeable={false}
+            lead="Recorded, but it did not run."
+            testId={`sentence-failure-${key}`}
+          />
+        );
+      }
+      const inherited = (STAGE_DEPS[stage] ?? []).some((u) => stages[u]?.cancelled);
+      if (stages[stage]?.cancelled && !inherited) {
+        return (
+          <StageFailure
+            pid={pid}
+            view={view}
+            stage={stage}
+            compact
+            changeable={false}
+            lead="Recorded."
+            testId={`sentence-stopped-${key}`}
+          />
+        );
+      }
+    }
+    if (key === "energy_adjustment" && design?.artifact && design.fresh && design.key === stages.design?.key) {
+      // The design's energy concerns, beside the answer that raised them.
+      const about = warningsAbout(design.artifact.warnings, "energy");
+      if (about.length) return <DesignWarnings warnings={about} title="Concerns" testId="energy-warnings" />;
+    }
+    const under = COUNTED_UNDER[key];
+    if (under) {
+      const later = decisions
+        .filter((r) => r.seq > rec.seq && under.includes(slotOf(r.decision, decisions) as QuestionKey))
+        .sort((a, b) => b.seq - a.seq)[0];
+      if (later) {
+        const slot = slotOf(later.decision, decisions) as QuestionKey;
+        return (
+          <>
+            Its counts were made before #{later.seq} changed {SUBJECT[slot]}; the banner shows the
+            rows as they are now.
+          </>
+        );
+      }
+    }
+    return null;
+  };
+
   const settled = (key: QuestionKey, rec: DecisionRecord) => (
     <DecisionSentence
       layoutId={`q-${key}`}
       subject={SUBJECT[key]}
       onChange={() => reopen(key)}
       meta={`#${rec.seq}`}
+      note={sentenceNote(key, rec)}
       testId={`decision-${key}`}
     >
       {sentence(rec, decisions)}
@@ -414,10 +506,20 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
   const inline = interview.filter((st, i) => !later(st, i) && st !== pendingStep);
   const next = interview.filter(later);
 
+  /** A finding is settled once the question its lever routes to has a recorded answer. */
+  const answeredBy = (f: { routes_to: QuestionKey | null }) => {
+    if (!f.routes_to || stepOf(f.routes_to)?.status !== "answered") return null;
+    const rec = currentRecord(f.routes_to);
+    if (!rec) return null;
+    const text = rec.sentence ?? sentenceText(rec);
+    const head = text.split(/(?<=[.;:])\s/)[0]!.replace(/[.;:]$/, "");
+    const words = head.split(/\s+/);
+    return { seq: rec.seq, said: words.length > 14 ? `${words.slice(0, 14).join(" ")}…` : head };
+  };
   const unread = !columns && needsRetry(stages.ingest) ? stages.ingest : undefined;
   const findingsBody = (() => {
     const f = findings?.artifact;
-    if (f) return <FindingsCards artifact={f} onRoute={route} />;
+    if (f) return <FindingsCards artifact={f} onRoute={route} answeredBy={answeredBy} />;
     return (
       <Pending testId="pending-findings">
         {waitingText(
@@ -450,12 +552,24 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
         ) : null}
         {interview.map((st) => {
           if (st !== pendingStep && !inline.includes(st)) return null;
+          const waitsOn = st.waiting_on[0] ?? "";
+          const stopped = rootFailure(stages, waitsOn) !== null || !!stages[waitsOn]?.cancelled;
           const body =
             st === pendingStep ? (
-              <Pending testId={`pending-${st.key}`}>
-                {STAGE_WORK[st.waiting_on[0] ?? ""] ?? "Computing"}… {titleOf(entries, st.key)}{" "}
-                comes next.
-              </Pending>
+              stopped ? (
+                // Never "Fitting the models…" over a stage that failed or was stopped.
+                <StageFailure
+                  pid={pid}
+                  view={view}
+                  stage={waitsOn}
+                  after={<>{titleOf(entries, st.key)} waits on it.</>}
+                  testId={`pending-failure-${st.key}`}
+                />
+              ) : (
+                <Pending testId={`pending-${st.key}`}>
+                  {STAGE_WORK[waitsOn] ?? "Computing"}… {titleOf(entries, st.key)} comes next.
+                </Pending>
+              )
             ) : (
               slotBody(st)
             );

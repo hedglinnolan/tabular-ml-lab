@@ -57,12 +57,21 @@ def sealed_rows(split: Any) -> Any:
 
 
 def _pool(ctx: PreviewContext) -> Any | None:
-    """Every row but the held-out ones once the split exists; None (every row) before."""
-    split = ctx.artifact("split")
-    if split is None:
+    """Every row but the held-out ones once a split exists; None (every row) before.
+
+    The held-out rows are the newest split's, even while it recomputes: an answer that changes
+    the cohort never moves a row across the seal, so the stale split's sealed rows still hold.
+    """
+    if ctx.sealed_row_ids is None:
+        ctx.read["counted"] = int(ctx.datastore.n_rows)
         return None
-    held = sealed_rows(split)
-    return np.setdiff1d(np.arange(ctx.datastore.n_rows, dtype=np.int64), held, assume_unique=True)
+    pool = ctx.unsealed_row_ids()
+    ctx.read["counted"] = int(len(pool))
+    return pool
+
+
+def _sealed(ctx: PreviewContext) -> bool:
+    return ctx.sealed_row_ids is not None
 
 
 def _steps(steps: Sequence[dict[str, Any]], sealed: bool) -> list[RowStep]:
@@ -105,7 +114,7 @@ def exclusions_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     state = ctx.state
     proposed = state.model_copy(update={"exclusions": list(decision.rules)})
     frame, _, [(before, _), (after, _)] = _flows(ctx, [state, proposed])
-    training = ctx.artifact("split") is not None
+    training = _sealed(ctx)
     entering = next((s["n"] for s in after if s["key"] == "outcome_measured"), after[0]["n"])
     excluded = sum(s["dropped"] for s in after if s["key"].startswith("exclusion:"))
     now = sum(s["dropped"] for s in before if s["key"].startswith("exclusion:"))
@@ -210,7 +219,7 @@ def missing_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     probe = state.model_copy(update={"missing": MissingSpec(strategy="complete_case")})
     frame, mask, [(before, _), (after, kept_after), (plain, kept_plain)] = _flows(
         ctx, [state, proposed, probe])
-    training = ctx.artifact("split") is not None
+    training = _sealed(ctx)
     order = _order(ctx)
     if drop:
         return _left_out_views(ctx, decision, drop, before, after, plain, kept_after, kept_plain,
@@ -235,6 +244,13 @@ def missing_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         cells = sum(gaps.values())
         caption = (f"No rows leave; {fmt_count(cells)} missing cells in {fmt_count(len(gaps))} predictors "
                    f"would be filled.") if cells else "No predictor has a missing value, so nothing is filled."
+        if ranked:
+            fills = _fill_values(ctx.datastore.materialize(ranked[:MAX_FOCUS_COLUMNS], reach_ids),
+                                 ranked[:MAX_FOCUS_COLUMNS])
+            if len(ranked) <= 2:
+                said = ", ".join(f"`{c}` → `{_shown(fills.get(c))}`" for c in ranked)
+                caption = f"No rows leave; blanks are filled: {said}."
+            ctx.caution = _not_asked_caution(ctx, ranked, gaps, fills)
     views.append(RowFlowView(
         title="Rows kept when values are missing",
         caption=clip_words(caption, CAPTION_WORDS),
@@ -317,6 +333,58 @@ def _kept_before_missing(frame: Any, state: ProjectState) -> Any:
     return kept
 
 
+def _fill_values(values: Any, columns: Sequence[str]) -> dict[str, Any]:
+    """What imputation writes into each column's blanks, as the pipeline fits it: the median of a
+    number, the most common value of anything else (``pipeline.py``'s SimpleImputers)."""
+    fills: dict[str, Any] = {}
+    for c in columns:
+        s = values[c].dropna()
+        if s.empty:
+            fills[c] = None
+        elif s.dtype.kind in "biuf" and s.dtype.kind != "b":
+            fills[c] = float(s.median())
+        else:
+            fills[c] = s.mode().iloc[0]
+    return fills
+
+
+def _shown(value: Any) -> str:
+    from turbotab.core.datastore import json_safe
+
+    value = json_safe(value)
+    if isinstance(value, float):
+        return fmt_value(value)
+    return str(value)
+
+
+def _not_asked_caution(ctx: PreviewContext, ranked: list[str], gaps: dict[str, int],
+                       fills: dict[str, Any]) -> Any:
+    """Filling a column whose blanks mean "not asked" asserts an answer nobody gave
+    (DRIVE_RUBRIC §4): say what it would write, and offer to leave the columns out instead."""
+    from turbotab.core.consequences import Caution, CautionExit
+    from turbotab.core.decisions import SetMissing
+
+    proposals = ctx.artifact("proposals")
+    data = getattr(proposals, "data", proposals)
+    reading = (data.get("missing") or {}) if isinstance(data, dict) else {}
+    likely = [str(e["column"]) for e in reading.get("columns") or [] if e.get("likely_not_asked")]
+    likely = [c for c in likely if c in gaps]
+    if not likely:
+        return None
+    named = likely[:3]
+    parts = [f"`{c}` becomes `{_shown(fills.get(c))}` on {fmt_count(gaps[c])} rows" for c in named]
+    joined = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
+    one = len(likely) == 1
+    text = (f"Imputing asserts answers nobody gave: blank {joined}, its most common value, "
+            f"though a blank there likely means the question was not asked.") if one else (
+            f"Imputing asserts answers nobody gave: blank {joined}, the most common value, though "
+            f"a blank there likely means the question was not asked.")
+    leave = SetMissing(strategy="complete_case", drop_columns=likely)  # the question's own offer
+    return Caution(text=text, exits=[CautionExit(
+        label=f"Leave {'it' if one else 'them'} out first",
+        decision=leave.model_dump(mode="json"))])
+
+
 def _gaps_view(ctx: PreviewContext, reach_ids: Any, ranked: list[str], gaps: dict[str, int],
                strategy: str) -> TableFocusView:
     """The rows with the most missing predictors, and what each strategy does to them."""
@@ -328,16 +396,7 @@ def _gaps_view(ctx: PreviewContext, reach_ids: Any, ranked: list[str], gaps: dic
     per_row = missing.sum(axis=1)
     top = per_row[per_row > 0].sort_values(ascending=False, kind="stable").index[:MAX_FOCUS_ROWS]
     top = sorted(top)
-    fills: dict[str, Any] = {}
-    if strategy == "impute":
-        for c in columns:
-            s = values[c].dropna()
-            if s.empty:
-                fills[c] = None
-            elif s.dtype.kind in "biuf" and s.dtype.kind != "b":
-                fills[c] = float(s.median())
-            else:
-                fills[c] = s.mode().iloc[0]
+    fills: dict[str, Any] = _fill_values(values, columns) if strategy == "impute" else {}
     rows = []
     cells = []
     for r in top:
@@ -350,8 +409,10 @@ def _gaps_view(ctx: PreviewContext, reach_ids: Any, ranked: list[str], gaps: dic
         cells += [(int(r), c) for c in columns if bool(missing.at[r, c])]
     n_cells = sum(gaps.values())
     if strategy == "impute":
-        caption = (f"{fmt_count(n_cells)} cells would be filled; shown with each column's median or "
-                   f"most common value on these rows.")
+        shown = [c for c in columns[:2]]
+        said = " and ".join(f"`{c}` with `{_shown(fills.get(c))}`" for c in shown)
+        caption = (f"{fmt_count(n_cells)} cells would be filled: {said}"
+                   f"{', and the rest likewise' if len(columns) > 2 else ''}.")
         title = "The cells that would be filled"
     else:
         caption = (f"Each row with a gap leaves whole; {fmt_count(n_cells)} missing cells across "

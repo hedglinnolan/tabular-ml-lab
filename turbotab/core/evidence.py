@@ -28,6 +28,7 @@ has no option to flip to, except where a finding's lever has a picture of its ow
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 
@@ -51,29 +52,42 @@ class EvidenceContext:
 
     state: Any  # ProjectState
     datastore: Any  # DataStore
-    sealed: Any | None = None  # the held-out row ids once the split exists
+    sealed: Any | None = None  # the newest split's held-out row ids, once a split exists
     sample_size: int = 5_000
+    # The rows the models train on (the cohort outside the seal), once a split exists: modeling
+    # evidence reads the same rows as the modeling previews, so their numbers agree.
+    training: Any | None = None
 
     @property
     def n_rows(self) -> int:
         return int(self.datastore.n_rows)
 
-    def modeling_rows(self) -> Any:
-        """Rows a modeling-choice view may read: every row but the held-out ones, sampled."""
+    def _modeling_pool(self) -> tuple[Any, str]:
+        if self.training is not None:
+            return np.asarray(self.training, dtype=np.int64), "training rows"
         pool = np.arange(self.n_rows, dtype=np.int64)
         if self.sealed is not None and len(self.sealed):
             pool = np.setdiff1d(pool, np.asarray(self.sealed, dtype=np.int64), assume_unique=True)
+            return pool, "rows not held out"
+        return pool, "rows"
+
+    def modeling_rows(self) -> Any:
+        """Rows a modeling-choice view may read: the training rows (else every row but the held-out
+        ones), sampled exactly as the previews sample them (``PreviewContext.sample_row_ids``)."""
+        pool, _ = self._modeling_pool()
         if len(pool) > self.sample_size:
             pool = np.sort(np.random.default_rng(0).choice(pool, size=self.sample_size, replace=False))
         return pool
 
-    def modeling_basis(self, n: int) -> str:
+    def modeling_basis(self, n: int, points: int | None = None) -> str:
+        """The rows a modeling view read, worded as the previews word theirs (service.preview_basis)."""
         held = self.sealed is not None and len(self.sealed)
-        pool = self.n_rows - (len(self.sealed) if held else 0)
-        where = f"the {pool:,} rows not held out" if held else f"all {pool:,} rows"
-        sample = f"a sample of {n:,} of " if n < pool else ""
+        pool, words = self._modeling_pool()
+        where = f"all {len(pool):,} {words}" if n >= len(pool) else (
+            f"a sample of {n:,} of the {len(pool):,} {words}")
+        drawn = f"; the scatter draws {points:,} of them" if points is not None and points < n else ""
         tail = "; held-out rows stay sealed" if held else ""
-        return f"Values on {sample}{where}{tail}."
+        return f"Values on {where}{drawn}{tail}."
 
     def all_rows_basis(self) -> str:
         return f"Every one of the {self.n_rows:,} rows, as the finding read them."
@@ -190,6 +204,8 @@ def energy_evidence(finding: dict, ctx: EvidenceContext) -> tuple[list[Any], str
     rows = ctx.modeling_rows()
     frame = ctx.datastore.materialize([E, *nutrients], rows)
     e = pd.to_numeric(frame[E], errors="coerce").to_numpy(dtype=float, na_value=np.nan)
+    # The nutrient the finding names (it chose it on every row as loaded); else the closest here.
+    named = re.findall(r"`([^`]+)`", str(finding.get("summary") or ""))
     best, best_r = None, 0.0
     for n in nutrients:
         x = pd.to_numeric(frame[n], errors="coerce").to_numpy(dtype=float, na_value=np.nan)
@@ -197,6 +213,9 @@ def energy_evidence(finding: dict, ctx: EvidenceContext) -> tuple[list[Any], str
         if ok.sum() < 3 or np.std(x[ok]) == 0 or np.std(e[ok]) == 0:
             continue
         r = float(np.corrcoef(x[ok], e[ok])[0, 1])
+        if n in named[:1]:
+            best, best_r = n, r
+            break
         if best is None or abs(r) > abs(best_r):
             best, best_r = n, r
     if best is None:
@@ -206,8 +225,8 @@ def energy_evidence(finding: dict, ctx: EvidenceContext) -> tuple[list[Any], str
     if len(ok) > POINTS:
         ok = np.sort(np.random.default_rng(0).choice(ok, size=POINTS, replace=False))
     points = [(float(e[i]), float(y[i])) for i in ok]
-    caption = (f"`{best}` correlates {fmt_value(round(best_r, 2))} with `{E}`: more of it mostly "
-               f"means more food, not a different diet.")
+    caption = (f"On these rows `{best}` correlates {fmt_value(round(best_r, 2))} with `{E}`: more of "
+               f"it mostly means more food.")
     view = RelationshipView(
         title=clip_words(f"`{best}` against `{E}`", TITLE_WORDS),
         caption=clip_words(caption, CAPTION_WORDS),
@@ -220,7 +239,7 @@ def energy_evidence(finding: dict, ctx: EvidenceContext) -> tuple[list[Any], str
         r_before=best_r,
         r_after=best_r,
     )
-    return [view], ctx.modeling_basis(len(frame))
+    return [view], ctx.modeling_basis(len(frame), points=len(points))
 
 
 def implausible_evidence(finding: dict, ctx: EvidenceContext) -> tuple[list[Any], str] | None:

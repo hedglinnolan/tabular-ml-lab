@@ -112,7 +112,7 @@ def test_the_split_names_its_seed_grouping_and_stratification():
     text = voice.sentence_for(d.SetSplit(holdout=0.2, seed=3, folds=5),
                               ProjectState(target="event", task="binary"),
                               {"n_cohort": 5352, "repeats": {"column": "SEQN"}})
-    assert text == ("A random `20%` of the `5,352` rows (seed `3`, keeping each `SEQN`'s rows "
+    assert text == ("A random `20%` of the rows with `event` recorded (seed `3`, keeping each `SEQN`'s rows "
                     "together, stratified by `event`) was held out for one final score; models "
                     "were compared by `5`-fold cross-validation on the rest.")
 

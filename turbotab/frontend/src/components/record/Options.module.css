@@ -64,10 +64,35 @@
     inset 0 0 0 6px var(--accent);
 }
 
+/* In a multi-select list the shown option is not a chosen one: it wears a hollow ring around an
+   empty box, and only a chosen option is filled, with a check. */
+.option[data-mode="multi"][data-shown] .pip {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
 .option[data-mode="multi"][data-chosen] .pip {
+  position: relative;
   border-color: var(--accent);
   background: var(--accent);
-  box-shadow: inset 0 0 0 2px var(--surface);
+  box-shadow: none;
+}
+
+.option[data-mode="multi"][data-chosen][data-shown] .pip {
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.option[data-mode="multi"][data-chosen] .pip::after {
+  content: "";
+  position: absolute;
+  left: 3.2px;
+  top: 0.6px;
+  width: 3px;
+  height: 6.5px;
+  border: solid var(--surface);
+  border-width: 0 1.6px 1.6px 0;
+  transform: rotate(45deg);
 }
 
 .option[data-recorded] .pip {

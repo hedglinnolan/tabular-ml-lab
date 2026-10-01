@@ -170,6 +170,32 @@ def nutrient_candidates(columns: Mapping[str, Mapping[str, Any]], roles: Mapping
     return out
 
 
+def not_adjusted(columns: Mapping[str, Mapping[str, Any]], roles: Mapping[str, str], *,
+                 energy: str | None, target: str | None, nutrients: Sequence[str]) -> list[dict[str, str]]:
+    """Exposures energy adjustment leaves as they are, each with a short reason (never silently)."""
+    from turbotab.core.methods.energy import energy_factor
+    from turbotab.core.stages.rows import _is_nutrient
+
+    out = []
+    for c, info in columns.items():
+        if c in (energy, target) or c in nutrients or _dtype(info) not in _NUMERIC or _FLAG.search(c):
+            continue
+        # The exposures, as the roles have them; before any roles, the columns named as nutrients.
+        if roles.get(c) != "exposure" and (roles or not _is_nutrient(c) or is_energy_name(c)):
+            continue
+        reading = energy_factor(c)
+        if reading.unit == "density":
+            reason = "already a share of energy"
+        elif reading.factor is None and "more than one" in reading.reason:
+            reason = "names two nutrients, so its energy is ambiguous"
+        elif reading.role is not None and reading.unit in ("milligrams", "micrograms", "IU"):
+            reason = "not in grams, which the energy factors need"
+        else:
+            reason = "carries no energy"
+        out.append({"column": c, "reason": reason})
+    return out
+
+
 def sex_column(columns: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame | None,
                roles: Mapping[str, str]) -> tuple[str | None, dict[str, str]]:
     """The sex column and which of its levels are ``female`` and ``male``."""
@@ -324,6 +350,16 @@ def _marked(text: str, columns: Iterable[str]) -> str:
     return text
 
 
+def partition_check(frame: pd.DataFrame, energy: str, nutrients: Sequence[str]) -> dict[str, Any] | None:
+    """Why a partition of ``nutrients`` cannot run on ``frame``'s rows, or None (energy.py)."""
+    from turbotab.core.methods.energy import partition_refusal
+    from turbotab.core.methods.nesting import nested_components
+
+    present = [n for n in nutrients if n in frame.columns]
+    nested = nested_components(frame, present)
+    return partition_refusal(frame, energy, list(nutrients), nested=nested)
+
+
 def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]],
                    roles: Mapping[str, str], *, energy: str | None, nutrients: list[str],
                    sex: str | None, target: str | None) -> dict[str, Any]:
@@ -331,6 +367,12 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
     from turbotab.core.voice import finish
 
     verdicts = applicable_methods(list(columns), energy, nutrients)
+    if verdicts["partition"]["ok"] and energy in frame.columns:
+        # The checks the fit makes on the data (the Atwater reconstruction), and the two it
+        # cannot: a total beside its parts, and nutrients that out-weigh total energy.
+        refused = partition_check(frame, energy, nutrients)
+        if refused is not None:
+            verdicts["partition"] = {"ok": False, "reason": refused["reason"]}
     applicability = {m: {"ok": bool(v["ok"]), "reason": finish(_marked(str(v["reason"]), columns))}
                      for m, v in verdicts.items()}
     usual = next((m for m in (USUAL_METHOD, "standard") if applicability.get(m, {}).get("ok")), None)
@@ -352,6 +394,7 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
         "usual_evidence": dict(ENERGY_EVIDENCE) if usual else None,
         "r_with_energy": r_with_energy,
         "notes": _parts_note(frame, nutrients),
+        "not_adjusted": not_adjusted(columns, roles, energy=energy, target=target, nutrients=nutrients),
     }
 
 
@@ -430,8 +473,9 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     info = {str(c["name"]): c for c in columns}
     roles = dict(roles or {})
     missing = missing_reading(frame, columns, roles, target)
+    n_base = int(frame[target].notna().sum()) if target and target in frame.columns else len(frame)
     if "dietary" not in (lens or []):
-        return {"exclusions": [], "energy": None, "missing": missing,
+        return {"exclusions": [], "energy": None, "missing": missing, "n_base": n_base,
                 "basis": "Only the missing-values reading is proposed: the dietary lens is not chosen."}
     energy = energy_column(info, roles)
     nutrients = nutrient_candidates(info, roles, energy=energy, target=target)
@@ -452,7 +496,8 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     if energy is not None or nutrients:
         reading = energy_reading(frame, info, roles, energy=energy, nutrients=nutrients, sex=sex,
                                  target=target)
-    return {"exclusions": exclusions, "energy": reading, "missing": missing, "basis": basis}
+    return {"exclusions": exclusions, "energy": reading, "missing": missing, "n_base": n_base,
+            "basis": basis}
 
 
 def needed_columns(columns: Sequence[Mapping[str, Any]], *, target: str | None,
@@ -501,6 +546,6 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
 __all__ = [
     "ENERGY_EVIDENCE", "EXCLUSION_EVIDENCE", "build_proposals", "energy_bearing", "energy_column",
     "exclusion_proposals", "gappy_predictors", "level_key", "missing_reading", "needed_columns",
-    "nutrient_candidates", "proposals_stage",
+    "nutrient_candidates", "partition_check", "proposals_stage",
     "roles_from", "rule_excludes", "sex_column", "strata_candidates",
 ]

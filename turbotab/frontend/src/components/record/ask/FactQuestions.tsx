@@ -39,6 +39,13 @@ export function LensAsk({
     setChosen((cur) =>
       cur.includes(l as Lens) ? cur.filter((x) => x !== l) : [...cur, l as Lens],
     );
+  const lensLabel = (lenses: Lens[]) => {
+    const one = lenses.length === 1 ? (taught(p.entry, lenses[0]!)?.label ?? lenses[0]) : null;
+    return one ? `Record the ${one.toLowerCase()} lens` : `Record these ${lenses.length} lenses`;
+  };
+  // Enter and the stage's record button do the same thing: record the chosen lenses, or the
+  // shown one when none is chosen yet.
+  const recordFor = (l: Lens): Lens[] => (ordered.length ? ordered : [l]);
   const items: OptionItem[] = order.map((l) => {
     const t = taught(p.entry, l);
     const hint = hints.find((h) => h.lens === l);
@@ -48,6 +55,8 @@ export function LensAsk({
       label: t?.label ?? LENS_LABEL[l],
       line: t?.consequence ?? "",
       decision: { kind: "set_lens", lenses: withThis },
+      record: { kind: "set_lens", lenses: recordFor(l) },
+      recordLabel: lensLabel(recordFor(l)),
       tags: hint ? [{ text: "suggested", tone: "suggested" }] : undefined,
       note: hint ? (
         <span className={c.hint}>
@@ -57,7 +66,6 @@ export function LensAsk({
     };
   });
   const record = () => ordered.length && p.record({ kind: "set_lens", lenses: ordered }, "record");
-  const one = ordered.length === 1 ? (taught(p.entry, ordered[0]!)?.label ?? ordered[0]) : null;
   return (
     <Question {...p.shell} entry={p.entry}>
       <Options
@@ -65,7 +73,9 @@ export function LensAsk({
         mode="multi"
         selected={new Set(chosen)}
         onToggle={toggle}
-        onRecord={record}
+        onRecord={(item) =>
+          p.record({ kind: "set_lens", lenses: recordFor(item.key as Lens) }, "record")
+        }
         pending={p.pending}
         answerAt={p.answerAt}
         label="Lenses — choose all that apply, then record"
@@ -79,11 +89,7 @@ export function LensAsk({
           title="Records this lens choice. It changes what TurboTab looks for; it never removes an option."
           testId="record-lens"
         >
-          {ordered.length === 0
-            ? "Record the lens"
-            : one
-              ? `Record the ${one.toLowerCase()} lens`
-              : `Record these ${ordered.length} lenses`}
+          {ordered.length === 0 ? "Record the lens" : lensLabel(ordered)}
         </RecordButton>
         <Keep keep={p.keep} />
         {ordered.length === 0 ? (

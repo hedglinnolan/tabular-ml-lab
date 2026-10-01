@@ -41,11 +41,12 @@ def test_energy_adjustment_routes_to_its_question(nhanes):
     table, _ = nhanes
     df = pd.read_csv(table.source)
     r = df["kcal"].corr(df["fat_total"])
-    assert f["summary"] == (f"`fat_total` correlates {r:.2f} with `kcal`: nutrient effects are "
-                            f"tangled with total energy.")
+    # The r names its basis: every row as loaded (the evidence and previews name theirs).
+    assert f["summary"] == (f"`fat_total` correlates {r:.2f} with `kcal` across all `{len(df):,}` "
+                            f"rows: nutrient effects are tangled with total energy.")
     # The legacy detail counted every numeric column as a candidate nutrient; it names the real ones.
     assert "19 other numeric columns" not in f["detail"]
-    assert "`protein`, `carb`, `fat_total`, `fat_sat`, `fat_mon` and `fat_poly` carry energy" in f["detail"]
+    assert "`protein`, `sugar`, `carb`, `fat_total`, `fat_sat` and 2 more carry energy" in f["detail"]
 
 
 def test_implausible_intake_routes_to_exclusions(nhanes):

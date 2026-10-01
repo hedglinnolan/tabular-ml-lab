@@ -37,13 +37,16 @@ export function stateSeq(view: ProjectView): number {
   return view.decisions.reduce((m, d) => Math.max(m, d.seq), 0);
 }
 
-/** A preview, or the refusal recording it would meet, tagged with the option it answers. */
+/** A preview, or the refusal recording it would meet, tagged with the option it answers and the
+ *  recorded state (`seq`) it is true of. */
 export type Answer =
-  | { key: string; label: string; decision: Decision; result: PreviewResult; refusal: null }
-  | { key: string; label: string; decision: Decision; result: null; refusal: Refusal };
+  | { key: string; seq: number; label: string; decision: Decision; result: PreviewResult; refusal: null }
+  | { key: string; seq: number; label: string; decision: Decision; result: null; refusal: Refusal };
 
 export interface PreviewQuery {
-  /** The answer on screen: the previous option's while the next one loads, never nothing. */
+  /** The answer on screen: the previous option's while the next one loads — but only another
+   *  option of the same question, on the same recorded state. A placeholder from another
+   *  question (or from before the last answer) is never shown as this one's preview. */
   answer: Answer | undefined;
   error: Error | null;
   /** The focused option's answer is not on screen yet. */
@@ -67,10 +70,10 @@ export function usePreview(pid: string, option: OptionFocus | null, seq: number)
     queryFn: async ({ signal }): Promise<Answer> => {
       const { decision, label } = settled!;
       try {
-        return { key, label, decision, result: await api.preview(pid, decision, signal), refusal: null };
+        return { key, seq, label, decision, result: await api.preview(pid, decision, signal), refusal: null };
       } catch (e) {
         // A refused option is still an answer: the stage shows why, and the ways out.
-        if (isRefusalError(e)) return { key, label, decision, result: null, refusal: e.refusal };
+        if (isRefusalError(e)) return { key, seq, label, decision, result: null, refusal: e.refusal };
         throw e;
       }
     },
@@ -79,10 +82,13 @@ export function usePreview(pid: string, option: OptionFocus | null, seq: number)
     gcTime: 120_000,
     retry: 1,
   });
+  const data = q.data;
+  const sameQuestion =
+    !!data && !!option && data.seq === seq && data.decision.kind === option.decision.kind;
   return {
-    answer: q.data,
+    answer: sameQuestion ? data : undefined,
     error: q.error,
-    loading: q.data?.key !== optionKey(option),
+    loading: data?.key !== optionKey(option),
   };
 }
 

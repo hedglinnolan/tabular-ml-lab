@@ -194,3 +194,9 @@
     position: static;
   }
 }
+
+.retry {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+}

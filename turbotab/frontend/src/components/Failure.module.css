@@ -1,0 +1,64 @@
+/* A stage that did not finish: invalid downstream, said once with its way forward (§02 --stop
+   is for what cannot be trusted; the levers are the user's, in sans). */
+.failure,
+.compact {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 13px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--stop);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.compact {
+  padding: 7px 10px;
+  gap: 6px;
+}
+
+/* Stopped by the user: nothing is wrong, the work is just not done — the coach's amber. */
+.failure[data-kind="stopped"],
+.compact[data-kind="stopped"] {
+  border-left-color: var(--warn);
+}
+
+.text {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.compact .text {
+  font-size: 13px;
+}
+
+.what {
+  font-weight: 650;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.change {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 9px;
+  white-space: nowrap;
+}
+
+.change:hover {
+  border-color: var(--accent);
+}

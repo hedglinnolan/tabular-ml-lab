@@ -158,7 +158,7 @@ test("the record follows the Router from the lens to the substitution", async ({
   const exclusions = page.getByTestId("question-exclusions");
   await expect(exclusions).toBeVisible({ timeout: 15_000 });
   await expect(exclusions).toHaveAttribute("data-grammar", "choice");
-  await expect(page.getByTestId("option-sex_neutral_500_5000")).toContainText("−501 rows");
+  await expect(page.getByTestId("option-sex_neutral_500_5000")).toContainText("−501 of 21,849");
   await page.getByTestId("option-sex_neutral_500_5000").click();
   await expect(page.getByTestId("decision-exclusions")).toContainText(
     "501 rows with kcal outside 500–5000 were excluded",
@@ -237,27 +237,29 @@ test("the record follows the Router from the lens to the substitution", async ({
   await both(page, "journey", { top: true });
   await both(page, "substitution");
 
-  // Findings: three pushed, same-kind paged, the rest counted and typed. The count badge
-  // lives inside the stale veil.
+  // Findings: at most three pushed, drawn from the ones still open; a finding whose question
+  // has been answered is settled — folded into one green line, its evidence still a press away
+  // (review: the cards kept pushing levers for settled questions). The count badge lives inside
+  // the stale veil.
   const findings = page.getByTestId("findings");
   await findings.scrollIntoViewIfNeeded();
   await expect(page.getByTestId("veil-findings").getByTestId("findings-count")).toBeVisible();
   const cards = page.getByTestId("finding-cards").locator(":scope > li");
-  await expect(cards).toHaveCount(3);
-  await expect(page.getByTestId("findings-more")).toBeVisible();
-  await expect(findings).toContainText(/\d+ more — /);
-  await cards.first().focus();
+  expect(await cards.count()).toBeLessThanOrEqual(3);
+  const settled = page.getByTestId("findings-settled");
+  await expect(settled).toContainText(/\d+ answered in the record — /);
+  await page.getByTestId("findings-settled-toggle").click();
+  const energyFinding = settled
+    .locator('[data-testid^="settled-"]')
+    .filter({ hasText: /Answered by #\d+: Energy was adjusted/ })
+    .first();
+  await expect(energyFinding).toBeVisible();
+  await expect(settled.getByTestId("lever")).toHaveCount(0);
+  await energyFinding.focus();
   await expect(stage(page)).toHaveAttribute("data-focus", "finding");
   await park(page);
   await both(page, "findings");
-
-  // A lever routes to its question: an answered one reopens, nothing recorded.
-  await cards.first().getByTestId("lever").click();
-  await expect(energy).toBeVisible();
-  await expect(energy).toContainText("reopened");
-  await expect(energy.getByRole("heading")).toBeFocused();
-  await energy.getByTestId("keep").click();
-  await expect(page.getByTestId("decision-energy_adjustment")).toContainText("residual method");
+  await page.getByTestId("findings-settled-toggle").click();
 
   // Change an earlier answer: the banner's later segments veil in order, then re-flow.
   await page.route("**/api/projects/*/stages/**", async (route) => {

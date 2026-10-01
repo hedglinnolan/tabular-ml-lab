@@ -249,5 +249,6 @@ def test_nhanes_roles_link_flags_and_name_the_respondent(stores):
 
 
 def test_energy_bearing_means_an_amount_that_carries_kcal():
-    assert all(energy_bearing(c) for c in ("protein_g", "fat_total", "carb", "DR1TPROT", "fiber_g"))
-    assert not any(energy_bearing(c) for c in ("protein_pct_kcal", "kcal", "sodium_mg", "sugar", "age"))
+    assert all(energy_bearing(c) for c in ("protein_g", "fat_total", "carb", "DR1TPROT", "fiber_g",
+                                           "sugar", "sugar_g"))
+    assert not any(energy_bearing(c) for c in ("protein_pct_kcal", "kcal", "sodium_mg", "age"))

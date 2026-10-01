@@ -139,6 +139,7 @@ def test_recorded_sentences_count_rows_as_the_participant_flow_does(client):
         assert f"`{done['n']:,}` of `{done['n'] + done['dropped']:,}` rows remain" in said["set_missing"]
     else:  # nothing dropped: said plainly, not "580 of 580 rows remain"
         assert f"no row is missing any predictor, so all `{done['n']:,}` rows remain" in said["set_missing"]
-    assert f"of the `{done['n']:,}` rows" in said["set_split"]
+    # The split names no count: the analysis count moves with later answers (the banner has it).
+    assert "of the rows with `hba1c` recorded" in said["set_split"]
     assert "keeping each `participant_id`'s rows together" in said["set_split"]
     assert all(not voice.machinery(s) for s in said.values()), said

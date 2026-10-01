@@ -1243,6 +1243,49 @@
   },
   "components": {
     "schemas": {
+      "Caution": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "exits": {
+            "items": {
+              "$ref": "#/components/schemas/CautionExit"
+            },
+            "type": "array",
+            "title": "Exits"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "exits"
+        ],
+        "title": "Caution",
+        "description": "A concern the preview itself shows, inside the stage, with the control that acts on it\n(DESIGN_LANGUAGE §09: a caveat arrives with its lever, in the same place)."
+      },
+      "CautionExit": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "decision": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Decision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "decision"
+        ],
+        "title": "CautionExit"
+      },
       "ColumnSummary": {
         "properties": {
           "name": {
@@ -2702,6 +2745,16 @@
               }
             ],
             "title": "Note"
+          },
+          "caution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Caution"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -2710,7 +2763,8 @@
           "kind",
           "views",
           "basis",
-          "note"
+          "note",
+          "caution"
         ],
         "title": "PreviewResult"
       },
@@ -5058,6 +5112,13 @@
             },
             "title": "Notes",
             "type": "array"
+          },
+          "not_adjusted": {
+            "items": {
+              "$ref": "#/components/schemas/NotAdjusted"
+            },
+            "title": "Not Adjusted",
+            "type": "array"
           }
         },
         "required": [
@@ -5068,7 +5129,8 @@
           "usual",
           "usual_evidence",
           "r_with_energy",
-          "notes"
+          "notes",
+          "not_adjusted"
         ],
         "title": "EnergyReading",
         "type": "object"
@@ -5709,6 +5771,25 @@
         "title": "NestedColumn",
         "type": "object"
       },
+      "NotAdjusted": {
+        "description": "An exposure energy adjustment leaves as it is, and why (it carries no energy, it is a share).",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "reason"
+        ],
+        "title": "NotAdjusted",
+        "type": "object"
+      },
       "ProfileArtifact": {
         "description": "The ``profile`` artifact.",
         "properties": {
@@ -5762,6 +5843,10 @@
           "missing": {
             "$ref": "#/components/schemas/MissingReading"
           },
+          "n_base": {
+            "title": "N Base",
+            "type": "integer"
+          },
           "basis": {
             "title": "Basis",
             "type": "string"
@@ -5771,6 +5856,7 @@
           "exclusions",
           "energy",
           "missing",
+          "n_base",
           "basis"
         ],
         "title": "ProposalsArtifact",

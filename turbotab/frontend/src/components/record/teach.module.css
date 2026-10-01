@@ -18,11 +18,9 @@
 
 .termCard {
   display: none;
-  position: absolute;
-  z-index: 35;
-  left: 0;
-  top: calc(100% + 6px);
-  width: 270px;
+  position: fixed;
+  z-index: 60;
+  max-width: calc(100vw - 24px);
   padding: 8px 11px;
   font-family: var(--serif);
   font-size: 13px;
@@ -37,11 +35,7 @@
   border-radius: 9px;
   box-shadow: var(--shadow-lift);
   white-space: normal;
-}
-
-.termCard.above {
-  top: auto;
-  bottom: calc(100% + 6px);
+  pointer-events: none;
 }
 
 .termCard[data-open] {

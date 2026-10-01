@@ -75,6 +75,9 @@ interface SentenceProps {
   subject: string;
   onChange?: () => void;
   meta?: ReactNode;
+  /** What is true of the answer now that the sentence cannot say (it did not run, its counts
+   *  predate a later answer): under the sentence, in the coach's voice. */
+  note?: ReactNode;
   testId?: string;
 }
 
@@ -84,6 +87,7 @@ export function DecisionSentence({
   subject,
   onChange,
   meta,
+  note,
   testId,
 }: SentenceProps) {
   const t = useTransitions();
@@ -98,9 +102,16 @@ export function DecisionSentence({
       data-testid={testId}
       data-block="decision"
     >
-      <motion.p layout="position" transition={{ layout: t.settle }} className={styles.prose}>
-        {children}
-      </motion.p>
+      <div className={styles.sentenceBody}>
+        <motion.p layout="position" transition={{ layout: t.settle }} className={styles.prose}>
+          {children}
+        </motion.p>
+        {note ? (
+          <div className={styles.sentenceNote} data-testid={testId ? `${testId}-note` : undefined}>
+            {note}
+          </div>
+        ) : null}
+      </div>
       <motion.div layout="position" transition={{ layout: t.settle }} className={styles.aside}>
         {meta ? <span className={styles.meta}>{meta}</span> : null}
         {onChange ? (

@@ -8,12 +8,13 @@
  * again goes back to live. When an answer changes, the segments it reaches veil in order
  * (propagate) and un-veil as their fresh results arrive; numbers tween to their new values.
  */
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import type { ProjectView } from "../../api/schema";
 import { NumberTween } from "../../motion/NumberTween";
 import { StaleVeil } from "../../motion/StaleVeil";
 import { useStageFocus, type BannerSegment } from "../../state/focus";
 import { useStage } from "../../state/stages";
+import { StageRetry } from "../StageRetry";
 import { cx } from "../../util/format";
 import {
   deriveBanner,
@@ -35,10 +36,22 @@ export function Banner({ pid, view }: { pid: string; view: ProjectView }) {
   const fit = useStage(pid, view, "fit");
   const shelf = useStage(pid, view, "shelf");
   const model = deriveBanner({ view, ingest, cohort, split, design, fit, shelf });
-  return <BannerView model={model} />;
+  return (
+    <BannerView
+      model={model}
+      retry={(stage) => <StageRetry pid={pid} status={view.stages[stage]} />}
+    />
+  );
 }
 
-export function BannerView({ model }: { model: BannerModel }) {
+export function BannerView({
+  model,
+  retry,
+}: {
+  model: BannerModel;
+  /** A stopped or failed stage's "Try again", beside its segment (never inside the button). */
+  retry?: (stage: string) => ReactNode;
+}) {
   const { focus, toggle } = useStageFocus();
   const pressed = focus.kind === "banner" ? focus.segment : null;
   return (
@@ -81,6 +94,7 @@ export function BannerView({ model }: { model: BannerModel }) {
                     </span>
                   </StaleVeil>
                 </button>
+                {seg.retry && retry ? <span className={s.retry}>{retry(seg.retry)}</span> : null}
               </li>
             </Fragment>
           );

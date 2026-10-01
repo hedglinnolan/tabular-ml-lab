@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from turbotab.core import row_previews  # noqa: F401 - registers the builders
+from turbotab.core import fact_previews, row_previews  # noqa: F401 - registers the builders
 from turbotab.core.consequences import CAPTION_WORDS, TITLE_WORDS, PreviewContext, plan, words
 from turbotab.core.datastore import DataStore, ingest
 from turbotab.core.decisions import ExclusionRule, ProjectState, parse_decision
@@ -81,7 +81,8 @@ def test_no_preview_reads_a_sealed_row(store, decision):
     training = split.frames["assignment"].query("partition == 'train'")["row_id"].to_numpy()
     ctx = PreviewContext(project_id="p", state=state, datastore=spy,
                          artifact={"cohort": cohort, "split": split}.get,
-                         training_row_ids=training, cohort_row_ids=cohort.frames["rows"]["row_id"].to_numpy())
+                         training_row_ids=training, cohort_row_ids=cohort.frames["rows"]["row_id"].to_numpy(),
+                         sealed_row_ids=np.array(sorted(sealed)))
     result = plan(parse_decision(decision), ctx, basis="b")
     assert result.views, result.note
     assert not spy.read_everything, "a preview read the whole table after the split"
@@ -90,11 +91,33 @@ def test_no_preview_reads_a_sealed_row(store, decision):
         assert words(view.title) <= TITLE_WORDS and words(view.caption) <= CAPTION_WORDS
 
 
+@pytest.mark.parametrize("decision", [
+    {"kind": "set_exclusions", "rules": []},
+    {"kind": "set_missing", "strategy": "impute"},
+    {"kind": "set_target", "column": "hba1c"},
+])
+def test_no_preview_reads_a_sealed_row_while_the_split_recomputes(store, decision):
+    """A changed exclusion makes the split stale (it re-runs): the newest split's sealed rows
+    still hold — they are drawn over every row with the outcome measured — so no preview may read
+    them in the meantime, though no split is fresh to ask (the reviewers' instrumented drive)."""
+    state, cohort, split, sealed = _sealed_project(store)
+    spy = SpyStore(store)
+    ctx = PreviewContext(project_id="p", state=state, datastore=spy,
+                         artifact={"cohort": None, "split": None}.get,  # both recomputing
+                         training_row_ids=None, cohort_row_ids=None,
+                         sealed_row_ids=np.array(sorted(sealed)))
+    result = plan(parse_decision(decision), ctx, basis="b")
+    assert result.views, result.note
+    assert not spy.read_everything, "a preview read the whole table while the split recomputed"
+    assert not (spy.read & sealed), f"{len(spy.read & sealed)} held-out rows were read"
+    assert spy.read, "the preview must have read something to make this test mean anything"
+
+
 def test_relaxing_a_rule_brings_rows_back_in_the_preview(store):
     state, cohort, split, sealed = _sealed_project(store)
     ctx = PreviewContext(project_id="p", state=state, datastore=SpyStore(store),
                          artifact={"cohort": cohort, "split": split}.get, training_row_ids=None,
-                         cohort_row_ids=None)
+                         cohort_row_ids=None, sealed_row_ids=np.array(sorted(sealed)))
     result = plan(parse_decision({"kind": "set_exclusions", "rules": []}), ctx, basis="b")
     flow = result.views[0]
     assert flow.kind == "row_flow"

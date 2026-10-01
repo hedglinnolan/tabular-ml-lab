@@ -91,9 +91,11 @@ export function ExclusionsAsk({
       label: taught(p.entry, o.key)?.label ?? o.label,
       line: taught(p.entry, o.key)?.consequence ?? o.label,
       decision: { kind: "set_exclusions", rules: [o.rule] },
+      // The denominator is named: proposals count every row with the outcome recorded, before
+      // the split; the stage's preview counts the rows outside the held-out set.
       data: (
         <>
-          −{fmtCount(o.affected)} {o.affected === 1 ? "row" : "rows"}
+          −{fmtCount(o.affected)} of {fmtCount(proposals?.n_base ?? 0)}
         </>
       ),
       tags: [{ text: o.evidence.status.toUpperCase(), tone: "badge" }],
@@ -160,7 +162,7 @@ export function ExclusionsAsk({
       data={
         offered.length && energy ? (
           <Taught
-            text={`Each screen is counted on your table: the rows whose \`${energy}\` falls outside it.`}
+            text={`Each screen is counted on your table: the rows whose \`${energy}\` falls outside it, of the ${fmtCount(proposals?.n_base ?? 0)} with the outcome recorded.`}
           />
         ) : undefined
       }
@@ -305,6 +307,16 @@ const METHODS: EnergyMethod[] = [
 ];
 const STRATIFIABLE: EnergyMethod[] = ["residual", "density", "density_multivariate"];
 
+/** "Left as they are: `a` and `b` (already a share of energy); `c` (carries no energy)." */
+function notAdjustedText(entries: { column: string; reason: string }[]): string {
+  const byReason = new Map<string, string[]>();
+  for (const e of entries) byReason.set(e.reason, [...(byReason.get(e.reason) ?? []), e.column]);
+  const parts = [...byReason.entries()].map(
+    ([reason, cols]) => `${listJoin(cols.map((col) => `\`${col}\``))} (${reason})`,
+  );
+  return `Left as they are: ${parts.join("; ")}.`;
+}
+
 /** The specific cause of a refusal reason: its last sentence (the first states the method's need). */
 function cause(reason: string): string {
   const sentences = reason.match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((x) => x.trim()) ?? [reason];
@@ -385,13 +397,19 @@ export function EnergyAsk({
               // set, while the proposals were counted before the split existed.
               text={`\`${r[0]}\` tracks \`${energy}\` most closely${
                 reading && reading.nutrients.length > 1
-                  ? `; ${reading.nutrients.length} nutrients are adjusted together`
+                  ? `; ${listJoin(reading.nutrients.map((n) => `\`${n}\``))} are adjusted together`
                   : ""
               }.`}
             />
             {reading?.notes.length ? (
               <span className={c.dataNote} data-testid="energy-notes">
                 <Taught text={reading.notes.join(" ")} />
+              </span>
+            ) : null}
+            {reading?.not_adjusted.length ? (
+              // Nothing is left out silently: each exposure the adjustment leaves alone, and why.
+              <span className={c.dataNote} data-testid="energy-not-adjusted">
+                <Taught text={notAdjustedText(reading.not_adjusted)} />
               </span>
             ) : null}
           </>
@@ -441,11 +459,20 @@ export function ModelsAsk({
   const [chosen, setChosen] = useState<string[]>(current ?? []);
   const families = [...shelf.families].sort((a, b) => a.rank - b.rank);
   const ordered = families.map((f) => f.key).filter((k) => chosen.includes(k));
+  const fitLabel = (keys: string[]) => {
+    const one = keys.length === 1 ? families.find((f) => f.key === keys[0])?.label : null;
+    return one ? `Fit the ${one.toLowerCase()}` : `Fit these ${keys.length} families`;
+  };
+  // Enter and the stage's record button do the same thing: record the chosen families, or the
+  // shown one when none is chosen yet.
+  const recordFor = (key: string): string[] => (ordered.length ? ordered : [key]);
   const items: OptionItem[] = families.map((f) => ({
     key: f.key,
     label: f.label,
     line: taught(p.entry, f.key)?.consequence ?? f.inductive_bias,
     decision: { kind: "select_models", models: [f.key] },
+    record: { kind: "select_models", models: recordFor(f.key) },
+    recordLabel: fitLabel(recordFor(f.key)),
     tags: [{ text: `${f.fit} fit`, tone: "fit" }],
     note: f.concerns.length ? (
       <span className={c.concerns}>
@@ -459,7 +486,6 @@ export function ModelsAsk({
   }));
   const record = () =>
     ordered.length && p.record({ kind: "select_models", models: ordered }, "record");
-  const one = ordered.length === 1 ? families.find((f) => f.key === ordered[0])?.label : null;
   return (
     <Question {...p.shell} entry={p.entry}>
       <Options
@@ -469,7 +495,9 @@ export function ModelsAsk({
         onToggle={(k) =>
           setChosen((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]))
         }
-        onRecord={record}
+        onRecord={(item) =>
+          p.record({ kind: "select_models", models: recordFor(item.key) }, "record")
+        }
         pending={p.pending}
         answerAt={p.answerAt}
         label="Model families — choose any, then fit"
@@ -482,11 +510,7 @@ export function ModelsAsk({
           title="Records the families; each is fit on the training rows and compared by cross-validation."
           testId="record-models"
         >
-          {ordered.length === 0
-            ? "Choose a family to fit"
-            : one
-              ? `Fit the ${one.toLowerCase()}`
-              : `Fit these ${ordered.length} families`}
+          {ordered.length === 0 ? "Choose a family to fit" : fitLabel(ordered)}
         </RecordButton>
         <Keep keep={p.keep} />
       </Actions>

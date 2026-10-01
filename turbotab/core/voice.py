@@ -566,8 +566,10 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
     if d.holdout == 0:
         return f"No rows were held out; performance was estimated by {folds}{manner}"
     share = tick(f"{d.holdout:.0%}")
-    n = _get(ctx, "n_cohort")
-    pool = f" of the {count(n)} rows" if n else " of rows"
+    # No count: the held-out rows are drawn over every row with the outcome recorded, and the
+    # analysis count changes with any later exclusion or missing-values answer; the banner and
+    # the Rows view say how many, as they stand.
+    pool = f" of the rows with {tick(target)} recorded" if target else " of the rows"
     return (f"A random {share}{pool}{manner} was held out for one final score; models were "
             f"compared by {folds} on the rest")
 
@@ -585,7 +587,8 @@ _METHOD_NAME = {
 
 @register_sentence("set_energy_adjustment")
 def _set_energy_adjustment(d: Any, state: Any, ctx: Any) -> str:
-    nutrients = listing(d.nutrients) if d.nutrients else ""
+    # Every adjusted nutrient by name: a methods sentence never says "and 3 more".
+    nutrients = listing(d.nutrients, limit=len(d.nutrients)) if d.nutrients else ""
     energy = tick(d.energy_column) if d.energy_column else "total energy"
     if d.method == "none":
         who = nutrients or "nutrients"

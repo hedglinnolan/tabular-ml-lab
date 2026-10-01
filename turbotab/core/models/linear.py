@@ -21,6 +21,11 @@ from turbotab.core.models.base import (
 )
 
 EPV_RULE = 10  # events per predictor: a common rule of thumb (Peduzzi 1996), not a law
+# Belsley, Kuh & Welsch (1980): the condition number of the design matrix with its intercept, each
+# column scaled to unit length. Above 30 is the usual "moderate" mark; 1,000 is far past "strong"
+# and means some columns are close to an exact linear combination of others (shares that sum to
+# 100%, a total beside all of its parts), so their separate coefficients are not identified.
+NEAR_SINGULAR = 1_000.0
 
 
 def model_matrix(pipeline: Any, X: pd.DataFrame) -> pd.DataFrame:
@@ -32,6 +37,39 @@ def model_matrix(pipeline: Any, X: pd.DataFrame) -> pd.DataFrame:
         names = pipeline[:-1].get_feature_names_out()
         matrix = pd.DataFrame(matrix, index=X.index, columns=names)
     return matrix
+
+
+def collinearity_concern(matrix: pd.DataFrame) -> str | None:
+    """A plain concern when the model matrix (with its intercept) is nearly singular, else None.
+
+    The scaled condition number (Belsley): the intercept and every column, each scaled to unit
+    length, so units do not count. The columns named are those the near-dependency involves.
+    """
+    values = matrix.to_numpy(dtype=float, na_value=np.nan)
+    values = values[np.isfinite(values).all(axis=1)]
+    if values.shape[0] <= values.shape[1] or values.shape[1] == 0:
+        return None
+    X = np.column_stack([np.ones(len(values)), values])
+    norms = np.linalg.norm(X, axis=0)
+    norms[norms == 0] = 1.0
+    _, s, vt = np.linalg.svd(X / norms, full_matrices=False)
+    condition = float(s[0] / s[-1]) if s[-1] > 0 else float("inf")
+    if condition < NEAR_SINGULAR:
+        return None
+    # Belsley's variance-decomposition proportions: the share of each coefficient's variance that
+    # comes from the smallest singular value. Above one half, the column is in the dependency.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        phi = (vt.T ** 2) / np.where(s > 0, s, np.finfo(float).tiny) ** 2
+        proportion = phi[:, -1] / phi.sum(axis=1)
+    names = ["the intercept", *[str(c) for c in matrix.columns]]
+    order = np.argsort(-np.nan_to_num(proportion))
+    involved = [names[j] for j in order if proportion[j] >= 0.5 and names[j] != "the intercept"]
+    columns = involved[:6] or [str(c) for c in matrix.columns][:5]
+    listed = columns[0] if len(columns) == 1 else f"{', '.join(columns[:-1])} and {columns[-1]}"
+    size = "too large to compute" if not np.isfinite(condition) else f"{condition:,.0f}"
+    return (f"The model matrix is nearly singular (scaled condition number {size}): {listed} are "
+            f"close to a fixed combination of each other, so their separate coefficients are not "
+            f"identified; leave one of them out.")
 
 
 def statsmodels_fit(task: Task, matrix: pd.DataFrame, y: Any, classes: Any, groups: Any = None) -> Any:

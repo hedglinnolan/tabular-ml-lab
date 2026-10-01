@@ -541,7 +541,36 @@
 
 .cell {
   color: var(--ink);
-  transition: background-color var(--dur-arrive) ease-out;
+  transition:
+    background-color var(--dur-arrive) ease-out,
+    padding var(--dur-arrive) ease-out;
+}
+
+/* A column by identity: its slot folds to nothing when the state drops it, so its neighbors close
+   up instead of inheriting its place (or its tint). */
+.colSlot {
+  display: inline-block;
+  max-width: 40ch;
+  overflow: hidden;
+  vertical-align: bottom;
+  transition:
+    max-width var(--dur-arrive) ease-out,
+    opacity var(--dur-arrive) ease-out;
+}
+
+.colGone .colSlot,
+.cellGone .colSlot {
+  max-width: 0;
+  opacity: 0;
+}
+
+.table .colGone,
+.table .cellGone,
+.tableCompact .colGone,
+.tableCompact .cellGone {
+  padding-left: 0;
+  padding-right: 0;
+  transition: padding var(--dur-arrive) ease-out;
 }
 
 .cellChanged {
@@ -573,6 +602,7 @@
 :global(:root[data-reduced-motion="true"]) .dotsWith,
 :global(:root[data-reduced-motion="true"]) .barNow,
 :global(:root[data-reduced-motion="true"]) .barWith,
-:global(:root[data-reduced-motion="true"]) .cell {
+:global(:root[data-reduced-motion="true"]) .cell,
+:global(:root[data-reduced-motion="true"]) .colSlot {
   transition: none;
 }

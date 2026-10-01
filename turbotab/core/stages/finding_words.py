@@ -221,8 +221,9 @@ def _energy(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
     lever = ("energy_adjustment", "Adjust for energy")
     if rs:
         best = max(rs, key=lambda c: abs(rs[c]))
-        return Voice(f"{tick(best)} correlates {rs[best]:.2f} with {tick(energy)}: nutrient effects "
-                     f"are tangled with total energy.", *lever)
+        return Voice(f"{tick(best)} correlates {rs[best]:.2f} with {tick(energy)} across all "
+                     f"{count(fc.n_rows)} rows: nutrient effects are tangled with total energy.",
+                     *lever)
     return Voice(f"{tick(energy)} is total energy; every nutrient association is confounded by it "
                  f"until adjusted.", *lever)
 

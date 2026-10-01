@@ -100,6 +100,7 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
   const findings = useM1Stage(pid, view, "findings", focus.kind === "finding");
 
   const live: LiveData = {
+    pid,
     cohort: { artifact: cohort.artifact, veil: cohort.veil },
     splitVeil: split.veil,
     designVeil: design.veil,
@@ -138,7 +139,13 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
   // What is on screen stays until the next thing is ready (state adjusted while rendering).
   if (target && target !== shown) setShown(target);
   if (target?.kind === "preview" && target !== lastPreview) setLastPreview(target);
-  const scene = target ?? shown ?? liveScene(fitted ? "results" : "now");
+  // Held while the next answer loads — unless it is another question's preview: that is not a
+  // real state of this question, so the recorded pipeline stays on screen until this one lands.
+  const foreign =
+    focus.kind === "option" &&
+    (shown?.kind === "preview" || shown?.kind === "refusal") &&
+    shown.group !== `preview:${focus.decision.kind}`;
+  const scene = target ?? (foreign ? null : shown) ?? liveScene(fitted ? "results" : "now");
 
   // ── the player's material ──
   const showing: PreviewResult | null =
@@ -227,9 +234,12 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
   }, [ack]);
   const recordable =
     focus.kind === "option" && scene.kind === "preview" && !preview.loading && scene.key === preview.answer?.key;
+  // In a multi-select list the button records what Enter records there (the chosen set).
+  const toRecord = focus.kind === "option" ? (focus.record ?? null) : null;
+  const recordLabel = (focus.kind === "option" ? focus.recordLabel : undefined) ?? "Record this choice";
   const record = () => {
     if (scene.kind !== "preview") return;
-    decide.mutate(scene.decision, {
+    decide.mutate(toRecord ?? scene.decision, {
       onSuccess: (next) => {
         const rec = [...next.decisions].sort((a, b) => b.seq - a.seq)[0];
         setAck({ text: `Recorded: ${rec?.sentence ?? scene.label}`, refused: false });
@@ -272,9 +282,9 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
         disabled={!recordable || decide.isPending}
         onClick={record}
         data-testid="stage-record"
-        title="Record this choice (Enter in the Record)"
+        title={`${recordLabel} (Enter in the Record)`}
       >
-        {decide.isPending ? "Recording…" : "Record this choice"}
+        {decide.isPending ? "Recording…" : recordLabel}
       </button>
     ) : null;
 
@@ -335,9 +345,12 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
                               key={i}
                               type="button"
                               className={s.exit}
-                              onClick={() => onFocus({ kind: "option", decision: x.decision!, label: x.label })}
+                              onClick={() =>
+                                onFocus({ kind: "option", decision: x.decision!, label: x.label.replace(/`/g, "") })
+                              }
+                              data-testid="refusal-exit"
                             >
-                              {x.label}
+                              <Rich text={x.label} />
                             </button>
                           ) : null,
                         )}
@@ -348,9 +361,40 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
                 {showing && (scene.kind === "preview" || scene.kind === "evidence" || scene.kind === "refusal") ? (
                   <div className={scene.kind === "refusal" ? s.veiled : s.views} inert={scene.kind === "refusal"}>
                     {showing.note ? (
-                      <p className={s.note}>
+                      <p className={s.note} data-testid="stage-note">
                         <Rich text={showing.note} />
                       </p>
+                    ) : null}
+                    {showing.caution ? (
+                      <div className={s.caution} role="note" data-testid="stage-caution">
+                        <p className={s.cautionText}>
+                          <Rich text={showing.caution.text} />
+                        </p>
+                        {showing.caution.exits.length ? (
+                          <div className={s.exits}>
+                            {showing.caution.exits.map((x) => (
+                              <button
+                                key={x.label}
+                                type="button"
+                                className={s.exit}
+                                onClick={() =>
+                                  onFocus({
+                                    kind: "option",
+                                    decision: x.decision as unknown as Decision,
+                                    label: x.label.replace(/`/g, ""),
+                                  })
+                                }
+                              >
+                                <Rich text={x.label} />
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {!showing.views.length && scene.kind === "preview" && live.cohort.artifact ? (
+                      // Nothing on the rows to draw for this choice: what is recorded stays in view.
+                      <NowScene view={view} data={live} />
                     ) : null}
                     <PreviewGrid
                       tracks={tracks}

@@ -74,6 +74,9 @@ class DecisionContext:
     n_rows: int | None = None
     store: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
     artifact: Callable[[str], Any] | None = field(default=None, repr=False, compare=False)
+    # The newest split's held-out row ids (None before any split): what a check on the data
+    # made while validating (a partition's units) must not read.
+    sealed: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
 
 
 def _target_needs_columns(decision: Any, ctx: Any) -> None:
@@ -254,6 +257,50 @@ def _write_json_atomic(path: Path, payload: Any) -> None:
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+
+
+POOL_WORDS = {
+    "training": "training rows",
+    "cohort": "rows in the analysis",
+    "unsealed": "rows not held out",
+    "all": "rows",
+    "given": "rows",
+}
+
+
+def preview_basis(ctx: consequences.PreviewContext, result: consequences.PreviewResult,
+                  n_rows: int) -> str:
+    """The rows a preview was computed on, in words, from what its builders actually read.
+
+    An exact count over the pool ("Counts on the 17,479 rows not held out") and a sample
+    ("values on a sample of 5,000 of the 17,084 training rows") are named separately; a scatter
+    that draws fewer points than it sampled says so.
+    """
+    sealed = ctx.sealed_row_ids is not None and len(ctx.sealed_row_ids) > 0
+    parts: list[str] = []
+    counted = ctx.read.get("counted")
+    if counted is not None:
+        parts.append(f"Counts on the {counted:,} rows not held out" if sealed
+                     else f"Counts on all {counted:,} rows")
+    sample = ctx.read.get("sample")
+    if sample is not None:
+        kind, pool, drawn = sample
+        words = POOL_WORDS.get(kind, "rows")
+        if drawn < pool:
+            parts.append(f"values on a sample of {drawn:,} of the {pool:,} {words}")
+        else:
+            parts.append(f"values on all {pool:,} {words}")
+        drawn_points = max((len(v.points_before) for v in result.views
+                            if getattr(v, "kind", None) == "relationship"), default=0)
+        if 0 < drawn_points < drawn:
+            parts.append(f"the scatter draws {drawn_points:,} of them")
+    if not parts:
+        return ("Read from the column names and summaries; no rows were read." if not sealed else
+                "Read from the column names and summaries; held-out rows stay sealed.")
+    if sealed:
+        parts.append("held-out rows stay sealed")
+    text = "; ".join(parts) + "."
+    return text[:1].upper() + text[1:]
 
 
 class ProjectService:
@@ -486,6 +533,7 @@ class ProjectService:
             n_rows=facts.n_rows if facts else None,
             store=store,
             artifact=lambda stage: self._fresh(pid, stage, public=True),
+            sealed=lambda: self.sealed_rows(pid, stages),
         )
 
     def decide(self, pid: str, decision: Any) -> dict[str, Any]:
@@ -498,7 +546,26 @@ class ProjectService:
             parsed, sentence=lambda d, before: voice.sentence_for(d, before, facts))
         self.bus.publish(pid, "decision", record.model_dump(mode="json"))
         self.engine.on_decision(pid)
+        self._restart_stopped(pid, parsed.kind)
         return self.view(pid)
+
+    def _restart_stopped(self, pid: str, kind: str) -> None:
+        """Recording an answer again is asking for its work again.
+
+        An unchanged answer leaves the stage keys as they were, so a stage the user stopped (or
+        one that failed) for that answer would stay stopped; recording it again restarts every
+        stage that reads its slot, as ``POST …/stages/{stage}/run`` would.
+        """
+        slot = decisions.SLOTS.get(kind)
+        if slot is None:
+            return
+        statuses = self.engine.status(pid)
+        for stage in self.engine.graph.order():
+            status = statuses.get(stage.name)
+            if status is None or slot not in stage.reads:
+                continue
+            if status.cancelled or status.status == "error":
+                self.engine.ensure(pid, stage.name)
 
     # ── previews ──
 
@@ -508,7 +575,7 @@ class ProjectService:
         A decision that would be refused is refused here too (409), so an option that
         cannot be taken says why instead of previewing.
         """
-        from turbotab.core import row_previews  # noqa: F401 - registers the row builders
+        from turbotab.core import fact_previews, row_previews  # noqa: F401 - register the builders
 
         self.workspace.get(pid)
         stages = self.engine.status(pid)
@@ -523,15 +590,10 @@ class ProjectService:
                 return None
             return self._artifact(pid, stage, status.key)
 
-        split = artifact("split")
+        sealed = self.sealed_rows(pid, stages)
         cohort = artifact("cohort")
-        training = None
-        n_held = 0
-        if split is not None:
-            frame = split.frames["assignment"]
-            training = frame.loc[frame["partition"] == "train", "row_id"].to_numpy(dtype="int64")
-            n_held = len(row_previews.sealed_rows(split))
         cohort_ids = cohort.frames["rows"]["row_id"].to_numpy(dtype="int64") if cohort is not None else None
+        training = self.training_rows(pid, stages, sealed, cohort_ids)
         used: dict[str, int] = {}
         pctx = consequences.PreviewContext(
             project_id=pid,
@@ -540,20 +602,46 @@ class ProjectService:
             artifact=artifact,
             training_row_ids=training,
             cohort_row_ids=cohort_ids,
+            sealed_row_ids=sealed,
         )
         pctx.before = lambda: self._before_frame(pid, pctx, stages, used)
         result = consequences.plan(parsed, pctx, basis="")
-        if training is not None:
-            parts = [f"Counts on the {store.n_rows - n_held:,} rows not held out"]
-        else:
-            parts = [f"Counts on all {store.n_rows:,} rows"]
-        if used:
-            parts.append(f"values on a sample of {used['rows']:,} "
-                         f"{'training ' if training is not None else ''}rows")
-        if training is not None:
-            parts.append("held-out rows stay sealed")
-        result.basis = "; ".join(parts) + "."
+        result.basis = preview_basis(pctx, result, int(store.n_rows))
         return result
+
+    def sealed_rows(self, pid: str, stages: dict[str, StageStatus]) -> Any:
+        """Every held-out row of the newest split, fresh or still recomputing; None before any.
+
+        A changed exclusion or missing-values answer re-runs the split, but the held-out rows are
+        drawn over every row with the outcome measured, so they do not move: the newest split's
+        sealed rows hold while it recomputes, and no preview reads them meanwhile.
+        """
+        from turbotab.core import row_previews
+
+        status = stages.get("split")
+        key = status.key if status is not None and status.status == "fresh" and status.key else None
+        if key is None:
+            key = latest_key(self.workspace.cache_dir(pid), "split")
+        if key is None:
+            return None
+        try:
+            return row_previews.sealed_rows(self._artifact(pid, "split", key))
+        except (OSError, ValueError, KeyError):
+            return None
+
+    def training_rows(self, pid: str, stages: dict[str, StageStatus], sealed: Any,
+                      cohort_ids: Any) -> Any:
+        """The rows models train on: the current cohort's rows outside the seal (None before a
+        split exists, or while the cohort itself recomputes)."""
+        import numpy as np
+
+        status = stages.get("split")
+        if status is not None and status.status == "fresh" and status.key:
+            frame = self._artifact(pid, "split", status.key).frames["assignment"]
+            return frame.loc[frame["partition"] == "train", "row_id"].to_numpy(dtype="int64")
+        if sealed is None or cohort_ids is None:
+            return None
+        return np.setdiff1d(cohort_ids, np.asarray(sealed, dtype="int64"))
 
     def _before_frame(self, pid: str, ctx: consequences.PreviewContext,
                       stages: dict[str, StageStatus], used: dict[str, int]) -> Any:
@@ -566,8 +654,7 @@ class ProjectService:
         columns = (predictors(state.roles, order, drop=decisions.left_out(state))
                    or [c for c in order if c != state.target])
         n = max(200, min(ctx.sample_size, PREVIEW_CELLS // max(1, len(columns))))
-        pool_key = next((stages[s].key for s in ("split", "cohort")
-                         if s in stages and stages[s].status == "fresh"), None)
+        pool_key = tuple((stages[s].key, stages[s].status) for s in ("split", "cohort") if s in stages)
         key = (pid, stages["ingest"].key, pool_key, tuple(columns), n)
         with self._lock:
             frame = self._frames.get(key)
@@ -586,7 +673,7 @@ class ProjectService:
 
     def evidence(self, pid: str, finding_id: str) -> consequences.PreviewResult:
         """The views that show why a finding was raised (M1_CONTRACT §12.3). Nothing is recorded."""
-        from turbotab.core import evidence, row_previews
+        from turbotab.core import evidence
 
         self.workspace.get(pid)
         stages = self.engine.status(pid)
@@ -599,11 +686,15 @@ class ProjectService:
         if finding is None:
             raise ApiError(404, "unknown_finding", f"There is no finding {finding_id!r} now.")
         store = self.store(pid)
-        split = stages.get("split")
-        sealed = None
-        if split is not None and split.status == "fresh" and split.key:
-            sealed = row_previews.sealed_rows(self._artifact(pid, "split", split.key))
-        ctx = evidence.EvidenceContext(state=self.log(pid).state(), datastore=store, sealed=sealed)
+        sealed = self.sealed_rows(pid, stages)
+        cohort = stages.get("cohort")
+        cohort_ids = None
+        if cohort is not None and cohort.status == "fresh" and cohort.key:
+            cohort_ids = self._artifact(pid, "cohort", cohort.key).frames["rows"]["row_id"].to_numpy(
+                dtype="int64")
+        training = self.training_rows(pid, stages, sealed, cohort_ids)
+        ctx = evidence.EvidenceContext(state=self.log(pid).state(), datastore=store, sealed=sealed,
+                                       training=training)
         return evidence.evidence(finding, ctx)
 
     def _artifact(self, pid: str, stage: str, key: str, public: bool = False) -> Any:

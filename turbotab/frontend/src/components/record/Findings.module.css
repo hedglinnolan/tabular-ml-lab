@@ -195,3 +195,67 @@
   font-size: 14px;
   color: var(--muted);
 }
+
+/* Findings the record has answered: settled, in the recorded green (§02 --ok), folded to a line. */
+.settled {
+  margin-top: 9px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ok);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.settledHead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.settledText {
+  flex: 1;
+  font-family: var(--serif);
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.settledList {
+  list-style: none;
+  margin: 8px 0 2px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settledItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  outline: none;
+}
+
+.settledItem[data-shown] {
+  background: var(--accent-tint);
+}
+
+.settledItem:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.settledBy {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ok);
+}
+
+.settledClaim {
+  font-family: var(--serif);
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--ink-2, var(--ink));
+}

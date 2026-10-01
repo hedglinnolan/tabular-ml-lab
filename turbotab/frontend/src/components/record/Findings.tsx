@@ -5,6 +5,11 @@
  *
  * Focusing a card (hover, keyboard) puts its evidence on the stage. A lever is a navigation
  * the user asked for: it takes the Record to the question that acts on the claim.
+ *
+ * A finding whose question has been answered is settled: it stops being pushed and its lever
+ * stops pressing for an answer the Record already holds (DRIVE_RUBRIC §2.7 "Didn't we just
+ * settle…?"). It folds into one green line, "Answered by #6", its evidence still a press away,
+ * and the three pushed cards are drawn from the findings still open.
  */
 import { useRef, useState, type KeyboardEvent } from "react";
 import type { Finding, FindingsArtifact, Severity } from "../../api/schema";
@@ -79,15 +84,27 @@ function origin(f: Finding): string {
 
 const asFocus = (f: Finding): StageFocus => ({ kind: "finding", findingId: f.id });
 
+/** The recorded answer that settles a finding: its number, and its sentence's opening. */
+export interface Settlement {
+  seq: number;
+  said: string;
+}
+
 interface Props {
   artifact: FindingsArtifact;
   /** Take the Record to the question that acts on a finding. */
   onRoute: (to: QuestionKey) => void;
+  /** The recorded answer to the question a finding routes to, if it has one. */
+  answeredBy?: (f: Finding) => Settlement | null;
 }
 
-export function FindingsCards({ artifact, onRoute }: Props) {
-  const cards = cardsOf(artifact.findings);
+export function FindingsCards({ artifact, onRoute, answeredBy }: Props) {
+  const settledOf = (f: Finding) => answeredBy?.(f) ?? null;
+  const openFindings = artifact.findings.filter((f) => !settledOf(f));
+  const settled = artifact.findings.filter((f) => settledOf(f));
+  const cards = cardsOf(openFindings);
   const [open, setOpen] = useState(false);
+  const [showSettled, setShowSettled] = useState(false);
   const [pages, setPages] = useState<Record<string, number>>({});
   const refs = useRef<(HTMLLIElement | null)[]>([]);
   const { focus, preview, endPreview, setFocus, reset } = useStageFocus();
@@ -124,12 +141,25 @@ export function FindingsCards({ artifact, onRoute }: Props) {
     }
   };
 
-  if (cards.length === 0) {
+  if (artifact.findings.length === 0) {
     return <p className={s.none}>Nothing to report under the chosen lenses.</p>;
   }
 
+  // Settled findings, grouped by the answer that settled them (newest answer first).
+  const bySeq = new Map<number, { said: string; findings: Finding[] }>();
+  for (const f of settled) {
+    const by = settledOf(f)!;
+    const group = bySeq.get(by.seq) ?? { said: by.said, findings: [] };
+    group.findings.push(f);
+    bySeq.set(by.seq, group);
+  }
+  const settledGroups = [...bySeq.entries()].sort((a, b) => b[0] - a[0]);
+
   return (
     <>
+      {cards.length === 0 ? (
+        <p className={s.none}>Every finding here has been answered in the record.</p>
+      ) : null}
       <ul className={s.cards} onPointerLeave={endPreview} data-testid="finding-cards">
         {shown.map((card, i) => {
           const p = pageOf(card);
@@ -215,6 +245,60 @@ export function FindingsCards({ artifact, onRoute }: Props) {
           >
             {open ? "Show three" : "Show"}
           </button>
+        </div>
+      ) : null}
+      {settled.length > 0 ? (
+        <div className={s.settled} data-testid="findings-settled">
+          <div className={s.settledHead}>
+            <span className={s.settledText}>
+              {settled.length} answered in the record{" "}
+              {settledGroups.map(([seq, g], i) => (
+                <span key={seq}>
+                  {i > 0 ? ", " : "— "}
+                  {g.findings.length} by #{seq}
+                </span>
+              ))}
+            </span>
+            <button
+              type="button"
+              className={s.restButton}
+              onClick={() => setShowSettled((v) => !v)}
+              aria-expanded={showSettled}
+              data-testid="findings-settled-toggle"
+            >
+              {showSettled ? "Hide" : "Show"}
+            </button>
+          </div>
+          {showSettled ? (
+            <ul className={s.settledList} onPointerLeave={endPreview}>
+              {settledGroups.flatMap(([seq, g]) =>
+                g.findings.map((f) => (
+                  <li
+                    key={f.id}
+                    className={s.settledItem}
+                    tabIndex={0}
+                    data-shown={shownId === f.id || undefined}
+                    data-testid={`settled-${f.id}`}
+                    onFocus={(e) => e.target === e.currentTarget && setFocus(asFocus(f))}
+                    onPointerMove={() => preview(asFocus(f))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        reset();
+                      }
+                    }}
+                  >
+                    <span className={s.settledBy}>
+                      Answered by #{seq}: <Prose text={g.said} />
+                    </span>
+                    <span className={s.settledClaim}>
+                      <Prose text={f.summary} />
+                    </span>
+                  </li>
+                )),
+              )}
+            </ul>
+          ) : null}
         </div>
       ) : null}
       <p className={s.keys} aria-hidden="true">

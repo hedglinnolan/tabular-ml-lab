@@ -55,6 +55,7 @@ __all__ = [
     "FactorReading",
     "applicable_methods",
     "default_atwater",
+    "partition_refusal",
     "describe_method",
     "energy_factor",
     "nutrient_role",
@@ -173,6 +174,10 @@ _ROLE_PATTERNS: Dict[str, str] = {
     if role != "energy"
 }
 _ROLE_PATTERNS["fiber"] = r"fib"
+# Sugars and starch are carbohydrate at the same 4 kcal/g (NUTRITION_PACK §01): a `sugar` column
+# carries energy and is adjusted with the rest. It is a part of total carbohydrate (nesting.py),
+# so a partition never takes it beside its total.
+_ROLE_PATTERNS["carbohydrate"] = f"(?:{_ROLE_PATTERNS['carbohydrate']})|sugar|starch"
 
 # Unit suffixes, NUTRITION_PACK §01 signal 3. Density is tested first so that
 # `protein_pct_kcal` is a share of energy and not an amount in kcal.
@@ -373,6 +378,77 @@ def applicable_methods(columns: Sequence[str], energy_column: Optional[str],
     return out
 
 
+PARTITION_NEGATIVE_SHARE = 0.10  # rows on which the nutrients out-weigh total energy …
+PARTITION_SLACK = 0.05  # … by more than 5% of it (general Atwater factors' own error)
+
+
+def partition_refusal(frame: pd.DataFrame, energy_column: str, nutrient_columns: Sequence[str], *,
+                      nested: Optional[Mapping[str, str]] = None,
+                      atwater: Optional[Mapping[str, float]] = None) -> Optional[Dict[str, Any]]:
+    """Why the energy partition cannot be fitted on these columns and rows, or None when it can.
+
+    The checks the fit itself makes (unit suffixes and the Atwater reconstruction on ``frame``),
+    and two it cannot make on its own:
+
+    * a total with its parts (``nested``: child -> parent, e.g. ``fat_sat`` -> ``fat_total``)
+      counts the parts' energy twice;
+    * nutrients that out-weigh total energy by more than :data:`PARTITION_SLACK` of it on more
+      than :data:`PARTITION_NEGATIVE_SHARE` of the rows leave a negative "kcal from everything
+      else", which reads as overlap or a wrong unit.
+
+    Returns ``{"reason": str, "nutrients": list | None}``; ``nutrients`` is the totals-only list
+    the partition can take instead (it passed every check), when nesting was the cause.
+    """
+    nutrients = _as_list(nutrient_columns)
+    nested = dict(nested or {})
+    parts = [n for n in nutrients if nested.get(n) in nutrients]
+    if parts:
+        parents = list(dict.fromkeys(nested[n] for n in parts))
+        roles = []
+        for p in parents:
+            try:
+                roles.append(nutrient_role(p) or p)
+            except ValueError:
+                roles.append(p)
+        whose = _and([f"{r}'s" for r in dict.fromkeys(roles)])
+        reason = (f"{_and(parts)} {'is a part' if len(parts) == 1 else 'are parts'} of "
+                  f"{_and(parents)}, so a partition would count {whose} energy twice.")
+        totals = [n for n in nutrients if n not in parts]
+        alternative = totals if totals and _partition_problem(frame, energy_column, totals,
+                                                              atwater) is None else None
+        return {"reason": reason, "nutrients": alternative}
+    problem = _partition_problem(frame, energy_column, nutrients, atwater)
+    return None if problem is None else {"reason": problem, "nutrients": None}
+
+
+def _partition_problem(frame: pd.DataFrame, energy_column: str, nutrients: Sequence[str],
+                       atwater: Optional[Mapping[str, float]]) -> Optional[str]:
+    columns = [c for c in dict.fromkeys([energy_column, *nutrients]) if c in frame.columns]
+    verdict = applicable_methods(list(frame.columns), energy_column, nutrients, atwater=atwater)
+    if not verdict["partition"]["ok"]:
+        return str(verdict["partition"]["reason"])
+    rows = frame[columns].apply(pd.to_numeric, errors="coerce").dropna()
+    if len(rows) < 3:
+        return None  # nothing to judge on: the fit decides
+    step = EnergyAdjuster(method="partition", energy_column=energy_column,
+                          nutrient_columns=list(nutrients), atwater=atwater)
+    try:
+        step.fit(rows)
+    except EnergyAdjustmentNotApplicable as err:
+        return err.reason[:1].upper() + err.reason[1:]
+    except (ValueError, TypeError) as err:
+        return str(err)
+    e = rows[energy_column].to_numpy(dtype=float)
+    other = e - sum(step.factors_[n] * rows[n].to_numpy(dtype=float) for n in nutrients)
+    # General Atwater factors run a few percent off a food table's specific ones, so a slightly
+    # negative remainder is factor error; well past it, the nutrients overlap or are not grams.
+    below = int(np.sum(other < -PARTITION_SLACK * np.abs(e)))
+    if len(e) and below / len(e) > PARTITION_NEGATIVE_SHARE:
+        return (f"{_and(list(nutrients))} carry more energy than {energy_column} itself on "
+                f"{below:,} of {len(e):,} rows, so they overlap or are not in grams.")
+    return None
+
+
 # ── The transformer ──────────────────────────────────────────────────────────
 
 def _fmt(value: float) -> str:
@@ -530,15 +606,21 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
                     raise EnergyAdjustmentNotApplicable(
                         "partition", f"{n} does not say what unit it is in, and the Atwater "
                                      f"reconstruction could not confirm it is grams: {why} If it "
-                                     f"is grams, name it with a _g suffix or give its factor "
-                                     f"explicitly (atwater={{'{n}': {reading.factor:g}}}).")
+                                     f"is in grams, a _g suffix on its name says so.")
             self.factors_[n] = float(reading.factor)
             self.factor_notes_[n] = reading.reason if reading.declared else (
                 f"{n} is {reading.role}; the Atwater reconstruction on the fitting rows confirms "
                 f"grams, so {reading.factor:g} kcal/g")
         other = e - sum(self.factors_[n] * _numeric(X, n) for n in self.nutrients_)
-        self.params_["__other__"] = {"rows_below_zero": int(np.sum(other < 0)),
-                                     "n_fit": int(np.isfinite(other).sum())}
+        with np.errstate(divide="ignore", invalid="ignore"):
+            share = other / np.abs(e)
+        finite = share[np.isfinite(share)]
+        self.params_["__other__"] = {
+            "rows_below_zero": int(np.sum(other < 0)),
+            # Below zero by more than general Atwater factors' own error: overlap or a wrong unit.
+            "rows_well_below_zero": int(np.sum(other < -PARTITION_SLACK * np.abs(e))),
+            "median_share_of_energy": float(np.median(finite)) if finite.size else None,
+            "n_fit": int(np.isfinite(other).sum())}
 
     def _check_positive_energy(self, e: np.ndarray, where: str) -> None:
         bad = np.isfinite(e) & (e <= 0)

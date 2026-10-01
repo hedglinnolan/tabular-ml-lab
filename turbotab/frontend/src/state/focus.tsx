@@ -27,7 +27,15 @@ import type { Decision } from "../api/schema";
 export type BannerSegment = "rows" | "columns" | "models" | "result";
 
 export type StageFocus =
-  | { kind: "option"; decision: Decision; label: string }
+  | {
+      kind: "option";
+      decision: Decision;
+      label: string;
+      /** What recording from the stage records, when it is not the previewed decision: in a
+       *  multi-select list, the chosen set (Enter in the Record records the same). */
+      record?: Decision;
+      recordLabel?: string;
+    }
   | { kind: "finding"; findingId: string }
   | { kind: "banner"; segment: BannerSegment }
   | { kind: "live" };

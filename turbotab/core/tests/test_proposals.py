@@ -93,8 +93,15 @@ def test_the_nhanes_energy_reading(nhanes):
     table, artifact = nhanes
     energy = artifact["energy"]
     assert energy["energy_column"] == "kcal"
-    assert energy["nutrients"] == ["protein", "carb", "fat_total", "fat_sat", "fat_mon", "fat_poly"]
+    # Sugar is carbohydrate at 4 kcal/g: adjusted with the rest, never left out silently.
+    assert energy["nutrients"] == ["protein", "sugar", "carb", "fat_total", "fat_sat", "fat_mon",
+                                   "fat_poly"]
     assert energy["strata_candidates"][0] == "gender"
+    # A total beside its parts counts their energy twice: the partition refuses, saying why.
+    partition = energy["applicability"]["partition"]
+    assert not partition["ok"]
+    assert ("`sugar`, `fat_sat`, `fat_mon` and `fat_poly` are parts of `carb` and `fat_total`"
+            in partition["reason"]), partition["reason"]
     assert set(energy["applicability"]) == {"none", "standard", "residual", "density_multivariate",
                                             "density", "partition"}
     assert energy["usual"] == "residual"
@@ -112,6 +119,10 @@ def test_the_recall_energy_reading_offers_grams_not_shares(recalls):
     assert energy["nutrients"] == ["protein_g", "fat_g", "carbohydrate_g", "fiber_g"]
     assert energy["strata_candidates"][0] == "sex"
     assert all(v["ok"] for v in energy["applicability"].values())
+    # Nothing is left out silently: each exposure it does not adjust is named, with why.
+    left = {e["column"]: e["reason"] for e in energy["not_adjusted"]}
+    assert left["sodium_mg"] == "carries no energy"
+    assert left["protein_pct_kcal"] == "already a share of energy"
 
 
 def test_kilojoules_are_compared_in_kilojoules(tmp_path):

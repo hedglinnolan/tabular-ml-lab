@@ -117,4 +117,47 @@ def parts_of(nested: Mapping[str, str]) -> dict[str, list[str]]:
     return out
 
 
-__all__ = ["MIN_INSIDE", "SUBTYPES", "candidates", "nested_components", "parts_of"]
+SHARE_TOTALS = (100.0, 1.0)  # percent, or a proportion
+SHARE_TOLERANCE = 0.005  # relative: 100 ± 0.5
+
+
+def _is_share(column: str) -> bool:
+    from turbotab.core.methods.energy import unit_of
+
+    name = str(column).lower()
+    return unit_of(column) == "density" and ("pct" in name or "percent" in name)
+
+
+def compositions(frame: Any, columns: Sequence[str] | None = None) -> list[str]:
+    """Energy shares that sum to a fixed total (100%) on every row, or [] when none do.
+
+    Shares of energy (``protein_pct_kcal`` …) that add up to 100% are one fewer free quantity
+    than columns: beside an intercept, any one is fixed by the others, so a linear model cannot
+    estimate them all. The usual remedy leaves one out as the reference.
+    """
+    import pandas as pd
+
+    names = [str(c) for c in (frame.columns if columns is None else columns)
+             if c in frame.columns and _is_share(str(c))]
+    if len(names) < 2:
+        return []
+    values = frame[names].apply(pd.to_numeric, errors="coerce").dropna()
+    if len(values) < MIN_ROWS:
+        return []
+    total = values.sum(axis=1).to_numpy(dtype=float)
+    for fixed in SHARE_TOTALS:
+        if float((np.abs(total - fixed) <= SHARE_TOLERANCE * fixed).mean()) >= MIN_INSIDE:
+            return names
+    return []
+
+
+def reference_share(frame: Any, shares: Sequence[str]) -> str:
+    """The share to leave out: the largest on average, so the others read as replacing it."""
+    import pandas as pd
+
+    means = frame[list(shares)].apply(pd.to_numeric, errors="coerce").mean()
+    return str(means.idxmax())
+
+
+__all__ = ["MIN_INSIDE", "SUBTYPES", "candidates", "compositions", "nested_components", "parts_of",
+           "reference_share"]

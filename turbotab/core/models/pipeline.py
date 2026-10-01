@@ -290,6 +290,14 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
             role = None
         if role:
             by_role.setdefault(role, []).append(c)
+    from turbotab.core.methods.nesting import compositions
+
+    shares = compositions(frame, [c for c in spec.predictors if spec.roles.get(c) == "exposure"
+                                  and c in frame.columns])
+    if shares:
+        out.append(f"{', '.join(shares)} sum to 100% on every row: beside the intercept one of them "
+                   f"is fixed by the others, so a linear model cannot estimate them all; leave one "
+                   f"out as the reference.")
     nested = dict(nested or {})
     for parent, parts in parts_of(nested).items():
         if parent in spec.predictors:

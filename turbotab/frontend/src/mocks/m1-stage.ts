@@ -243,6 +243,7 @@ function rolesPreview(roles: Record<string, string>): PreviewResult {
     ],
     basis: "Counts on all 21,849 rows.",
     note: null,
+    caution: null,
   };
 }
 
@@ -520,7 +521,7 @@ class DemoProject {
       const body = withStory(near);
       return { ...body, note: `${body.note ? `${body.note} ` : ""}(Mock: the captured NHANES preview of this kind of option.)` };
     }
-    return { kind: d.kind, views: [], basis: "Nothing is computed for this choice.", note: "Nothing about this choice can be shown on your data yet." };
+    return { kind: d.kind, views: [], basis: "Nothing is computed for this choice.", note: "Nothing about this choice can be shown on your data yet.", caution: null };
   }
 
   evidence(fid: string): PreviewResult | null {
@@ -547,7 +548,7 @@ class DemoProject {
         after: (F.previews.energy_adjustment!.find((c) => c.decision.method === "none")!.body.views.find((v) => v.kind === "lineage") as LineageView).after,
         story: [],
       };
-      return { kind: "evidence", views: [asRecorded, lineage], basis: residual.basis, note: null };
+      return { kind: "evidence", views: [asRecorded, lineage], basis: residual.basis, note: null, caution: null };
     }
     if (fid === "pack::dietary::implausible_intake") {
       const ex = F.previews.exclusions!.find((c) => sameDecision(c.decision, { kind: "set_exclusions", rules: [{ kind: "range", column: "kcal", low: 500, high: 5000, by: null, reason: "implausible intakes (sex-neutral 500–5,000 kcal a day)" }] }));
@@ -566,7 +567,7 @@ class DemoProject {
         ],
       };
       const rows: RowFlowView = { ...flow, title: "Rows, before any exclusion", caption: "", before: flow.before, after: flow.before };
-      return { kind: "evidence", views: [evidence, rows], basis, note: null };
+      return { kind: "evidence", views: [evidence, rows], basis, note: null, caution: null };
     }
     const input = F.evidence_inputs[fid];
     const views: ConsequenceView[] = [];
@@ -619,7 +620,7 @@ class DemoProject {
         story: [],
       });
     }
-    return { kind: "evidence", views, basis, note: null };
+    return { kind: "evidence", views, basis, note: null, caution: null };
   }
 }
 

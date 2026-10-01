@@ -46,6 +46,8 @@ interface Base<K extends BannerSegment> {
   waiting: string | null;
   /** The whole segment in one sentence, for its accessible name. */
   summary: string;
+  /** The stage that failed or was stopped behind this segment: the banner offers to run it again. */
+  retry: string | null;
 }
 
 export interface RowsSegment extends Base<"rows"> {
@@ -152,6 +154,11 @@ function veil(status: StageStatus | undefined, result: StageResult<unknown> | un
   return veilFor(status, result);
 }
 
+/** The first of these stages that failed or was stopped, if any: what a retry would run. */
+function stopped(stages: Record<string, StageStatus | undefined>, names: string[]): string | null {
+  return names.find((n) => stages[n]?.status === "error" || stages[n]?.cancelled) ?? null;
+}
+
 /** What to say while a stage has nothing on screen: work under way, or what it waits on. */
 function pendingText(
   status: StageStatus | undefined,
@@ -209,6 +216,7 @@ function rowsSegment(input: BannerInput): RowsSegment {
     order: 0,
     waiting,
     summary: `${summary}.`,
+    retry: stopped(stages, ["cohort", "split"]),
     flow,
     train,
     holdout,
@@ -260,6 +268,7 @@ function columnsSegment(input: BannerInput): ColumnsSegment {
     order: 1,
     waiting,
     summary: `${summary}.`,
+    retry: view.state.models?.length ? stopped(stages, ["design"]) : null,
     from,
     to,
     unit,
@@ -285,6 +294,7 @@ function modelsSegment(input: BannerInput): ModelsSegment {
     veil: v,
     order: 2,
     waiting,
+    retry: null,
     summary: chosen.length
       ? `Models: ${labels.length} ${labels.length === 1 ? "family" : "families"}, ${labels.join(", ")}.`
       : "Models: not chosen yet.",
@@ -329,6 +339,7 @@ function resultSegment(input: BannerInput): ResultSegment {
     veil: v,
     order: 3,
     waiting,
+    retry: view.state.models?.length ? stopped(view.stages, ["fit", "substitution"]) : null,
     summary: best
       ? `Result: ${metric} ${formatMetric(best.value)} by cross-validation, best for ${best.label}.`
       : `Result: ${waiting}.`,

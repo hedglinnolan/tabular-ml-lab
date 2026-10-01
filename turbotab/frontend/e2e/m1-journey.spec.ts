@@ -96,6 +96,29 @@ async function openNhanes(page: Page) {
   await expect(page.getByTestId("question-lens")).toBeVisible({ timeout: 60_000 });
 }
 
+/** The design's concerns under the lineage, then a changed earlier answer dates a sentence's counts. */
+async function concernsAndDatedCounts(page: Page) {
+  await page.getByTestId("banner-columns").click();
+  await expect(stage(page).locator("[data-card=lineage]").getByTestId("design-warnings")).toContainText(
+    "parts of fat_total",
+  );
+  await park(page);
+  await settle(page, 400);
+  await shot(page, "columns-concerns");
+  await page.getByTestId("banner-columns").click();
+
+  // An earlier answer changes: a sentence whose counts predate it says so.
+  await page.getByRole("button", { name: "Change the exclusions" }).click();
+  await page.getByTestId("option-none").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("decision-exclusions")).toContainText("No rows were excluded");
+  await expect(page.getByTestId("decision-missing-note")).toContainText("counts were made before");
+  await page.getByTestId("decision-missing").scrollIntoViewIfNeeded();
+  await park(page);
+  await settle(page, 400);
+  await shot(page, "record-counts-dated");
+}
+
 /** Seconds until `done` holds, polled. */
 async function timed(done: () => Promise<void>): Promise<number> {
   const t0 = Date.now();
@@ -139,6 +162,15 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await page.getByTestId("option-dietary").focus();
   await previewed(page, "Dietary intake");
   await expect(stage(page)).toHaveAttribute("data-focus", "option");
+  // The lens shows what it unlocks on this table (review: the stage was empty for lens, outcome
+  // and purpose): the columns as it reads them, and the questions it adds.
+  if (REAL) {
+    await expect(stage(page).locator("[data-card=lineage]")).toContainText("kcal");
+    await expect(page.getByTestId("stage-note")).toContainText("energy adjustment");
+  }
+  // The shown option of a multi-select is not a chosen one, and the stage records what Enter would.
+  await expect(page.getByTestId("option-dietary")).toHaveAttribute("aria-selected", "false");
+  await expect(page.getByTestId("stage-record")).toHaveText("Record the dietary intake lens");
   await park(page);
   await shot(page, "q-lens", { themes: ["light", "dark"] });
   await page.keyboard.press("Space");
@@ -150,6 +182,7 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await page.getByRole("combobox").fill("glucose");
   await page.getByRole("combobox").press("Enter");
   await previewed(page, /glucose/);
+  if (REAL) await expect(stage(page).locator("[data-card=row_flow]")).toContainText("recorded");
   await shot(page, "q-target");
   await page.getByTestId("record-target").click();
   await expect(page.getByTestId("decision-target")).toContainText("glucose");
@@ -161,6 +194,10 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   // ── the purpose ─────────────────────────────────────────────────────────────
   await page.getByTestId("option-prediction").focus();
   await previewed(page, "Prediction");
+  if (REAL) {
+    await expect(page.getByTestId("stage-note")).toContainText("never saw");
+    await expect(stage(page).locator("[data-card=rows]").last()).toBeVisible(); // your data now stays in view
+  }
   await shot(page, "q-purpose");
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("decision-purpose")).toContainText("prediction");
@@ -185,6 +222,8 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   const exclusions = page.getByTestId("question-exclusions");
   await expect(exclusions).toBeVisible({ timeout: 60_000 });
   await expect(page.getByTestId("banner-rows")).toHaveAttribute("data-now", "true");
+  // Every count names its denominator: the screens' rows among those with the outcome recorded.
+  if (REAL) await expect(page.getByTestId("option-willett_by_sex")).toContainText(/−[\d,]+ of 21,849/);
   await page.getByTestId("option-none").focus();
   await previewed(page, "Keep every row");
   for (const [key, name] of [
@@ -225,7 +264,18 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await page.keyboard.press("ArrowDown");
   await previewed(page, "Impute");
   await landed(page, "with");
+  // Imputing a "not asked" column says what it would write, with the lever beside it.
+  const caution = page.getByTestId("stage-caution");
+  if (REAL) {
+    await expect(caution).toContainText("meds_hbp");
+    await expect(caution).toContainText("True");
+    await expect(caution).toContainText("not asked");
+  }
   await shot(page, "q-missing-impute");
+  if (REAL) {
+    await caution.getByRole("button", { name: "Leave them out first" }).click();
+    await previewed(page, /Leave out meds_chol and meds_hbp/); // the same option the Record offers
+  }
   await leaveOut.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("decision-missing")).toContainText("meds_chol");
@@ -248,6 +298,13 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await expect(energy).toBeVisible({ timeout: 60_000 });
   await expect(page.getByTestId("option-residual")).toContainText("usual");
   await expect(page.getByTestId("option-residual")).toHaveAttribute("aria-selected", "false");
+  if (REAL) {
+    // Every adjusted nutrient is named — sugar too, carbohydrate at 4 kcal/g.
+    await expect(energy).toContainText("protein, sugar, carb, fat_total, fat_sat, fat_mon, and fat_poly are adjusted together");
+    // A total beside its parts would count fat's energy twice: partition is refused, with the reason.
+    await expect(page.getByTestId("option-partition")).toContainText("not applicable");
+    await expect(page.getByTestId("option-partition")).toContainText("parts of");
+  }
   const methods = await energy
     .getByRole("option")
     .evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
@@ -262,6 +319,10 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
     await expect(page.getByTestId("stage-loading")).not.toHaveAttribute("data-on", /.*/, { timeout: 15_000 });
     await expect(stage(page)).toHaveAttribute("data-group", /set_energy_adjustment/);
     methodMs[m] = Date.now() - t0;
+    if (REAL && m === "partition") {
+      await expect(page.getByTestId("refusal")).toContainText("count");
+      await expect(page.getByTestId("refusal-exit").first()).toHaveText("Partition protein, carb and fat_total");
+    }
     await settle(page, 700);
     await park(page);
     await energy.evaluate((el) => el.scrollIntoView({ block: "start" }));
@@ -273,6 +334,8 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await page.getByTestId("option-residual").focus();
   await previewed(page, "Residual method");
   await landed(page, "with");
+  // The basis names the rows the view was computed on: a sample of the training rows.
+  if (REAL) await expect(stage(page)).toContainText(/Values on a sample of 5,000 of the [\d,]+ training rows/);
   await expect(page.locator("[aria-label^='Step ']")).toHaveCount(4);
   await expect(page.getByTestId("readout")).toContainText("0.00");
   await park(page);
@@ -323,6 +386,25 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   }
   measurements.saved = { svg: svg.suggestedFilename(), png: png.suggestedFilename(), png_width: pngBytes.readUInt32BE(16) };
 
+  // A term's card opens in full, inside the window, and covers no option (review: it was clipped
+  // and sat on the Residual option).
+  const term = energy.locator("[data-term]").first();
+  if (await term.count()) {
+    await term.hover();
+    const tip = page.getByRole("tooltip").filter({ visible: true });
+    await expect(tip).toHaveCount(1);
+    const tipBox = (await tip.boundingBox())!;
+    expect(tipBox.x).toBeGreaterThanOrEqual(0);
+    expect(tipBox.x + tipBox.width).toBeLessThanOrEqual(1440);
+    for (const opt of await energy.getByRole("option").all()) {
+      const o = (await opt.boundingBox())!;
+      const overlaps =
+        tipBox.x < o.x + o.width && o.x < tipBox.x + tipBox.width && tipBox.y < o.y + o.height && o.y < tipBox.y + tipBox.height;
+      expect(overlaps, "the term card covers an option").toBe(false);
+    }
+    await park(page);
+  }
+
   // Record the residual method from the Record (Enter on its option).
   await page.getByTestId("option-residual").focus();
   await page.keyboard.press("Enter");
@@ -334,7 +416,17 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   const families = await models.getByRole("option").evaluateAll((els) => els.map((e) => e.getAttribute("data-key") ?? ""));
   expect(families).toHaveLength(3);
   await page.getByTestId(`option-${families[0]}`).focus();
+  // Never the previous question's preview as a placeholder (review: "PREVIEW Residual method"
+  // flashed for ~250 ms): sample the stage's title while the first family's preview loads.
+  const titles: string[] = [];
+  for (let i = 0; i < 20; i++) {
+    titles.push((await page.getByTestId("stage-title").textContent().catch(() => "")) ?? "");
+    await page.waitForTimeout(25);
+  }
+  expect(titles.filter((x) => /Residual/.test(x)), "no foreign preview while loading").toEqual([]);
   await previewed(page, /./);
+  // Nothing chosen yet: the stage's button (and Enter) fit the shown family.
+  await expect(page.getByTestId("stage-record")).toHaveText(/^Fit the /);
   await park(page);
   await models.evaluate((el) => el.scrollIntoView({ block: "start" }));
   await shot(page, "q-models");
@@ -356,6 +448,9 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await expect(comparison.locator("[data-family]")).toHaveCount(3);
   await expect(comparison).toContainText("baseline");
   measurements.result = await page.getByTestId("banner-result").innerText().catch(() => null);
+  // Findings learn they were answered: the energy finding no longer pushes its lever.
+  await expect(page.getByTestId("findings-settled")).toContainText("answered in the record");
+  await expect(page.getByTestId("finding-pack::dietary::energy_adjustment")).toHaveCount(0);
   await settle(page, 600);
   await shot(page, "results", { themes: ["light", "dark"] });
 
@@ -382,6 +477,18 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   expect(bandLabel).toMatch(/Add an uncertainty band \(about .+\)/);
   await band.click();
   await expect(page.getByText(/Refitting each family \d+ times/)).toBeVisible({ timeout: 15_000 });
+  // Stop it: the curve veils as stopped with a way to run it again outside the veil, the
+  // Record says so beside the answer, and the band can be asked for again (review blocker).
+  if (REAL) {
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    await expect(page.getByTestId("retry-substitution").first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("sentence-stopped-substitution")).toBeVisible();
+    await park(page);
+    await shot(page, "band-stopped");
+    await page.getByTestId("add-band").click();
+    await expect(page.getByText(/Refitting each family \d+ times/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("sentence-stopped-substitution")).toHaveCount(0);
+  }
   measurements.band_s = await timed(() =>
     expect(page.getByText(/Bands: 95% intervals from \d+ refits/)).toBeVisible({ timeout: 300_000 }),
   );
@@ -391,13 +498,20 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await shot(page, "band", { themes: ["light", "dark"] });
 
   // ── a finding's evidence: focusing its card puts the evidence on the stage ───────────────
-  const preferred = page.getByTestId("finding-pack::dietary::energy_adjustment");
+  // The energy finding is settled by the energy answer: its evidence is a press away there.
+  await page.getByTestId("findings-settled-toggle").click();
+  const preferred = page.getByTestId("settled-pack::dietary::energy_adjustment");
   const card = (await preferred.count()) ? preferred : page.getByTestId("finding-cards").locator(":scope > li").first();
   await card.scrollIntoViewIfNeeded();
   await card.focus();
   await expect(stage(page)).toHaveAttribute("data-focus", "finding");
   await expect(page.getByTestId("stage-pill")).toHaveText("Evidence", { timeout: 15_000 });
   await expect(page.getByTestId("stage-loading")).not.toHaveAttribute("data-on", /.*/, { timeout: 15_000 });
+  // Each r names its basis: the finding's every row, the evidence's training sample.
+  if (REAL) {
+    await expect(page.getByTestId("stage-title")).toContainText("across all 21,849 rows");
+    await expect(stage(page)).toContainText(/Values on a sample of 5,000 of the [\d,]+ training rows/);
+  }
   await park(page);
   await settle(page, 500);
   await shot(page, "evidence", { themes: ["light", "dark"] });
@@ -415,6 +529,11 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await page.getByTestId("option-density").focus();
   await previewed(page, "Density alone");
   await landed(page, "with");
+  // "Your data now" is the recorded residual result (r 0.00), not the raw nutrient.
+  if (REAL) {
+    await expect(page.getByTestId("readout")).toContainText("0.00");
+    await expect(stage(page)).toContainText("Recorded now");
+  }
   await park(page);
   await shot(page, "q-energy-change-density");
   // Every veil change from here on, timed: the order the change propagates in.
@@ -493,6 +612,10 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
   await page.getByTestId("substitution-curves").evaluate((el) => el.scrollIntoView({ block: "start" }));
   await settle(page, 400);
   await shot(page, "reflow-after-curves");
+
+  // ── the design's concerns are stated under the lineage (review: computed, never shown) ─────
+  if (REAL) await concernsAndDatedCounts(page);
+
 
   // ── what the run measured ──────────────────────────────────────────────────────────────
   const sorted = previewMs.map((p) => p.ms).sort((a, b) => a - b);

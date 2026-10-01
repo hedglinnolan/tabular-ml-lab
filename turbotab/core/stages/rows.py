@@ -337,6 +337,18 @@ def _nesting(store: Any, columns: Sequence[Mapping[str, Any]], target: str | Non
     return nested_components(store.materialize(needed), needed)
 
 
+def _composition_reference(store: Any, proposals: Sequence[Mapping[str, Any]]) -> tuple[str, int] | None:
+    """(the share to leave out, how many shares) when the exposures' energy shares sum to 100%."""
+    from turbotab.core.methods.nesting import _is_share, compositions, reference_share
+
+    shares = [str(p["column"]) for p in proposals if p["proposed"] == "exposure" and _is_share(p["column"])]
+    if len(shares) < 2:
+        return None
+    frame = store.materialize(shares)
+    found = compositions(frame, shares)
+    return (reference_share(frame, found), len(found)) if found else None
+
+
 def roles_stage(ctx: StageContext) -> dict[str, Any]:
     """Proposed roles for every column but the outcome, and whether rows repeat per unit."""
     columns = [c for c in ctx.inputs["profile"]["columns"] if not str(c["name"]).startswith("__")]
@@ -355,8 +367,13 @@ def roles_stage(ctx: StageContext) -> dict[str, Any]:
         repeats = _repeats(store, proposals)
         ctx.progress(0.8, "Checking which nutrients are parts of others")
         nested = _nesting(store, columns, ctx.state.target)
+        reference = _composition_reference(store, proposals)
     for p in proposals:
         p["nested_in"] = nested.get(p["column"])
+        if reference is not None and p["column"] == reference[0]:
+            p["proposed"], p["confidence"] = "excluded", "medium"
+            p["reason"] = (f"{reference[1]} shares sum to 100%, so one must leave; this one is "
+                           f"the reference.")
     if repeats is not None:
         for p in proposals:
             if p["column"] == repeats["column"]:

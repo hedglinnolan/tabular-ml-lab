@@ -317,6 +317,13 @@ class MethodVerdict(Model):
     reason: str
 
 
+class NotAdjusted(Model):
+    """An exposure energy adjustment leaves as it is, and why (it carries no energy, it is a share)."""
+
+    column: str
+    reason: str
+
+
 class EnergyReading(Model):
     """What the energy-adjustment question can offer on this table (NUTRITION_PACK §04)."""
 
@@ -328,6 +335,7 @@ class EnergyReading(Model):
     usual_evidence: FindingEvidence | None
     r_with_energy: dict[str, float]
     notes: list[str]
+    not_adjusted: list[NotAdjusted]
 
 
 class MissingColumn(Model):
@@ -362,6 +370,7 @@ class ProposalsArtifact(Model):
     exclusions: list[ExclusionProposal]
     energy: EnergyReading | None
     missing: MissingReading
+    n_base: int  # the rows every count here is made among (the outcome recorded), all rows as loaded
     basis: str
 
 

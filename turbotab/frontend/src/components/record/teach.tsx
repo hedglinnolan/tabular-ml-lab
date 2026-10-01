@@ -12,12 +12,13 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import type { TeachingEntry, TeachingTerm } from "../../api/m1-types";
-import { cx } from "../../util/format";
 import s from "./teach.module.css";
 
 const TermsContext = createContext<readonly TeachingTerm[]>([]);
@@ -32,6 +33,15 @@ export function TermsProvider({
   return <TermsContext.Provider value={terms ?? []}>{children}</TermsContext.Provider>;
 }
 
+const CARD_WIDTH = 270;
+const GUTTER = 12;
+
+/**
+ * A term's one-sentence card. It renders in a portal (never clipped by the Record's scroll box)
+ * at fixed coordinates beside the term: on its preferred side when it fits, else the other side,
+ * and always inside the viewport. "Above" is the default: under a question's lines sit its
+ * options, and a card must never cover a control (DRIVE_RUBRIC §5.11).
+ */
 function Term({
   text,
   definition,
@@ -43,9 +53,43 @@ function Term({
 }) {
   const [open, setOpen] = useState(false);
   const id = useId();
+  const anchor = useRef<HTMLSpanElement>(null);
+  const card = useRef<HTMLSpanElement>(null);
+
+  // Placed straight on the card's DOM node (measured after it renders), not through state.
+  useLayoutEffect(() => {
+    const el = card.current;
+    if (!open || !el) return;
+    const place = () => {
+      const a = anchor.current?.getBoundingClientRect();
+      if (!a) return;
+      const h = el.offsetHeight || 96;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const roomAbove = a.top - GUTTER;
+      const roomBelow = vh - a.bottom - GUTTER;
+      let side = placement;
+      if (side === "above" && roomAbove < h + 6 && roomBelow > roomAbove) side = "below";
+      if (side === "below" && roomBelow < h + 6 && roomAbove > roomBelow) side = "above";
+      const top = side === "above" ? a.top - 6 - h : a.bottom + 6;
+      const left = Math.max(GUTTER, Math.min(a.left, vw - CARD_WIDTH - GUTTER));
+      el.style.top = `${Math.max(GUTTER, top)}px`;
+      el.style.left = `${left}px`;
+      el.dataset.side = side;
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, placement]);
+
   return (
     <span className={s.termWrap}>
       <span
+        ref={anchor}
         className={s.term}
         tabIndex={0}
         aria-describedby={id}
@@ -63,14 +107,21 @@ function Term({
       >
         {text}
       </span>
-      <span
-        id={id}
-        role="tooltip"
-        className={cx(s.termCard, placement === "above" && s.above)}
-        data-open={open || undefined}
-      >
-        {definition}
-      </span>
+      {typeof document !== "undefined"
+        ? createPortal(
+            <span
+              ref={card}
+              id={id}
+              role="tooltip"
+              className={s.termCard}
+              data-open={open || undefined}
+              style={{ top: -9999, left: -9999, width: CARD_WIDTH }}
+            >
+              {definition}
+            </span>,
+            document.body,
+          )
+        : null}
     </span>
   );
 }
@@ -83,7 +134,7 @@ const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  */
 export function Taught({
   text,
-  placement = "below",
+  placement = "above",
   terms: own,
 }: {
   text: string;

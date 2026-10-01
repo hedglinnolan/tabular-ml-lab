@@ -201,9 +201,22 @@ def _energy_warnings(step: Any) -> list[str]:
     adjuster = getattr(step, "pooled_", step)
     other = getattr(adjuster, "params_", {}).get("__other__")
     if other and other.get("rows_below_zero"):
-        n = other["rows_below_zero"]
-        out.append(f"{n:,} training row{'s' if n != 1 else ''} get a negative kcal_from_other: the "
-                   f"chosen nutrients carry more energy than the recorded total.")
+        n, of = other["rows_below_zero"], other.get("n_fit") or 0
+        well = other.get("rows_well_below_zero")
+        median = other.get("median_share_of_energy")
+        from turbotab.core.methods.energy import PARTITION_NEGATIVE_SHARE, PARTITION_SLACK
+
+        if (well is not None and of and well / of <= PARTITION_NEGATIVE_SHARE
+                and median is not None and median > -PARTITION_SLACK):
+            # Slightly negative only: the general factors' own error, said as such.
+            typical = f"{median:+.1%}".replace("-", "−")
+            out.append(f"kcal_from_other is slightly negative on {n:,} of {of:,} training rows "
+                       f"(median {typical} of total energy): the general Atwater factors (4, 4, 9 "
+                       f"kcal/g) run a little above this table's own, and everything else absorbs "
+                       f"the difference.")
+        else:
+            out.append(f"{n:,} training row{'s' if n != 1 else ''} get a negative kcal_from_other: "
+                       f"the chosen nutrients carry more energy than the recorded total.")
     for n, p in getattr(adjuster, "params_", {}).items():
         if n != "__other__" and isinstance(p, Mapping) and p.get("r2") is not None and p["r2"] < 0.05:
             out.append(f"Energy explains {p['r2']:.0%} of {n}'s variation, so adjusting it barely "
@@ -367,6 +380,15 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 concerns.append(f"The coefficient table could not be computed: {exc}")
             done += 1
         concerns = _concerns(caught, len(fold_keys) + 1) + concerns
+        if family.key == "linear":
+            from turbotab.core.models.linear import collinearity_concern, model_matrix
+
+            try:
+                singular = collinearity_concern(model_matrix(final, X))
+            except Exception:  # noqa: BLE001 - a diagnostic that cannot run is not a verdict
+                singular = None
+            if singular and not any("singular" in c for c in concerns):
+                concerns.insert(0, singular)
         cv = summarize(task, per_fold)
         worse = baseline_concern(task, LABELS[primary], cv[primary]["mean"], baseline["value"])
         if worse:

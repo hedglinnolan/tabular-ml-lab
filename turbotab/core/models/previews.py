@@ -132,6 +132,16 @@ def _energy_reading(decision: Any, ctx: PreviewContext) -> tuple[str | None, lis
     return (None if E in gone else E), [n for n in nutrients if n not in gone]
 
 
+def _closest_told(ctx: PreviewContext, candidates: Sequence[str]) -> str | None:
+    """The nutrient the proposals name as most correlated with energy, if it is a candidate."""
+    proposals = ctx.artifact("proposals")
+    data = getattr(proposals, "data", proposals)
+    reading = data.get("energy") if isinstance(data, dict) else None
+    rs = (reading or {}).get("r_with_energy") or {}
+    told = [c for c in sorted(rs, key=lambda c: -abs(float(rs[c]))) if c in candidates]
+    return told[0] if told else None
+
+
 def _read(ctx: PreviewContext, columns: Sequence[str]) -> Any:
     from turbotab.core.models.pipeline import modeling_frame
 
@@ -283,46 +293,64 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     nutrients = [n for n in nutrients if n in frame.columns]
     e = frame[E].to_numpy(dtype=float, na_value=np.nan)
     rs = {n: _corr(frame[n].to_numpy(dtype=float, na_value=np.nan), e) for n in nutrients}
+    # The nutrient the question names as tracking energy most closely (every row as loaded), so
+    # the question, the finding and this picture are about the same column; else the closest here.
+    told = _closest_told(ctx, [n for n in nutrients if rs[n] is not None])
     ranked = sorted((n for n in nutrients if rs[n] is not None), key=lambda n: -abs(rs[n]))
     if not ranked:
         return []
-    n = ranked[0]
+    n = told or ranked[0]
     raw = frame[n].to_numpy(dtype=float, na_value=np.nan)
 
-    out_name, after = n, raw
-    problem = None
-    fitted = None
-    step = energy_step(after_adj, predictors) if after_adj.method != "none" else None
-    if step is not None:
-        inputs = input_columns(predictors, after_adj)
+    def adjusted(adj: Any) -> tuple[str, np.ndarray, Any, str | None]:
+        """The nutrient as ``adj`` leaves it: its output column, values, fitted step, or why not."""
+        step = energy_step(adj, predictors) if adj is not None and adj.method != "none" else None
+        if step is None:
+            return n, raw, None, None
+        inputs = input_columns(predictors, adj)
         try:
-            fitted = step.fit(frame[inputs])
-            entry = next(x for x in fitted.lineage() if x["inputs"][0] == n
+            fitted_step = step.fit(frame[inputs])
+            entry = next(x for x in fitted_step.lineage() if x["inputs"][0] == n
                          and x["operation"] != "partition-other")
-            out_name = str(entry["output"])
-            after = fitted.transform(frame[inputs])[out_name].to_numpy(dtype=float, na_value=np.nan)
-        except (ValueError, TypeError) as exc:
-            problem = str(getattr(exc, "reason", None) or exc)
-    r0 = rs[n]
+            name = str(entry["output"])
+            values = fitted_step.transform(frame[inputs])[name].to_numpy(dtype=float, na_value=np.nan)
+            return name, values, fitted_step, None
+        except (ValueError, TypeError, StopIteration) as exc:
+            return n, raw, None, str(getattr(exc, "reason", None) or exc)
+
+    out_name, after, fitted, problem = adjusted(after_adj)
+    # "Your data now" is the data as recorded: once an adjustment is on record, the flip morphs
+    # the recorded method's result into this option's (residual ⇄ density), not raw into it.
+    now_name, now, _, now_problem = adjusted(before_adj)
+    reopened = before_adj is not None and before_adj.method != "none" and now_problem is None
+    if not reopened:
+        now_name, now = n, raw
+    r0 = _corr(now, e) if reopened else rs[n]
     r1 = None if problem else _corr(after, e)
     keep = np.zeros(len(e), dtype=bool)
     keep[np.random.default_rng(0).permutation(len(e))[:POINTS]] = True
     method = after_adj.method
-    caption = (fit_words(problem, CAPTION_WORDS) if problem else
-               _relationship_caption(method, n, E, out_name, r0, r1, after_adj.strata))
+    if problem:
+        caption = fit_words(problem, CAPTION_WORDS)
+    elif reopened:
+        caption = fit_words(f"Recorded now: `{now_name}` correlates {_r(r0)} with `{E}`; with this "
+                            f"choice, `{out_name}` correlates {_r(r1)}.", CAPTION_WORDS)
+    else:
+        caption = _relationship_caption(method, n, E, out_name, r0, r1, after_adj.strata)
     scatter_story: list[Any] = []
     hist_story: list[Any] = []
-    if not problem and method == "residual" and fitted is not None:
+    if not problem and not reopened and method == "residual" and fitted is not None:
         strata = after_adj.strata if after_adj.strata in frame.columns else None
         scatter_story, hist_story = _residual_story(fitted, n, E, e, raw, after, keep, frame, strata)
     views: list[Any] = [RelationshipView(
-        title=fit_words(f"{n} against {E}, before and after", TITLE_WORDS),
+        title=fit_words(f"{n} against {E}, now and with this choice" if reopened else
+                        f"{n} against {E}, before and after", TITLE_WORDS),
         caption=caption,
         emphasis=[n, E],
         x_label=E,
-        y_label_before=n,
+        y_label_before=now_name,
         y_label_after=out_name,
-        points_before=_points(e, raw, keep),
+        points_before=_points(e, now, keep),
         points_after=[] if problem else _points(e, after, keep),
         r_before=r0,
         r_after=r1,
@@ -351,18 +379,18 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
             after=lineage_after,
             story=_partition_story(lineage_after, E, nutrients) if method == "partition" else [],
         ))
-    if out_name != n or method in ("density", "density_multivariate", "partition"):
-        finite0, finite1 = raw[np.isfinite(raw)], after[np.isfinite(after)]
+    if out_name != now_name or method in ("density", "density_multivariate", "partition"):
+        finite0, finite1 = now[np.isfinite(now)], after[np.isfinite(after)]
         caption = (f"Mean {_num(finite0.mean())} → {_num(finite1.mean())}; SD {_num(finite0.std())} → "
-                   f"{_num(finite1.std())}, over {len(raw):,} training rows.")
+                   f"{_num(finite1.std())}, on the sampled training rows.")
         views.append(DistributionView(
             title=fit_words(f"Values of {n}, before and after", TITLE_WORDS),
             caption=fit_words(caption, CAPTION_WORDS),
             emphasis=[n],
             column=n,
-            before=_histogram(raw),
+            before=_histogram(now),
             after=_histogram(after),
-            before_label=f"{n} as recorded",
+            before_label=now_name if reopened else f"{n} as recorded",
             after_label=out_name,
             story=hist_story,
         ))
