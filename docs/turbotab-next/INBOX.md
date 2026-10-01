@@ -90,3 +90,78 @@ Format: `- [M?] short description — where it was noticed`
 - [server] SentenceFacts counts the cohort flow under the decision-log lock. On wide omics tables with complete_case this could hold the lock for seconds. Compute before append if it shows up in the M2 benchmarks.
 - [server] The set_exclusions sentence repeats the range: "outside `500`–`5000` were excluded as implausible intakes (sex-neutral 500–5,000 kcal a day)". The proposal's rule reason could drop the numbers.
 - [server] Relayed-request note on presenting modeling changes: on NHANES the general approach held for all six kinds with nothing written per option. That approach is a closed set of views chosen by measured change, with each model family declaring its lineage and steps. Worst p95 was 32 ms. Keep it, rather than a picture per option.
+
+## From M1 workflow 2 (2026-10-01)
+
+### Orchestrator's picks for the start of M2
+- [M2-first] The energy card's nested-parts note runs ~70 words above the options — the wall-of-text problem Nolan cares most about; fold it into the partition option's reason and a term card (word-budget gate should have caught it: extend the gate to cover composed card text, not only teaching entries)
+- [M2] Coach annotations on the canvas (Nolan, 2026-10-01): ≤ 2 amber notes pointing at the picture, plus one data-grounded line on the decision card — never pre-selecting
+- [M4] Architecture lane beside the data lane on the stage (Nolan: "a multi-view canvas that shows architectural changes and examples of data layer changes"): linear equation, tree splits, elastic-net shrinkage, morphing with the data lane
+- [M2] Outcome units (mg/dL) on Δ predicted glucose and on coefficients (taste reviewer)
+- [M2] The holdout is re-scored and shown after every refit, so a user can tune against it — enforce 'sealed once' at the seal (function reviewer)
+- [M2] Flag NHANES SAS 5.4e-79 'zeros' (bp_di, fat_total minimum) as an import finding (taste reviewer)
+- [M4] Overlay the previous method's curve after a method change — the sensitivity analysis the why? text recommends (taste reviewer)
+
+### Review minors and agent notes (untriaged)
+- [review minor] Elastic net tunes its penalty on inner folds that split a participant's rows — fix: In fit_stage, pass group-aware inner splits (GroupKFold over the fit rows' groups) to the estimator's cv when the split is grouped.
+- [review minor] A model that only ties the baseline is not flagged — fix: Flag ≤ baseline within a small tolerance: 'Predicts no better than the class prior'.
+- [review minor] Findings keep pushing levers that were already pulled — fix: Mark a finding as addressed, and fold it away, once its routed question holds an answer matching its lever.
+- [review minor] A save started mid-flip exports a different step from the one the menu names — fix: Freeze the step when the menu opens, and caption a step with its own label.
+- [review minor] Wording and accessibility nits — fix: Fix the grammar. Name only the macronutrients present. Show a partition that cannot run as a refusal. Base the shelf on the training n. Move focus into the role menu and back to the chip. Cap the wide forest plot at abou
+- [review minor] Switching options after a 'still' option replays the storyboard, and every switch waits ~150 ms on the old title — fix: Hold 'with this choice' after a still option too, and land directly on the new result. Shorten or skip the debounce when the preview is cached, and morph within a unit over the full 150–300 ms.
+- [review minor] Settle and scene crossfades show blank or garbled frames — fix: Fade the question body out while the card's height animates (or morph the heading into the sentence). Use mode='wait' or offset positioning for text-only empty states. Fade the trend line with pos rather than toggling it
+- [review minor] Decision sentences are not fully reproducible or publishable — fix: List every column in the stored sentence (truncate only visually, with a disclosure). Write 'women outside 500–3,500 kcal/day and men outside 800–4,200 kcal/day (Willett's sex-specific cut-offs)', and carry the reason fo
+- [review minor] 'Your data now' Results card lists only three of the questions the fit waits on — fix: Say 'It waits on 7 answers, starting with purpose', or list them all, and drop the duplicate clause.
+- [review minor] Exclusion and energy previews lost the prototype's data-specific detail — fix: Restore the per-sex under/over counts under the cut row (a methods section needs them) and the one-liner that cites this table's own range.
+- [review minor] The energy question exceeds the word budget, and new-question headings get an input-like focus box — fix: Fold the nested-parts note into the partition option's reason, or a term card. Give programmatic heading focus no visible outline (tabIndex -1 headings) and mark 'now' with the existing keyline.
+- [review minor] The uncertainty band is muddy and its time estimate is off — fix: Draw bands as a dash-matched outline or an interval at a few k values, or show one family's band at a time with a legend toggle. Measure the estimate with the actual worker count. Veil only the curves card while the band
+- [review minor] Copy and data wording slips in the missing-values preview — fix: Fix the grammar and call the meds columns 'yes/no'. Format values with each column's own precision; flag the 5.4e-79 zero for the inbox.
+- [review minor] Evidence views carry wrong or truncated labels — fix: Treat evidence as still: no flip, labeled 'Your data as loaded'. Let titles wrap to two lines, and wrap the readout under the flip on narrow stages.
+- [review minor] Substitution captions undercut the curve for a reviewer — fix: Caption the curve with its own estimand (energy moved from fat_total to carb at fixed kcal, through inputs adjusted by the recorded method). Define k inline ('k = kcal moved'), give the outcome's unit, and hatch excluded
+- [review minor] Saved figures and thumbnail views have small truth and legibility gaps — fix: Title by the saved state, pad the axis domain, and add 'n of N drawn' to the caption. Show the clip note in thumbnails, or collapse untouched lineage rows in compact views.
+- [review minor] The propagation sweep is barely visible, and the banner lags a recorded method — fix: Hold each downstream segment's veil for at least one 150 ms propagate step, in order. Show the recorded energy method in the Columns segment from the decision itself, before the design stage runs.
+- [review minor] Internals and dev affordances show in the product — fix: Hide /lab behind dev builds, show the baseline as '≈ 0.000', and word the survey finding's lever as 'Tell TurboTab this sample has no design columns' or point it to the drawer.
+- Lineage provenance: show the columns the missing-values answer left out as raw nodes that end 'left out (mostly blank)'. Today they simply do not appear.
+- Let the user dispute a detected nesting. `nested_in` is derived from the data, not recorded as a decision.
+- Band precision: for root-n families (linear, elastic net), scale the 2,000-row refit band to the full training size, or raise the row cap for linear, which costs about 0.6 s per 50 refits.
+- Boosted-trees refits on 2,000 rows lose sklearn's automatic early stopping, which only switches on above 10,000 rows. The refits are therefore a slightly different model from the full fit.
+- The proposals stage could read the exclusions slot, so the leave-out offer's count matches the complete-case step after exclusions (18,405 rather than 18,853 on NHANES).
+- Categorical evidence: DistributionView has no level-count form. The prototype used a `levels` extension, which would suit binary-text findings such as `gender` and the meds columns.
+- Stage agent: add schema.ts aliases for the new types (PreviewResult, views, frames, Baseline, MissingReading) and a client.ts function for the evidence route.
+- The evidence route answers 409 `findings_not_ready` while findings are stale after a lens change. The frontend should veil the evidence rather than call the route.
+- Band cost on NHANES with 50 refits is about 25 s, about 80% of it boosted trees. Consider fewer refits for boosted trees, or a parallel refit pool.
+- [M1] No event carries the interview, so the client refetches GET /projects/{pid} on every stage status change. A server-side interview event, or the interview attached to stage events, would cut this to one push per change.
+- [M1] When an earlier answer changes while a later CHOICE is open (e.g. models), that question goes waiting while its stage recomputes, then remounts, and the unrecorded selection is lost. Keep drafts by question key in the Record.
+- [M1] A lever routed to a question that is still waiting only highlights it in the 'Then' list ('asked after …'). Decide whether a lever may open a question out of order (the Router would have to allow it).
+- [M1] Real roles sentence: 'Column roles were set for 28 columns: …' runs six lines when the proposal was confirmed unchanged. A short sentence ('The proposed roles of all 28 columns were confirmed') would read better.
+- [M1] The proposals.energy notes about nested parts are long (two sentences per parent). One sentence covering every parent would fit the data line better.
+- [M2] The roles question on very wide tables shows 14 chips per group, then a scrolling list of all of them. A search box inside the roles question would help on 20,000-column assays.
+- [M2] DESIGN_LANGUAGE §09 says to log the 'Ask me anyway' click rate as trust telemetry. It is not logged.
+- [M1] TablePreview and MiniHistogram (src/components/pipeline) are unused since the panel was retired. Delete them, or reuse them on the stage's 'your data now'.
+- [M1] An accessibility review should confirm the pattern of aria-disabled options that answer a press with a refusal.
+- [M5] The header wraps to three rows at 390 px (existing item). The banner now flows below it on narrow screens instead of sticking.
+- [chore] The explore/stage prototype files are not Prettier-formatted (npx prettier --check src flags them).
+- Backend captions print '-0.00' for the residual correlation. The stage tidies it on display, but the server should print 0.00.
+- Backend: the substitution note still describes the row-resampling band ('200 resamples … with the fitted model held fixed'), which §12.7 removes. The note should follow the new refit band.
+- Backend: agree on the field that carries the measured band time and the refit count. The stage reads SubstitutionArtifact.band_seconds and .n_boot.
+- Backend: RelationshipFrame has no y label. A step's values (e.g. residuals) are not a column, so the stage labels the axis with the step's own label. Consider adding `y_label` to frames.
+- Evidence for an imputation flag should sample rows where the flag is true. The first 8 rows of NHANES are all False.
+- Decide whether the all-nutrient partition preview, which comes back with an empty after-cloud and a units caveat, should instead be a 409 refusal with alternatives, as §4 says for refusable decisions.
+- Fit: state the scale of each linear family's coefficients (per unit or per SD) so the forest's axis can name its unit.
+- The refit band for the linear family is very wide (±64 mg/dL at 500 kcal) because the fat subtypes and carbohydrate are nested and collinear. Re-check once the nested-nutrient fix (§12.5) lands.
+- Integrator: wire src/state/focus.tsx (record agent) to <Stage pid view focus onFocus/>. Retire /lab/stage or keep it as a review surface.
+- frontend/CLAUDE.md's layout section should list src/components/stage and src/screens/StageLabScreen.
+- Not built: the `inline` prototype's compare pin, a metric switcher (RMSE/MAE) on the model comparison, and journal-style export of the Results' coefficient table as LaTeX (booktabs).
+- Held-out discipline: proposals.energy.r_with_energy and the dietary energy finding ('fat_total correlates 0.88 with kcal') read every row, including rows the split later seals. The preview reads rows not held out (0.83), and the finding's evidence reads a 5,000-row sample of rows not held out (0.87)
+- The lens, target and purpose previews have no views ('Nothing about this choice can be shown on your data yet'). A lens preview could show what the lens adds: the questions it opens, the pack checks, the energy question.
+- The energy_adjustment strata_candidates come from proposals, which do not read the missing-values answer. The frontend now filters out left-out columns. Proposals, or the validator's exits, should do this at the source.
+- On the models question, the stage's 'Record this choice' button records only the previewed family (for example select_models [boosted_trees]), not the multi-select in progress. Consider hiding it for multi-select questions, or recording the selection.
+- Partition over all six nutrients (with nested fat subtypes) previews a plot that does not change, with a note that fat_sat's unit cannot be confirmed. The Record lists partition as applicable. applicability.partition should account for nested parts and unconfirmed units.
+- Recapture src/mocks/m1-stage-fixture.json with the §12 backend: real storyboards, marks, band, evidence and the leave-out preview. Then delete the mock's emulation code.
+- Table-focus cells print e.g. '80.0000' for bp_di (cellFormatter picks 4 digits from a target value below 1). Use per-column precision.
+- The /lab/stage review route and its 627 KB fixture chunk ship in production builds, lazily loaded. Gate it to dev:mock.
+- In a totals-only partition, the nested parts (sugar, fat_sat…) stay in the model as raw grams beside the kcal_from_* columns. Should the partition offer to drop or carry the parts too?
+- I could not produce a design failure through the UI on NHANES once partition was refused at the question. To see the new failure display I recorded models over the API without a missing-values answer. A mock-server scenario with a stage error would let a spec exercise StageFailure without reaching f
+- The exit animation (~120 ms) still overlaps text when two scenes meet. A shorter exit, or mode='wait' between different groups, may read cleaner — a taste call for the orchestrator.
+- Many frontend files were already failing a Prettier check before this change. The repo does not enforce Prettier (npm run check does not run it), so one formatting pass would clean that up.
+- The evidence card label still says 'your data as loaded', but energy evidence now reads a training sample (values as loaded, rows outside the seal). Consider 'your data as loaded, training rows'.

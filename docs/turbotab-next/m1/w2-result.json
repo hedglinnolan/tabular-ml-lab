@@ -1,0 +1,955 @@
+{
+ "backend": {
+  "branch": "worktree-wf_7fe839a7-1e0-1",
+  "commit": "75bce0b",
+  "summary": "All seven items of M1_CONTRACT \u00a712 are built and committed (75bce0b). The worktree branch is based on turbotab-next at 7d31650. Both check suites pass: 430 Python tests and 44 frontend tests.\n\n1. **Storyboards.** Every consequence view has a typed `story` field, empty by default. The frame types are RelationshipFrame, DistributionFrame, LineageFrame, TableFrame and RowFlowFrame; TableFrame rows are `{row_id, values}`. Energy adjustment fills them with real steps:\n   - **Residual** has 2 frames on the relationship view: \"Fit <nutrient> on <energy>\" with the fitted line, then \"Keep what energy does not explain\" with residuals centered at 0. The distribution view steps through the same 2 frames.\n   - **Partition** has 2 frames on the lineage view: \"Each nutrient becomes its kcal\", then \"The rest of kcal becomes other kcal\". Energy is still in the picture until the after.\n   - **None, standard and density** have no steps.\n2. **Labeled marks.** Distribution views now carry `marks` such as \"500 kcal\", and a by-sex rule gives each bound its level. `cuts` is gone.\n3. **Finding evidence.** `GET /api/projects/{pid}/findings/{fid}/evidence` returns a PreviewResult; its `kind` is the finding's family. There are builders for energy adjustment (the nutrient most correlated with energy, against energy), implausible intake (energy with the pack's 500\u20135,000 marks), flags, identifiers and repeats, plus a generic fallback. On NHANES, 13 of the 14 findings show evidence. The survey-design finding returns a note instead, because its columns are absent.\n4. **Blanks that mean \"not asked\".**\n   - `proposals.missing` lists each predictor with blanks and its `likely_not_asked` reason, plus a `leave_out` offer.\n   - `SetMissing.drop_columns` leaves those columns out first; the missing slot is now `{strategy, drop_columns}`.\n   - Cohort, design, shelf, previews, the voice sentence and the validators all honor it.\n   - The preview of the offer shows the rows it saves. On NHANES that is 18,405 rows, and 21,348 stay instead of 2,943.\n5. **Nested nutrients.** The roles artifact has `nested_in`. On NHANES it finds `fat_sat`, `fat_mon` and `fat_poly` inside `fat_total`, and `sugar` inside `carb`. Substitution moves a total's parts in proportion, moves a moved part's total with it, and says so in the note. Pairs and the validator never put a total with its own part.\n6. **Baseline.** Each fitted model has `baseline {metric, value, label}`. A model that does worse gets a plain first concern. On plain complete cases (2,943 rows) boosted trees say \"Predicts worse than the outcome's average: CV R\u00b2 \u22120.04, against \u22120.002 for the average.\"\n7. **Uncertainty band.** The row-resampling band is removed, including from `substitution_curve`. `SetSubstitution.n_boot` turns on refits of every family on bootstrap resamples of at most 2,000 training rows, with progress and cancel. When no band is asked for, the stage times one refit per family and reports `band_estimate`, so the Results can say \"about N s\".\n\nTier A tests (4\u20137) and Tier B tests (1\u20133) are added. `openapi.json` and `generated.ts` are regenerated. The only hand edit in the frontend is the mock fold in `src/mocks/db.ts` (the new missing-slot shape and `n_boot`).",
+  "files": [
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/consequences.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/decisions.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/evidence.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/methods/nesting.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/methods/substitution.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/models/artifacts.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/models/pipeline.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/models/previews.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/row_previews.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/stages/modeling.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/stages/proposals.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/stages/rows.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/voice.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/server/routes/preview.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/server/schemas.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/server/service.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/server/openapi.json",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/frontend/src/api/generated.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/frontend/src/mocks/db.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/tests/test_live_journey_fixes.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/tests/test_substitution.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/tests/test_modeling.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/core/tests/test_modeling_previews.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/server/tests/test_evidence.py",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-1/turbotab/server/tests/test_previews.py"
+  ],
+  "tests": {
+   "command": "TURBOTAB_WORKERS=2 /Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest turbotab/core turbotab/server -q  &&  (cd turbotab/frontend && npm run check)",
+   "passed": true,
+   "detail": "Python: 430 passed in 76.8 s. Frontend `npm run check` (tsc, eslint, vitest): 44 tests passed.\n\nTier A tests:\n- **4 (blank columns):** cohort counts with and without `drop_columns` equal a pandas computation over the NHANES CSV (21,849 \u2192 21,348 \u2192 2,943, or \u2192 21,348 with the meds columns left out). The missing-values reading and its leave-out offer match pandas. The design leaves the columns out of the inputs and the lineage.\n- **5 (nested nutrients):** parts keep their share of the total and the parts plus the unlisted rest sum to the total on every row, on synthetic data and on NHANES. A moved part carries its total. A total paired with its own part is refused. A linear model's curve equals a hand computation with the carried parts.\n- **6 (baseline):** the baseline equals a direct DummyRegressor/DummyClassifier CV on the same folds, for regression, binary and multiclass. A model fit to noise gets the 'worse than the average' concern first.\n- **7 (band):** on NHANES, with a linear model and 50 refits, the band has positive width and contains the curve at every k > 0. The refit band equals a hand-drawn percentile of the refits' coefficient gaps. Cancel stops the band between refits, both at the method level and at the stage level. Grouped resampling keeps a unit's rows together.\n\nTier B tests:\n- Storyboards: residual and partition frames have the right shapes, labels are at most 8 words, and density, standard and none have no story.\n- The evidence route answers every NHANES finding over HTTP, and an unknown finding returns 404.\n- Marks on a by-sex rule carry their level.\n- The missing-values offer preview, its decision sentence and the `not_a_predictor` refusal work over HTTP."
+  },
+  "deviations": [
+   "The shelf does not carry the baseline verdict. The shelf stage runs before fit and cannot depend on it, so the verdict lives on the fit artifact (`FittedModel.baseline`, plus the first concern). To show it on the shelf, the frontend matches fit models to shelf families by family key.",
+   "`ProjectState.missing` is now an object `{strategy, drop_columns}` instead of a bare strategy string. This follows the SplitSpec pattern, since one decision writes one slot. A bare string still validates as input. Code that compares `state.missing` to a string must read `.strategy` instead. In the frontend only the mock fold in `src/mocks/db.ts` needed this. The record agent's code may also be affected at merge.",
+   "The uncertainty band is drawn around the point curve: the refits' 95% percentile spread is placed at the curve, offset from the refits' median. Each refit sees at most 2,000 of about 17,000 training rows, so the band errs wide, and the note says so. `substitution_curve` no longer takes `n_boot`; the row bootstrap is gone entirely.",
+   "Fields added beyond the contract's shapes: `RelationshipFrame.y_label` and `DistributionFrame.x_label` (a residual frame changes the axis), `proposals.missing.leave_out {columns, n_rows, share}` (the union of rows blank in any not-asked column, which the option label needs), `DesignArtifact.nested` and `left_out`, `SubstitutionArtifact.carried`, `band {n_boot, n_rows, grouped_by, seconds, failed}` and `band_estimate {n_boot, seconds}`, `Baseline.label`, and a `grouped_by` entry in the fit bundle's cached objects.",
+   "Storyboard placement: for partition, the 2 frames are on the lineage view (the second view); the primary relationship view has an empty story. For residual, the frames are on the relationship and distribution views, and the lineage story is empty.",
+   "Evidence views show the data as it is, with before equal to after. The exception is implausible intake, whose after is the rows kept by the pack's 500\u20135,000 kcal rule. Data-quality evidence reads every row, as the finding did. Energy-adjustment evidence reads only rows outside the held-out set once the split exists (Nolan's held-out ruling).",
+   "Additions beyond \u00a712: a part used as donor or recipient carries its total by the same amount. Two new refusals: `part_of_the_other` (a total paired with its own part, in substitution) and `left_out` (energy adjustment naming a column the missing-values answer left out). Fiber is deliberately not treated as part of carbohydrate, because food tables disagree on it.",
+   "The missing-values reading counts blanks among rows with the outcome measured, before exclusions. On NHANES the offer is therefore 18,853 rows blank in either meds column. The HANDOFF's 18,405 is the count after the kcal exclusion, and the preview shows it.",
+   "When no band is requested, the substitution stage times one refit per family to produce `band_estimate`. This adds about 0.4 s to that stage on NHANES."
+  ],
+  "inbox": [
+   "Lineage provenance: show the columns the missing-values answer left out as raw nodes that end 'left out (mostly blank)'. Today they simply do not appear.",
+   "Let the user dispute a detected nesting. `nested_in` is derived from the data, not recorded as a decision.",
+   "Band precision: for root-n families (linear, elastic net), scale the 2,000-row refit band to the full training size, or raise the row cap for linear, which costs about 0.6 s per 50 refits.",
+   "Boosted-trees refits on 2,000 rows lose sklearn's automatic early stopping, which only switches on above 10,000 rows. The refits are therefore a slightly different model from the full fit.",
+   "The proposals stage could read the exclusions slot, so the leave-out offer's count matches the complete-case step after exclusions (18,405 rather than 18,853 on NHANES).",
+   "Categorical evidence: DistributionView has no level-count form. The prototype used a `levels` extension, which would suit binary-text findings such as `gender` and the meds columns.",
+   "Stage agent: add schema.ts aliases for the new types (PreviewResult, views, frames, Baseline, MissingReading) and a client.ts function for the evidence route.",
+   "The evidence route answers 409 `findings_not_ready` while findings are stale after a lens change. The frontend should veil the evidence rather than call the route.",
+   "Band cost on NHANES with 50 refits is about 25 s, about 80% of it boosted trees. Consider fewer refits for boosted trees, or a parallel refit pool."
+  ],
+  "measurements": [
+   "Evidence route, NHANES through the HTTP server after the split (14 findings \u00d7 20 calls = 280): p50 3.2 ms, p95 3.9 ms, max 4.2 ms. Energy-adjustment evidence p50 3.9 ms; implausible intake p50 2.9 ms; flags p50 3.3 ms.",
+   "Energy-adjustment preview with storyboards, NHANES (6 methods \u00d7 20 = 120 calls): p50 13.0 ms, p95 15.4 ms, max 37.5 ms. Residual p50 14.7 ms (2 frames on the relationship and distribution views); partition p50 15.2 ms (2 lineage frames); none, standard and the two density methods 11.9\u201313.0 ms.",
+   "Preview of the missing-values offer (leave out `meds_hbp` and `meds_chol`, then complete cases): p50 10.6 ms. On the rows outside the held-out set it reads 'keeps `14,732` rows complete cases would drop; `17,084` remain'.",
+   "Band with n_boot = 50, seconds per family on NHANES with the meds columns left out (21,348-row cohort, refits on 2,000 rows): linear 0.63 s, elastic net 4.2 s, boosted trees 20.8 s. On plain complete cases (2,943 rows): linear 0.56 s, elastic net 6.6 s, boosted trees 14.8 s.",
+   "Band end to end through the server, all three families, 50 refits: 18.8 s wall. The measured `band_estimate` said 19.0 s. The substitution stage without a band, including the one-refit timing: 0.49 s wall.",
+   "Band width at k = 100 kcal (fat_total \u2192 carb), linear model: 1.55 around delta \u22120.83. Elastic net 1.16; boosted trees 1.69.",
+   "Fit on NHANES: on plain complete cases (2,943 rows), boosted trees CV R\u00b2 \u22120.044 against a baseline of \u22120.002, so the 'worse than the average' concern fires. Linear and elastic net reach 0.059. With the meds columns left out (21,348 rows), linear 0.136, elastic net 0.136 and boosted trees 0.141 all beat the baseline.",
+   "Cohort counts on NHANES: 21,849 loaded \u2192 21,348 inside 500\u20135,000 kcal \u2192 2,943 complete cases. Leaving out `meds_hbp` and `meds_chol` keeps all 21,348, saving 18,405 rows."
+  ]
+ },
+ "record": {
+  "branch": "worktree-wf_7fe839a7-1e0-2",
+  "commit": "667ff5bafd85d45d83d565ef34bda0bf369b1d96",
+  "summary": "The Record and the pipeline banner from M1_CONTRACT \u00a714 are built on turbotab-next (fast-forwarded to 7d31650) and committed as 667ff5b.\n\n- **Layout (\u00a710).** ProjectScreen is now the header, then the banner, then the working window. The Record sits on the left (about 520 px, scrolling on its own) and the stage on the right. `src/state/focus.tsx` holds StageFocus exactly as \u00a710 defines it. It is one context, created by ProjectScreen and read through `useStageFocus()`. It has two layers: a pointer preview on top of a held focus, which a keyboard focus, a tap or a press sets. It also has a hover grace period, release-on-leave, toggling for banner segments, and reset. `src/components/stage/Stage.tsx` is a placeholder that takes the \u00a710 props. The PipelinePanel is retired.\n- **Banner (`src/components/banner/`).** `derive.ts` is pure. It reads the row flow (loaded, then each step that removed rows, then train | held out) from the cohort and split artifacts. It reads the column path (raw \u2192 matrix lane counts) and the energy method from the design artifact. It reads the models from the record and the shelf, and the best CV primary metric from the fit artifact. Each segment is a button that toggles `{kind:\"banner\"}`. Segments veil in order using StaleVeil (new `compact` dot mode), and their numbers tween. The segment the open question acts on wears the accent and reads \"now \u00b7 \u2026\" (or \"next \u00b7 \u2026\" while that question waits on a stage).\n- **Record.** It renders `view.interview` and never decides the order itself.\n  - Answered steps settle into the server's sentence via Prose. Skipped steps show a muted \"Not asked \u2026 Ask me anyway\" row. Not-applicable steps carry the Router's reason. A step waiting on a stage stands in place as a pending row. Later steps are listed under \"Then\".\n  - FACT questions (lens, target, task, purpose, roles) are flat, with the teal marker only on the question being asked. CHOICE questions (exclusions, missing values, split, energy adjustment, models, substitution) are bordered cards.\n  - Teaching comes from GET /api/teaching: the question and its one-liner; each option's consequence; \"why?\" opening in place with who reads the answer; term cards on dotted-underline terms; and the concept drawer for layer 3.\n  - Options set `{kind:\"option\"}` on pointer movement, keyboard focus, arrow keys and a first tap; Enter or a click records.\n  - Roles is a grouped confirmation of the proposal, editable per column. It shows nested nutrients (`sugar \u2282 carb`) and flag links (`imputed_bmi \u2192 bmi`); each edit previews before anything is recorded.\n  - Exclusions show the rows each screen removes (\u2212501 rows) and offer a custom range. Missing values offers \"Leave them out first\" from `proposals.missing`.\n  - Energy adjustment tags the usual method without pre-selecting it. Methods that don't apply stay listed with their reason. Pressing one posts the decision, and the server's refusal shows at that option with its exits. There is also a \"fit within levels of\" modifier for the strata.\n  - Models come from the shelf with their concerns. For substitution, the Record points to the stage's matrix and keeps the recorded sentence.\n  - Findings follow the prototype's S3: three cards pushed, same-kind findings paged, a typed \"N more \u2014 x warnings, y notes\" line. Focusing a card sets `{kind:\"finding\"}`, and a lever reopens or scrolls to its question.\n- **M0 minors fixed.**\n  - After a settle, focus moves to the arriving question and the recorded sentence is announced in an aria-live region.\n  - The arriving question waits for the settle to finish, so the two no longer overlap.\n  - FACT and CHOICE have different silhouettes.\n  - The findings count badge is inside the stale veil.\n  - IDs and years are written without digit grouping (`codeLike`/`fmtCode`, used in the column picker).\n- **Mocks.** `src/mocks/m1-record.ts` is registered with one line in `handlers.ts`. It adds the interview Router (a port of interview.py), the teaching entries dumped from the server, server-style sentences, the M1 validators' refusals, and findings with summary, routes_to, lever_label and group. It also simulates the M1 stages (stale \u2192 running \u2192 fresh, with job chips). It seeds a synthetic table shaped like the NHANES export: same column names, and the counts the journey depends on match the real file (21,849 \u2192 21,348 \u2192 2,943). `db.ts` gained three small hooks.\n- **Real-data check.** I built the frontend and drove the real server (TURBOTAB_WORKERS=2, scratch workspace) through the full NHANES journey. There were no console errors and no HTTP errors. The banner read 21,849 \u2192 21,348 \u2192 2,943 \u25b8 train 2,352 | held out 591 \u00b7 20 \u2192 19 residual \u00b7 3 models \u00b7 R\u00b2 0.077 CV, matching the live-journey numbers in w1-result.json. Every server and browser I started is stopped.",
+  "files": [
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/screens/ProjectScreen.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/screens/ProjectScreen.module.css",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/state/focus.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/state/focus.test.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/state/stages.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/stage/Stage.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/banner/Banner.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/banner/Banner.module.css",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/banner/derive.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/banner/derive.test.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/record/Record.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/record/Question.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/record/Options.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/record/optionNav.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/record/optionNav.test.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/record/teach.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/record/Findings.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/record/Refusal.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/record/ask/FactQuestions.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/record/ask/RolesAsk.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/record/ask/ChoiceQuestions.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/record/ask/common.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/components/record/sentences.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/api/m1-types.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/api/client.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/api/queries.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/api/events.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/motion/StaleVeil.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/util/format.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/mocks/m1-record.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/mocks/m1-stages.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/mocks/m1-voice.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/mocks/m1-router.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/mocks/m1-nhanes.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/mocks/m1-teaching.json",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/mocks/handlers.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/src/mocks/db.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/e2e/m1-record.spec.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/turbotab/frontend/e2e/m0-journey.spec.ts"
+  ],
+  "tests": {
+   "command": "cd turbotab/frontend && npm run check && E2E_PORT=5397 npx playwright test  (Playwright against the mock dev server)  ;  TURBOTAB_WORKERS=2 /Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest turbotab/core turbotab/server -q",
+   "passed": true,
+   "detail": "npm run check (tsc, eslint, vitest): 71 tests pass in about 1.6 s. 27 are new: focus context transitions and the hover grace timer (focus.test.tsx); keyboard option traversal and key actions (optionNav.test.ts); the banner's derivation from the artifacts (derive.test.ts); two events tests showing that a stage status change refetches the view; the ID/year formatting (format.test.ts). Playwright: 3 pass in about 32 s. One is the motion lab. One is the full Record journey on the mock: the lens to the substitution; keyboard previews, focus moving to the arriving question and the aria-live announcement; Ask me anyway; roles editing; the exclusion counts; the leave-out option; a refusal and its exit; the why panel and the drawer; the fit appearing in the banner; findings with paging and a lever; and a changed answer veiling, then re-flowing, the banner. The last checks wide-table picker responsiveness plus the roles question on 1,998 columns. pytest turbotab/core turbotab/server: 395 passed in 68.8 s; no Python was changed. The pre-commit gates passed. I also drove the real server through the full NHANES journey by hand with a scratch script: no console errors and no HTTP errors."
+  },
+  "deviations": [
+   "events.ts now refetches the project view when a stage's status changes. The server does not push the Router's interview over SSE, so without this, questions never moved from waiting to open on the client. It adds about one GET per status change; two events tests were added.",
+   "client.ts and queries.ts: stage(), useStageResult() and runStage() now accept the M1 stage names via AnyStageName in m1-types.ts. I also added api.teaching and useTeaching. The stage agent will add preview and evidence calls in the same files, so expect adjacent-line merge conflicts.",
+   "m0-journey.spec.ts lost its two project-screen tests, because they drove the retired PipelinePanel; the motion-lab test stays. The wide-table picker check moved into m1-record.spec.ts. PipelinePanel.tsx and its CSS are deleted. TablePreview and MiniHistogram are left in place, now unused.",
+   "The mock also simulates fit and substitution (stand-in numbers) so the banner's Result and the Router's substitution step work. This overlaps the stage agent's fit/substitution mocks; the integrator should keep one. db.ts gained three small hooks: an exported MockProject, a public emit, and a sentenceFor hook.",
+   "Substitution: as the contract says the stage owns the pair navigator, the Record shows the question with a pointer to the stage's matrix and then the recorded sentence. Until the stage merge, nothing in the UI can record the substitution.",
+   "Energy methods that don't apply are aria-disabled but still respond to a press. The press posts the decision, and the server's refusal renders at that option with its exits, instead of the control doing nothing (DRIVE_RUBRIC 2.1).",
+   "Option and finding previews start on pointer movement, not on pointer-enter. Content that reflows under a still pointer after a settle therefore never changes the stage (DRIVE_RUBRIC 2.4).",
+   "Added a 'Fit \u2026 within each level of' modifier on the energy question, from proposals.energy.strata_candidates (the pack's default, from the INBOX). It changes the strata of the residual and density decisions.",
+   "Question grammar: lens, target, task, purpose and roles are FACT (flat); the rest are CHOICE (bordered card). Banner mapping: lens, target, exclusions, missing and split \u2192 Rows; roles and energy \u2192 Columns; task, purpose and models \u2192 Models; substitution \u2192 Result.",
+   "Added a --banner-h token (60 px). Below 1000 px the banner flows with the page instead of sticking, because the header wraps taller than --header-h.",
+   "Added real-data screenshots (record-real-*.png) from a drive of the local NHANES export on the real server, alongside the mock screenshots.",
+   "Mock only: its Router treats a stale stage that was not stopped as pending. The mock announces 'stale' before it queues a recompute; the real engine queues at once."
+  ],
+  "inbox": [
+   "[M1] No event carries the interview, so the client refetches GET /projects/{pid} on every stage status change. A server-side interview event, or the interview attached to stage events, would cut this to one push per change.",
+   "[M1] When an earlier answer changes while a later CHOICE is open (e.g. models), that question goes waiting while its stage recomputes, then remounts, and the unrecorded selection is lost. Keep drafts by question key in the Record.",
+   "[M1] A lever routed to a question that is still waiting only highlights it in the 'Then' list ('asked after \u2026'). Decide whether a lever may open a question out of order (the Router would have to allow it).",
+   "[M1] Real roles sentence: 'Column roles were set for 28 columns: \u2026' runs six lines when the proposal was confirmed unchanged. A short sentence ('The proposed roles of all 28 columns were confirmed') would read better.",
+   "[M1] The proposals.energy notes about nested parts are long (two sentences per parent). One sentence covering every parent would fit the data line better.",
+   "[M2] The roles question on very wide tables shows 14 chips per group, then a scrolling list of all of them. A search box inside the roles question would help on 20,000-column assays.",
+   "[M2] DESIGN_LANGUAGE \u00a709 says to log the 'Ask me anyway' click rate as trust telemetry. It is not logged.",
+   "[M1] TablePreview and MiniHistogram (src/components/pipeline) are unused since the panel was retired. Delete them, or reuse them on the stage's 'your data now'.",
+   "[M1] An accessibility review should confirm the pattern of aria-disabled options that answer a press with a refusal.",
+   "[M5] The header wraps to three rows at 390 px (existing item). The banner now flows below it on narrow screens instead of sticking.",
+   "[chore] The explore/stage prototype files are not Prettier-formatted (npx prettier --check src flags them)."
+  ],
+  "measurements": [
+   "Mock e2e: the full Record journey (lens \u2192 substitution, refusal, lever, changed answer re-flowing the banner) takes about 24 s. Filtering the outcome picker on 2,000 columns takes under 2 s, as asserted.",
+   "Real server on the NHANES export (built dist, TURBOTAB_WORKERS=2), banner after the scripted journey: Rows 21,849 \u2192 21,348 \u2192 2,943 \u25b8 train 2,352 | held out 591 \u00b7 Columns 20 \u2192 19 residual \u00b7 Models 3 \u00b7 Result R\u00b2 0.077 CV (elastic net). This matches w1-result.json.",
+   "Real server: no browser console errors and no HTTP \u2265 400 responses through the whole journey.",
+   "npm run check: 71 vitest tests in about 1.6 s (44 before this change).",
+   "pytest turbotab/core turbotab/server: 395 passed in 68.8 s.",
+   "Review screenshots: 18 PNGs, largest 172 KB (limit 300 KB)."
+  ],
+  "screenshots": [
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-journey-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-journey-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-roles-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-roles-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-energy-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-energy-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-refusal-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-findings-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-findings-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-substitution-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-substitution-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-stale-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-real-journey-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-real-journey-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-real-roles-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-real-energy-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-real-energy-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-2/docs/turbotab-next/m1/screens/record-real-findings-light.png"
+  ]
+ },
+ "stage": {
+  "branch": "worktree-wf_7fe839a7-1e0-3",
+  "commit": "9c350ad",
+  "summary": "Built the stage part of M1 part 2 (M1_CONTRACT \u00a714 \"stage\") in turbotab/frontend/src/components/stage/.\n\n- **`<Stage pid view focus onFocus/>`**: shows the four focus kinds from \u00a710.\n  - An option: requests are debounced (120 ms), stale ones are aborted, and the last result stays on screen while the next loads, so the stage never goes blank. A refused option shows its reason and its alternative choices, which open their own previews. On touch, a record button stands in for pressing Enter.\n  - A finding: shows its evidence.\n  - A banner segment: the full row flow, the full lineage, the shelf, or the Results.\n  - Nothing focused: the Results once fitted, before that \"your data now\" (row flow plus lineage).\n- **Transform player**: a pure state machine in player.ts driven by animation frames. One flip plays the storyboard forward and back in at most 900 ms (300 ms per step), can be interrupted mid-flip without a jump, and drives every view at once. Space flips; step dots pause on a step; arrow-key option changes keep the flip's side and morph straight between results without replaying the storyboard. Headline numbers stay pinned (e.g. r 0.84 \u2192 0.00). Reduced motion makes it instant.\n- **No in-between values as data**: axis labels, r, counts and the step label always name the nearest real state. Points and bars glide within a unit and crossfade across a change of unit (g \u2192 g per kcal, g \u2192 kcal, counts \u2192 log).\n- **Views lifted from the prototype**: relationship, distribution, lineage, row flow and table focus, with its known weaknesses fixed:\n  - A new preview now arrives in a choreographed way (cards rise in turn, then the storyboard plays) instead of snapping in.\n  - Long tails are clipped at the 99.5th percentile with a note counting the rows not drawn.\n  - Repeated words are removed from titles.\n  - Renamed columns relabel in place in the table.\n  - Small lineages draw only the columns the choice touches.\n- **Save on every view**: now, the current step, with this choice, or the before/after pair, as SVG or PNG at 2\u00d7. Figures are journal style (serif, grayscale-safe, dash patterns, literal colors) with a provenance caption (\"Preview, not recorded: \u2026\"). They are drawn from a state's data, never copied from the screen, so a half-animated frame cannot be saved.\n- **Results (\u00a713)**: model comparison on one axis with the baseline line and each family's concerns; the coefficient forest (intervals under inference); substitution curves with dash patterns per family, shaded disagreement, the support stop marker and its reason, the on-support strip, \"per 100 kcal at k = 100\" labels, the refit band, an \"Add an uncertainty band (about 40 s)\" button that records set_substitution with n_boot, and the donor \u00d7 recipient navigator. Every number names its split, folds and energy method.\n- **Mocks** (src/mocks/m1-stage.ts, registered in handlers.ts): every number comes from the real server run through the \u00a79 NHANES journey by a capture script. Storyboards, labeled cut marks, baselines, evidence and the refit band (computed by the capture script the way \u00a712.7 specifies) are added on top of the capture, since the backend agent is building those in parallel. Hand-written types are in src/api/m1-stage-types.ts; the routes are appended to client.ts as `stageApi`.\n- **Review page /lab/stage** (dev:mock only) hosts the real `<Stage>` beside a stand-in Record and banner. The Playwright spec runs against it.",
+  "files": [
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/Stage.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/StageBar.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/PreviewGrid.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/LiveScenes.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/player.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/player.test.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/usePlayer.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/tracks.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/tracks.test.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/data.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/views/Relationship.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/views/Distribution.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/views/Lineage.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/views/RowFlow.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/views/TableFocus.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/views/lineageLayout.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/views/lineageLayout.test.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/views/useBlend.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/save/journal.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/save/resultsJournal.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/save/export.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/save/SaveMenu.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/save/save.test.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/results/Results.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/results/Comparison.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/results/Coefficients.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/results/Curves.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/results/PairNavigator.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/results/Shelf.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/components/stage/results/model.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/api/m1-stage-types.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/api/client.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/mocks/m1-stage.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/mocks/m1-stage-fixture.json",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/mocks/handlers.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/screens/StageLabScreen.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/router.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/src/App.tsx",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/turbotab/frontend/e2e/m1-stage.spec.ts",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/stage/capture_stage_fixture.py"
+  ],
+  "tests": {
+   "command": "TURBOTAB_WORKERS=2 venv/bin/python -m pytest turbotab/core turbotab/server -q; (turbotab/frontend) npm run check; E2E_PORT=5393 npx playwright test m1-stage",
+   "passed": true,
+   "detail": "pytest: 395 passed in 73 s. npm run check: tsc + eslint clean, vitest 73 passed across 10 files (new: player.test.ts with 9 tests \u2014 the state machine incl. interrupt and reverse; tracks.test.ts with 11 \u2014 unit-change detection choosing crossfade, the tail clip, the readout, titles; save.test.ts with 5 \u2014 never a mid-frame, fractional states refused, journal SVG with provenance; lineageLayout.test.ts with 4, moved onto the real NHANES lineages). Playwright m1-stage.spec.ts, 5 passed in 31.5 s against the mock: storyboard plays and reverses, Space, arrow keys hold the flip, a step dot pauses, SVG and 2x PNG downloads checked, refusal and its alternative, the frame strip, preview/evidence/Results in light and dark, banner segments, the band, a pair change, and the Results re-flowing after the energy method changes. The legacy suites were not run."
+  },
+  "deviations": [
+   "Layout keeps the prototype's large primary view with two promotable smaller views below it, instead of stacking every view at full width. The scatter itself is now one full-width panel driven by the flip; the separate 'as recorded' panel is gone.",
+   "With nothing focused and a fit that exists but is stale (an earlier answer changed), the stage shows the Results veiled as 'recomputing' rather than going back to 'your data now', so the re-flow can be watched. 'Your data now' shows only when nothing has been fitted.",
+   "Text and numbers never tween. Axis labels, r, counts and the step label switch to the nearest real state at the half-step, and the step-by-step views (lineage, row flow, table) switch there too. This replaces the prototype's rolling counts.",
+   "ProjectScreen, the Record and the banner belong to the record agent, so I added a dev:mock review page at /lab/stage (src/screens/StageLabScreen.tsx) with a stand-in Record and banner. The e2e spec runs against it.",
+   "The routes are appended to client.ts as a separate `stageApi` object (preview, findingEvidence, stage) rather than added to `api`, to keep the merge with the record agent simple. schema.ts is untouched; the hand-written types are in src/api/m1-stage-types.ts.",
+   "The uncertainty band requests n_boot = 40 on up to 2,000 rows. 'About N s' reads `band_seconds` from the substitution artifact when present (the mock sends the measured 39.5 s); otherwise it estimates from fit_seconds, calibrated \u00d72 on NHANES. The `band_seconds` and `n_boot` field names are my guesses at the backend agent's.",
+   "The mock refuses a partition that includes `sugar` so the refusal path can be exercised. On this NHANES file the real server answers the partition preview over all six nutrients with a 200.",
+   "Space flips from anywhere on the page while a flippable preview is showing (it is caught before other key handlers), except in text fields and on the stage's own buttons. The Record must not bind Space.",
+   "Small (thumbnail) lineages draw only the columns the choice touches, plus 'N more pass through unchanged'. The full lineage is in the large view and the banner's Columns view.",
+   "The mock is registered with one spread line plus one import line in handlers.ts. It uses literal `/api/projects/nhanes-m1/...` paths so it takes precedence for the demo project and every other project falls through to the M0 handlers.",
+   "The frame strip is captured through a dev-only `window.__turbotabStage` hook that stops the player's clock so it can be stepped by hand."
+  ],
+  "inbox": [
+   "Backend captions print '-0.00' for the residual correlation. The stage tidies it on display, but the server should print 0.00.",
+   "Backend: the substitution note still describes the row-resampling band ('200 resamples \u2026 with the fitted model held fixed'), which \u00a712.7 removes. The note should follow the new refit band.",
+   "Backend: agree on the field that carries the measured band time and the refit count. The stage reads SubstitutionArtifact.band_seconds and .n_boot.",
+   "Backend: RelationshipFrame has no y label. A step's values (e.g. residuals) are not a column, so the stage labels the axis with the step's own label. Consider adding `y_label` to frames.",
+   "Evidence for an imputation flag should sample rows where the flag is true. The first 8 rows of NHANES are all False.",
+   "Decide whether the all-nutrient partition preview, which comes back with an empty after-cloud and a units caveat, should instead be a 409 refusal with alternatives, as \u00a74 says for refusable decisions.",
+   "Fit: state the scale of each linear family's coefficients (per unit or per SD) so the forest's axis can name its unit.",
+   "The refit band for the linear family is very wide (\u00b164 mg/dL at 500 kcal) because the fat subtypes and carbohydrate are nested and collinear. Re-check once the nested-nutrient fix (\u00a712.5) lands.",
+   "Integrator: wire src/state/focus.tsx (record agent) to <Stage pid view focus onFocus/>. Retire /lab/stage or keep it as a review surface.",
+   "frontend/CLAUDE.md's layout section should list src/components/stage and src/screens/StageLabScreen.",
+   "Not built: the `inline` prototype's compare pin, a metric switcher (RMSE/MAE) on the model comparison, and journal-style export of the Results' coefficient table as LaTeX (booktabs)."
+  ],
+  "measurements": [
+   "Preview route on the real NHANES export (capture run, real server, 2 workers): 20 previews, p95 67 ms, max 79 ms.",
+   "Refit uncertainty band on NHANES: 40 refits per family \u00d7 3 families on \u2264 2,000 training rows = 39.5 s (the mock's 'about 40 s'). The fallback estimate from fit_seconds was 19 s before the \u00d72 calibration.",
+   "Substitution stage per donor\u2192recipient pair: about 0.12\u20130.18 s. All 30 design pairs were captured.",
+   "Flip timing: 300 ms per storyboard step, capped at 900 ms total; the residual flip is 3 steps = 900 ms. Switching options at 'with this choice' morphs in 300 ms without replaying the storyboard.",
+   "Mock fixture m1-stage-fixture.json: 614 KB, loaded only under npm run dev:mock and the /lab/stage chunk.",
+   "Review screenshots: 16 PNGs, 109\u2013208 KB each (all under the 300 KB limit)."
+  ],
+  "screenshots": [
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-flip-000ms.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-flip-150ms.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-flip-300ms.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-flip-450ms.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-flip-600ms.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-flip-900ms.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-preview-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-preview-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-preview-exclusions-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-preview-exclusions-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-evidence-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-evidence-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-results-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-results-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-results-band-light.png",
+   "/Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_7fe839a7-1e0-3/docs/turbotab-next/m1/screens/stage-columns-light.png"
+  ]
+ },
+ "integrated": {
+  "branch": "turbotab-next",
+  "commit": "c70a8c224f65570fd82cbeae56be9d4180ca6db2",
+  "summary": "M1 part 2 is integrated on turbotab-next and the full NHANES journey passes against the real server. Nothing was pushed.\n\n**Merges** (all --no-ff, both sides kept)\n- 97ed381: the backend branch. It merged cleanly.\n- 9fdd0a4: the record branch. It merged cleanly.\n- b61c170: the stage branch. client.ts and handlers.ts kept both sides' imports. The stage agent's real Stage.tsx replaced the placeholder.\n- c70a8c2: the integration work below.\n\n**Contract**\n- openapi.json and generated.ts were regenerated, with no drift.\n- m1-types.ts and m1-stage-types.ts are now aliases over generated.ts. All hand-shaped \u00a712 types are gone.\n- The stage's `stageApi` is folded into `api`: `api.preview` and `api.findingEvidence`. `StageFocus` comes only from state/focus.tsx.\n\n**Client/server mismatches fixed**\n- **Missing-values answer.** The answer is now an object, `{strategy, drop_columns}`. Fixed in the Record, the mocks and the mock voice. The \"leave out\" offer now uses `proposals.missing.leave_out`.\n- **Uncertainty band.** The band button reads the server's `band_estimate` (50 refits, measured seconds) instead of a guessed `band_seconds` with 40 refits. It records `n_boot` from that estimate.\n- **Baseline line.** The baseline reference line uses the server's `baseline.label` and handles a null value.\n- **Storyboard axis labels.** Storyboard frames use the server's `y_label` and `x_label`; before, the step name was used as the axis label.\n- **Removed fields.** `cuts` and `levels` are dropped. The server sends neither.\n- **Old mock fixture.** The stage mock's captured fixture was converted to the \u00a712 shape (`story`, `marks`).\n\n**Conflicts between the agents, resolved**\n- **Space key.** The stage binds Space to flip the preview. The Record used Space to record a single choice, so one press did both. Now Space only flips, except inside the multi-select lists (lens, models), where it chooses. Enter records.\n- **Mock previews.** The mock previews and evidence now answer for every mock project, not only the stage agent's demo project, so the Record's mock table gets real-data stand-ins.\n- **Retired panel.** PipelinePanel was already deleted. Its leftover TablePreview and MiniHistogram were unused and are now removed too.\n\n**Problems found on the real journey and fixed**\n- A preview that shows only one state said \"Your data as loaded\". It now says what it truly shows (\"With this choice\", or \"Unchanged by this choice\").\n- Arrowing from \"Keep every row\" to an exclusion screen showed nothing changing. That screen's storyboard now plays.\n- An empty lineage appeared before roles were confirmed. It is replaced by a sentence.\n- The roles preview now also starts on keyboard focus.\n- The energy question offered the left-out columns `meds_hbp` and `meds_chol` as strata. They are filtered out.\n- The curve text said it \"stops at 700 kcal\" while the line stops at 600. It now says it stops at 600, and that support at 700 is 43%.\n- The Results now show which parts moved with their totals (`fat_sat`, `fat_mon`, `fat_poly` with `fat_total`; `sugar` with `carb`).\n- \"-0.00\" appeared in captions and saved figures. Fixed at the server and in saves.\n- \"20,430 of 20,430 rows remain\" now reads \"no row is missing any other predictor, so all 20,430 rows remain\".\n- Teaching text no longer mentions the retired Rows and Results panels.\n- Two mark labels overlapped on the exclusions histogram.\n\n**Real journey** (e2e/m1-journey.spec.ts; port 8812, TURBOTAB_WORKERS=2, fresh TURBOTAB_HOME)\n- The flow: lens dietary \u2192 glucose \u2192 task skipped \u2192 prediction \u2192 roles confirmed (SEQN is an identifier) \u2192 every exclusion screen previewed with the arrow keys, Willett by sex recorded \u2192 missing values previewed, leave-out recorded \u2192 20% holdout \u2192 every energy method previewed \u2192 residual flipped frame by frame and saved as a before/after pair \u2192 residual recorded \u2192 all three families \u2192 fit \u2192 Results \u2192 fat_total \u2192 carb \u2192 band \u2192 a finding's evidence \u2192 density.\n- Rows went 21,849 \u2192 20,430, with train 16,366 and held out 4,064. Columns went 18 \u2192 17. The best result is boosted trees at CV R\u00b2 0.143; after the change to density it is 0.139.\n- There were no console errors and no failed requests.\n\n**Checks**\n- `npm run check` passes (100 tests) and `npm run build` passes.\n- pytest on turbotab/core and turbotab/server: 430 passed.\n- All 9 Playwright specs pass against the mock, including m1-journey, m1-record and m1-stage. The mock runs regenerated the record-* and stage-* screenshots, so those now show the real stage.\n- The stale record-real-* screenshots were removed; they showed the placeholder stage.\n\nEvery server, dev server and browser I started is stopped.",
+  "files": [
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/e2e/m1-journey.spec.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/api/m1-types.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/api/m1-stage-types.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/api/client.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/Stage.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/StageBar.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/data.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/tracks.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/LiveScenes.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/results/Results.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/results/model.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/views/Distribution.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/save/journal.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/format.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/record/ask/ChoiceQuestions.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/record/ask/RolesAsk.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/record/optionNav.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/record/Record.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/mocks/m1-stage.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/mocks/m1-stages.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/mocks/m1-voice.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/mocks/m1-stage-fixture.json",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/CLAUDE.md",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/voice.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/models/previews.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/teaching/content.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/server/tests/test_previews.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/server/tests/test_evidence.py"
+  ],
+  "tests": {
+   "command": "cd turbotab/frontend && npm run check && npm run build; /Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest turbotab/core turbotab/server -q; E2E_BASE_URL=http://127.0.0.1:8812 npx playwright test m1-journey (real server, TURBOTAB_WORKERS=2, fresh TURBOTAB_HOME); npx playwright test (mock)",
+   "passed": true,
+   "detail": "npm run check: 100 vitest tests passed, tsc and eslint clean. npm run build: OK; the only warning is the size of the lazily loaded /lab/stage chunk. pytest: 430 passed in 72 s. Real journey: 1 passed in 1.4 min with no console errors and no failed requests. All 9 mock Playwright specs passed in 2.0 min."
+  },
+  "deviations": [
+   "The record agent's M0 PipelinePanel was already deleted. I also removed its unused leftovers, TablePreview and MiniHistogram, and the CSS left over from the dropped categorical-levels distribution view.",
+   "Space conflict: Space never records a single choice now; Enter records. In a single-choice list Space is the stage's flip (\u00a711), and the stage ignores Space inside multi-select lists (lens, models), where it keeps its usual meaning of choosing. optionNav.test was updated to match.",
+   "The stage's frame-step hook (window.__turbotabStage) is now also available in a production build, but only when the test harness sets window.__turbotabReview before the page loads. Without it, the 0\u2013900 ms storyboard frames could not be captured against the real server.",
+   "The energy question in the Record no longer quotes the r from proposals (0.88). That value is computed on every row, including rows the split later seals. The stage's readout gives the r on rows not held out (0.83). The underlying backend issue is in the inbox.",
+   "Contract \u00a715 says boosted trees lose to the baseline. That was measured on plain complete cases (2,943 rows). This journey records the leave-out answer (16,366 training rows), and there boosted trees beat the baseline (CV R\u00b2 0.143 against \u22120.0002), so no such concern appears. The baseline line is drawn, and the concern logic was checked in the mock.",
+   "The banner's propagation frames are real-speed captures at about 0.33 s, 1.0 s and 2.0 s, with no throttling. The design step recomputes in about 40 ms, so no frame can catch the columns segment veiled; a log of every veil change records the order instead. The stage mock still emulates part of \u00a712 on an older capture; I patched the capture to the \u00a712 shape rather than recapturing it.",
+   "Mock previews for projects other than the stage's demo project answer with the nearest captured NHANES preview, and say so in the note. A roles preview is generated in the mock. The m1-record spec now checks stage-title (the real stage) instead of the placeholder's stage-text, and the Stage element exposes data-focus for it.",
+   "Removed the six record-real-*.png screenshots: they showed the placeholder stage. The mock e2e runs regenerated the record-* and stage-* screenshots, so they now show the integrated app."
+  ],
+  "inbox": [
+   "Held-out discipline: proposals.energy.r_with_energy and the dietary energy finding ('fat_total correlates 0.88 with kcal') read every row, including rows the split later seals. The preview reads rows not held out (0.83), and the finding's evidence reads a 5,000-row sample of rows not held out (0.87). The energy reading should move to a stage downstream of the split, so the Record, the finding and the stage quote one r on one denominator.",
+   "The lens, target and purpose previews have no views ('Nothing about this choice can be shown on your data yet'). A lens preview could show what the lens adds: the questions it opens, the pack checks, the energy question.",
+   "The energy_adjustment strata_candidates come from proposals, which do not read the missing-values answer. The frontend now filters out left-out columns. Proposals, or the validator's exits, should do this at the source.",
+   "On the models question, the stage's 'Record this choice' button records only the previewed family (for example select_models [boosted_trees]), not the multi-select in progress. Consider hiding it for multi-select questions, or recording the selection.",
+   "Partition over all six nutrients (with nested fat subtypes) previews a plot that does not change, with a note that fat_sat's unit cannot be confirmed. The Record lists partition as applicable. applicability.partition should account for nested parts and unconfirmed units.",
+   "Recapture src/mocks/m1-stage-fixture.json with the \u00a712 backend: real storyboards, marks, band, evidence and the leave-out preview. Then delete the mock's emulation code.",
+   "Table-focus cells print e.g. '80.0000' for bp_di (cellFormatter picks 4 digits from a target value below 1). Use per-column precision.",
+   "The /lab/stage review route and its 627 KB fixture chunk ship in production builds, lazily loaded. Gate it to dev:mock."
+  ],
+  "screenshots": [
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-lens-light.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-lens-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-target.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-purpose.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-roles-light.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-roles-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-exclusions-willett-light.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-exclusions-willett-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-exclusions-500-5000.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-exclusions-500-3500.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-missing-leave-out-light.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-missing-leave-out-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-missing-complete-cases.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-missing-impute.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-split.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-energy-residual-light.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-energy-residual-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-energy-standard.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-energy-density-multivariate.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-energy-density.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-energy-partition.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-energy-none.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-flip-residual-000ms.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-flip-residual-150ms.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-flip-residual-300ms.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-flip-residual-450ms.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-flip-residual-600ms.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-flip-residual-900ms.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-save-pair.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/saved-residual-pair.svg",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/saved-residual-pair.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-models.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-results-light.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-results-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-curves.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-band-light.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-band-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-evidence-light.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-evidence-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-banner-before.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-banner-reflow-1.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-banner-reflow-2.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-banner-reflow-3.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-banner-after.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-reflow-before.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-energy-change-density.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-reflow-during.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-reflow-after-light.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-reflow-after-dark.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-reflow-after-curves.png"
+  ],
+  "measurements": [
+   "Previews on the real server (POST /preview, 30 requests): p50 19 ms, p95 72 ms, max 93 ms; the contract target is 500 ms.",
+   "Energy options, from focus to result on the stage (includes the 120 ms debounce): residual 288 ms; standard, density_multivariate, density, partition and none 180\u2013183 ms each.",
+   "Opening the NHANES export to the first question: 1.5 s.",
+   "Fit of three families on 16,366 training rows, from recording to the banner result: 1.8 s. Best: boosted trees CV R\u00b2 0.143, against a baseline of \u22120.0002.",
+   "Substitution fat_total \u2192 carb from the navigator press to the curves: 0.8 s.",
+   "Uncertainty band: the server offered 'about 25 s' (20 s in an earlier run); 50 refits per family on 2,000 rows took 20.6 s with progress; the server's own band.seconds was 24.0.",
+   "Residual flip, player position at 0/150/300/450/600/900 ms: 0, 0.5, 1, 1.5, 2, 3 (4 states, 300 ms per step).",
+   "Change to density after fitting: the columns veil was on from 27 to 65 ms, the result veil from 27 to 1,687 ms; the banner was fully fresh at 2.1 s; everything, including the band refits, re-flowed at 22.0 s. Frames at 332, 1,026 and 2,037 ms.",
+   "Saved before/after pair: SVG of 91 KB, and a 2,200 px wide PNG (2\u00d7).",
+   "Screenshots: 48 real-*.png at 1440\u00d7900, each under 300 KB (largest about 251 KB)."
+  ]
+ },
+ "fnReview": {
+  "verdict": "NOT READY: 2 blockers and 6 majors.\n\nThe core numbers are right. On NHANES (two cohorts), dietary_recalls and genomics I recomputed with pandas/sklearn the cohort counts per step, the split, CV on the recorded folds, holdout, linear coefficients and the baseline, and all match exactly. Boosted trees match exactly once the CSV is parsed round-trip: the app's DuckDB ingest is the exact one.\n\n- **Split:** no participant_id crosses the split or the folds on recalls (0 of 300).\n- **Leakage:** I wrapped every fit in design, fit and substitution to record the rows it saw. 0 of them saw a sealed row, and the CV fit sizes equal train minus fold k exactly.\n- **Substitution:** the linear delta equals the coefficient gap to 5 decimal places, under both residual and density. The fat subtypes move proportionally (share drift \u2264 1e-16).\n- **Band:** the band is a real refit band; I reproduced it independently.\n- **Security:** the Host guard and the cross-site POST refusal both hold, and no CORS headers are sent.\n- **Speed:** preview p95 is 29 ms over the API (n=168) and 37 ms in the browser. The NHANES fit takes 1.8 s. The band takes 19.2 s against an offered \"about 20 s\". Cancel stops CPU in 0.33 s.\n- **Memory:** the server uses 190\u2013395 MB, and a worker peaks around 940 MB during the NHANES band.\n- **Journey:** mouse, keyboard and touch all work. Refusals answer at the control, and their exits record. Reloading during the band restores its progress chip. Re-flow veils sections as recomputing or stale. Previous states come back from the cache instantly.\n- **Checks:** pytest turbotab/core and turbotab/server, 430 passed in 73 s; npm run check passed.\n\nWhat breaks it is the failure paths. After a cancel there is no retry for design, fit or substitution in the UI. Energy partition is offered as applicable on NHANES, but recording it breaks the pipeline with no reason shown. On the same table with gram-named columns, partition counts fat's energy twice. The Record keeps sentences that are no longer true. Design warnings are never shown. Previews read sealed rows while the split recomputes.\n\nServer and browsers are stopped, and the repo is unchanged.\n\nInbox ideas (out of scope):\n- The holdout is re-scored and shown after every refit, so a user can tune against it (\"sealed once\").\n- Partition and residual have no nutrient picker.\n- Proposals' \"affected\" counts could be recounted once the split exists.",
+  "findings": [
+   {
+    "severity": "blocker",
+    "title": "After a cancel there is no way to run fit, design or substitution again in the UI",
+    "evidence": "Cancel the band from the job chip (drive3/drive4):\n- The curves section is veiled 'stale \u2014 you stopped the recompute'.\n- The 'Add an uncertainty band' button and the donor \u00d7 recipient matrix sit inside that inert veil. A click times out, and the pair button has an [inert] ancestor.\n\nCancel the fit from its chip (drive5):\n- The banner shows 'RESULT stale \u2014 you stopped the recompute'.\n- No Recompute, Try again or Retry control exists anywhere (StageRetry is wired only for ingest, profile and findings in Record.tsx).\n\nRecording the same answer again does not restart the stage. Over the API, select_models with the same families leaves fit 'stale', cancelled: true. The only way out is to change an earlier answer to a different value. Screens: shots/47-curves-after-cancel.png, shots/48-fit-cancelled.png.",
+    "fix": "Render StageRetry (POST /stages/{stage}/run) for design, fit and substitution whenever a stage errors or is cancelled. Place it outside the inert veil: on the veil label and on the banner segment. Alternatively, let recording an identical answer re-run a cancelled stage."
+   },
+   {
+    "severity": "blocker",
+    "title": "Energy partition is offered as applicable but either breaks the pipeline silently or counts fat's energy twice",
+    "evidence": "On NHANES, proposals.energy.applicability.partition.ok is true, and the option shows no 'not applicable' tag.\n- The preview returns 200, with the caption 'fat_sat does not say what unit it is in\u2026'.\n- Recording it returns 200.\n- The design stage then errors with EnergyAdjustmentNotApplicable (server.log line 486), and fit and substitution error after it.\n- The UI shows only 'stale \u2014 the recompute did not finish', with no reason and no retry.\n- The Record still says 'Energy was partitioned: kcal was split into kcal from protein, carb, fat_total and 3 more and kcal from everything else' (shots/27-partition-error.png).\n\nOn the same data with _g suffixes (/private/tmp/turbotab-review-m1/nhanes_grams.csv), partition runs with the proposal's nutrient list, which holds fat_total and its parts together. The result:\n- `kcal_from_other = kcal \u2212 (4\u00b7protein_g + 4\u00b7carb_g + 9\u00b7fat_total_g + 9\u00b7fat_sat_g + 9\u00b7fat_mon_g + 9\u00b7fat_poly_g)`\n- That value is negative on 16,638 of 17,084 training rows.\n- Under inference the linear model reports kcal_from_other at p = 0.0.\n- The UI shows no warning, because design warnings are never rendered.",
+    "fix": "Refuse partition in the set_energy_adjustment validator (method_not_applicable, with exits) when the fit-time unit or Atwater check will fail. Never partition a total together with its nested parts: drop the children or refuse with an exit such as 'partition the totals only'. Show a design error's reason in the UI."
+   },
+   {
+    "severity": "major",
+    "title": "Inference coefficients on columns that sum to 100% are reported as significant with no concern",
+    "evidence": "In dietary_recalls, protein_pct_kcal + fat_pct_kcal + carbohydrate_pct_kcal + alcohol_pct_kcal = 100 \u00b1 0.01 on every row. With the intercept, the design's condition number is 1.5e6. The roles proposal makes all four shares exposures by default, beside the gram columns.\n\nThe linear fit under inference reports:\n- intercept \u22121849\n- each share \u2248 18.65, CI [2.2, 35.1], p = 0.026\n\nThe forest plot shows these (shots/51-recalls-coefficients.png). The model's only concerns are the baseline and the cluster-robust CIs. _concerns() fires on sklearn warnings only, and statsmodels raises none here.",
+    "fix": "In the linear family, compute the rank or condition number of the design matrix with its intercept, and add a plain concern when it is near-singular. Detect energy-share columns that sum to 100% (in roles or design) and propose leaving one out."
+   },
+   {
+    "severity": "major",
+    "title": "Previews and evidence read sealed rows while the split recomputes",
+    "evidence": "Instrumented in process (instrument_previews.py, wrapping DataStore.materialize):\n- With the split fresh, 21 preview reads touched no sealed row.\n- Right after recording a changed exclusion, the split was 'stale' and the cohort 'running'.\n- The set_exclusions preview then read ['glucose','kcal','gender'] over all 21,849 rows, including all 4,370 sealed rows, with the basis 'Counts on all 21,849 rows'.\n\nThe cause is the freshness check:\n- service.preview's artifact() returns None unless the stage is fresh, so _pool() falls back to every row.\n- service.evidence passes the sealed rows only when split.status == 'fresh'.\n\nThe sealed set did not change (it is drawn over measured rows), so the stale split's sealed frame was valid the whole time. Contract \u00a73: 'no preview reads them'.",
+    "fix": "Take the sealed rows from the newest split artifact whatever its status, or keep them per project, and use that list in _pool(), PreviewContext.training_row_ids and EvidenceContext.sealed."
+   },
+   {
+    "severity": "major",
+    "title": "The Record shows sentences as current after they stop being true",
+    "evidence": "API project p379f1df662, after the missing-values answer changed to complete cases:\n- The live split record #7 still reads 'A random 20% of the 21,348 rows (seed 0) was held out\u2026'. The banner reads '21,349 \u2192 2,943 \u25b8 train 2,352 | held out 591' (shots/57-stale-split-sentence.png); the sentence is not veiled.\n- After the band was cancelled, the live substitution sentence still says 'its band comes from 50 refits of each model', but the artifact has no band.\n- After the partition's design failed, the Record says energy 'was partitioned'.\n\nDRIVE_RUBRIC \u00a72.2 and \u00a75.2.",
+    "fix": "Keep counts that depend on earlier answers out of recorded sentences, or restate them from the current artifacts. Mark a sentence whose stage was cancelled or failed, for example 'recorded; the band was stopped before it finished'."
+   },
+   {
+    "severity": "major",
+    "title": "Design warnings are computed but never shown",
+    "evidence": "design.warnings contains, for example:\n- '16,638 training rows get a negative kcal_from_other\u2026'\n- \"Energy explains 0% of fiber_g's variation\u2026\"\n- 'protein_pct_kcal, protein_g all read as protein\u2026 not a coherent substitution'\n- 'Strata apply to the residual method only'\n\nNothing in turbotab/frontend/src reads `.warnings` (grep). These concerns are invisible, against BLUEPRINT ('concerns stated, never hidden') and DRIVE_RUBRIC \u00a75.13.",
+    "fix": "Render design.warnings on the Columns scene under the lineage, and the energy and substitution ones beside the energy decision and the curves."
+   },
+   {
+    "severity": "major",
+    "title": "Previews and saved figures state the wrong basis",
+    "evidence": "Every energy-adjustment and model preview after the split carries the basis 'Counts on the 17,479 rows not held out; held-out rows stay sealed.' Its scatter and histogram are drawn from a 5,000-row sample of the 17,084 training rows. The distribution caption itself says 'over 5,000 training rows'. The 17,479 includes 395 excluded rows.\n\nThe saved before/after SVG, meant as a provenance figure, carries the same caption: 'Preview, not recorded: Residual method. Counts on the 17,479 rows not held out\u2026' (shots/saved-preview-pair.svg).\n\nThe cause: service.preview appends 'values on a sample of N training rows' only when the shared before frame was used, and the energy and model builders sample through ctx.sample_row_ids instead.",
+    "fix": "Let builders report the rows they sampled (for example, register what sample_row_ids drew) so the basis names 'a sample of 5,000 of the 17,084 training rows'."
+   },
+   {
+    "severity": "major",
+    "title": "The same quantity shows different numbers on one screen",
+    "evidence": "fat_total's correlation with kcal:\n- The energy finding's headline and the evidence stage title say 'fat_total correlates 0.88 with kcal' (all rows).\n- The evidence's pinned readout right under it says r 0.87 (non-held-out sample).\n- The energy question's preview says r 0.86 (training sample).\n- See shots/22-evidence-energy.png.\n\nThe Willett exclusion, after the split:\n- The option label reads '\u22121,419 rows' (all rows, from proposals).\n- The stage beside it says '1,113 of 17,479 rows fall outside these ranges' (drive9).\n- Both counts are correct for their own pool (checked with pandas), but neither names its denominator.\n\nDRIVE_RUBRIC \u00a75.4.",
+    "fix": "Give the evidence the same basis as its headline, or restate the headline from the evidence. Once the split exists, recount the proposals' 'affected' on the non-sealed pool, or name the denominator ('of 21,849')."
+   },
+   {
+    "severity": "minor",
+    "title": "Elastic net tunes its penalty on inner folds that split a participant's rows",
+    "evidence": "ElasticNetCV(cv=int) and LogisticRegressionCV(cv=int) in elastic_net.py use plain inner KFold. On dietary_recalls, with 2 recalls per participant, a person's two rows land in different inner folds, so the penalty choice is optimistic. The outer folds are grouped (verified), so the reported CV and holdout are unaffected.",
+    "fix": "In fit_stage, pass group-aware inner splits (GroupKFold over the fit rows' groups) to the estimator's cv when the split is grouped."
+   },
+   {
+    "severity": "minor",
+    "title": "A model that only ties the baseline is not flagged",
+    "evidence": "In genomics, boosted trees score CV AUC 0.5 \u00b1 0 (constant predictions: min_samples_leaf 20 on 38-row folds), exactly the class prior's 0.5. baseline_concern fires only when strictly worse, so the Results show no concern, beside a holdout of 0.944 (shots/50-genomics-results.png).",
+    "fix": "Flag \u2264 baseline within a small tolerance: 'Predicts no better than the class prior'."
+   },
+   {
+    "severity": "minor",
+    "title": "Findings keep pushing levers that were already pulled",
+    "evidence": "After residual adjustment is recorded, the pushed card still says 'fat_total correlates 0.88 with kcal: nutrient effects are tangled with total energy' with 'Adjust for energy \u2192' (shots/22). The flag findings still say 'Mark as a flag', and SEQN 'Mark as identifier', though the recorded roles already do both. The findings stage reads only lens and target. DRIVE_RUBRIC \u00a75.6.",
+    "fix": "Mark a finding as addressed, and fold it away, once its routed question holds an answer matching its lever."
+   },
+   {
+    "severity": "minor",
+    "title": "A save started mid-flip exports a different step from the one the menu names",
+    "evidence": "Press Space, then open Save within about 120 ms. The menu says 'This step: Keep what energy does not explain', but the downloaded SVG is the 'Fit fat_total on kcal' frame. Its caption describes the before/after pair, not the step (shots/saved-midflip-step.svg). No interpolated frame is ever saved, so that contract holds.",
+    "fix": "Freeze the step when the menu opens, and caption a step with its own label."
+   },
+   {
+    "severity": "minor",
+    "title": "Wording and accessibility nits",
+    "evidence": "- A refusal reads '`protein` does not has the energy role'.\n- The Atwater message cites '7\u00b7alcohol' on a table with no alcohol column.\n- The partition preview shows a 'before and after' scatter whose caption is an error and whose readout is '\u2014'.\n- The shelf says 'Ranked for 21,348 rows' while the models train on 17,084.\n- In the roles menu, Enter opens the menu but focus stays on the chip and the arrow keys do nothing; after a choice, focus drops to <body>.\n- Genomics Results list all 497 coefficient rows.",
+    "fix": "Fix the grammar. Name only the macronutrients present. Show a partition that cannot run as a refusal. Base the shelf on the training n. Move focus into the role menu and back to the chip. Cap the wide forest plot at about 12 rows plus a count of the rest."
+   }
+  ],
+  "screenshots": [
+   "/private/tmp/turbotab-review-m1/shots/06-excl-refusal.png",
+   "/private/tmp/turbotab-review-m1/shots/09-energy-partition.png",
+   "/private/tmp/turbotab-review-m1/shots/11-results.png",
+   "/private/tmp/turbotab-review-m1/shots/12-curves.png",
+   "/private/tmp/turbotab-review-m1/shots/21-band.png",
+   "/private/tmp/turbotab-review-m1/shots/22-evidence-energy.png",
+   "/private/tmp/turbotab-review-m1/shots/24-banner-columns.png",
+   "/private/tmp/turbotab-review-m1/shots/25-reflow-during.png",
+   "/private/tmp/turbotab-review-m1/shots/27-partition-error.png",
+   "/private/tmp/turbotab-review-m1/shots/40-shelf-after-fit.png",
+   "/private/tmp/turbotab-review-m1/shots/43-reload-during-band.png",
+   "/private/tmp/turbotab-review-m1/shots/44-after-cancel.png",
+   "/private/tmp/turbotab-review-m1/shots/47-curves-after-cancel.png",
+   "/private/tmp/turbotab-review-m1/shots/48-fit-cancelled.png",
+   "/private/tmp/turbotab-review-m1/shots/50-genomics-results.png",
+   "/private/tmp/turbotab-review-m1/shots/51-recalls-coefficients.png",
+   "/private/tmp/turbotab-review-m1/shots/56-exclusions-after-split.png",
+   "/private/tmp/turbotab-review-m1/shots/57-stale-split-sentence.png"
+  ]
+ },
+ "tasteReview": {
+  "verdict": "NOT READY for Nolan: 1 blocker, 10 majors and 12 minors. Most of the experience meets or beats the approved stage prototype, but one offered option leads to a silent dead end, and several screens say things that are not true at the moment they are read.\n\nHow I tested: I drove the real server myself (port 8814, TURBOTAB_WORKERS=2, a fresh TURBOTAB_HOME under /private/tmp/turbotab-taste-m1/home) in headless Chromium at 1440\u00d7900, through the full \u00a715 NHANES journey:\n- lens dietary \u2192 glucose \u2192 prediction \u2192 roles \u2192 Willett \u2192 leave out the meds columns \u2192 20% held out\n- every energy method previewed, residual recorded \u2192 3 families \u2192 fit (\u22483 s) \u2192 fat_total\u2192carb curve \u2192 refit band (34 s) \u2192 finding evidence\n- energy method changed to density after the fit: re-flow \u22481.6 s for the result, 31 s for everything with the band\n- a second project to test touch, other widths, reduced motion and the partition path\nThe fast checks pass: pytest turbotab/core + turbotab/server 430 passed (71 s); npm run check passed (tsc, eslint, 100 vitest). The working tree is clean, and I closed my server and browser. One other headless Chrome on the machine belongs to another agent's drive4.mjs, not to me.\n\nWhat is good (the rulings hold):\n- **The flip plays the method's real storyboard.** It goes forward and in reverse within 900 ms, interruptible, and Space flips it. Residual: the fit line draws (r 0.83) \u2192 points drop to residuals (r 0.00, \"fat_total residual\") \u2192 the cloud re-centers on the mean (fat_total_adj). The step dots name and pause each step. Points keep their identity, and the change of unit crossfades. See strip-38/39.\n- **Saving a mid-animation frame is impossible.** Saving at position 1.5 offered and saved \"This step: Keep what energy does not explain\", a real step.\n- **Saved figures are journal-quality and carry provenance captions.** The before/after pair and the lineage pair are beautiful.\n- **Reduced motion is instant.**\n- **The banner tells you where you are.** It reads \"now \u00b7 energy adjustment\" with the THEN list. Its segments navigate to full views that carry \"The recorded decisions behind this figure\", and the Result segment veils and re-flows.\n- **Touch works.** On a touch screen, one tap previews and shows \"tap again to record\"; a second tap records.\n- **The lineage meets or beats the prototype.** It shows only the touched columns, \"folded into 6\" and \"11 more pass through unchanged\".\n- **The NHANES specifics are handled.** SEQN is an identifier everywhere; there are findings on the missing survey design and on the 9 pooled cycles; each imputed_* flag is linked to its base column.\n\nVisible words per viewport (prototype in brackets):\n\n| Screen | Words |\n|---|---|\n| start | 105 |\n| lens | 230 |\n| outcome | 156 |\n| roles preview | 277 |\n| Willett | 272 |\n| missing values | 257 |\n| energy question, nothing focused | 319 (prototype S1 idle 242) |\n| residual | 308 (prototype 269) |\n| why? open | 365 |\n| results | 293\u2013299 |\n| evidence | 254 |\n\nWhat the production build lost against the prototype:\n- the partition lever \"Partition protein, carb, fat_total instead\"\n- the per-sex below/above counts on the exclusion preview\n- one-liners that cite the user's own data\n- the line saying the scatter is a sample of 800\nThe single-panel scatter that replaced the prototype's side-by-side before/after follows the ruling and is not a loss.\n\nDRIVE_RUBRIC \u00a75:\n1. **Every press acknowledged?** Partly. Settle, the green keyline and the \"Recorded: \u2026\" ack work. Fails on Enter over a focused but unchosen model family (nothing visible), and on partition, which records and then fails silently. The refusal look was not exercised live.\n2. **True when read?** No. \"Fitting the models\u2026\" stays over a failed fit. \"Your data now r 0.83\" shows after residual is recorded. Findings that were already acted on are still pushed. The same r appears as 0.88, 0.87 and 0.83.\n3. **Reproducible sentences?** Partly. The split, missing-values and substitution sentences are good. Roles and energy say \"and N more\", and sugar's exclusion is never stated.\n4. **Denominators agree?** No. The previews say \"17,479 rows not held out\"; the banner and Results say train 16,366. The 5,000 and 800 samples are unstated.\n5. **Warnings come with their lever?** Partly. Findings and refusals carry levers. The partition preview has no lever, and the impute fill has no warning.\n6. **Uses answers it holds?** No. Findings keep asking settled questions.\n7. **Page stays still?** Mostly. But the stage flashes the previous question's preview on every new question.\n8. **Where am I, and does pressing go there?** Yes. Fails after the partition failure (\"next \u00b7 the substitution\").\n9. **Cards few, ranked, paged?** Yes: 3 pushed, a pager, \"9 more\". But the stale ones stay pushed.\n10. **Labels state their effect?** Mostly. Fails on \"With this choice (preview)\" over finding evidence, and \"Mark design columns\" when the table has none.\n11. **No tooltip covering a control?** No. The \"substitution\" term card is clipped and covers an option.\n12. **Free of internals?** Mostly. Fails on \"Atwater reconstruction\", \"gender female\", \"Motion lab\" and \"baseline \u22120.00018\".\n13. **No silent choices?** No. Sugar is left unadjusted; impute fills every blank meds value with True; the gender_male coding is applied while a finding says \"not asked yet\".\n14. **Each answer visibly changes something?** Partly. Lens, outcome and purpose preview \"Nothing about this choice can be shown on your data yet\".\n15. **Can he see his data?** Yes.\n16. **NHANES handled?** Yes. The SAS 5.4e-79 zeros in bp_di go unremarked.\n17. **Refuses where the science refuses?** Partly. Evidence badges are present, but partition is not refused when it cannot be built.\n18. **Upload to fit with no dead end?** Yes on the residual path. No on the partition path.\n\nInbox (out of scope; the output format has no inbox field, so they are listed here):\n- a co-missingness view (meds_hbp \u00d7 meds_chol) for the blanks evidence\n- flag NHANES SAS 5.4e-79 \"zeros\" (bp_di, fat_total minimum)\n- overlay the earlier method's curve after a method change, for the sensitivity analysis the why? text recommends\n- outcome units (mg/dL) on \u0394 predicted glucose and on the coefficients\n- a pin/compare of two options' results, from the inline prototype",
+  "findings": [
+   {
+    "severity": "blocker",
+    "title": "Energy partition is offered normally, then leads to a silent dead end and records a false sentence",
+    "evidence": "On NHANES, 'Energy partition' has no not-applicable marker. Its preview flips to 'With this choice (preview)' but draws the unchanged fat_total with r '\u2014' and the caption 'fat_sat does not say what unit it is in, and the Atwater reconstruction could not confirm it is grams.' There is no lever and no refusal, and Record stays enabled (46-energy-partition.png). The prototype instead offered 'Partition protein, carb, fat_total instead'.\nRecording it (project p7e825bd61d) writes 'Energy was partitioned: kcal was split into kcal from protein, carb, fat_total and 3 more and kcal from everything else'. The design stage then errors with EnergyAdjustmentNotApplicable, and fit errors with \"Needs 'design', which failed.\"\nThe UI never says so:\n- the Record shows 'Fitting the models\u2026 Substitution curves comes next.'\n- the stage shows 'Nothing has been fit yet. It waits on substitution.'\n- the banner shows 'RESULT next \u00b7 the substitution / did not finish'\nThere is no error and no way out (80-partition-recorded.png, 81-partition-fit.png, 82-partition-result-segment.png). Rubric questions 2, 5, 17 and 18 fail, as does BLUEPRINT \u00a70 'never assert falsely'. The root cause is the proposal's nutrient set: fat_sat, fat_mon and fat_poly are nested in fat_total, so a partition double-counts fat.",
+    "fix": "Run the Atwater check for the proposed nutrient set in the proposals stage. When it fails, mark partition not applicable with a plain reason ('fat_sat, fat_mon and fat_poly are parts of fat_total, so a partition would count fat's energy twice'). Make the preview and the decision answer with a 409 refusal whose exit is 'Partition protein, carb and fat_total', so the stage shows 'Not available' plus the exit button, as the prototype did.\nSeparately, read the stage status before narrating. Record.tsx's pendingStep (STAGE_WORK text) and LiveScenes ResultsScene must show an errored stage as failed: the error in plain words, <StageRetry>, and 'Change the energy adjustment'. They must never show 'Fitting\u2026' or 'waits on substitution'."
+   },
+   {
+    "severity": "major",
+    "title": "The stage flashes the previous question's preview whenever a new question is entered",
+    "evidence": "Focusing Residual right after recording the split shows 'PREVIEW Hold out 20%' with its row flow for ~250 ms before the residual scene arrives (34-residual-arrive-0050ms.png, \u20260150ms.png).\nFocusing Boosted trees right after recording residual shows 'PREVIEW Residual method' with a false readout 'columns 17 \u2192 17'. Its scatter then crossfades under the new lineage, giving garbled overlapping text (50-models-first-focus-50ms.png, \u2026200ms.png).\nCause: usePreview uses placeholderData: keepPreviousData across seq and decision kind (stage/data.ts:78), and Stage.tsx treats that placeholder as the target scene. Breaks 'is anything ever shown that is not a real state', rubric question 7, and the stage-never-flickers bar.",
+    "fix": "In Stage.tsx, accept a placeholder answer only when its decision.kind and the stateSeq match the focused option's. Otherwise keep the current live scene until the new preview lands. Alternatively, key keepPreviousData by question, for example with a select that drops answers from another kind or seq."
+   },
+   {
+    "severity": "major",
+    "title": "Denominators and correlations disagree across screens and in saved figures",
+    "evidence": "Energy, model and evidence previews say 'Counts on the 17,479 rows not held out'. That is 21,849 \u2212 4,370 sealed, so it includes the 1,419 rows Willett excluded. The banner and Results say 'train 16,366'.\nThe preview's r 0.83 matches the 20,430-row cohort, so the label is wrong. The distribution caption says 'over 5,000 training rows', and the scatter draws 800 points without saying so.\nThe same pair appears as 0.88 on the finding card and evidence title, 0.87 on the evidence plot (both in one viewport, 63-evidence-energy.png) and 0.83 on the energy preview.\nThe wrong count is written into exported provenance captions (42-saved-pair.png, 41-saved-midflip-render.png). Rubric questions 2 and 4 fail (F:DRIVE-031/045/046).",
+    "fix": "Derive the basis line from the exact row set the view was computed on (cohort \u2229 training = 16,366) and word it as the banner does. State any sampling ('800 of 16,366 training rows drawn').\nOnce the split exists, recompute the finding summary's r on the rows the evidence uses, or label each r with its basis ('0.88 on all 21,849 rows as loaded')."
+   },
+   {
+    "severity": "major",
+    "title": "Findings never learn they were answered and keep pushing levers for settled questions",
+    "evidence": "After roles (#4), Willett (#5), leaving out the meds columns (#6) and residual then density (#8/#12), the pushed cards still read 'meds_chol is two-level text \u2026 [Choose how blanks are handled \u2192]' and 'fat_total correlates 0.88 with kcal \u2026 [Adjust for energy \u2192]'.\nHidden cards still offer 'Mark as identifier \u2192' (SEQN, already the identifier), 'Mark as a flag \u2192' (imputed_*), 'Choose an exclusion rule \u2192' and 'Choose the cycle's role \u2192'.\nThis lasts through the fit and the re-flow (55-results.png, 68-reflow-after.png, 84-evidence-meds.png). Rubric questions 6 and 7 fail (GUIDED-166: 'Didn't we just settle\u2026?'), and question 9 (ranking) suffers.",
+    "fix": "When a finding's routes_to question is answered (or its column already holds the proposed role), stop pushing the card. Collapse it into the count as 'Answered by #6: meds_chol and meds_hbp left out', with a green ok keyline and its evidence still reachable. Recompute the pushed three from the findings that are still open."
+   },
+   {
+    "severity": "major",
+    "title": "Sugar is silently left out of energy adjustment",
+    "evidence": "The question says only '6 nutrients are adjusted together'. The proposal's nutrients are protein, carb, fat_total, fat_sat, fat_mon and fat_poly. Sugar is an exposure that the roles mark 'sugar \u2282 carb', yet it is excluded because energy_bearing('sugar') finds no Atwater factor (stages/proposals.py:147).\nThe decision sentences hide it ('protein, carb, fat_total and 3 more'). The matrix carries raw 'sugar' beside the _adj and _per_kcal columns (44-saved-lineage-pair.png, 70-banner-columns.png). After the change to density, the coefficient plot puts sugar per gram (\u22120.0212) on one axis with per-kcal densities (25.7\u2013158) (68-reflow-after.png).\nThe prototype said 'All 7 nutrients become residuals on kcal'. Rubric questions 3, 7 and 13 fail; a nutrition reviewer would reject this.",
+    "fix": "Give carbohydrate subtypes (sugar, fiber per convention) their 4 kcal/g factor so they are adjusted with the rest. If a nutrient is deliberately left out, name it in the question with its reason and a lever. In every case, list all adjusted nutrients in the decision sentence (no 'and 3 more' in a methods sentence)."
+   },
+   {
+    "severity": "major",
+    "title": "After a changed answer, 'Your data now' shows unadjusted data that is no longer the user's data",
+    "evidence": "With residual (or density) recorded, reopening energy adjustment and previewing Density alone gives the readout 'r 0.83 \u2192 0.13 \u00b7 columns 17 \u2192 17'. The now-side scatter shows raw fat_total at r 0.83, but the recorded data is residual-adjusted (r 0.00).\nOne readout mixes the current state (17 columns) with the pre-adjustment r (66-change-density-preview.png). This happens exactly at the moment of the \u00a715 re-flow. Rubric question 2 fails ('including after \u2026 a changed answer').",
+    "fix": "For a reopened question, make state 0 the recorded answer's result (residual \u21c4 density, readout r 0.00 \u2192 0.13), so flipping morphs one method into the other as ruling 4 describes. Otherwise label it truthfully ('Before any adjustment') and make the readout use one basis."
+   },
+   {
+    "severity": "major",
+    "title": "The table morph paints a false highlight on unrelated cells, and its headers garble mid-flip",
+    "evidence": "Leave-out preview at 'With this choice': the blank-cell tint of the removed meds_chol and meds_hbp columns stays at their old x positions. It now marks age (all rows) and gender (rows 0, 2 and 4) as if they were affected (24-missing-leave-out.png, zoom-leaveout-table.png, 28-leaveout-now.png).\nMid-flip, the header labels overlap ('age meds_chol meds_hbp age bp_sys gender\u2026') while the body cells jump (strip-29-leaveout-flipfwd.png). There is no column-identity morph, which the contract required ('keeps scrub's column-identity morph'). The picture is untrue.",
+    "fix": "Key tints and cells by (row_id, column) identity, not by grid position. Fade out the tint of columns that leave, and move surviving columns by identity (FLIP), as scrub did. Never draw an emphasis on a column the state does not emphasize."
+   },
+   {
+    "severity": "major",
+    "title": "The impute preview fills every blank meds value with True and never says so",
+    "evidence": "The Impute preview's table shows meds_chol and meds_hbp = True in every filled cell, which would put roughly 15,500 'not asked' participants on medication. The caption says only 'No rows leave; 30,438 missing cells in 2 predictors would be filled.' The option itself carries no caveat (26-missing-impute.png).\nThis is the exact trap Nolan named in GUIDED-163 (DRIVE_RUBRIC \u00a74: median fill on meds_hbp is 'possibly a bad idea'). Rubric questions 13 and 17 fail, and question 5 (the warning with its lever) is absent.",
+    "fix": "Name the fill value in the caption ('Every blank meds_hbp becomes True, the most common answer: 15,552 participants would be recorded as on medication'). Add an amber caveat inside the preview (\u00a709 CHOICE), with 'Leave them out first' as the lever."
+   },
+   {
+    "severity": "major",
+    "title": "In multi-select lists the shown option looks checked, and Enter on it does nothing visible",
+    "evidence": "In the model families, the focused (shown) option's pip is a filled square that reads as a checked box (51-models-preview.png; the lens has the same look, zoom-lens-hover.png). Pressing Enter on it records nothing and nothing changes on screen. Meanwhile the stage's 'Record this choice' button would record that single family (52-models-enter-without-choose.png).\nRubric question 1 fails, the top recurring frustration (\u00a72.1, 'the app does nothing when I click').",
+    "fix": "Give the shown state in multi-select lists an outline ring, never a filled square. On Enter with nothing chosen, either choose the focused option and record it, or acknowledge at the control ('Space chooses a family; choose at least one'). Make the stage's Record button agree with what Enter does."
+   },
+   {
+    "severity": "major",
+    "title": "The stage is empty for the first three questions",
+    "evidence": "Lens, outcome and purpose all preview 'Nothing about this choice can be shown on your data yet.' Previewing replaces the 'Your data now' cards with that one line, so focusing an option makes the larger window emptier (03-lens-hover-1600ms.png, 08-target-preview.png, 11-purpose-prediction.png). At arrival the stage reads only 'Nothing is recorded downstream yet\u2026' (02-lens-arrive.png).\nThe prototype's idle stage showed the pipeline. This misses north-star item 2 ('the consequence shown on the user's own data') and fails rubric question 14 for lens and purpose, which is Nolan's own F:GUIDED-231 worry.",
+    "fix": "Lens: what it unlocks on this table (kcal recognized as energy, nutrients recognized, energy adjustment and substitution entering the interview, the pack findings it raises). Outcome: glucose's distribution plus the row_flow 'glucose recorded 21,849'. Purpose: the shelf reordered and what the Results will report (CIs vs held-out score). At minimum, keep the Your-data-now cards under the note."
+   },
+   {
+    "severity": "major",
+    "title": "A term card is clipped and covers an option",
+    "evidence": "Hovering the dotted term 'substitution' in the energy question opens a definition card that is cut off at the Record column's right edge, mid-word ('\u2026in place / others at the same total energy; wh / \u2026coefficient describ'). It also sits on top of the Residual method option (48-term-card.png). Rubric question 11 fails ('no tooltip covering a control'), on the teaching layer the doctrine relies on (\u00a711 rule 8).",
+    "fix": "Render term cards in a portal with collision-aware placement (Radix Popover or HoverCard with collisionPadding), so they are never clipped by the Record's overflow. Place them above or below the term and away from option rows."
+   },
+   {
+    "severity": "minor",
+    "title": "Switching options after a 'still' option replays the storyboard, and every switch waits ~150 ms on the old title",
+    "evidence": "Standard \u2192 Density plus energy resets to 'Your data now' (grey raw cloud for ~400 ms), then plays forward, so the flip's side does not hold (strip-switch-density_multivariate.png). This is a designed exception in Stage.tsx, but ruling 4 says the position holds across options.\nEven with a warm cache, each arrow press shows the old option's title with a disabled Record for ~120\u2013180 ms, then crossfades in under 60 ms. It reads as a swap rather than a morph (strip-res-to-density.png, strip-switch-standard.png).",
+    "fix": "Hold 'with this choice' after a still option too, and land directly on the new result. Shorten or skip the debounce when the preview is cached, and morph within a unit over the full 150\u2013300 ms."
+   },
+   {
+    "severity": "minor",
+    "title": "Settle and scene crossfades show blank or garbled frames",
+    "evidence": "On recording, the question's content vanishes at once and a tall empty white card shrinks to the sentence (05-lens-settle-50ms.png). The stage's two empty-state lines overlap as garbled text during the crossfade. Unit-change crossfades briefly double the axis labels ('fat_total_adj_kcal').\nAfter the reverse flip, the dashed trend line pops in only when pos reaches exactly 0 (cmp-now-fwd0-rev900.png).",
+    "fix": "Fade the question body out while the card's height animates (or morph the heading into the sentence). Use mode='wait' or offset positioning for text-only empty states. Fade the trend line with pos rather than toggling it at 0."
+   },
+   {
+    "severity": "minor",
+    "title": "Decision sentences are not fully reproducible or publishable",
+    "evidence": "Roles: 'exposures protein, sugar, carb and 4 more; covariates age, gender, bp_sys and 9 more'. Energy: 'protein, carb, fat_total and 3 more'. Willett: '1,419 rows with kcal outside 500\u20133500 for gender female and outside 800\u20134200 for male' (column=value machinery, no thousands separator, no kcal/day).\nMissing: the reason ('blank on 86%, likely not asked') is not in the sentence. Rubric questions 3 and 12.",
+    "fix": "List every column in the stored sentence (truncate only visually, with a disclosure). Write 'women outside 500\u20133,500 kcal/day and men outside 800\u20134,200 kcal/day (Willett's sex-specific cut-offs)', and carry the reason for leaving out the meds columns."
+   },
+   {
+    "severity": "minor",
+    "title": "'Your data now' Results card lists only three of the questions the fit waits on",
+    "evidence": "'Nothing has been fit yet. It waits on purpose, then roles, then exclusions.' The fit also waits on missing values, split, energy adjustment and models (waiting.slice(0, 3) in LiveScenes.tsx:211 and 244). The 'Not asked' task line repeats itself ('read as regression \u2026 read as a regression outcome') and puts 'high' in a data chip.",
+    "fix": "Say 'It waits on 7 answers, starting with purpose', or list them all, and drop the duplicate clause."
+   },
+   {
+    "severity": "minor",
+    "title": "Exclusion and energy previews lost the prototype's data-specific detail",
+    "evidence": "Prototype S2 showed 'women 146 below \u00b7 350 above \u00b7 men 244 below \u00b7 679 above' and 'kcal runs from 0 to 15,594 a day\u2026'. Production shows 'implausible intakes (Willett's sex-specific cut-offs)' and a generic one-liner, and clips the kcal axis at about 6,500 (19-excl-willett.png vs s2-sex-specific-light.png). The prototype's 'the scatter shows 800 of them' is also gone.",
+    "fix": "Restore the per-sex under/over counts under the cut row (a methods section needs them) and the one-liner that cites this table's own range."
+   },
+   {
+    "severity": "minor",
+    "title": "The energy question exceeds the word budget, and new-question headings get an input-like focus box",
+    "evidence": "The energy viewport has 308\u2013365 visible words, against the prototype's 269\u2013285. The nested-fat note runs about 35 words of small grey serif, over the 22-word one-liner budget (33-energy-open.png). Every newly opened question's heading wears a teal rectangle that reads as a text field (13-roles-open.png, 55-results.png).",
+    "fix": "Fold the nested-parts note into the partition option's reason, or a term card. Give programmatic heading focus no visible outline (tabIndex -1 headings) and mark 'now' with the existing keyline."
+   },
+   {
+    "severity": "minor",
+    "title": "The uncertainty band is muddy and its time estimate is off",
+    "evidence": "Three translucent family bands overlap the grey disagreement fill, and family identity is lost (61-band.png). The offer said 'about 20 s'; with 2 workers it took 34 s. The whole Results panel is veiled for those 34 s, and again for 31 s after the method change.",
+    "fix": "Draw bands as a dash-matched outline or an interval at a few k values, or show one family's band at a time with a legend toggle. Measure the estimate with the actual worker count. Veil only the curves card while the band refits."
+   },
+   {
+    "severity": "minor",
+    "title": "Copy and data wording slips in the missing-values preview",
+    "evidence": "'Leaving out meds_chol and meds_hbp keeps 17,566 rows complete cases would drop' is missing 'that'. A True/False medication column is called 'two-level text' (the GUIDED-158 mistake). bp_di is formatted 80.0000, and the 0.0000 diastolic (the SAS 5.4e-79 artifact) appears without remark (24-missing-leave-out.png).",
+    "fix": "Fix the grammar and call the meds columns 'yes/no'. Format values with each column's own precision; flag the 5.4e-79 zero for the inbox."
+   },
+   {
+    "severity": "minor",
+    "title": "Evidence views carry wrong or truncated labels",
+    "evidence": "The meds_chol evidence shows the flip 'Your data now \u21c4 With this choice (preview)' although no choice is involved, beside 'your data as loaded' (84-evidence-meds.png). Stage titles truncate ('\u2026tangled with tota\u2026', 'Willett\u2026' at 1024 px), and the readout clips at 1024 px ('n 21,849 \u2192 20,4', 77-touch-tap-once.png).",
+    "fix": "Treat evidence as still: no flip, labeled 'Your data as loaded'. Let titles wrap to two lines, and wrap the readout under the flip on narrow stages."
+   },
+   {
+    "severity": "minor",
+    "title": "Substitution captions undercut the curve for a reviewer",
+    "evidence": "Under a fat_total\u2192carb curve, the caption states the residual estimand as 'in place of the average of all other energy sources', which contradicts the pairwise substitution drawn. 'k' in 'per 100 kcal at k = 100' is undefined. \u0394 predicted glucose has no units. Excluded parent/child cells in the pair matrix are empty with no reason given (59-curves.png).",
+    "fix": "Caption the curve with its own estimand (energy moved from fat_total to carb at fixed kcal, through inputs adjusted by the recorded method). Define k inline ('k = kcal moved'), give the outcome's unit, and hatch excluded cells with a title ('fat_sat is part of fat_total')."
+   },
+   {
+    "severity": "minor",
+    "title": "Saved figures and thumbnail views have small truth and legibility gaps",
+    "evidence": "A single-step save is titled '\u2026, before and after'. A residual point is clipped at the frame edge. The caption omits that the 800 points are a sample (41-saved-midflip-render.png). Thumbnail histograms clip the 99.5th-percentile tail without a note (the note is only on the primary). An 18-row lineage in a thumbnail squeezes to a ~9 px pitch (48-term-card.png).",
+    "fix": "Title by the saved state, pad the axis domain, and add 'n of N drawn' to the caption. Show the clip note in thumbnails, or collapse untouched lineage rows in compact views."
+   },
+   {
+    "severity": "minor",
+    "title": "The propagation sweep is barely visible, and the banner lags a recorded method",
+    "evidence": "After density was recorded, the Columns and Models segments veiled for only 42 ms (13\u219255 ms), so only the Result segment visibly propagates (strip-banner-reflow.png). After residual was recorded and before models were chosen, the banner still read 'COLUMNS 18 predictors' with no method.",
+    "fix": "Hold each downstream segment's veil for at least one 150 ms propagate step, in order. Show the recorded energy method in the Columns segment from the decision itself, before the design stage runs."
+   },
+   {
+    "severity": "minor",
+    "title": "Internals and dev affordances show in the product",
+    "evidence": "A 'Motion lab' link sits in the product header. Results show 'baseline \u22120.00018'. 'Mark design columns \u2192' is offered when the table has no design columns. 'seed 0' appears in the split sentence (acceptable).",
+    "fix": "Hide /lab behind dev builds, show the baseline as '\u2248 0.000', and word the survey finding's lever as 'Tell TurboTab this sample has no design columns' or point it to the drawer."
+   }
+  ],
+  "screenshots": [
+   "/private/tmp/turbotab-taste-m1/shots/02-lens-arrive.png",
+   "/private/tmp/turbotab-taste-m1/shots/03-lens-hover-1600ms.png",
+   "/private/tmp/turbotab-taste-m1/shots/05-lens-settle-50ms.png",
+   "/private/tmp/turbotab-taste-m1/shots/08-target-preview.png",
+   "/private/tmp/turbotab-taste-m1/shots/11-purpose-prediction.png",
+   "/private/tmp/turbotab-taste-m1/shots/15-roles-preview.png",
+   "/private/tmp/turbotab-taste-m1/shots/19-excl-willett.png",
+   "/private/tmp/turbotab-taste-m1/shots/strip-excl-switch.png",
+   "/private/tmp/turbotab-taste-m1/shots/24-missing-leave-out.png",
+   "/private/tmp/turbotab-taste-m1/shots/zoom-leaveout-table.png",
+   "/private/tmp/turbotab-taste-m1/shots/28-leaveout-now.png",
+   "/private/tmp/turbotab-taste-m1/shots/strip-29-leaveout-flipfwd.png",
+   "/private/tmp/turbotab-taste-m1/shots/26-missing-impute.png",
+   "/private/tmp/turbotab-taste-m1/shots/33-energy-open.png",
+   "/private/tmp/turbotab-taste-m1/shots/strip-residual-arrive.png",
+   "/private/tmp/turbotab-taste-m1/shots/35-residual-with.png",
+   "/private/tmp/turbotab-taste-m1/shots/36-residual-with-dark.png",
+   "/private/tmp/turbotab-taste-m1/shots/strip-38-flip-fwd.png",
+   "/private/tmp/turbotab-taste-m1/shots/strip-39-flip-rev.png",
+   "/private/tmp/turbotab-taste-m1/shots/cmp-now-fwd0-rev900.png",
+   "/private/tmp/turbotab-taste-m1/shots/40-save-menu-midflip.png",
+   "/private/tmp/turbotab-taste-m1/shots/41-saved-midflip-render.png",
+   "/private/tmp/turbotab-taste-m1/shots/42-saved-pair.png",
+   "/private/tmp/turbotab-taste-m1/shots/44-saved-lineage-pair.png",
+   "/private/tmp/turbotab-taste-m1/shots/strip-switch-standard.png",
+   "/private/tmp/turbotab-taste-m1/shots/strip-switch-density_multivariate.png",
+   "/private/tmp/turbotab-taste-m1/shots/strip-switch-partition.png",
+   "/private/tmp/turbotab-taste-m1/shots/strip-res-to-density.png",
+   "/private/tmp/turbotab-taste-m1/shots/46-energy-density.png",
+   "/private/tmp/turbotab-taste-m1/shots/46-energy-partition.png",
+   "/private/tmp/turbotab-taste-m1/shots/48-term-card.png",
+   "/private/tmp/turbotab-taste-m1/shots/50-models-first-focus-50ms.png",
+   "/private/tmp/turbotab-taste-m1/shots/50-models-first-focus-200ms.png",
+   "/private/tmp/turbotab-taste-m1/shots/51-models-preview.png",
+   "/private/tmp/turbotab-taste-m1/shots/52-models-enter-without-choose.png",
+   "/private/tmp/turbotab-taste-m1/shots/55-results.png",
+   "/private/tmp/turbotab-taste-m1/shots/59-curves.png",
+   "/private/tmp/turbotab-taste-m1/shots/61-band.png",
+   "/private/tmp/turbotab-taste-m1/shots/63-evidence-energy.png",
+   "/private/tmp/turbotab-taste-m1/shots/66-change-density-preview.png",
+   "/private/tmp/turbotab-taste-m1/shots/strip-banner-reflow.png",
+   "/private/tmp/turbotab-taste-m1/shots/67-reflow-0600ms.png",
+   "/private/tmp/turbotab-taste-m1/shots/68-reflow-after.png",
+   "/private/tmp/turbotab-taste-m1/shots/69-reflow-curves.png",
+   "/private/tmp/turbotab-taste-m1/shots/70-banner-columns.png",
+   "/private/tmp/turbotab-taste-m1/shots/70-banner-rows.png",
+   "/private/tmp/turbotab-taste-m1/shots/72-reduced-motion-residual.png",
+   "/private/tmp/turbotab-taste-m1/shots/77-touch-tap-once.png",
+   "/private/tmp/turbotab-taste-m1/shots/80-partition-recorded.png",
+   "/private/tmp/turbotab-taste-m1/shots/81-partition-fit.png",
+   "/private/tmp/turbotab-taste-m1/shots/82-partition-result-segment.png",
+   "/private/tmp/turbotab-taste-m1/shots/83-results-dark.png",
+   "/private/tmp/turbotab-taste-m1/shots/84-evidence-meds.png"
+  ]
+ },
+ "fix": {
+  "branch": "turbotab-next",
+  "commit": "186a135",
+  "summary": "I fixed all 19 review findings (4 blockers, 15 majors) and committed them as 186a135 on turbotab-next. All checks pass: the Python tests (444), npm run check (100 vitest tests), npm run build, the m1-journey spec against a real server on port 8815 (fresh TURBOTAB_HOME, TURBOTAB_WORKERS=2, NHANES export), and the mock specs (m1-journey, m1-record, m1-stage, m0). Screenshots were re-captured; three are new: real-band-stopped, real-columns-concerns and real-record-counts-dated.\n\nBlockers:\n- **Re-running after a cancel or failure.** A design, fit or substitution that was cancelled or failed now shows Try again / Recompute outside the inert veil: on the Results sections, beside the banner segment, in the Record's pending row and under the affected sentence. Errors read in plain words (no exception class names), and \"Needs 'design', which failed.\" is traced back to the stage that actually failed. A \"Change the <question>\" button reopens the answer behind the failure. Recording the same answer again now restarts a stopped stage. The band button and the pair matrix stay usable while the curve is veiled. \"Fitting\u2026\" and \"waits on substitution\" no longer appear over a failed stage.\n- **Energy partition.** The proposals now run the fit's own unit and Atwater checks on the data. They also refuse a total with its parts (or nutrients that exceed energy by more than 5% on over 10% of rows). On NHANES partition is marked not applicable with the reason \"sugar, fat_sat, fat_mon and fat_poly are parts of carb and fat_total\u2026\". The preview and the decision return a 409 whose first exit is \"Partition protein, carb and fat_total\"; that exit fits cleanly. The check reads a 5,000-row sample with the held-out rows excluded.\n\nMajors:\n- **Collinear shares.** The linear model states a near-singular design (Belsley's scaled condition number above 1,000, naming the columns involved). The design warns when energy shares sum to 100%, and the roles propose leaving the largest share out as the reference.\n- **Held-out rows.** Previews, evidence and the partition check take the held-out rows from the newest split even while it recomputes (Tier A test).\n- **Basis lines.** Each basis now says exactly what was read, e.g. \"Values on a sample of 5,000 of the 16,366 training rows; the scatter draws 800 of them\". The energy evidence uses the same sample as the preview, so both show r 0.83. The finding now reads \"0.88 \u2026 across all 21,849 rows\", and each exclusion option names its denominator (\"\u22121,419 of 21,849\").\n- **Record sentences.** The split sentence no longer carries a row count. A sentence whose counts were made before a later answer says so. A stopped or failed answer is marked \"Recorded.\" or \"Recorded, but it did not run.\"\n- **Design warnings** appear under the lineage on the Columns view, beside the energy decision and beside the curves.\n- **Findings** whose question is answered fold into \"N answered in the record \u2014 k by #n\". Their evidence is still one press away, and the three pushed cards come from the open findings only.\n- **Sugar** is carbohydrate at 4 kcal/g and is adjusted with the rest. Methods sentences list every nutrient, and exposures left unadjusted are named with the reason.\n- **Stage:**\n  - Lens, outcome and purpose now have previews, and the recorded cards stay in view under a note.\n  - A preview from another question or an earlier state is never used as a placeholder.\n  - A reopened energy question starts from the recorded result (r 0.00 \u2192 0.13).\n  - Impute names its fill value, with an amber caution and a \"Leave them out first\" button.\n  - The table morphs by column identity, so no tint lands on the wrong column.\n  - In multi-select lists the shown option has a hollow ring. Enter and the stage's button record the same thing: the chosen set, or the shown option if nothing is chosen.\n  - Term cards render in a portal that stays inside the window and does not cover an option (the spec checks this).\n\nMeasured on the real journey: previews p50 20 ms and p95 74 ms (one at 481 ms); fit 1.8 s; the refit band took 20.6 s.",
+  "files": [
+   "/Users/nhedglin/tabular-ml-lab/turbotab/server/service.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/server/schemas.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/server/openapi.json",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/consequences.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/decisions.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/evidence.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/fact_previews.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/row_previews.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/voice.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/methods/energy.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/methods/nesting.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/models/linear.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/models/pipeline.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/models/previews.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/stages/proposals.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/stages/rows.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/stages/modeling.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/stages/finding_words.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/tests/test_review_fixes.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/server/tests/test_review_fixes.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/core/tests/test_row_previews.py",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/Failure.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/DesignWarnings.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/Stage.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/data.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/LiveScenes.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/results/Results.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/stage/views/TableFocus.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/record/Record.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/record/Findings.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/record/Options.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/record/teach.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/record/blocks.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/record/ask/ChoiceQuestions.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/record/ask/FactQuestions.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/banner/Banner.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/components/banner/derive.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/src/state/focus.tsx",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/e2e/m1-journey.spec.ts",
+   "/Users/nhedglin/tabular-ml-lab/turbotab/frontend/e2e/m1-record.spec.ts",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-band-stopped.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-columns-concerns.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-record-counts-dated.png"
+  ],
+  "tests": {
+   "command": "venv/bin/python -m pytest turbotab/core turbotab/server -q; (turbotab/frontend) npm run check; npm run build; E2E_BASE_URL=http://127.0.0.1:8815 npx playwright test m1-journey (fresh TURBOTAB_HOME, TURBOTAB_WORKERS=2); npx playwright test m1-journey m1-record m1-stage m0-journey (mock)",
+   "passed": true,
+   "detail": "Python tests: 444 passed in 73 s, including the new Tier A tests: no preview reads a held-out row while the split recomputes; the partition's double count and its totals-only way out (known answers); the validator refuses a partition before it is recorded; sugar at 4 kcal/g; the near-singular share design. Frontend check: tsc, eslint and 100 vitest tests clean. Build OK. The real NHANES journey passed in 1.5 min with no console errors and no failed requests, run twice on a fresh home. The mock journey, m1-record, m1-stage and m0 specs all pass."
+  },
+  "deviations": [
+   "Finding 10: the stage still crossfades about 120 ms from the scene it leaves (the existing AnimatePresence exit), but every frame is now labeled as what it is ('Your data now' while the new preview loads). A placeholder from another question or an earlier recorded state is never shown as the focused option's preview.",
+   "Finding 8/11: I took the review's second option and labeled each correlation with its basis rather than recomputing the finding on training rows. The findings stage runs before any split, so recomputing would make it depend on the split. The finding now reads '0.88 across all 21,849 rows'. The evidence and the energy preview share one training sample, so both show 0.83 with their basis named.",
+   "Finding 4: while the split recomputes after a changed holdout or seed (not after an exclusion), the newest split's held-out rows stand in until the new split lands. Exclusions and missing-value answers never move a row across the seal, so the leak the review instrumented is closed; a changed holdout fraction leaves a window of about 100 ms.",
+   "Finding 13: fiber keeps its existing 2 kcal/g role and is not treated as part of carbohydrate (nesting.py says food tables disagree on this). Only sugar and starch became carbohydrate at 4 kcal/g.",
+   "Finding 2: partition is also refused when the nutrients exceed energy by more than 5% on more than 10% of rows. A small negative remainder is now described as general-factor error rather than overlap. On NHANES, partitioning protein, carb and fat_total leaves 'everything else' slightly negative on 70% of rows (median \u22120.8% of energy), because the general factors (4/4/9) run a little above NHANES's own.",
+   "Finding 3: the roles stage marks the largest share as 'excluded' with medium confidence (the reference category), and that is still the user's to confirm. I did not add a separate leave-one-out control."
+  ],
+  "inbox": [
+   "In a totals-only partition, the nested parts (sugar, fat_sat\u2026) stay in the model as raw grams beside the kcal_from_* columns. Should the partition offer to drop or carry the parts too?",
+   "I could not produce a design failure through the UI on NHANES once partition was refused at the question. To see the new failure display I recorded models over the API without a missing-values answer. A mock-server scenario with a stage error would let a spec exercise StageFailure without reaching for the API.",
+   "The exit animation (~120 ms) still overlaps text when two scenes meet. A shorter exit, or mode='wait' between different groups, may read cleaner \u2014 a taste call for the orchestrator.",
+   "Many frontend files were already failing a Prettier check before this change. The repo does not enforce Prettier (npm run check does not run it), so one formatting pass would clean that up.",
+   "The evidence card label still says 'your data as loaded', but energy evidence now reads a training sample (values as loaded, rows outside the seal). Consider 'your data as loaded, training rows'."
+  ],
+  "measurements": [
+   "Real NHANES journey: open 1.5 s; fit 1.8 s; substitution 0.8 s; refit band 20.6 s; banner re-flow after the energy change 2.1 s, everything re-flowed 22.5 s",
+   "Previews over the real journey: n=30, p50 20 ms, p95 74 ms, max 481 ms; each energy option on screen in 180\u2013284 ms",
+   "Dietary recalls shares: scaled condition number about 70,000 with all four shares, under 1,000 with one left out; NHANES raw nutrients 470 (no false concern)"
+  ],
+  "screenshots": [
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-band-stopped.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-columns-concerns.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-record-counts-dated.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-lens-light.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-missing-impute.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-energy-partition.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-q-energy-change-density.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-evidence-light.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/real-results-light.png",
+   "/Users/nhedglin/tabular-ml-lab/docs/turbotab-next/m1/screens/record-findings-light.png"
+  ]
+ },
+ "inbox": [
+  "Lineage provenance: show the columns the missing-values answer left out as raw nodes that end 'left out (mostly blank)'. Today they simply do not appear.",
+  "Let the user dispute a detected nesting. `nested_in` is derived from the data, not recorded as a decision.",
+  "Band precision: for root-n families (linear, elastic net), scale the 2,000-row refit band to the full training size, or raise the row cap for linear, which costs about 0.6 s per 50 refits.",
+  "Boosted-trees refits on 2,000 rows lose sklearn's automatic early stopping, which only switches on above 10,000 rows. The refits are therefore a slightly different model from the full fit.",
+  "The proposals stage could read the exclusions slot, so the leave-out offer's count matches the complete-case step after exclusions (18,405 rather than 18,853 on NHANES).",
+  "Categorical evidence: DistributionView has no level-count form. The prototype used a `levels` extension, which would suit binary-text findings such as `gender` and the meds columns.",
+  "Stage agent: add schema.ts aliases for the new types (PreviewResult, views, frames, Baseline, MissingReading) and a client.ts function for the evidence route.",
+  "The evidence route answers 409 `findings_not_ready` while findings are stale after a lens change. The frontend should veil the evidence rather than call the route.",
+  "Band cost on NHANES with 50 refits is about 25 s, about 80% of it boosted trees. Consider fewer refits for boosted trees, or a parallel refit pool.",
+  "[M1] No event carries the interview, so the client refetches GET /projects/{pid} on every stage status change. A server-side interview event, or the interview attached to stage events, would cut this to one push per change.",
+  "[M1] When an earlier answer changes while a later CHOICE is open (e.g. models), that question goes waiting while its stage recomputes, then remounts, and the unrecorded selection is lost. Keep drafts by question key in the Record.",
+  "[M1] A lever routed to a question that is still waiting only highlights it in the 'Then' list ('asked after \u2026'). Decide whether a lever may open a question out of order (the Router would have to allow it).",
+  "[M1] Real roles sentence: 'Column roles were set for 28 columns: \u2026' runs six lines when the proposal was confirmed unchanged. A short sentence ('The proposed roles of all 28 columns were confirmed') would read better.",
+  "[M1] The proposals.energy notes about nested parts are long (two sentences per parent). One sentence covering every parent would fit the data line better.",
+  "[M2] The roles question on very wide tables shows 14 chips per group, then a scrolling list of all of them. A search box inside the roles question would help on 20,000-column assays.",
+  "[M2] DESIGN_LANGUAGE \u00a709 says to log the 'Ask me anyway' click rate as trust telemetry. It is not logged.",
+  "[M1] TablePreview and MiniHistogram (src/components/pipeline) are unused since the panel was retired. Delete them, or reuse them on the stage's 'your data now'.",
+  "[M1] An accessibility review should confirm the pattern of aria-disabled options that answer a press with a refusal.",
+  "[M5] The header wraps to three rows at 390 px (existing item). The banner now flows below it on narrow screens instead of sticking.",
+  "[chore] The explore/stage prototype files are not Prettier-formatted (npx prettier --check src flags them).",
+  "Backend captions print '-0.00' for the residual correlation. The stage tidies it on display, but the server should print 0.00.",
+  "Backend: the substitution note still describes the row-resampling band ('200 resamples \u2026 with the fitted model held fixed'), which \u00a712.7 removes. The note should follow the new refit band.",
+  "Backend: agree on the field that carries the measured band time and the refit count. The stage reads SubstitutionArtifact.band_seconds and .n_boot.",
+  "Backend: RelationshipFrame has no y label. A step's values (e.g. residuals) are not a column, so the stage labels the axis with the step's own label. Consider adding `y_label` to frames.",
+  "Evidence for an imputation flag should sample rows where the flag is true. The first 8 rows of NHANES are all False.",
+  "Decide whether the all-nutrient partition preview, which comes back with an empty after-cloud and a units caveat, should instead be a 409 refusal with alternatives, as \u00a74 says for refusable decisions.",
+  "Fit: state the scale of each linear family's coefficients (per unit or per SD) so the forest's axis can name its unit.",
+  "The refit band for the linear family is very wide (\u00b164 mg/dL at 500 kcal) because the fat subtypes and carbohydrate are nested and collinear. Re-check once the nested-nutrient fix (\u00a712.5) lands.",
+  "Integrator: wire src/state/focus.tsx (record agent) to <Stage pid view focus onFocus/>. Retire /lab/stage or keep it as a review surface.",
+  "frontend/CLAUDE.md's layout section should list src/components/stage and src/screens/StageLabScreen.",
+  "Not built: the `inline` prototype's compare pin, a metric switcher (RMSE/MAE) on the model comparison, and journal-style export of the Results' coefficient table as LaTeX (booktabs).",
+  "Held-out discipline: proposals.energy.r_with_energy and the dietary energy finding ('fat_total correlates 0.88 with kcal') read every row, including rows the split later seals. The preview reads rows not held out (0.83), and the finding's evidence reads a 5,000-row sample of rows not held out (0.87). The energy reading should move to a stage downstream of the split, so the Record, the finding and the stage quote one r on one denominator.",
+  "The lens, target and purpose previews have no views ('Nothing about this choice can be shown on your data yet'). A lens preview could show what the lens adds: the questions it opens, the pack checks, the energy question.",
+  "The energy_adjustment strata_candidates come from proposals, which do not read the missing-values answer. The frontend now filters out left-out columns. Proposals, or the validator's exits, should do this at the source.",
+  "On the models question, the stage's 'Record this choice' button records only the previewed family (for example select_models [boosted_trees]), not the multi-select in progress. Consider hiding it for multi-select questions, or recording the selection.",
+  "Partition over all six nutrients (with nested fat subtypes) previews a plot that does not change, with a note that fat_sat's unit cannot be confirmed. The Record lists partition as applicable. applicability.partition should account for nested parts and unconfirmed units.",
+  "Recapture src/mocks/m1-stage-fixture.json with the \u00a712 backend: real storyboards, marks, band, evidence and the leave-out preview. Then delete the mock's emulation code.",
+  "Table-focus cells print e.g. '80.0000' for bp_di (cellFormatter picks 4 digits from a target value below 1). Use per-column precision.",
+  "The /lab/stage review route and its 627 KB fixture chunk ship in production builds, lazily loaded. Gate it to dev:mock.",
+  "In a totals-only partition, the nested parts (sugar, fat_sat\u2026) stay in the model as raw grams beside the kcal_from_* columns. Should the partition offer to drop or carry the parts too?",
+  "I could not produce a design failure through the UI on NHANES once partition was refused at the question. To see the new failure display I recorded models over the API without a missing-values answer. A mock-server scenario with a stage error would let a spec exercise StageFailure without reaching for the API.",
+  "The exit animation (~120 ms) still overlaps text when two scenes meet. A shorter exit, or mode='wait' between different groups, may read cleaner \u2014 a taste call for the orchestrator.",
+  "Many frontend files were already failing a Prettier check before this change. The repo does not enforce Prettier (npm run check does not run it), so one formatting pass would clean that up.",
+  "The evidence card label still says 'your data as loaded', but energy evidence now reads a training sample (values as loaded, rows outside the seal). Consider 'your data as loaded, training rows'."
+ ],
+ "minors": [
+  {
+   "severity": "minor",
+   "title": "Elastic net tunes its penalty on inner folds that split a participant's rows",
+   "evidence": "ElasticNetCV(cv=int) and LogisticRegressionCV(cv=int) in elastic_net.py use plain inner KFold. On dietary_recalls, with 2 recalls per participant, a person's two rows land in different inner folds, so the penalty choice is optimistic. The outer folds are grouped (verified), so the reported CV and holdout are unaffected.",
+   "fix": "In fit_stage, pass group-aware inner splits (GroupKFold over the fit rows' groups) to the estimator's cv when the split is grouped."
+  },
+  {
+   "severity": "minor",
+   "title": "A model that only ties the baseline is not flagged",
+   "evidence": "In genomics, boosted trees score CV AUC 0.5 \u00b1 0 (constant predictions: min_samples_leaf 20 on 38-row folds), exactly the class prior's 0.5. baseline_concern fires only when strictly worse, so the Results show no concern, beside a holdout of 0.944 (shots/50-genomics-results.png).",
+   "fix": "Flag \u2264 baseline within a small tolerance: 'Predicts no better than the class prior'."
+  },
+  {
+   "severity": "minor",
+   "title": "Findings keep pushing levers that were already pulled",
+   "evidence": "After residual adjustment is recorded, the pushed card still says 'fat_total correlates 0.88 with kcal: nutrient effects are tangled with total energy' with 'Adjust for energy \u2192' (shots/22). The flag findings still say 'Mark as a flag', and SEQN 'Mark as identifier', though the recorded roles already do both. The findings stage reads only lens and target. DRIVE_RUBRIC \u00a75.6.",
+   "fix": "Mark a finding as addressed, and fold it away, once its routed question holds an answer matching its lever."
+  },
+  {
+   "severity": "minor",
+   "title": "A save started mid-flip exports a different step from the one the menu names",
+   "evidence": "Press Space, then open Save within about 120 ms. The menu says 'This step: Keep what energy does not explain', but the downloaded SVG is the 'Fit fat_total on kcal' frame. Its caption describes the before/after pair, not the step (shots/saved-midflip-step.svg). No interpolated frame is ever saved, so that contract holds.",
+   "fix": "Freeze the step when the menu opens, and caption a step with its own label."
+  },
+  {
+   "severity": "minor",
+   "title": "Wording and accessibility nits",
+   "evidence": "- A refusal reads '`protein` does not has the energy role'.\n- The Atwater message cites '7\u00b7alcohol' on a table with no alcohol column.\n- The partition preview shows a 'before and after' scatter whose caption is an error and whose readout is '\u2014'.\n- The shelf says 'Ranked for 21,348 rows' while the models train on 17,084.\n- In the roles menu, Enter opens the menu but focus stays on the chip and the arrow keys do nothing; after a choice, focus drops to <body>.\n- Genomics Results list all 497 coefficient rows.",
+   "fix": "Fix the grammar. Name only the macronutrients present. Show a partition that cannot run as a refusal. Base the shelf on the training n. Move focus into the role menu and back to the chip. Cap the wide forest plot at about 12 rows plus a count of the rest."
+  },
+  {
+   "severity": "minor",
+   "title": "Switching options after a 'still' option replays the storyboard, and every switch waits ~150 ms on the old title",
+   "evidence": "Standard \u2192 Density plus energy resets to 'Your data now' (grey raw cloud for ~400 ms), then plays forward, so the flip's side does not hold (strip-switch-density_multivariate.png). This is a designed exception in Stage.tsx, but ruling 4 says the position holds across options.\nEven with a warm cache, each arrow press shows the old option's title with a disabled Record for ~120\u2013180 ms, then crossfades in under 60 ms. It reads as a swap rather than a morph (strip-res-to-density.png, strip-switch-standard.png).",
+   "fix": "Hold 'with this choice' after a still option too, and land directly on the new result. Shorten or skip the debounce when the preview is cached, and morph within a unit over the full 150\u2013300 ms."
+  },
+  {
+   "severity": "minor",
+   "title": "Settle and scene crossfades show blank or garbled frames",
+   "evidence": "On recording, the question's content vanishes at once and a tall empty white card shrinks to the sentence (05-lens-settle-50ms.png). The stage's two empty-state lines overlap as garbled text during the crossfade. Unit-change crossfades briefly double the axis labels ('fat_total_adj_kcal').\nAfter the reverse flip, the dashed trend line pops in only when pos reaches exactly 0 (cmp-now-fwd0-rev900.png).",
+   "fix": "Fade the question body out while the card's height animates (or morph the heading into the sentence). Use mode='wait' or offset positioning for text-only empty states. Fade the trend line with pos rather than toggling it at 0."
+  },
+  {
+   "severity": "minor",
+   "title": "Decision sentences are not fully reproducible or publishable",
+   "evidence": "Roles: 'exposures protein, sugar, carb and 4 more; covariates age, gender, bp_sys and 9 more'. Energy: 'protein, carb, fat_total and 3 more'. Willett: '1,419 rows with kcal outside 500\u20133500 for gender female and outside 800\u20134200 for male' (column=value machinery, no thousands separator, no kcal/day).\nMissing: the reason ('blank on 86%, likely not asked') is not in the sentence. Rubric questions 3 and 12.",
+   "fix": "List every column in the stored sentence (truncate only visually, with a disclosure). Write 'women outside 500\u20133,500 kcal/day and men outside 800\u20134,200 kcal/day (Willett's sex-specific cut-offs)', and carry the reason for leaving out the meds columns."
+  },
+  {
+   "severity": "minor",
+   "title": "'Your data now' Results card lists only three of the questions the fit waits on",
+   "evidence": "'Nothing has been fit yet. It waits on purpose, then roles, then exclusions.' The fit also waits on missing values, split, energy adjustment and models (waiting.slice(0, 3) in LiveScenes.tsx:211 and 244). The 'Not asked' task line repeats itself ('read as regression \u2026 read as a regression outcome') and puts 'high' in a data chip.",
+   "fix": "Say 'It waits on 7 answers, starting with purpose', or list them all, and drop the duplicate clause."
+  },
+  {
+   "severity": "minor",
+   "title": "Exclusion and energy previews lost the prototype's data-specific detail",
+   "evidence": "Prototype S2 showed 'women 146 below \u00b7 350 above \u00b7 men 244 below \u00b7 679 above' and 'kcal runs from 0 to 15,594 a day\u2026'. Production shows 'implausible intakes (Willett's sex-specific cut-offs)' and a generic one-liner, and clips the kcal axis at about 6,500 (19-excl-willett.png vs s2-sex-specific-light.png). The prototype's 'the scatter shows 800 of them' is also gone.",
+   "fix": "Restore the per-sex under/over counts under the cut row (a methods section needs them) and the one-liner that cites this table's own range."
+  },
+  {
+   "severity": "minor",
+   "title": "The energy question exceeds the word budget, and new-question headings get an input-like focus box",
+   "evidence": "The energy viewport has 308\u2013365 visible words, against the prototype's 269\u2013285. The nested-fat note runs about 35 words of small grey serif, over the 22-word one-liner budget (33-energy-open.png). Every newly opened question's heading wears a teal rectangle that reads as a text field (13-roles-open.png, 55-results.png).",
+   "fix": "Fold the nested-parts note into the partition option's reason, or a term card. Give programmatic heading focus no visible outline (tabIndex -1 headings) and mark 'now' with the existing keyline."
+  },
+  {
+   "severity": "minor",
+   "title": "The uncertainty band is muddy and its time estimate is off",
+   "evidence": "Three translucent family bands overlap the grey disagreement fill, and family identity is lost (61-band.png). The offer said 'about 20 s'; with 2 workers it took 34 s. The whole Results panel is veiled for those 34 s, and again for 31 s after the method change.",
+   "fix": "Draw bands as a dash-matched outline or an interval at a few k values, or show one family's band at a time with a legend toggle. Measure the estimate with the actual worker count. Veil only the curves card while the band refits."
+  },
+  {
+   "severity": "minor",
+   "title": "Copy and data wording slips in the missing-values preview",
+   "evidence": "'Leaving out meds_chol and meds_hbp keeps 17,566 rows complete cases would drop' is missing 'that'. A True/False medication column is called 'two-level text' (the GUIDED-158 mistake). bp_di is formatted 80.0000, and the 0.0000 diastolic (the SAS 5.4e-79 artifact) appears without remark (24-missing-leave-out.png).",
+   "fix": "Fix the grammar and call the meds columns 'yes/no'. Format values with each column's own precision; flag the 5.4e-79 zero for the inbox."
+  },
+  {
+   "severity": "minor",
+   "title": "Evidence views carry wrong or truncated labels",
+   "evidence": "The meds_chol evidence shows the flip 'Your data now \u21c4 With this choice (preview)' although no choice is involved, beside 'your data as loaded' (84-evidence-meds.png). Stage titles truncate ('\u2026tangled with tota\u2026', 'Willett\u2026' at 1024 px), and the readout clips at 1024 px ('n 21,849 \u2192 20,4', 77-touch-tap-once.png).",
+   "fix": "Treat evidence as still: no flip, labeled 'Your data as loaded'. Let titles wrap to two lines, and wrap the readout under the flip on narrow stages."
+  },
+  {
+   "severity": "minor",
+   "title": "Substitution captions undercut the curve for a reviewer",
+   "evidence": "Under a fat_total\u2192carb curve, the caption states the residual estimand as 'in place of the average of all other energy sources', which contradicts the pairwise substitution drawn. 'k' in 'per 100 kcal at k = 100' is undefined. \u0394 predicted glucose has no units. Excluded parent/child cells in the pair matrix are empty with no reason given (59-curves.png).",
+   "fix": "Caption the curve with its own estimand (energy moved from fat_total to carb at fixed kcal, through inputs adjusted by the recorded method). Define k inline ('k = kcal moved'), give the outcome's unit, and hatch excluded cells with a title ('fat_sat is part of fat_total')."
+  },
+  {
+   "severity": "minor",
+   "title": "Saved figures and thumbnail views have small truth and legibility gaps",
+   "evidence": "A single-step save is titled '\u2026, before and after'. A residual point is clipped at the frame edge. The caption omits that the 800 points are a sample (41-saved-midflip-render.png). Thumbnail histograms clip the 99.5th-percentile tail without a note (the note is only on the primary). An 18-row lineage in a thumbnail squeezes to a ~9 px pitch (48-term-card.png).",
+   "fix": "Title by the saved state, pad the axis domain, and add 'n of N drawn' to the caption. Show the clip note in thumbnails, or collapse untouched lineage rows in compact views."
+  },
+  {
+   "severity": "minor",
+   "title": "The propagation sweep is barely visible, and the banner lags a recorded method",
+   "evidence": "After density was recorded, the Columns and Models segments veiled for only 42 ms (13\u219255 ms), so only the Result segment visibly propagates (strip-banner-reflow.png). After residual was recorded and before models were chosen, the banner still read 'COLUMNS 18 predictors' with no method.",
+   "fix": "Hold each downstream segment's veil for at least one 150 ms propagate step, in order. Show the recorded energy method in the Columns segment from the decision itself, before the design stage runs."
+  },
+  {
+   "severity": "minor",
+   "title": "Internals and dev affordances show in the product",
+   "evidence": "A 'Motion lab' link sits in the product header. Results show 'baseline \u22120.00018'. 'Mark design columns \u2192' is offered when the table has no design columns. 'seed 0' appears in the split sentence (acceptable).",
+   "fix": "Hide /lab behind dev builds, show the baseline as '\u2248 0.000', and word the survey finding's lever as 'Tell TurboTab this sample has no design columns' or point it to the drawer."
+  }
+ ]
+}

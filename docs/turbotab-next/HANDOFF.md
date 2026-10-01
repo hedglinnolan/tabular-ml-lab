@@ -1,4 +1,23 @@
-# Handoff — paused 2026-09-27, mid-M1
+# Handoff
+
+**State (2026-10-01): M1 is done and tagged `next-m1`.** The production app runs the full NHANES
+journey in a real browser: the Record with its card-based decisions, the pipeline banner, and the
+stage. The stage has the transform player (the flip plays each method's real storyboard), previews
+of every option on the user's own data, finding evidence, savable figures in journal style with
+provenance captions, and the Results (models against a baseline, coefficients, and substitution
+curves with a refit uncertainty band). Checks: 444 Python tests, 100 frontend tests, and the
+m1-journey Playwright spec against a real server. Run records: `m1/w1-result.json` and
+`m1/w2-result.json`. Screens: `m1/screens/`.
+
+**Next: M2** (BLUEPRINT §9). It covers the opening sequence for all five lenses (orientation,
+grain and repeats, eligibility, the seal), findings with preview-before-apply and deferral, and the
+wide omics data path, benchmarked. Start with the "M2-first" and "[M2]" items in INBOX.md (the energy
+card's word budget first). Then triage the rest of that file, merge `main` in, write M2_CONTRACT.md,
+and launch.
+
+---
+
+## History: the pause of 2026-09-27 (mid-M1)
 
 Paused at Nolan's request (weekly usage limit). Everything is committed and pushed. Start here.
 
