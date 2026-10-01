@@ -112,8 +112,8 @@ function residualStory(views: ConsequenceView[]): ConsequenceView[] {
       return {
         ...rel,
         story: [
-          { label: "Fit each nutrient on energy", points: rel.points_before, r: rel.r_before, fit_line: { slope, intercept } },
-          { label: "Keep what energy does not explain", points: residuals, r: corr(residuals), fit_line: { slope: 0, intercept: 0 } },
+          { label: "Fit each nutrient on energy", points: rel.points_before, r: rel.r_before, fit_line: { slope, intercept }, y_label: rel.y_label_before },
+          { label: "Keep what energy does not explain", points: residuals, r: corr(residuals), fit_line: { slope: 0, intercept: 0 }, y_label: `${rel.y_label_before} residual` },
         ],
       };
     }
@@ -125,10 +125,11 @@ function residualStory(views: ConsequenceView[]): ConsequenceView[] {
       return {
         ...d,
         story: [
-          { label: "Fit each nutrient on energy", hist: d.before },
+          { label: "Fit each nutrient on energy", hist: d.before, x_label: d.before_label },
           {
             label: `${d.column} residuals, centered on 0`,
             hist: { ...d.after, edges: d.after.edges.map((e) => +(e - mean).toPrecision(4)) },
+            x_label: `${d.column} residual`,
           },
         ],
       };
@@ -190,7 +191,7 @@ function withStory(c: Captured): PreviewResult {
   if (d.kind === "set_energy_adjustment" && d.method === "partition") body.views = partitionStory(body.views);
   if (d.kind === "set_exclusions") {
     const marks = marksFor(d);
-    body.views = body.views.map((v) => (v.kind === "distribution" ? { ...v, marks, cuts: [] } : v));
+    body.views = body.views.map((v) => (v.kind === "distribution" ? { ...v, marks } : v));
   }
   return body;
 }
@@ -210,6 +211,39 @@ const sameDecision = (a: Record<string, unknown>, b: Record<string, unknown>) =>
 
 function refusal(code: string, message: string, exits: Refusal["error"]["exits"] = []): Refusal {
   return { error: { code, message, exits } };
+}
+
+/** The roles preview, as the server draws it: every column, the predictors entering the matrix. */
+function rolesPreview(roles: Record<string, string>): PreviewResult {
+  const PREDICTOR = ["exposure", "covariate", "energy"];
+  const nodes: Lineage["nodes"] = [];
+  const links: Lineage["links"] = [];
+  let n = 0;
+  for (const [c, role] of Object.entries(roles)) {
+    const r = role as Lineage["nodes"][number]["role"];
+    nodes.push({ id: `raw:${c}`, column: c, lane: "raw", role: r, label: c, formula: null, group: null, count: 1 });
+    if (!PREDICTOR.includes(role)) continue;
+    n++;
+    nodes.push({ id: `mx:${c}`, column: c, lane: "matrix", role: r, label: c, formula: null, group: null, count: 1 });
+    links.push({ source: `raw:${c}`, target: `mx:${c}`, operation: "kept" });
+  }
+  const total = Object.keys(roles).length;
+  return {
+    kind: "set_roles",
+    views: [
+      {
+        kind: "lineage",
+        title: "Which columns enter the model",
+        caption: `\`${n}\` of \`${total}\` columns enter the model.`,
+        emphasis: [],
+        before: null,
+        after: { nodes, links, collapsed: false },
+        story: [],
+      },
+    ],
+    basis: "Counts on all 21,849 rows.",
+    note: null,
+  };
 }
 
 // ── the project ──────────────────────────────────────────────────────────────
@@ -357,7 +391,7 @@ class DemoProject {
     const fit = clone(base);
     // §12.6: each model carries the baseline, and says so in plain words when it loses to it.
     for (const m of fit.models) {
-      m.baseline = { ...F.baseline };
+      m.baseline = { ...F.baseline, label: "the outcome's average" };
       const cv = m.cv[F.baseline.metric]?.mean;
       if (cv !== null && cv !== undefined && cv < F.baseline.value) {
         m.concerns = [
@@ -390,8 +424,11 @@ class DemoProject {
       ci_low: banded ? (band.families[m.family]?.ci_low ?? null) : null,
       ci_high: banded ? (band.families[m.family]?.ci_high ?? null) : null,
     }));
-    art.n_boot = banded ? band.n_boot : 0;
-    art.band_seconds = band.seconds;
+    art.carried = art.carried ?? [];
+    art.band = banded
+      ? { n_boot: band.n_boot, n_rows: band.rows, grouped_by: null, seconds: band.seconds, failed: 0 }
+      : null;
+    art.band_estimate = banded ? null : { n_boot: band.n_boot, seconds: band.seconds };
     if (nBoot > 0 && !banded) art.note = `${art.note} (The mock holds a refit band for fat_total → carb only.)`;
     if (density && key !== `${F.density.substitution.donor}>${F.density.substitution.recipient}`) {
       art.note = `${art.note} (The mock holds density curves for fat_total → carb only; this one is the residual capture.)`;
@@ -447,6 +484,45 @@ class DemoProject {
     return hit ? withStory(hit) : null;
   }
 
+  /**
+   * Any other project (the Record's NHANES-shaped table): the captured preview of the same kind of
+   * option, said to be the mock's stand-in; else the real server's answer for a choice with no
+   * picture yet.
+   */
+  previewLike(d: Decision & Record<string, unknown>): PreviewResult | Refusal {
+    const exact = this.preview(d);
+    if (exact) return exact;
+    const same = (c: Captured): boolean => {
+      const x = c.decision as Decision & Record<string, unknown>;
+      if (x.kind !== d.kind || c.status !== 200) return false;
+      switch (d.kind) {
+        case "set_energy_adjustment":
+          return x.method === d.method && ((x.nutrients as string[]).length > 3) === (((d.nutrients as string[]) ?? []).length > 3);
+        case "set_missing":
+          return x.strategy === d.strategy;
+        case "set_split":
+          return x.holdout === d.holdout;
+        case "select_models":
+          return [...(x.models as string[])].sort().join() === [...(d.models as string[])].sort().join();
+        case "set_exclusions": {
+          const [a] = (x.rules as { low: number | null; high: number | null; by: unknown }[]) ?? [];
+          const [b] = (d.rules as { low: number | null; high: number | null; by: unknown }[]) ?? [];
+          if (!a || !b) return !a && !b;
+          return !!a.by === !!b.by && (!!a.by || (a.low === b.low && a.high === b.high));
+        }
+        default:
+          return false;
+      }
+    };
+    if (d.kind === "set_roles") return rolesPreview(d.roles as Record<string, string>);
+    const near = Object.values(F.previews).flat().find(same);
+    if (near) {
+      const body = withStory(near);
+      return { ...body, note: `${body.note ? `${body.note} ` : ""}(Mock: the captured NHANES preview of this kind of option.)` };
+    }
+    return { kind: d.kind, views: [], basis: "Nothing is computed for this choice.", note: "Nothing about this choice can be shown on your data yet." };
+  }
+
   evidence(fid: string): PreviewResult | null {
     const f = F.findings.findings.find((x) => x.id === fid);
     if (!f) return null;
@@ -469,6 +545,7 @@ class DemoProject {
         emphasis: f.affected_columns,
         before: null,
         after: (F.previews.energy_adjustment!.find((c) => c.decision.method === "none")!.body.views.find((v) => v.kind === "lineage") as LineageView).after,
+        story: [],
       };
       return { kind: "evidence", views: [asRecorded, lineage], basis: residual.basis, note: null };
     }
@@ -487,7 +564,6 @@ class DemoProject {
           { value: 500, label: "500", group: null },
           { value: 5000, label: "5,000", group: null },
         ],
-        cuts: [],
       };
       const rows: RowFlowView = { ...flow, title: "Rows, before any exclusion", caption: "", before: flow.before, after: flow.before };
       return { kind: "evidence", views: [evidence, rows], basis, note: null };
@@ -511,6 +587,7 @@ class DemoProject {
         rows,
         changed: [],
         n_affected_columns: cols.length,
+        story: [],
       };
       views.push(table);
     }
@@ -527,6 +604,7 @@ class DemoProject {
         before_label: input.column,
         after_label: input.column,
         marks: [],
+        story: [],
       });
     }
     if (!views.length) {
@@ -538,6 +616,7 @@ class DemoProject {
         emphasis: [],
         before: null,
         after: lineage,
+        story: [],
       });
     }
     return { kind: "evidence", views, basis, note: null };
@@ -585,6 +664,20 @@ export function m1StageHandlers(): HttpHandler[] {
         status: status.status,
         artifact: p.artifact(stage),
       });
+    }),
+    // Every other project (the Record's mock table): previews and evidence from the capture.
+    http.post("/api/projects/:pid/preview", async ({ request }) => {
+      const d = (await request.json()) as Decision & Record<string, unknown>;
+      await later(40 + Math.random() * 60);
+      const out = p.previewLike(d);
+      return "error" in out ? HttpResponse.json(out, { status: 409 }) : HttpResponse.json(out);
+    }),
+    http.get("/api/projects/:pid/findings/:fid/evidence", async ({ params }) => {
+      await later(30);
+      const out = p.evidence(decodeURIComponent(String(params.fid)));
+      return HttpResponse.json(
+        out ?? { kind: "evidence", views: [], basis: "The mock holds no evidence for this finding.", note: null },
+      );
     }),
     http.post(`${base}/jobs/:jid/cancel`, ({ params }) => {
       p.version++;

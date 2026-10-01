@@ -1,9 +1,7 @@
 /**
- * The M1 shapes the Record and the banner read, as aliases over the generated contract,
- * plus small hand-written additions for M1_CONTRACT §12 fields the backend is adding in
- * parallel (marked "§12"). Every §12 field is optional here so the client works before and
- * after the server sends it. The integrator replaces the additions with the regenerated
- * types once openapi.json carries them; nothing else should need to change.
+ * The M1 contract the Record and the banner read: thin aliases over the generated types
+ * (src/api/generated.ts, from the server's OpenAPI document). Nothing here is hand-shaped;
+ * regenerate after a server model change and the aliases follow.
  */
 import type { components } from "./generated";
 import type { Decision, StageArtifacts } from "./schema";
@@ -51,6 +49,11 @@ export type EvidenceBadge = S["Evidence"];
 export type Role = S["RoleProposal"]["proposed"];
 export type EnergyMethod = Extract<Decision, { kind: "set_energy_adjustment" }>["method"];
 export type ExclusionRule = Extract<Decision, { kind: "set_exclusions" }>["rules"][number];
+/** §12.4: `drop_columns` leaves the mostly-blank columns out before the strategy applies. */
+export type SetMissing = Extract<Decision, { kind: "set_missing" }>;
+export type MissingSpec = S["MissingSpec"];
+/** §12.7: `n_boot` > 0 asks for the refit band. */
+export type SetSubstitution = Extract<Decision, { kind: "set_substitution" }>;
 
 const roles = [
   "exposure",
@@ -66,30 +69,16 @@ const roles = [
 export const ROLES: Exactly<typeof roles, Role> = roles;
 export const PREDICTOR_ROLES: readonly Role[] = ["exposure", "energy", "covariate"];
 
-/** §12.4: leave the mostly-blank columns out of the predictors before the strategy applies. */
-export type SetMissingM1 = Extract<Decision, { kind: "set_missing" }> & {
-  drop_columns?: string[];
-};
-
 // ── stage artifacts ──────────────────────────────────────────────────────────
 
-/** §12.5: `nested_in` names the parent nutrient a component is part of (sugar ⊂ carb). */
-export type RoleProposal = S["RoleProposal"] & { nested_in?: string | null };
-export type RolesArtifact = Omit<S["RolesArtifact"], "columns"> & { columns: RoleProposal[] };
-
-/** §12.4: a predictor's blanks, and whether they likely mean "not asked". */
-export interface MissingColumn {
-  column: string;
-  n_missing: number;
-  share: number;
-  likely_not_asked: boolean;
-  reason: string;
-}
+export type RoleProposal = S["RoleProposal"];
+export type RolesArtifact = S["RolesArtifact"];
+export type MissingColumn = S["MissingColumn"];
+export type MissingReading = S["MissingReading"];
+export type LeaveOut = S["LeaveOut"];
 export type ExclusionProposal = S["ExclusionProposal"];
 export type EnergyReading = S["EnergyReading"];
-export type ProposalsArtifact = S["ProposalsArtifact"] & {
-  missing?: { columns: MissingColumn[] } | null;
-};
+export type ProposalsArtifact = S["ProposalsArtifact"];
 
 export type RowStep = S["RowStep"];
 export type CohortArtifact = S["CohortArtifact"];
@@ -98,15 +87,19 @@ export type ShelfFamily = S["ShelfFamily"];
 export type ShelfArtifact = S["ShelfArtifact"];
 export type Lineage = S["Lineage"];
 export type LineageNode = S["LineageNode"];
+export type LineageLink = S["LineageLink"];
+export type NestedColumn = S["NestedColumn"];
 export type DesignArtifact = S["DesignArtifact"];
 
 /** §12.6: what a model must beat — the outcome's mean (regression) or the class prior. */
-export interface Baseline {
-  metric: string;
-  value: number;
-}
-export type FittedModel = S["FittedModel"] & { baseline?: Baseline | null };
-export type FitArtifact = Omit<S["FitArtifact"], "models"> & { models: FittedModel[] };
+export type Baseline = S["Baseline"];
+export type MetricSummary = S["MetricSummary"];
+export type Coefficient = S["Coefficient"];
+export type FittedModel = S["FittedModel"];
+export type FitArtifact = S["FitArtifact"];
+export type SubstitutionModel = S["SubstitutionModel"];
+export type SubstitutionBand = S["SubstitutionBand"];
+export type BandEstimate = S["BandEstimate"];
 export type SubstitutionArtifact = S["SubstitutionArtifact"];
 
 export interface M1StageArtifacts {

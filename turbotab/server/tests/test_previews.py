@@ -135,7 +135,10 @@ def test_recorded_sentences_count_rows_as_the_participant_flow_does(client):
 
     assert said["set_exclusions"].startswith(f"`{steps['exclusion:0']['dropped']}` rows with `energy_kcal`")
     done = steps["complete_cases"]
-    assert f"`{done['n']:,}` of `{done['n'] + done['dropped']:,}` rows remain" in said["set_missing"]
+    if done["dropped"]:
+        assert f"`{done['n']:,}` of `{done['n'] + done['dropped']:,}` rows remain" in said["set_missing"]
+    else:  # nothing dropped: said plainly, not "580 of 580 rows remain"
+        assert f"no row is missing any predictor, so all `{done['n']:,}` rows remain" in said["set_missing"]
     assert f"of the `{done['n']:,}` rows" in said["set_split"]
     assert "keeping each `participant_id`'s rows together" in said["set_split"]
     assert all(not voice.machinery(s) for s in said.values()), said

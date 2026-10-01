@@ -178,29 +178,10 @@ const GROUP_NAME: Record<string, string> = { female: "women", male: "men" };
 export function distributionPanel(
   st: DistributionState,
   marks: Mark[],
-  levels: string[] | undefined,
   base: HistogramData | null,
 ) {
   return (b: Box, uid: string) => {
     const h = st.hist;
-    if (levels) {
-      const rows = levels.map((l, i) => ({ label: l, n: h.counts[i] ?? 0 }));
-      if (h.n_missing) rows.push({ label: "blank", n: h.n_missing });
-      const top = Math.max(1, ...rows.map((r) => r.n));
-      const rowH = Math.min(30, (b.y1 - b.y0) / Math.max(1, rows.length));
-      const x0 = b.x0 + 110;
-      const x1 = b.x1 - 70;
-      return rows
-        .map((r, i) => {
-          const y = b.y0 + i * rowH + rowH / 2;
-          return (
-            text(x0 - 8, y + 4, r.label, { size: 11, anchor: "end" }) +
-            el("rect", { x: x0, y: y - 7, width: ((x1 - x0) * r.n) / top, height: 14, fill: J.light }) +
-            text(x1 + 8, y + 4, fmtInt(r.n), { size: 11 })
-          );
-        })
-        .join("");
-    }
     const box = { x0: b.x0 + 6, x1: b.x1 - 6, y0: b.y0 + (marks.some((m) => m.group) ? 34 : 22), y1: b.y1 - 40 };
     const clip = clipTail(h, marks.map((m) => m.value));
     const lo = h.edges[0] ?? 0;
@@ -373,13 +354,13 @@ export function panelFor(track: Track, index: number): Panel {
     }
     case "distribution": {
       const d = view as DistributionView;
-      const marks = d.marks.length ? d.marks : (d.cuts ?? []).map((value) => ({ value, label: fmtInt(value), group: null }));
+      const marks = d.marks;
       const first = (track.states as DistributionState[])[0]!.hist;
       const s = st as DistributionState;
       const sameEdges = s.hist.edges.length === first.edges.length && s.hist.edges.every((e, i) => e === first.edges[i]);
       return {
         label: st.label,
-        body: distributionPanel(s, sameEdges ? marks : [], d.levels, index > 0 && sameEdges ? first : null),
+        body: distributionPanel(s, sameEdges ? marks : [], index > 0 && sameEdges ? first : null),
       };
     }
     case "lineage":

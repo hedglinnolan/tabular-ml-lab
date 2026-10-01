@@ -8,8 +8,9 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { isRefusalError, stageApi } from "../../api/client";
-import type { M1StageArtifacts, M1StageName, PreviewResult } from "../../api/m1-stage-types";
+import { api, isRefusalError } from "../../api/client";
+import type { PreviewResult } from "../../api/m1-stage-types";
+import type { AnyStageArtifacts, AnyStageName } from "../../api/m1-types";
 import { keys } from "../../api/queries";
 import type { Decision, ProjectView, Refusal, StageResult } from "../../api/schema";
 import { veilFor, type VeilState } from "../../motion/StaleVeil";
@@ -66,7 +67,7 @@ export function usePreview(pid: string, option: OptionFocus | null, seq: number)
     queryFn: async ({ signal }): Promise<Answer> => {
       const { decision, label } = settled!;
       try {
-        return { key, label, decision, result: await stageApi.preview(pid, decision, signal), refusal: null };
+        return { key, label, decision, result: await api.preview(pid, decision, signal), refusal: null };
       } catch (e) {
         // A refused option is still an answer: the stage shows why, and the ways out.
         if (isRefusalError(e)) return { key, label, decision, result: null, refusal: e.refusal };
@@ -92,7 +93,7 @@ export function useEvidence(pid: string, findingId: string | null, seq: number) 
     queryKey: [pid, "evidence", findingId ?? "", seq] as const,
     queryFn: async ({ signal }): Promise<EvidenceAnswer> => ({
       key: findingId ?? "",
-      result: await stageApi.findingEvidence(pid, findingId!, signal),
+      result: await api.findingEvidence(pid, findingId!, signal),
     }),
     enabled: findingId !== null,
     placeholderData: keepPreviousData,
@@ -101,9 +102,9 @@ export function useEvidence(pid: string, findingId: string | null, seq: number) 
   return { answer: q.data, error: q.error, loading: q.data?.key !== findingId };
 }
 
-export interface StageData<K extends M1StageName> {
-  result: StageResult<M1StageArtifacts[K]> | undefined;
-  artifact: M1StageArtifacts[K] | null;
+export interface StageData<K extends AnyStageName> {
+  result: StageResult<AnyStageArtifacts[K]> | undefined;
+  artifact: AnyStageArtifacts[K] | null;
   veil: VeilState;
   status: ProjectView["stages"][string] | undefined;
 }
@@ -113,7 +114,7 @@ export interface StageData<K extends M1StageName> {
  * server reports the stage fresh at a key the cached result does not have, it is fetched again.
  * An older artifact stays on screen, veiled, while the new one computes.
  */
-export function useM1Stage<K extends M1StageName>(
+export function useM1Stage<K extends AnyStageName>(
   pid: string,
   view: ProjectView,
   name: K,
@@ -124,7 +125,7 @@ export function useM1Stage<K extends M1StageName>(
   const exists = !!status && status.status !== "idle";
   const q = useQuery({
     queryKey: keys.stage(pid, name),
-    queryFn: ({ signal }) => stageApi.stage(pid, name, signal),
+    queryFn: ({ signal }) => api.stage(pid, name, signal),
     enabled: enabled && exists,
   });
   const behind =

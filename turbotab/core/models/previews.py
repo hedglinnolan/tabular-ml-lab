@@ -75,7 +75,10 @@ def _num(value: float | None) -> str:
 
 
 def _r(value: float | None) -> str:
-    return "n/a" if value is None else f"{value:.2f}"
+    """A correlation to two places; a residual's r of -1.9e-17 is 0.00, never "-0.00"."""
+    if value is None:
+        return "n/a"
+    return "0.00" if abs(value) < 0.005 else f"{value:.2f}"
 
 
 def _names(columns: Sequence[str], limit: int = 2) -> str:

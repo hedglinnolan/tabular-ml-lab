@@ -88,10 +88,10 @@ test("the record follows the Router from the lens to the substitution", async ({
   // Keyboard: focusing an option previews it on the stage; arrows move; Escape goes live.
   await page.getByTestId("option-dietary").focus();
   await expect(stage(page)).toHaveAttribute("data-focus", "option");
-  await expect(page.getByTestId("stage-text")).toContainText("Dietary intake");
+  await expect(page.getByTestId("stage-title")).toContainText("Dietary intake");
   await page.keyboard.press("ArrowDown");
   await expect(page.getByTestId("option-clinical")).toBeFocused();
-  await expect(page.getByTestId("stage-text")).toContainText("Clinical measurements");
+  await expect(page.getByTestId("stage-title")).toContainText("Clinical measurements");
   await page.keyboard.press("Escape");
   await expect(stage(page)).toHaveAttribute("data-focus", "live");
   await page.keyboard.press("ArrowUp");
@@ -145,7 +145,7 @@ test("the record follows the Router from the lens to the substitution", async ({
   await page.getByTestId("role-chip-meds_hbp").click();
   await expect(page.getByTestId("role-menu")).toContainText("Medication use");
   await page.getByTestId("role-excluded").hover();
-  await expect(page.getByTestId("stage-text")).toContainText("meds_hbp as excluded");
+  await expect(page.getByTestId("stage-title")).toContainText("meds_hbp as excluded");
   await page.getByTestId("role-chip-meds_hbp").click(); // closes the menu; nothing changed
   await park(page);
   await both(page, "roles", { at: roles });
@@ -194,7 +194,7 @@ test("the record follows the Router from the lens to the substitution", async ({
   await expect(page.getByTestId("concept-drawer")).toHaveCount(0);
   await energy.getByTestId("why-energy_adjustment").click();
   await page.getByTestId("option-residual").hover();
-  await expect(page.getByTestId("stage-text")).toContainText("Residual method");
+  await expect(page.getByTestId("stage-title")).toContainText("Residual method");
   await both(page, "energy", { at: energy });
   // aria-disabled, yet still on the shelf: a press (here, Enter) is answered, never ignored.
   await page.getByTestId("option-partition").focus();

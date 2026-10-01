@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useProjectEvents } from "../api/events";
-import type { BannerSegment, StageFocus } from "../api/m1-stage-types";
+import type { BannerSegment, StageFocus } from "../state/focus";
 import { useDecide, useProjectView } from "../api/queries";
 import type { Decision } from "../api/schema";
 import { Header } from "../components/Header";

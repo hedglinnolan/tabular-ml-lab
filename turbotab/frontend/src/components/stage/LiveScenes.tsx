@@ -144,6 +144,18 @@ function ColumnsCard({ view, data, full }: { view: ProjectView; data: LiveData; 
   const open = view.interview.find((i) => i.status === "open");
   const openLabel = !full && open?.key === "energy_adjustment" ? "energy adjustment acts here" : null;
   const matrix = data.design?.matrix;
+  if (!lineage.nodes.length) {
+    return (
+      <section className={full ? s.liveFull : s.liveCard} data-card="lineage">
+        <header className={s.cardHead}>
+          <h3 className={s.kicker}>Columns</h3>
+        </header>
+        <p className={s.captionText}>
+          No column is a predictor yet: the roles question decides which columns enter the model.
+        </p>
+      </section>
+    );
+  }
   return (
     <StaleVeil state={data.design ? data.designVeil : "fresh"} order={1} label="Columns">
       <section className={full ? s.liveFull : s.liveCard} data-card="lineage">

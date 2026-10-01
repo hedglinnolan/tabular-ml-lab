@@ -260,6 +260,7 @@ export function RolesAsk({
         <span
           onPointerMove={() => preview(focusFor(draft, "These roles"))}
           onPointerLeave={endPreview}
+          onFocus={() => setFocus(focusFor(draft, "These roles"))}
         >
           <RecordButton
             disabled={p.pending}

@@ -13,12 +13,18 @@ src/api/queries.ts    TanStack Query hooks; every project key starts with the pi
 src/api/events.ts     SSE -> cache (applyProjectEvent is pure; useProjectEvents opens the stream)
 src/motion/           the motion primitives: prefs (durations, reduced motion), Arrive, StaleVeil,
                       NumberTween. Settle is a shared layoutId on record/blocks.tsx
-src/components/record the Record: question blocks -> decision sentences, findings
-src/components/pipeline  Rows / Columns / Results panel, 2-D virtualized table preview
-src/screens/          Start, Project, Lab (/lab demonstrates every motion primitive)
+src/api/m1-types.ts, m1-stage-types.ts  the M1 aliases over generated.ts (Record, banner, stage)
+src/state/focus.tsx   the one StageFocus the Record, the banner and the stage share (per project)
+src/components/record the Record: the Router's questions -> server sentences, teaching, findings
+src/components/banner the pipeline banner: rows, columns, models, result (derive.ts is pure)
+src/components/stage  the stage: previews with the transform player, evidence, live scenes,
+                      the Results, save/export (journal-style SVG and PNG)
+src/screens/          Start, Project, Lab (/lab demonstrates every motion primitive; /lab/stage
+                      hosts the stage beside a stand-in Record, dev:mock only)
 src/mocks/            MSW handlers + an in-memory server with a stage graph (dev:mock only)
 src/styles/tokens.css the palette and the three voices; base.css global rules
-e2e/                  one Playwright journey per milestone (mock or real server), review screenshots
+e2e/                  one Playwright journey per milestone (mock or real server), review screenshots;
+                      M1: m1-journey.spec.ts (the whole journey), m1-record, m1-stage
 ```
 
 ## Rules
@@ -59,7 +65,12 @@ npm run gen:api    # openapi-typescript ../../turbotab/server/openapi.json -> sr
 ```
 
 First e2e run on a machine: `npx playwright install chromium`. Screenshots are written to
-`docs/turbotab-next/m0/screens/<prefix>-*.png`; keep each under 300 KB.
+`docs/turbotab-next/m<N>/screens/<prefix>-*.png`; keep each under 300 KB. The M1 journey against
+the real server: start it with `TURBOTAB_WORKERS=2 TURBOTAB_HOME=$(mktemp -d)` on port 8812, then
+`E2E_BASE_URL=http://127.0.0.1:8812 npx playwright test m1-journey` (screens: `real-*`).
+
+Space belongs to the stage's flip, except in a multi-select list (the lens, the models), where it
+chooses; Enter records.
 
 ## Tests (proportional — BLUEPRINT §8)
 

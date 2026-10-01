@@ -6,7 +6,6 @@
  * where its values went. Across a change of unit (g → g per kcal, g → kcal) the histograms
  * crossfade: a bar half-way between two units is not a value of anything. A long empty tail is
  * clipped at the 99.5th percentile and the rows past it are counted in a note.
- * A true/false or categorical column draws one horizontal bar per level.
  */
 import { useCallback, useId, useLayoutEffect, useMemo, useRef } from "react";
 import { AnimatePresence, motion } from "motion/react";
@@ -40,44 +39,6 @@ function markClass(m: Mark) {
   if (m.group === "female") return s.markA;
   if (m.group === "male") return s.markB;
   return s.markAll;
-}
-
-/** Marks from the view, or (deprecated) its unlabeled cuts. */
-export function marksOf(view: DistributionView): Mark[] {
-  if (view.marks.length) return view.marks;
-  return (view.cuts ?? []).map((value) => ({ value, label: fmtInt(value), group: null }));
-}
-
-function Levels({ track, shown }: { track: Track<DistributionView>; shown: number }) {
-  const t = useTransitions();
-  const view = track.view;
-  const hist = track.states[shown]!.hist;
-  const levels = view.levels ?? [];
-  const rows = levels.map((l, i) => ({ label: l, n: hist.counts[i] ?? 0, blank: false }));
-  if (hist.n_missing > 0) rows.push({ label: "blank", n: hist.n_missing, blank: true });
-  const total = rows.reduce((a, r) => a + r.n, 0) || 1;
-  const top = Math.max(1, ...rows.map((r) => r.n));
-  return (
-    <div className={s.levels} role="img" aria-label={view.title}>
-      {rows.map((r, i) => (
-        <div key={i} className={s.levelRow}>
-          <span className={s.levelLabel}>{r.label}</span>
-          <span className={s.levelTrack}>
-            <motion.span
-              className={r.blank ? s.levelBlank : s.levelBar}
-              initial={false}
-              animate={{ width: `${(100 * r.n) / top}%` }}
-              transition={t.arrive}
-            />
-          </span>
-          <span className={s.levelCount}>
-            {fmtInt(r.n)}
-            <span className={s.levelPct}>{((100 * r.n) / total).toFixed(1)}%</span>
-          </span>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function XTicks({
@@ -117,9 +78,9 @@ export function Distribution({ track, globalLast, compact = false }: Props) {
   const view = track.view;
   const { states } = track;
   const localLast = states.length - 1;
-  const marks = useMemo(() => marksOf(view), [view]);
+  const marks = view.marks;
 
-  const extents = useMemo(() => states.map((st) => extentOfHist(st.label, st.hist)), [states]);
+  const extents = useMemo(() => states.map((st) => extentOfHist(st.unit, st.hist)), [states]);
   const runs = useMemo(() => unitRuns(extents), [extents]);
   const clips = useMemo<Clip[]>(
     () =>
@@ -143,7 +104,7 @@ export function Distribution({ track, globalLast, compact = false }: Props) {
     if (w < 80 || h < 60) return null;
     const pad = compact
       ? { l: 10, r: 10, t: 34, b: 22 }
-      : { l: 14, r: 14, t: marks.some((m) => m.group) ? 52 : 40, b: 24 };
+      : { l: 14, r: 14, t: marks.some((m) => m.group) ? 58 : 44, b: 24 };
     const box = { x0: pad.l, x1: w - pad.r, y0: pad.t, y1: h - pad.b };
     const byRun = new Map<number, RunGeo>();
     for (const run of new Set(runs)) {
@@ -270,14 +231,6 @@ export function Distribution({ track, globalLast, compact = false }: Props) {
   const shown = Math.min(localLast, Math.round(localPos(ui.nearest, globalLast, localLast)));
   const state: DistributionState = states[shown]!;
 
-  if (view.levels) {
-    return (
-      <div ref={ref} className={s.fill} data-view="distribution" data-state={shown}>
-        <Levels track={track} shown={shown} />
-      </div>
-    );
-  }
-
   const run = runs[shown]!;
   const rg = geo?.byRun.get(run);
   const clip = clips[shown]!;
@@ -340,7 +293,7 @@ export function Distribution({ track, globalLast, compact = false }: Props) {
                   if (mx < geo.box.x0 - 1 || mx > geo.box.x1 + 1) return null;
                   const name = m.group ? `${GROUP_NAME[m.group] ?? m.group} ` : "";
                   const label = compact ? `${name}${fmtInt(m.value)}` : `${name}${m.label}`;
-                  const ly = (compact ? 22 : 30) + row * (compact ? 10 : 13);
+                  const ly = (compact ? 22 : 34) + row * (compact ? 10 : 13);
                   return (
                     <g key={`${m.group}|${m.value}`} className={markClass(m)}>
                       <line x1={mx} x2={mx} y1={ly + 3} y2={geo.box.y1} className={s.markLine} />

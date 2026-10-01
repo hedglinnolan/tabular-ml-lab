@@ -27,9 +27,14 @@ export function nextIndex(key: string, current: number, count: number): number |
 /** What a key does on an option list, beyond moving. */
 export type OptionKeyAction = "record" | "toggle" | "escape" | null;
 
+/**
+ * Enter records. Space chooses in a multi-select list (its ARIA meaning); in a single-choice
+ * list it is the stage's: it flips the preview between your data now and with this choice
+ * (M1_CONTRACT §11), so it never records.
+ */
 export function keyAction(key: string, mode: "single" | "multi"): OptionKeyAction {
   if (key === "Escape") return "escape";
   if (key === "Enter") return "record";
-  if (key === " " || key === "Spacebar") return mode === "multi" ? "toggle" : "record";
+  if (key === " " || key === "Spacebar") return mode === "multi" ? "toggle" : null;
   return null;
 }

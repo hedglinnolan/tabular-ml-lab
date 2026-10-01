@@ -191,7 +191,7 @@
     "question": "Is this analysis for prediction or for inference?",
     "one_liner": "Prediction is judged on rows the model never saw; inference on estimates and their uncertainty.",
     "why": "The two lead to different models, different checks and a different methods section. Some advice even flips: a missing-value indicator is legitimate for prediction and biased for inference. Inference reports coefficients with confidence intervals; prediction reports performance on held-out rows and leaves coefficients uninterpreted.",
-    "consumer": "The model shelf's order, the coefficient intervals and the Results panel read it.",
+    "consumer": "The model shelf's order, the coefficient intervals and the Results read it.",
     "options": [
       {
         "value": "prediction",
@@ -428,12 +428,12 @@
     "question": "How should rows with missing predictor values be handled?",
     "one_liner": "Dropping incomplete rows can shrink and skew the sample; filling values keeps rows but adds an assumption.",
     "why": "Complete cases keep only rows with every predictor measured, which can remove a large, non-random share: a predictor blank for 70% of people drops 70% of rows. Imputation keeps every row by filling values learned from training rows, assuming the blanks resemble what was observed. A blank can also mean the question was not asked.",
-    "consumer": "The participant flow, each model's pipeline and the Rows panel read it.",
+    "consumer": "The participant flow, each model's pipeline and the banner's row counts read it.",
     "options": [
       {
         "value": "complete_case",
         "label": "Complete cases",
-        "consequence": "Rows missing any predictor are dropped; the Rows panel shows how many."
+        "consequence": "Rows missing any predictor are dropped; the participant flow shows how many."
       },
       {
         "value": "impute",
@@ -717,7 +717,7 @@
     "question": "Which model families should be fit and compared?",
     "one_liner": "Each family brings its own assumptions about how nutrients relate to the outcome; fitting several shows what depends on them.",
     "why": "A linear model assumes straight-line, additive effects and gives coefficients you can report. An elastic net shrinks correlated nutrients together, which suits diets where nutrients travel in foods. Boosted trees find curves and interactions but give no coefficients. In one comparison of 30,000 models, the algorithm mattered less than the endpoint and the analyst.",
-    "consumer": "The fit, the Results panel and the substitution curves read it.",
+    "consumer": "The fit, the Results and the substitution curves read it.",
     "options": [
       {
         "value": "linear",

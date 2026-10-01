@@ -93,10 +93,8 @@ export function PreviewGrid({ tracks, story, promoted, onPromote, basis, provena
   const t = useTransitions();
   const views = ordered(tracks, promoted);
   const first = views[0]?.view;
-  // A view with an intrinsic height (a flow, a table, a few levels) takes what it needs.
-  const intrinsic =
-    !!first &&
-    (first.kind === "row_flow" || first.kind === "table_focus" || (first.kind === "distribution" && !!first.levels));
+  // A view with an intrinsic height (a flow, a table) takes what it needs.
+  const intrinsic = !!first && (first.kind === "row_flow" || first.kind === "table_focus");
   const p = intrinsic ? "auto" : "minmax(0, 1fr)";
   const thumbRow = intrinsic ? "minmax(220px, 1fr)" : "236px";
   const template =

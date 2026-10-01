@@ -29,9 +29,9 @@ describe("nextIndex", () => {
 });
 
 describe("keyAction", () => {
-  it("records on Enter, and on Space for a single choice", () => {
+  it("records on Enter; Space is the stage's flip for a single choice", () => {
     expect(keyAction("Enter", "single")).toBe("record");
-    expect(keyAction(" ", "single")).toBe("record");
+    expect(keyAction(" ", "single")).toBeNull();
   });
 
   it("toggles on Space and records on Enter for a multiple choice", () => {

@@ -100,7 +100,11 @@ const design: DesignArtifact = {
   estimand: null,
   substitution_pairs: [],
   warnings: [],
+  nested: [],
+  left_out: [],
 };
+
+const baseline = { metric: "r2", value: -0.002, label: "the outcome's average" };
 
 const fit: FitArtifact = {
   task: "regression",
@@ -117,6 +121,7 @@ const fit: FitArtifact = {
       coefficients: null,
       fit_seconds: 0.03,
       concerns: [],
+      baseline,
     },
     {
       family: "elastic_net",
@@ -126,6 +131,7 @@ const fit: FitArtifact = {
       coefficients: null,
       fit_seconds: 0.8,
       concerns: [],
+      baseline,
     },
     {
       family: "boosted_trees",
@@ -135,6 +141,7 @@ const fit: FitArtifact = {
       coefficients: null,
       fit_seconds: 1.7,
       concerns: ["Predicts worse than the outcome's average: CV R² −0.04"],
+      baseline,
     },
   ],
 };

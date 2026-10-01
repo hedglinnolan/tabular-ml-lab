@@ -25,9 +25,9 @@ import { Comparison } from "./Comparison";
 import { Curves } from "./Curves";
 import {
   aboutSeconds,
-  BAND_BOOT,
   BAND_ROWS,
-  bandSeconds,
+  bandOffer,
+  carriedSentence,
   comparisonOf,
   exposureCoefficients,
   hasBand,
@@ -86,7 +86,8 @@ export function Results({ pid, view, data }: Props) {
   const subBusy = subStatus?.status === "running" || subStatus?.status === "queued";
   const folds = data.split?.folds ?? 5;
   const step = view.state.substitution?.step_kcal ?? 100;
-  const nBoot = (view.state.substitution as { n_boot?: number } | null)?.n_boot ?? sub?.n_boot ?? 0;
+  const nBoot = sub?.band?.n_boot ?? view.state.substitution?.n_boot ?? 0;
+  const offer = sub && fit ? bandOffer(sub, fit, folds) : null;
 
   const record = (donor: string, recipient: string, boot = 0) => {
     setPending({ donor, recipient });
@@ -168,8 +169,8 @@ export function Results({ pid, view, data }: Props) {
             <div className={s.bandRow}>
               {hasBand(sub) ? (
                 <p className={s.bandNote}>
-                  Bands: 95% intervals from {nBoot || "bootstrap"} refits of each family on up to {BAND_ROWS.toLocaleString("en-US")} training
-                  rows.
+                  Bands: 95% intervals from {nBoot || "bootstrap"} refits of each family on{" "}
+                  {(sub.band?.n_rows ?? BAND_ROWS).toLocaleString("en-US")} training rows.
                 </p>
               ) : subBusy && nBoot > 0 ? (
                 <p className={s.bandNote} role="status">
@@ -186,10 +187,10 @@ export function Results({ pid, view, data }: Props) {
                   type="button"
                   className={s.bandButton}
                   disabled={decide.isPending || subBusy}
-                  onClick={() => record(sub.donor, sub.recipient, BAND_BOOT)}
+                  onClick={() => record(sub.donor, sub.recipient, offer?.nBoot ?? 0)}
                   data-testid="add-band"
                 >
-                  Add an uncertainty band (about {aboutSeconds(bandSeconds(sub, fit, folds))})
+                  Add an uncertainty band (about {aboutSeconds(offer?.seconds ?? 0)})
                 </button>
               )}
               {said ? (
@@ -198,6 +199,11 @@ export function Results({ pid, view, data }: Props) {
                 </span>
               ) : null}
             </div>
+            {carriedSentence(sub.carried, data.design?.nested ?? []) ? (
+              <p className={s.caption} data-testid="carried">
+                <Rich text={carriedSentence(sub.carried, data.design?.nested ?? [])!} />
+              </p>
+            ) : null}
             <p className={s.caption}>
               <Rich text={energyProvenance(view, data.design)} />
             </p>

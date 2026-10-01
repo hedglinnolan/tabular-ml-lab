@@ -16,7 +16,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { isRefusalError } from "../../api/client";
-import type { PreviewResult, StageFocus, ViewKind } from "../../api/m1-stage-types";
+import type { PreviewResult, ViewKind } from "../../api/m1-stage-types";
+import type { StageFocus } from "../../state/focus";
 import { useDecide } from "../../api/queries";
 import type { Decision, ProjectView, Refusal } from "../../api/schema";
 import { useMotionPrefs, useTransitions } from "../../motion/prefs";
@@ -71,9 +72,11 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
   const store = useMemo(() => createPlayerStore(), []);
   useEffect(() => store.setReduced(reduced), [store, reduced]);
   useEffect(() => {
-    // Review captures (dev only): step the player by hand for a frame strip.
-    if (!import.meta.env.DEV || typeof window === "undefined") return;
-    const w = window as unknown as { __turbotabStage?: unknown };
+    // Review captures: step the player by hand for a frame strip. Dev builds always; a production
+    // build only when the review harness set `window.__turbotabReview` before the page loaded.
+    if (typeof window === "undefined") return;
+    const w = window as unknown as { __turbotabStage?: unknown; __turbotabReview?: boolean };
+    if (!import.meta.env.DEV && !w.__turbotabReview) return;
     w.__turbotabStage = {
       manual: (v: boolean) => store.setManual(v),
       advance: (ms: number) => store.advance(ms),
@@ -149,10 +152,21 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
   const readout = useMemo(() => (showing ? readoutOf(showing.views) : []), [showing]);
   // Nothing to flip when every view shows one state (evidence), or a preview has no views at all.
   const still = tracks.every((tr) => tr.still);
+  // Say truly what that one state is: the data as loaded (evidence), the choice's own picture (a
+  // lineage with no "before", as for the first roles), or the data the choice leaves unchanged.
+  const stillLabel =
+    scene.kind === "evidence"
+      ? "Your data as loaded"
+      : !tracks.length || scene.kind === "refusal"
+        ? null
+        : (scene.kind === "preview" && scene.decision.kind === "select_models") ||
+            tracks.some((tr) => tr.view.kind === "lineage" && tr.view.before === null)
+          ? "With this choice (preview)"
+          : "Unchanged by this choice";
 
   // A new scene starts at "your data now" and plays forward once its views have arrived; another
   // option of the same question holds the flip's side and lands on its result directly.
-  const prev = useRef<{ group: string; key: string; last: number } | null>(null);
+  const prev = useRef<{ group: string; key: string; last: number; still: boolean } | null>(null);
   const autoplay = useRef(0);
   useLayoutEffect(() => {
     if (!showing) {
@@ -162,8 +176,10 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
     }
     if (scene.kind === "refusal") return;
     const p = prev.current;
-    prev.current = { group: scene.group, key: scene.key, last: story.last };
-    if (p && p.group === scene.group) {
+    prev.current = { group: scene.group, key: scene.key, last: story.last, still };
+    // Rifling from an option that changes nothing (keep every row) to one that does plays the
+    // new storyboard, as a new scene would: there was no side worth holding.
+    if (p && p.group === scene.group && !(p.still && !still)) {
       if (p.key !== scene.key || p.last !== story.last) store.dispatch({ type: "options", last: story.last });
       return;
     }
@@ -191,6 +207,8 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
       if (el && root.current?.contains(el) && el.tagName === "BUTTON") return;
+      // In a multi-select list (the lens, the models) Space chooses; the Record keeps it.
+      if (el?.closest('[aria-multiselectable="true"]')) return;
       e.preventDefault();
       window.clearTimeout(autoplay.current);
       store.dispatch({ type: "flip" });
@@ -274,13 +292,19 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
           ref={root}
           className={s.stage}
           data-testid="stage"
+          data-focus={focus.kind}
           data-scene={scene.kind}
           data-group={scene.group}
           aria-label="Stage"
         >
           <StageBar pill={pill} label={label} aside={aside} loading={loading} action={recordButton}>
             {showing ? (
-              <PlayerControls story={story} readout={readout} still={still || scene.kind === "refusal"} />
+              <PlayerControls
+                story={story}
+                readout={readout}
+                still={still || scene.kind === "refusal"}
+                stillLabel={stillLabel}
+              />
             ) : null}
           </StageBar>
           {ack ? (

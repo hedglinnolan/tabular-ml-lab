@@ -479,7 +479,7 @@ function missingReading(
   ds: MockDataset,
   roles: Record<string, Role>,
   target: string | null,
-): { columns: MissingColumn[] } {
+): ProposalsArtifact["missing"] {
   const columns: MissingColumn[] = [];
   for (const [name, role] of Object.entries(roles)) {
     if (!PREDICTOR.includes(role) || name === target) continue;
@@ -501,7 +501,12 @@ function missingReading(
     });
   }
   columns.sort((a, b) => b.share - a.share);
-  return { columns };
+  const notAsked = columns.filter((c) => c.likely_not_asked).map((c) => c.column);
+  if (!notAsked.length) return { columns, leave_out: null };
+  const cols = notAsked.map((c) => findColumn(ds, c)).filter((c): c is MockColumn => !!c);
+  let n = 0;
+  for (let i = 0; i < ds.nRows; i++) if (cols.some((c) => missing(c.values[i]))) n += 1;
+  return { columns, leave_out: { columns: notAsked, n_rows: n, share: n / ds.nRows } };
 }
 
 // ── the participant flow and the split ───────────────────────────────────────
@@ -576,7 +581,7 @@ export function cohort(
   const predictors = Object.keys(roles).filter(
     (c) => PREDICTOR.includes(roles[c]!) && c !== target && !dropColumns.includes(c),
   );
-  if (state.missing === "complete_case") {
+  if (state.missing?.strategy === "complete_case") {
     const cols = predictors.map((p) => findColumn(ds, p)).filter((c): c is MockColumn => !!c);
     let d = 0;
     for (let i = 0; i < ds.nRows; i++) {
@@ -865,7 +870,7 @@ export function design(
   const families = state.models ?? [];
   const steps = (key: string) => {
     const out: { key: string; label: string; detail: string }[] = [];
-    if (state.missing === "impute")
+    if (state.missing?.strategy === "impute")
       out.push({
         key: "impute",
         label: "Impute",
@@ -911,6 +916,8 @@ export function design(
     estimand: ESTIMAND[method],
     substitution_pairs: pairs,
     warnings: [],
+    nested: [],
+    left_out: state.missing?.drop_columns ?? [],
   };
 }
 
@@ -936,7 +943,7 @@ export function fit(
 ): FitArtifact {
   const families = state.models ?? [];
   const method = state.energy_adjustment?.method ?? "none";
-  const imputed = state.missing === "impute";
+  const imputed = state.missing?.strategy === "impute";
   const classification = task === "binary" || task === "multiclass";
   const primary = classification ? (task === "binary" ? "auc" : "accuracy") : "r2";
   const labels: Record<string, string> = classification
@@ -948,7 +955,7 @@ export function fit(
     ? { linear: 0.058, elastic_net: 0.06, boosted_trees: 0.041 }
     : { linear: 0.076, elastic_net: 0.077, boosted_trees: -0.039 };
   const models = families.map((family) => {
-    const tag = `${family}:${method}:${state.missing}:${s.n_train}`;
+    const tag = `${family}:${method}:${state.missing?.strategy}:${s.n_train}`;
     const mean = (BASE[family] ?? 0.05) + METHOD_SHIFT[method] + 0.002 * jitter(tag);
     const sd = family === "boosted_trees" ? 0.05 : 0.035;
     const folds = Array.from(
@@ -1012,7 +1019,11 @@ export function fit(
       coefficients,
       fit_seconds: family === "boosted_trees" ? 1.73 : family === "elastic_net" ? 0.77 : 0.03,
       concerns,
-      baseline: { metric: primary, value: classification ? 0.5 : 0 },
+      baseline: {
+        metric: primary,
+        value: classification ? 0.5 : -0.002,
+        label: classification ? "the class prior" : "the outcome's average",
+      },
     };
   });
   return {
@@ -1033,7 +1044,13 @@ export function substitution(
   const spec = state.substitution!;
   const ks = [0, 100, 200, 300, 400, 500, 600].map((k) => (k * spec.step_kcal) / 100);
   const slope: Record<string, number> = { linear: -1.46, elastic_net: -0.63, boosted_trees: 0.85 };
+  const banded = spec.n_boot > 0;
   return {
+    carried: [],
+    band: banded
+      ? { n_boot: spec.n_boot, n_rows: Math.min(2000, f.n_train), grouped_by: null, seconds: 39.5, failed: 0 }
+      : null,
+    band_estimate: banded ? null : { n_boot: 50, seconds: 40 },
     donor: spec.donor,
     recipient: spec.recipient,
     step_kcal: spec.step_kcal,
@@ -1045,12 +1062,14 @@ export function substitution(
     models: f.models.map((m) => {
       const b =
         (slope[m.family] ?? 0.2) + 0.1 * jitter(`${m.family}:${spec.donor}:${spec.recipient}`);
+      const delta = ks.map((k) => (b * k) / 100);
+      const half = (k: number) => (0.35 + 0.004 * k) * (m.family === "boosted_trees" ? 2 : 1);
       return {
         family: m.family,
         label: m.label,
-        delta: ks.map((k) => (b * k) / 100),
-        ci_low: null,
-        ci_high: null,
+        delta,
+        ci_low: banded ? delta.map((v, i) => v - half(ks[i]!)) : null,
+        ci_high: banded ? delta.map((v, i) => v + half(ks[i]!)) : null,
         on_support_fraction: ks.map((k) => Math.max(0.44, 1 - k / 1070)),
         stopped_at: ks[ks.length - 1]!,
         effect_label: `${b >= 0 ? "+" : "−"}${Math.abs(b).toFixed(2)} per ${fmt(spec.step_kcal)} kcal at k = ${fmt(spec.step_kcal)}`,

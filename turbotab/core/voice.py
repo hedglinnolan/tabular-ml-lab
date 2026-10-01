@@ -536,7 +536,11 @@ def _set_missing(d: Any, state: Any, ctx: Any) -> str:
         text = f"{first}rows missing {other} were dropped (a complete-case analysis)"
         kept, before = _get(ctx, "n_complete"), _get(ctx, "n_before")
         if kept is not None and before:
-            text += f": {count(kept)} of {count(before)} rows remain"
+            if kept == before:
+                text = (f"{first}a complete-case analysis was applied: no row is missing "
+                        f"{other}, so all {count(before)} rows remain")
+            else:
+                text += f": {count(kept)} of {count(before)} rows remain"
         return text[0].upper() + text[1:]
     others = "the other predictors' missing values" if dropped else "missing predictor values"
     text = (f"{first}{others} were imputed, learned from training rows only; no row was dropped "

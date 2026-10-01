@@ -18,7 +18,7 @@ import type {
   TableWindow,
 } from "./schema";
 import type { AnyStageArtifacts, AnyStageName, TeachingEntry } from "./m1-types";
-import type { M1StageArtifacts, M1StageName, PreviewResult } from "./m1-stage-types";
+import type { PreviewResult } from "./m1-stage-types";
 
 export const API_BASE = "/api";
 
@@ -196,17 +196,7 @@ export const api = {
 
   /** The words every interview question carries, in asking order (M1_CONTRACT §5). */
   teaching: (signal?: AbortSignal) => request<TeachingEntry[]>("/teaching", { signal }),
-};
 
-/** The SSE endpoint's URL. The EventSource itself is opened in events.ts. */
-export function eventsUrl(pid: string): string {
-  return `${API_BASE}/projects/${enc(pid)}/events`;
-}
-
-// ── M1 part 2: the stage's routes (M1_CONTRACT §4, §12.3) ─────────────────────
-// Typed by the hand-written src/api/m1-stage-types.ts until the generated contract carries §12.
-
-export const stageApi = {
   /** What recording `decision` would change, on the user's own data. Nothing is recorded. */
   preview: (pid: string, decision: Decision, signal?: AbortSignal) =>
     request<PreviewResult>(`/projects/${enc(pid)}/preview`, {
@@ -215,15 +205,14 @@ export const stageApi = {
       signal,
     }),
 
-  /** The views that show why a finding was raised. */
+  /** The views that show why a finding was raised (M1_CONTRACT §12.3). */
   findingEvidence: (pid: string, findingId: string, signal?: AbortSignal) =>
     request<PreviewResult>(`/projects/${enc(pid)}/findings/${enc(findingId)}/evidence`, {
       signal,
     }),
-
-  /** An M1 stage's artifact (cohort, split, shelf, design, fit, substitution …). */
-  stage: <K extends M1StageName>(pid: string, stage: K, signal?: AbortSignal) =>
-    request<StageResult<M1StageArtifacts[K]>>(`/projects/${enc(pid)}/stages/${enc(stage)}`, {
-      signal,
-    }),
 };
+
+/** The SSE endpoint's URL. The EventSource itself is opened in events.ts. */
+export function eventsUrl(pid: string): string {
+  return `${API_BASE}/projects/${enc(pid)}/events`;
+}

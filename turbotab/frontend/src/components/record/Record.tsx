@@ -320,7 +320,6 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
             {...p}
             proposals={proposals?.artifact ?? undefined}
             current={state.missing}
-            currentDecision={currentRecord("missing")?.decision ?? null}
           />
         );
       case "split":
@@ -331,6 +330,7 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
             {...p}
             reading={proposals?.artifact?.energy}
             current={state.energy_adjustment}
+            leftOut={state.missing?.drop_columns ?? []}
           />
         );
       case "models":

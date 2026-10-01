@@ -38,7 +38,7 @@ export function StageBar({ pill, label, aside, loading, action, children }: BarP
         {action}
       </div>
       {children}
-      <div className={s.loading} data-on={loading || undefined} aria-hidden="true" />
+      <div className={s.loading} data-on={loading || undefined} aria-hidden="true" data-testid="stage-loading" />
     </div>
   );
 }
@@ -46,12 +46,14 @@ export function StageBar({ pill, label, aside, loading, action, children }: BarP
 interface PlayerProps {
   story: Storyboard;
   readout: ReadoutItem[];
-  /** The views show one recorded state only (evidence): nothing to flip. */
+  /** The views show one state only (evidence, or a choice that changes nothing shown). */
   still: boolean;
+  /** What that one state is, said truly (as loaded; with this choice; unchanged). */
+  stillLabel?: string | null;
 }
 
 /** The flip, the step dots, the step's own label, and the pinned readout. */
-export function PlayerControls({ story, readout, still }: PlayerProps) {
+export function PlayerControls({ story, readout, still, stillLabel = "Your data as loaded" }: PlayerProps) {
   const store = usePlayerStore();
   const ui = usePlayerUi(store);
   const withOn = ui.side === "with";
@@ -126,9 +128,11 @@ export function PlayerControls({ story, readout, still }: PlayerProps) {
             ) : null}
           </span>
         </>
-      ) : (
-        <span className={s.stepLabel}>Your data as loaded</span>
-      )}
+      ) : stillLabel ? (
+        <span className={s.stepLabel} data-testid="still-label">
+          {stillLabel}
+        </span>
+      ) : null}
       <span className={s.spacer} />
       {readout.length ? (
         <span className={s.readout} data-testid="readout">

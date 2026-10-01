@@ -15,8 +15,8 @@ const rel = residual.views.find((v) => v.kind === "relationship") as Relationshi
 const story: RelationshipView = {
   ...rel,
   story: [
-    { label: "Fit each nutrient on energy", points: rel.points_before, r: rel.r_before, fit_line: { slope: 0.03, intercept: 4 } },
-    { label: "Keep what energy does not explain", points: rel.points_after, r: 0, fit_line: { slope: 0, intercept: 0 } },
+    { label: "Fit each nutrient on energy", points: rel.points_before, r: rel.r_before, fit_line: { slope: 0.03, intercept: 4 }, y_label: null },
+    { label: "Keep what energy does not explain", points: rel.points_after, r: 0, fit_line: { slope: 0, intercept: 0 }, y_label: null },
   ],
 };
 const track = trackOf(story);

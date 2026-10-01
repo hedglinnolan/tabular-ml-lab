@@ -185,22 +185,25 @@ export function sentenceFor(
       return finish(clauses.join("; "));
     }
     case "set_missing": {
-      const drop = (d as { drop_columns?: string[] }).drop_columns ?? [];
+      const drop = d.drop_columns;
       if (d.strategy === "impute") {
         return finish(
           `${drop.length ? `${listing(drop)} ${drop.length === 1 ? "was" : "were"} left out of the predictors; ` : ""}Missing predictor values were imputed from the training rows only, so no row is dropped for a blank`,
         );
       }
-      const state = { ...before, missing: d.strategy } as ProjectState;
+      const state: ProjectState = { ...before, missing: { strategy: d.strategy, drop_columns: drop } };
       const c = cohort(ds, state, records, drop).artifact;
       const step = c.steps.find((st) => st.key === "complete_cases");
       const prior = step ? step.n + step.dropped : c.n_final;
-      const tail = `${count(c.n_final)} of ${count(prior)} rows remain`;
-      return finish(
-        drop.length
-          ? `${listing(drop)} ${drop.length === 1 ? "was" : "were"} left out of the predictors, then rows missing any other predictor were dropped (a complete-case analysis): ${tail}`
-          : `Rows missing any predictor were dropped (a complete-case analysis): ${tail}`,
-      );
+      const first = drop.length
+        ? `${listing(drop)} ${drop.length === 1 ? "was" : "were"} left out of the predictors; then `
+        : "";
+      const other = drop.length ? "any other predictor" : "any predictor";
+      const text =
+        c.n_final === prior
+          ? `${first}a complete-case analysis was applied: no row is missing ${other}, so all ${count(prior)} rows remain`
+          : `${first}rows missing ${other} were dropped (a complete-case analysis): ${count(c.n_final)} of ${count(prior)} rows remain`;
+      return finish(text[0]!.toUpperCase() + text.slice(1));
     }
     case "set_split": {
       const roles = rolesArtifact(ds, before);
@@ -262,8 +265,11 @@ export function sentenceFor(
     }
     case "set_substitution": {
       const energy = before.energy_adjustment?.energy_column;
+      const band = d.n_boot
+        ? `; its band comes from ${tick(num(d.n_boot))} refits of each model on bootstrap resamples of training rows`
+        : "";
       return finish(
-        `The substitution studied is ${tick(d.donor)} replaced by ${tick(d.recipient)}, in steps of ${tick(num(d.step_kcal))} kcal ${energy ? `with ${tick(energy)} held fixed` : "at the same total energy"}`,
+        `The substitution studied is ${tick(d.donor)} replaced by ${tick(d.recipient)}, in steps of ${tick(num(d.step_kcal))} kcal ${energy ? `with ${tick(energy)} held fixed` : "at the same total energy"}${band}`,
       );
     }
   }

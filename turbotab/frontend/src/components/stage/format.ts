@@ -60,5 +60,9 @@ export const clean = (v: number) => (Math.abs(v) < 1e-12 ? 0 : v);
 
 export const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
 
-/** Strip the backticks that mark data in the app's prose (for plain-text places: aria, files). */
-export const plain = (s: string) => s.replace(/`/g, "");
+/**
+ * Strip the backticks that mark data in the app's prose (for plain-text places: aria, files), and
+ * print a zero correlation as 0.00, as the screen does (`Rich`), never "-0.00".
+ */
+export const plain = (s: string) =>
+  s.replace(/`/g, "").replace(/(^|[^\w.])[-−]0\.00(?!\d)/g, (_, pre: string) => `${pre}0.00`);

@@ -36,6 +36,8 @@ export interface RelationshipState {
 
 export interface DistributionState {
   label: string;
+  /** What the values are (a column, or a step's own quantity): decides a change of unit. */
+  unit: string;
   hist: HistogramData;
 }
 
@@ -85,10 +87,12 @@ function relationshipStates(v: RelationshipView): RelationshipState[] {
     r: v.r_before,
     fit: null,
   };
-  const frames: RelationshipState[] = (v.story ?? []).map((f) => ({
+  // A frame names its values only when they change (a residual); otherwise they are the last
+  // state's (the fit is drawn over the data as it is).
+  let yLabel = before.yLabel;
+  const frames: RelationshipState[] = v.story.map((f) => ({
     label: f.label,
-    // A step's values are not yet a column of the data: the step names them.
-    yLabel: f.label,
+    yLabel: (yLabel = f.y_label ?? yLabel),
     points: f.points,
     r: f.r,
     fit: f.fit_line,
@@ -104,17 +108,18 @@ function relationshipStates(v: RelationshipView): RelationshipState[] {
 }
 
 function distributionStates(v: DistributionView): DistributionState[] {
+  let unit = v.before_label;
   return [
-    { label: v.before_label, hist: v.before },
-    ...(v.story ?? []).map((f) => ({ label: f.label, hist: f.hist })),
-    { label: v.after_label, hist: v.after },
+    { label: v.before_label, unit, hist: v.before },
+    ...v.story.map((f) => ({ label: f.label, unit: (unit = f.x_label ?? unit), hist: f.hist })),
+    { label: v.after_label, unit: v.after_label, hist: v.after },
   ];
 }
 
 function lineageStates(v: LineageView): LineageState[] {
   return [
     { label: NOW_LABEL, lineage: v.before ?? v.after },
-    ...(v.story ?? []).map((f) => ({ label: f.label, lineage: f.lineage })),
+    ...v.story.map((f) => ({ label: f.label, lineage: f.lineage })),
     { label: WITH_LABEL, lineage: v.after },
   ];
 }
@@ -131,7 +136,7 @@ function tableStates(v: TableFocusView): TableState[] {
       values: side("before"),
       gone: false,
     },
-    ...(v.story ?? []).map((f) => ({
+    ...v.story.map((f) => ({
       label: f.label,
       columns: f.columns,
       values: new Map(f.rows.map((r) => [r.row_id, r.values])),
@@ -149,7 +154,7 @@ function tableStates(v: TableFocusView): TableState[] {
 function rowFlowStates(v: RowFlowView): RowFlowState[] {
   return [
     { label: NOW_LABEL, steps: v.before },
-    ...(v.story ?? []).map((f) => ({ label: f.label, steps: f.steps })),
+    ...v.story.map((f) => ({ label: f.label, steps: f.steps })),
     { label: WITH_LABEL, steps: v.after },
   ];
 }
@@ -165,7 +170,7 @@ const sameHist = (a: HistogramData, b: HistogramData) =>
     a.edges.every((e, i) => e === b.edges[i]));
 
 function isStill(v: ConsequenceView): boolean {
-  if (v.story && v.story.length) return false;
+  if (v.story.length) return false;
   switch (v.kind) {
     case "relationship":
       return v.y_label_before === v.y_label_after && samePairs(v.points_before, v.points_after);

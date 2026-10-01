@@ -122,7 +122,9 @@ def test_the_missing_question_previews_the_rows_leaving_the_blank_columns_out_sa
                                                                     if c not in ("meds_hbp", "meds_chol")]
     view = decide(client, nhanes, option)
     said = view["decisions"][-1]["sentence"]
-    assert said.startswith("`meds_hbp` and `meds_chol` were left out of the predictors; then rows missing")
+    assert said.startswith("`meds_hbp` and `meds_chol` were left out of the predictors; then a "
+                           "complete-case analysis was applied: no row is missing any other "
+                           "predictor, so all `21,348` rows remain")
     assert view["state"]["missing"] == {"strategy": "complete_case", "drop_columns": ["meds_hbp", "meds_chol"]}
     wait_for(client, nhanes, {"cohort": "fresh"})
     cohort = client.get(f"/api/projects/{nhanes}/stages/cohort").json()["artifact"]

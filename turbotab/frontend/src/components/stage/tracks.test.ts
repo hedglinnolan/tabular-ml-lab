@@ -84,7 +84,7 @@ describe("tracks", () => {
     const rel = view(energy("residual"), "relationship") as RelationshipView;
     const story: RelationshipView = {
       ...rel,
-      story: [{ label: "Fit each nutrient on energy", points: rel.points_before, r: rel.r_before, fit_line: { slope: 0.03, intercept: 4 } }],
+      story: [{ label: "Fit each nutrient on energy", points: rel.points_before, r: rel.r_before, fit_line: { slope: 0.03, intercept: 4 }, y_label: null }],
     };
     const t = trackOf(story);
     expect(t.states.map((s) => s.label)).toEqual(["Your data now", "Fit each nutrient on energy", "With this choice"]);

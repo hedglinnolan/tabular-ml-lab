@@ -13,7 +13,6 @@ import type {
   MissingColumn,
   ProposalsArtifact,
   RolesArtifact,
-  SetMissingM1,
   ShelfArtifact,
 } from "../../../api/m1-types";
 import type { Decision, ProjectState } from "../../../api/schema";
@@ -189,44 +188,35 @@ export function ExclusionsAsk({
 export function MissingAsk({
   proposals,
   current,
-  currentDecision,
   ...p
 }: AskProps & {
   proposals: ProposalsArtifact | undefined;
   current: ProjectState["missing"];
-  currentDecision: Decision | null;
 }) {
   const blanks: MissingColumn[] = proposals?.missing?.columns ?? [];
   const notAsked = blanks.filter((b) => b.likely_not_asked);
-  const drop = notAsked.map((b) => b.column);
-  const recordedDrop =
-    currentDecision?.kind === "set_missing"
-      ? ((currentDecision as SetMissingM1).drop_columns ?? [])
-      : [];
-  let recordedKey: string | null = null;
-  if (current !== null) {
-    recordedKey = recordedDrop.length ? "leave_out" : (current as string);
-  }
+  // The server's offer names the columns and the share of rows blank in any of them.
+  const offer = proposals?.missing?.leave_out ?? null;
+  const drop = offer?.columns ?? notAsked.map((b) => b.column);
+  const recordedDrop = current?.drop_columns ?? [];
+  const recordedKey: string | null =
+    current === null ? null : recordedDrop.length ? "leave_out" : current.strategy;
   const shares = notAsked.map((b) => Math.round(b.share * 100));
   const lo = shares.length ? Math.min(...shares) : 0;
   const hi = shares.length ? Math.max(...shares) : 0;
-  const blankOn = lo === hi ? `${lo}%` : `${lo}–${hi}%`;
+  const blankOn = offer ? pct(offer.share) : lo === hi ? `${lo}%` : `${lo}–${hi}%`;
   const option = (strategy: "complete_case" | "impute"): OptionItem => ({
     key: strategy,
     label: taught(p.entry, strategy)?.label ?? strategy,
     line: taught(p.entry, strategy)?.consequence ?? "",
-    decision: { kind: "set_missing", strategy },
+    decision: { kind: "set_missing", strategy, drop_columns: [] },
   });
-  const leaveOut: OptionItem | null = notAsked.length
+  const leaveOut: OptionItem | null = drop.length
     ? {
         key: "leave_out",
-        label: `Leave ${notAsked.length === 1 ? "it" : "them"} out first`,
+        label: `Leave ${drop.length === 1 ? "it" : "them"} out first`,
         line: `Leave out ${listJoin(drop.map((d) => `\`${d}\``))} (blank on ${blankOn}), then complete cases.`,
-        decision: {
-          kind: "set_missing",
-          strategy: "complete_case",
-          drop_columns: drop,
-        } as SetMissingM1 as Decision,
+        decision: { kind: "set_missing", strategy: "complete_case", drop_columns: drop },
         previewLabel: `Leave out ${listJoin(drop)}, then complete cases`,
         tags: [{ text: "likely not asked", tone: "suggested" }],
       }
@@ -324,12 +314,16 @@ function cause(reason: string): string {
 export function EnergyAsk({
   reading,
   current,
+  leftOut = [],
   ...p
 }: AskProps & {
   reading: EnergyReading | null | undefined;
   current: ProjectState["energy_adjustment"];
+  /** Columns the missing-values answer left out: never offered as strata. */
+  leftOut?: string[];
 }) {
   const [strata, setStrata] = useState<string | null>(current?.strata ?? null);
+  const strataCandidates = (reading?.strata_candidates ?? []).filter((c) => !leftOut.includes(c));
   const usual = reading?.usual ?? null;
   const ok = (m: EnergyMethod) => m === "none" || (reading?.applicability[m]?.ok ?? false);
   const values = (p.entry?.options.map((o) => o.value) as EnergyMethod[] | undefined) ?? METHODS;
@@ -387,7 +381,9 @@ export function EnergyAsk({
         r && energy ? (
           <>
             <Taught
-              text={`\`${r[0]}\` tracks \`${energy}\` at r ${r[1].toFixed(2)} in this table${
+              // The correlation itself is the stage's: it reads only rows outside the held-out
+              // set, while the proposals were counted before the split existed.
+              text={`\`${r[0]}\` tracks \`${energy}\` most closely${
                 reading && reading.nutrients.length > 1
                   ? `; ${reading.nutrients.length} nutrients are adjusted together`
                   : ""
@@ -412,10 +408,10 @@ export function EnergyAsk({
         label="Energy adjustment methods — preview with the arrow keys, Enter to record"
         testId="options-energy_adjustment"
       />
-      {reading && reading.strata_candidates.length > 0 ? (
+      {strataCandidates.length > 0 ? (
         <div className={c.modifier} role="group" aria-label="Fit within levels of">
           <span className={c.modifierLabel}>Fit the residual or density within each level of</span>
-          {[null, ...reading.strata_candidates].map((sc) => (
+          {[null, ...strataCandidates].map((sc) => (
             <button
               key={sc ?? "none"}
               type="button"

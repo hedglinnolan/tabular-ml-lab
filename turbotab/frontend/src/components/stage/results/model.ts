@@ -50,13 +50,14 @@ export function comparisonOf(fit: FitArtifact, shelf: ShelfArtifact | null, metr
     holdout: m.holdout?.[metric] ?? null,
     concerns: m.concerns,
   }));
-  const base = fit.models.find((m) => m.baseline && m.baseline.metric === metric)?.baseline ?? null;
+  const base =
+    fit.models.find((m) => m.baseline.metric === metric && m.baseline.value !== null)?.baseline ?? null;
   const values: number[] = [];
   for (const r of rows) {
     if (r.mean !== null) values.push(r.mean - (r.sd ?? 0), r.mean + (r.sd ?? 0));
     if (r.holdout !== null) values.push(r.holdout);
   }
-  if (base) values.push(base.value);
+  if (base?.value != null) values.push(base.value);
   if (metric === "r2") values.push(0);
   let lo = Math.min(...values);
   let hi = Math.max(...values);
@@ -66,12 +67,7 @@ export function comparisonOf(fit: FitArtifact, shelf: ShelfArtifact | null, metr
     metric,
     label: fit.metric_labels[metric] ?? metric,
     rows,
-    baseline: base
-      ? {
-          value: base.value,
-          label: fit.task === "regression" ? "the outcome's mean" : "the class prior",
-        }
-      : null,
+    baseline: base?.value != null ? { value: base.value, label: base.label } : null,
     domain: [lo - pad, hi + pad],
     higherIsBetter: !LOWER_BETTER.has(metric),
   };
@@ -173,7 +169,9 @@ export function stopReason(sub: SubstitutionArtifact): string | null {
   const i = sub.ks.findIndex((k) => k === m.stopped_at);
   const share = i >= 0 ? m.on_support_fraction[i] : null;
   const pct = share !== null && share !== undefined ? ` (${Math.round(share * 100)}%)` : "";
-  return `Stops at ${fmtInt(m.stopped_at)} kcal: past it, fewer than half the rows stay within observed intakes${pct}.`;
+  const last = i > 0 ? sub.ks[i - 1] : null;
+  const end = last !== null && last !== undefined ? `Stops at ${fmtInt(last)} kcal` : "Stops at the start";
+  return `${end}: at ${fmtInt(m.stopped_at)} kcal, fewer than half the rows would stay within observed intakes${pct}.`;
 }
 
 export function curveDomain(sub: SubstitutionArtifact): [number, number] {
@@ -188,21 +186,22 @@ export function curveDomain(sub: SubstitutionArtifact): [number, number] {
   return [lo - pad, hi + pad];
 }
 
-/** The refits a requested band uses (M1_CONTRACT §12.7: on ≤ 2,000 training rows). */
-export const BAND_BOOT = 40;
+/** The refits a requested band uses when the server names none (M1_CONTRACT §12.7). */
+export const BAND_BOOT = 50;
+/** Each refit sees at most this many training rows (§12.7). */
 export const BAND_ROWS = 2_000;
 
 /**
- * About how long the band takes, from measured fit times: each family's time per fit (its CV
- * folds, the refit and the coefficients), scaled to ≤ 2,000 rows, times the refits, doubled for
- * the curve each refit draws (on NHANES: 19 s of fitting, 39.5 s measured end to end). The
- * server's own measurement wins when it sends one.
+ * The band the Results offer: the server's own measurement (it times one refit per family when
+ * no band is asked for, and reports the band's refits and seconds). Without one, an estimate from
+ * the measured fit times: each family's time per fit scaled to ≤ 2,000 rows, times the refits,
+ * doubled for the curve each refit draws.
  */
-export function bandSeconds(sub: SubstitutionArtifact, fit: FitArtifact, folds: number, nBoot = BAND_BOOT): number {
-  if (sub.band_seconds !== undefined && sub.band_seconds !== null) return sub.band_seconds;
+export function bandOffer(sub: SubstitutionArtifact, fit: FitArtifact, folds: number): { nBoot: number; seconds: number } {
+  if (sub.band_estimate) return { nBoot: sub.band_estimate.n_boot, seconds: sub.band_estimate.seconds };
   const share = Math.min(1, BAND_ROWS / Math.max(1, fit.n_train));
   const perFit = fit.models.reduce((t, m) => t + m.fit_seconds / (folds + 2), 0);
-  return 2 * perFit * share * nBoot;
+  return { nBoot: BAND_BOOT, seconds: 2 * perFit * share * BAND_BOOT };
 }
 
 export function aboutSeconds(s: number): string {
@@ -218,4 +217,30 @@ export function effectLabel(m: SubstitutionModel): string {
 
 export function fmtDelta(v: number): string {
   return fmtNum(v);
+}
+
+const ticked = (names: string[]) => {
+  const t = names.map((n) => `\`${n}\``);
+  return t.length < 2 ? (t[0] ?? "") : `${t.slice(0, -1).join(", ")} and ${t.at(-1)}`;
+};
+
+/**
+ * The nested nutrients a curve moved along (§12.5): "`fat_sat`, `fat_mon` and `fat_poly` moved with
+ * `fat_total`; `sugar` with `carb`" — so the reader sees that a part kept its share of its total.
+ */
+export function carriedSentence(
+  carried: string[],
+  nested: { column: string; parent: string }[],
+): string | null {
+  if (!carried.length) return null;
+  const byParent = new Map<string, string[]>();
+  const loose: string[] = [];
+  for (const c of carried) {
+    const parent = nested.find((n) => n.column === c)?.parent;
+    if (parent) byParent.set(parent, [...(byParent.get(parent) ?? []), c]);
+    else loose.push(c);
+  }
+  const parts = [...byParent].map(([parent, kids]) => `${ticked(kids)} with \`${parent}\``);
+  if (loose.length) parts.push(`${ticked(loose)} with their totals`);
+  return `Parts moved with their totals, keeping their shares: ${parts.join("; ")}.`;
 }
