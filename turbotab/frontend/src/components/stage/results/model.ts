@@ -1,0 +1,221 @@
+/**
+ * What the Results draw, computed from the fit, shelf, design, split and substitution artifacts
+ * (M1_CONTRACT §13). Pure, so every saved figure and every screen agree on it.
+ */
+import type {
+  Coefficient,
+  FitArtifact,
+  FittedModel,
+  ShelfArtifact,
+  SplitArtifact,
+  SubstitutionArtifact,
+  SubstitutionModel,
+} from "../../../api/m1-stage-types";
+import { fmtInt, fmtNum } from "../format";
+
+/** Fitted models in the shelf's order (judgment is order, never absence). */
+export function inShelfOrder(fit: FitArtifact, shelf: ShelfArtifact | null): FittedModel[] {
+  if (!shelf) return fit.models;
+  const rank = new Map(shelf.families.map((f) => [f.key, f.rank]));
+  return [...fit.models].sort((a, b) => (rank.get(a.family) ?? 99) - (rank.get(b.family) ?? 99));
+}
+
+export interface ComparisonRow {
+  family: string;
+  label: string;
+  mean: number | null;
+  sd: number | null;
+  holdout: number | null;
+  concerns: string[];
+}
+
+export interface Comparison {
+  metric: string;
+  label: string;
+  rows: ComparisonRow[];
+  baseline: { value: number; label: string } | null;
+  domain: [number, number];
+  /** Larger is better (R², AUC, accuracy) or smaller (RMSE, Brier, log loss). */
+  higherIsBetter: boolean;
+}
+
+const LOWER_BETTER = new Set(["rmse", "mae", "brier", "log_loss", "logloss"]);
+
+export function comparisonOf(fit: FitArtifact, shelf: ShelfArtifact | null, metric = fit.primary_metric): Comparison {
+  const rows = inShelfOrder(fit, shelf).map((m) => ({
+    family: m.family,
+    label: m.label,
+    mean: m.cv[metric]?.mean ?? null,
+    sd: m.cv[metric]?.sd ?? null,
+    holdout: m.holdout?.[metric] ?? null,
+    concerns: m.concerns,
+  }));
+  const base = fit.models.find((m) => m.baseline && m.baseline.metric === metric)?.baseline ?? null;
+  const values: number[] = [];
+  for (const r of rows) {
+    if (r.mean !== null) values.push(r.mean - (r.sd ?? 0), r.mean + (r.sd ?? 0));
+    if (r.holdout !== null) values.push(r.holdout);
+  }
+  if (base) values.push(base.value);
+  if (metric === "r2") values.push(0);
+  let lo = Math.min(...values);
+  let hi = Math.max(...values);
+  if (!Number.isFinite(lo)) [lo, hi] = [0, 1];
+  const pad = (hi - lo) * 0.08 || 0.05;
+  return {
+    metric,
+    label: fit.metric_labels[metric] ?? metric,
+    rows,
+    baseline: base
+      ? {
+          value: base.value,
+          label: fit.task === "regression" ? "the outcome's mean" : "the class prior",
+        }
+      : null,
+    domain: [lo - pad, hi + pad],
+    higherIsBetter: !LOWER_BETTER.has(metric),
+  };
+}
+
+/** "5-fold cross-validation on 2,294 training rows; 570 held-out rows scored once." */
+export function metricBasis(fit: FitArtifact, split: SplitArtifact | null): string {
+  const folds = split?.folds ?? null;
+  const cv = `${folds ? `${folds}-fold ` : ""}cross-validation on ${fmtInt(fit.n_train)} training rows`;
+  const grouped = split?.grouped_by ? `, grouped by \`${split.grouped_by}\`` : "";
+  const hold = fit.n_holdout
+    ? `; ${fmtInt(fit.n_holdout)} held-out rows scored once`
+    : "; no rows held out";
+  return `Mean ± SD over ${cv}${grouped}${hold}.`;
+}
+
+// ── coefficients ─────────────────────────────────────────────────────────────
+
+/** Features that come from an exposure or the energy column (`fat_total_adj` ← `fat_total`). */
+export function exposureCoefficients(
+  coefs: Coefficient[],
+  roles: Record<string, string> | null | undefined,
+): Coefficient[] {
+  const sources = Object.entries(roles ?? {})
+    .filter(([, r]) => r === "exposure" || r === "energy")
+    .map(([c]) => c)
+    .sort((a, b) => b.length - a.length);
+  const pick = coefs.filter((c) => {
+    if (c.feature === "(intercept)") return false;
+    return sources.some(
+      (src) => c.feature === src || c.feature.startsWith(`${src}_`) || c.feature.startsWith(`kcal_from_${src}`),
+    );
+  });
+  return pick.length ? pick : coefs.filter((c) => c.feature !== "(intercept)");
+}
+
+export function forestDomain(coefs: Coefficient[]): [number, number] {
+  const vals: number[] = [0];
+  for (const c of coefs) {
+    for (const v of [c.estimate, c.ci_low, c.ci_high]) if (v !== null && Number.isFinite(v)) vals.push(v);
+  }
+  const lo = Math.min(...vals);
+  const hi = Math.max(...vals);
+  const pad = (hi - lo) * 0.08 || 0.1;
+  return [lo - pad, hi + pad];
+}
+
+// ── substitution ─────────────────────────────────────────────────────────────
+
+export const MIN_SUPPORT = 0.5;
+
+export interface CurvePoint {
+  k: number;
+  delta: number;
+}
+
+/** The defined part of a curve: it stops at its support limit. */
+export function curvePoints(sub: SubstitutionArtifact, m: SubstitutionModel): CurvePoint[] {
+  const out: CurvePoint[] = [];
+  sub.ks.forEach((k, i) => {
+    const d = m.delta[i];
+    if (d !== null && d !== undefined && Number.isFinite(d)) out.push({ k, delta: d });
+  });
+  return out;
+}
+
+export function bandPoints(sub: SubstitutionArtifact, m: SubstitutionModel): { k: number; lo: number; hi: number }[] {
+  if (!m.ci_low || !m.ci_high) return [];
+  const out: { k: number; lo: number; hi: number }[] = [];
+  sub.ks.forEach((k, i) => {
+    const lo = m.ci_low![i];
+    const hi = m.ci_high![i];
+    if (lo !== null && hi !== null && lo !== undefined && hi !== undefined && Number.isFinite(lo) && Number.isFinite(hi))
+      out.push({ k, lo, hi });
+  });
+  return out;
+}
+
+export function hasBand(sub: SubstitutionArtifact): boolean {
+  return sub.models.some((m) => bandPoints(sub, m).length > 1);
+}
+
+/** Where the curves disagree: the span between the lowest and highest curve at each k. */
+export function disagreement(sub: SubstitutionArtifact): { k: number; lo: number; hi: number }[] {
+  const out: { k: number; lo: number; hi: number }[] = [];
+  sub.ks.forEach((k, i) => {
+    const vals = sub.models
+      .map((m) => m.delta[i])
+      .filter((v): v is number => v !== null && v !== undefined && Number.isFinite(v));
+    if (vals.length >= 2) out.push({ k, lo: Math.min(...vals), hi: Math.max(...vals) });
+  });
+  return out;
+}
+
+/** Why a curve stops, from the data's own support. */
+export function stopReason(sub: SubstitutionArtifact): string | null {
+  const m = sub.models.find((x) => x.stopped_at !== null);
+  if (!m || m.stopped_at === null) return null;
+  const i = sub.ks.findIndex((k) => k === m.stopped_at);
+  const share = i >= 0 ? m.on_support_fraction[i] : null;
+  const pct = share !== null && share !== undefined ? ` (${Math.round(share * 100)}%)` : "";
+  return `Stops at ${fmtInt(m.stopped_at)} kcal: past it, fewer than half the rows stay within observed intakes${pct}.`;
+}
+
+export function curveDomain(sub: SubstitutionArtifact): [number, number] {
+  const vals: number[] = [0];
+  for (const m of sub.models) {
+    for (const p of curvePoints(sub, m)) vals.push(p.delta);
+    for (const b of bandPoints(sub, m)) vals.push(b.lo, b.hi);
+  }
+  const lo = Math.min(...vals);
+  const hi = Math.max(...vals);
+  const pad = (hi - lo) * 0.08 || 0.5;
+  return [lo - pad, hi + pad];
+}
+
+/** The refits a requested band uses (M1_CONTRACT §12.7: on ≤ 2,000 training rows). */
+export const BAND_BOOT = 40;
+export const BAND_ROWS = 2_000;
+
+/**
+ * About how long the band takes, from measured fit times: each family's time per fit (its CV
+ * folds, the refit and the coefficients), scaled to ≤ 2,000 rows, times the refits, doubled for
+ * the curve each refit draws (on NHANES: 19 s of fitting, 39.5 s measured end to end). The
+ * server's own measurement wins when it sends one.
+ */
+export function bandSeconds(sub: SubstitutionArtifact, fit: FitArtifact, folds: number, nBoot = BAND_BOOT): number {
+  if (sub.band_seconds !== undefined && sub.band_seconds !== null) return sub.band_seconds;
+  const share = Math.min(1, BAND_ROWS / Math.max(1, fit.n_train));
+  const perFit = fit.models.reduce((t, m) => t + m.fit_seconds / (folds + 2), 0);
+  return 2 * perFit * share * nBoot;
+}
+
+export function aboutSeconds(s: number): string {
+  if (s < 5) return "a few seconds";
+  if (s < 90) return `${Math.max(5, Math.round(s / 5) * 5)} s`;
+  return `${Math.round(s / 60)} min`;
+}
+
+/** "−1.71 per 100 kcal at k = 100", as the server labels it (a real minus sign). */
+export function effectLabel(m: SubstitutionModel): string {
+  return (m.effect_label ?? "").replace(/^-/, "−");
+}
+
+export function fmtDelta(v: number): string {
+  return fmtNum(v);
+}

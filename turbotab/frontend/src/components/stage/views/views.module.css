@@ -1,0 +1,645 @@
+/*
+ * The stage's views. Hues come from the categorical ramp so semantic color stays semantic
+ * (DESIGN_LANGUAGE §02): --c1 with this choice · --c4 your data now · --c2 / --c3 the two levels
+ * of a by-level cut. Removed rows are a hatch, not a hue.
+ */
+
+.fill {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.svg {
+  display: block;
+  overflow: visible;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.axis text {
+  font-size: 10px;
+  fill: var(--faint);
+}
+
+.grid {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+}
+
+.zero {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.baseline {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.axisTitle {
+  font-size: 10.5px;
+  fill: var(--muted);
+}
+
+.panelLabel {
+  font-size: 11.5px;
+  fill: var(--ink);
+}
+
+/* ── relationship ─────────────────────────────────────────────────────────── */
+
+.dotsNow,
+.dotsWith {
+  fill-opacity: 0.55;
+  transition: fill var(--dur-arrive) ease-out;
+}
+
+.dotsNow {
+  fill: var(--c4);
+}
+
+.dotsWith {
+  fill: var(--c1);
+}
+
+.fitLine {
+  stroke: var(--ink);
+  stroke-opacity: 0.55;
+  stroke-width: 1.3;
+  stroke-dasharray: 0.008 0.006;
+  fill: none;
+}
+
+.fitLine[data-emph="drawing"] {
+  stroke: var(--accent-ink);
+  stroke-opacity: 1;
+  stroke-width: 2;
+  stroke-dasharray: 1 1;
+}
+
+.fitLine[data-emph="1"] {
+  stroke: var(--accent-ink);
+  stroke-opacity: 1;
+  stroke-width: 2;
+  stroke-dasharray: none;
+}
+
+.rBadge,
+.rBadgeCompact {
+  position: absolute;
+  top: -4px;
+  transform: translateX(-100%);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 10px 4px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--line);
+  pointer-events: none;
+}
+
+.rBadgeCompact {
+  top: -2px;
+  padding: 0 7px 1px;
+  gap: 4px;
+}
+
+.rLetter {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.rValue,
+.rValueNow {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--c1);
+  letter-spacing: -0.01em;
+}
+
+.rValueNow {
+  color: var(--ink);
+}
+
+.rBadgeCompact .rLetter {
+  font-size: 12px;
+}
+
+.rBadgeCompact .rValue,
+.rBadgeCompact .rValueNow {
+  font-size: 14px;
+}
+
+/* ── distribution ─────────────────────────────────────────────────────────── */
+
+.distWrap {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.distWrap > .fill {
+  flex: 1;
+}
+
+.barNow,
+.barWith {
+  transition: fill var(--dur-arrive) ease-out;
+}
+
+.barNow {
+  fill: var(--c4);
+  fill-opacity: 0.6;
+}
+
+.barWith {
+  fill: var(--c1);
+  fill-opacity: 0.8;
+}
+
+.removed {
+  stroke: none;
+}
+
+.hatchLine {
+  stroke: var(--ink);
+  stroke-opacity: 0.38;
+  stroke-width: 1.6;
+}
+
+.stackLabelNow,
+.stackLabelWith {
+  font-size: 11px;
+  fill: var(--muted);
+}
+
+.stackLabelWith {
+  fill: var(--c1);
+  font-weight: 600;
+}
+
+.markLine {
+  stroke-width: 1.3;
+  stroke-dasharray: 3 2;
+}
+
+.markText {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.markAll .markLine {
+  stroke: var(--ink);
+}
+.markAll .markText {
+  fill: var(--ink);
+}
+.markA .markLine {
+  stroke: var(--c2);
+}
+.markA .markText {
+  fill: var(--c2);
+}
+.markB .markLine {
+  stroke: var(--c3);
+}
+.markB .markText {
+  fill: var(--c3);
+}
+
+.overflow {
+  margin: 4px 0 0;
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.levels {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  padding: 6px 4px;
+}
+
+.levelRow {
+  display: grid;
+  grid-template-columns: minmax(80px, max-content) minmax(0, 1fr) 118px;
+  align-items: center;
+  gap: 14px;
+}
+
+.levelLabel {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.levelTrack {
+  height: 20px;
+  background: var(--surface-2);
+  border-radius: 5px;
+  overflow: hidden;
+  display: block;
+}
+
+.levelBar,
+.levelBlank {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--c4);
+  opacity: 0.75;
+}
+
+.levelBlank {
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--ink) 30%, transparent) 0 2px,
+    transparent 2px 6px
+  );
+  opacity: 1;
+}
+
+.levelCount {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: right;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: baseline;
+}
+
+.levelPct {
+  font-size: 10.5px;
+  color: var(--faint);
+  min-width: 42px;
+  text-align: right;
+}
+
+/* ── lineage ──────────────────────────────────────────────────────────────── */
+
+.laneHeads text {
+  font-family: var(--sans);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  fill: var(--muted);
+}
+
+.laneCount {
+  font-family: var(--mono);
+  font-weight: 500;
+  letter-spacing: 0;
+  fill: var(--faint);
+}
+
+.openLane rect {
+  fill: var(--accent-tint);
+  stroke: var(--accent);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+}
+
+.openLabel {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  fill: var(--accent-ink);
+}
+
+.link,
+.linkRewrite {
+  fill: none;
+  stroke-width: 1.1;
+}
+
+.link {
+  stroke: color-mix(in srgb, var(--muted) 42%, transparent);
+}
+
+.linkRewrite {
+  stroke: var(--c1);
+  stroke-opacity: 0.7;
+  stroke-width: 1.3;
+}
+
+.node text,
+.nodeChanged text,
+.nodeMuted text {
+  fill: var(--ink);
+}
+
+.node .dot {
+  fill: var(--muted);
+}
+
+.nodeMuted text {
+  fill: var(--faint);
+}
+
+.nodeMuted .dot {
+  fill: var(--faint);
+}
+
+.nodeChanged text {
+  fill: var(--c1);
+  font-weight: 600;
+}
+
+.nodeChanged .dot {
+  fill: var(--c1);
+}
+
+.pill {
+  fill: var(--surface-2);
+  stroke: var(--line);
+}
+
+.pillDeck {
+  fill: var(--surface);
+  stroke: var(--line);
+}
+
+.nodeChanged .pill {
+  fill: color-mix(in srgb, var(--c1) 15%, transparent);
+  stroke: var(--c1);
+  stroke-opacity: 0.6;
+}
+
+.laneNote {
+  fill: var(--faint);
+  font-style: italic;
+}
+
+/* ── row flow ─────────────────────────────────────────────────────────────── */
+
+.flow,
+.flowCompact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.flowRow {
+  overflow: hidden;
+}
+
+.flowLine {
+  display: grid;
+  grid-template-columns: minmax(150px, 230px) minmax(0, 1fr) 70px 70px;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+}
+
+.flowCompact .flowLine {
+  grid-template-columns: minmax(120px, 176px) minmax(0, 1fr) 58px 64px;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.flowLabel {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.flowCompact .flowLabel {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flowTrack {
+  display: flex;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.flowCompact .flowTrack {
+  height: 10px;
+}
+
+.flowKept,
+.flowKeptNow,
+.flowHold {
+  display: block;
+  height: 100%;
+}
+
+.flowKept {
+  background: var(--c4);
+  opacity: 0.7;
+}
+
+.flowKeptNow {
+  background: var(--c1);
+}
+
+.flowHold {
+  background: var(--c4);
+  opacity: 0.32;
+}
+
+.flowGone {
+  display: block;
+  height: 100%;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--ink) 42%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+.flowCount {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  text-align: right;
+  color: var(--ink);
+}
+
+.flowDrop {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.flowDetail {
+  margin: -4px 0 4px;
+  padding-left: calc(min(230px, 30%) + 12px);
+  font-family: var(--serif);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.flowOpen {
+  overflow: hidden;
+}
+
+.flowOpenText {
+  display: block;
+  margin: 3px 0 3px 30%;
+  padding: 5px 10px;
+  border: 1.2px dashed var(--accent);
+  border-radius: 7px;
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* ── table focus ──────────────────────────────────────────────────────────── */
+
+.tableWrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.tableScroll {
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.table,
+.tableCompact {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  width: 100%;
+}
+
+.tableCompact {
+  font-size: 10.5px;
+}
+
+.table th,
+.table td,
+.tableCompact th,
+.tableCompact td {
+  padding: 6px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--line-soft);
+  white-space: nowrap;
+}
+
+.tableCompact th,
+.tableCompact td {
+  padding: 3px 6px;
+}
+
+.colHead {
+  font-weight: 500;
+  color: var(--muted);
+  vertical-align: bottom;
+  position: relative;
+}
+
+.colName,
+.colNameNew {
+  display: block;
+  font-size: 11px;
+  color: var(--ink);
+}
+
+.colNameNew {
+  color: var(--c1);
+  font-weight: 600;
+}
+
+.prefix {
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.rowHead,
+.rowId {
+  color: var(--faint);
+  font-weight: 400;
+  text-align: left !important;
+}
+
+.leaves {
+  margin-left: 8px;
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rowGone td {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--ink) 45%, transparent);
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--ink) 7%, transparent) 0 2px,
+    transparent 2px 6px
+  );
+}
+
+.cell {
+  color: var(--ink);
+  transition: background-color var(--dur-arrive) ease-out;
+}
+
+.cellChanged {
+  background: color-mix(in srgb, var(--c1) 15%, transparent);
+}
+
+.blank {
+  font-family: var(--sans);
+  font-style: italic;
+  font-size: 0.92em;
+  color: var(--faint);
+}
+
+.tableFoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.tableRest {
+  color: var(--c1);
+}
+
+:global(:root[data-reduced-motion="true"]) .dotsNow,
+:global(:root[data-reduced-motion="true"]) .dotsWith,
+:global(:root[data-reduced-motion="true"]) .barNow,
+:global(:root[data-reduced-motion="true"]) .barWith,
+:global(:root[data-reduced-motion="true"]) .cell {
+  transition: none;
+}

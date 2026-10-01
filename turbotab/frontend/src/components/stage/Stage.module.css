@@ -1,0 +1,601 @@
+/*
+ * The stage. Its bar names what is shown (a dashed --accent pill for an unrecorded preview, the
+ * same claim the Record's open question makes: "now, not recorded"); the flip and the step dots
+ * are the user's controls (sans); captions are the app's voice (serif); numbers are data (mono).
+ */
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ── the bar ──────────────────────────────────────────────────────────────── */
+
+.bar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.barTop {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  min-height: 26px;
+}
+
+.pill,
+.pillEvidence {
+  align-self: center;
+  flex: 0 0 auto;
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  background: var(--accent-tint);
+  border: 1px dashed var(--accent);
+  border-radius: 7px;
+  padding: 2px 8px;
+}
+
+.pillEvidence {
+  color: var(--warn);
+  background: var(--warn-tint);
+  border-color: var(--warn-line);
+  border-style: solid;
+}
+
+.title {
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aside {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.loading {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.loading[data-on] {
+  opacity: 0.8;
+  animation: sweep 900ms linear infinite;
+}
+
+@keyframes sweep {
+  from {
+    background-position: -40% 0;
+  }
+  to {
+    background-position: 140% 0;
+  }
+}
+
+:global(:root[data-reduced-motion="true"]) .loading[data-on] {
+  animation: none;
+  background: var(--accent);
+  opacity: 0.35;
+}
+
+/* ── the player ───────────────────────────────────────────────────────────── */
+
+.player {
+  display: flex;
+  align-items: center;
+  gap: 8px 14px;
+  min-height: 30px;
+  min-width: 0;
+}
+
+.flip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.flipSide {
+  padding: 3px 4px;
+  border: 0;
+  background: none;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.flipSide[aria-pressed="true"] {
+  color: var(--ink);
+}
+
+.flipSide:last-of-type[aria-pressed="true"] {
+  color: var(--accent-ink);
+}
+
+.flipHint {
+  font-weight: 500;
+  color: var(--faint);
+}
+
+.flipSwitch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.flipKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--c4);
+  transition:
+    transform var(--dur-settle) ease-out,
+    background-color var(--dur-settle) ease-out;
+}
+
+.flipKnob[data-side="with"] {
+  transform: translateX(18px);
+  background: var(--accent);
+}
+
+:global(:root[data-reduced-motion="true"]) .flipKnob {
+  transition: none;
+}
+
+.dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.dot {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  position: relative;
+}
+
+.dot::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  border: 1.5px solid var(--faint);
+  background: var(--surface);
+}
+
+.dot[data-reached]::after {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.dot[data-at]::after {
+  inset: 4px;
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.stepLabel {
+  flex: 1 1 auto;
+  font-family: var(--serif);
+  font-size: 13.5px;
+  font-style: italic;
+  color: var(--ink);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stepArrow {
+  font-style: normal;
+  color: var(--accent-ink);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.stepLabel + .spacer {
+  flex: 0;
+}
+
+.readout {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: 14px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.readoutItem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.readoutName {
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--muted);
+}
+
+.readoutDim {
+  color: var(--faint);
+}
+
+.readoutOn {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.readoutArrow {
+  color: var(--faint);
+}
+
+.record {
+  flex: 0 0 auto;
+  padding: 4px 11px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.record:disabled {
+  background: var(--surface);
+  color: var(--faint);
+  border-color: var(--line);
+}
+
+.ack,
+.ackRefused {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--ok);
+  background: var(--ok-tint);
+  border-radius: 6px;
+  font-family: var(--serif);
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.ackRefused {
+  border-left-color: var(--warn);
+  background: var(--warn-tint);
+}
+
+/* ── the body ─────────────────────────────────────────────────────────────── */
+
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.scene {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2px 2px 8px;
+}
+
+.views,
+.veiled {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.veiled {
+  opacity: 0.35;
+  filter: saturate(0.4);
+}
+
+.note {
+  margin: 0;
+  padding: 8px 12px;
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+
+.refusal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.refusalText {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 15.5px;
+  line-height: 1.45;
+}
+
+.exits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.exit {
+  padding: 5px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--accent-ink);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.exit:hover {
+  background: var(--accent-tint);
+}
+
+.grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.primary,
+.thumb,
+.liveCard,
+.liveCardGrow,
+.liveFull {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 11px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: visible;
+}
+
+.primary {
+  padding: 13px 18px 12px;
+  min-height: 300px;
+}
+
+.thumb {
+  min-height: 200px;
+}
+
+.liveCardGrow {
+  flex: 1;
+  min-height: 260px;
+}
+
+.liveFull {
+  flex: 1;
+  padding: 14px 18px;
+}
+
+.liveStack {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lineageBox {
+  position: relative;
+  width: 100%;
+}
+
+.provenance {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.provenance summary {
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-ink);
+}
+
+.provenance .captionText {
+  margin-top: 6px;
+  font-size: 14px;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  min-height: 22px;
+}
+
+.cardHead > :last-child:not(:first-child) {
+  margin-left: auto;
+}
+
+.kicker {
+  margin: 0;
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cardTitle {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.cardChip {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.cardBody {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 8px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.captionText {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--ink);
+  max-width: 62ch;
+}
+
+.basis {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+  text-align: right;
+  max-width: 34ch;
+  line-height: 1.4;
+}
+
+.promote {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: left;
+  min-width: 0;
+  color: var(--ink);
+}
+
+.thumbTitle {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thumbTitle :global(.v) {
+  font-size: 0.86em;
+}
+
+.promoteIcon {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--faint);
+  border-radius: 2px;
+  flex: 0 0 auto;
+  position: relative;
+  top: 1px;
+}
+
+.promote:hover .thumbTitle {
+  color: var(--accent-ink);
+}
+
+.promote:hover .promoteIcon {
+  border-color: var(--accent);
+}
+
+.emptyLine {
+  margin: 8px 0;
+  font-family: var(--serif);
+  font-size: 15px;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .grid {
+    grid-template: none !important;
+    grid-auto-rows: minmax(260px, auto);
+  }
+  .grid > * {
+    grid-area: auto !important;
+  }
+}

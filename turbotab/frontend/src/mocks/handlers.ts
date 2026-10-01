@@ -8,6 +8,7 @@ import { STAGES } from "../api/schema";
 import { parseDelimited } from "./csv";
 import { dietaryRecalls, genomicsWide, type MockDataset } from "./datasets";
 import { MockServer, type EventType } from "./db";
+import { m1StageHandlers } from "./m1-stage";
 import { datasetAt, listDir } from "./fs";
 import { columnSummary, findColumn, histogram, isNumericDtype } from "./stats";
 
@@ -44,6 +45,7 @@ async function datasetFromUpload(file: File): Promise<MockDataset> {
 
 export function makeHandlers(server: MockServer): HttpHandler[] {
   return [
+    ...m1StageHandlers(), // the stage's NHANES project (M1 part 2); literal paths, so first
     http.get("/api/health", () => HttpResponse.json(HEALTH)),
 
     http.get("/api/projects", () => HttpResponse.json(server.listProjects())),
