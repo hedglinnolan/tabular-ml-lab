@@ -4,7 +4,8 @@ Structural answers change what the table *is*, so every stage after them reads a
 rather than the raw file::
 
     ingest ─▶ oriented ─▶ findings ─────────┐
-                 │  └────▶ structure ──────┤
+                 │  ├────▶ structure ──────┤
+                 │  └────▶ profile (lens hints, asked before the working table can exist)
                  └─────────────────────────┴─▶ working ─▶ target_info · roles · proposals · cohort · …
 
 * **oriented** (reads ``orientation``): the raw table, or its transpose when the user said each
@@ -35,7 +36,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import os
 import shutil
 import time
@@ -674,8 +674,8 @@ def repair_expressions(findings: Any, dispositions: Mapping[str, Any] | None) ->
     return {str(k): str(v) for k, v in (fn(findings, dispositions or {}) or {}).items()}
 
 
-def _aggregation_plan(state: Any, columns: set[str], structure: Mapping[str, Any] | None
-                      ) -> dict[str, Any] | None:
+def aggregation_plan(state: Any, columns: set[str], structure: Mapping[str, Any] | None
+                     ) -> dict[str, Any] | None:
     spec, agg = state.grain, state.aggregation
     if spec is None or spec.grain != "repeated" or state.unit != "unit" or agg is None:
         return None
@@ -704,16 +704,14 @@ def _order_expr(column: str | None, physical: str) -> str:
     return f"TRY_CAST({q} AS TIMESTAMP)"
 
 
-def _aggregate(ctx: StageContext, con: Any, src_sql: str, info: Mapping[str, Any],
-               plan: dict[str, Any], table_out: Path, map_out: Path) -> dict[str, Any]:
-    """One row per unit (DuckDB GROUP BY) and the row map; returns what the receipt states."""
-    from turbotab.core.datastore import _is_float, _is_int
+def rank_units(con: Any, src_sql: str, plan: Mapping[str, Any],
+               physical: Mapping[str, str]) -> None:
+    """``ranked``: the source rows, each with its unit, its place in the unit's order, the unit's size.
 
-    target = ctx.state.target
-    physical = {str(c["name"]): str(c["physical_type"]) for c in info["columns"]}
-    dtypes = {str(c["name"]): str(c["dtype"]) for c in info["columns"]}
-    names = [str(c["name"]) for c in info["columns"]]
-    key, method, order = plan["id_column"], plan["method"], plan["time_column"]
+    A unit is the rows sharing the id (a row with no id is a unit of its own), named by its first
+    row; the order is the time column (missing last), then file order.
+    """
+    key, order = plan["id_column"], plan["time_column"]
     q_key = _ident(key)
     part = f"PARTITION BY {q_key}, CASE WHEN {q_key} IS NULL THEN {ROW_ID} END"
     con.execute(
@@ -723,21 +721,20 @@ def _aggregate(ctx: StageContext, con: Any, src_sql: str, info: Mapping[str, Any
         f"count(*) OVER ({part}) AS {_M} "
         f"FROM (SELECT *, {_order_expr(order, physical.get(order or '', ''))} AS {_T} FROM {src_sql})")
 
-    target = target if target in physical else None
-    varies = False
-    if target is not None:
-        varies = bool(con.execute(
-            f"SELECT count(*) FROM (SELECT count(DISTINCT {_ident(target)}) AS d FROM ranked "
-            f"GROUP BY {_UNIT}) WHERE d > 1").fetchone()[0])
-    rule = plan["outcome_rule"]
-    if target is not None and varies:
-        if rule is None:
-            raise StructureError(
-                f"`{target}` changes within a `{key}`, so combining the rows needs to know which "
-                f"value to keep. Answer the combining question again and choose the outcome.")
-        if rule == "mean" and dtypes.get(target) not in NUMERIC:
-            raise StructureError(f"`{target}` is not a number, so its mean cannot be the outcome; "
-                                 f"keep the first or the last value instead.")
+
+def combine_sql(info: Mapping[str, Any], plan: Mapping[str, Any], target: str | None,
+                varies: bool) -> tuple[str, list[str], list[str]]:
+    """The ``SELECT`` over ``ranked`` that makes one row per unit, and the numeric and other columns.
+
+    Numeric columns follow the method (mean, first record, last record, last minus first); the
+    columns that say when a record was taken, and every non-numeric one, come from the first record
+    (the last for "last"); the outcome is its one value per unit, or, when it varies, the rule.
+    """
+    from turbotab.core.datastore import _is_float, _is_int
+
+    physical = {str(c["name"]): str(c["physical_type"]) for c in info["columns"]}
+    dtypes = {str(c["name"]): str(c["dtype"]) for c in info["columns"]}
+    key, method, rule = plan["id_column"], plan["method"], plan["outcome_rule"]
 
     def first(c: str) -> str:
         return f"first({_ident(c)}) FILTER (WHERE {_K} = 1)"
@@ -757,7 +754,7 @@ def _aggregate(ctx: StageContext, con: Any, src_sql: str, info: Mapping[str, Any
     combined: list[str] = []
     numeric_cols: list[str] = []
     other_cols: list[str] = []
-    for c in names:
+    for c in (str(c["name"]) for c in info["columns"]):
         q = _ident(c)
         if c == key:
             expr = f"first({q})"
@@ -778,9 +775,45 @@ def _aggregate(ctx: StageContext, con: Any, src_sql: str, info: Mapping[str, Any
                     "change": change(c)}[method]
         combined.append(f"{expr} AS {q}")
     combined.append(f"CAST(row_number() OVER (ORDER BY {_UNIT}) - 1 AS BIGINT) AS {ROW_ID}")
-    _execute(con, ctx,
-             f"COPY (SELECT {', '.join(combined)} FROM ranked GROUP BY {_UNIT} ORDER BY {_UNIT}) "
-             f"TO {_lit(table_out)} (FORMAT parquet, COMPRESSION zstd)",
+    sql = f"SELECT {', '.join(combined)} FROM ranked GROUP BY {_UNIT} ORDER BY {_UNIT}"
+    return sql, numeric_cols, other_cols
+
+
+def outcome_rule_problem(target: str | None, key: str, varies: bool, rule: str | None,
+                         dtypes: Mapping[str, str]) -> str | None:
+    """Why the outcome cannot be combined as recorded, or None."""
+    if target is None or not varies:
+        return None
+    if rule is None:
+        return (f"`{target}` changes within a `{key}`, so combining the rows needs to know which "
+                f"value to keep. Answer the combining question again and choose the outcome.")
+    if rule == "mean" and dtypes.get(target) not in NUMERIC:
+        return (f"`{target}` is not a number, so its mean cannot be the outcome; keep the first or "
+                f"the last value instead.")
+    return None
+
+
+def _aggregate(ctx: StageContext, con: Any, src_sql: str, info: Mapping[str, Any],
+               plan: dict[str, Any], table_out: Path, map_out: Path) -> dict[str, Any]:
+    """One row per unit (DuckDB GROUP BY) and the row map; returns what the receipt states."""
+    physical = {str(c["name"]): str(c["physical_type"]) for c in info["columns"]}
+    dtypes = {str(c["name"]): str(c["dtype"]) for c in info["columns"]}
+    key, method, order = plan["id_column"], plan["method"], plan["time_column"]
+    rank_units(con, src_sql, plan, physical)
+
+    target = ctx.state.target if ctx.state.target in physical else None
+    varies = False
+    if target is not None:
+        varies = bool(con.execute(
+            f"SELECT count(*) FROM (SELECT count(DISTINCT {_ident(target)}) AS d FROM ranked "
+            f"GROUP BY {_UNIT}) WHERE d > 1").fetchone()[0])
+    rule = plan["outcome_rule"]
+    problem = outcome_rule_problem(target, key, varies, rule, dtypes)
+    if problem:
+        raise StructureError(problem)
+
+    select, numeric_cols, other_cols = combine_sql(info, plan, target, varies)
+    _execute(con, ctx, f"COPY ({select}) TO {_lit(table_out)} (FORMAT parquet, COMPRESSION zstd)",
              0.35, 0.7, "Combining each unit's rows")
     _execute(con, ctx,
              f"COPY (SELECT CAST(dense_rank() OVER (ORDER BY {_UNIT}) - 1 AS BIGINT) AS row_id, "
@@ -813,6 +846,13 @@ def _aggregate(ctx: StageContext, con: Any, src_sql: str, info: Mapping[str, Any
     }
 
 
+def source_sql(source: Path, names: Sequence[str], repairs: Mapping[str, str]) -> str:
+    """The oriented table with the row-local repairs applied, as a subquery."""
+    select = ", ".join([*(f"{repairs[c]} AS {_ident(c)}" if c in repairs else _ident(c)
+                          for c in names), ROW_ID])
+    return f"(SELECT {select} FROM read_parquet({_lit(source)}))"
+
+
 def working_stage(ctx: StageContext) -> Bundle:
     """Row-local repairs, then one row per unit when the user combined rows; else a pass-through."""
     oriented = ctx.inputs["oriented"]
@@ -831,7 +871,7 @@ def working_stage(ctx: StageContext) -> Bundle:
     unknown = [c for c in repairs if c not in names]
     if unknown:
         raise StructureError(f"A recorded repair names `{unknown[0]}`, which is not a column.")
-    plan = _aggregation_plan(ctx.state, set(names), structure)
+    plan = aggregation_plan(ctx.state, set(names), structure)
     base = {"transposed": transposed, "n_source_rows": int(info["n_rows"]),
             "repairs": [{"column": c, "expression": e} for c, e in repairs.items()]}
     if not repairs and plan is None:
@@ -840,9 +880,7 @@ def working_stage(ctx: StageContext) -> Bundle:
         return Bundle(data=data, files={TABLE: _reference(source, ctx, "working")})
 
     started = time.perf_counter()
-    select = ", ".join([*(f"{repairs[c]} AS {_ident(c)}" if c in repairs else _ident(c)
-                          for c in names), ROW_ID])
-    src_sql = f"(SELECT {select} FROM read_parquet({_lit(source)}))"
+    src_sql = source_sql(source, names, repairs)
     table_out = _scratch(ctx, "working", TABLE)
     sidecar = _scratch(ctx, "working", SIDECAR)
     map_out = _scratch(ctx, "working", ROW_MAP)
@@ -871,8 +909,9 @@ def working_stage(ctx: StageContext) -> Bundle:
 
 
 __all__ = [
-    "ROW_MAP", "SAMPLE_COLUMN", "TABLE", "StructureError", "effective_repeat_kind",
-    "label_column", "orientation_reading", "oriented_stage", "repair_expressions", "row_map",
+    "ROW_MAP", "SAMPLE_COLUMN", "TABLE", "StructureError", "aggregation_plan", "combine_sql",
+    "effective_repeat_kind", "label_column", "orientation_reading", "oriented_stage",
+    "outcome_rule_problem", "rank_units", "repair_expressions", "row_map", "source_sql",
     "structure_stage", "table_info", "table_path", "time_column", "transpose", "turn_check",
     "working_paths", "working_stage", "working_store",
 ]

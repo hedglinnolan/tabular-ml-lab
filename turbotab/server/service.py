@@ -617,7 +617,11 @@ class ProjectService:
         A decision that would be refused is refused here too (409), so an option that
         cannot be taken says why instead of previewing.
         """
-        from turbotab.core import fact_previews, row_previews  # noqa: F401 - register the builders
+        from turbotab.core import (  # noqa: F401 - register the builders
+            fact_previews,
+            row_previews,
+            structure_previews,
+        )
 
         self.workspace.get(pid)
         stages = self.engine.status(pid)
