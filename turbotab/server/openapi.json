@@ -1673,6 +1673,11 @@
             ],
             "title": "Sentence"
           },
+          "post_seal": {
+            "type": "boolean",
+            "title": "Post Seal",
+            "default": false
+          },
           "decision": {
             "oneOf": [
               {
@@ -1784,6 +1789,7 @@
           "at",
           "note",
           "sentence",
+          "post_seal",
           "decision"
         ],
         "title": "DecisionRecord"
@@ -5800,6 +5806,67 @@
         "title": "Baseline",
         "type": "object"
       },
+      "Chronology": {
+        "additionalProperties": false,
+        "description": "The chronological draw the temporal answer asked for, and whether it was drawn.",
+        "properties": {
+          "drawn": {
+            "title": "Drawn",
+            "type": "boolean"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column"
+          },
+          "boundary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Boundary"
+          },
+          "n_units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Units"
+          },
+          "n_undated": {
+            "title": "N Undated",
+            "type": "integer"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "drawn",
+          "time_column",
+          "boundary",
+          "n_units",
+          "n_undated",
+          "sentence"
+        ],
+        "title": "Chronology",
+        "type": "object"
+      },
       "Coefficient": {
         "additionalProperties": false,
         "properties": {
@@ -6540,6 +6607,24 @@
             },
             "title": "Models",
             "type": "array"
+          },
+          "holdout_sealed": {
+            "default": false,
+            "title": "Holdout Sealed",
+            "type": "boolean"
+          },
+          "changed_after_seal": {
+            "default": false,
+            "title": "Changed After Seal",
+            "type": "boolean"
+          },
+          "post_seal_decisions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Post Seal Decisions",
+            "type": "array"
           }
         },
         "required": [
@@ -6548,7 +6633,10 @@
           "metric_labels",
           "n_train",
           "n_holdout",
-          "models"
+          "models",
+          "holdout_sealed",
+          "changed_after_seal",
+          "post_seal_decisions"
         ],
         "title": "FitArtifact",
         "type": "object"
@@ -6619,6 +6707,17 @@
           },
           "baseline": {
             "$ref": "#/components/schemas/Baseline"
+          },
+          "versus_baseline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersusBaseline"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -6629,9 +6728,44 @@
           "coefficients",
           "fit_seconds",
           "concerns",
-          "baseline"
+          "baseline",
+          "versus_baseline"
         ],
         "title": "FittedModel",
+        "type": "object"
+      },
+      "HoldoutOption": {
+        "additionalProperties": false,
+        "properties": {
+          "holdout": {
+            "title": "Holdout",
+            "type": "number"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "n_holdout": {
+            "title": "N Holdout",
+            "type": "integer"
+          },
+          "measures": {
+            "title": "Measures",
+            "type": "string"
+          },
+          "below_floor": {
+            "title": "Below Floor",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "holdout",
+          "label",
+          "n_holdout",
+          "measures",
+          "below_floor"
+        ],
+        "title": "HoldoutOption",
         "type": "object"
       },
       "LeaveOut": {
@@ -7074,6 +7208,214 @@
         "title": "RolesArtifact",
         "type": "object"
       },
+      "SealBasis": {
+        "additionalProperties": false,
+        "description": "How the held-out rows were drawn: one of four states, never inferred silently.",
+        "properties": {
+          "state": {
+            "enum": [
+              "grouped",
+              "one_row_per_unit",
+              "abandoned",
+              "undetermined"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          },
+          "exploratory": {
+            "title": "Exploratory",
+            "type": "boolean"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "grain",
+                  "roles",
+                  "aggregation"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "n_units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Units"
+          }
+        },
+        "required": [
+          "state",
+          "column",
+          "label",
+          "sentence",
+          "exploratory",
+          "source",
+          "n_units"
+        ],
+        "title": "SealBasis",
+        "type": "object"
+      },
+      "SealFloor": {
+        "additionalProperties": false,
+        "description": "Below this many held-out rows (or events), cross-validation alone is offered first.",
+        "properties": {
+          "unit": {
+            "enum": [
+              "rows",
+              "events",
+              "rows in the rarest class"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "convention": {
+            "title": "Convention",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "unit",
+          "n",
+          "text",
+          "source",
+          "convention"
+        ],
+        "title": "SealFloor",
+        "type": "object"
+      },
+      "SealPlan": {
+        "additionalProperties": false,
+        "description": "The ``seal_plan`` artifact: what the split question can offer on this table.",
+        "properties": {
+          "task": {
+            "title": "Task",
+            "type": "string"
+          },
+          "n_measured": {
+            "title": "N Measured",
+            "type": "integer"
+          },
+          "n_analyzed": {
+            "title": "N Analyzed",
+            "type": "integer"
+          },
+          "basis": {
+            "$ref": "#/components/schemas/SealBasis"
+          },
+          "chronology": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Chronology"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exploratory": {
+            "title": "Exploratory",
+            "type": "boolean"
+          },
+          "floor": {
+            "$ref": "#/components/schemas/SealFloor"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/HoldoutOption"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "cv_first": {
+            "title": "Cv First",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "precision_note": {
+            "title": "Precision Note",
+            "type": "string"
+          },
+          "refusal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refusal"
+          }
+        },
+        "required": [
+          "task",
+          "n_measured",
+          "n_analyzed",
+          "basis",
+          "chronology",
+          "exploratory",
+          "floor",
+          "options",
+          "cv_first",
+          "reason",
+          "precision_note",
+          "refusal"
+        ],
+        "title": "SealPlan",
+        "type": "object"
+      },
       "ShelfArtifact": {
         "additionalProperties": false,
         "description": "The ``shelf`` artifact: every family that can model the task, best first.",
@@ -7196,6 +7538,23 @@
           "note": {
             "title": "Note",
             "type": "string"
+          },
+          "basis": {
+            "$ref": "#/components/schemas/SealBasis"
+          },
+          "chronology": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Chronology"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exploratory": {
+            "title": "Exploratory",
+            "type": "boolean"
           }
         },
         "required": [
@@ -7207,7 +7566,10 @@
           "grouped_by",
           "n_groups",
           "stratified",
-          "note"
+          "note",
+          "basis",
+          "chronology",
+          "exploratory"
         ],
         "title": "SplitArtifact",
         "type": "object"
@@ -7561,6 +7923,53 @@
           "classes"
         ],
         "title": "TargetInfo",
+        "type": "object"
+      },
+      "VersusBaseline": {
+        "additionalProperties": false,
+        "description": "A family's primary metric against its baseline's, paired over the same folds.",
+        "properties": {
+          "verdict": {
+            "enum": [
+              "better",
+              "no_better",
+              "worse"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "gain": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gain"
+          },
+          "tolerance": {
+            "title": "Tolerance",
+            "type": "number"
+          },
+          "tolerance_basis": {
+            "title": "Tolerance Basis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "metric",
+          "gain",
+          "tolerance",
+          "tolerance_basis"
+        ],
+        "title": "VersusBaseline",
         "type": "object"
       }
     }

@@ -108,6 +108,15 @@ def test_cv_metrics_equal_an_independent_cross_validate(table, task, target):
             assert got["sd"] == pytest.approx(expected.std(ddof=1), abs=1e-9)
 
 
+def opened(fit):
+    """The fit's data with the seal opened: the held-out scores live only in its sealed frame."""
+    from turbotab.core.seal import SEALED_SCORES, scores_by_family, serve_fit
+
+    assert all(m["holdout"] is None for m in fit.data["models"])  # never in the public data
+    return serve_fit(fit.data, opened=True,
+                     scores=lambda: scores_by_family(fit.frames[SEALED_SCORES]))
+
+
 def test_holdout_metrics_equal_direct_computation_from_the_refit_pipeline(table):
     frame, paths = table
     split = mf.split_bundle(np.arange(len(frame)), seed=5)
@@ -115,10 +124,11 @@ def test_holdout_metrics_equal_direct_computation_from_the_refit_pipeline(table)
     design, fit = run(st, paths, split)
     train_ids, _, hold_ids = train_arrays(split)
     assert fit.data["n_train"] == len(train_ids) and fit.data["n_holdout"] == len(hold_ids)
+    assert fit.data["holdout_sealed"] is True
     columns = design.objects["spec"]["inputs"]
     X_train, X_hold = raw_inputs(paths, columns, train_ids), raw_inputs(paths, columns, hold_ids)
     y_train, y_hold = frame.loc[train_ids, "glucose"], frame.loc[hold_ids, "glucose"]
-    for m in fit.data["models"]:
+    for m in opened(fit)["models"]:
         refit = fit.objects["fitted"][m["family"]]
         pred = refit.predict(X_hold)
         assert m["holdout"]["r2"] == pytest.approx(r2_score(y_hold, pred), abs=1e-12)
@@ -135,6 +145,7 @@ def test_holdout_zero_means_cross_validation_only(table):
     design, fit = run(mf.state(energy_adjustment=mf.energy("none"), models=["linear"]), paths, split)
     assert fit.data["n_holdout"] == 0
     assert fit.data["models"][0]["holdout"] is None
+    assert fit.data["holdout_sealed"] is False and not fit.frames  # nothing held out, nothing sealed
 
 
 def test_binary_holdout_uses_the_second_class_as_positive(table):
@@ -148,7 +159,7 @@ def test_binary_holdout_uses_the_second_class_as_positive(table):
     refit = fit.objects["fitted"]["linear"]
     assert list(refit.classes_) == ["high", "normal"]
     proba = refit.predict_proba(X_hold)
-    got = fit.data["models"][0]["holdout"]
+    got = opened(fit)["models"][0]["holdout"]
     assert got["auc"] == pytest.approx(roc_auc_score(y_hold == "normal", proba[:, 1]), abs=1e-12)
     assert got["brier"] == pytest.approx(brier_score_loss(y_hold == "normal", proba[:, 1]), abs=1e-12)
     assert got["log_loss"] == pytest.approx(log_loss(y_hold, proba), abs=1e-12)

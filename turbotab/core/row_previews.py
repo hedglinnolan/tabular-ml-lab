@@ -23,14 +23,13 @@ from typing import Any, Sequence
 import numpy as np
 
 from turbotab.core.consequences import (
-    CAPTION_WORDS, TITLE_WORDS, DistributionView, LineageView, Mark, PreviewContext, RowFlowView,
-    RowStep, TableFocusView, TableRow, _histogram_pair, clip_words, fmt_count, fmt_value,
-    lineage_of, register_consequence,
+    CAPTION_WORDS, TITLE_WORDS, Caution, CautionExit, DistributionView, LineageView, Mark,
+    PreviewContext, RowFlowView, RowStep, TableFocusView, TableRow, _histogram_pair, clip_words,
+    fmt_count, fmt_value, lineage_of, register_consequence,
 )
 from turbotab.core.decisions import ROW_ID, MissingSpec, ProjectState, missing_strategy
 from turbotab.core.stages.rows import (
     PREDICTOR_ROLES, _missing_mask, cohort_flow, cohort_inputs, draw_split, predictors, rule_keep,
-    split_inputs,
 )
 
 MAX_FOCUS_COLUMNS = 12
@@ -460,25 +459,52 @@ def split_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         universe = measured[0]
     target_info = ctx.artifact("target_info")
     task = state.task or (target_info.get("task") if isinstance(target_info, dict) else None)
-    inputs = split_inputs(state, universe, ctx.datastore, task)
-    _, info = draw_split(rows, holdout=decision.holdout, seed=decision.seed, folds=decision.folds,
-                         universe=universe, **inputs)
+    # The seal's basis, its chronological draw and what a holdout of this size can measure
+    # (turbotab/core/seal.py, M2_CONTRACT §3).
+    from turbotab.core import seal
+
+    draw = seal.seal_inputs(state, universe, ctx.datastore, task, holdout=decision.holdout,
+                            seed=decision.seed)
+    if draw.refusal:
+        ctx.read["note"] = draw.refusal
+        return []
+    assignment, info = draw_split(rows, holdout=decision.holdout, seed=decision.seed,
+                                  folds=decision.folds, universe=universe, **draw.split_args())
     before = [RowStep(**s) for s in steps]
     current = ctx.artifact("split")
     if current is not None:
         before += _fork(current.data)
     after = [RowStep(**s) for s in steps] + _fork(info)
+    held_counts = None
+    if draw.labels is not None:  # the classes among the rows a held-out score would be made on
+        held = assignment.loc[assignment["partition"] == "holdout", "row_id"].to_numpy()
+        in_held = np.isin(np.asarray(universe, dtype=np.int64), held)
+        held_counts = seal.class_counts(np.asarray(draw.labels, dtype=object)[in_held])
+    measures, below = seal.measure(task, int(info["n_holdout"]), held_counts)
     if info["n_holdout"]:
-        caption = (f"{fmt_count(info['n_holdout'])} rows held out, {fmt_count(info['n_train'])} train "
-                   f"in {fmt_count(info['folds'])} folds")
+        how = (f"the latest by `{draw.chronology.time_column}`" if draw.chronology and draw.chronology.drawn
+               else f"grouped by `{info['grouped_by']}`" if info["grouped_by"] else "by row")
+        caption = f"{fmt_count(info['n_holdout'])} rows held out, {how}. {measures}"
     else:
-        caption = f"All {fmt_count(info['n_train'])} rows train, scored by {fmt_count(info['folds'])}-fold cross-validation"
-    if info["grouped_by"]:
-        caption += f", grouped by `{info['grouped_by']}`"
-    caption += "."
-    if 0 < info["n_holdout"] < 30:
-        caption = (f"Only {fmt_count(info['n_holdout'])} rows held out: a score on so few rows swings "
-                   f"widely.")
+        caption = (f"All {fmt_count(info['n_train'])} rows train, scored by "
+                   f"{fmt_count(info['folds'])}-fold cross-validation.")
+    if draw.exploratory and decision.holdout > 0:
+        basis = draw.basis
+        exits = []
+        if basis.state == "abandoned" and basis.source == "grain" and basis.column:
+            # Each row was said to be a unit while an identifier repeats: the lever is the grain.
+            exits.append(CautionExit(label=f"Keep each `{basis.column}`'s rows together",
+                                     decision={"kind": "set_grain", "grain": "repeated",
+                                               "id_column": basis.column}))
+        ctx.caution = Caution(text=basis.sentence if basis.exploratory else draw.chronology.sentence,
+                              exits=exits)
+    elif below and decision.holdout > 0:
+        floor = seal.floor_for(task)
+        ctx.caution = Caution(
+            text=f"{measures} {floor.text}",
+            exits=[CautionExit(label="Cross-validation only",
+                               decision={"kind": "set_split", "holdout": 0.0, "seed": decision.seed,
+                                         "folds": decision.folds})])
     return [RowFlowView(
         title="Where the held-out rows come from",
         caption=clip_words(caption, CAPTION_WORDS),

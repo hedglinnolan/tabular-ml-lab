@@ -228,6 +228,8 @@ export class MockServer {
       at: now(),
       note: null,
       sentence: this.sentenceFor?.(p, decision) ?? null,
+      // As the server marks it: recorded after the seal was opened (it is never reverted).
+      post_seal: p.records.some((r) => r.decision.kind === "open_seal"),
       decision,
     };
     p.records.push(record);

@@ -29,6 +29,7 @@ function record(seq: number): DecisionRecord {
     at: "2026-09-27T10:00:00.000Z",
     note: null,
     sentence: null,
+    post_seal: false,
     decision: { kind: "set_target", column: `c${seq}` },
   };
 }

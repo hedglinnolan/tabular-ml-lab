@@ -482,11 +482,13 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     sex, sex_levels = sex_column(info, frame, roles)
     if target and target in frame.columns:
         base = frame[target].notna()
-        basis = (f"Counted among the {tick(f'{int(base.sum()):,}')} rows with {tick(target)} "
+        # Every row with the outcome, held-out rows included, and the basis says so: these
+        # readings answer questions asked before the seal (M2_CONTRACT §3, the basis audit).
+        basis = (f"Counted across all {tick(f'{int(base.sum()):,}')} rows with {tick(target)} "
                  f"measured.")
     else:
         base = pd.Series(True, index=frame.index)
-        basis = f"Counted among all {tick(f'{len(frame):,}')} rows; no outcome is chosen yet."
+        basis = f"Counted across all {tick(f'{len(frame):,}')} rows; no outcome is chosen yet."
     exclusions: list[dict[str, Any]] = []
     if energy is not None and energy in frame.columns:
         unit = _energy_unit(frame, energy)

@@ -20,6 +20,12 @@ M1 (docs/turbotab-next/M1_CONTRACT.md):
     fit          heavy   deps: design, split, target_info     reads models, purpose, task; requires models
     substitution heavy   deps: fit, design                    reads substitution; requires substitution
 
+M2, the seal (M2_CONTRACT.md §3): ``split`` also reads the grain, unit, aggregation, temporal and
+repeat_kind answers (its basis and the chronological draw); ``shelf`` ranks on the training rows,
+so it waits for the split; ``fit`` keeps its held-out scores out of its public data.
+
+    seal_plan    light   deps: cohort, target_info            reads roles, task + the seal's; requires target
+
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
 call them and shape the result into the contract's artifact.
@@ -32,6 +38,7 @@ from turbotab.core.stages.findings import findings_stage
 from turbotab.core.stages.modeling import design_stage, fit_stage, shelf_stage, substitution_stage
 from turbotab.core.stages.proposals import proposals_stage
 from turbotab.core.stages.rows import cohort_stage, roles_stage, split_stage
+from turbotab.core.stages.seal import SEAL_READS, seal_plan_stage
 from turbotab.core.stages.target import target_info_stage
 
 GRAPH_FACTORY = "turbotab.core.stages:build_graph"
@@ -77,18 +84,22 @@ def build_graph() -> Graph:
             Stage("cohort", 1, ("ingest", "target_info"),
                   ("target", "roles", "exclusions", "missing"), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
-            Stage("split", 1, ("cohort", "target_info"), ("split", "roles", "task"), split_stage,
-                  heavy=True, requires=("split",), label="Drawing the held-out rows"),
-            Stage("shelf", 1, ("cohort", "target_info"), ("purpose", "task", "roles"), shelf_stage,
-                  requires=("roles",), label="Ranking the model families for this table"),
+            Stage("split", 2, ("cohort", "target_info"), ("split", "roles", "task", *SEAL_READS),
+                  split_stage, heavy=True, requires=("split",), label="Drawing the held-out rows"),
+            Stage("shelf", 2, ("cohort", "target_info", "split"), ("purpose", "task", "roles"),
+                  shelf_stage, requires=("roles",), label="Ranking the model families for this table"),
             Stage("design", 1, ("split", "target_info"),
                   ("roles", "energy_adjustment", "missing", "models", "purpose"), design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
-            Stage("fit", 1, ("design", "split", "target_info"), ("models", "purpose", "task"),
+            Stage("fit", 2, ("design", "split", "target_info"), ("models", "purpose", "task"),
                   fit_stage, heavy=True, requires=("models",), label="Fitting the models"),
             Stage("substitution", 1, ("fit", "design"), ("substitution",), substitution_stage,
                   heavy=True, requires=("substitution",), label="Drawing the substitution curves"),
+            # ── M2: the seal (docs/turbotab-next/M2_CONTRACT.md §3) ──
+            Stage("seal_plan", 1, ("cohort", "target_info"), ("roles", "task", *SEAL_READS),
+                  seal_plan_stage, requires=("target",),
+                  label="Reading what a held-out set can measure"),
         ]
     )
 

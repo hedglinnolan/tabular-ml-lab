@@ -690,6 +690,7 @@ def draw_split(
     groups: Any | None = None,
     grouped_by: str | None = None,
     universe: Any | None = None,
+    held: Any | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """Assign each row of ``row_ids`` to ``train`` or ``holdout``, and each training row a fold.
 
@@ -702,6 +703,8 @@ def draw_split(
     same split. Returns the assignment frame (``row_id``, ``partition``, ``fold``; fold -1 when
     held out) and the facts the split artifact reports, plus ``sealed``: every row of the
     universe drawn to be held out, in or out of ``row_ids`` — the rows nothing may read.
+    ``held`` (aligned like ``groups``) is a held-out mask drawn elsewhere — the seal's
+    chronological draw (``turbotab/core/seal.py``) — used in place of a random draw.
     """
     import pandas as pd
 
@@ -716,7 +719,10 @@ def draw_split(
 
     y_u, g_u = keyed(y), keyed(groups)
     notes: list[str] = []
-    held_u, stratified = _draw_holdout(len(uids), y_u, g_u, holdout, seed, notes)
+    if held is not None:
+        held_u, stratified = np.asarray(held, dtype=bool)[order], False
+    else:
+        held_u, stratified = _draw_holdout(len(uids), y_u, g_u, holdout, seed, notes)
 
     rows = np.sort(np.asarray(row_ids, dtype=np.int64))
     pos = np.clip(np.searchsorted(uids, rows), 0, max(0, len(uids) - 1))
@@ -811,16 +817,22 @@ def split_stage(ctx: StageContext) -> Bundle:
     task = ctx.inputs["target_info"].get("task")
     spec = ctx.state.split
     ctx.progress(0.1, "Reading the identifier and the outcome")
+    from turbotab.core.seal import seal_inputs  # the basis and the chronological draw (M2 §3)
+
     with open_store(ctx) as store:
-        inputs = split_inputs(ctx.state, universe, store, task)
+        seal = seal_inputs(ctx.state, universe, store, task, holdout=spec.holdout, seed=spec.seed)
+    if seal.refusal:
+        raise ValueError(seal.refusal)
     ctx.progress(0.4, "Drawing the held-out rows and the folds")
     frame, info = draw_split(
         rows, holdout=spec.holdout, seed=spec.seed, folds=spec.folds, universe=universe,
-        y=inputs["y"], groups=inputs["groups"], grouped_by=inputs["grouped_by"],
+        **seal.split_args(),
     )
     notes = info.pop("notes")
     sealed = info.pop("sealed")
-    data = {**info, "note": split_note({**info, "notes": notes})}
+    if seal.chronology is not None:
+        notes.append(seal.chronology.sentence)
+    data = {**info, **seal.facts(), "note": split_note({**info, "notes": notes})}
     # "sealed" holds every held-out row, including ones the cohort now excludes: an exclusion
     # relaxed later brings them back held out, so previews must never read them either.
     return Bundle(data=data, frames={"assignment": frame, "sealed": pd.DataFrame({"row_id": sealed})})

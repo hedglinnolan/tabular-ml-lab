@@ -31,6 +31,7 @@ from turbotab.core.decisions import (  # noqa: F401 - re-exported contract model
 from turbotab.core.graph import StageStatus, StatusName  # noqa: F401
 from turbotab.core.interview import InterviewStep  # noqa: F401
 from turbotab.core.jobs import JobView  # noqa: F401
+from turbotab.core.seal import Chronology, SealBasis, SealPlan  # noqa: F401 - the seal's shapes
 from turbotab.core.teaching import (  # noqa: F401 - re-exported contract models
     QuestionKey,
     TeachingEntry,
@@ -300,6 +301,12 @@ class SplitArtifact(Model):
     n_groups: int | None
     stratified: bool
     note: str
+    # M2 (M2_CONTRACT §3): how the held-out rows were drawn, in one of four recorded states, the
+    # chronological draw when the answers asked for one, and whether either makes held-out scores
+    # exploratory (never drawn as a clean lock).
+    basis: SealBasis
+    chronology: Chronology | None
+    exploratory: bool
 
 
 class ExclusionProposal(Model):
@@ -383,6 +390,7 @@ ARTIFACT_MODELS: dict[str, type[BaseModel]] = {
     "cohort": CohortArtifact,
     "split": SplitArtifact,
     "proposals": ProposalsArtifact,
+    "seal_plan": SealPlan,
 }
 
 # The model-side artifacts (shelf, design, fit, substitution) are defined beside the stages that

@@ -657,6 +657,57 @@ export function split(
       spec.holdout > 0
         ? `Held-out rows are drawn from the ${fmt(nMeasured)} rows with \`${target}\` measured, so no later answer moves a row across the seal.`
         : "No rows are held out; every score comes from cross-validation.",
+    basis: sealBasis(state, repeats),
+    chronology: null,
+    exploratory: sealBasis(state, repeats).exploratory,
+  };
+}
+
+/** The seal's basis as the server decides it (turbotab/core/seal.py), from the grain and repeats. */
+function sealBasis(
+  state: ProjectState,
+  repeats: RolesArtifact["repeats"] | null,
+): SplitArtifact["basis"] {
+  const grain = state.grain?.grain ?? null;
+  if (repeats && grain !== "one_row_per_unit")
+    return {
+      state: "grouped",
+      column: repeats.column,
+      label: `grouped by \`${repeats.column}\``,
+      sentence: `Held out by \`${repeats.column}\`: each of the \`${fmt(repeats.n_units)}\` units sits wholly on one side, so no unit is both trained on and scored.`,
+      exploratory: false,
+      source: grain === "repeated" ? "grain" : "roles",
+      n_units: repeats.n_units,
+    };
+  if (repeats)
+    return {
+      state: "abandoned",
+      column: repeats.column,
+      label: "repetition found but grouping abandoned",
+      sentence: `Each row was said to be a different unit, but \`${repeats.column}\` repeats; the held-out rows were drawn by row as answered. Treat held-out scores as exploratory.`,
+      exploratory: true,
+      source: "grain",
+      n_units: repeats.n_units,
+    };
+  if (grain === "one_row_per_unit")
+    return {
+      state: "one_row_per_unit",
+      column: null,
+      label: "one row per unit",
+      sentence: "Held out by row: each row was said to be a different unit, and no identifier repeats.",
+      exploratory: false,
+      source: "grain",
+      n_units: null,
+    };
+  return {
+    state: "undetermined",
+    column: null,
+    label: "undetermined",
+    sentence:
+      "Held out by row, because whether a unit can appear in more than one row was not answered. This is not a verified clean split: treat held-out scores as exploratory.",
+    exploratory: true,
+    source: null,
+    n_units: null,
   };
 }
 
@@ -1027,15 +1078,21 @@ export function fit(
         value: classification ? 0.5 : -0.002,
         label: classification ? "the class prior" : "the outcome's average",
       },
+      versus_baseline: null,
     };
   });
+  // The server withholds held-out scores until the seal is opened (turbotab/core/seal.py).
+  const sealed = s.n_holdout > 0 && !state.seal_opened;
   return {
     task: task ?? "regression",
     primary_metric: primary,
     metric_labels: labels,
     n_train: s.n_train,
     n_holdout: s.n_holdout,
-    models,
+    models: sealed ? models.map((m) => ({ ...m, holdout: null })) : models,
+    holdout_sealed: sealed,
+    changed_after_seal: false,
+    post_seal_decisions: [],
   };
 }
 

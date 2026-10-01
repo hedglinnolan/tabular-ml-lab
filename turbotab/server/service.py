@@ -16,7 +16,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, Callable
 
-from turbotab.core import consequences, decisions, voice
+from turbotab.core import consequences, decisions, seal, voice  # seal: its validators and preview
 from turbotab.core.config import Settings
 from turbotab.core.datastore import DataStore, fingerprint_file
 from turbotab.core.datastore import _source_kind as source_kind  # the one list of readable types
@@ -77,6 +77,8 @@ class DecisionContext:
     # The newest split's held-out row ids (None before any split): what a check on the data
     # made while validating (a partition's units) must not read.
     sealed: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
+    # The decision log as it stands (the seal's checks: who drew the seal, what a revert undoes).
+    records: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
 
 
 def _target_needs_columns(decision: Any, ctx: Any) -> None:
@@ -534,6 +536,7 @@ class ProjectService:
             store=store,
             artifact=lambda stage: self._fresh(pid, stage, public=True),
             sealed=lambda: self.sealed_rows(pid, stages),
+            records=lambda: self.log(pid).records(),
         )
 
     def decide(self, pid: str, decision: Any) -> dict[str, Any]:
@@ -543,7 +546,8 @@ class ProjectService:
         log = self.log(pid)
         facts = SentenceFacts(ctx, parsed, log.records())
         record = log.append(  # raises Refusal for a revert it cannot make
-            parsed, sentence=lambda d, before: voice.sentence_for(d, before, facts))
+            parsed, sentence=lambda d, before: seal.post_seal_sentence(
+                voice.sentence_for(d, before, facts), before))
         self.bus.publish(pid, "decision", record.model_dump(mode="json"))
         self.engine.on_decision(pid)
         self._restart_stopped(pid, parsed.kind)
@@ -715,7 +719,28 @@ class ProjectService:
         status = self.engine.status(pid).get(stage)
         if status is None or status.status != "fresh" or not status.key:
             return None
-        return self._artifact(pid, stage, status.key, public=public)
+        found = self._artifact(pid, stage, status.key, public=public)
+        if stage == "fit" and public and isinstance(found, dict):
+            return self._served_fit(pid, found, status.key)
+        return found
+
+    def _served_fit(self, pid: str, data: dict[str, Any], key: str | None) -> dict[str, Any]:
+        """The fit as a client may see it (M2_CONTRACT §3).
+
+        Held-out scores are withheld (``holdout: null``, ``holdout_sealed: true``) until
+        ``open_seal`` is recorded, then served exactly as the fit computed them, with whether this
+        fit changed after the opening and the post-seal decisions that changed what it reads.
+        """
+        records = self.log(pid).records()
+        opened = bool(decisions.fold(records).seal_opened)
+        cache = self.workspace.cache_dir(pid)
+        out = seal.serve_fit(data, opened=opened,
+                             scores=lambda: seal.read_sealed_scores(cache, key) if key else None)
+        out["changed_after_seal"] = bool(opened and seal.changed_after_seal(
+            self.engine.graph, records, self.fingerprint(pid), key))
+        out["post_seal_decisions"] = (seal.post_seal_changes(
+            records, seal.slots_read_by(self.engine.graph, "fit")) if opened else [])
+        return out
 
     # ── stages and jobs ──
 
@@ -727,6 +752,8 @@ class ProjectService:
         artifact = result.artifact
         if artifact is not None and not isinstance(artifact, dict):
             artifact = {"value": artifact}
+        if stage == "fit" and artifact is not None:
+            artifact = self._served_fit(pid, artifact, result.key)
         return {
             "stage": result.stage,
             "key": result.key,
