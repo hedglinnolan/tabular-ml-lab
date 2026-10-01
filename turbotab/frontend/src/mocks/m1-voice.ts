@@ -579,6 +579,9 @@ function appFindings(ds: MockDataset, state: ProjectState): Finding[] {
     routes_to: null,
     lever_label: null,
     group: null,
+    repairs: [],
+    disposition: null,
+    answered_by: null,
   });
   const roles = rolesArtifact(ds, state);
   for (const r of roles.columns) {

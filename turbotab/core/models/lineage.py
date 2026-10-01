@@ -33,6 +33,7 @@ KEPT = "kept"
 OPERATIONS: dict[str, str] = {
     "SimpleImputer": "imputed",
     "OneHotEncoder": "one-hot",
+    "MissingLevelEncoder": "one-hot, blank as a level",
     "StandardScaler": "scaled",
     "RobustScaler": "scaled",
     "MinMaxScaler": "scaled",
@@ -77,12 +78,19 @@ def _names_out(step: Any, inputs: Sequence[str]) -> list[str]:
         return [str(n) for n in step.get_feature_names_out()]
 
 
+INDICATOR = "missingindicator_"  # SimpleImputer(add_indicator=True) names its indicators so
+INDICATOR_OPERATION = "missing indicator"
+
+
 def _map_by_name(outputs: Sequence[str], inputs: Sequence[str]) -> dict[str, list[str]]:
     by_length = sorted(inputs, key=len, reverse=True)
     mapping: dict[str, list[str]] = {}
     for out in outputs:
         if out in inputs:
             mapping[out] = [out]
+            continue
+        if out.startswith(INDICATOR) and out[len(INDICATOR):] in inputs:
+            mapping[out] = [out[len(INDICATOR):]]
             continue
         parent = next((c for c in by_length if out.startswith(f"{c}_")), None)
         mapping[out] = [parent] if parent is not None else list(inputs)
@@ -114,7 +122,9 @@ def trace_step(step: Any, inputs: Sequence[str], missing: Mapping[str, int] | No
             verb = _verb(part)
             for o, parents in _map_by_name(_names_out(part, cols), cols).items():
                 op = verb
-                if verb == "imputed" and missing is not None and not any(missing.get(p) for p in parents):
+                if verb == "imputed" and o.startswith(INDICATOR) and o not in cols:
+                    op = INDICATOR_OPERATION  # was the value missing, as a column of its own
+                elif verb == "imputed" and missing is not None and not any(missing.get(p) for p in parents):
                     op = KEPT  # nothing was missing, so nothing was filled
                 out[o] = (parents, op, None)
         return out

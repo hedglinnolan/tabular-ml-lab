@@ -13,7 +13,7 @@ M1 (docs/turbotab-next/M1_CONTRACT.md):
 
     roles        heavy   deps: ingest, profile                reads lens, target
     proposals    light   deps: ingest, profile, roles         reads lens, roles, target
-    cohort       heavy   deps: ingest, target_info            reads target, roles, exclusions, missing; requires target
+    cohort       heavy   deps: ingest, target_info            reads target, roles, exclusions, missing, findings; requires target
     split        heavy   deps: cohort, target_info            reads split, roles, task; requires split
     shelf        light   deps: cohort, target_info            reads purpose, task, roles; requires roles
     design       heavy   deps: split, target_info             reads roles, energy_adjustment, missing, models, purpose; requires models, roles
@@ -61,7 +61,7 @@ def build_graph() -> Graph:
             ),
             Stage(
                 "findings",
-                2,
+                3,
                 ("ingest",),
                 ("lens", "target"),
                 findings_stage,
@@ -75,7 +75,7 @@ def build_graph() -> Graph:
             Stage("proposals", 1, ("ingest", "profile", "roles"), ("lens", "roles", "target"),
                   proposals_stage, label="Looking up what the field usually does"),
             Stage("cohort", 1, ("ingest", "target_info"),
-                  ("target", "roles", "exclusions", "missing"), cohort_stage,
+                  ("target", "roles", "exclusions", "missing", "findings"), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
             Stage("split", 1, ("cohort", "target_info"), ("split", "roles", "task"), split_stage,
                   heavy=True, requires=("split",), label="Drawing the held-out rows"),

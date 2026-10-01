@@ -531,8 +531,12 @@ def _set_missing(d: Any, state: Any, ctx: Any) -> str:
         n = len(dropped)
         first = (f"{listing(dropped)} {plural(n, 'was', 'were')} left out of the predictors; "
                  f"then ")
+    levels = getattr(d, "categorical", "impute") == "missing_category"  # M2: missingness by mechanism
+    if levels:
+        first += ("blanks in categorical and yes/no predictors were kept as a level of their own, "
+                  "`Missing`; then ")
     if d.strategy == "complete_case":
-        other = "any other predictor" if dropped else "any predictor"
+        other = "any other predictor" if dropped or levels else "any predictor"
         text = f"{first}rows missing {other} were dropped (a complete-case analysis)"
         kept, before = _get(ctx, "n_complete"), _get(ctx, "n_before")
         if kept is not None and before:
@@ -542,9 +546,11 @@ def _set_missing(d: Any, state: Any, ctx: Any) -> str:
             else:
                 text += f": {count(kept)} of {count(before)} rows remain"
         return text[0].upper() + text[1:]
-    others = "the other predictors' missing values" if dropped else "missing predictor values"
+    others = "the other predictors' missing values" if dropped or levels else "missing predictor values"
     text = (f"{first}{others} were imputed, learned from training rows only; no row was dropped "
             f"for a missing predictor")
+    if getattr(d, "indicators", False):
+        text += ", and each imputed number carries a missing indicator"
     return text[0].upper() + text[1:]
 
 

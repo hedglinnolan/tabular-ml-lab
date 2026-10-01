@@ -150,7 +150,10 @@ function constantWithin(ds: MockDataset, idCol: string, target: string): boolean
 
 const SEVERITY_ORDER = { critical: 0, warning: 1, info: 2 } as const;
 
-type Draft = Omit<Finding, "summary" | "routes_to" | "lever_label" | "group">;
+type Draft = Omit<
+  Finding,
+  "summary" | "routes_to" | "lever_label" | "group" | "repairs" | "disposition" | "answered_by"
+>;
 
 /** Where the mock's findings route, mirroring turbotab/core/stages/finding_words.py. */
 const LEVERS: Record<string, [NonNullable<Finding["routes_to"]>, string]> = {
@@ -175,6 +178,9 @@ function voiced(drafts: Draft[]): Finding[] {
       routes_to: lever ? lever[0] : null,
       lever_label: lever ? lever[1] : null,
       group: (sizes.get(kind(d.id)) ?? 0) > 1 ? kind(d.id) : null,
+      repairs: [],
+      disposition: null,
+      answered_by: null,
     };
   });
 }

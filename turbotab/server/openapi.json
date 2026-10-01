@@ -2789,6 +2789,14 @@
             "type": "array",
             "title": "Waiting On",
             "default": []
+          },
+          "deferred_findings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Deferred Findings",
+            "default": []
           }
         },
         "type": "object",
@@ -2797,7 +2805,8 @@
           "status",
           "decision_id",
           "reason",
-          "waiting_on"
+          "waiting_on",
+          "deferred_findings"
         ],
         "title": "InterviewStep"
       },
@@ -5748,6 +5757,41 @@
         ],
         "title": "ValueCount"
       },
+      "ApplyRepair": {
+        "additionalProperties": false,
+        "description": "Apply one of a finding's repair options. Row-local repairs rewrite the working table now;\nstatistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06).",
+        "properties": {
+          "kind": {
+            "const": "apply_repair",
+            "default": "apply_repair",
+            "title": "Kind",
+            "type": "string"
+          },
+          "finding_id": {
+            "minLength": 1,
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "option": {
+            "minLength": 1,
+            "title": "Option",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "finding_id",
+          "option",
+          "params"
+        ],
+        "title": "ApplyRepair",
+        "type": "object"
+      },
       "BandEstimate": {
         "additionalProperties": false,
         "description": "A measured estimate of what adding a band would cost: one refit per family, timed.",
@@ -6442,6 +6486,37 @@
               }
             ],
             "title": "Group"
+          },
+          "repairs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RepairOption"
+            },
+            "title": "Repairs",
+            "type": "array"
+          },
+          "disposition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FindingDisposition"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "answered_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Answered By"
           }
         },
         "required": [
@@ -6457,7 +6532,10 @@
           "summary",
           "routes_to",
           "lever_label",
-          "group"
+          "group",
+          "repairs",
+          "disposition",
+          "answered_by"
         ],
         "title": "Finding",
         "type": "object"
@@ -6942,6 +7020,56 @@
           "basis"
         ],
         "title": "ProposalsArtifact",
+        "type": "object"
+      },
+      "RepairOption": {
+        "additionalProperties": false,
+        "description": "One way to act on a finding, and the ``apply_repair`` it records.",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "consequence": {
+            "title": "Consequence",
+            "type": "string"
+          },
+          "row_local": {
+            "default": true,
+            "title": "Row Local",
+            "type": "boolean"
+          },
+          "effect": {
+            "enum": [
+              "values",
+              "rows",
+              "columns"
+            ],
+            "title": "Effect",
+            "type": "string"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/ApplyRepair"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "consequence",
+          "row_local",
+          "effect",
+          "sentence",
+          "decision"
+        ],
+        "title": "RepairOption",
         "type": "object"
       },
       "Repeats": {

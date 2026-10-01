@@ -22,6 +22,7 @@ from turbotab.core.decisions import (  # noqa: F401 - re-exported contract model
     DecisionRecord,
     EnergyMethod,
     ExclusionRule,
+    FindingDisposition,
     Lens,
     ProjectState,
     Purpose,
@@ -31,6 +32,7 @@ from turbotab.core.decisions import (  # noqa: F401 - re-exported contract model
 from turbotab.core.graph import StageStatus, StatusName  # noqa: F401
 from turbotab.core.interview import InterviewStep  # noqa: F401
 from turbotab.core.jobs import JobView  # noqa: F401
+from turbotab.core.repairs import RepairOption  # noqa: F401 - re-exported contract model
 from turbotab.core.teaching import (  # noqa: F401 - re-exported contract models
     QuestionKey,
     TeachingEntry,
@@ -246,6 +248,12 @@ class Finding(Model):
     routes_to: QuestionKey | None
     lever_label: str | None
     group: str | None
+    # M2 (M2_CONTRACT §4): the repairs it offers, each previewed before it is applied; and, as
+    # served, its disposition and the record that answered it (its own disposition, the answer to
+    # its question, or another finding's repair that already did this one's work), else null.
+    repairs: list[RepairOption] = []
+    disposition: FindingDisposition | None = None
+    answered_by: str | None = None
 
 
 class FindingsArtifact(Model):
