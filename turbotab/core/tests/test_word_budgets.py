@@ -167,6 +167,9 @@ def test_a_finding_without_a_lever_says_so(spoken):
         for f in findings:
             if f["routes_to"] is None:
                 assert f["lever_label"] is None
+                if f.get("repairs"):  # M2: its repairs are its lever, and it does not deny having one
+                    assert NO_LEVER not in f["summary"], (name, f["id"], f["summary"])
+                    continue
                 says = (NO_LEVER in f["summary"] or "not asked" in f["summary"]
                         or "nothing needs" in f["summary"] or "not in this version" in f["summary"])
                 assert says, (name, f["id"], f["summary"])

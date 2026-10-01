@@ -465,6 +465,7 @@ def cohort_flow(
     predictor_columns: Sequence[str],
     n_loaded: int | None = None,
     missing_frame: Any | None = None,
+    repairs: Sequence[Any] | None = None,
 ) -> tuple[list[dict[str, Any]], Any]:
     """The participant flow over ``frame`` (indexed by row id): its steps and the kept row ids.
 
@@ -472,6 +473,8 @@ def cohort_flow(
     outcome is chosen: ``target=None`` leaves out ``outcome_measured``). Complete cases are judged on
     ``predictor_columns`` in ``missing_frame`` (default: ``frame``); columns absent from it are
     taken to have no missing values (the caller leaves them out when the profile says so).
+    ``repairs`` are range rules from applied repairs (impossible values, ``repairs.exclusion_rules``):
+    steps ``repair:<i>`` after the eligibility answer's own.
     """
     steps: list[dict[str, Any]] = []
     n = len(frame) if n_loaded is None else int(n_loaded)
@@ -493,6 +496,13 @@ def cohort_flow(
         keep &= rule_keep(frame, rule)
         now = int(keep.sum())
         steps.append({"key": f"exclusion:{i}", "label": rule_label(rule), "n": now,
+                      "dropped": kept - now, "reason": rule.reason, "decision_id": None})
+        kept = now
+    for i, rule in enumerate(repairs or []):
+        rule = _as_rule(rule)
+        keep &= rule_keep(frame, rule)
+        now = int(keep.sum())
+        steps.append({"key": f"repair:{i}", "label": rule_label(rule), "n": now,
                       "dropped": kept - now, "reason": rule.reason, "decision_id": None})
         kept = now
     if missing == "complete_case":
@@ -517,20 +527,31 @@ def cohort_inputs(state: Any, ingest: Mapping[str, Any]) -> tuple[list[str], lis
     """(columns the flow reads, predictors, predictors that can be missing), in table order.
 
     The predictors are those the missing-values answer kept: a column it left out is judged by
-    nothing, so its blanks never drop a row.
+    nothing, so its blanks never drop a row. Nor does a column whose blanks become their own
+    ``Missing`` level (``SetMissing.categorical == "missing_category"``): a blank there is a value.
     """
     from turbotab.core.decisions import left_out, missing_strategy
+    from turbotab.core.models.pipeline import level_columns
 
     order = [str(c["name"]) for c in ingest.get("columns", [])]
     preds = predictors(state.roles, order, drop=left_out(state))
     needed = [state.target] if state.target is not None else []
-    for rule in state.exclusions or []:
+    for rule in [*(state.exclusions or []), *repair_rules(state)]:
         needed.append(rule.column)
         if rule.by is not None:
             needed.append(rule.by.column)
     with_missing = _columns_with_missing(ingest)
-    gappy = [c for c in preds if c in with_missing] if missing_strategy(state) == "complete_case" else []
+    levels = set(level_columns(state, preds, {str(c["name"]): c for c in ingest.get("columns", [])}))
+    gappy = ([c for c in preds if c in with_missing and c not in levels]
+             if missing_strategy(state) == "complete_case" else [])
     return list(dict.fromkeys(needed)), preds, gappy
+
+
+def repair_rules(state: Any) -> list[Any]:
+    """Range rules the applied repairs add to the flow (rows with an impossible value)."""
+    from turbotab.core.repairs import exclusion_rules
+
+    return exclusion_rules(state)
 
 
 def compute_cohort(
@@ -560,6 +581,7 @@ def compute_cohort(
         missing=missing_strategy(state),
         predictor_columns=gappy,
         missing_frame=missing_frame,
+        repairs=repair_rules(state),
     )
     return steps, kept, preds
 

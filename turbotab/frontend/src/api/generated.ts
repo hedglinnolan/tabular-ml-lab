@@ -809,6 +809,11 @@ export interface components {
              * @default []
              */
             waiting_on: string[];
+            /**
+             * Deferred Findings
+             * @default []
+             */
+            deferred_findings: string[];
         };
         /** JobView */
         JobView: {
@@ -1935,6 +1940,27 @@ export interface components {
             combined_numeric: number;
         };
         /**
+         * ApplyRepair
+         * @description Apply one of a finding's repair options. Row-local repairs rewrite the working table now;
+         *     statistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06).
+         */
+        ApplyRepair: {
+            /**
+             * Kind
+             * @default apply_repair
+             * @constant
+             */
+            kind: "apply_repair";
+            /** Finding Id */
+            finding_id: string;
+            /** Option */
+            option: string;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * BandEstimate
          * @description A measured estimate of what adding a band would cost: one refit per family, timed.
          */
@@ -2185,6 +2211,18 @@ export interface components {
             lever_label: string | null;
             /** Group */
             group: string | null;
+            /**
+             * Repairs
+             * @default []
+             */
+            repairs: components["schemas"]["RepairOption"][];
+            /** @default null */
+            disposition: components["schemas"]["FindingDisposition"] | null;
+            /**
+             * Answered By
+             * @default null
+             */
+            answered_by: string | null;
         };
         /** FindingEvidence */
         FindingEvidence: {
@@ -2492,6 +2530,31 @@ export interface components {
             column: string;
             /** Expression */
             expression: string;
+        };
+        /**
+         * RepairOption
+         * @description One way to act on a finding, and the ``apply_repair`` it records.
+         */
+        RepairOption: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Consequence */
+            consequence: string;
+            /**
+             * Row Local
+             * @default true
+             */
+            row_local: boolean;
+            /**
+             * Effect
+             * @enum {string}
+             */
+            effect: "values" | "rows" | "columns";
+            /** Sentence */
+            sentence: string;
+            decision: components["schemas"]["ApplyRepair"];
         };
         /** Repeats */
         Repeats: {

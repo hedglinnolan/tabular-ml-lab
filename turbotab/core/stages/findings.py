@@ -19,11 +19,16 @@ M1 (M1_CONTRACT §6): every finding also carries ``summary`` (≤ 20 words),
 ``group`` (a pager key for same-kind findings), and its text is normalized —
 see :mod:`turbotab.core.stages.finding_words`, which also adds the app's own
 findings (identifiers, flags, survey design, pooled cycles).
+
+M2 (M2_CONTRACT §4): every finding carries ``repairs``, its options from the repair registry
+(:mod:`turbotab.core.repairs`), and the app adds one finding of its own there: SAS transport
+zeros read as ``5.4e-79``.
 """
 from __future__ import annotations
 
 from typing import Any, Iterable
 
+from turbotab.core import repairs  # noqa: F401 - registers the repair validators, previews, key view
 from turbotab.core.graph import StageContext
 from turbotab.core.stages.data import LENSES, open_store
 from turbotab.core.stages.finding_words import (
@@ -147,8 +152,12 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
     from_packs = packs.findings(frame, lens)
     ctx.progress(0.95, "Ranking the findings")
 
+    spoken = speak_for(frame, lens, target, structural, from_packs)
+    sas = repairs.sas_zero_finding(frame, target)  # M2: the app's own detector for XPT zeros
+    if sas is not None:
+        spoken.append(sas)
     ranked = sorted(
-        speak_for(frame, lens, target, structural, from_packs),
+        spoken,
         key=lambda pair: (
             SEVERITY_RANK[pair[1]["severity"]],
             _CONFIDENCE_RANK.get(str(pair[0].get("confidence")), 1),
@@ -165,6 +174,7 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
         seen.add(finding["id"])
         findings.append(finding)
     settle_groups(findings)
+    repairs.attach(ranked, frame, target)  # M2_CONTRACT §4: each finding's repair options
 
     n_rows, n_cols = frame.shape
     about = f", with {target!r} as the target" if target else ", before a target was chosen"

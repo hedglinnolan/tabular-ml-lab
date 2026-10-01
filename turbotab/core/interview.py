@@ -80,6 +80,8 @@ class InterviewStep(BaseModel):
     decision_id: str | None = None
     reason: str | None = None
     waiting_on: list[str] = []
+    # M2_CONTRACT §4: findings deferred to this question, which resurface inside it, attributed.
+    deferred_findings: list[str] = []
 
 
 def _get(obj: Any, name: str, default: Any = None) -> Any:
@@ -335,7 +337,17 @@ def route(
             steps.append(InterviewStep(key=key, status=status, waiting_on=own))
         else:
             steps.append(InterviewStep(key=key, status="waiting", waiting_on=[first_unanswered, *own]))
-    return steps
+    return with_deferred(steps, state)
 
 
-__all__ = ["InterviewStep", "NEEDS", "QUESTION_KEYS", "QuestionKey", "pending_stages", "route"]
+def with_deferred(steps: list[InterviewStep], state: Any) -> list[InterviewStep]:
+    """Each step with the findings deferred to it (``turbotab.core.repairs.deferred_to``)."""
+    from turbotab.core.repairs import deferred_to
+
+    held = deferred_to(state)
+    return [s.model_copy(update={"deferred_findings": held[s.key]}) if s.key in held else s
+            for s in steps]
+
+
+__all__ = ["InterviewStep", "NEEDS", "QUESTION_KEYS", "QuestionKey", "pending_stages", "route",
+           "with_deferred"]

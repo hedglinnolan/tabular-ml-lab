@@ -252,6 +252,21 @@ class StageResult(BaseModel):
 
 # ── keys ─────────────────────────────────────────────────────────────────────
 
+# The part of a slot's value a stage's key depends on, where it is not the whole value: the
+# ``findings`` slot holds every finding's disposition, but only an applied repair changes data, so
+# deferring or dismissing a finding recomputes nothing (turbotab.core.repairs registers it).
+KEY_VIEWS: dict[str, Callable[[Any], Any]] = {}
+
+
+def register_key_view(slot: str, view: Callable[[Any], Any]) -> None:
+    """``view(json_value) -> value`` replaces ``slot``'s value in every stage key that reads it."""
+    KEY_VIEWS[slot] = view
+
+
+def key_value(slot: str, value: Any) -> Any:
+    view = KEY_VIEWS.get(slot)
+    return value if view is None or value is None else view(value)
+
 
 def stage_key(
     stage: Stage,
@@ -749,7 +764,7 @@ class Engine:
             p.keys[stage.name] = stage_key(
                 stage,
                 {dep: p.keys[dep] for dep in stage.deps},  # type: ignore[misc]
-                {slot: values.get(slot) for slot in stage.reads},
+                {slot: key_value(slot, values.get(slot)) for slot in stage.reads},
                 p.ctx.fingerprint,
             )
 

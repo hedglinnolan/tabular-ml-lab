@@ -29,7 +29,8 @@ from turbotab.core.consequences import (
 )
 from turbotab.core.decisions import ROW_ID, MissingSpec, ProjectState, missing_strategy
 from turbotab.core.stages.rows import (
-    PREDICTOR_ROLES, _missing_mask, cohort_flow, cohort_inputs, draw_split, predictors, rule_keep,
+    PREDICTOR_ROLES, _missing_mask, cohort_flow, cohort_inputs, draw_split, predictors, repair_rules,
+    rule_keep,
 )
 
 MAX_FOCUS_COLUMNS = 12
@@ -97,7 +98,7 @@ def _flows(ctx: PreviewContext, states: Sequence[ProjectState]) -> tuple[Any, An
         _, _, g = cohort_inputs(st, ingest)
         steps, kept = cohort_flow(frame, target=st.target, rules=st.exclusions,
                                   missing=missing_strategy(st), predictor_columns=g,
-                                  missing_frame=mask)
+                                  missing_frame=mask, repairs=repair_rules(st))
         results.append((steps, kept))
     return frame, mask, results
 
@@ -212,8 +213,7 @@ def missing_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if not state.roles:
         return []
     drop = list(getattr(decision, "drop_columns", []) or [])
-    proposed = state.model_copy(update={"missing": MissingSpec(strategy=decision.strategy,
-                                                               drop_columns=drop)})
+    proposed = state.model_copy(update={"missing": MissingSpec(**decision.model_dump(exclude={"kind"}))})
     # Which predictors can be missing at all (nothing left out), and plain complete cases.
     probe = state.model_copy(update={"missing": MissingSpec(strategy="complete_case")})
     frame, mask, [(before, _), (after, kept_after), (plain, kept_plain)] = _flows(
@@ -230,7 +230,12 @@ def missing_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if mask is not None:
         m = mask.loc[reach_ids]
         gaps = {c: int(m[c].isna().sum()) for c in m.columns if c in preds and m[c].isna().any()}
-    ranked = sorted(gaps, key=lambda c: (-gaps[c], order.index(c) if c in order else 0))
+    # Blanks that become their own "Missing" level are values: the strategy does not act on them.
+    levels = [c for c in _level_columns(ctx, proposed, preds) if c in gaps]
+    levels = sorted(levels, key=lambda c: (-gaps[c], order.index(c) if c in order else 0))
+    ranked = sorted((c for c in gaps if c not in levels),
+                    key=lambda c: (-gaps[c], order.index(c) if c in order else 0))
+    gaps = {c: gaps[c] for c in ranked}
     n_reach = len(reach_ids)
     views: list[Any] = []
     if decision.strategy == "complete_case":
@@ -250,6 +255,8 @@ def missing_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                 said = ", ".join(f"`{c}` → `{_shown(fills.get(c))}`" for c in ranked)
                 caption = f"No rows leave; blanks are filled: {said}."
             ctx.caution = _not_asked_caution(ctx, ranked, gaps, fills)
+    if levels and not ranked:  # every blank left is a level: say so rather than "no blanks"
+        caption = f"No rows leave: blanks in {_names(levels)} stay as a level of their own."
     views.append(RowFlowView(
         title="Rows kept when values are missing",
         caption=clip_words(caption, CAPTION_WORDS),
@@ -259,7 +266,47 @@ def missing_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     ))
     if ranked:
         views.append(_gaps_view(ctx, reach_ids, ranked, gaps, decision.strategy))
-    return views
+    if levels:
+        views.insert(1, _levels_view(ctx, reach_ids, levels))
+    return views[:3]
+
+
+def _level_columns(ctx: PreviewContext, state: ProjectState, preds: Sequence[str]) -> list[str]:
+    from turbotab.core.models.pipeline import level_columns
+
+    info = {c.name: c.to_dict() for c in ctx.datastore.info().columns}
+    return level_columns(state, preds, info)
+
+
+def _levels_view(ctx: PreviewContext, reach_ids: Any, levels: list[str]) -> TableFocusView:
+    """The rows whose blanks become a ``Missing`` level (M2_CONTRACT §4: missingness by mechanism)."""
+    from turbotab.core.datastore import json_safe
+    from turbotab.core.models.pipeline import MISSING_LEVEL
+
+    columns = levels[:MAX_FOCUS_COLUMNS]
+    values = ctx.datastore.materialize(columns, reach_ids)
+    missing = values.isna()
+    per_row = missing.sum(axis=1)
+    top = sorted(per_row[per_row > 0].sort_values(ascending=False, kind="stable").index[:MAX_FOCUS_ROWS])
+    rows, cells = [], []
+    for r in top:
+        before = {c: json_safe(values.at[r, c]) for c in columns}
+        after = {c: (MISSING_LEVEL if missing.at[r, c] else before[c]) for c in columns}
+        rows.append(TableRow(row_id=int(r), before=before, after=after))
+        cells += [(int(r), c) for c in columns if bool(missing.at[r, c])]
+    n_cells = int(missing.to_numpy().sum())
+    caption = (f"{fmt_count(n_cells)} blanks in {_names(columns)} become a `{MISSING_LEVEL}` level the "
+               f"models can use; no row leaves for them.")
+    return TableFocusView(
+        title="Blanks kept as their own level",
+        caption=clip_words(caption, CAPTION_WORDS),
+        emphasis=columns,
+        columns_before=columns,
+        columns_after=columns,
+        rows=rows,
+        changed=cells,
+        n_affected_columns=len(levels),
+    )
 
 
 def _left_out_views(ctx: PreviewContext, decision: Any, drop: list[str], before: list, after: list,
@@ -328,7 +375,7 @@ def _saved_view(ctx: PreviewContext, saved: Any, drop: list[str], order: list[st
 
 def _kept_before_missing(frame: Any, state: ProjectState) -> Any:
     _, kept = cohort_flow(frame, target=state.target, rules=state.exclusions, missing=None,
-                          predictor_columns=[])
+                          predictor_columns=[], repairs=repair_rules(state))
     return kept
 
 
@@ -379,9 +426,15 @@ def _not_asked_caution(ctx: PreviewContext, ranked: list[str], gaps: dict[str, i
             f"Imputing asserts answers nobody gave: blank {joined}, the most common value, though "
             f"a blank there likely means the question was not asked.")
     leave = SetMissing(strategy="complete_case", drop_columns=likely)  # the question's own offer
-    return Caution(text=text, exits=[CautionExit(
-        label=f"Leave {'it' if one else 'them'} out first",
-        decision=leave.model_dump(mode="json"))])
+    exits = [CautionExit(label=f"Leave {'it' if one else 'them'} out first",
+                         decision=leave.model_dump(mode="json"))]
+    probe = ctx.state.model_copy(update={"missing": MissingSpec(strategy="impute",
+                                                                categorical="missing_category")})
+    if set(likely) <= set(_level_columns(ctx, probe, likely)):
+        level = SetMissing(strategy="impute", categorical="missing_category")
+        exits.append(CautionExit(label="Keep blanks as their own level",
+                                 decision=level.model_dump(mode="json")))
+    return Caution(text=text, exits=exits)
 
 
 def _gaps_view(ctx: PreviewContext, reach_ids: Any, ranked: list[str], gaps: dict[str, int],

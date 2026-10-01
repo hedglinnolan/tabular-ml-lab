@@ -172,9 +172,9 @@ class SentenceFacts:
             return None
         if d.kind == "set_exclusions":
             state = state.model_copy(update={"exclusions": d.rules, "missing": None})
-        elif d.kind == "set_missing":
+        elif d.kind == "set_missing":  # all of it: a blank kept as a level drops no row
             state = state.model_copy(update={"missing": decisions.MissingSpec(
-                strategy=d.strategy, drop_columns=list(d.drop_columns))})
+                **d.model_dump(exclude={"kind"}))})
         else:
             return None
         try:
@@ -284,6 +284,8 @@ def preview_basis(ctx: consequences.PreviewContext, result: consequences.Preview
     ("values on a sample of 5,000 of the 17,084 training rows") are named separately; a scatter
     that draws fewer points than it sampled says so.
     """
+    if ctx.read.get("basis"):  # a builder that read every row says so itself (a repair's preview)
+        return str(ctx.read["basis"])
     sealed = ctx.sealed_row_ids is not None and len(ctx.sealed_row_ids) > 0
     parts: list[str] = []
     counted = ctx.read.get("counted")
@@ -800,6 +802,11 @@ class ProjectService:
             artifact = {"value": artifact}
         if stage == "fit" and artifact is not None:
             artifact = self._served_fit(pid, artifact, result.key)
+        if stage == "findings" and artifact is not None:  # M2 §4: each finding's disposition
+            from turbotab.core import repairs
+
+            records = self.log(pid).records()
+            artifact = repairs.annotate(artifact, decisions.fold(records), records)
         return {
             "stage": result.stage,
             "key": result.key,

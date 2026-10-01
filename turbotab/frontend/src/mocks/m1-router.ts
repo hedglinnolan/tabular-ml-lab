@@ -144,7 +144,7 @@ export function route(
   const pending = pendingStages(stages, deps);
   const writers = liveWriters(records, state);
   const roles = state.roles as Record<string, Role> | null;
-  const steps: InterviewStep[] = [];
+  const steps: Omit<InterviewStep, "deferred_findings">[] = [];
   let first: QuestionKey | null = null;
   for (const key of QUESTION_KEYS) {
     const value = state[key];
@@ -221,5 +221,5 @@ export function route(
       });
     }
   }
-  return steps;
+  return steps.map((s) => ({ ...s, deferred_findings: [] }));
 }

@@ -9,6 +9,22 @@ leakage tests rely on.
 
 The pipeline runs on RAW inputs: the columns as :func:`modeling_frame` reads them. Substitution
 curves shift raw intakes and push them through the whole pipeline, energy adjustment included.
+
+Missingness by mechanism (ROADMAP lockbox constitution §07, M2_CONTRACT §4), from the
+missing-values answer:
+
+* ``categorical == "missing_category"``: every categorical or two-valued predictor (a yes/no,
+  a medication taken or not) keeps its blanks as a level of their own, :data:`MISSING_LEVEL`,
+  encoded beside its other levels (``levels`` step, :class:`MissingLevelEncoder`). That is the
+  honest reading of a column like ``meds_hbp``, blank where the question was not asked. Its
+  blanks then drop no row under complete cases either (``stages.rows.cohort_inputs``).
+* ``indicators``: under imputation, each numeric column with blanks in the fitting rows gains a
+  ``missingindicator_<column>`` beside its filled values.
+* Imputation is a pipeline step, so it is fit on each training fold, and the outcome is never
+  among its inputs: the pipeline's inputs are the predictors (``DesignSpec.inputs``), and ``y``
+  never reaches a transformer.
+
+Step order: impute → energy adjustment → levels → one-hot → scale → model.
 """
 from __future__ import annotations
 
@@ -17,6 +33,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin
 
 from turbotab.core.decisions import EnergyAdjustment, ProjectState, Purpose, Task, missing_strategy
 from turbotab.core.methods.energy import METHOD_TABLE
@@ -26,6 +43,8 @@ from turbotab.core.models.steps import energy_step
 PREDICTOR_ROLES = ("exposure", "covariate", "energy")
 ADJUST_STEPS = ("impute", "energy")  # the steps whose outputs form the lineage's "adjusted" lane
 MANY_LEVELS = 20
+MISSING_LEVEL = "Missing"
+LEVEL_DTYPES = ("boolean", "categorical", "text")
 
 
 def predictors_from_roles(roles: Mapping[str, str] | None, target: str | None,
@@ -80,6 +99,112 @@ def is_categorical(series: pd.Series) -> bool:
     return not pd.api.types.is_numeric_dtype(series)
 
 
+def missing_as_level(state: ProjectState) -> bool:
+    spec = getattr(state, "missing", None)
+    return spec is not None and spec.categorical == "missing_category"
+
+
+def takes_level(dtype: str | None, n_unique: int | None) -> bool:
+    """A column whose blanks can be a level of their own: categorical, or two values at most."""
+    return dtype in LEVEL_DTYPES or (n_unique is not None and int(n_unique) <= 2)
+
+
+def level_columns(state: ProjectState, predictors: Sequence[str],
+                  column_info: Mapping[str, Any]) -> list[str]:
+    """The predictors whose blanks become :data:`MISSING_LEVEL` under ``state``'s missing answer:
+    categorical or two-valued columns with a blank somewhere in the table.
+
+    ``column_info``: column -> ``{dtype, n_unique, n_missing}`` as the ingest records them over
+    every row (a mapping or a ColumnInfo). The cohort and the design both read it, so they agree
+    on which columns these are, whichever rows each happens to hold.
+    """
+    if not missing_as_level(state):
+        return []
+    out = []
+    for c in predictors:
+        info = column_info.get(c)
+        if info is None:
+            continue
+        get = info.get if isinstance(info, Mapping) else (lambda k, i=info: getattr(i, k, None))
+        n_missing = get("n_missing")
+        if takes_level(get("dtype"), get("n_unique")) and (n_missing is None or int(n_missing) > 0):
+            out.append(c)
+    return out
+
+
+def frame_level_columns(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[str]) -> list[str]:
+    """:func:`level_columns` read from a frame of raw inputs, where no table summary is at hand."""
+    if not missing_as_level(state):
+        return []
+    return [c for c in predictors if c in frame.columns and frame[c].isna().any()
+            and (is_categorical(frame[c]) or frame[c].nunique(dropna=True) <= 2)]
+
+
+def _level_label(value: Any) -> str:
+    if isinstance(value, (bool, np.bool_)):
+        return str(bool(value))
+    if isinstance(value, (int, float, np.integer, np.floating)) and float(value).is_integer():
+        return str(int(value))
+    return str(value)
+
+
+class MissingLevelEncoder(TransformerMixin, BaseEstimator):
+    """One-hot encoding in which a blank is a level of its own, :data:`MISSING_LEVEL`.
+
+    Per column, fit learns the observed levels in sorted order; the first is the reference (as
+    the one-hot step's ``drop="first"``), every other level gets a ``<column>_<level>`` indicator,
+    and blanks get ``<column>_Missing`` when the fitting rows have any. A level never seen in fit
+    reads as the reference, as the one-hot step's ``handle_unknown="ignore"`` does. Every other
+    column passes through. Row-local once fit: a row's output depends on its own values.
+    """
+
+    def __init__(self, columns: Sequence[str] = ()):
+        self.columns = columns
+
+    def fit(self, X: pd.DataFrame, y: Any = None) -> "MissingLevelEncoder":
+        if not isinstance(X, pd.DataFrame):
+            raise TypeError("MissingLevelEncoder needs a pandas DataFrame with named columns.")
+        self.feature_names_in_ = np.asarray([str(c) for c in X.columns], dtype=object)
+        self.n_features_in_ = X.shape[1]
+        self.levels_: dict[str, list[str]] = {}
+        self.has_missing_: dict[str, bool] = {}
+        for c in self.columns:
+            labels = X[c].dropna().map(_level_label)
+            self.levels_[c] = sorted(labels.unique().tolist())
+            self.has_missing_[c] = bool(X[c].isna().any())
+        return self
+
+    def _outputs(self, column: str) -> list[tuple[str, str | None]]:
+        """(output name, level it marks; None marks the blanks)."""
+        out = [(f"{column}_{level}", level) for level in self.levels_[column][1:]]
+        if self.has_missing_[column]:
+            out.append((f"{column}_{MISSING_LEVEL}", None))
+        return out
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        if not hasattr(self, "levels_"):
+            raise ValueError("MissingLevelEncoder is not fitted yet.")
+        encoded = set(self.columns)
+        parts: dict[str, Any] = {}
+        for name in X.columns:
+            if name not in encoded:
+                parts[str(name)] = X[name]
+                continue
+            blank = X[name].isna().to_numpy()
+            labels = np.asarray([None if b else _level_label(v) for v, b in zip(X[name], blank)],
+                                dtype=object)
+            for out, level in self._outputs(str(name)):
+                parts[out] = (blank if level is None else (labels == level)).astype(float)
+        return pd.DataFrame(parts, index=X.index)
+
+    def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
+        names: list[str] = []
+        encoded = set(self.columns)
+        for name in self.feature_names_in_:
+            names.extend([out for out, _ in self._outputs(name)] if name in encoded else [name])
+        return np.asarray(names, dtype=object)
+
+
 @dataclass
 class DesignSpec:
     """Everything a pipeline is built from; plain data, so it pickles and hashes cleanly."""
@@ -91,6 +216,8 @@ class DesignSpec:
     energy: dict[str, Any] | None  # EnergyAdjustment as a dict
     impute: bool
     roles: dict[str, str] = field(default_factory=dict)
+    levels: list[str] = field(default_factory=list)  # predictors whose blanks are a level, "Missing"
+    indicators: bool = False  # imputed numbers gain a missing indicator
 
     def energy_adjustment(self) -> EnergyAdjustment | None:
         return EnergyAdjustment(**self.energy) if self.energy else None
@@ -116,22 +243,32 @@ def input_columns(predictors: Sequence[str], adjustment: EnergyAdjustment | None
 
 
 def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[str],
-                energy: Any = STATE) -> DesignSpec:
-    """The spec for ``frame`` (raw inputs) under ``state``; ``energy`` overrides the state's slot."""
+                energy: Any = STATE, column_info: Mapping[str, Any] | None = None) -> DesignSpec:
+    """The spec for ``frame`` (raw inputs) under ``state``; ``energy`` overrides the state's slot.
+
+    ``column_info`` (the table's column summaries) decides which predictors keep their blanks as
+    a level (:func:`level_columns`); without it, ``frame`` does (:func:`frame_level_columns`).
+    """
     adj = state.energy_adjustment if isinstance(energy, str) and energy == STATE else energy
     predictors = [c for c in predictors]
     wanted = set(input_columns(predictors, adj))
     inputs = [c for c in frame.columns if c in wanted]
     categorical = [c for c in inputs if is_categorical(frame[c])]
     numeric = [c for c in inputs if c not in categorical]
+    present = [c for c in predictors if c in inputs]
+    levels = (level_columns(state, present, column_info) if column_info is not None
+              else frame_level_columns(state, frame, present))
+    impute = missing_strategy(state) == "impute"
     return DesignSpec(
         predictors=predictors,
         inputs=inputs,
         categorical=categorical,
         numeric=numeric,
         energy=adj.model_dump() if adj is not None else None,
-        impute=missing_strategy(state) == "impute",
+        impute=impute,
         roles={str(k): str(v) for k, v in (state.roles or {}).items()},
+        levels=levels,
+        indicators=bool(impute and state.missing is not None and state.missing.indicators),
     )
 
 
@@ -139,27 +276,36 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
 
 
 def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
-    """The steps every family shares: impute → energy adjustment → one-hot."""
+    """The steps every family shares: impute → energy adjustment → levels → one-hot.
+
+    Columns whose blanks are a level skip the imputer and the one-hot step: the levels step
+    encodes them, blanks included.
+    """
     from sklearn.compose import ColumnTransformer
     from sklearn.impute import SimpleImputer
     from sklearn.preprocessing import OneHotEncoder
 
+    levels = [c for c in spec.levels if c in spec.predictors and c in spec.inputs]
     steps: list[tuple[str, Any]] = []
     if spec.impute:
+        numeric = [c for c in spec.numeric if c not in levels]
+        categorical = [c for c in spec.categorical if c not in levels]
         parts = []
-        if spec.numeric:
-            parts.append(("numeric", SimpleImputer(strategy="median", keep_empty_features=True),
-                          list(spec.numeric)))
-        if spec.categorical:
+        if numeric:
+            parts.append(("numeric", SimpleImputer(strategy="median", keep_empty_features=True,
+                                                   add_indicator=spec.indicators), numeric))
+        if categorical:
             parts.append(("categorical", SimpleImputer(strategy="most_frequent",
-                                                       keep_empty_features=True),
-                          list(spec.categorical)))
-        steps.append(("impute", ColumnTransformer(parts, remainder="passthrough",
-                                                  verbose_feature_names_out=False)))
+                                                       keep_empty_features=True), categorical))
+        if parts:
+            steps.append(("impute", ColumnTransformer(parts, remainder="passthrough",
+                                                      verbose_feature_names_out=False)))
     step = energy_step(spec.energy_adjustment(), spec.predictors)
     if step is not None:
         steps.append(("energy", step))
-    categorical = [c for c in spec.categorical if c in spec.predictors]
+    if levels:
+        steps.append(("levels", MissingLevelEncoder(levels)))
+    categorical = [c for c in spec.categorical if c in spec.predictors and c not in levels]
     if categorical:
         encoder = OneHotEncoder(drop="first", handle_unknown="ignore", sparse_output=False)
         steps.append(("onehot", ColumnTransformer([("onehot", encoder, categorical)],
@@ -233,9 +379,16 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
     out: list[dict[str, str]] = []
     for name, _ in family_steps(spec, family):
         if name == "impute":
+            marked = "; each filled number also gets a missing indicator" if spec.indicators else ""
             out.append({"key": "impute", "label": "Fill missing values",
-                        "detail": "Median for numbers, most frequent value for categories, "
-                                  "learned within each training fold."})
+                        "detail": f"Median for numbers, most frequent value for categories, "
+                                  f"learned within each training fold{marked}."})
+        elif name == "levels":
+            cols = [c for c in spec.levels if c in spec.predictors]
+            verb = "becomes" if len(cols) == 1 else "become"
+            out.append({"key": "levels", "label": "Blanks as a level",
+                        "detail": f"{', '.join(cols)} {verb} indicator columns with a blank as its "
+                                  f"own level, {MISSING_LEVEL}; the first level is the reference."})
         elif name == "energy":
             adj = spec.energy_adjustment()
             out.append({"key": "energy", "label": METHOD_TABLE[adj.method]["label"],
@@ -312,7 +465,8 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
                        f"overlap, moving energy through one while the rest stay fixed is not a "
                        f"coherent substitution.")
     if not spec.impute:
-        incomplete = frame[spec.inputs].isna().any(axis=1)
+        valued = [c for c in spec.inputs if c not in spec.levels]  # a blank there is a level
+        incomplete = frame[valued].isna().any(axis=1)
         n_bad = int(incomplete.sum())
         if n_bad:
             cannot = [families_by_key[k].label for k in family_keys
@@ -326,9 +480,9 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
 
 
 __all__ = [
-    "ADJUST_STEPS", "DesignSpec", "PREDICTOR_ROLES", "build_pipeline", "describe_steps",
-    "design_spec", "energy_detail", "family_steps", "input_columns", "is_categorical",
+    "ADJUST_STEPS", "DesignSpec", "MISSING_LEVEL", "MissingLevelEncoder", "PREDICTOR_ROLES",
+    "build_pipeline", "describe_steps", "design_spec", "energy_detail", "family_steps",
+    "frame_level_columns", "input_columns", "is_categorical", "level_columns", "missing_as_level",
     "model_predictors", "modeling_frame", "normalize_frame", "predictors_from_roles",
-    "shared_steps", "transformer",
-    "warnings_for",
+    "shared_steps", "takes_level", "transformer", "warnings_for",
 ]

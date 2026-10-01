@@ -457,9 +457,13 @@ def missing_strategy(state: Any) -> MissingStrategy | None:
 
 
 def left_out(state: Any) -> list[str]:
-    """Columns the missing-values answer left out of the predictors."""
+    """Columns left out of the predictors: by the missing-values answer, then by a repair that
+    marked a column unusable (``turbotab.core.repairs``)."""
     spec = getattr(state, "missing", None)
-    return list(spec.drop_columns) if spec is not None else []
+    out = list(spec.drop_columns) if spec is not None else []
+    from turbotab.core.repairs import unusable_columns  # repairs imports this module
+
+    return out + [c for c in unusable_columns(state) if c not in out]
 
 
 class Refusal(Exception):
@@ -498,6 +502,7 @@ _SLOT_VALUE: dict[str, Callable[[Any], Any]] = {}
 _HOLDS: dict[str, Callable[[Any, Mapping[str, Any]], bool]] = {}
 _KEYS: dict[str, Callable[[Any], str]] = {}
 _VALIDATORS: dict[str, list[Callable[[Any, Any], None]]] = {}
+_COMPLETIONS: dict[str, list[Callable[[Any, Any], Any]]] = {}
 
 
 def kind_of(model_cls: type[BaseModel]) -> str:
@@ -567,8 +572,15 @@ def register_validator(kind: str, fn: Callable[[Any, Any], None], *, first: bool
         checks.append(fn)
 
 
+def register_completion(kind: str, fn: Callable[[Any, Any], Any]) -> None:
+    """Add a completion for ``kind``: ``fn(decision, ctx) -> decision`` fills in what the server
+    knows and the client may leave out (a repair's parameters), after the validators pass. The
+    completed decision is what is previewed and recorded."""
+    _COMPLETIONS.setdefault(kind, []).append(fn)
+
+
 def validate(decision: Any, ctx: Any = None) -> Any:
-    """Parse ``decision`` and run its kind's validators; returns the parsed decision.
+    """Parse ``decision``, run its kind's validators, then its completions; returns the decision.
 
     ``ctx`` is whatever the caller knows about the project (for M0: an object or
     mapping with ``columns`` and ``target``); what it does not name is not checked. Revert targets are checked by
@@ -577,6 +589,8 @@ def validate(decision: Any, ctx: Any = None) -> Any:
     decision = parse_decision(decision)
     for fn in _VALIDATORS.get(decision.kind, ()):
         fn(decision, ctx)
+    for fn in _COMPLETIONS.get(decision.kind, ()):
+        decision = fn(decision, ctx)
     return decision
 
 
