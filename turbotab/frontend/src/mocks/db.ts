@@ -89,7 +89,7 @@ interface MockJob {
   timers: ReturnType<typeof setTimeout>[];
 }
 
-interface MockProject {
+export interface MockProject {
   summary: ProjectSummary;
   source: MockDataset;
   fingerprint: string;
@@ -117,6 +117,8 @@ const now = () => new Date().toISOString();
 
 export class MockServer {
   private projects = new Map<string, MockProject>();
+  /** The server authors each record's sentence (M1_CONTRACT §2); m1-record.ts supplies it. */
+  sentenceFor?: (p: MockProject, decision: Decision) => string | null;
   private listeners = new Map<string, Set<Listener>>();
   private seq = 0;
 
@@ -127,7 +129,8 @@ export class MockServer {
     return () => set.delete(fn);
   }
 
-  private emit(pid: string, type: EventType, data: unknown): void {
+  /** Public so the M1 mock modules (m1-*.ts) can push their own stage and job events. */
+  emit(pid: string, type: EventType, data: unknown): void {
     for (const fn of this.listeners.get(pid) ?? []) fn(type, data);
   }
 
@@ -224,7 +227,7 @@ export class MockServer {
       seq: p.records.length + 1,
       at: now(),
       note: null,
-      sentence: null,
+      sentence: this.sentenceFor?.(p, decision) ?? null,
       decision,
     };
     p.records.push(record);

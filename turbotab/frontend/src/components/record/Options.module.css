@@ -1,0 +1,195 @@
+/*
+ * Options (lifted from the stage prototype): a pip, a name, one consequence line.
+ * The user acts in sans; the consequence is the app speaking, in serif (§03).
+ * The option on the stage wears the accent tint and keyline (§02: "now").
+ */
+
+.options {
+  list-style: none;
+  margin: 2px -10px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.option {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  column-gap: 11px;
+  row-gap: 1px;
+  padding: 8px 12px 9px 11px;
+  border-radius: 10px;
+  cursor: pointer;
+  position: relative;
+  outline: none;
+}
+
+.option:hover {
+  background: var(--surface-2);
+}
+
+.option[data-shown] {
+  background: var(--accent-tint);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.option[aria-busy] {
+  cursor: progress;
+}
+
+.pip {
+  grid-row: 1;
+  align-self: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--faint);
+  background: var(--surface);
+}
+
+.option[data-mode="multi"] .pip {
+  border-radius: 3.5px;
+}
+
+.option[data-shown] .pip {
+  border-color: var(--accent);
+  box-shadow:
+    inset 0 0 0 2.5px var(--surface),
+    inset 0 0 0 6px var(--accent);
+}
+
+.option[data-mode="multi"][data-chosen] .pip {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--surface);
+}
+
+.option[data-recorded] .pip {
+  border-color: var(--ok);
+  background: var(--ok);
+  box-shadow: none;
+}
+
+.option[data-na] .pip {
+  border-style: dashed;
+}
+
+.head {
+  grid-column: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.option[data-na] .label {
+  color: var(--muted);
+}
+
+.data {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.tag[data-tone="na"] {
+  border-style: dashed;
+}
+
+.tag[data-tone="recorded"] {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.tag[data-tone="badge"] {
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+}
+
+.tapAgain {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-ink);
+}
+
+.line {
+  grid-column: 2;
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.option[data-shown] .line {
+  color: var(--ink);
+}
+
+.note {
+  grid-column: 2;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.extra {
+  grid-column: 2;
+  margin-top: 6px;
+  cursor: auto;
+}
+
+.answer {
+  list-style: none;
+  margin: 2px 2px 6px 27px;
+}
+
+.keys {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  color: var(--faint);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.keys kbd {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 0 5px;
+  background: var(--surface);
+  margin-left: 4px;
+}
+
+.keys kbd:first-child {
+  margin-left: 0;
+}

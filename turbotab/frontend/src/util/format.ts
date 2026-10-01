@@ -24,6 +24,29 @@ export function fmtValue(v: unknown): string {
   return String(v);
 }
 
+const CODE_NAME =
+  /(^|_)(id|seqn|code|zip|year|yr|cycle|visit|wave)$|^(seqn|year|cycle)|_year_|year_/i;
+
+/**
+ * A column whose integers are labels or dates, not quantities: identifiers and years. Their
+ * values are written without digit grouping (SEQN 9966, not 9,966; 2001, not 2,001).
+ */
+export function codeLike(
+  name: string,
+  summary?: { min: number | null; max: number | null; dtype?: string } | null,
+): boolean {
+  if (CODE_NAME.test(name)) return true;
+  if (!summary || summary.min === null || summary.max === null) return false;
+  const integral = Number.isInteger(summary.min) && Number.isInteger(summary.max);
+  return integral && summary.min >= 1800 && summary.max <= 2100 && summary.dtype === "integer";
+}
+
+/** An identifier or a year as written: no grouping, no rounding. */
+export function fmtCode(v: number | null): string {
+  if (v === null) return "—";
+  return Number.isInteger(v) ? String(v) : String(+v.toFixed(4));
+}
+
 export function fmtStat(v: number | null): string {
   if (v === null) return "—";
   const abs = Math.abs(v);

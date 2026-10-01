@@ -1,0 +1,62 @@
+/* A refusal is an acknowledgment too (§05.1): neutral, factual, with its ways out. */
+.refusal {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: 10px;
+  padding: 10px 13px;
+  background: var(--surface);
+}
+
+.text {
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 8px;
+  color: var(--ink);
+}
+
+.label {
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--warn);
+  margin-right: 4px;
+}
+
+.exits {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.exit {
+  border: 1.5px solid var(--accent);
+  background: var(--surface);
+  color: var(--accent-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 4px 11px;
+  border-radius: 8px;
+}
+
+.exit:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.ghost {
+  border: 1.5px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 4px 11px;
+  border-radius: 8px;
+}
+
+.ghost:hover {
+  border-color: var(--muted);
+  color: var(--ink);
+}

@@ -1,57 +1,559 @@
 /**
- * The Record: the interview as a growing document. Each question is asked in
- * turn; an answered question settles into its decision sentence; "change"
- * reopens it and a new decision is appended (the old sentence stays in the
- * history). Below, what the chosen lenses noticed.
+ * The Record: the interview as a growing document, rendered from the server's Router
+ * (ProjectView.interview). The client never decides the order; it renders what the Router
+ * says — the one open question, the answered ones settled into the sentences the server
+ * authored, the skipped and the not applicable with their reasons, and what comes next.
+ *
+ * "change" reopens an answer; recording appends a new decision and the old sentence stays
+ * in the history. A press that does not record answers at the control. After a settle the
+ * arriving question takes the keyboard focus, and the recorded sentence is announced.
+ * Below the questions: what the lenses noticed, each finding a claim plus its lever.
  */
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { LayoutGroup, motion } from "motion/react";
 import { isRefusalError } from "../../api/client";
-import { useDecide } from "../../api/queries";
-import type {
-  ColumnSummary,
-  DatasetInfo,
-  Decision,
-  DecisionRecord,
-  FindingsArtifact,
-  ProfileArtifact,
-  ProjectView,
-  Refusal,
-  Slot,
-  StageResult,
-  StageStatus,
-  TargetInfoArtifact,
-} from "../../api/schema";
-import { SLOTS } from "../../api/schema";
-import { useRunStage } from "../../api/queries";
-import { useTransitions } from "../../motion/prefs";
+import { useColumnSummaries, useDecide, useRunStage, useTeaching } from "../../api/queries";
+import type { InterviewStep, QuestionKey, Role, TeachingEntry } from "../../api/m1-types";
+import type { Decision, DecisionRecord, ProjectView, Refusal, StageStatus } from "../../api/schema";
+import { DUR, useTransitions } from "../../motion/prefs";
 import { StaleVeil, veilFor } from "../../motion/StaleVeil";
 import { Link } from "../../router";
-import { cx, fmtClock, fmtInt } from "../../util/format";
+import { useStageFocus } from "../../state/focus";
+import { useStage } from "../../state/stages";
+import { fmtClock, fmtInt } from "../../util/format";
 import { Prose, V } from "../Prose";
+import { STAGE_LABEL } from "../JobChips";
 import { StageRetry, needsRetry } from "../StageRetry";
-import { DecisionSentence, History, Pending, QuestionBlock, SkipRow } from "./blocks";
-import { FindingsList } from "./Findings";
-import { LensAnswers, PurposeAnswers, RefusalNote, TargetAnswers, TaskAnswers } from "./questions";
-import { sentence, slotOf } from "./sentences";
-import c from "./controls.module.css";
-import styles from "./Record.module.css";
+import { DecisionSentence, History, Pending, SkipRow } from "./blocks";
+import {
+  EnergyAsk,
+  ExclusionsAsk,
+  MissingAsk,
+  ModelsAsk,
+  SplitAsk,
+  SubstitutionAsk,
+} from "./ask/ChoiceQuestions";
+import type { AskProps } from "./ask/common";
+import { LensAsk, PurposeAsk, TargetAsk, TaskAsk } from "./ask/FactQuestions";
+import { RolesAsk } from "./ask/RolesAsk";
+import { FindingsCards } from "./Findings";
+import { FailureNote, RefusalNote } from "./Refusal";
+import { sentence, sentenceText, slotOf } from "./sentences";
+import { ConceptDrawer } from "./teach";
+import s from "./Record.module.css";
 
-interface Props {
-  pid: string;
-  view: ProjectView;
-  ingest?: StageResult<DatasetInfo>;
-  profile?: StageResult<ProfileArtifact>;
-  targetInfo?: StageResult<TargetInfoArtifact>;
-  findings?: StageResult<FindingsArtifact>;
-  summaries?: ColumnSummary[];
+/** Each question's name in running text ("Change the column roles"). */
+const SUBJECT: Record<QuestionKey, string> = {
+  lens: "the lens",
+  target: "the outcome",
+  task: "the task",
+  purpose: "the purpose",
+  roles: "the column roles",
+  exclusions: "the exclusions",
+  missing: "the missing values",
+  split: "the split",
+  energy_adjustment: "the energy adjustment",
+  models: "the models",
+  substitution: "the substitution",
+};
+
+/** What each stage is doing while a question waits on it: the job chip's own words. */
+const STAGE_WORK = STAGE_LABEL;
+
+interface Answer {
+  key: QuestionKey;
+  at: string;
+  refusal?: Refusal;
+  failure?: string;
 }
 
-/**
- * What a section says while its stage has no result to show. Never claims work that is
- * not happening; work that will not restart by itself says why and offers `retry`.
- */
-function waiting(
+const titleOf = (entries: Map<string, TeachingEntry>, key: QuestionKey) =>
+  entries.get(key)?.title ?? key.replace(/_/g, " ");
+
+export function Record({ pid, view }: { pid: string; view: ProjectView }) {
+  const decide = useDecide(pid);
+  const teaching = useTeaching();
+  const t = useTransitions();
+  const { reset } = useStageFocus();
+  const { state, decisions, stages, interview } = view;
+
+  const ingest = useStage(pid, view, "ingest");
+  const profile = useStage(pid, view, "profile");
+  const targetInfo = useStage(pid, view, "target_info");
+  const findings = useStage(pid, view, "findings");
+  const roles = useStage(pid, view, "roles");
+  const proposals = useStage(pid, view, "proposals");
+  const shelf = useStage(pid, view, "shelf");
+  const design = useStage(pid, view, "design");
+  const summaries = useColumnSummaries(pid, stages.ingest?.status === "fresh").data;
+
+  const [reopened, setReopened] = useState<Partial<Record<QuestionKey, boolean>>>({});
+  const [answer, setAnswer] = useState<Answer | null>(null);
+  const [arrival, setArrival] = useState<{ from: QuestionKey } | null>(null);
+  const [announce, setAnnounce] = useState("");
+  const [drawer, setDrawer] = useState<QuestionKey | null>(null);
+  const [flash, setFlash] = useState<QuestionKey | null>(null);
+  const slots = useRef(new Map<QuestionKey, HTMLElement>());
+  const onArrived = useCallback(() => setArrival(null), []);
+
+  const entries = useMemo(
+    () => new Map((teaching.data ?? []).map((e) => [e.key, e])),
+    [teaching.data],
+  );
+  const byId = useMemo(() => new Map(decisions.map((r) => [r.id, r])), [decisions]);
+  const bySlot = useMemo(() => {
+    const out = new Map<string, DecisionRecord[]>();
+    for (const r of decisions) {
+      const slot = slotOf(r.decision, decisions);
+      if (!slot) continue;
+      out.set(slot, [...(out.get(slot) ?? []), r]);
+    }
+    return out;
+  }, [decisions]);
+  const summaryMap = useMemo(
+    () => (summaries ? new Map(summaries.map((x) => [x.name, x])) : undefined),
+    [summaries],
+  );
+
+  const stepOf = (key: QuestionKey) => interview.find((st) => st.key === key);
+  const openStep = interview.find((st) => st.status === "open");
+  const reopenedKeys = interview.filter((st) => reopened[st.key]).map((st) => st.key);
+  const nowKey = reopenedKeys[0] ?? openStep?.key ?? null;
+  const arrivingKey =
+    arrival && openStep && openStep.key !== arrival.from && !reopenedKeys.length
+      ? openStep.key
+      : null;
+
+  /** Move to a question: the user asked for it (a lever, "change"). */
+  const goTo = (key: QuestionKey, focusHeading: boolean) => {
+    window.setTimeout(() => {
+      const el = slots.current.get(key);
+      if (!el) return;
+      el.scrollIntoView({ block: "nearest", behavior: t.reduced ? "auto" : "smooth" });
+      const target = focusHeading ? el.querySelector<HTMLElement>("h2[tabindex]") : el;
+      target?.focus({ preventScroll: true });
+    }, 30);
+  };
+
+  const record = (key: QuestionKey, decision: Decision, at = "") => {
+    setAnswer(null);
+    const wasReopened = !!reopened[key] && stepOf(key)?.status !== "open";
+    decide.mutate(decision, {
+      onSuccess: (next) => {
+        setReopened((r) => ({ ...r, [key]: false }));
+        const latest = next.decisions.reduce<DecisionRecord | null>(
+          (m, r) => (m === null || r.seq > m.seq ? r : m),
+          null,
+        );
+        if (latest) setAnnounce(`Recorded: ${sentenceText(latest)}`);
+        reset();
+        if (wasReopened) {
+          // A changed earlier answer settles in place; focus stays there, nothing scrolls away.
+          window.setTimeout(
+            () => {
+              slots.current
+                .get(key)
+                ?.querySelector<HTMLElement>('[data-block="decision"] button')
+                ?.focus({ preventScroll: true });
+            },
+            t.reduced ? 0 : DUR.settle * 1000,
+          );
+        } else {
+          setArrival({ from: key });
+        }
+      },
+      onError: (err) => {
+        if (isRefusalError(err)) setAnswer({ key, at, refusal: err.refusal });
+        else setAnswer({ key, at, failure: err instanceof Error ? err.message : String(err) });
+      },
+    });
+  };
+
+  const reopen = (key: QuestionKey) => {
+    setAnswer(null);
+    setArrival(null); // the user went somewhere: nothing arrives behind their back
+    setReopened((r) => ({ ...r, [key]: true }));
+    goTo(key, true);
+  };
+  const keepFor = (key: QuestionKey) =>
+    reopened[key]
+      ? () => {
+          setAnswer(null);
+          setReopened((r) => ({ ...r, [key]: false }));
+          reset();
+        }
+      : undefined;
+
+  const route = (key: QuestionKey) => {
+    const st = stepOf(key);
+    if (!st) return;
+    setArrival(null);
+    if (st.status === "answered" || st.status === "skipped") {
+      setReopened((r) => ({ ...r, [key]: true }));
+    }
+    setFlash(key);
+    window.setTimeout(() => setFlash((f) => (f === key ? null : f)), 1600);
+    goTo(key, st.status !== "waiting" && st.status !== "not_applicable");
+  };
+
+  const answerFor = (key: QuestionKey): AskProps["answerAt"] => {
+    if (!answer || answer.key !== key) return null;
+    const dismiss = () => setAnswer(null);
+    const node = answer.refusal ? (
+      <RefusalNote
+        refusal={answer.refusal}
+        onDismiss={dismiss}
+        onExit={(exit) => (exit.decision ? record(key, exit.decision, answer.at) : dismiss())}
+      />
+    ) : (
+      <FailureNote message={answer.failure ?? "no reason given"} onDismiss={dismiss} />
+    );
+    return { key: answer.at, node };
+  };
+
+  const props = (key: QuestionKey): AskProps => ({
+    entry: entries.get(key),
+    pending: decide.isPending,
+    record: (d, at) => record(key, d, at),
+    keep:
+      keepFor(key) && (currentRecord(key) || stepOf(key)?.status === "skipped")
+        ? keepFor(key)
+        : undefined,
+    answerAt: answerFor(key),
+    shell: {
+      qkey: key,
+      now: nowKey === key,
+      arriving: arrivingKey === key,
+      onArrived,
+      onOpenDrawer: () => setDrawer(key),
+      reopened: !!reopened[key],
+    },
+  });
+
+  /** The live record behind a question's answer: the Router names it. */
+  const currentRecord = (key: QuestionKey): DecisionRecord | undefined => {
+    const id = stepOf(key)?.decision_id;
+    if (id) return byId.get(id);
+    const recs = bySlot.get(key) ?? [];
+    return key === "task" ? undefined : recs[recs.length - 1];
+  };
+
+  const historyFor = (key: QuestionKey) => {
+    const now = currentRecord(key);
+    return (bySlot.get(key) ?? [])
+      .filter((r) => r !== now)
+      .map((r) => ({
+        id: r.id,
+        seq: r.seq,
+        when: fmtClock(r.at),
+        sentence: sentence(r, decisions),
+        tag:
+          r.decision.kind === "set_task" && r.decision.column !== state.target
+            ? "another outcome"
+            : undefined,
+      }));
+  };
+
+  // ─── the open (or reopened) question, by key ──────────────────────────────
+  const columns = ingest?.artifact?.columns.filter((col) => col.name !== "__row_id");
+  const ti = targetInfo?.artifact ?? null;
+  const waitingFor = (stage: string, then: string): ReactNode => (
+    <Pending>
+      {STAGE_WORK[stage] ?? "Computing"}… {then}
+    </Pending>
+  );
+
+  const ask = (key: QuestionKey): ReactNode => {
+    const p = props(key);
+    switch (key) {
+      case "lens":
+        return (
+          <LensAsk
+            {...p}
+            current={state.lens}
+            hints={profile?.artifact?.lens_hints ?? []}
+            hintsNote={
+              needsRetry(stages.profile) ? (
+                <p className={s.hintsMissing}>
+                  No lens hints: summarizing the columns did not finish.{" "}
+                  <StageRetry pid={pid} status={stages.profile} />
+                </p>
+              ) : undefined
+            }
+          />
+        );
+      case "target":
+        return <TargetAsk {...p} columns={columns} summaries={summaryMap} current={state.target} />;
+      case "task":
+        return ti ? (
+          <TaskAsk {...p} info={ti} current={state.task} />
+        ) : (
+          waitingFor("target_info", "Then the task is read from it.")
+        );
+      case "purpose":
+        return <PurposeAsk {...p} current={state.purpose} />;
+      case "roles":
+        return roles?.artifact ? (
+          <RolesAsk
+            key={roles.key ?? "roles"}
+            {...p}
+            artifact={roles.artifact}
+            current={(state.roles as Record<string, Role> | null) ?? null}
+          />
+        ) : (
+          waitingFor("roles", "Then each column's role is asked.")
+        );
+      case "exclusions":
+        return (
+          <ExclusionsAsk
+            {...p}
+            proposals={proposals?.artifact ?? undefined}
+            current={state.exclusions}
+            numericColumns={(columns ?? [])
+              .filter((col) => col.dtype === "numeric" || col.dtype === "integer")
+              .map((col) => col.name)}
+          />
+        );
+      case "missing":
+        return (
+          <MissingAsk
+            {...p}
+            proposals={proposals?.artifact ?? undefined}
+            current={state.missing}
+            currentDecision={currentRecord("missing")?.decision ?? null}
+          />
+        );
+      case "split":
+        return <SplitAsk {...p} roles={roles?.artifact ?? undefined} current={state.split} />;
+      case "energy_adjustment":
+        return (
+          <EnergyAsk
+            {...p}
+            reading={proposals?.artifact?.energy}
+            current={state.energy_adjustment}
+          />
+        );
+      case "models":
+        return shelf?.artifact ? (
+          <ModelsAsk {...p} shelf={shelf.artifact} current={state.models} />
+        ) : (
+          waitingFor("shelf", "Then the model families are offered.")
+        );
+      case "substitution":
+        return (
+          <SubstitutionAsk {...p} pairs={design?.artifact?.substitution_pairs.length ?? null} />
+        );
+    }
+  };
+
+  // ─── one slot per step, in the Router's order ─────────────────────────────
+  const settled = (key: QuestionKey, rec: DecisionRecord) => (
+    <DecisionSentence
+      layoutId={`q-${key}`}
+      subject={SUBJECT[key]}
+      onChange={() => reopen(key)}
+      meta={`#${rec.seq}`}
+      testId={`decision-${key}`}
+    >
+      {sentence(rec, decisions)}
+    </DecisionSentence>
+  );
+
+  const slotBody = (st: InterviewStep): ReactNode => {
+    const key = st.key;
+    if (reopened[key] && st.status !== "waiting") return ask(key);
+    switch (st.status) {
+      case "open":
+        return ask(key);
+      case "answered": {
+        const rec = currentRecord(key);
+        return rec ? settled(key, rec) : null;
+      }
+      case "skipped":
+        return (
+          <SkipRow layoutId={`q-${key}`} onAsk={() => reopen(key)} testId={`skip-${key}`}>
+            <span className={s.notAsked}>Not asked:</span>{" "}
+            {ti && key === "task" ? (
+              <>
+                <V>{ti.column}</V> read as <V>{ti.task}</V>, <V>{ti.confidence}</V> confidence.{" "}
+              </>
+            ) : null}
+            {st.reason ? <Prose text={st.reason} /> : null}
+          </SkipRow>
+        );
+      case "not_applicable":
+        return (
+          <div className={s.na} data-testid={`na-${key}`}>
+            <span className={s.naTitle}>{titleOf(entries, key)}</span>
+            <span className={s.naTag}>not applicable</span>
+            {st.reason ? (
+              <span className={s.naText}>
+                <Prose text={st.reason} />
+              </span>
+            ) : null}
+          </div>
+        );
+      case "waiting":
+        return null;
+    }
+  };
+
+  // Answers always stay in place (nothing earlier is deleted). The first unanswered question,
+  // when it waits on a stage, stands in place as a pending row; every later unanswered or
+  // inapplicable step is listed under "Then".
+  const firstAt = interview.findIndex((st) => st.status === "open" || st.status === "waiting");
+  const firstUnanswered = firstAt === -1 ? undefined : interview[firstAt];
+  const pendingStep =
+    firstUnanswered?.status === "waiting" &&
+    firstUnanswered.waiting_on.every((w) => !interview.some((x) => x.key === w))
+      ? firstUnanswered
+      : null;
+  const later = (st: InterviewStep, i: number) =>
+    st !== pendingStep &&
+    (st.status === "waiting" || (st.status === "not_applicable" && firstAt !== -1 && i > firstAt));
+  const inline = interview.filter((st, i) => !later(st, i) && st !== pendingStep);
+  const next = interview.filter(later);
+
+  const unread = !columns && needsRetry(stages.ingest) ? stages.ingest : undefined;
+  const findingsBody = (() => {
+    const f = findings?.artifact;
+    if (f) return <FindingsCards artifact={f} onRoute={route} />;
+    return (
+      <Pending testId="pending-findings">
+        {waitingText(
+          stages.findings,
+          "Checking the table against the chosen lenses…",
+          <StageRetry pid={pid} status={stages.findings} />,
+        )}
+      </Pending>
+    );
+  })();
+  const nFindings = findings?.artifact?.findings.length;
+  const drawerEntry = drawer ? entries.get(drawer) : undefined;
+
+  return (
+    <LayoutGroup id="record">
+      <div className={s.record}>
+        <header className={s.opener}>
+          <h1 className={s.h1}>The record</h1>
+          <p className={s.lede}>
+            Every answer is written down as a sentence you could publish. Change any of them;
+            nothing earlier is deleted.
+          </p>
+        </header>
+        <p className="visually-hidden" aria-live="polite" role="status" data-testid="announce">
+          {announce}
+        </p>
+        {unread ? <Unread pid={pid} status={unread} /> : null}
+        {interview.length === 0 && !unread ? (
+          <Pending>Reading the file. The first question comes once its columns are known.</Pending>
+        ) : null}
+        {interview.map((st) => {
+          if (st !== pendingStep && !inline.includes(st)) return null;
+          const body =
+            st === pendingStep ? (
+              <Pending testId={`pending-${st.key}`}>
+                {STAGE_WORK[st.waiting_on[0] ?? ""] ?? "Computing"}… {titleOf(entries, st.key)}{" "}
+                comes next.
+              </Pending>
+            ) : (
+              slotBody(st)
+            );
+          if (!body) return null;
+          return (
+            <motion.div
+              key={st.key}
+              ref={(el: HTMLDivElement | null) => {
+                if (el) slots.current.set(st.key, el);
+                else slots.current.delete(st.key);
+              }}
+              layout="position"
+              transition={{ layout: t.settle }}
+              className={s.slot}
+              data-slot={st.key}
+              data-status={st.status}
+              data-flash={flash === st.key || undefined}
+            >
+              {body}
+              <History items={historyFor(st.key)} />
+            </motion.div>
+          );
+        })}
+        {next.length > 0 ? (
+          <motion.section
+            layout="position"
+            transition={{ layout: t.settle }}
+            className={s.next}
+            aria-label="Asked next"
+            data-testid="next"
+          >
+            <h2 className={s.nextHead}>Then</h2>
+            <ol className={s.nextList}>
+              {next.map((st) => (
+                <li
+                  key={st.key}
+                  ref={(el) => {
+                    if (el) slots.current.set(st.key, el);
+                    else slots.current.delete(st.key);
+                  }}
+                  tabIndex={-1}
+                  className={s.nextItem}
+                  data-slot={st.key}
+                  data-status={st.status}
+                  data-flash={flash === st.key || undefined}
+                >
+                  <span className={s.nextTitle}>{titleOf(entries, st.key)}</span>
+                  {st.status === "not_applicable" ? (
+                    <span className={s.naTag}>not applicable</span>
+                  ) : null}
+                  {flash === st.key && st.status === "waiting" && firstUnanswered ? (
+                    <span className={s.nextNote}>
+                      asked after {titleOf(entries, firstUnanswered.key).toLowerCase()}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          </motion.section>
+        ) : null}
+        {state.lens ? (
+          <motion.section
+            layout="position"
+            transition={{ layout: t.settle }}
+            className={s.findings}
+            aria-labelledby="findings-heading"
+            data-testid="findings"
+          >
+            <StaleVeil
+              state={veilFor(stages.findings, findings)}
+              order={1}
+              testId="veil-findings"
+              action={<StageRetry pid={pid} status={stages.findings} />}
+            >
+              <div className={s.sectionHead}>
+                <h2 id="findings-heading" className={s.h2}>
+                  Noticed in this table
+                </h2>
+                {nFindings !== undefined ? (
+                  <span className={s.count} data-testid="findings-count">
+                    {fmtInt(nFindings)}
+                  </span>
+                ) : null}
+              </div>
+              {findingsBody}
+            </StaleVeil>
+          </motion.section>
+        ) : null}
+      </div>
+      {drawerEntry?.drawer ? (
+        <ConceptDrawer entry={drawerEntry} onClose={() => setDrawer(null)} />
+      ) : null}
+    </LayoutGroup>
+  );
+}
+
+/** What a section says while its stage has no result; never claims work that is not happening. */
+function waitingText(
   status: StageStatus | undefined,
   working: ReactNode,
   retry?: ReactNode,
@@ -74,464 +576,38 @@ function waiting(
   }
 }
 
-/**
- * The file could not be read, or reading it was stopped: nothing can be asked about a
- * table that does not exist yet, so this stands where the first question would.
- */
+/** The file could not be read, or reading it was stopped: nothing can be asked yet. */
 function Unread({ pid, status }: { pid: string; status: StageStatus }) {
   const run = useRunStage(pid);
   const failed = status.status === "error";
   return (
-    <QuestionBlock
-      layoutId="ingest-unread"
-      kicker="The file"
-      title={failed ? "This file could not be read." : "Reading the file was stopped."}
-      why={
-        failed
+    <section className={s.unread} data-testid="ingest-unread" aria-labelledby="unread-h">
+      <div className={s.unreadKicker}>The file</div>
+      <h2 id="unread-h" className={s.unreadTitle}>
+        {failed ? "This file could not be read." : "Reading the file was stopped."}
+      </h2>
+      <p className={s.unreadWhy}>
+        {failed
           ? "Nothing can be asked about a table TurboTab has not read. The reader stopped here:"
-          : "You stopped it before the table was ready. Nothing can be asked about the table until it is read."
-      }
-      testId="ingest-unread"
-    >
+          : "You stopped it before the table was ready. Nothing can be asked about the table until it is read."}
+      </p>
       {failed ? (
-        <pre className={styles.reason}>{status.error ?? "The server gave no reason."}</pre>
+        <pre className={s.reason}>{status.error ?? "The server gave no reason."}</pre>
       ) : null}
-      <div className={c.actions}>
+      <div className={s.unreadActions}>
         <button
           type="button"
-          className={c.primary}
+          className={s.primary}
           disabled={run.isPending}
           onClick={() => run.mutate("ingest")}
           title="Reads the same file again, from where it is on disk."
         >
           {failed ? "Try reading it again" : "Read it again"}
         </button>
-        <Link href="/" className={cx(c.ghost, styles.linkButton)}>
+        <Link href="/" className={s.ghost}>
           Open another file
         </Link>
       </div>
-    </QuestionBlock>
-  );
-}
-
-const SUBJECT: Record<Slot, string> = {
-  lens: "the lens",
-  target: "the outcome",
-  task: "the task",
-  purpose: "the purpose",
-  roles: "the column roles",
-  energy_adjustment: "the energy adjustment",
-  exclusions: "the exclusions",
-  missing: "the missing values",
-  split: "the split",
-  models: "the models",
-  substitution: "the substitution",
-};
-
-export function Record({ pid, view, ingest, profile, targetInfo, findings, summaries }: Props) {
-  const decide = useDecide(pid);
-  const t = useTransitions();
-  const targetHeading = useId();
-  const [reopened, setReopened] = useState<Partial<Record<Slot, boolean>>>({});
-  const [refusal, setRefusal] = useState<{ slot: Slot; refusal: Refusal } | null>(null);
-  const { state, decisions, stages } = view;
-
-  const bySlot = useMemo(() => {
-    const out = Object.fromEntries(SLOTS.map((s) => [s, []])) as unknown as Record<
-      Slot,
-      DecisionRecord[]
-    >;
-    for (const r of decisions) {
-      const slot = slotOf(r.decision, decisions);
-      if (slot) out[slot].push(r);
-    }
-    return out;
-  }, [decisions]);
-
-  const summaryMap = useMemo(
-    () => (summaries ? new Map(summaries.map((s) => [s.name, s])) : undefined),
-    [summaries],
-  );
-
-  const submit = (slot: Slot, decision: Decision) => {
-    setRefusal(null);
-    decide.mutate(decision, {
-      onSuccess: () => setReopened((r) => ({ ...r, [slot]: false })),
-      onError: (err) => {
-        if (isRefusalError(err)) setRefusal({ slot, refusal: err.refusal });
-      },
-    });
-  };
-  const reopen = (slot: Slot) => {
-    setRefusal(null);
-    setReopened((r) => ({ ...r, [slot]: true }));
-  };
-  const keep = (slot: Slot) => () => {
-    setRefusal(null);
-    setReopened((r) => ({ ...r, [slot]: false }));
-  };
-
-  const refusalFor = (slot: Slot) =>
-    refusal?.slot === slot ? (
-      <RefusalNote
-        refusal={refusal.refusal}
-        onDismiss={() => setRefusal(null)}
-        onExit={(exit) => (exit.decision ? submit(slot, exit.decision) : setRefusal(null))}
-      />
-    ) : null;
-
-  /**
-   * The record behind a slot's current value. For most slots that is the latest one. A
-   * task answer names its column and counts only while that column is the outcome, so
-   * the task's is the latest answer for this outcome with this value (none when unset).
-   */
-  const current = (slot: Slot): DecisionRecord | undefined => {
-    const recs = bySlot[slot];
-    if (slot !== "task") return recs[recs.length - 1];
-    if (state.task === null) return undefined;
-    return recs.findLast(
-      (r) =>
-        r.decision.kind === "set_task" &&
-        r.decision.column === state.target &&
-        r.decision.task === state.task,
-    );
-  };
-
-  const historyFor = (slot: Slot) => {
-    const now = current(slot);
-    const earlier =
-      slot === "task" ? bySlot.task.filter((r) => r !== now) : bySlot[slot].slice(0, -1);
-    return earlier.map((r) => ({
-      id: r.id,
-      seq: r.seq,
-      when: fmtClock(r.at),
-      sentence: sentence(r, decisions),
-      tag:
-        r.decision.kind === "set_task" && r.decision.column !== state.target
-          ? "another outcome"
-          : undefined,
-    }));
-  };
-
-  const settled = (slot: Slot, value: unknown) =>
-    value !== null && !reopened[slot] && current(slot);
-  const arrive = (slot: Slot) => bySlot[slot].length === 0;
-
-  const hints = profile?.artifact?.lens_hints ?? [];
-  const columns = ingest?.artifact?.columns.filter((col) => col.name !== "__row_id");
-  // No table, and none on its way: the file failed to read, or reading it was stopped.
-  const unread = !columns && needsRetry(stages.ingest) ? stages.ingest : undefined;
-  const ti = targetInfo?.artifact ?? null;
-  const tiVeil = veilFor(stages.target_info, targetInfo);
-  const taskResolved =
-    state.task !== null ||
-    (ti !== null && ti.column === state.target && ti.confidence === "high" && tiVeil === "fresh");
-
-  // ─── blocks ────────────────────────────────────────────────────────────────
-  const lensBlock = (() => {
-    const rec = settled("lens", state.lens);
-    if (!rec && !columns) {
-      // Questions about the table wait for the table.
-      return unread ? null : (
-        <Pending testId="pending-lens">
-          Reading the file. The first question comes once its columns are known.
-        </Pending>
-      );
-    }
-    if (rec) {
-      return (
-        <DecisionSentence
-          layoutId="slot-lens"
-          subject={SUBJECT.lens}
-          onChange={() => reopen("lens")}
-          meta={`#${rec.seq}`}
-          testId="decision-lens"
-        >
-          {sentence(rec, decisions)}
-        </DecisionSentence>
-      );
-    }
-    return (
-      <QuestionBlock
-        layoutId="slot-lens"
-        kicker="Lens"
-        title="What kind of measurements are in this table?"
-        why="Pick all that apply. This changes what TurboTab looks for and what it suggests — it never limits what you can do."
-        consumer="The structural diagnosis reads it first, because what looks malformed to a general-purpose import check is the expected shape for an assay panel. After that it sets priors on missingness, model ranking and which figure answers a question. Every default it raises states its reason and can be overturned."
-        testId="question-lens"
-      >
-        <LensAnswers
-          current={state.lens}
-          hints={hints}
-          pending={decide.isPending}
-          onSubmit={(lenses) => submit("lens", { kind: "set_lens", lenses })}
-          onKeep={state.lens ? keep("lens") : undefined}
-        />
-        {needsRetry(stages.profile) ? (
-          <p className={styles.hintsMissing} data-testid="hints-missing">
-            {stages.profile!.status === "error"
-              ? `No lens hints: summarizing the columns did not finish (${stages.profile!.error ?? "no reason given"}).`
-              : "No lens hints: you stopped the column summaries they come from."}{" "}
-            <StageRetry pid={pid} status={stages.profile} />
-          </p>
-        ) : null}
-        {refusalFor("lens")}
-      </QuestionBlock>
-    );
-  })();
-
-  const targetBlock = (() => {
-    const rec = settled("target", state.target);
-    if (rec) {
-      return (
-        <DecisionSentence
-          layoutId="slot-target"
-          subject={SUBJECT.target}
-          onChange={() => reopen("target")}
-          meta={`#${rec.seq}`}
-          testId="decision-target"
-        >
-          {sentence(rec, decisions)}
-        </DecisionSentence>
-      );
-    }
-    return (
-      <QuestionBlock
-        layoutId="slot-target"
-        kicker="Outcome"
-        title={
-          <span id={targetHeading}>
-            Which column is the outcome you want to explain or predict?
-          </span>
-        }
-        why="Everything downstream is built around it: the split, the models, and the findings that read the outcome."
-        consumer="Task detection reads it next, then every stage that fits anything. Findings that depend on the outcome — energy adjustment, for one — are recomputed when it changes."
-        arrive={arrive("target")}
-        testId="question-target"
-      >
-        {columns ? (
-          <TargetAnswers
-            columns={columns}
-            summaries={summaryMap}
-            current={state.target}
-            pending={decide.isPending}
-            labelId={targetHeading}
-            onSubmit={(column) => submit("target", { kind: "set_target", column })}
-            onKeep={state.target ? keep("target") : undefined}
-          />
-        ) : unread ? (
-          <Pending>There are no columns to choose from until the file is read.</Pending>
-        ) : (
-          <Pending>The file is still being read; its columns appear here when it is done.</Pending>
-        )}
-        {refusalFor("target")}
-      </QuestionBlock>
-    );
-  })();
-
-  const taskBlock = (() => {
-    const rec = settled("task", state.task);
-    let body: ReactNode;
-    if (rec) {
-      body = (
-        <DecisionSentence
-          layoutId="slot-task"
-          subject={SUBJECT.task}
-          onChange={() => reopen("task")}
-          meta={`#${rec.seq}`}
-          testId="decision-task"
-        >
-          {sentence(rec, decisions)}
-          {ti && ti.column === state.target && ti.detected_task !== state.task ? (
-            <>
-              {" "}
-              TurboTab had detected <V>{ti.detected_task}</V>.
-            </>
-          ) : null}
-        </DecisionSentence>
-      );
-    } else if (ti && (reopened.task || ti.confidence !== "high")) {
-      body = (
-        <QuestionBlock
-          layoutId="slot-task"
-          kicker="Task"
-          title={
-            <>
-              What kind of prediction is <V>{ti.column}</V>?
-            </>
-          }
-          why="The task decides which models and which metrics apply."
-          arrive={arrive("task") && !reopened.task}
-          testId="question-task"
-        >
-          <TaskAnswers
-            info={ti}
-            current={state.task}
-            pending={decide.isPending}
-            onSubmit={(task) => submit("task", { kind: "set_task", column: ti.column, task })}
-            onKeep={reopened.task ? keep("task") : undefined}
-          />
-          {refusalFor("task")}
-        </QuestionBlock>
-      );
-    } else if (ti) {
-      body = (
-        <SkipRow layoutId="slot-task" onAsk={() => reopen("task")} testId="skip-task">
-          <span className={styles.notAsked}>Not asked:</span> <V>{ti.column}</V>,{" "}
-          <V>{ti.confidence}</V> confidence. <Prose text={ti.reason} />
-        </SkipRow>
-      );
-    } else {
-      body = (
-        <Pending testId="pending-task">
-          {waiting(
-            stages.target_info,
-            <>
-              Reading <V>{state.target}</V> to detect the task…
-            </>,
-            <StageRetry pid={pid} status={stages.target_info} />,
-          )}
-        </Pending>
-      );
-    }
-    return (
-      <StaleVeil
-        state={ti ? tiVeil : "fresh"}
-        order={0}
-        testId="veil-task"
-        action={<StageRetry pid={pid} status={stages.target_info} />}
-      >
-        {body}
-      </StaleVeil>
-    );
-  })();
-
-  const purposeBlock = (() => {
-    const rec = settled("purpose", state.purpose);
-    if (rec) {
-      return (
-        <DecisionSentence
-          layoutId="slot-purpose"
-          subject={SUBJECT.purpose}
-          onChange={() => reopen("purpose")}
-          meta={`#${rec.seq}`}
-          testId="decision-purpose"
-        >
-          {sentence(rec, decisions)}
-        </DecisionSentence>
-      );
-    }
-    return (
-      <QuestionBlock
-        layoutId="slot-purpose"
-        kicker="Purpose"
-        title="Is this analysis for prediction or for inference?"
-        why="The two lead to different models, different checks and a different methods section."
-        consumer="Model ranking and the Results panel read it: prediction is judged on held-out rows, inference on estimates and their uncertainty."
-        arrive={arrive("purpose")}
-        testId="question-purpose"
-      >
-        <PurposeAnswers
-          current={state.purpose}
-          pending={decide.isPending}
-          onSubmit={(purpose) => submit("purpose", { kind: "set_purpose", purpose })}
-          onKeep={state.purpose ? keep("purpose") : undefined}
-        />
-        {refusalFor("purpose")}
-      </QuestionBlock>
-    );
-  })();
-
-  const findingsBody = (() => {
-    const f = findings?.artifact;
-    const status = stages.findings;
-    if (f) {
-      return (
-        <StaleVeil
-          state={veilFor(status, findings)}
-          order={1}
-          testId="veil-findings"
-          action={<StageRetry pid={pid} status={status} />}
-        >
-          <FindingsList artifact={f} />
-        </StaleVeil>
-      );
-    }
-    return (
-      <Pending testId="pending-findings">
-        {waiting(
-          status,
-          "Checking the table against the chosen lenses…",
-          <StageRetry pid={pid} status={status} />,
-        )}
-      </Pending>
-    );
-  })();
-
-  const slots: { slot: Slot; show: boolean; node: ReactNode }[] = [
-    { slot: "lens", show: true, node: lensBlock },
-    { slot: "target", show: state.lens !== null || state.target !== null, node: targetBlock },
-    { slot: "task", show: state.target !== null, node: taskBlock },
-    {
-      slot: "purpose",
-      show: state.purpose !== null || (state.target !== null && taskResolved),
-      node: purposeBlock,
-    },
-  ];
-
-  const nFindings = findings?.artifact?.findings.length;
-  const allAnswered = state.lens && state.target && state.purpose && taskResolved;
-
-  return (
-    <LayoutGroup id="record">
-      <div className={styles.record}>
-        <header className={styles.opener}>
-          <h1 className={styles.h1}>The record</h1>
-          <p className={styles.lede}>
-            Every answer is written down here as a sentence you could publish. Change any of them;
-            nothing earlier is deleted.
-          </p>
-        </header>
-        {unread ? <Unread pid={pid} status={unread} /> : null}
-        {slots
-          .filter((s) => s.show)
-          .map((s) => (
-            <motion.div
-              key={s.slot}
-              layout="position"
-              transition={{ layout: t.settle }}
-              className={styles.slot}
-              data-slot={s.slot}
-            >
-              {s.node}
-              <History items={historyFor(s.slot)} />
-            </motion.div>
-          ))}
-        {allAnswered ? (
-          <motion.p layout="position" transition={{ layout: t.settle }} className={styles.closing}>
-            That is everything this version asks. Eligibility and the train/test split come next.
-          </motion.p>
-        ) : null}
-        {state.lens ? (
-          <motion.section
-            layout="position"
-            transition={{ layout: t.settle }}
-            className={styles.findings}
-            aria-labelledby="findings-heading"
-            data-testid="findings"
-          >
-            <div className={styles.sectionHead}>
-              <h2 id="findings-heading" className={styles.h2}>
-                Noticed in this table
-              </h2>
-              {nFindings !== undefined ? (
-                <span className={styles.count}>{fmtInt(nFindings)}</span>
-              ) : null}
-            </div>
-            {findingsBody}
-          </motion.section>
-        ) : null}
-      </div>
-    </LayoutGroup>
+    </section>
   );
 }

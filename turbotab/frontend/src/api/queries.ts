@@ -11,18 +11,12 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { api } from "./client";
-import type {
-  Decision,
-  JobView,
-  ProjectView,
-  StageArtifacts,
-  StageName,
-  StageResult,
-  StageStatus,
-} from "./schema";
+import type { Decision, JobView, ProjectView, StageResult, StageStatus } from "./schema";
+import type { AnyStageArtifacts, AnyStageName } from "./m1-types";
 
 export const keys = {
   health: () => ["health"] as const,
+  teaching: () => ["teaching"] as const,
   projects: () => ["projects"] as const,
   fs: (path: string | null) => ["fs", path ?? ""] as const,
   project: (pid: string) => [pid] as const,
@@ -87,8 +81,13 @@ export function useProjectView(pid: string) {
   });
 }
 
-export function useStageResult<S extends StageName>(pid: string, stage: S, enabled = true) {
-  return useQuery<StageResult<StageArtifacts[S]>>({
+/** The words every question carries (GET /api/teaching): static, fetched once. */
+export function useTeaching() {
+  return useQuery({ queryKey: keys.teaching(), queryFn: ({ signal }) => api.teaching(signal) });
+}
+
+export function useStageResult<S extends AnyStageName>(pid: string, stage: S, enabled = true) {
+  return useQuery<StageResult<AnyStageArtifacts[S]>>({
     queryKey: keys.stage(pid, stage),
     queryFn: ({ signal }) => api.stage(pid, stage, signal),
     enabled,
@@ -185,7 +184,7 @@ export function useDecide(pid: string) {
 export function useRunStage(pid: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (stage: StageName) => api.runStage(pid, stage),
+    mutationFn: (stage: AnyStageName) => api.runStage(pid, stage),
     onSuccess: (status: StageStatus) => {
       qc.setQueryData<ProjectView>(keys.view(pid), (prev) =>
         prev && stamp(status) >= stamp(prev.stages[status.stage])

@@ -24,6 +24,8 @@ interface Props {
   testId?: string;
   /** A way forward shown beside the tag while veiled (outside the inert body). */
   action?: ReactNode;
+  /** For tight places (the banner): the tag is a dot, its words for screen readers only. */
+  compact?: boolean;
 }
 
 const TAG: Record<Exclude<VeilState, "fresh">, string> = {
@@ -33,14 +35,28 @@ const TAG: Record<Exclude<VeilState, "fresh">, string> = {
   failed: "stale — the recompute did not finish",
 };
 
-export function StaleVeil({ state, order = 0, children, className, label, testId, action }: Props) {
+export function StaleVeil({
+  state,
+  order = 0,
+  children,
+  className,
+  label,
+  testId,
+  action,
+  compact = false,
+}: Props) {
   const { reduced } = useMotionPrefs();
   const veiled = state !== "fresh";
   const delay = veiled && !reduced ? order * DUR.propagateStepMs : 0;
   const style = { "--veil-delay": `${delay}ms` } as CSSProperties;
   return (
     <div
-      className={[styles.root, veiled ? styles.veiled : "", className ?? ""].join(" ")}
+      className={[
+        styles.root,
+        veiled ? styles.veiled : "",
+        compact ? styles.compact : "",
+        className ?? "",
+      ].join(" ")}
       data-veil={state}
       data-testid={testId}
       aria-label={label}
@@ -48,7 +64,13 @@ export function StaleVeil({ state, order = 0, children, className, label, testId
       style={style}
     >
       <div className={styles.tagSlot} aria-live="polite">
-        {veiled ? <span className={styles.tag}>{TAG[state]}</span> : null}
+        {veiled && compact ? (
+          <span className={styles.dot} title={TAG[state]}>
+            <span className="visually-hidden">{TAG[state]}</span>
+          </span>
+        ) : veiled ? (
+          <span className={styles.tag}>{TAG[state]}</span>
+        ) : null}
         {veiled && action ? action : null}
       </div>
       <div className={styles.body} inert={veiled}>

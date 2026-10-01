@@ -1,26 +1,36 @@
-.layout {
+/*
+ * Header, banner, then the working window (M1_CONTRACT §10): the Record (left, about
+ * 520 px, its own scroller) and the stage (right, filling the rest, always in view).
+ */
+
+.screen {
+  min-height: 100vh;
+  background: var(--ground);
+}
+
+.window {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 430px);
-  gap: 28px;
-  max-width: 1320px;
+  grid-template-columns: minmax(400px, 520px) minmax(0, 1fr);
+  gap: 34px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 26px 28px 30vh;
-  align-items: start;
+  padding: 20px 28px 0;
+  height: calc(100vh - var(--header-h) - var(--banner-h));
 }
 
 .record {
   min-width: 0;
-  max-width: 780px;
-}
-
-.pipeline {
-  position: sticky;
-  top: calc(var(--header-h) + 18px);
-  max-height: calc(100vh - var(--header-h) - 30px);
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-bottom: 6px;
+  padding: 2px 8px 32vh 2px;
+  scrollbar-gutter: stable;
+}
+
+.stage {
   min-width: 0;
+  min-height: 0;
+  padding-bottom: 20px;
 }
 
 .name {
@@ -54,14 +64,19 @@
   color: var(--muted);
 }
 
+/* Narrow screens stack: the Record, then the stage; the page scrolls. */
 @media (max-width: 1000px) {
-  .layout {
+  .window {
     grid-template-columns: minmax(0, 1fr);
-    padding: 18px 16px 20vh;
+    height: auto;
+    padding: 16px 16px 40px;
+    gap: 20px;
   }
-  .pipeline {
-    position: static;
-    max-height: none;
+  .record {
     overflow: visible;
+    padding-bottom: 0;
+  }
+  .stage {
+    height: 760px;
   }
 }

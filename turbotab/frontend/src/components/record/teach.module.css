@@ -1,0 +1,161 @@
+/* Terms define themselves (§11.8): a dotted underline; one sentence on hover or focus. */
+.termWrap {
+  position: relative;
+}
+
+.term {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--faint);
+  text-underline-offset: 3px;
+  cursor: help;
+  border-radius: 3px;
+}
+
+.term:hover,
+.term:focus-visible {
+  text-decoration-color: var(--accent);
+}
+
+.termCard {
+  display: none;
+  position: absolute;
+  z-index: 35;
+  left: 0;
+  top: calc(100% + 6px);
+  width: 270px;
+  padding: 8px 11px;
+  font-family: var(--serif);
+  font-size: 13px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: var(--shadow-lift);
+  white-space: normal;
+}
+
+.termCard.above {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.termCard[data-open] {
+  display: block;
+}
+
+/* The evidence badge (DESIGN_LANGUAGE §11): a token, not a component. */
+.badge {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 0 7px;
+  white-space: nowrap;
+  text-transform: none;
+}
+
+/* ── layer 3: the concept drawer ──────────────────────────────────────────── */
+
+.drawer {
+  position: fixed;
+  z-index: 45;
+  top: calc(var(--header-h) + var(--banner-h, 0px));
+  right: 0;
+  bottom: 0;
+  width: min(560px, 100vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow-lift);
+  outline: none;
+}
+
+.drawerHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.drawerKicker {
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.drawerTitle {
+  margin: 4px 0 0;
+  font-family: var(--serif);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.close {
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.close:hover {
+  border-color: var(--accent);
+}
+
+.drawerBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 22px 28px;
+}
+
+.section {
+  padding: 14px 0 4px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.section:last-child {
+  border-bottom: 0;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: 0 0 6px;
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.sectionBody {
+  margin: 0 0 8px;
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink);
+  max-width: 62ch;
+}
+
+.source {
+  margin: 0 0 8px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+}

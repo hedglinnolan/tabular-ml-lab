@@ -9,7 +9,7 @@ import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ColumnInfo, ColumnSummary } from "../../api/schema";
 import { buildColumnIndex, filterColumns } from "../../util/filterColumns";
-import { cx, fmtInt, fmtStat } from "../../util/format";
+import { codeLike, cx, fmtCode, fmtInt, fmtStat } from "../../util/format";
 import styles from "./ColumnPicker.module.css";
 
 const ROW = 34;
@@ -171,7 +171,9 @@ export function ColumnPicker({ columns, value, onChange, onCommit, summaries, la
         >
           <span className="v">{detail.name}</span>{" "}
           {detail.median !== null
-            ? `median ${fmtStat(detail.median)}, range ${fmtStat(detail.min)} – ${fmtStat(detail.max)}`
+            ? codeLike(detail.name, detail)
+              ? `values ${fmtCode(detail.min)} – ${fmtCode(detail.max)}`
+              : `median ${fmtStat(detail.median)}, range ${fmtStat(detail.min)} – ${fmtStat(detail.max)}`
             : detail.top?.length
               ? `most common: ${detail.top
                   .slice(0, 3)

@@ -8,11 +8,19 @@ import type { StageStatus } from "../api/schema";
 import styles from "./JobChips.module.css";
 
 /** Used until the JobView (with the server's own label) has arrived. */
-const STAGE_LABEL: Record<string, string> = {
+export const STAGE_LABEL: Record<string, string> = {
   ingest: "Reading the file into columnar storage",
   profile: "Summarizing every column",
   target_info: "Reading the outcome column",
   findings: "Checking the table against the chosen lenses",
+  roles: "Reading what each column is",
+  proposals: "Looking up what the field usually does",
+  cohort: "Counting who is in the analysis",
+  split: "Drawing the held-out rows",
+  shelf: "Ranking the model families for this table",
+  design: "Building each model's pipeline",
+  fit: "Fitting the models",
+  substitution: "Drawing the substitution curves",
 };
 
 export function JobChips({ pid, stages }: { pid: string; stages: Record<string, StageStatus> }) {

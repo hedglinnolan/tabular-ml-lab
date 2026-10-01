@@ -1,0 +1,196 @@
+/*
+ * The pipeline banner: one compact strip under the header. Tokens only (§02).
+ * The accent marks "now" (the segment the open question acts on); a pressed segment is
+ * the one on the stage. Numbers are data (mono, tabular); words are the user's plane (sans).
+ */
+
+.banner {
+  position: sticky;
+  top: var(--header-h);
+  z-index: 30;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  height: var(--banner-h);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.track {
+  list-style: none;
+  margin: 0 auto;
+  padding: 6px 22px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 1440px;
+  min-width: max-content;
+}
+
+.item {
+  display: flex;
+}
+
+.join {
+  align-self: center;
+  color: var(--faint);
+  font-size: 15px;
+  padding: 10px 2px 0;
+}
+
+.segment {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  border: 1px solid transparent;
+  background: none;
+  border-radius: 9px;
+  padding: 3px 11px 4px;
+  text-align: left;
+  color: var(--ink);
+}
+
+.segment:hover {
+  background: var(--surface-2);
+}
+
+.segment[aria-pressed="true"] {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+}
+
+/* Now: an accent rule under the segment and an accent kicker — the map's "you are here". */
+.now::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  right: 11px;
+  bottom: -7px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.kicker {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.now .kicker {
+  color: var(--accent-ink);
+}
+
+.nowTag {
+  font-family: var(--sans);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  font-size: 11px;
+  color: var(--accent-ink);
+}
+
+.veil {
+  display: block;
+}
+
+.values {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  min-height: 20px;
+}
+
+.count {
+  display: inline-flex;
+}
+
+.arrow {
+  color: var(--faint);
+  font-family: var(--sans);
+  font-size: 12px;
+}
+
+.fork {
+  color: var(--faint);
+  font-size: 10px;
+  margin: 0 1px 0 3px;
+}
+
+.split {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.bar {
+  color: var(--line);
+  margin: 0 2px;
+}
+
+.word {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  max-width: 30ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.method {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 7px;
+  background: var(--surface-2);
+}
+
+.metric {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.basis {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.waiting {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  font-style: italic;
+  color: var(--faint);
+}
+
+/* Narrow screens: the header can wrap taller than --header-h, so the banner flows with the page. */
+@media (max-width: 1000px) {
+  .banner {
+    position: static;
+  }
+}
