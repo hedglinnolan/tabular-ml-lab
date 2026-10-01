@@ -12,10 +12,11 @@ import pytest
 
 from turbotab.core import decisions as d
 from turbotab.core import teaching, voice
+from turbotab.core.consequences import MAX_COACH
 from turbotab.core.decisions import ProjectState
 from turbotab.core.stages.finding_words import LEVER_WORDS, NO_LEVER, SUMMARY_WORDS
 from turbotab.core.stages.findings import findings_stage
-from turbotab.core.tests.stage_harness import SAMPLES, Ingested
+from turbotab.core.tests.stage_harness import LENSES, NHANES, SAMPLES, Ingested
 
 B = teaching.BUDGETS
 SAMPLE_CSVS = sorted(SAMPLES.glob("*.csv"))
@@ -28,7 +29,17 @@ def over(text: str, budget: int) -> bool:
 # ── teaching ─────────────────────────────────────────────────────────────────
 
 def test_there_is_one_teaching_entry_per_question_in_asking_order():
-    assert [e.key for e in teaching.entries()] == list(teaching.QUESTION_KEYS)
+    assert [e.key for e in teaching.entries()] == list(teaching.TEACHING_KEYS)
+    cards = {"repairs", "open_seal"}  # taught, but not questions the Router asks
+    assert [k for k in teaching.TEACHING_KEYS if k not in cards] == list(teaching.QUESTION_KEYS)
+
+
+def test_every_question_the_router_asks_is_taught():
+    from turbotab.core import interview
+
+    assert set(interview.QUESTION_KEYS) <= set(teaching.QUESTION_KEYS)
+    order = [k for k in teaching.QUESTION_KEYS if k in set(interview.QUESTION_KEYS)]
+    assert order == list(interview.QUESTION_KEYS), "the Router and the teaching disagree on order"
 
 
 @pytest.mark.parametrize("entry", teaching.entries(), ids=lambda e: e.key)
@@ -72,7 +83,8 @@ def test_every_drawer_claim_carries_a_badge_and_a_section(entry):
 
 def test_every_choice_has_options_and_every_option_a_consequence():
     choices = {"task", "purpose", "roles", "exclusions", "missing", "split", "energy_adjustment",
-               "models", "substitution", "lens"}
+               "models", "substitution", "lens", "orientation", "repairs", "grain", "repeat_kind",
+               "unit", "aggregation", "temporal", "open_seal"}
     for entry in teaching.entries():
         if entry.key in choices:
             assert entry.options, entry.key
@@ -91,6 +103,13 @@ def test_the_options_cover_what_the_decisions_accept():
     assert set(get_args(d.EnergyMethod)) == values["energy_adjustment"]
     assert set(get_args(d.MissingStrategy)) == values["missing"]
     assert {"linear", "elastic_net", "boosted_trees"} == values["models"]
+    assert set(get_args(d.Orientation)) == values["orientation"]
+    assert set(get_args(d.SetGrain.model_fields["grain"].annotation)) == values["grain"]
+    assert set(get_args(d.RepeatKind)) == values["repeat_kind"]
+    assert set(get_args(d.SetUnit.model_fields["unit"].annotation)) == values["unit"]
+    assert set(get_args(d.AggregationMethod)) == values["aggregation"]
+    assert {"true", "false"} == values["temporal"]
+    assert {"apply", "defer", "dismiss"} == values["repairs"]
 
 
 def test_the_energy_teaching_states_the_equivalence_precisely():
@@ -112,15 +131,22 @@ def test_the_required_terms_define_themselves():
 # ── findings on every fixture ────────────────────────────────────────────────
 
 @pytest.fixture(scope="module")
-def spoken(tmp_path_factory):
-    """Every sample CSV's findings under the lenses that fit it: (file, lens, findings)."""
+def tables(tmp_path_factory):
+    """Every sample CSV (and the real NHANES export when present), ingested, with the lenses that
+    fit it and its findings under them: (file, table, lens, findings)."""
     out = []
-    for path in SAMPLE_CSVS:
+    for path in [*SAMPLE_CSVS, *([NHANES] if NHANES.is_file() else [])]:
         table = Ingested(path, tmp_path_factory.mktemp(path.stem))
-        lens = table.lenses_that_fit()
+        lens = ["dietary", "clinical"] if path == NHANES else table.lenses_that_fit()
         artifact = table.run(findings_stage, ProjectState(lens=lens))
-        out.append((path.name, lens, artifact["findings"]))
+        out.append((path.name, table, lens, artifact["findings"]))
     return out
+
+
+@pytest.fixture(scope="module")
+def spoken(tables):
+    """Every sample CSV's findings under the lenses that fit it: (file, lens, findings)."""
+    return [(name, lens, findings) for name, _, lens, findings in tables if name != NHANES.name]
 
 
 def test_every_fixture_was_read(spoken):
@@ -203,17 +229,26 @@ def representative_decisions():
         d.SetSplit(holdout=0.2, seed=7, folds=5),
         d.SelectModels(models=["linear", "elastic_net", "boosted_trees"]),
         d.SetSubstitution(donor="fat_g", recipient="carbohydrate_g", step_kcal=100),
+        # M2 (M2_CONTRACT.md §1, §3, §4)
+        d.SetOrientation(orientation="feature_major"),
+        d.SetEvent(column="hba1c", level="1"),
+        d.SetGrain(grain="repeated", id_column="participant_id"),
+        d.SetRepeatKind(repeat_kind="repeats"),
+        d.SetUnit(unit="unit"),
+        d.SetAggregation(method="mean", outcome="mean"),
+        d.SetTemporal(temporal=True, time_column="recall_date"),
+        d.OpenSeal(),
+        d.ApplyRepair(finding_id="pack::survey::sentinel_codes", option="to_missing",
+                      params={"code": 9}),
+        d.DeferFinding(finding_id="voice::flag__imputed_bmi", to="missing"),
+        d.DismissFinding(finding_id="pack::dietary::compositional", reason="Shares are not modeled"),
     ]
 
 
-# Kinds whose shapes exist (M2_CONTRACT.md) but whose sentences the M2 voice agent still owes.
-# The voice agent's job is to EMPTY this set; a kind may only leave it with a representative here
-# and a sentence in voice.py. Never add to it except when a milestone's contract adds kinds.
-OWED_BY_M2_VOICE = {
-    "set_orientation", "set_event", "set_grain", "set_repeat_kind", "set_unit",
-    "set_aggregation", "set_temporal", "open_seal", "apply_repair", "defer_finding",
-    "dismiss_finding",
-}
+# Kinds whose shapes exist but whose sentences a voice agent still owes. M2's voice agent emptied
+# it; a kind may only leave it with a representative here and a sentence in voice.py. Never add to
+# it except when a milestone's contract adds kinds.
+OWED_BY_M2_VOICE: set[str] = set()
 
 
 def test_every_decision_kind_has_a_representative_here():
@@ -227,14 +262,223 @@ def test_every_decision_kind_has_a_representative_here():
 @pytest.mark.parametrize("decision", representative_decisions(), ids=lambda x: x.kind)
 @pytest.mark.parametrize("with_context", [False, True], ids=["bare", "context"])
 def test_every_decision_sentence_is_finished_and_free_of_machinery(decision, with_context, tmp_path):
-    state = ProjectState(target="hba1c", task="regression", lens=["dietary"])
+    state = ProjectState(target="hba1c", task="regression", lens=["dietary"],
+                         grain={"grain": "repeated", "id_column": "participant_id"},
+                         repeat_kind={"repeat_kind": "repeats"})
     ctx = None
     if with_context:
         table = Ingested(SAMPLES / "dietary_recalls.csv", tmp_path)
         ctx = {"frame": table.frame(), "columns": table.info["columns"],
-               "n_rows": table.info["n_rows"], "n_cohort": 580, "records": []}
+               "n_rows": table.info["n_rows"], "n_cohort": 580, "records": [], "n_holdout": 120,
+               "levels": [0, 1],
+               "finding": {"id": "x", "title": "5 items carry values outside the 1–5 scale",
+                           "affected_columns": ["item_03", "item_14"]},
+               "repair": {"key": "to_missing", "label": "Set to missing",
+                          "consequence": "Sentinel codes become blanks; the missing-values answer "
+                                         "handles them.", "row_local": True}}
     text = voice.sentence_for(decision, state, ctx)
     assert text and text.strip() == text
     assert text.endswith("."), text
     assert not voice.machinery(text), (text, voice.machinery(text))
     assert "[object" not in text and "{" not in text and "None" not in text
+    assert "_" not in re.sub(r"`[^`]*`", "", text), f"an identifier outside a data chip: {text}"
+
+
+# ── composed card text: the extended gate (M2_CONTRACT §6) ───────────────────
+# Teaching entries are budgeted where they are written. Text the app composes from data onto a
+# card or the stage is budgeted here, on every fixture: the proposals' notes as the card joins them,
+# every option's reason, finding summaries, coach notes and lines, and preview notes. The M1 energy
+# card's nested-parts note (~70 words with the line above it) would fail the first.
+
+C = teaching.COMPOSED_BUDGETS
+DIRECTIVE = re.compile(r"\b(choose|pick|select|recommend\w*|should|best|prefer\w*|use the|go with)\b",
+                       re.I)
+
+
+def _views_and_notes(result) -> list[tuple[str, str, str]]:
+    """(where, text, budget) for one PreviewResult: its coach notes and its note."""
+    out = []
+    for v in result.views:
+        assert len(v.coach) <= MAX_COACH, (result.kind, v.kind, len(v.coach))
+        out += [(f"{result.kind} {v.kind} coach", n.text, "coach") for n in v.coach]
+    if result.note:
+        out.append((f"{result.kind} note", result.note, "preview_note"))
+    return out
+
+
+def _target_for(info: dict, roles: dict[str, str]) -> str | None:
+    """A numeric column that is not an identifier, standing in for an outcome."""
+    for c in info["columns"]:
+        name = c["name"]
+        if c["dtype"] in ("numeric", "integer") and roles.get(name) in ("covariate", "exposure") \
+                and int(c["n_unique"]) > 2:
+            return name
+    return None
+
+
+@pytest.fixture(scope="module")
+def composed(tables):
+    """(file, where, text, budget key) for every piece of composed text on every fixture."""
+    import numpy as np
+
+    from turbotab.core import evidence, fact_previews, row_previews  # noqa: F401 - builders
+    from turbotab.core.consequences import PreviewContext, plan
+    from turbotab.core.models import previews  # noqa: F401 - the energy and model builders
+    from turbotab.core.stages.data import profile_stage
+    from turbotab.core.stages.proposals import proposals_stage
+    from turbotab.core.stages.rows import roles_stage
+
+    out = []
+    for name, table, lens, findings in tables:
+        every = sorted(set(lens) | {"dietary"})  # the energy and exclusion proposals everywhere
+        bare = ProjectState(lens=every)
+        profile = table.run(profile_stage, bare)
+        roles_artifact = table.run(roles_stage, bare, {"profile": profile})
+        roles = {e["column"]: e["proposed"] for e in roles_artifact["columns"]}
+        target = "glucose" if name == NHANES.name else _target_for(table.info, roles)
+        roles.pop(target, None)
+        state = ProjectState(lens=every, target=target, roles=roles)
+        proposals = table.run(proposals_stage, state,
+                              {"roles": roles_artifact, "profile": profile})
+        energy = proposals["energy"]
+        if energy:
+            out.append((name, "energy notes", " ".join(energy["notes"]), "card_line"))
+            out += [(name, f"energy {m}", v["reason"], "option_reason")
+                    for m, v in energy["applicability"].items() if not v["ok"]]
+            out += [(name, "not adjusted", e["reason"], "option_reason")
+                    for e in energy["not_adjusted"]]
+        out += [(name, "exclusion label", p["label"], "option_reason") for p in proposals["exclusions"]]
+        out += [(name, "missing reason", e["reason"], "option_reason")
+                for e in proposals["missing"]["columns"]]
+        out += [(name, f"card coach {k}", line["text"], "coach") for k, line in proposals["coach"].items()]
+        out += [(name, "finding summary", f["summary"], "finding_summary") for f in findings]
+
+        store = table.store()
+        everything = np.arange(int(store.n_rows), dtype=np.int64)
+
+        def ctx_for(state, training=None, _store=store, _p=proposals):
+            return PreviewContext(project_id=name, state=state, datastore=_store,
+                                  artifact=lambda s, _p=_p: _p if s == "proposals" else None,
+                                  training_row_ids=training, cohort_row_ids=None)
+
+        # The lens preview under the lenses that fit; each single lens, and all five at once (the
+        # longest wording), are previewed in test_every_lens_preview_says_what_it_adds.
+        decisions = [d.SetMissing(strategy="complete_case"), d.SetMissing(strategy="impute"),
+                     d.SetPurpose(purpose="prediction"), d.SetPurpose(purpose="inference"),
+                     d.SetLens(lenses=lens)]
+        decisions += [d.SetExclusions(rules=[p["rule"]]) for p in proposals["exclusions"]]
+        if target:
+            decisions.append(d.SetTarget(column=target))
+        for decision in decisions:
+            out += [(name, *x) for x in _views_and_notes(plan(decision, ctx_for(state), basis=""))]
+        if energy and energy["energy_column"] and energy["nutrients"]:
+            exposures = {**roles, energy["energy_column"]: "energy",
+                         **{n: "exposure" for n in energy["nutrients"]}}
+            modeled = state.model_copy(update={"roles": exposures})
+            for method in ("none", "standard", "residual", "density_multivariate", "density"):
+                decision = d.SetEnergyAdjustment(method=method, energy_column=energy["energy_column"],
+                                                 nutrients=energy["nutrients"])
+                result = plan(decision, ctx_for(modeled, everything), basis="")
+                out += [(name, *x) for x in _views_and_notes(result)]
+        ectx = evidence.EvidenceContext(state=state, datastore=store)
+        for finding in findings:
+            result = evidence.evidence(finding, ectx)
+            out += [(name, *x) for x in _views_and_notes(result)]
+    return out
+
+
+def test_the_gate_reads_every_fixture(composed):
+    files = {name for name, *_ in composed}
+    assert len(files) >= len(SAMPLE_CSVS)
+    coached = [t for _, where, t, key in composed if key == "coach"]
+    assert len(coached) > 50, "the coach says something on most fixtures"
+    assert any("under-reporting" in t for t in coached)
+
+
+@pytest.mark.parametrize("lens", [*LENSES, "all five"])
+def test_every_lens_preview_says_what_it_adds(lens, tables):
+    """Each lens, on the fixture made for it: a lineage of the columns as read, and a note naming
+    the findings its pack raises and the questions it adds — never "Nothing can be shown"."""
+    from turbotab.core import fact_previews  # noqa: F401 - registers the builder
+    from turbotab.core.consequences import PreviewContext, plan
+
+    fixture = {"dietary": "dietary_recalls.csv", "clinical": "clinical_longitudinal.csv",
+               "metabolomics": "metabolomics_untargeted.csv", "genomics": "genomics_expression.csv",
+               "survey": "survey_sentinels.csv", "all five": "dietary_recalls.csv"}[lens]
+    lenses = list(LENSES) if lens == "all five" else [lens]
+    table = next(t for name, t, _, _ in tables if name == fixture)
+    ctx = PreviewContext(project_id=fixture, state=ProjectState(), datastore=table.store(),
+                         artifact=lambda s: None, training_row_ids=None, cohort_row_ids=None)
+    result = plan(d.SetLens(lenses=lenses), ctx, basis="")
+    assert [v.kind for v in result.views] == ["lineage"]
+    whose = "five packs'" if lens == "all five" else f"{lens} pack's"
+    assert re.search(rf"The {whose} checks raise `\d+` findings? on this table", result.note)
+    assert not over(result.note, C["preview_note"]) and "Nothing" not in result.note
+    assert not over(result.views[0].caption, 20), result.views[0].caption
+    if "dietary" in lenses:
+        assert "energy adjustment and substitution curves join the questions" in result.note
+
+
+def test_composed_card_text_is_within_budget(composed):
+    problems = [f"{name} · {where}: {voice.words(text)} words > {C[key]}: {text}"
+                for name, where, text, key in composed if text and over(text, C[key])]
+    assert not problems, "\n".join(problems)
+
+
+def test_composed_card_text_is_finished_and_free_of_machinery(composed):
+    for name, where, text, key in composed:
+        if not text:
+            continue
+        assert not voice.machinery(text), (name, where, text, voice.machinery(text))
+        if key in ("card_line", "coach", "preview_note"):
+            assert re.search(r"[.?!][)\"'”’]*$", text), (name, where, text)
+
+
+def test_coach_notes_never_name_an_option_as_the_answer(composed):
+    """The coach states what the data shows; it never tells the user which option to take."""
+    labels = {o.label.lower() for e in teaching.entries() for o in e.options
+              if len(o.label.split()) >= 2}
+    for name, where, text, key in composed:
+        if key != "coach":
+            continue
+        assert not DIRECTIVE.search(text), (name, where, text)
+        assert not any(label in text.lower() for label in labels), (name, where, text)
+
+
+def test_the_m1_energy_note_would_fail_the_gate_and_its_parts_now_fit():
+    """The note the M1 energy card showed above its options on NHANES, as the card composed it,
+    is over the card-line budget; the same table's reading now folds it into the partition
+    option's reason (within budget) and the "nested" term card."""
+    import numpy as np
+    import pandas as pd
+
+    from turbotab.core.stages.proposals import build_proposals
+
+    m1_card = (
+        "`fat_total` tracks `kcal` most closely; `protein`, `sugar`, `carb`, `fat_total`, "
+        "`fat_sat`, `fat_mon` and `fat_poly` are adjusted together. `sugar` is a part of `carb`: "
+        "choosing them together counts carbohydrate's energy twice in a partition; a substitution "
+        "moves the parts with their total. `fat_sat`, `fat_mon` and `fat_poly` are parts of "
+        "`fat_total`: choosing them together counts fat's energy twice in a partition; a "
+        "substitution moves the parts with their total.")
+    assert voice.words(m1_card) > 60 and over(m1_card, C["card_line"])
+
+    rng = np.random.default_rng(0)
+    n = 400
+    sat, mon, poly = rng.gamma(4, 6, n), rng.gamma(4, 7, n), rng.gamma(3, 4, n)
+    fat = sat + mon + poly + rng.gamma(2, 2, n)
+    sugar = rng.gamma(5, 15, n)
+    carb = sugar + rng.gamma(8, 20, n)
+    protein = rng.gamma(9, 9, n)
+    frame = pd.DataFrame({"kcal": 4 * protein + 4 * carb + 9 * fat + rng.normal(0, 30, n),
+                          "protein": protein, "sugar": sugar, "carb": carb, "fat_total": fat,
+                          "fat_sat": sat, "fat_mon": mon, "fat_poly": poly,
+                          "glucose": rng.normal(100, 15, n)})
+    columns = [{"name": c, "dtype": "numeric", "n_unique": n, "n_missing": 0} for c in frame]
+    reading = build_proposals(frame, columns, lens=["dietary"], target="glucose")["energy"]
+    assert reading["notes"] == []
+    partition = reading["applicability"]["partition"]
+    assert not partition["ok"] and "nested in" in partition["reason"], partition
+    assert not over(partition["reason"], C["option_reason"]), partition["reason"]
+    nested = {t.term: t.definition for t in teaching.entry("energy_adjustment").terms}["nested"]
+    assert "substitution moves it with its total" in nested

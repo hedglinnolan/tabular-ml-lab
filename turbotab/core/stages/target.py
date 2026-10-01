@@ -101,6 +101,11 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
                 for value, count in ranked[:MAX_CLASSES]
             ]
 
+    from turbotab.core.units import outcome_unit
+
+    # The outcome's unit, for every outcome quantity the app shows (M2_CONTRACT §6). A class
+    # label has none.
+    unit, unit_source = outcome_unit(target, series) if task == "regression" else (None, None)
     return {
         "column": target,
         "task": task,
@@ -109,4 +114,6 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
         "reason": task_reason(series, detection, detected_task),
         "histogram": histogram,
         "classes": classes,
+        "unit": unit,
+        "unit_source": unit_source,
     }

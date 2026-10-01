@@ -125,9 +125,13 @@ def evidence(finding: dict, ctx: EvidenceContext) -> PreviewResult:
     if not built or not built[0]:
         built = generic(finding, ctx)
     views, basis = built
+    views = views[:3]
+    from turbotab.core import coach
+
+    coach.annotate_evidence(fam, finding, views, ctx)  # ≤ 2 data-grounded notes per view
     note = None if views else ("This finding is about columns the table does not have, so there is "
                                "nothing of it to draw.")
-    return PreviewResult(kind=fam, views=views[:3], basis=basis, note=note)
+    return PreviewResult(kind=fam, views=views, basis=basis, note=note)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────

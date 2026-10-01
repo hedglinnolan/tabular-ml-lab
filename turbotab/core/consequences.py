@@ -142,6 +142,31 @@ class RowFlowFrame(_Model):
     steps: list[RowStep]
 
 
+# ── the coach ────────────────────────────────────────────────────────────────
+# Coach annotations (Nolan, 2026-10-01; M2_CONTRACT §6): at most two short notes per view, each a
+# fact about the user's own data pointing at part of the picture, drawn in the coach's amber. A note
+# never names an option as the answer and never pre-selects anything: it says what the data shows
+# ("194 rows below 500 kcal: likely under-reporting"), and the user decides. The annotators that
+# write them live in :mod:`turbotab.core.coach`; :func:`plan` calls them after the builders.
+
+COACH_WORDS = 12
+MAX_COACH = 2
+
+
+class CoachAnchor(_Model):
+    """What a note points at. ``ref`` by kind: ``column`` — a column name; ``range`` — ``[low,
+    high]`` on the view's value axis; ``points`` — indices into the view's points (or table rows);
+    ``step`` — a row-flow step key."""
+
+    kind: Literal["column", "range", "points", "step"]
+    ref: str | list[float]
+
+
+class CoachNote(_Model):
+    text: str  # ≤ COACH_WORDS words; backticks mark data values
+    anchor: CoachAnchor
+
+
 # ── the views ────────────────────────────────────────────────────────────────
 
 
@@ -149,6 +174,7 @@ class _View(_Model):
     title: str
     caption: str
     emphasis: list[str] = Field(default_factory=list)  # columns or step keys to highlight
+    coach: list[CoachNote] = Field(default_factory=list, max_length=MAX_COACH)
 
 
 class RowFlowView(_View):
@@ -821,10 +847,14 @@ def plan(decision: Any, ctx: PreviewContext, basis: str) -> PreviewResult:
         after = transform(decision, before, ctx)
         taken = {v.kind for v in views}
         views.extend(v for v in diff_views(before, after, ctx) if v.kind not in taken)
+    views = views[:MAX_VIEWS]
+    from turbotab.core import coach  # registers the annotators; imported late (it imports this)
+
+    coach.annotate(decision, views, ctx)
     # A builder may say in words what its views cannot (``ctx.read["note"]``).
     note = ctx.read.get("note") or (None if views else
                                     "Nothing about this choice can be shown on your data yet.")
-    return PreviewResult(kind=decision.kind, views=views[:MAX_VIEWS], basis=basis, note=note,
+    return PreviewResult(kind=decision.kind, views=views, basis=basis, note=note,
                          caution=ctx.caution)
 
 
@@ -833,8 +863,8 @@ def words(text: str) -> int:
 
 
 __all__ = [
-    "CAPTION_WORDS", "FRAME_WORDS", "MAX_VIEWS", "TITLE_WORDS", "Caution", "CautionExit",
-    "ConsequenceView",
+    "CAPTION_WORDS", "COACH_WORDS", "FRAME_WORDS", "MAX_COACH", "MAX_VIEWS", "TITLE_WORDS",
+    "Caution", "CautionExit", "CoachAnchor", "CoachNote", "ConsequenceView",
     "DistributionFrame", "DistributionView", "FitLine", "FrameRow", "HistogramData", "Lineage",
     "LineageFrame", "LineageLink", "LineageNode", "LineageView", "Mark", "PreviewContext",
     "PreviewResult", "RelationshipFrame", "RelationshipView", "RowFlowFrame", "RowFlowView",

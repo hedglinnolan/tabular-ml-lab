@@ -433,6 +433,27 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * CoachAnchor
+         * @description What a note points at. ``ref`` by kind: ``column`` — a column name; ``range`` — ``[low,
+         *     high]`` on the view's value axis; ``points`` — indices into the view's points (or table rows);
+         *     ``step`` — a row-flow step key.
+         */
+        CoachAnchor: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "column" | "range" | "points" | "step";
+            /** Ref */
+            ref: string | number[];
+        };
+        /** CoachNote */
+        CoachNote: {
+            /** Text */
+            text: string;
+            anchor: components["schemas"]["CoachAnchor"];
+        };
         /** ColumnSummary */
         ColumnSummary: {
             /** Name */
@@ -546,6 +567,8 @@ export interface components {
             caption: string;
             /** Emphasis */
             emphasis: string[];
+            /** Coach */
+            coach: components["schemas"]["CoachNote"][];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -880,6 +903,8 @@ export interface components {
             caption: string;
             /** Emphasis */
             emphasis: string[];
+            /** Coach */
+            coach: components["schemas"]["CoachNote"][];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1085,6 +1110,8 @@ export interface components {
             caption: string;
             /** Emphasis */
             emphasis: string[];
+            /** Coach */
+            coach: components["schemas"]["CoachNote"][];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1148,6 +1175,8 @@ export interface components {
             caption: string;
             /** Emphasis */
             emphasis: string[];
+            /** Coach */
+            coach: components["schemas"]["CoachNote"][];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1744,6 +1773,8 @@ export interface components {
             caption: string;
             /** Emphasis */
             emphasis: string[];
+            /** Coach */
+            coach: components["schemas"]["CoachNote"][];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1804,7 +1835,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "lens" | "target" | "task" | "purpose" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution";
+            key: "lens" | "orientation" | "repairs" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal";
             /** Title */
             title: string;
             /** Question */
@@ -2276,6 +2307,13 @@ export interface components {
             n_base: number;
             /** Basis */
             basis: string;
+            /**
+             * Coach
+             * @default {}
+             */
+            coach: {
+                [key: string]: components["schemas"]["CoachNote"];
+            };
         };
         /** Repeats */
         Repeats: {
@@ -2475,6 +2513,16 @@ export interface components {
             histogram: components["schemas"]["Histogram"] | null;
             /** Classes */
             classes: components["schemas"]["ValueCount"][] | null;
+            /**
+             * Unit
+             * @default null
+             */
+            unit: string | null;
+            /**
+             * Unit Source
+             * @default null
+             */
+            unit_source: ("name" | "pack") | null;
         };
     };
     responses: never;

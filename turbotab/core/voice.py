@@ -23,6 +23,18 @@ optional; a sentence says only what its context can support and never prints a p
     detected_task    the task detection's answer: ``set_task`` names an override, and the split
                      and model sentences use it when no task was answered
     model_labels     ``{family key: label}``, overriding the built-in labels
+
+M2 keys (the opening sequence, the seal and findings; each optional like the rest):
+
+    levels           the outcome's distinct levels (``set_event`` names the one coded 0)
+    n_units          distinct values of the unit's identifier (grain, aggregation), with
+                     ``rows_per_unit`` the most rows one unit has; counted from ``datastore`` when
+                     neither is given
+    n_holdout        the held-out rows the seal opens
+    finding          the finding a disposition names: ``{id, title, summary, affected_columns}``
+    repair           the repair option applied: ``{key, label, consequence, row_local}`` (the
+                     repair registry's); a family may register its own sentence with
+                     :func:`register_repair_sentence`
 """
 from __future__ import annotations
 
@@ -263,9 +275,36 @@ def _set_lens(d: Any, state: Any, ctx: Any) -> str:
     return f"The table was read through the {listing(d.lenses, limit=5)} {noun}"
 
 
+def _outcome_unit(ctx: Any, column: str) -> str | None:
+    """The outcome's unit, from ``ctx["outcome_unit"]``, its name, or the clinical pack on its
+    values (``frame`` or ``datastore``); None when nothing says."""
+    from turbotab.core.units import from_name, outcome_unit
+
+    given = _get(ctx, "outcome_unit")
+    if given:
+        return str(given)
+    if from_name(column):
+        return from_name(column)
+    values = None
+    frame, store = _get(ctx, "frame"), _get(ctx, "datastore")
+    try:
+        if frame is not None and column in frame.columns:
+            values = frame[column]
+        elif store is not None and column in store.columns:
+            values = store.materialize([column])[column]
+    except Exception:  # a sentence never fails a decision
+        values = None
+    if values is None or values.dtype.kind not in "iuf" or values.nunique() <= 2:
+        return None  # a class label has no unit
+    return outcome_unit(column, values)[0]
+
+
 @register_sentence("set_target")
 def _set_target(d: Any, state: Any, ctx: Any) -> str:
     text = f"{tick(d.column)} was chosen as the outcome"
+    unit = _outcome_unit(ctx, d.column)
+    if unit:
+        text += f", in {'percent' if unit == '%' else unit}"
     entry = _column_entry(ctx, d.column)
     n = _n_rows(ctx)
     missing = _attr(entry, "n_missing") if entry is not None else None
@@ -306,7 +345,15 @@ _SLOT_SUBJECT = {
     "split": "the split",
     "models": "the model families",
     "substitution": "the substitution",
+    "orientation": "the table's orientation",
+    "event": "the event level",
+    "grain": "the grain",
+    "repeat_kind": "the reading of the repeated rows",
+    "unit": "the unit of analysis",
+    "aggregation": "the combining of each unit's rows",
+    "temporal": "the temporal question",
 }
+_PLURAL_SUBJECTS = {"roles", "exclusions", "models"}
 
 
 def _slot_value(slot: str, value: Any) -> str | None:
@@ -337,6 +384,25 @@ def _slot_value(slot: str, value: Any) -> str | None:
         return listing(value)
     if slot == "substitution":
         return f"{tick(_attr(value, 'donor'))} replaced by {tick(_attr(value, 'recipient'))}"
+    if slot == "orientation":
+        return ("features in rows, turned to one row per sample" if value == "feature_major"
+                else "one row per sample, as supplied")
+    if slot == "event":
+        return tick(value)
+    if slot == "grain":
+        id_column = _attr(value, "id_column")
+        if _attr(value, "grain") == "repeated":
+            return f"repeated rows by {tick(id_column)}" if id_column else "repeated rows"
+        return "one row per participant"
+    if slot == "repeat_kind":
+        return ("repeated measurements of one quantity" if _attr(value, "repeat_kind") == "repeats"
+                else "different time points")
+    if slot == "unit":
+        return "one row per unit" if value == "unit" else "one row per record"
+    if slot == "aggregation":
+        return f"by their {_AGGREGATE_NOUN.get(_attr(value, 'method'), tick(_attr(value, 'method')))}"
+    if slot == "temporal":
+        return "temporal" if _attr(value, "temporal") else "not temporal"
     return None
 
 
@@ -369,8 +435,18 @@ def _revert(d: Any, state: Any, ctx: Any) -> str:
         after = getattr(fold([*records, pending]), slot)
     except Exception:
         return f"{label}, restoring the answer before it"
+    if slot == "findings":  # one finding's disposition, keyed by its id
+        fid = getattr(target.decision, "finding_id", None)
+        entry = (after or {}).get(fid) if fid else None
+        what = _finding_name(fid, _get(ctx, "finding"))
+        if entry is None:
+            return f"{label}, so {what} is open again"
+        return f"{label}, so {what} is {_attr(entry, 'action')} again"
+    if slot == "seal_opened":
+        return (f"{label}, so the held-out rows are sealed again" if not after
+                else f"{label}, and the held-out rows stay open")
     subject = _SLOT_SUBJECT.get(slot, slot.replace("_", " "))
-    verb = "are" if subject.endswith("s") and not subject.endswith("ss") else "is"
+    verb = "are" if slot in _PLURAL_SUBJECTS else "is"
     value = _slot_value(slot, after)
     if value is None:
         return f"{label}, so {subject} {verb} unanswered again"
@@ -666,6 +742,289 @@ def _set_substitution(d: Any, state: Any, ctx: Any) -> str:
     return text
 
 
+# ── M2: the opening sequence (OPENING_SEQUENCE.md §03) ───────────────────────
+
+
+def _unit_of(state: Any) -> str | None:
+    """The column naming the unit (person, sample) when rows repeat, as the grain answer has it."""
+    grain = getattr(state, "grain", None)
+    return _attr(grain, "id_column") if grain is not None else None
+
+
+def _whose(state: Any) -> str:
+    """``each `participant_id`'s`` when the unit is named, else ``each participant's``."""
+    unit = _unit_of(state)
+    return f"each {tick(unit)}'s" if unit else "each participant's"
+
+
+def _unit_counts(ctx: Any, column: str | None) -> tuple[int | None, int | None, int | None]:
+    """(rows, distinct units, most rows one unit has), from ``ctx`` or counted from the datastore."""
+    n_rows, n_units = _n_rows(ctx), _get(ctx, "n_units")
+    most = _get(ctx, "rows_per_unit")
+    repeats = _get(ctx, "repeats")
+    if n_units is None and repeats and _attr(repeats, "column") == column:
+        n_units, most = _attr(repeats, "n_units"), _attr(repeats, "max_rows_per_unit")
+    if n_units is None and column:
+        store, frame = _get(ctx, "datastore"), _get(ctx, "frame")
+        try:
+            values = None
+            if frame is not None and column in frame.columns:
+                values = frame[column]
+            elif store is not None and column in store.columns:
+                values = store.materialize([column])[column]
+            if values is not None:
+                sizes = values.dropna().value_counts()
+                n_rows = n_rows if n_rows is not None else int(len(values))
+                n_units, most = int(len(sizes)), int(sizes.max()) if len(sizes) else 0
+        except Exception:  # a sentence never fails a decision; it says less
+            log.debug("could not count units", exc_info=True)
+
+    def whole(value: Any) -> int | None:
+        return int(value) if value is not None else None
+
+    return whole(n_rows), whole(n_units), whole(most)
+
+
+@register_sentence("set_orientation")
+def _set_orientation(d: Any, state: Any, ctx: Any) -> str:
+    if d.orientation == "sample_major":
+        return "The table was confirmed as one row per sample, as supplied, and was not transposed"
+    text = ("The table was supplied with features in rows and samples in columns, and was "
+            "transposed to one row per sample before any diagnosis was run")
+    n = _n_rows(ctx)
+    if n:
+        text += f"; its {count(n)} rows became measurement columns"
+    return text
+
+
+def _levels(ctx: Any, column: str) -> list[str]:
+    """The outcome's levels as written (``1.0`` and ``1`` are one level), from ``ctx`` or the data."""
+    from turbotab.core.stages.proposals import level_key
+
+    given = _get(ctx, "levels")
+    if given is None:
+        store, frame = _get(ctx, "datastore"), _get(ctx, "frame")
+        try:
+            if frame is not None and column in frame.columns:
+                given = list(frame[column].dropna().unique())
+            elif store is not None and column in store.columns:
+                given = list(store.materialize([column])[column].dropna().unique())
+        except Exception:  # a sentence never fails a decision
+            given = None
+    out: list[str] = []
+    for value in given or []:
+        key = level_key(value)
+        if key and key not in out:
+            out.append(key)
+    return out
+
+
+@register_sentence("set_event")
+def _set_event(d: Any, state: Any, ctx: Any) -> str:
+    from turbotab.core.stages.proposals import level_key
+
+    text = f"{tick(d.level)} of {tick(d.column)} was taken as the event and coded 1"
+    others = [v for v in _levels(ctx, d.column) if v != level_key(d.level)]
+    if 0 < len(others) <= 3:
+        text += f"; {listing(others)} {plural(len(others), 'was', 'were')} coded 0"
+    return text
+
+
+@register_sentence("set_grain")
+def _set_grain(d: Any, state: Any, ctx: Any) -> str:
+    if d.grain == "one_row_per_unit":
+        if d.id_column:
+            return (f"Each row was declared a different participant: no {tick(d.id_column)} "
+                    f"appears in more than one row")
+        return "Each row was declared a different participant: no one appears in more than one row"
+    if not d.id_column:
+        return ("Participants were declared to appear in more than one row; no column was named "
+                "that identifies them, so their rows cannot be kept together")
+    text = f"Participants were declared to appear in more than one row, identified by {tick(d.id_column)}"
+    n_rows, n_units, most = _unit_counts(ctx, d.id_column)
+    if n_rows and n_units:
+        text += f": {count(n_rows)} rows from {count(n_units)} of them"
+        if most and most > 1:
+            text += f", at most {count(most)} each"
+    return text
+
+
+@register_sentence("set_repeat_kind")
+def _set_repeat_kind(d: Any, state: Any, ctx: Any) -> str:
+    whose = _whose(state)
+    if d.repeat_kind == "repeats":
+        return (f"{whose[:1].upper()}{whose[1:]} rows were taken as repeated measurements of the "
+                f"same quantity, not different time points")
+    text = f"{whose[:1].upper()}{whose[1:]} rows were taken as different time points"
+    if d.time_column:
+        text += f", ordered by {tick(d.time_column)}"
+    return text
+
+
+@register_sentence("set_unit")
+def _set_unit(d: Any, state: Any, ctx: Any) -> str:
+    unit = _unit_of(state)
+    who = tick(unit) if unit else "participant"
+    if d.unit == "unit":
+        return f"The analysis was set at one row per {who}: each one's rows are combined into one"
+    return (f"The analysis was kept at one row per record; {_whose(state)} rows stay together on "
+            f"one side of the split")
+
+
+_AGGREGATE_NOUN = {"mean": "mean", "first": "first row", "last": "last row",
+                   "change": "change from first to last"}
+_AGGREGATE_HOW = {
+    "mean": "by their mean",
+    "first": "by keeping the first row",
+    "last": "by keeping the last row",
+    "change": "as the change from the first to the last",
+}
+_OUTCOME_HOW = {"mean": "mean", "first": "first value", "last": "last value"}
+
+
+def _time_order(state: Any) -> str | None:
+    for slot in ("repeat_kind", "temporal"):
+        value = getattr(state, slot, None)
+        column = _attr(value, "time_column") if value is not None else None
+        if column:
+            return column
+    return None
+
+
+@register_sentence("set_aggregation")
+def _set_aggregation(d: Any, state: Any, ctx: Any) -> str:
+    unit = _unit_of(state)
+    whose = _whose(state)
+    text = f"{whose[:1].upper()}{whose[1:]} rows were combined into one {_AGGREGATE_HOW[d.method]}"
+    if d.method != "mean":
+        order = _time_order(state)
+        text += f", in order of {tick(order)}" if order else ", in file order"
+    n_rows, n_units, _ = _unit_counts(ctx, unit)
+    if n_rows and n_units and n_units < n_rows:
+        text += f": {count(n_rows)} rows became {count(n_units)}"
+    target = getattr(state, "target", None)
+    if d.outcome and target:
+        text += f"; the outcome {tick(target)} was taken as their {_OUTCOME_HOW[d.outcome]}"
+    return text
+
+
+@register_sentence("set_temporal")
+def _set_temporal(d: Any, state: Any, ctx: Any) -> str:
+    unit = _unit_of(state)
+    together = f", with each {tick(unit)}'s rows kept together" if unit else ""
+    if d.temporal:
+        by = f" by {tick(d.time_column)}" if d.time_column else ""
+        return (f"The model was declared to predict a later outcome from earlier measurements: the "
+                f"held-out rows are the latest{by}{together}")
+    return (f"The model was declared not to predict forward in time: rows are held out at "
+            f"random{together}")
+
+
+@register_sentence("open_seal")
+def _open_seal(d: Any, state: Any, ctx: Any) -> str:
+    n = _get(ctx, "n_holdout")
+    rows = f"The {count(n)} held-out rows were" if n else "The held-out rows were"
+    return (f"{rows} opened once and scored; those scores are fixed in the record, and any later "
+            f"change is marked as made after the seal was opened")
+
+
+# ── M2: findings, answered (M2_CONTRACT §4) ──────────────────────────────────
+
+_QUESTION_NAME = {
+    "lens": "the lens question",
+    "orientation": "the question of which way round the table is",
+    "target": "the outcome question",
+    "event": "the event question",
+    "task": "the task question",
+    "purpose": "the purpose question",
+    "grain": "the question of whether people repeat",
+    "repeat_kind": "the question of what repeats",
+    "unit": "the unit-of-analysis question",
+    "aggregation": "the question of how rows are combined",
+    "temporal": "the temporal question",
+    "roles": "the column roles",
+    "exclusions": "the eligibility question",
+    "missing": "the missing-values question",
+    "split": "the held-out rows question",
+    "energy_adjustment": "the energy-adjustment question",
+    "models": "the model families question",
+    "substitution": "the substitution question",
+}
+
+
+def _finding_name(finding_id: str | None, finding: Any) -> str:
+    """``the finding on `bp_di``` (its columns), else its title, else plainly ``a finding``."""
+    columns = list(_attr(finding, "affected_columns") or []) if finding is not None else []
+    if columns:
+        return f"the finding on {listing(columns, limit=3)}"
+    title = finish(str(_attr(finding, "title") or ""), terminal=False) if finding is not None else ""
+    if title:
+        return f"the finding “{title}”"
+    return "a finding"
+
+
+RepairSentence = Callable[[Any, Any, Any], str]
+_REPAIR_SENTENCES: dict[str, RepairSentence] = {}
+
+
+def register_repair_sentence(family: str, fn: RepairSentence) -> RepairSentence:
+    """A finding family's own sentence for ``apply_repair`` (``fn(decision, state, ctx)``)."""
+    _REPAIR_SENTENCES[family] = fn
+    return fn
+
+
+def _humanized(key: str) -> str:
+    return key.replace("_", " ").strip()
+
+
+@register_sentence("apply_repair")
+def _apply_repair(d: Any, state: Any, ctx: Any) -> str:
+    from turbotab.core.stages.finding_words import family
+
+    own = _REPAIR_SENTENCES.get(family(d.finding_id))
+    if own is not None:
+        return own(d, state, ctx)
+    finding, repair = _get(ctx, "finding"), _get(ctx, "repair")
+    label = finish(str(_attr(repair, "label") or ""), terminal=False) if repair is not None else ""
+    label = label or _humanized(d.option)
+    label = label[:1].upper() + label[1:]
+    columns = list(_attr(finding, "affected_columns") or []) if finding is not None else []
+    if columns:
+        text = f"The repair “{label}” was applied to {listing(columns, limit=3)}"
+    elif finding is not None and _attr(finding, "title"):
+        text = f"The repair “{label}” was applied for {_finding_name(d.finding_id, finding)}"
+    else:
+        text = f"The repair “{label}” was applied"
+    if d.params:
+        text += " (" + ", ".join(f"{_humanized(str(k))} {tick(number(v))}"
+                                 for k, v in sorted(d.params.items())) + ")"
+    consequence = finish(str(_attr(repair, "consequence") or ""), terminal=False) if repair is not None else ""
+    if consequence:
+        text += f": {consequence[:1].lower()}{consequence[1:]}"
+    row_local = _attr(repair, "row_local") if repair is not None else None
+    if row_local is True:
+        text += "; it rewrote the working table before anything was counted"
+    elif row_local is False:
+        text += "; it is recorded now and runs inside each training fold"
+    return text
+
+
+@register_sentence("defer_finding")
+def _defer_finding(d: Any, state: Any, ctx: Any) -> str:
+    name = _finding_name(d.finding_id, _get(ctx, "finding"))
+    where = _QUESTION_NAME.get(d.to, f"the {_humanized(d.to)} question")
+    return f"{name[:1].upper()}{name[1:]} was set aside for {where}, where it will be raised again"
+
+
+@register_sentence("dismiss_finding")
+def _dismiss_finding(d: Any, state: Any, ctx: Any) -> str:
+    name = _finding_name(d.finding_id, _get(ctx, "finding"))
+    head = f"{name[:1].upper()}{name[1:]} was dismissed"
+    if d.reason and d.reason.strip():
+        return f"{head}: {_as_reason(d.reason)}"
+    return f"{head}, with no reason given; it stays in the record"
+
+
 def kinds() -> list[str]:
     """The decision kinds with a registered sentence."""
     return sorted(_SENTENCES)
@@ -673,5 +1032,6 @@ def kinds() -> list[str]:
 
 __all__ = [
     "count", "exclusion_counts", "finish", "kinds", "listing", "machinery", "number", "plural",
-    "register_sentence", "sentence_for", "strip_markdown", "tick", "words",
+    "register_repair_sentence", "register_sentence", "sentence_for", "strip_markdown", "tick",
+    "words",
 ]

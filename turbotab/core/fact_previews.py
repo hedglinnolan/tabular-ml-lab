@@ -48,15 +48,27 @@ def _summaries(ctx: PreviewContext) -> list[dict[str, Any]]:
     return [c.to_dict() for c in ctx.datastore.info().columns if c.name != ROW_ID]
 
 
+_ROLES: dict[tuple[Any, ...], dict[str, str]] = {}
+
+
 def _roles_under(ctx: PreviewContext, lens: list[str] | None) -> dict[str, str]:
+    """The role each column is read as under ``lens`` (remembered per table, lens and outcome:
+    on a 500-column assay the reading takes half a second, and arrow keys flip lenses fast)."""
     from turbotab.core.stages.rows import _acquisition_columns, _energy_reading, propose_roles
 
-    columns = _summaries(ctx)
-    proposals = propose_roles(columns, lens=lens, target=ctx.state.target,
-                              n_rows=int(ctx.datastore.n_rows),
-                              energy_column=_energy_reading(columns),
-                              acquisition=_acquisition_columns(columns))
-    return {str(p["column"]): str(p["proposed"]) for p in proposals}
+    store = ctx.datastore
+    key = (ctx.project_id, int(store.n_rows), tuple(store.columns), tuple(sorted(lens or [])),
+           ctx.state.target)
+    if key not in _ROLES:
+        columns = _summaries(ctx)
+        proposals = propose_roles(columns, lens=lens, target=ctx.state.target,
+                                  n_rows=int(store.n_rows),
+                                  energy_column=_energy_reading(columns),
+                                  acquisition=_acquisition_columns(columns))
+        _ROLES[key] = {str(p["column"]): str(p["proposed"]) for p in proposals}
+        while len(_ROLES) > 64:
+            _ROLES.pop(next(iter(_ROLES)))
+    return dict(_ROLES[key])
 
 
 def _names(columns: list[str], limit: int = 3) -> str:
@@ -64,6 +76,62 @@ def _names(columns: list[str], limit: int = 3) -> str:
     if len(columns) > limit:
         return f"{', '.join(shown)} and {len(columns) - limit:,} more"
     return shown[0] if len(shown) == 1 else f"{', '.join(shown[:-1])} and {shown[-1]}"
+
+
+_NUMBER = {3: "three", 4: "four", 5: "five"}
+
+
+def _and(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+# The pack's checks read the whole table, so the lens preview runs them only on a table small
+# enough to answer within a preview's time (NHANES, 21,849 × 29, is 0.6 M cells); a wider one says
+# the checks run without counting what they raise.
+LENS_CHECK_CELLS = 2_000_000
+_FOUND: dict[tuple[Any, ...], int] = {}
+
+
+def _small_table(ctx: PreviewContext) -> Any:
+    """The whole table when it is small enough for the pack checks, else None.
+
+    Before the split only: the checks read every row, as the findings do, and once rows are sealed
+    no preview reads them. The basis then says every row was counted.
+    """
+    store = ctx.datastore
+    if ctx.sealed_row_ids is not None:
+        return None
+    n_cols = len([c for c in store.columns if c != ROW_ID])
+    if int(store.n_rows) * max(1, n_cols) > LENS_CHECK_CELLS:
+        return None
+    ctx.read["counted"] = int(store.n_rows)
+    return store.materialize([c for c in store.columns if c != ROW_ID]).reset_index(drop=True)
+
+
+def _reads_feature_major(lens: list[str], table: Any) -> bool:
+    from turbotab import orientation
+
+    try:
+        return orientation.fires(lens, orientation.read(table))
+    except Exception:  # noqa: BLE001 - a reading that fails asks nothing
+        return False
+
+
+def _pack_findings(ctx: PreviewContext, lens: list[str], table: Any) -> int | None:
+    """How many findings the lens's packs raise on this table (cached per table and lens)."""
+    if table is None:
+        return None
+    key = (ctx.project_id, int(ctx.datastore.n_rows), tuple(table.columns), tuple(sorted(lens)))
+    if key not in _FOUND:
+        from turbotab import packs
+
+        try:
+            _FOUND[key] = len(packs.findings(table, lens))
+        except Exception:  # noqa: BLE001 - the count is a courtesy; the lineage is the preview
+            return None
+        while len(_FOUND) > 64:
+            _FOUND.pop(next(iter(_FOUND)))
+    return _FOUND[key]
 
 
 def lens_views(decision: Any, ctx: PreviewContext) -> list[Any]:
@@ -91,22 +159,35 @@ def lens_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         said.append(f"`{energy[0]}` reads as total energy")
     if nutrients:
         said.append(f"{fmt_count(len(nutrients))} nutrients that carry energy as exposures")
-    noun = " and ".join(LENS_NOUN.get(k, k) for k in lens)
+    names = [LENS_NOUN.get(k, k) for k in lens]
+    noun = _and(names) if len(names) <= 2 else f"{_NUMBER.get(len(names), len(names))}"
+    lenses = f"the {noun} lens" if len(names) == 1 else (
+        f"the {noun} lenses" if len(names) == 2 else f"these {noun} lenses")
     if said:
-        caption = f"Under the {noun} lens, " + " and ".join(said) + "."
+        caption = f"Under {lenses}, " + " and ".join(said) + "."
     else:
         n_pred = sum(1 for c in order if new[c] in PREDICTOR_ROLES)
-        caption = f"Under the {noun} lens, {fmt_count(n_pred)} columns are read as predictors."
+        caption = f"Under {lenses}, {fmt_count(n_pred)} columns are read as predictors."
     adds = []
     if "dietary" in lens and energy and len(nutrients) >= 1:
         adds.append("energy adjustment")
     if "dietary" in lens and len(nutrients) >= 2:
         adds.append("substitution curves")
-    # The caption says what the lens reads; the note says what it then does (no repeat).
-    ctx.read["note"] = (f"The {noun} pack's checks run on this table" +
-                        (f", and {' and '.join(adds)} join the questions." if adds else "."))
+    table = _small_table(ctx)
+    if table is not None and _reads_feature_major(lens, table):
+        adds.insert(0, "which way round the table is")
+    # The caption says what the lens reads; the note says what it then does (no repeat): the
+    # questions it adds and the findings its pack raises on this table.
+    found = _pack_findings(ctx, lens, table)
+    whose = f"{noun} pack's" if len(names) == 1 else f"{noun} packs'"
+    checks = (f"The {whose} checks raise {fmt_count(found)} "
+              f"{'finding' if found == 1 else 'findings'} on this table" if found is not None
+              else f"The {whose} checks run on this table")
+    ctx.read["note"] = checks + (f", and {_and(adds)} {'joins' if len(adds) == 1 else 'join'} "
+                                 f"the questions." if adds else ".")
     return [LineageView(
-        title=clip_words(f"Columns as the {noun} lens reads them", TITLE_WORDS),
+        title=clip_words(f"Columns as {lenses} read them" if len(names) > 1
+                         else f"Columns as the {noun} lens reads them", TITLE_WORDS),
         caption=clip_words(caption, CAPTION_WORDS),
         emphasis=sorted(touched),
         before=lineage(old) if old is not None else None,
@@ -144,24 +225,48 @@ def target_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         after=after,
     )]
     numeric = pd.to_numeric(values, errors="coerce") if values.dtype.kind in "biuf" else None
+    # The outcome's own distribution, here and not at the eligibility question: choosing what to
+    # predict may look at it; choosing who is in the study may not (lockbox constitution §04).
     if numeric is not None and values.dtype.kind != "b" and numeric.notna().sum() > 1 \
             and numeric.nunique() > 2:
+        from turbotab.core.units import outcome_unit, with_unit
+
         x = numeric.to_numpy(dtype=float, na_value=np.nan)
         hist, _ = _histogram_pair(x, x)
         finite = x[np.isfinite(x)]
+        unit, _ = outcome_unit(column, finite)
+        median = with_unit(f"{np.median(finite):,.4g}", unit)
         views.append(DistributionView(
             title=clip_words(f"Values of `{column}`", TITLE_WORDS),
-            caption=clip_words(f"`{column}`: median {np.median(finite):,.4g}, middle half "
+            caption=clip_words(f"`{column}`: median {median}, middle half "
                                f"{np.percentile(finite, 25):,.4g}–{np.percentile(finite, 75):,.4g}, "
                                f"over {fmt_count(len(finite))} rows.", CAPTION_WORDS),
             emphasis=[column],
             column=column,
             before=hist,
             after=hist,
-            before_label="Every recorded value",
-            after_label="Every recorded value",
+            before_label="Every recorded value" + (f" ({unit})" if unit else ""),
+            after_label="Every recorded value" + (f" ({unit})" if unit else ""),
         ))
+    else:
+        ctx.read["note"] = _levels_note(column, values)
     return views
+
+
+def _levels_note(column: str, values: Any) -> str | None:
+    """A class outcome's levels and their counts, and what the next question asks of them."""
+    counts = values.dropna().value_counts()
+    if counts.empty:
+        return None
+    from turbotab.core.datastore import json_safe
+    from turbotab.core.voice import number
+
+    shown = [f"`{number(json_safe(level))}` on {fmt_count(n)}" for level, n in counts.head(3).items()]
+    listed = shown[0] if len(shown) == 1 else f"{', '.join(shown[:-1])} and {shown[-1]}"
+    if len(counts) == 2:
+        return f"Two levels: {listed} rows; the next question asks which is the event."
+    more = f", and {len(counts) - 3:,} more levels" if len(counts) > 3 else ""
+    return f"{len(counts):,} levels, most common {listed} rows{more}."
 
 
 def purpose_views(decision: Any, ctx: PreviewContext) -> list[Any]:
@@ -188,12 +293,14 @@ def purpose_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     except Exception:  # noqa: BLE001 - the order is a courtesy; the report below is the point
         order = []
     shelf = f"the shelf leads with the {order[0]}" if order else "the shelf is reordered"
+    # Which later questions and checks change (OPENING_SEQUENCE §2.5: the advice inverts in
+    # several places): the shelf's order, the Results, and the missing-value indicator.
     if purpose == "inference":
-        text = (f"With inference, {shelf}, and the Results report each exposure's coefficient with a "
-                f"95% confidence interval and p-value, estimated on the training rows.")
+        text = (f"With inference, {shelf}; the Results report coefficients with 95% intervals, and "
+                f"a missing-value indicator would bias them.")
     else:
-        text = (f"With prediction, {shelf}, and the Results lead with the score on rows the models "
-                f"never saw; coefficients are shown but not interpreted.")
+        text = (f"With prediction, {shelf}; the Results lead with scores on unseen rows, and "
+                f"missing-value indicators are legitimate, since they exist at deployment.")
     ctx.read["note"] = text
     return []
 

@@ -100,16 +100,16 @@ def test_the_nhanes_energy_reading(nhanes):
     # A total beside its parts counts their energy twice: the partition refuses, saying why.
     partition = energy["applicability"]["partition"]
     assert not partition["ok"]
-    assert ("`sugar`, `fat_sat`, `fat_mon` and `fat_poly` are parts of `carb` and `fat_total`"
-            in partition["reason"]), partition["reason"]
+    # The nested-parts note now lives here, on the option it is about (and in the "nested" term).
+    assert partition["reason"] == ("`sugar`, `fat_sat` and 2 more are nested in `carb` and "
+                                   "`fat_total`: a partition would count that energy twice."), partition
     assert set(energy["applicability"]) == {"none", "standard", "residual", "density_multivariate",
                                             "density", "partition"}
     assert energy["usual"] == "residual"
     assert energy["usual_evidence"]["status"] == "CONVENTION"
     df = pd.read_csv(table.source)
     assert math.isclose(energy["r_with_energy"]["fat_total"], df["kcal"].corr(df["fat_total"]), abs_tol=1e-3)
-    note = " ".join(energy["notes"])
-    assert "`fat_sat`, `fat_mon` and `fat_poly` are parts of `fat_total`" in note
+    assert energy["notes"] == []  # folded into the partition's reason: no wall above the options
 
 
 def test_the_recall_energy_reading_offers_grams_not_shares(recalls):

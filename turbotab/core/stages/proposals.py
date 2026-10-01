@@ -17,6 +17,9 @@ Two readings, both from ``docs/turbotab/research/NUTRITION_PACK.md``:
   medication-like column, where a blank is a skipped question rather than an unknown value
   (DRIVE_RUBRIC §4: median fill on ``meds_hbp`` would put every unknown on medication). The
   missing-values question offers to leave those columns out before complete cases.
+* **Coach lines** (M2_CONTRACT §6). ``coach`` holds at most one data-grounded line per decision
+  card — the exclusions card (rows outside the pack's plausible intake) and the missing-values card
+  (the blankest "not asked" column) — from :func:`turbotab.core.coach.card_lines`. Never a choice.
 
 Counts are made as the participant flow makes them: among rows with the outcome measured, when an
 outcome has been chosen. :func:`rule_excludes` is the one definition of what a rule removes.
@@ -241,36 +244,54 @@ def strata_candidates(columns: Mapping[str, Mapping[str, Any]], roles: Mapping[s
     return out
 
 
-def _parts_note(frame: pd.DataFrame, nutrients: Sequence[str]) -> list[str]:
-    """Columns that are parts of another chosen column (``fat_sat`` of ``fat_total``)."""
-    from turbotab.core.methods.energy import nutrient_role
+OPTION_REASON_WORDS = 20  # teaching.COMPOSED_BUDGETS["option_reason"]
+_UNIT_UNSAID = re.compile(r"does not say what unit|could not confirm it is grams")
+_TICKED = re.compile(r"`([^`]+)`")
+
+
+def option_reason(reason: str) -> str:
+    """Why a method cannot run, as the option shows it: one sentence within the budget.
+
+    The methods' own reasons are written for the methods record and can run to 50 words; the card
+    shows one sentence beside the option (DRIVE_RUBRIC §2.5: no walls). The known long ones are
+    restated; anything else keeps its last sentence (the specific cause, as the card reads it),
+    else its first.
+    """
+    from turbotab.core.consequences import clip_words
+    from turbotab.core.voice import finish, listing, words
+
+    if words(reason) <= OPTION_REASON_WORDS:
+        return reason
+    if _UNIT_UNSAID.search(reason):
+        head = reason.split(" does not say", 1)[0].split(" could not", 1)[0]
+        columns = _TICKED.findall(head)
+        if columns:
+            say = "does" if len(columns) == 1 else "do"
+            return finish(f"{listing(columns, limit=3)} {say} not say grams, and this table cannot "
+                          f"confirm it")
+    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z`])", reason)
+    for sentence in (sentences[-1], sentences[0]):
+        if words(sentence) <= OPTION_REASON_WORDS and _TICKED.search(sentence):
+            return finish(sentence)
+    return finish(clip_words(sentences[-1], OPTION_REASON_WORDS))
+
+
+def nested_reason(nested: Mapping[str, str], nutrients: Sequence[str]) -> str | None:
+    """The partition option's reason when a total sits beside its parts, within the budget.
+
+    This is where the energy card's old nested-parts note now lives (M2_CONTRACT §6): one short
+    reason on the option it is about, and the term card for "nested" says what follows from it
+    (a substitution moves the parts with their total).
+    """
     from turbotab.core.voice import listing, tick
 
-    by_role: dict[str, list[str]] = {}
-    for c in nutrients:
-        try:
-            role = nutrient_role(c)
-        except ValueError:
-            continue
-        if role:
-            by_role.setdefault(role, []).append(c)
-    notes = []
-    for role, cols in by_role.items():
-        if len(cols) < 2 or not set(cols) <= set(frame.columns):
-            continue
-        values = frame[cols].apply(pd.to_numeric, errors="coerce")
-        total = str(values.mean().idxmax())
-        parts = [c for c in cols if c != total]
-        both = values[[total, *parts]].dropna()
-        if len(both) < 10:
-            continue
-        inside = (both[parts].sum(axis=1) <= both[total] * 1.02 + 1e-9).mean()
-        if inside >= 0.95:
-            notes.append(
-                f"{listing(parts)} {'is a part' if len(parts) == 1 else 'are parts'} of {tick(total)}: "
-                f"choosing them together counts {role}'s energy twice in a partition; a substitution "
-                f"moves the parts with their total.")
-    return notes
+    parts = [n for n in nutrients if nested.get(n) in nutrients]
+    if not parts:
+        return None
+    parents = list(dict.fromkeys(nested[n] for n in parts))
+    are = "is" if len(parts) == 1 else "are"
+    return (f"{listing(parts, limit=3)} {are} nested in {listing(parents, limit=2)}: a partition "
+            f"would count that energy twice.")
 
 
 def _energy_unit(frame: pd.DataFrame, energy: str) -> str:
@@ -366,15 +387,22 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
     from turbotab.core.methods.energy import applicable_methods
     from turbotab.core.voice import finish
 
+    from turbotab.core.methods.nesting import nested_components
+
     verdicts = applicable_methods(list(columns), energy, nutrients)
     if verdicts["partition"]["ok"] and energy in frame.columns:
         # The checks the fit makes on the data (the Atwater reconstruction), and the two it
         # cannot: a total beside its parts, and nutrients that out-weigh total energy.
         refused = partition_check(frame, energy, nutrients)
         if refused is not None:
-            verdicts["partition"] = {"ok": False, "reason": refused["reason"]}
-    applicability = {m: {"ok": bool(v["ok"]), "reason": finish(_marked(str(v["reason"]), columns))}
-                     for m, v in verdicts.items()}
+            present = [n for n in nutrients if n in frame.columns]
+            nested = nested_reason(nested_components(frame, present), nutrients)
+            verdicts["partition"] = {"ok": False, "reason": nested or refused["reason"]}
+    applicability = {}
+    for m, v in verdicts.items():
+        reason = finish(_marked(str(v["reason"]), columns))
+        applicability[m] = {"ok": bool(v["ok"]),
+                            "reason": reason if v["ok"] else option_reason(reason)}
     usual = next((m for m in (USUAL_METHOD, "standard") if applicability.get(m, {}).get("ok")), None)
     r_with_energy: dict[str, float] = {}
     if energy and energy in frame.columns:
@@ -393,7 +421,10 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
         "usual": usual,
         "usual_evidence": dict(ENERGY_EVIDENCE) if usual else None,
         "r_with_energy": r_with_energy,
-        "notes": _parts_note(frame, nutrients),
+        # The nested-parts note that ran ~70 words above the options is folded into the
+        # partition option's reason and the "nested" term card; notes stay for data lines that
+        # fit the card's budget (COMPOSED_BUDGETS["card_line"]).
+        "notes": [],
         "not_adjusted": not_adjusted(columns, roles, energy=energy, target=target, nutrients=nutrients),
     }
 
@@ -476,6 +507,7 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     n_base = int(frame[target].notna().sum()) if target and target in frame.columns else len(frame)
     if "dietary" not in (lens or []):
         return {"exclusions": [], "energy": None, "missing": missing, "n_base": n_base,
+                "coach": _card_lines(frame, target=target, energy=None, unit="kcal", missing=missing),
                 "basis": "Only the missing-values reading is proposed: the dietary lens is not chosen."}
     energy = energy_column(info, roles)
     nutrients = nutrient_candidates(info, roles, energy=energy, target=target)
@@ -488,6 +520,7 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
         base = pd.Series(True, index=frame.index)
         basis = f"Counted among all {tick(f'{len(frame):,}')} rows; no outcome is chosen yet."
     exclusions: list[dict[str, Any]] = []
+    unit = "kcal"
     if energy is not None and energy in frame.columns:
         unit = _energy_unit(frame, energy)
         exclusions = exclusion_proposals(frame, energy=energy, unit=unit, sex=sex,
@@ -497,7 +530,17 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
         reading = energy_reading(frame, info, roles, energy=energy, nutrients=nutrients, sex=sex,
                                  target=target)
     return {"exclusions": exclusions, "energy": reading, "missing": missing, "n_base": n_base,
+            "coach": _card_lines(frame, target=target, energy=energy, unit=unit, missing=missing),
             "basis": basis}
+
+
+def _card_lines(frame: pd.DataFrame, *, target: str | None, energy: str | None, unit: str,
+                missing: Mapping[str, Any]) -> dict[str, Any]:
+    """The decision cards' coach lines, at most one per question (turbotab.core.coach)."""
+    from turbotab.core.coach import card_lines
+
+    lines = card_lines(frame, target=target, energy=energy, unit=unit, missing=missing)
+    return {key: line.model_dump(mode="json") for key, line in lines.items()}
 
 
 def needed_columns(columns: Sequence[Mapping[str, Any]], *, target: str | None,
@@ -546,6 +589,7 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
 __all__ = [
     "ENERGY_EVIDENCE", "EXCLUSION_EVIDENCE", "build_proposals", "energy_bearing", "energy_column",
     "exclusion_proposals", "gappy_predictors", "level_key", "missing_reading", "needed_columns",
+    "nested_reason",
     "nutrient_candidates", "partition_check", "proposals_stage",
     "roles_from", "rule_excludes", "sex_column", "strata_candidates",
 ]

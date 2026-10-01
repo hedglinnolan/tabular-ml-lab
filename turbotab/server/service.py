@@ -196,6 +196,38 @@ class SentenceFacts:
         first = next((i for i, s in enumerate(steps) if str(s["key"]).startswith("exclusion:")), None)
         return int(steps[first - 1]["n"]) if first else None
 
+    # M2 facts (voice.py documents them): each read only when the decision's sentence asks.
+
+    @cached_property
+    def finding(self) -> dict[str, Any] | None:
+        fid = getattr(self._decision, "finding_id", None)
+        found = self._artifact("findings") if fid else None
+        for f in (found or {}).get("findings", []) if isinstance(found, dict) else []:
+            if f.get("id") == fid:
+                return f
+        return None
+
+    @cached_property
+    def levels(self) -> list[Any] | None:
+        info = self._artifact("target_info")
+        column = getattr(self._decision, "column", None)
+        if isinstance(info, dict) and info.get("column") == column and info.get("classes"):
+            return [c["value"] for c in info["classes"]]
+        return None
+
+    @cached_property
+    def n_holdout(self) -> int | None:
+        split = self._artifact("split")
+        return int(split["n_holdout"]) if isinstance(split, dict) and "n_holdout" in split else None
+
+    @cached_property
+    def outcome_unit(self) -> str | None:
+        info = self._artifact("target_info")
+        column = getattr(self._decision, "column", None)
+        if isinstance(info, dict) and info.get("column") == column:
+            return info.get("unit")
+        return None
+
     @property
     def n_complete(self) -> int | None:
         steps = self._steps() if self._decision.kind == "set_missing" else None

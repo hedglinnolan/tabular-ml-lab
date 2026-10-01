@@ -20,17 +20,25 @@ _MET = "research/METABOLOMICS_PACK.md"
 
 NUT01 = f"{_NUT}#01 · Import and structural recognition"
 NUT02 = f"{_NUT}#02 · Implausible intake exclusions"
+NUT03 = f"{_NUT}#03 · Repeated recalls and measurement error"
 NUT04 = f"{_NUT}#04 · Energy adjustment — the methodological signature"
 NUT05 = f"{_NUT}#05 · Compositional structure and substitution modeling"
 NUT06 = f"{_NUT}#06 · Missing data"
 NUT08 = f"{_NUT}#08 · Feature selection and modeling"
 CLIN_A12 = f"{_CLIN}#A1.2 · Reference ranges vs physiological plausibility"
+CLIN_A13 = f"{_CLIN}#A1.3 · Lab value formats and censored values"
 CLIN_A2 = f"{_CLIN}#A2 · Missing data"
+CLIN_A41 = f"{_CLIN}#A4.1 · Participant flow diagram"
 CLIN_A51 = f"{_CLIN}#A5.1 · Calibration first"
+CLIN_A52 = f"{_CLIN}#A5.2 · Class imbalance"
+CLIN_A53 = f"{_CLIN}#A5.3 · Discrimination vs calibration"
 CLIN_A55 = f"{_CLIN}#A5.5 · Modeling practice"
+CLIN_B11 = f"{_CLIN}#B1.1 · Detecting Likert blocks"
 CLIN_B4 = f"{_CLIN}#B4 · Ordinal vs interval"
 CLIN_B6 = f"{_CLIN}#B6 · Modeling"
+GEN01 = f"{_GEN}#01 · Import and structure"
 GEN08 = f"{_GEN}#08 · Modeling at p >> n"
+MET01 = f"{_MET}#01 · Import and structure"
 MET03 = f"{_MET}#03 · Missing data"
 
 
@@ -54,6 +62,13 @@ ESTIMAND = term(
     "estimand",
     "The exact quantity an analysis estimates, stated in words; two methods with different "
     "estimands answer different questions.")
+
+# The energy card's nested-parts note, folded into a term card (M2_CONTRACT §6): the partition
+# option's reason says which columns are nested, and this says what follows from it.
+NESTED = term(
+    "nested",
+    "Part of another column's total, such as `fat_sat` within `fat_total`: a partition would "
+    "count it twice, and a substitution moves it with its total.")
 
 LENS = {
     "key": "lens",
@@ -116,6 +131,89 @@ LENS = {
     "evidence": None,
 }
 
+ORIENTATION = {
+    "key": "orientation",
+    "title": "Which way round the table is",
+    "question": "Which way round is this table?",
+    "one_liner": "Assay exports come both ways; if the columns are samples, every check reads "
+                 "across the wrong axis.",
+    "why": "In a table of samples, columns are analytes and differ by orders of magnitude while "
+           "rows barely differ; here it reads the other way. A transposed table does not fail: "
+           "it runs cleanly and means nothing. Turning it changes what a row is, so it is settled "
+           "before anything is diagnosed or sealed.",
+    "consumer": "The structural diagnosis, the findings, the outcome list and every later "
+                "question read the turned table.",
+    "options": [
+        option("sample_major", "Rows are samples",
+               "The table stays as supplied; the record notes it was checked."),
+        option("feature_major", "Rows are features",
+               "The table is turned: each sample becomes a row and each feature a column."),
+    ],
+    "terms": [
+        term("feature-major", "Features such as metabolites or genes in rows and samples in "
+                              "columns: the transpose of what modeling expects."),
+        term("transposed", "Turned around, so that the rows become columns and the columns "
+                           "become rows."),
+    ],
+    "drawer": {"sections": [
+        section("Exports come both ways",
+                "Vendor exports from XCMS, MZmine, MS-DIAL and similar tools are overwhelmingly "
+                "features in rows; MetaboAnalyst's own table is samples in rows. A tool must "
+                "never guess silently: it presents the reading with its evidence and asks.",
+                "SETTLED", MET01),
+        section("Genes in rows is the convention",
+                "An expression matrix is stored with genes in rows and samples in columns, the "
+                "inverse of what the rest of the app assumes. An undetected transpose does not "
+                "error; it produces a PCA of genes labeled as samples.",
+                "SETTLED", GEN01),
+    ]},
+    "evidence": ev("SETTLED", MET01),
+}
+
+REPAIRS = {
+    "key": "repairs",
+    "title": "Repairs before the outcome",
+    "question": "Should this be repaired before anything is counted?",
+    "one_liner": "A repair fixes how a value is written, row by row; it previews on your rows "
+                 "first and is recorded.",
+    "why": "A sentinel code such as 9 on a 1–5 item is a missing answer, not a strong opinion; a "
+           "value impossible in a living patient is an entry error. Repairs that look only at "
+           "their own row run on the table now. Anything learned from many rows waits for the "
+           "training folds.",
+    "consumer": "The working table, the findings, the outcome list and every count downstream "
+                "read the repaired values.",
+    "options": [
+        option("apply", "Apply the repair",
+               "The changed cells are written into the working table and listed in the record."),
+        option("defer", "Ask me later",
+               "The finding waits inside the question it belongs to, checked and attributed."),
+        option("dismiss", "Dismiss it",
+               "Nothing changes; the record keeps that it was seen and set aside."),
+    ],
+    "terms": [
+        term("sentinel code", "A number standing for an answer that is not a value, such as 9 for "
+                              "don't know or 999 for not measured."),
+        term("row-local", "Computed from one row's own cells, so it leaks nothing about other "
+                          "rows and can run before the seal."),
+    ],
+    "drawer": {"sections": [
+        section("Sentinel codes",
+                "In a 1–5 item, a 9 is not extremely agree; it is don't know or refused. Sentinels "
+                "must be recoded, never automatically: some legitimate scales do run 0–9.",
+                "SETTLED", CLIN_B11),
+        section("Impossible is not abnormal",
+                "Plausibility bounds flag values no living patient could have; a reference "
+                "interval holds the central 95% of healthy people and is for annotation only. "
+                "The bounds themselves are institution-specific.",
+                "CONVENTION", CLIN_A12),
+        section("Failures are not values",
+                "TNTC and QNS are measurement failures, not censoring at a detection limit: treat "
+                "them as missing, not as extreme values.",
+                "SETTLED", CLIN_A13),
+    ]},
+    "evidence": None,
+}
+
 TARGET = {
     "key": "target",
     "title": "The outcome",
@@ -146,6 +244,38 @@ TARGET = {
                 "carrying an n and a reason, is the single most-checked figure in a nutrition "
                 "methods review. The outcome sets its first step.",
                 "SETTLED", NUT02),
+    ]},
+    "evidence": None,
+}
+
+EVENT = {
+    "key": "event",
+    "title": "The event",
+    "question": "Which level of the outcome is the event?",
+    "one_liner": "Models predict the event's probability; whether that is death or survival is "
+                 "your research question.",
+    "why": "A two-level outcome needs one level coded 1, and nothing in the file says which: "
+           "alive or dead has no correct default. The event fixes the meaning of every predicted "
+           "probability, odds ratio and calibration curve, and the methods section names it.",
+    "consumer": "The models, the sign of every coefficient, the calibration and each predicted "
+                "probability read it.",
+    "options": [],
+    "terms": [
+        term("event", "The outcome level a binary model predicts the probability of, coded 1."),
+        term("reference level", "The outcome level coded 0; odds ratios compare the event "
+                                "against it."),
+    ],
+    "drawer": {"sections": [
+        section("Probabilities, not just ranks",
+                "Rank models on calibration and clinical utility, not on AUC alone: two models "
+                "with identical AUC can differ enormously in whether their probabilities of the "
+                "event are usable.",
+                "SETTLED", CLIN_A51),
+        section("A rare event is not a problem to resample away",
+                "Undersampling, oversampling and SMOTE overestimate the probability of the "
+                "minority class without improving discrimination. A rare event's real problem is "
+                "small-sample overfitting, answered by penalization and sample size.",
+                "SETTLED", CLIN_A52),
     ]},
     "evidence": None,
 }
@@ -237,6 +367,201 @@ PURPOSE = {
     "evidence": None,
 }
 
+GROUPED_SPLIT = term("grouped split", "A split that keeps all of one participant's rows on the "
+                                      "same side, so repeat measurements cannot leak across.")
+
+GRAIN = {
+    "key": "grain",
+    "title": "Whether people repeat",
+    "question": "Can one person appear in more than one row?",
+    "one_liner": "You know this and the file only hints at it; the held-out rows cannot be drawn "
+                 "correctly without it.",
+    "why": "If one person's rows land on both sides of the split, the model is scored on people it "
+           "has already seen, and every score is inflated. A column that repeats is a suggestion, "
+           "never the answer: the app checks your answer against the data and says so when they "
+           "disagree.",
+    "consumer": "The seal's grouping, the repeats and unit questions, and every cross-validation "
+                "fold read it.",
+    "options": [
+        option("one_row_per_unit", "One row each",
+               "Each row is a different person; the split may draw rows freely."),
+        option("repeated", "People repeat",
+               "Rows sharing an identifier stay together; the next questions ask what repeats."),
+    ],
+    "terms": [
+        GROUPED_SPLIT,
+        term("grain", "What one row of the table is: one person, one visit, one recall or one "
+                      "sample."),
+    ],
+    "drawer": {"sections": [
+        section("Split by participant",
+                "With repeated recalls, a row-level split puts one person's days on both sides and "
+                "inflates every score. Split by participant, not by row.",
+                "SETTLED", NUT08),
+        section("What repeats can look like",
+                "Duplicate participant identifiers mean repeated measures; look for the occasion "
+                "too, such as a day, visit or recall number, or a date. Twin columns such as "
+                "`DR1TKCAL` and `DR2TKCAL` are the same structure in wide form.",
+                "SETTLED", NUT01),
+    ]},
+    "evidence": ev("SETTLED", NUT08),
+}
+
+REPEAT_KIND = {
+    "key": "repeat_kind",
+    "title": "What repeats",
+    "question": "Are these repeats or different time points?",
+    "one_liner": "Replicates of one quantity can be averaged; time points carry change that "
+                 "averaging would erase.",
+    "why": "Two recalls days apart measure one usual diet twice, so their mean reduces "
+           "day-to-day error. Clinic visits months apart measure a person changing, so the order "
+           "is the signal. Dates with no visit structure suggest repeats; a visit label or "
+           "spaced dates suggest time points. Where the evidence is thin, this is asked.",
+    "consumer": "The aggregation menu, its recommended default and the temporal question read "
+                "it.",
+    "options": [
+        option("repeats", "Repeats",
+               "Repeated measurements of one quantity, such as two recalls; averaging is offered "
+               "first."),
+        option("time_points", "Time points",
+               "Different moments in time; averaging is not offered first, and order matters."),
+    ],
+    "terms": [
+        term("replicate", "A repeated measurement of the same quantity under the same "
+                          "conditions, such as a second recall of usual diet."),
+        term("time point", "A measurement at a distinct moment, such as a visit, where change "
+                           "between moments is part of the data."),
+    ],
+    "drawer": {"sections": [
+        section("Why two recalls exist",
+                "A single 24-hour recall measures one day, not usual diet. Two or more "
+                "non-consecutive recalls separate day-to-day variation from real differences "
+                "between people; with one recall that separation is impossible.",
+                "SETTLED", NUT03),
+        section("Consecutive days are not independent",
+                "Recalls on consecutive days have correlated errors, so within-person variation "
+                "is underestimated and the data look more reliable than they are. NHANES uses "
+                "non-consecutive days by design.",
+                "SETTLED", NUT03),
+    ]},
+    "evidence": ev("SETTLED", NUT03),
+}
+
+UNIT = {
+    "key": "unit",
+    "title": "One row in the analysis",
+    "question": "When you analyze this, what is one row?",
+    "one_liner": "People appear more than once; that leaves two honest options, and they lead to "
+                 "different analyses.",
+    "why": "One row per person combines each person's records, and the next question asks how. "
+           "One row per record keeps them as they are, and the split keeps each person's records "
+           "on one side. There is no default: guessing here is how the leak this check exists "
+           "to prevent begins.",
+    "consumer": "The aggregation question, the working table, the participant flow and the seal "
+                "read it.",
+    "options": [
+        option("unit", "One row per person",
+               "Each person's records are combined into one row; the next question asks how."),
+        option("row", "One row per record",
+               "Records stay as they are; held-out people never appear in training."),
+    ],
+    "terms": [
+        GROUPED_SPLIT,
+        term("unit of analysis", "What one row of the modeled table stands for: a person, or one "
+                                 "of their records."),
+    ],
+    "drawer": {"sections": [
+        section("Leakage across a person's rows",
+                "If a person contributes several recalls, rows from the same person must never "
+                "be split across training and test folds; anything estimated from the data, such "
+                "as a residual energy adjustment, is fit inside the training fold.",
+                "SETTLED", NUT03),
+    ]},
+    "evidence": None,
+}
+
+AGGREGATION = {
+    "key": "aggregation",
+    "title": "Combining each person's rows",
+    "question": "How should each person's rows be combined?",
+    "one_liner": "The right summary depends on what repeats: averaging replicates reduces error, "
+                 "averaging time points destroys the signal.",
+    "why": "For repeated recalls, the mean is an acceptable exposure for ranking people: still "
+           "attenuated, but unbiased in direction. For visits, choose the baseline, the last "
+           "visit or the change by what the study asks. When the outcome itself varies within a "
+           "person, say which value is the outcome.",
+    "consumer": "The working table, the participant flow, the seal and every model read the "
+                "combined rows.",
+    "options": [
+        option("mean", "Mean", "Each person's rows are averaged; replicates' day-to-day error "
+                               "shrinks."),
+        option("first", "First (baseline)", "Each person keeps their first row, such as the "
+                                             "baseline visit."),
+        option("last", "Last", "Each person keeps their most recent row."),
+        option("change", "Change from baseline",
+               "Each measurement becomes the last value minus the first: change over time."),
+    ],
+    "terms": [
+        term("attenuation", "The shrinking of an association toward zero because the exposure "
+                            "is measured with error; averaging more days reduces it."),
+        term("usual intake", "A person's long-run average intake, which single days only "
+                             "estimate; modeling it properly is more than a mean."),
+    ],
+    "drawer": {"sections": [
+        section("When the mean is adequate",
+                "To rank people for regression, classification or a predictive model, the mean of "
+                "the available recalls is an acceptable exposure: attenuated, but unbiased in "
+                "direction under classical error, and what most cohort analyses use.",
+                "CONVENTION", NUT03),
+        section("When the mean is not adequate",
+                "Prevalence or percentile claims about usual intake, episodically consumed foods "
+                "with many zero days, and exposure coefficients that must be unbiased in "
+                "magnitude all need usual-intake modeling, which this version does not fit.",
+                "SETTLED", NUT03),
+        section("Cumulative averages over follow-up",
+                "With repeated questionnaires, the cohort standard is the cumulative average up "
+                "to each event; if diet changes because of preclinical disease, a lag is "
+                "conventional.",
+                "CONVENTION", NUT03),
+    ]},
+    "evidence": ev("CONVENTION", NUT03),
+}
+
+TEMPORAL = {
+    "key": "temporal",
+    "title": "Predicting forward in time",
+    "question": "Are you predicting something later from measurements taken earlier?",
+    "one_liner": "A random split is optimistic when the task looks forward; the held-out rows "
+                 "should then be the latest.",
+    "why": "With visits kept as rows, a random split lets the model learn from a person's later "
+           "visits and be scored on their earlier ones. Validation in time, holding out the "
+           "latest rows, is a distinct check from validation on random rows, and reporting "
+           "guidelines treat it so.",
+    "consumer": "The seal: chronological when yes, grouped by person either way.",
+    "options": [
+        option("true", "Yes, later from earlier",
+               "The held-out rows are the latest, and each person's rows stay together."),
+        option("false", "No",
+               "The held-out rows are drawn at random, each person's rows kept together."),
+    ],
+    "terms": [
+        GROUPED_SPLIT,
+        term("chronological split", "A split that holds out the latest rows by date, so models "
+                                    "are scored only on what came after their training data."),
+    ],
+    "drawer": {"sections": [
+        section("Split by participant",
+                "Split by participant, not by row, and fit everything learned from data inside "
+                "the training fold only.",
+                "SETTLED", NUT08),
+        section("Resample the whole pipeline",
+                "Internal validation must resample the entire modeling pipeline: imputation, "
+                "transformation, selection and tuning.",
+                "SETTLED", CLIN_A55),
+    ]},
+    "evidence": None,
+}
+
 ROLES = {
     "key": "roles",
     "title": "What each column is",
@@ -301,16 +626,15 @@ ROLES = {
 
 EXCLUSIONS = {
     "key": "exclusions",
-    "title": "Rows to exclude",
-    "question": "Should any rows be excluded as implausible before modeling?",
-    "one_liner": "An exclusion changes N and is reported in the participant flow, so nothing is "
-                 "removed unless you choose it.",
-    "why": "A 300 kcal recall is under-reporting, not starvation. The fixed screens genuinely "
-           "differ across literatures, so each is offered with the rows it would remove from your "
-           "table. Under-reporting concentrates in people with higher BMI, so excluding it "
-           "removes a non-random slice; many analyses keep everyone and treat exclusion as a "
-           "sensitivity analysis.",
-    "consumer": "The participant flow, the split and every model's rows read it.",
+    "title": "Who the study is about",
+    "question": "Is your study restricted to part of this data?",
+    "one_liner": "A restriction comes from your research question, so the outcome's distribution "
+                 "is not shown here.",
+    "why": "A criterion such as an age range changes N and is reported in the participant flow "
+           "before any rows are sealed. A cut chosen by looking at the outcome is data-driven "
+           "selection, its own bias. Implausible-intake screens are offered with the rows each "
+           "removes; under-reporting concentrates in higher BMI, so many analyses keep everyone.",
+    "consumer": "The participant flow, the seal and every model's rows read it.",
     "options": [
         option("none", "Keep every row",
                "No row is excluded; the record states that no exclusion was applied."),
@@ -324,6 +648,8 @@ EXCLUSIONS = {
                "Rows outside a range you set on any numeric column are excluded."),
     ],
     "terms": [
+        term("eligibility criterion", "Who the study is about, such as an age range: applied to "
+                                      "every row before the seal and reported with its count."),
         term("implausible intake", "A reported day's energy intake too low or too high to be a "
                                    "real diet, usually a reporting error."),
         term("under-reporting", "Reporting less than was eaten. It is systematic, concentrated in "
@@ -333,6 +659,11 @@ EXCLUSIONS = {
                                  "offered in this version."),
     ],
     "drawer": {"sections": [
+        section("Each criterion its own box",
+                "Track the rows through every filter, each eligibility criterion separately, with "
+                "its reason and its count. A single excluded box tells a reader nothing about who "
+                "is missing from the model's population.",
+                "CONVENTION", CLIN_A41),
         section("The screens in circulation",
                 "Willett and the Nurses' Health Study use 500–3,500 kcal a day for women and "
                 "800–4,200 for men. Variants use 4,000 or 5,000 as men's upper bound, or a "
@@ -409,14 +740,14 @@ MISSING = {
 
 SPLIT = {
     "key": "split",
-    "title": "Held-out rows",
-    "question": "How many rows should be held out for one final, untouched score?",
-    "one_liner": "Held-out rows are sealed until the end; every choice is tuned by "
-                 "cross-validation on the rest.",
-    "why": "A model scored on the rows it was tuned on grades its own homework. Cross-validation "
-           "reuses every training row for scoring, fold by fold; a holdout adds one honest final "
-           "number at the cost of training rows. At typical clinical sample sizes a single split "
-           "is the weakest check, so keep the holdout modest.",
+    "title": "The seal: held-out rows",
+    "question": "How many rows should be sealed for one final, untouched score?",
+    "one_liner": "Sealed rows are scored once, when you open the seal at the end; every choice is "
+                 "tuned by cross-validation on the rest.",
+    "why": "A model scored on the rows it was tuned on grades its own homework. The seal states "
+           "its basis: grouped by an identifier, repeats found but not grouped, or undetermined, "
+           "which is labeled exploratory. A small holdout measures little, so with few rows "
+           "cross-validation alone comes first.",
     "consumer": "The participant flow, every model's cross-validation and the held-out score read "
                 "it.",
     "options": [
@@ -432,6 +763,8 @@ SPLIT = {
     "terms": [
         term("holdout", "Rows set aside before any modeling and scored once, at the end; the "
                         "closest thing to new data you have."),
+        term("seal", "The line between the held-out rows and the rest: drawn before modeling, "
+                     "opened once, its basis stated."),
         term("cross-validation", "Splitting the training rows into folds, fitting on all but one "
                                  "and scoring on the one left out, in turn."),
         term("fold", "One of the equal parts cross-validation splits the training rows into; each "
@@ -506,6 +839,7 @@ ENERGY_ADJUSTMENT = {
                                  "1,000 kcal."),
         term("energy partition", "Splitting total energy into calories from the nutrient and "
                                  "calories from everything else, each its own term."),
+        NESTED,
     ],
     "drawer": {"sections": [
         section("Why adjust at all",
@@ -639,6 +973,7 @@ SUBSTITUTION = {
                            "parts are measured in calories."),
         term("support", "The range of diets actually present in your data; a curve beyond it is "
                         "extrapolation, so the curve stops there."),
+        NESTED,
     ],
     "drawer": {"sections": [
         section("Adjusting for energy is not enough",
@@ -665,5 +1000,42 @@ SUBSTITUTION = {
     "evidence": ev("SETTLED", NUT05),
 }
 
-ENTRIES = [LENS, TARGET, TASK, PURPOSE, ROLES, EXCLUSIONS, MISSING, SPLIT, ENERGY_ADJUSTMENT,
-           MODELS, SUBSTITUTION]
+OPEN_SEAL = {
+    "key": "open_seal",
+    "title": "Opening the seal",
+    "question": "Open the held-out rows and score the models once?",
+    "one_liner": "The held-out scores exist but are withheld until now; opening the seal fixes them "
+                 "in the record.",
+    "why": "Held-out rows give one honest number only if nothing was tuned against them. Once "
+           "opened, the scores stay in the record. A later change still refits every model, but "
+           "its sentence and the manuscript mark it as made after the seal was opened.",
+    "consumer": "The Results, the manuscript's performance table and the mark on any later "
+                "change read it.",
+    "options": [
+        option("open", "Open the seal",
+               "Each model is scored once on the held-out rows; those scores are fixed."),
+        option("keep", "Keep it sealed",
+               "The Results stay on cross-validation; the held-out rows stay unread."),
+    ],
+    "terms": [
+        term("post-seal", "A change made after the held-out scores were seen; the record and the "
+                          "manuscript mark it so."),
+    ],
+    "drawer": {"sections": [
+        section("What to report from the held-out rows",
+                "Discrimination ranks and calibration measures magnitude; you need both. Report "
+                "the C-statistic with its interval, the calibration intercept and slope, the "
+                "calibration curve and the Brier score.",
+                "SETTLED", CLIN_A53),
+        section("The whole pipeline, validated",
+                "Internal validation must resample the entire modeling pipeline, imputation and "
+                "tuning included. A single train and test split is the weakest option at typical "
+                "clinical sample sizes.",
+                "CONVENTION", CLIN_A55),
+    ]},
+    "evidence": None,
+}
+
+ENTRIES = [LENS, ORIENTATION, REPAIRS, TARGET, EVENT, TASK, PURPOSE, GRAIN, REPEAT_KIND, UNIT,
+           AGGREGATION, TEMPORAL, ROLES, EXCLUSIONS, MISSING, SPLIT, ENERGY_ADJUSTMENT, MODELS,
+           SUBSTITUTION, OPEN_SEAL]
