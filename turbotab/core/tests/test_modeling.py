@@ -513,7 +513,12 @@ def test_substitution_names_its_assumptions_and_skips_nothing_it_can_draw(table)
     assert [m["family"] for m in sub["models"]] == FAMILIES
     assert "fat_total is read as fat in grams at 9 kcal/g" in sub["note"]
     assert "Total energy was held fixed by assumption" in sub["note"]
-    assert all(m["ci_low"] is not None for m in sub["models"])
+    # No band unless one is asked for (M1_CONTRACT §12.7); its cost is measured and offered.
+    assert all(m["ci_low"] is None and m["ci_high"] is None for m in sub["models"])
+    assert sub["band"] is None and sub["band_estimate"]["n_boot"] == 50
+    assert sub["band_estimate"]["seconds"] > 0
+    assert "fat_sat, fat_mon and fat_poly are parts of fat_total" in sub["note"]
+    assert set(sub["carried"]) == {"fat_sat", "fat_mon", "fat_poly", "sugar"}
     assert {"donor": "fat_total", "recipient": "carb"} in design.data["substitution_pairs"]
     assert not any("sugar" in (p["donor"], p["recipient"]) for p in design.data["substitution_pairs"])
 

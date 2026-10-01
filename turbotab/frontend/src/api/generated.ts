@@ -187,6 +187,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/findings/{fid}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Finding Evidence
+         * @description The views that show why finding ``fid`` was raised, in the preview's vocabulary.
+         *
+         *     ``kind`` is the finding's family. Data-quality evidence reads every row, as the finding did;
+         *     evidence for a modeling choice never reads the held-out rows.
+         */
+        get: operations["finding_evidence_api_projects__pid__findings__fid__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/table": {
         parameters: {
             query?: never;
@@ -396,7 +419,15 @@ export interface components {
             /** Sentence */
             sentence: string | null;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"];
+        };
+        /** DistributionFrame */
+        DistributionFrame: {
+            /** Label */
+            label: string;
+            hist: components["schemas"]["HistogramData"];
+            /** X Label */
+            x_label: string | null;
         };
         /** DistributionView */
         DistributionView: {
@@ -421,8 +452,8 @@ export interface components {
             after_label: string;
             /** Marks */
             marks: components["schemas"]["Mark"][];
-            /** Cuts */
-            cuts: number[];
+            /** Story */
+            story: components["schemas"]["DistributionFrame"][];
         };
         /** Drawer */
         Drawer: {
@@ -510,7 +541,7 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"]) | null;
         };
         /**
          * FamilyInfo
@@ -533,6 +564,22 @@ export interface components {
             needs_scaling: boolean;
             /** Handles Missing */
             handles_missing: boolean;
+        };
+        /** FitLine */
+        FitLine: {
+            /** Slope */
+            slope: number;
+            /** Intercept */
+            intercept: number;
+        };
+        /** FrameRow */
+        FrameRow: {
+            /** Row Id */
+            row_id: number;
+            /** Values */
+            values: {
+                [key: string]: unknown;
+            };
         };
         /** FsEntry */
         FsEntry: {
@@ -648,6 +695,12 @@ export interface components {
              */
             collapsed: boolean;
         };
+        /** LineageFrame */
+        LineageFrame: {
+            /** Label */
+            label: string;
+            lineage: components["schemas"]["Lineage"];
+        };
         /** LineageLink */
         LineageLink: {
             /** Source */
@@ -697,10 +750,12 @@ export interface components {
             kind: "lineage";
             before: components["schemas"]["Lineage"] | null;
             after: components["schemas"]["Lineage"];
+            /** Story */
+            story: components["schemas"]["LineageFrame"][];
         };
         /**
          * Mark
-         * @description A value drawn on a distribution's axis, e.g. an exclusion cut-off.
+         * @description A labeled value on a distribution's axis, e.g. an exclusion cut-off ("500 kcal").
          */
         Mark: {
             /** Value */
@@ -709,6 +764,19 @@ export interface components {
             label: string;
             /** Group */
             group: string | null;
+        };
+        /**
+         * MissingSpec
+         * @description The missing-values answer: columns left out of the predictors, then a strategy for the rest.
+         */
+        MissingSpec: {
+            /**
+             * Strategy
+             * @enum {string}
+             */
+            strategy: "complete_case" | "impute";
+            /** Drop Columns */
+            drop_columns: string[];
         };
         /** PreviewResult */
         PreviewResult: {
@@ -741,8 +809,7 @@ export interface components {
             energy_adjustment: components["schemas"]["EnergyAdjustment"] | null;
             /** Exclusions */
             exclusions: components["schemas"]["ExclusionRule-Output"][] | null;
-            /** Missing */
-            missing: ("complete_case" | "impute") | null;
+            missing: components["schemas"]["MissingSpec"] | null;
             split: components["schemas"]["SplitSpec"] | null;
             /** Models */
             models: string[] | null;
@@ -816,6 +883,21 @@ export interface components {
             /** Exits */
             exits: components["schemas"]["Exit"][];
         };
+        /** RelationshipFrame */
+        RelationshipFrame: {
+            /** Label */
+            label: string;
+            /** Points */
+            points: [
+                number,
+                number
+            ][];
+            /** R */
+            r: number | null;
+            fit_line: components["schemas"]["FitLine"] | null;
+            /** Y Label */
+            y_label: string | null;
+        };
         /**
          * RelationshipView
          * @description A before/after scatter, e.g. a nutrient against energy before and after adjustment.
@@ -852,6 +934,8 @@ export interface components {
             r_before: number | null;
             /** R After */
             r_after: number | null;
+            /** Story */
+            story: components["schemas"]["RelationshipFrame"][];
         };
         /** Revert */
         Revert: {
@@ -862,6 +946,13 @@ export interface components {
             kind: "revert";
             /** Decision Id */
             decision_id: string;
+        };
+        /** RowFlowFrame */
+        RowFlowFrame: {
+            /** Label */
+            label: string;
+            /** Steps */
+            steps: components["schemas"]["RowStep"][];
         };
         /** RowFlowView */
         RowFlowView: {
@@ -880,6 +971,8 @@ export interface components {
             before: components["schemas"]["RowStep"][];
             /** After */
             after: components["schemas"]["RowStep"][];
+            /** Story */
+            story: components["schemas"]["RowFlowFrame"][];
         };
         /**
          * RowStep
@@ -996,8 +1089,14 @@ export interface components {
             /** Lenses */
             lenses: ("metabolomics" | "genomics" | "dietary" | "clinical" | "survey")[];
         };
-        /** SetMissing */
-        SetMissing: {
+        /**
+         * SetMissing
+         * @description How missing predictor values are handled.
+         *
+         *     ``drop_columns`` leave the predictors first (a mostly blank column that means "not asked"),
+         *     and the strategy applies to the predictors that remain; the cohort and the design read both.
+         */
+        "SetMissing-Input": {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1008,6 +1107,29 @@ export interface components {
              * @enum {string}
              */
             strategy: "complete_case" | "impute";
+            /** Drop Columns */
+            drop_columns?: string[];
+        };
+        /**
+         * SetMissing
+         * @description How missing predictor values are handled.
+         *
+         *     ``drop_columns`` leave the predictors first (a mostly blank column that means "not asked"),
+         *     and the strategy applies to the predictors that remain; the cohort and the design read both.
+         */
+        "SetMissing-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_missing";
+            /**
+             * Strategy
+             * @enum {string}
+             */
+            strategy: "complete_case" | "impute";
+            /** Drop Columns */
+            drop_columns: string[];
         };
         /** SetPurpose */
         SetPurpose: {
@@ -1077,7 +1199,10 @@ export interface components {
              */
             folds: number;
         };
-        /** SetSubstitution */
+        /**
+         * SetSubstitution
+         * @description The substitution to draw; ``n_boot > 0`` adds a band from that many bootstrap refits.
+         */
         "SetSubstitution-Input": {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1093,8 +1218,16 @@ export interface components {
              * @default 100
              */
             step_kcal: number;
+            /**
+             * N Boot
+             * @default 0
+             */
+            n_boot: number;
         };
-        /** SetSubstitution */
+        /**
+         * SetSubstitution
+         * @description The substitution to draw; ``n_boot > 0`` adds a band from that many bootstrap refits.
+         */
         "SetSubstitution-Output": {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1110,6 +1243,11 @@ export interface components {
              * @default 100
              */
             step_kcal: number;
+            /**
+             * N Boot
+             * @default 0
+             */
+            n_boot: number;
         };
         /** SetTarget */
         SetTarget: {
@@ -1220,6 +1358,11 @@ export interface components {
              * @default 100
              */
             step_kcal: number;
+            /**
+             * N Boot
+             * @default 0
+             */
+            n_boot: number;
         };
         /**
          * TableFocusView
@@ -1250,6 +1393,17 @@ export interface components {
             ][];
             /** N Affected Columns */
             n_affected_columns: number;
+            /** Story */
+            story: components["schemas"]["TableFrame"][];
+        };
+        /** TableFrame */
+        TableFrame: {
+            /** Label */
+            label: string;
+            /** Columns */
+            columns: string[];
+            /** Rows */
+            rows: components["schemas"]["FrameRow"][];
         };
         /** TableRow */
         TableRow: {
@@ -1335,6 +1489,31 @@ export interface components {
             /** Count */
             count: number;
         };
+        /**
+         * BandEstimate
+         * @description A measured estimate of what adding a band would cost: one refit per family, timed.
+         */
+        BandEstimate: {
+            /** N Boot */
+            n_boot: number;
+            /** Seconds */
+            seconds: number;
+        };
+        /**
+         * Baseline
+         * @description What predicting without the predictors scores on the same folds (M1_CONTRACT §12.6).
+         *
+         *     The outcome's training-fold mean for regression; the training-fold class prior for
+         *     classification. ``value`` is the CV mean of ``metric`` (the primary metric).
+         */
+        Baseline: {
+            /** Metric */
+            metric: string;
+            /** Value */
+            value: number | null;
+            /** Label */
+            label: string;
+        };
         /** Coefficient */
         Coefficient: {
             /** Feature */
@@ -1415,6 +1594,16 @@ export interface components {
             substitution_pairs: components["schemas"]["SubstitutionPair"][];
             /** Warnings */
             warnings: string[];
+            /**
+             * Nested
+             * @default []
+             */
+            nested: components["schemas"]["NestedColumn"][];
+            /**
+             * Left Out
+             * @default []
+             */
+            left_out: string[];
         };
         /** DesignModel */
         DesignModel: {
@@ -1592,6 +1781,19 @@ export interface components {
             fit_seconds: number;
             /** Concerns */
             concerns: string[];
+            baseline: components["schemas"]["Baseline"];
+        };
+        /**
+         * LeaveOut
+         * @description The offer: leave the likely-not-asked columns out, then handle the rest.
+         */
+        LeaveOut: {
+            /** Columns */
+            columns: string[];
+            /** N Rows */
+            n_rows: number;
+            /** Share */
+            share: number;
         };
         /** LensHint */
         LensHint: {
@@ -1627,6 +1829,41 @@ export interface components {
             folds: (number | null)[];
         };
         /**
+         * MissingColumn
+         * @description A predictor with blanks, counted among rows with the outcome measured.
+         */
+        MissingColumn: {
+            /** Column */
+            column: string;
+            /** N Missing */
+            n_missing: number;
+            /** Share */
+            share: number;
+            /** Likely Not Asked */
+            likely_not_asked: boolean;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * MissingReading
+         * @description What the missing-values question can offer on this table (M1_CONTRACT §12.4).
+         */
+        MissingReading: {
+            /** Columns */
+            columns: components["schemas"]["MissingColumn"][];
+            leave_out: components["schemas"]["LeaveOut"] | null;
+        };
+        /**
+         * NestedColumn
+         * @description A predictor that is part of another (``fat_sat`` of ``fat_total``), confirmed on training rows.
+         */
+        NestedColumn: {
+            /** Column */
+            column: string;
+            /** Parent */
+            parent: string;
+        };
+        /**
          * ProfileArtifact
          * @description The ``profile`` artifact.
          */
@@ -1640,12 +1877,13 @@ export interface components {
         };
         /**
          * ProposalsArtifact
-         * @description The ``proposals`` artifact: offered for the exclusions and energy questions.
+         * @description The ``proposals`` artifact: offered for the exclusions, missing-values and energy questions.
          */
         ProposalsArtifact: {
             /** Exclusions */
             exclusions: components["schemas"]["ExclusionProposal"][];
             energy: components["schemas"]["EnergyReading"] | null;
+            missing: components["schemas"]["MissingReading"];
             /** Basis */
             basis: string;
         };
@@ -1678,6 +1916,8 @@ export interface components {
             linked_to: string | null;
             /** Unit */
             unit: string | null;
+            /** Nested In */
+            nested_in: string | null;
         };
         /**
          * RolesArtifact
@@ -1766,6 +2006,31 @@ export interface components {
             basis: string;
             /** Models */
             models: components["schemas"]["SubstitutionModel"][];
+            /**
+             * Carried
+             * @default []
+             */
+            carried: string[];
+            /** @default null */
+            band: components["schemas"]["SubstitutionBand"] | null;
+            /** @default null */
+            band_estimate: components["schemas"]["BandEstimate"] | null;
+        };
+        /**
+         * SubstitutionBand
+         * @description How the band was made: refits of every family on bootstrap resamples of training rows.
+         */
+        SubstitutionBand: {
+            /** N Boot */
+            n_boot: number;
+            /** N Rows */
+            n_rows: number;
+            /** Grouped By */
+            grouped_by: string | null;
+            /** Seconds */
+            seconds: number;
+            /** Failed */
+            failed: number;
         };
         /** SubstitutionModel */
         SubstitutionModel: {
@@ -2067,7 +2332,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"];
             };
         };
         responses: {
@@ -2202,7 +2467,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"];
             };
         };
         responses: {
@@ -2225,6 +2490,56 @@ export interface operations {
                 };
             };
             /** @description The decision would be refused, or the table is not read yet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finding_evidence_api_projects__pid__findings__fid__evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+                fid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewResult"];
+                };
+            };
+            /** @description No such project, or no such finding now */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description The findings or the table are not read yet */
             409: {
                 headers: {
                     [name: string]: unknown;

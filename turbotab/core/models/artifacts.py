@@ -56,6 +56,13 @@ class SubstitutionPair(_Model):
     recipient: str
 
 
+class NestedColumn(_Model):
+    """A predictor that is part of another (``fat_sat`` of ``fat_total``), confirmed on training rows."""
+
+    column: str
+    parent: str
+
+
 class DesignArtifact(_Model):
     """The ``design`` artifact: each model's pipeline and the columns it will see."""
 
@@ -63,8 +70,10 @@ class DesignArtifact(_Model):
     matrix: MatrixShape
     models: list[DesignModel]
     estimand: str | None
-    substitution_pairs: list[SubstitutionPair]
+    substitution_pairs: list[SubstitutionPair]  # never a total paired with its own part
     warnings: list[str]
+    nested: list[NestedColumn] = []
+    left_out: list[str] = []  # predictors the missing-values answer left out
 
 
 class MetricSummary(_Model):
@@ -81,6 +90,18 @@ class Coefficient(_Model):
     p: float | None
 
 
+class Baseline(_Model):
+    """What predicting without the predictors scores on the same folds (M1_CONTRACT §12.6).
+
+    The outcome's training-fold mean for regression; the training-fold class prior for
+    classification. ``value`` is the CV mean of ``metric`` (the primary metric).
+    """
+
+    metric: str
+    value: float | None
+    label: str  # "the outcome's average" | "the class prior"
+
+
 class FittedModel(_Model):
     family: str
     label: str
@@ -88,7 +109,8 @@ class FittedModel(_Model):
     holdout: dict[str, float | None] | None
     coefficients: list[Coefficient] | None
     fit_seconds: float
-    concerns: list[str]
+    concerns: list[str]  # a family that scores worse than its baseline says so here, first
+    baseline: Baseline
 
 
 class FitArtifact(_Model):
@@ -113,6 +135,23 @@ class SubstitutionModel(_Model):
     effect_label: str | None
 
 
+class SubstitutionBand(_Model):
+    """How the band was made: refits of every family on bootstrap resamples of training rows."""
+
+    n_boot: int
+    n_rows: int  # training rows each resample is drawn from (at most 2,000)
+    grouped_by: str | None  # resampled by this identifier's units, when rows repeat
+    seconds: float
+    failed: int  # refits that could not be made (a resample with one class), left out
+
+
+class BandEstimate(_Model):
+    """A measured estimate of what adding a band would cost: one refit per family, timed."""
+
+    n_boot: int
+    seconds: float
+
+
 class SubstitutionArtifact(_Model):
     """The ``substitution`` artifact: one curve per fitted model."""
 
@@ -125,6 +164,9 @@ class SubstitutionArtifact(_Model):
     note: str
     basis: str
     models: list[SubstitutionModel]
+    carried: list[str] = []  # parts or totals that moved with the donor or the recipient
+    band: SubstitutionBand | None = None  # set when the substitution asked for n_boot > 0
+    band_estimate: BandEstimate | None = None  # "Add an uncertainty band (about N s)"
 
 
 MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
@@ -135,7 +177,7 @@ MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
 }
 
 __all__ = [
-    "Coefficient", "DesignArtifact", "DesignModel", "DesignStep", "FitArtifact", "FittedModel",
+    "BandEstimate", "Baseline", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "DesignModel", "DesignStep", "FitArtifact", "FittedModel",
     "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "ShelfArtifact", "ShelfFamily",
     "SubstitutionArtifact", "SubstitutionModel", "SubstitutionPair",
 ]

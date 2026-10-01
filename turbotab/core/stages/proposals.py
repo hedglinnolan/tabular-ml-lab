@@ -12,6 +12,11 @@ Two readings, both from ``docs/turbotab/research/NUTRITION_PACK.md``:
 * **Energy** (§04). The energy column, the energy-bearing nutrients, the strata a residual can be
   computed within, which of the five models can run on these columns, and the field's usual
   method (the Willett residual, CONVENTION) — first in order, never selected.
+* **Missing values** (M1_CONTRACT §12.4, under every lens). Each predictor with blanks, how many,
+  and whether the blanks likely mean "not asked": a mostly blank (≥ 50%) yes/no or
+  medication-like column, where a blank is a skipped question rather than an unknown value
+  (DRIVE_RUBRIC §4: median fill on ``meds_hbp`` would put every unknown on medication). The
+  missing-values question offers to leave those columns out before complete cases.
 
 Counts are made as the participant flow makes them: among rows with the outcome measured, when an
 outcome has been chosen. :func:`rule_excludes` is the one definition of what a rule removes.
@@ -41,6 +46,14 @@ ENERGY_EVIDENCE = {
 KCAL_PER_KJ = 4.184
 MAX_STRATA_LEVELS = 10
 USUAL_METHOD = "residual"
+NOT_ASKED_SHARE = 0.5  # a yes/no or medication column blank on at least this share
+MAX_MISSING_COLUMNS = 200  # predictors with blanks the reading lists, most blank first
+PREDICTOR_ROLES = ("exposure", "covariate", "energy")
+_MEDICATION = {
+    "med", "meds", "medication", "medications", "medicine", "medicines", "rx", "drug", "drugs",
+    "prescription", "prescribed", "treated", "treatment", "taking", "insulin", "statin", "statins",
+    "antihypertensive", "antihypertensives",
+}
 
 
 # ── what a rule removes ──────────────────────────────────────────────────────
@@ -229,7 +242,8 @@ def _parts_note(frame: pd.DataFrame, nutrients: Sequence[str]) -> list[str]:
         if inside >= 0.95:
             notes.append(
                 f"{listing(parts)} {'is a part' if len(parts) == 1 else 'are parts'} of {tick(total)}: "
-                f"choosing them together counts {role}'s energy twice in a partition or a substitution.")
+                f"choosing them together counts {role}'s energy twice in a partition; a substitution "
+                f"moves the parts with their total.")
     return notes
 
 
@@ -341,21 +355,84 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
     }
 
 
+def gappy_predictors(columns: Sequence[Mapping[str, Any]], roles: Mapping[str, str],
+                     target: str | None) -> list[str]:
+    """Predictors with any blank (by the ingest's counts), most blank first, at most 200."""
+    gappy = [c for c in columns if roles.get(str(c["name"])) in PREDICTOR_ROLES
+             and str(c["name"]) != target and int(c.get("n_missing") or 0) > 0]
+    gappy.sort(key=lambda c: -int(c.get("n_missing") or 0))
+    return [str(c["name"]) for c in gappy[:MAX_MISSING_COLUMNS]]
+
+
+def _yes_no(info: Mapping[str, Any] | None) -> bool:
+    return _dtype(info) == "boolean" or 1 <= int((info or {}).get("n_unique") or 0) <= 2
+
+
+def _blank_reason(share: float, yes_no: bool, medication: bool) -> str:
+    from turbotab.core.voice import tick
+
+    pct = tick(f"{share:.0%}")
+    if share >= NOT_ASKED_SHARE:
+        if yes_no and medication:
+            return f"A yes/no medication question blank on {pct} of rows: blank usually means not asked."
+        if yes_no:
+            return f"A yes/no answer blank on {pct} of rows: blank usually means not asked."
+        if medication:
+            return f"Medication use blank on {pct} of rows: blank usually means not asked."
+        return f"Blank on {pct} of rows; nothing says the blanks mean not asked."
+    return f"Blank on {pct} of rows."
+
+
+def missing_reading(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]],
+                    roles: Mapping[str, str], target: str | None) -> dict[str, Any]:
+    """Each predictor with blanks among rows with the outcome measured, and which mean "not asked".
+
+    ``leave_out`` is the offer the missing-values question makes: the likely-not-asked columns,
+    and the rows on which at least one of them is blank (the rows complete cases would lose to
+    them alone, at most).
+    """
+    info = {str(c["name"]): c for c in columns}
+    base = frame[target].notna() if target and target in frame.columns else pd.Series(True, index=frame.index)
+    n_base = int(base.sum())
+    out = []
+    for c in gappy_predictors(columns, roles, target):
+        if c not in frame.columns or not n_base:
+            continue
+        n = int((frame[c].isna() & base).sum())
+        if not n:
+            continue
+        share = n / n_base
+        yes_no = _yes_no(info.get(c))
+        medication = bool(set(_tokens(c)) & _MEDICATION)
+        out.append({"column": c, "n_missing": n, "share": round(share, 4),
+                    "likely_not_asked": bool(share >= NOT_ASKED_SHARE and (yes_no or medication)),
+                    "reason": _blank_reason(share, yes_no, medication)})
+    out.sort(key=lambda e: (-e["share"], e["column"]))
+    likely = [e["column"] for e in out if e["likely_not_asked"]]
+    leave_out = None
+    if likely:
+        n_rows = int((frame[likely].isna().any(axis=1) & base).sum())
+        leave_out = {"columns": likely, "n_rows": n_rows,
+                     "share": round(n_rows / n_base, 4) if n_base else 0.0}
+    return {"columns": out, "leave_out": leave_out}
+
+
 def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *,
                     lens: Sequence[str] | None, target: str | None,
                     roles: Mapping[str, str] | None = None) -> dict[str, Any]:
     """The proposals artifact from a frame holding (at least) the columns it reads.
 
-    ``columns`` are the ingest's column records (``name``, ``dtype``, ``n_unique``); ``roles``
-    the confirmed roles, else the proposed ones, else empty.
+    ``columns`` are the ingest's column records (``name``, ``dtype``, ``n_unique``,
+    ``n_missing``); ``roles`` the confirmed roles, else the proposed ones, else empty.
     """
     from turbotab.core.voice import tick
 
     info = {str(c["name"]): c for c in columns}
     roles = dict(roles or {})
+    missing = missing_reading(frame, columns, roles, target)
     if "dietary" not in (lens or []):
-        return {"exclusions": [], "energy": None,
-                "basis": "Nothing is proposed: the dietary lens is not chosen."}
+        return {"exclusions": [], "energy": None, "missing": missing,
+                "basis": "Only the missing-values reading is proposed: the dietary lens is not chosen."}
     energy = energy_column(info, roles)
     nutrients = nutrient_candidates(info, roles, energy=energy, target=target)
     sex, sex_levels = sex_column(info, frame, roles)
@@ -375,7 +452,7 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     if energy is not None or nutrients:
         reading = energy_reading(frame, info, roles, energy=energy, nutrients=nutrients, sex=sex,
                                  target=target)
-    return {"exclusions": exclusions, "energy": reading, "basis": basis}
+    return {"exclusions": exclusions, "energy": reading, "missing": missing, "basis": basis}
 
 
 def needed_columns(columns: Sequence[Mapping[str, Any]], *, target: str | None,
@@ -411,11 +488,11 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
     columns = ctx.inputs["ingest"]["columns"]
     roles = roles_from(state.roles, ctx.inputs.get("roles"))
     target = state.target
-    wanted = needed_columns(columns, target=target, roles=roles)
-    if "dietary" not in (state.lens or []):
-        return build_proposals(pd.DataFrame(), columns, lens=state.lens, target=target, roles=roles)
+    wanted = needed_columns(columns, target=target, roles=roles) if "dietary" in (state.lens or []) else []
+    wanted = list(dict.fromkeys([*wanted, *([target] if target else []),
+                                 *gappy_predictors(columns, roles, target)]))
     with open_store(ctx) as store:  # no column wanted still reads the row ids, so N is right
-        ctx.progress(0.2, "Reading the energy and nutrient columns")
+        ctx.progress(0.2, "Reading the energy, nutrient and blank columns")
         frame = store.materialize(wanted)
     ctx.progress(0.6, "Counting what each exclusion rule would remove")
     return build_proposals(frame, columns, lens=state.lens, target=target, roles=roles)
@@ -423,6 +500,7 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
 
 __all__ = [
     "ENERGY_EVIDENCE", "EXCLUSION_EVIDENCE", "build_proposals", "energy_bearing", "energy_column",
-    "exclusion_proposals", "level_key", "needed_columns", "nutrient_candidates", "proposals_stage",
+    "exclusion_proposals", "gappy_predictors", "level_key", "missing_reading", "needed_columns",
+    "nutrient_candidates", "proposals_stage",
     "roles_from", "rule_excludes", "sex_column", "strata_candidates",
 ]

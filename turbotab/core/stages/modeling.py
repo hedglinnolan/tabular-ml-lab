@@ -27,7 +27,8 @@ from turbotab.core.stages.data import open_store
 
 SUBSTITUTION_ROWS = 5_000
 SUBSTITUTION_STEPS = 10  # ks = 0, step, …, 10 × step
-SUBSTITUTION_BOOT = 200
+BAND_ROWS = 2_000  # each bootstrap refit of the band draws from at most this many training rows
+BAND_BOOT = 50  # the band the Results offer, and the one band_estimate times
 MAX_PAIRS = 60
 TRAIN = ("train", "training")
 
@@ -112,17 +113,26 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
 # ── design ────────────────────────────────────────────────────────────────────
 
 
-def substitution_pairs(predictors: Sequence[str], energy_column: str | None) -> list[dict[str, str]]:
-    """Ordered (donor, recipient) pairs of predictors that carry energy in a known unit."""
+def substitution_pairs(predictors: Sequence[str], energy_column: str | None,
+                       nested: Mapping[str, str] | None = None) -> list[dict[str, str]]:
+    """Ordered (donor, recipient) pairs of predictors that carry energy in a known unit.
+
+    A total is never paired with its own part (``nested``: child -> parent): kcal moved between
+    them go nowhere.
+    """
     from turbotab.core.methods.energy import energy_factor
 
+    nested = nested or {}
     bearing = [c for c in predictors if c != energy_column and energy_factor(c).factor is not None]
-    return [{"donor": d, "recipient": r} for d, r in permutations(bearing, 2)][:MAX_PAIRS]
+    return [{"donor": d, "recipient": r} for d, r in permutations(bearing, 2)
+            if nested.get(d) != r and nested.get(r) != d][:MAX_PAIRS]
 
 
 def design_stage(ctx: StageContext) -> Bundle:
     """Each chosen family's pipeline, and the lineage from raw columns to the model matrix."""
+    from turbotab.core.decisions import left_out
     from turbotab.core.methods.energy import METHOD_TABLE
+    from turbotab.core.methods.nesting import nested_components
     from turbotab.core.models.artifacts import DesignArtifact
     from turbotab.core.models.lineage import missing_counts, trace
     from turbotab.core.models.pipeline import (
@@ -130,8 +140,8 @@ def design_stage(ctx: StageContext) -> Bundle:
         describe_steps,
         design_spec,
         input_columns,
+        model_predictors,
         modeling_frame,
-        predictors_from_roles,
         shared_steps,
         transformer,
         warnings_for,
@@ -140,7 +150,7 @@ def design_stage(ctx: StageContext) -> Bundle:
     state = ctx.state
     task = _task(ctx)
     families = _families(ctx, task)
-    predictors = predictors_from_roles(state.roles, state.target)
+    predictors = model_predictors(state)
     if not predictors:
         raise ValueError("No column has the role exposure, covariate or energy, so there is "
                          "nothing to model the outcome with.")
@@ -151,7 +161,10 @@ def design_stage(ctx: StageContext) -> Bundle:
     with open_store(ctx) as store:
         X = modeling_frame(store, input_columns(predictors, adj), train_ids)
     spec = design_spec(state, X, predictors)
-    warnings_list = warnings_for(spec, X, [f.key for f in families], {f.key: f for f in families})
+    numeric = [c for c in spec.predictors if c in spec.numeric]
+    nested = nested_components(X, numeric)  # on training rows: what the substitution will move
+    warnings_list = warnings_for(spec, X, [f.key for f in families], {f.key: f for f in families},
+                                 nested)
 
     ctx.progress(0.3, "Fitting the shared steps on training rows")
     shared = transformer(shared_steps(spec))
@@ -171,13 +184,15 @@ def design_stage(ctx: StageContext) -> Bundle:
         matrix={"n_rows": n_rows, "n_cols": n_cols},
         models=models,
         estimand=METHOD_TABLE[adj.method]["estimand"] if adj is not None else None,
-        substitution_pairs=substitution_pairs(spec.predictors, energy_column),
+        substitution_pairs=substitution_pairs(spec.predictors, energy_column, nested),
         warnings=warnings_list,
+        nested=[{"column": c, "parent": p} for c, p in nested.items()],
+        left_out=[c for c in left_out(state) if c in (state.roles or {})],
     )
     return Bundle(
         data=artifact.model_dump(mode="json"),
         frames={"training": pd.DataFrame({"row_id": train_ids.astype(np.int64)})},
-        objects={"pipelines": pipelines, "spec": spec.to_dict()},
+        objects={"pipelines": pipelines, "spec": spec.to_dict(), "nested": nested},
     )
 
 
@@ -222,13 +237,66 @@ def _concerns(caught: Sequence[warnings.WarningMessage], n_fits: int) -> list[st
     return out
 
 
+BASELINE_LABEL = {"regression": "the outcome's average", "binary": "the class prior",
+                  "multiclass": "the class prior"}
+
+
+def baseline_model(task: str) -> Any:
+    """What predicts without the predictors: the training mean, or the training class prior."""
+    from sklearn.dummy import DummyClassifier, DummyRegressor
+
+    return DummyRegressor(strategy="mean") if task == "regression" else DummyClassifier(strategy="prior")
+
+
+def _baseline_scores(task: str, X: Any, y: Any, folds: Any, fold_keys: Sequence[int]) -> list[dict[str, float]]:
+    from turbotab.core.models.metrics import score
+
+    out = []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for k in fold_keys:
+            fit_rows, test_rows = folds != k, folds == k
+            dummy = baseline_model(task).fit(X[fit_rows], y[fit_rows])
+            out.append(score(task, dummy, X[test_rows], y[test_rows]))
+    return out
+
+
+def _two(a: float, b: float) -> tuple[str, str]:
+    """Two numbers to as few decimals (two at least) as tell them apart and keep each off zero,
+    with true minus signs: ``−0.04`` against ``−0.002``, never against ``−0.00``."""
+    def places(x: float) -> int:
+        return next((p for p in (2, 3, 4) if x == 0 or abs(x) >= 0.5 * 10 ** -p), 4)
+
+    pa, pb = places(a), places(b)
+    while f"{a:.{pa}f}" == f"{b:.{pb}f}" and max(pa, pb) < 4:
+        pa, pb = pa + 1, pb + 1
+    return f"{a:.{pa}f}".replace("-", "−"), f"{b:.{pb}f}".replace("-", "−")
+
+
+def baseline_concern(task: str, metric_label: str, model: float | None, base: float | None) -> str | None:
+    """A plain sentence when a family scores worse than its baseline on the primary metric."""
+    if model is None or base is None or not np.isfinite(model) or not np.isfinite(base) or model >= base:
+        return None
+    m, b = _two(model, base)
+    if task == "regression":
+        return f"Predicts worse than the outcome's average: CV {metric_label} {m}, against {b} for the average."
+    if task == "binary":
+        return f"Separates the classes worse than the class prior: CV {metric_label} {m}, against {b} for the prior."
+    return (f"Classifies worse than always guessing the most common class: CV {metric_label} {m}, "
+            f"against {b}.")
+
+
 def fit_stage(ctx: StageContext) -> Bundle:
-    """Cross-validate each pipeline on the split's folds, then refit on all training rows."""
+    """Cross-validate each pipeline on the split's folds, then refit on all training rows.
+
+    Each model is set beside its baseline on the same folds (the outcome's training-fold mean, or
+    the class prior), and a model that scores worse than it says so in its first concern.
+    """
     from sklearn.base import clone
 
     from turbotab.core.models import get_family
     from turbotab.core.models.artifacts import FitArtifact
-    from turbotab.core.models.metrics import PRIMARY, metric_labels, score, summarize
+    from turbotab.core.models.metrics import LABELS, PRIMARY, metric_labels, score, summarize
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
 
     state = ctx.state
@@ -258,6 +326,9 @@ def fit_stage(ctx: StageContext) -> Bundle:
     groups = frame.loc[train, grouped_by].to_numpy() if grouped_by else None
 
     keys = [k for k in (state.models or []) if k in pipelines]
+    primary = PRIMARY[task]
+    base_cv = summarize(task, _baseline_scores(task, X, y, folds, fold_keys))
+    baseline = {"metric": primary, "value": base_cv[primary]["mean"], "label": BASELINE_LABEL[task]}
     units = max(1, len(keys) * (len(fold_keys) + 2))
     done = 0
 
@@ -296,6 +367,10 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 concerns.append(f"The coefficient table could not be computed: {exc}")
             done += 1
         concerns = _concerns(caught, len(fold_keys) + 1) + concerns
+        cv = summarize(task, per_fold)
+        worse = baseline_concern(task, LABELS[primary], cv[primary]["mean"], baseline["value"])
+        if worse:
+            concerns.insert(0, worse)
         if coefficients is not None and groups is not None and state.purpose == "inference" \
                 and family.key == "linear":
             concerns.append(f"Confidence intervals are cluster-robust by {grouped_by}, because its "
@@ -304,16 +379,18 @@ def fit_stage(ctx: StageContext) -> Bundle:
         models.append({
             "family": key,
             "label": family.label,
-            "cv": summarize(task, per_fold),
+            "cv": cv,
             "holdout": holdout,
             "coefficients": coefficients,
             "fit_seconds": round(time.perf_counter() - started, 3),
             "concerns": concerns,
+            "baseline": baseline,
         })
     ctx.progress(1.0, "Done")
     artifact = FitArtifact(task=task, primary_metric=PRIMARY[task], metric_labels=metric_labels(task),
                            n_train=int(train.sum()), n_holdout=int((~train).sum()), models=models)
-    return Bundle(data=artifact.model_dump(mode="json"), objects={"fitted": fitted})
+    return Bundle(data=artifact.model_dump(mode="json"),
+                  objects={"fitted": fitted, "grouped_by": grouped_by})
 
 
 # ── substitution ─────────────────────────────────────────────────────────────
@@ -327,16 +404,26 @@ def _predictor(task: str, pipeline: Any) -> Any:
 
 
 def substitution_stage(ctx: StageContext) -> dict[str, Any]:
-    """Move k kcal from the donor to the recipient and follow each fitted model's prediction."""
+    """Move k kcal from the donor to the recipient and follow each fitted model's prediction.
+
+    The curve averages over at most 5,000 training rows. With ``n_boot > 0`` each family is also
+    refit on that many bootstrap resamples of at most 2,000 training rows, and the band is the
+    spread of the refits' curves (:func:`~turbotab.core.methods.substitution.refit_band`). Without
+    one, a single refit per family is timed, so the offer of a band can say what it costs.
+    """
+    from sklearn.base import clone
+
     from turbotab.core.methods.energy import energy_factor
-    from turbotab.core.methods.substitution import substitution_curve
+    from turbotab.core.methods.substitution import Shift, refit_band, substitution_curve
     from turbotab.core.models import get_family
     from turbotab.core.models.artifacts import SubstitutionArtifact
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
 
     sub = ctx.state.substitution
+    n_boot = int(getattr(sub, "n_boot", 0) or 0)
     fit, design = ctx.inputs["fit"], ctx.inputs["design"]
     spec = DesignSpec.from_dict(design.objects["spec"])
+    nested = dict(design.objects.get("nested") or {})
     task = fit.data["task"]
     for column in (sub.donor, sub.recipient):
         if column not in spec.inputs:
@@ -348,37 +435,80 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
             raise ValueError(f"{c} carries no energy in a known unit: {reading.reason}.")
     kcal_per_unit = {c: float(r.factor) for c, r in readings.items()}
 
-    train_ids = row_ids_of(design.frames["training"])
+    all_train = row_ids_of(design.frames["training"])
+    train_ids = all_train
     if len(train_ids) > SUBSTITUTION_ROWS:
         train_ids = np.sort(np.random.default_rng(0).choice(train_ids, SUBSTITUTION_ROWS, replace=False))
-    ctx.progress(0.05, "Reading training rows")
+    band_ids = train_ids
+    if len(band_ids) > BAND_ROWS:
+        band_ids = np.sort(np.random.default_rng(1).choice(band_ids, BAND_ROWS, replace=False))
+    target = ctx.state.target
+    grouped_by = (fit.objects or {}).get("grouped_by")
+    ctx.progress(0.02, "Reading training rows")
+    extra = [target] + ([grouped_by] if grouped_by and grouped_by not in spec.inputs
+                        and grouped_by != target else [])
     with open_store(ctx) as store:
         X = modeling_frame(store, spec.inputs, train_ids)
+        band_frame = modeling_frame(store, [*spec.inputs, *extra], band_ids)
     ks = [sub.step_kcal * i for i in range(SUBSTITUTION_STEPS + 1)]
-    target = ctx.state.target
+    shift = Shift(X, donor=sub.donor, recipient=sub.recipient, kcal_per_unit=kcal_per_unit,
+                  nested=nested)
     models = []
     note = None
     skipped = []
     fitted = fit.objects["fitted"]
+    pipelines = design.objects["pipelines"]
     keys = [m["family"] for m in fit.data["models"] if m["family"] in fitted]
+    drawable = [k for k in keys if task != "multiclass"]
+    slot = 0.93 / max(1, len(keys))  # each family's share of the progress bar, in order
+    X_band = band_frame[spec.inputs]
+    y_band = band_frame[target].to_numpy()
+    groups = band_frame[grouped_by].to_numpy() if grouped_by else None
+    band_seconds = 0.0
+    band_failed = 0
+    estimate = 0.0
     for i, key in enumerate(keys):
         if ctx.cancelled():
             raise Cancelled()
         family = get_family(key)
-        ctx.progress(0.1 + 0.85 * i / max(1, len(keys)), f"{family.label}: moving energy")
+        start = 0.05 + slot * i
+        ctx.progress(start, f"{family.label}: moving energy")
         if task == "multiclass":
             skipped.append(family.label)
             continue
         curve = substitution_curve(_predictor(task, fitted[key]), X, donor=sub.donor,
                                    recipient=sub.recipient, kcal_per_unit=kcal_per_unit, ks=ks,
-                                   total_kind="variable", n_boot=SUBSTITUTION_BOOT, random_state=0)
+                                   total_kind="variable", nested=nested)
         note = note or curve["note"]
-        models.append({
+        entry = {
             "family": key, "label": family.label, "delta": curve["delta"],
-            "ci_low": curve["ci_low"], "ci_high": curve["ci_high"],
+            "ci_low": None, "ci_high": None,
             "on_support_fraction": curve["on_support_fraction"], "stopped_at": curve["stopped_at"],
             "effect_label": curve["effect_label"],
-        })
+        }
+        if pipelines.get(key) is not None:
+            def refit(Xb: pd.DataFrame, yb: Any, _pipe: Any = pipelines[key]) -> Any:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    return _predictor(task, clone(_pipe).fit(Xb, yb))
+
+            if n_boot:
+                def progress(done: int, total: int, _lo: float = start + 0.1 * slot,
+                             _w: float = 0.9 * slot, _label: str = family.label) -> None:
+                    ctx.progress(_lo + _w * done / total, f"{_label}: refit {done} of {total}")
+
+                band = refit_band(refit, X_band, y_band, shift=shift, ks=ks, live=curve["live"],
+                                  n_boot=n_boot, groups=groups, random_state=0,
+                                  center=curve["delta"], progress=progress)
+                entry["ci_low"], entry["ci_high"] = band["ci_low"], band["ci_high"]
+                band_seconds += band["seconds"]
+                band_failed += band["failed"]
+            else:
+                ctx.progress(start + 0.5 * slot, f"{family.label}: timing one refit for the band")
+                timed = refit_band(refit, X_band, y_band, shift=shift, ks=ks, live=curve["live"],
+                                   n_boot=1, groups=groups, random_state=0)
+                estimate += timed["seconds"] * BAND_BOOT
+        models.append(entry)
     notes = [note] if note else []
     for c, reading in readings.items():
         if not reading.declared:
@@ -386,6 +516,15 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                          f"name does not state the unit.")
     if skipped:
         notes.append("A multiclass outcome has one curve per class, which is not drawn yet.")
+    band = None
+    if n_boot and models:
+        unit = f", resampling whole {grouped_by} units" if grouped_by else ""
+        fewer = (f"; each refit sees {len(band_ids):,} of the {len(all_train):,} training rows, so "
+                 f"the band errs wide" if len(band_ids) < len(all_train) else "")
+        notes.append(f"The band spans the middle 95% of {n_boot} refits of each model on "
+                     f"bootstrap resamples of training rows{unit}, drawn around the curve{fewer}.")
+        band = {"n_boot": n_boot, "n_rows": int(len(band_ids)), "grouped_by": grouped_by,
+                "seconds": round(band_seconds, 3), "failed": band_failed}
     if task == "binary" and keys:
         positive = fitted[keys[0]].classes_[1]
         outcome = f"the predicted probability that {target} is {positive}"
@@ -393,10 +532,17 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         outcome = f"predicted {target}"
     estimand = (f"The average change in {outcome} when k kcal move from {sub.donor} to "
                 f"{sub.recipient}, with every other input, total energy included, left as it was.")
+    if shift.carried:
+        estimand = (f"The average change in {outcome} when k kcal move from {sub.donor} to "
+                    f"{sub.recipient}, their parts or totals moving with them and every other "
+                    f"input, total energy included, left as it was.")
     artifact = SubstitutionArtifact(
         donor=sub.donor, recipient=sub.recipient, step_kcal=float(sub.step_kcal),
         ks=[float(k) for k in ks], total_kind="variable", estimand=estimand, note=" ".join(notes),
         basis=f"Averaged over {len(X):,} training rows.", models=models,
+        carried=list(shift.carried), band=band,
+        band_estimate=({"n_boot": BAND_BOOT, "seconds": round(estimate, 1)}
+                       if not n_boot and drawable and estimate else None),
     )
     ctx.progress(1.0, "Done")
     return artifact.model_dump(mode="json")

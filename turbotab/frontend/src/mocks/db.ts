@@ -627,13 +627,13 @@ function valueOf(d: Decision): ProjectState[Slot] {
     case "set_exclusions":
       return d.rules;
     case "set_missing":
-      return d.strategy;
+      return { strategy: d.strategy, drop_columns: d.drop_columns ?? [] };
     case "set_split":
       return { holdout: d.holdout, seed: d.seed ?? 0, folds: d.folds ?? 5 };
     case "select_models":
       return d.models;
     case "set_substitution":
-      return { donor: d.donor, recipient: d.recipient, step_kcal: d.step_kcal ?? 100 };
+      return { donor: d.donor, recipient: d.recipient, step_kcal: d.step_kcal ?? 100, n_boot: d.n_boot ?? 0 };
     case "revert":
       return null;
   }

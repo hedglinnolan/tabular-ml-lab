@@ -326,7 +326,10 @@ def _slot_value(slot: str, value: Any) -> str | None:
         n = len(value)
         return "no exclusions" if n == 0 else f"{count(n)} exclusion {plural(n, 'rule')}"
     if slot == "missing":
-        return "complete cases" if value == "complete_case" else "imputation"
+        strategy = value if isinstance(value, str) else _attr(value, "strategy")
+        how = "complete cases" if strategy == "complete_case" else "imputation"
+        dropped = [] if isinstance(value, str) else list(_attr(value, "drop_columns") or [])
+        return f"{how}, with {listing(dropped)} left out" if dropped else how
     if slot == "split":
         holdout = float(_attr(value, "holdout") or 0)
         return "cross-validation only" if holdout == 0 else f"a {tick(f'{holdout:.0%}')} holdout"
@@ -522,14 +525,23 @@ def _set_exclusions(d: Any, state: Any, ctx: Any) -> str:
 
 @register_sentence("set_missing")
 def _set_missing(d: Any, state: Any, ctx: Any) -> str:
+    dropped = list(getattr(d, "drop_columns", None) or [])
+    first = ""
+    if dropped:
+        n = len(dropped)
+        first = (f"{listing(dropped)} {plural(n, 'was', 'were')} left out of the predictors; "
+                 f"then ")
     if d.strategy == "complete_case":
-        text = "Rows missing any predictor were dropped (a complete-case analysis)"
+        other = "any other predictor" if dropped else "any predictor"
+        text = f"{first}rows missing {other} were dropped (a complete-case analysis)"
         kept, before = _get(ctx, "n_complete"), _get(ctx, "n_before")
         if kept is not None and before:
             text += f": {count(kept)} of {count(before)} rows remain"
-        return text
-    return ("Missing predictor values were imputed, learned from training rows only; "
-            "no row was dropped for a missing predictor")
+        return text[0].upper() + text[1:]
+    others = "the other predictors' missing values" if dropped else "missing predictor values"
+    text = (f"{first}{others} were imputed, learned from training rows only; no row was dropped "
+            f"for a missing predictor")
+    return text[0].upper() + text[1:]
 
 
 # set_split
@@ -638,8 +650,13 @@ def _select_models(d: Any, state: Any, ctx: Any) -> str:
 def _set_substitution(d: Any, state: Any, ctx: Any) -> str:
     energy = getattr(getattr(state, "energy_adjustment", None), "energy_column", None)
     fixed = f"with {tick(energy)} held fixed" if energy else "at the same total energy"
-    return (f"The substitution studied is {tick(d.donor)} replaced by {tick(d.recipient)}, in steps "
+    text = (f"The substitution studied is {tick(d.donor)} replaced by {tick(d.recipient)}, in steps "
             f"of {tick(number(d.step_kcal))} kcal {fixed}")
+    n_boot = int(getattr(d, "n_boot", 0) or 0)
+    if n_boot:
+        text += (f"; its band comes from {count(n_boot)} refits of each model on bootstrap "
+                 f"resamples of training rows")
+    return text
 
 
 def kinds() -> list[str]:
