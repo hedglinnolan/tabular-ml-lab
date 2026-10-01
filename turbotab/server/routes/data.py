@@ -1,7 +1,7 @@
 """UI reads: row windows, column summaries, histograms. Each is a query over Parquet."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, Response
 
 from turbotab.core.datastore import MAX_HISTOGRAM_BINS, MAX_WINDOW_ROWS, UnknownColumn
 from turbotab.server.errors import ApiError
@@ -48,18 +48,45 @@ def table(
     limit: int = Query(100, ge=0, le=MAX_WINDOW_ROWS),
     columns: str | None = Query(None, description="Comma-separated column names; default: all"),
 ) -> dict:
-    """Rows ``[offset, offset + limit)`` in file order."""
+    """Rows ``[offset, offset + limit)`` in file order, of the ``columns`` asked for (the ones a
+    grid shows): only those are read, so a window of a 20,000-column table costs what its
+    visible columns cost."""
     store = get_service(request).store(pid)
     return store.window(offset, limit, parse_columns(columns, store.columns))
+
+
+def matching(names: list[str], query: str | None) -> list[str]:
+    """Columns whose name holds every word of ``query`` (any case), in table order."""
+    words = (query or "").lower().split()
+    if not words:
+        return names
+    return [n for n in names if all(w in n.lower() for w in words)]
 
 
 @router.get(
     "/projects/{pid}/columns",
     response_model=list[ColumnSummary],
-    responses={404: refusal("No such project"), 409: NOT_READY},
+    responses={404: refusal("No such project or column"), 409: NOT_READY},
 )
-def columns(request: Request, pid: str) -> list[dict]:
-    return get_service(request).store(pid).summaries()
+def columns(
+    request: Request,
+    response: Response,
+    pid: str,
+    query: str | None = Query(None, description="Words every returned column name holds, any case"),
+    names: str | None = Query(None, description="Comma-separated column names; default: all"),
+    offset: int = Query(0, ge=0),
+    limit: int | None = Query(None, ge=0, description="At most this many; default: every match"),
+) -> list[dict]:
+    """Column summaries in table order. A wide table's roles list searches with ``query`` and
+    pages with ``offset``/``limit``; ``X-Total-Count`` is the number of matches before paging."""
+    store = get_service(request).store(pid)
+    if query is None and names is None and offset == 0 and limit is None:
+        return store.summaries()
+    chosen = parse_columns(names, store.columns) if names else store.columns
+    found = matching(chosen, query)
+    response.headers["X-Total-Count"] = str(len(found))
+    page = found[offset:] if limit is None else found[offset:offset + limit]
+    return store.summaries(page) if page else []
 
 
 @router.get(

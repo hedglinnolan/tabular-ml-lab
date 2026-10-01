@@ -45,7 +45,10 @@ class ElasticNet(FamilyBase):
         if task == "regression":
             from sklearn.linear_model import ElasticNetCV
 
-            return ElasticNetCV(l1_ratio=list(L1_RATIOS), cv=cv, max_iter=5000)
+            from turbotab.core.models.wide import for_wide  # p > n: float32 and threads
+
+            return for_wide(ElasticNetCV(l1_ratio=list(L1_RATIOS), cv=cv, max_iter=5000),
+                            n_rows, n_features)
         from sklearn.linear_model import LogisticRegressionCV
 
         return LogisticRegressionCV(

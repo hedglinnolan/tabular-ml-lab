@@ -219,7 +219,9 @@ export interface paths {
         };
         /**
          * Table
-         * @description Rows ``[offset, offset + limit)`` in file order.
+         * @description Rows ``[offset, offset + limit)`` in file order, of the ``columns`` asked for (the ones a
+         *     grid shows): only those are read, so a window of a 20,000-column table costs what its
+         *     visible columns cost.
          */
         get: operations["table_api_projects__pid__table_get"];
         put?: never;
@@ -237,7 +239,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Columns */
+        /**
+         * Columns
+         * @description Column summaries in table order. A wide table's roles list searches with ``query`` and
+         *     pages with ``offset``/``limit``; ``X-Total-Count`` is the number of matches before paging.
+         */
         get: operations["columns_api_projects__pid__columns_get"];
         put?: never;
         post?: never;
@@ -3005,7 +3011,15 @@ export interface operations {
     };
     columns_api_projects__pid__columns_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Words every returned column name holds, any case */
+                query?: string | null;
+                /** @description Comma-separated column names; default: all */
+                names?: string | null;
+                offset?: number;
+                /** @description At most this many; default: every match */
+                limit?: number | null;
+            };
             header?: never;
             path: {
                 pid: string;
@@ -3023,7 +3037,7 @@ export interface operations {
                     "application/json": components["schemas"]["ColumnSummary"][];
                 };
             };
-            /** @description No such project */
+            /** @description No such project or column */
             404: {
                 headers: {
                     [name: string]: unknown;

@@ -604,13 +604,14 @@ def _columns_view(before_cols: list[str], after_cols: list[str], added: list[str
     status = {**{c: "kept" for c in before_cols}, **{c: "changed" for c in changed},
               **{c: "dropped" for c in removed}, **{c: "new" for c in added}}
     group_of = status.get  # collapsed groups say what happened to their columns
+    changed_set, after_set = set(changed), set(after_cols)  # once, not once per column
     before_lineage = lineage_of(
         [("raw", c, None) for c in before_cols],
         [], touched=touched, group_of=lambda c: group_of(c) or "kept")
     after_lineage = lineage_of(
         [("raw", c, None) for c in before_cols] + [("matrix", c, None) for c in after_cols],
-        [(f"raw:{c}", f"matrix:{c}", "changed" if c in set(changed) else "kept")
-         for c in before_cols if c in set(after_cols)],
+        [(f"raw:{c}", f"matrix:{c}", "changed" if c in changed_set else "kept")
+         for c in before_cols if c in after_set],
         touched=touched, group_of=lambda c: group_of(c) or "kept")
     parts = []
     if added:
@@ -773,7 +774,8 @@ def _relationship_change(before: Any, after: Any, candidates: list[str],
     r = _corr_block(before, np.hstack([olds, news]), numeric)
     k = len(candidates)
     r_old, r_new = r[:, :k], r[:, k:]
-    moved = [i for i, c in enumerate(numeric) if c in set(changed)]
+    changed_set = set(changed)  # once, not once per column (20,000 of them)
+    moved = [i for i, c in enumerate(numeric) if c in changed_set]
     if moved:
         r_new[moved] = _corr_block(after, news, [numeric[i] for i in moved])
     delta = np.abs(r_new - r_old)

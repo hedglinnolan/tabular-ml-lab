@@ -79,9 +79,10 @@ def _names_out(step: Any, inputs: Sequence[str]) -> list[str]:
 
 def _map_by_name(outputs: Sequence[str], inputs: Sequence[str]) -> dict[str, list[str]]:
     by_length = sorted(inputs, key=len, reverse=True)
+    known = set(inputs)  # not `in inputs`: quadratic, a second a step at 20,000 columns
     mapping: dict[str, list[str]] = {}
     for out in outputs:
-        if out in inputs:
+        if out in known:
             mapping[out] = [out]
             continue
         parent = next((c for c in by_length if out.startswith(f"{c}_")), None)

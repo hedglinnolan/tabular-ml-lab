@@ -58,8 +58,15 @@ def modeling_frame(store: Any, columns: Sequence[str], row_ids: Any) -> pd.DataF
 
 
 def normalize_frame(frame: pd.DataFrame) -> pd.DataFrame:
-    out = {}
-    for name in frame.columns:
+    # Plain number columns pass as they are, so a 20,000-gene matrix with two text covariates
+    # converts two columns, not 20,000 (column by column that took most of a second).
+    plain = {dtype for dtype in set(frame.dtypes)
+             if pd.api.types.is_numeric_dtype(dtype) and not pd.api.types.is_bool_dtype(dtype)}
+    odd = [name for name, dtype in zip(frame.columns, frame.dtypes) if dtype not in plain]
+    if not odd:
+        return frame
+    out = frame.copy(deep=False)
+    for name in odd:
         series = frame[name]
         if pd.api.types.is_bool_dtype(series):
             series = series.astype(float)
@@ -73,7 +80,7 @@ def normalize_frame(frame: pd.DataFrame) -> pd.DataFrame:
         elif not pd.api.types.is_numeric_dtype(series):
             series = series.astype(object).where(series.notna(), np.nan)
         out[name] = series
-    return pd.DataFrame(out, index=frame.index)
+    return out
 
 
 def is_categorical(series: pd.Series) -> bool:

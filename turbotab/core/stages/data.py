@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from turbotab.core.graph import StageContext
+from turbotab.core.shape_memo import remembered
 
 LENSES = ("metabolomics", "genomics", "dietary", "clinical", "survey")
 HINT_SAMPLE_ROWS = 5_000
@@ -32,6 +33,7 @@ def ingest_stage(ctx: StageContext) -> dict[str, Any]:
     return info.to_dict()
 
 
+@remembered()  # packs.suggest reads each shape twice; once is enough (wide data)
 def profile_stage(ctx: StageContext) -> dict[str, Any]:
     """Column summaries over every row, and the packs' lens hints.
 
