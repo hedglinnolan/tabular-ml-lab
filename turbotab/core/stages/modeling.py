@@ -87,10 +87,19 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
     task = _task(ctx)
     predictors = list(data.get("predictors") or predictors_from_roles(ctx.state.roles, ctx.state.target))
     n = int(data["n_final"])
+    rows = row_ids_of(cohort.frames["rows"]) if isinstance(cohort, Bundle) and "rows" in cohort.frames else None
+    # The shelf informs a modeling choice made after the seal, so it reads the training rows only
+    # (M2_CONTRACT §3, the held-out discipline audit): never the held-out rows' outcomes.
+    split = ctx.inputs.get("split")
+    trained = rows is not None and split is not None
+    if trained:
+        assignment = read_assignment(split)
+        rows = np.intersect1d(rows, assignment.index[assignment["train"]].to_numpy())
+        n = int(len(rows))
     n_events = n_classes = None
-    if task != "regression" and isinstance(cohort, Bundle) and "rows" in cohort.frames:
+    if task != "regression" and rows is not None:
         with open_store(ctx) as store:
-            y = store.materialize([ctx.state.target], row_ids_of(cohort.frames["rows"]))
+            y = store.materialize([ctx.state.target], rows)
         counts = y[ctx.state.target].value_counts(dropna=True)
         n_classes = int(len(counts))
         if task == "binary" and n_classes:
@@ -105,7 +114,8 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
                         inductive_bias=f.inductive_bias)
             for i, (f, a) in enumerate(ranked)
         ],
-        basis=f"Ranked for {n:,} rows and {len(predictors):,} predictors{events}.",
+        basis=f"Ranked for {n:,} {'training ' if trained else ''}rows and {len(predictors):,} "
+              f"predictors{events}.",
     )
     return artifact.model_dump(mode="json")
 
@@ -309,8 +319,11 @@ def fit_stage(ctx: StageContext) -> Bundle:
 
     from turbotab.core.models import get_family
     from turbotab.core.models.artifacts import FitArtifact
+    from turbotab.core.models.baseline import no_better_concern, versus_baseline
+    from turbotab.core.models.inner_cv import with_grouped_inner_cv
     from turbotab.core.models.metrics import LABELS, PRIMARY, metric_labels, score, summarize
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
+    from turbotab.core.seal import SEALED_SCORES, sealed_scores_frame
 
     state = ctx.state
     task = _task(ctx)
@@ -340,7 +353,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
 
     keys = [k for k in (state.models or []) if k in pipelines]
     primary = PRIMARY[task]
-    base_cv = summarize(task, _baseline_scores(task, X, y, folds, fold_keys))
+    base_per_fold = _baseline_scores(task, X, y, folds, fold_keys)
+    base_cv = summarize(task, base_per_fold)
     baseline = {"metric": primary, "value": base_cv[primary]["mean"], "label": BASELINE_LABEL[task]}
     units = max(1, len(keys) * (len(fold_keys) + 2))
     done = 0
@@ -350,6 +364,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
 
     models: list[dict[str, Any]] = []
     fitted: dict[str, Any] = {}
+    sealed: dict[str, Any] = {}  # held-out scores: kept out of the public data (M2_CONTRACT §3)
     for key in keys:
         family = get_family(key)
         started = time.perf_counter()
@@ -361,13 +376,16 @@ def fit_stage(ctx: StageContext) -> Bundle:
                     raise Cancelled()
                 ctx.progress(share(done), f"{family.label}: fold {i + 1} of {len(fold_keys)}")
                 fit_rows, test_rows = folds != k, folds == k
-                model = clone(pipelines[key]).fit(X[fit_rows], y[fit_rows])
+                # An inner cross-validation (elastic net's penalty) is grouped as the split is.
+                model = with_grouped_inner_cv(clone(pipelines[key]),
+                                              None if groups is None else groups[fit_rows])
+                model = model.fit(X[fit_rows], y[fit_rows])
                 per_fold.append(score(task, model, X[test_rows], y[test_rows]))
                 done += 1
             if ctx.cancelled():
                 raise Cancelled()
             ctx.progress(share(done), f"{family.label}: refitting on all training rows")
-            final = clone(pipelines[key]).fit(X, y)
+            final = with_grouped_inner_cv(clone(pipelines[key]), groups).fit(X, y)
             done += 1
             holdout = score(task, final, X_hold, y_hold) if len(y_hold) else None
             ctx.progress(share(done), f"{family.label}: coefficients")
@@ -390,28 +408,37 @@ def fit_stage(ctx: StageContext) -> Bundle:
             if singular and not any("singular" in c for c in concerns):
                 concerns.insert(0, singular)
         cv = summarize(task, per_fold)
+        versus = versus_baseline(primary, [f[primary] for f in per_fold],
+                                 [b[primary] for b in base_per_fold])
         worse = baseline_concern(task, LABELS[primary], cv[primary]["mean"], baseline["value"])
-        if worse:
-            concerns.insert(0, worse)
+        tie = None if worse else no_better_concern(task, LABELS[primary], versus,
+                                                   cv[primary]["mean"], baseline["value"], _two)
+        if worse or tie:
+            concerns.insert(0, worse or tie)
         if coefficients is not None and groups is not None and state.purpose == "inference" \
                 and family.key == "linear":
             concerns.append(f"Confidence intervals are cluster-robust by {grouped_by}, because its "
                             f"rows repeat.")
         fitted[key] = final
+        sealed[key] = holdout
         models.append({
             "family": key,
             "label": family.label,
             "cv": cv,
-            "holdout": holdout,
+            "holdout": None,  # sealed: the server serves it once the seal is opened
             "coefficients": coefficients,
             "fit_seconds": round(time.perf_counter() - started, 3),
             "concerns": concerns,
             "baseline": baseline,
+            "versus_baseline": versus.model_dump(mode="json"),
         })
     ctx.progress(1.0, "Done")
+    n_holdout = int((~train).sum())
     artifact = FitArtifact(task=task, primary_metric=PRIMARY[task], metric_labels=metric_labels(task),
-                           n_train=int(train.sum()), n_holdout=int((~train).sum()), models=models)
-    return Bundle(data=artifact.model_dump(mode="json"),
+                           n_train=int(train.sum()), n_holdout=n_holdout, models=models,
+                           holdout_sealed=n_holdout > 0)
+    frames = {SEALED_SCORES: sealed_scores_frame(models, sealed)} if n_holdout else {}
+    return Bundle(data=artifact.model_dump(mode="json"), frames=frames,
                   objects={"fitted": fitted, "grouped_by": grouped_by})
 
 
@@ -486,6 +513,8 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     X_band = band_frame[spec.inputs]
     y_band = band_frame[target].to_numpy()
     groups = band_frame[grouped_by].to_numpy() if grouped_by else None
+    # Each unit of a refit's resample keeps one inner fold (its rows keep their row-id index).
+    group_of = pd.Series(groups, index=X_band.index) if groups is not None else None
     band_seconds = 0.0
     band_failed = 0
     estimate = 0.0
@@ -510,9 +539,12 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         }
         if pipelines.get(key) is not None:
             def refit(Xb: pd.DataFrame, yb: Any, _pipe: Any = pipelines[key]) -> Any:
+                from turbotab.core.models.inner_cv import with_grouped_inner_cv
+
+                inner = group_of.loc[Xb.index].to_numpy() if group_of is not None else None
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    return _predictor(task, clone(_pipe).fit(Xb, yb))
+                    return _predictor(task, with_grouped_inner_cv(clone(_pipe), inner).fit(Xb, yb))
 
             if n_boot:
                 def progress(done: int, total: int, _lo: float = start + 0.1 * slot,

@@ -488,6 +488,11 @@ export interface components {
             note: string | null;
             /** Sentence */
             sentence: string | null;
+            /**
+             * Post Seal
+             * @default false
+             */
+            post_seal: boolean;
             /** Decision */
             decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"];
         };
@@ -1954,6 +1959,24 @@ export interface components {
             /** Label */
             label: string;
         };
+        /**
+         * Chronology
+         * @description The chronological draw the temporal answer asked for, and whether it was drawn.
+         */
+        Chronology: {
+            /** Drawn */
+            drawn: boolean;
+            /** Time Column */
+            time_column: string | null;
+            /** Boundary */
+            boundary: string | null;
+            /** N Units */
+            n_units: number | null;
+            /** N Undated */
+            n_undated: number;
+            /** Sentence */
+            sentence: string;
+        };
         /** Coefficient */
         Coefficient: {
             /** Feature */
@@ -2202,6 +2225,21 @@ export interface components {
             n_holdout: number;
             /** Models */
             models: components["schemas"]["FittedModel"][];
+            /**
+             * Holdout Sealed
+             * @default false
+             */
+            holdout_sealed: boolean;
+            /**
+             * Changed After Seal
+             * @default false
+             */
+            changed_after_seal: boolean;
+            /**
+             * Post Seal Decisions
+             * @default []
+             */
+            post_seal_decisions: string[];
         };
         /** FittedModel */
         FittedModel: {
@@ -2224,6 +2262,8 @@ export interface components {
             /** Concerns */
             concerns: string[];
             baseline: components["schemas"]["Baseline"];
+            /** @default null */
+            versus_baseline: components["schemas"]["VersusBaseline"] | null;
         };
         /** GrainContradiction */
         GrainContradiction: {
@@ -2239,6 +2279,19 @@ export interface components {
             /** Evidence */
             evidence: components["schemas"]["RepetitionEvidence"][];
             if_one_row: components["schemas"]["GrainContradiction"] | null;
+        };
+        /** HoldoutOption */
+        HoldoutOption: {
+            /** Holdout */
+            holdout: number;
+            /** Label */
+            label: string;
+            /** N Holdout */
+            n_holdout: number;
+            /** Measures */
+            measures: string;
+            /** Below Floor */
+            below_floor: boolean;
         };
         /**
          * LeaveOut
@@ -2518,6 +2571,75 @@ export interface components {
             repeats: components["schemas"]["Repeats"] | null;
         };
         /**
+         * SealBasis
+         * @description How the held-out rows were drawn: one of four states, never inferred silently.
+         */
+        SealBasis: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "grouped" | "one_row_per_unit" | "abandoned" | "undetermined";
+            /** Column */
+            column: string | null;
+            /** Label */
+            label: string;
+            /** Sentence */
+            sentence: string;
+            /** Exploratory */
+            exploratory: boolean;
+            /** Source */
+            source: ("grain" | "roles" | "aggregation") | null;
+            /** N Units */
+            n_units: number | null;
+        };
+        /**
+         * SealFloor
+         * @description Below this many held-out rows (or events), cross-validation alone is offered first.
+         */
+        SealFloor: {
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "rows" | "events" | "rows in the rarest class";
+            /** N */
+            n: number;
+            /** Text */
+            text: string;
+            /** Source */
+            source: string | null;
+            /** Convention */
+            convention: boolean;
+        };
+        /**
+         * SealPlan
+         * @description The ``seal_plan`` artifact: what the split question can offer on this table.
+         */
+        SealPlan: {
+            /** Task */
+            task: string;
+            /** N Measured */
+            n_measured: number;
+            /** N Analyzed */
+            n_analyzed: number;
+            basis: components["schemas"]["SealBasis"];
+            chronology: components["schemas"]["Chronology"] | null;
+            /** Exploratory */
+            exploratory: boolean;
+            floor: components["schemas"]["SealFloor"];
+            /** Options */
+            options: components["schemas"]["HoldoutOption"][];
+            /** Cv First */
+            cv_first: boolean;
+            /** Reason */
+            reason: string;
+            /** Precision Note */
+            precision_note: string;
+            /** Refusal */
+            refusal: string | null;
+        };
+        /**
          * ShelfArtifact
          * @description The ``shelf`` artifact: every family that can model the task, best first.
          */
@@ -2587,6 +2709,10 @@ export interface components {
             stratified: boolean;
             /** Note */
             note: string;
+            basis: components["schemas"]["SealBasis"];
+            chronology: components["schemas"]["Chronology"] | null;
+            /** Exploratory */
+            exploratory: boolean;
         };
         /**
          * StructureArtifact
@@ -2737,6 +2863,25 @@ export interface components {
             min_rows_per_unit: number;
             /** N Missing */
             n_missing: number;
+        };
+        /**
+         * VersusBaseline
+         * @description A family's primary metric against its baseline's, paired over the same folds.
+         */
+        VersusBaseline: {
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "better" | "no_better" | "worse";
+            /** Metric */
+            metric: string;
+            /** Gain */
+            gain: number | null;
+            /** Tolerance */
+            tolerance: number;
+            /** Tolerance Basis */
+            tolerance_basis: string;
         };
         /**
          * WorkingArtifact

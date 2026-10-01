@@ -404,6 +404,10 @@ class DecisionRecord(BaseModel):
     # recorded (DESIGN_LANGUAGE §05.1: the receipt is a quotation, never a
     # composition). Backticks mark data values. None only for M0-era records.
     sentence: str | None = None
+    # Recorded after the held-out rows were opened (``open_seal``; M2_CONTRACT §3). Set when the
+    # record is appended, from the log as it stood; never by rewriting a past line, so every
+    # record from before the opening (and every pre-M2 line) reads False.
+    post_seal: bool = False
     decision: Decision
 
     @field_validator("at")
@@ -550,9 +554,17 @@ def register_kind(
     return model_cls
 
 
-def register_validator(kind: str, fn: Callable[[Any, Any], None]) -> None:
-    """Add a check for ``kind``. ``fn(decision, ctx)`` raises :class:`Refusal`."""
-    _VALIDATORS.setdefault(kind, []).append(fn)
+def register_validator(kind: str, fn: Callable[[Any, Any], None], *, first: bool = False) -> None:
+    """Add a check for ``kind``. ``fn(decision, ctx)`` raises :class:`Refusal`.
+
+    ``first`` runs it before the checks already registered: a refusal that outranks every other
+    reason (the seal's Decision A) is the one the user should read.
+    """
+    checks = _VALIDATORS.setdefault(kind, [])
+    if first:
+        checks.insert(0, fn)
+    else:
+        checks.append(fn)
 
 
 def validate(decision: Any, ctx: Any = None) -> Any:
@@ -1222,10 +1234,11 @@ class DecisionLog:
                 existing = self._load()
                 if isinstance(decision, Revert):
                     _check_revert(existing, decision)
+                before = fold(existing)
                 text: str | None = None
                 if sentence is not None:
                     try:
-                        text = sentence(decision, fold(existing))
+                        text = sentence(decision, before)
                     except Exception:  # noqa: BLE001 - a missing sentence never loses an answer
                         log.exception("no sentence for a %s decision", decision.kind)
                         text = None
@@ -1235,6 +1248,7 @@ class DecisionLog:
                     at=datetime.now(timezone.utc),
                     note=note,
                     sentence=text if isinstance(text, str) and text.strip() else None,
+                    post_seal=bool(before.seal_opened),
                     decision=decision,
                 )
                 data = (record.model_dump_json() + "\n").encode("utf-8")

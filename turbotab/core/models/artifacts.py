@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict
 from turbotab.core.consequences import Lineage
 from turbotab.core.decisions import Task
 from turbotab.core.models.base import Fit
+from turbotab.core.models.baseline import VersusBaseline
 
 
 class _Model(BaseModel):
@@ -106,11 +107,16 @@ class FittedModel(_Model):
     family: str
     label: str
     cv: dict[str, MetricSummary]
+    # Held-out scores: null while the seal is closed (M2_CONTRACT §3). The fit computes them once
+    # and keeps them out of its public data; the server fills them in after ``open_seal``.
     holdout: dict[str, float | None] | None
     coefficients: list[Coefficient] | None
     fit_seconds: float
-    concerns: list[str]  # a family that scores worse than its baseline says so here, first
+    concerns: list[str]  # a family that scores worse than, or no better than, its baseline says so first
     baseline: Baseline
+    # The primary metric against the baseline's, paired over the same folds, within a stated
+    # tolerance (turbotab/core/models/baseline.py). Null only in artifacts from before M2.
+    versus_baseline: VersusBaseline | None = None
 
 
 class FitArtifact(_Model):
@@ -122,6 +128,12 @@ class FitArtifact(_Model):
     n_train: int
     n_holdout: int
     models: list[FittedModel]
+    # True while held-out scores exist and the seal is not opened: every ``holdout`` is null.
+    holdout_sealed: bool = False
+    # Set by the server once the seal is opened: whether this fit differs from the one the seal was
+    # opened on, and the decisions made after the opening that changed what it reads.
+    changed_after_seal: bool = False
+    post_seal_decisions: list[str] = []
 
 
 class SubstitutionModel(_Model):

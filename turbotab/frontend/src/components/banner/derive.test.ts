@@ -70,6 +70,17 @@ const split: SplitArtifact = {
   n_groups: null,
   stratified: false,
   note: "",
+  basis: {
+    state: "one_row_per_unit",
+    column: null,
+    label: "one row per unit",
+    sentence: "Held out by row: each row was said to be a different unit, and no identifier repeats.",
+    exploratory: false,
+    source: "grain",
+    n_units: null,
+  },
+  chronology: null,
+  exploratory: false,
 };
 
 const node = (id: string, lane: "raw" | "adjusted" | "matrix", count = 1) => ({
@@ -122,6 +133,7 @@ const fit: FitArtifact = {
       fit_seconds: 0.03,
       concerns: [],
       baseline,
+      versus_baseline: null,
     },
     {
       family: "elastic_net",
@@ -132,6 +144,7 @@ const fit: FitArtifact = {
       fit_seconds: 0.8,
       concerns: [],
       baseline,
+      versus_baseline: null,
     },
     {
       family: "boosted_trees",
@@ -142,8 +155,12 @@ const fit: FitArtifact = {
       fit_seconds: 1.7,
       concerns: ["Predicts worse than the outcome's average: CV R² −0.04"],
       baseline,
+      versus_baseline: null,
     },
   ],
+  holdout_sealed: true,
+  changed_after_seal: false,
+  post_seal_decisions: [],
 };
 
 function input(over: Partial<BannerInput> = {}, viewOver: Partial<ProjectView> = {}): BannerInput {
