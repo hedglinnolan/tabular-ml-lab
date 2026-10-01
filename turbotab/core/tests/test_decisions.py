@@ -224,3 +224,34 @@ def test_validators_refuse_a_target_that_is_not_a_column():
 def test_register_kind_rejects_a_slot_the_state_does_not_have():
     with pytest.raises(ValueError, match="no slot"):
         d.register_kind(SetTarget, "not_a_slot")
+
+
+def test_a_keyed_slot_keeps_one_disposition_per_finding_and_a_revert_restores_the_earlier_one():
+    from turbotab.core.decisions import DecisionRecord, fold, parse_decision
+
+    def rec(i, d):
+        return DecisionRecord(id=f"d{i}", seq=i, at="2026-10-01T12:00:00Z", decision=parse_decision(d))
+
+    log = [
+        rec(1, {"kind": "apply_repair", "finding_id": "f1", "option": "set_missing"}),
+        rec(2, {"kind": "defer_finding", "finding_id": "f2", "to": "missing"}),
+        rec(3, {"kind": "dismiss_finding", "finding_id": "f1", "reason": "known"}),
+    ]
+    state = fold(log)
+    assert state.findings["f1"].action == "dismissed" and state.findings["f2"].to == "missing"
+    state = fold(log + [rec(4, {"kind": "revert", "decision_id": "d3"})])
+    assert state.findings["f1"].action == "applied" and state.findings["f1"].option == "set_missing"
+    state = fold(log + [rec(4, {"kind": "revert", "decision_id": "d2"})])
+    assert set(state.findings) == {"f1"}
+
+
+def test_the_event_level_stands_only_while_its_column_is_the_target():
+    from turbotab.core.decisions import DecisionRecord, fold, parse_decision
+
+    def rec(i, d):
+        return DecisionRecord(id=f"d{i}", seq=i, at="2026-10-01T12:00:00Z", decision=parse_decision(d))
+
+    log = [rec(1, {"kind": "set_target", "column": "dx"}),
+           rec(2, {"kind": "set_event", "column": "dx", "level": "case"})]
+    assert fold(log).event == "case"
+    assert fold(log + [rec(3, {"kind": "set_target", "column": "bmi"})]).event is None

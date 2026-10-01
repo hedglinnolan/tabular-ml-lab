@@ -606,6 +606,26 @@ function slotOf(d: Decision): Slot | null {
       return "models";
     case "set_substitution":
       return "substitution";
+    case "set_orientation":
+      return "orientation";
+    case "set_event":
+      return "event";
+    case "set_grain":
+      return "grain";
+    case "set_repeat_kind":
+      return "repeat_kind";
+    case "set_unit":
+      return "unit";
+    case "set_aggregation":
+      return "aggregation";
+    case "set_temporal":
+      return "temporal";
+    case "open_seal":
+      return "seal_opened";
+    case "apply_repair":
+    case "defer_finding":
+    case "dismiss_finding":
+      return "findings";
     case "revert":
       return null;
   }
@@ -630,13 +650,38 @@ function valueOf(d: Decision): ProjectState[Slot] {
     case "set_exclusions":
       return d.rules;
     case "set_missing":
-      return { strategy: d.strategy, drop_columns: d.drop_columns ?? [] };
+      return {
+        strategy: d.strategy,
+        drop_columns: d.drop_columns ?? [],
+        categorical: d.categorical ?? "impute",
+        indicators: d.indicators ?? false,
+      };
     case "set_split":
       return { holdout: d.holdout, seed: d.seed ?? 0, folds: d.folds ?? 5 };
     case "select_models":
       return d.models;
     case "set_substitution":
       return { donor: d.donor, recipient: d.recipient, step_kcal: d.step_kcal ?? 100, n_boot: d.n_boot ?? 0 };
+    // M2 kinds: the mock records them without modeling their effect (M2's mock work).
+    case "set_orientation":
+      return d.orientation;
+    case "set_event":
+      return d.level;
+    case "set_unit":
+      return d.unit;
+    case "open_seal":
+      return true;
+    case "set_grain":
+    case "set_repeat_kind":
+    case "set_aggregation":
+    case "set_temporal": {
+      const { kind: _k, ...value } = d;
+      return value as ProjectState[Slot];
+    }
+    case "apply_repair":
+    case "defer_finding":
+    case "dismiss_finding":
+      return null;
     case "revert":
       return null;
   }
@@ -661,6 +706,15 @@ export function fold(records: DecisionRecord[]): ProjectState {
     split: null,
     models: null,
     substitution: null,
+    orientation: null,
+    event: null,
+    grain: null,
+    repeat_kind: null,
+    unit: null,
+    aggregation: null,
+    temporal: null,
+    seal_opened: null,
+    findings: null,
   };
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }>();
   for (const r of [...records].sort((a, b) => a.seq - b.seq)) {

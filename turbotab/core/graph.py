@@ -296,6 +296,10 @@ class Bundle:
     data: Any
     frames: dict[str, Any] = field(default_factory=dict)
     objects: dict[str, Any] = field(default_factory=dict)
+    # Files the stage wrote itself (e.g. a working table written out-of-core by DuckDB), moved
+    # into the artifact folder on write; on read, absolute paths inside it. For data too large to
+    # pass through pandas — BLUEPRINT §2.
+    files: dict[str, Any] = field(default_factory=dict)
 LATEST = "latest"
 
 
@@ -335,7 +339,10 @@ def read_artifact(
             import joblib
 
             objects = {p.stem: joblib.load(p) for p in sorted((folder / "objects").glob("*.joblib"))}
-        return Bundle(data=data, frames=frames, objects=objects)
+        files: dict[str, Any] = {}
+        if (folder / "files").is_dir():
+            files = {p.name: p.resolve() for p in sorted((folder / "files").iterdir())}
+        return Bundle(data=data, frames=frames, objects=objects, files=files)
     if fmt == "parquet":
         import pandas as pd
 
@@ -412,6 +419,12 @@ def _dump(obj: Any, folder: Path) -> ArtifactFormat:
             (folder / "objects").mkdir()
             for name, thing in obj.objects.items():
                 joblib.dump(thing, folder / "objects" / f"{name}.joblib")
+        if obj.files:
+            (folder / "files").mkdir()
+            for name, source in obj.files.items():
+                if not name or "/" in name or name.startswith("."):
+                    raise ValueError(f"a Bundle file cannot be named {name!r}")
+                shutil.move(os.fspath(source), folder / "files" / name)
         return "bundle"
     if _json_like(obj):
         try:

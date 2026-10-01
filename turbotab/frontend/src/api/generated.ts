@@ -363,6 +363,56 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AggregationSpec */
+        AggregationSpec: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "mean" | "first" | "last" | "change";
+            /** Outcome */
+            outcome: ("mean" | "first" | "last") | null;
+        };
+        /**
+         * ApplyRepair
+         * @description Apply one of a finding's repair options. Row-local repairs rewrite the working table now;
+         *     statistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06).
+         */
+        "ApplyRepair-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "apply_repair";
+            /** Finding Id */
+            finding_id: string;
+            /** Option */
+            option: string;
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ApplyRepair
+         * @description Apply one of a finding's repair options. Row-local repairs rewrite the working table now;
+         *     statistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06).
+         */
+        "ApplyRepair-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "apply_repair";
+            /** Finding Id */
+            finding_id: string;
+            /** Option */
+            option: string;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+        };
         /**
          * Caution
          * @description A concern the preview itself shows, inside the stage, with the control that acts on it
@@ -439,7 +489,46 @@ export interface components {
             /** Sentence */
             sentence: string | null;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"];
+        };
+        /**
+         * DeferFinding
+         * @description Hold a finding until the question it belongs to; it resurfaces there, attributed.
+         */
+        DeferFinding: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "defer_finding";
+            /** Finding Id */
+            finding_id: string;
+            /** To */
+            to: string;
+        };
+        /** DismissFinding */
+        "DismissFinding-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "dismiss_finding";
+            /** Finding Id */
+            finding_id: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** DismissFinding */
+        "DismissFinding-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "dismiss_finding";
+            /** Finding Id */
+            finding_id: string;
+            /** Reason */
+            reason: string | null;
         };
         /** DistributionFrame */
         DistributionFrame: {
@@ -561,7 +650,7 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"]) | null;
         };
         /**
          * FamilyInfo
@@ -584,6 +673,24 @@ export interface components {
             needs_scaling: boolean;
             /** Handles Missing */
             handles_missing: boolean;
+        };
+        /** FindingDisposition */
+        FindingDisposition: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "applied" | "deferred" | "dismissed";
+            /** Option */
+            option: string | null;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** To */
+            to: string | null;
+            /** Reason */
+            reason: string | null;
         };
         /** FitLine */
         FitLine: {
@@ -620,6 +727,16 @@ export interface components {
             parent: string | null;
             /** Entries */
             entries: components["schemas"]["FsEntry"][];
+        };
+        /** GrainSpec */
+        GrainSpec: {
+            /**
+             * Grain
+             * @enum {string}
+             */
+            grain: "one_row_per_unit" | "repeated";
+            /** Id Column */
+            id_column: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -797,6 +914,28 @@ export interface components {
             strategy: "complete_case" | "impute";
             /** Drop Columns */
             drop_columns: string[];
+            /**
+             * Categorical
+             * @default impute
+             * @enum {string}
+             */
+            categorical: "missing_category" | "impute";
+            /**
+             * Indicators
+             * @default false
+             */
+            indicators: boolean;
+        };
+        /**
+         * OpenSeal
+         * @description Open the held-out rows: once, at the end. Held-out scores are withheld until then.
+         */
+        OpenSeal: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "open_seal";
         };
         /** PreviewResult */
         PreviewResult: {
@@ -835,6 +974,22 @@ export interface components {
             /** Models */
             models: string[] | null;
             substitution: components["schemas"]["SubstitutionSpec"] | null;
+            /** Orientation */
+            orientation: ("sample_major" | "feature_major") | null;
+            /** Event */
+            event: string | null;
+            grain: components["schemas"]["GrainSpec"] | null;
+            repeat_kind: components["schemas"]["RepeatSpec"] | null;
+            /** Unit */
+            unit: ("unit" | "row") | null;
+            aggregation: components["schemas"]["AggregationSpec"] | null;
+            temporal: components["schemas"]["TemporalSpec"] | null;
+            /** Seal Opened */
+            seal_opened: boolean | null;
+            /** Findings */
+            findings: {
+                [key: string]: components["schemas"]["FindingDisposition"];
+            } | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -958,6 +1113,16 @@ export interface components {
             /** Story */
             story: components["schemas"]["RelationshipFrame"][];
         };
+        /** RepeatSpec */
+        RepeatSpec: {
+            /**
+             * Repeat Kind
+             * @enum {string}
+             */
+            repeat_kind: "repeats" | "time_points";
+            /** Time Column */
+            time_column: string | null;
+        };
         /** Revert */
         Revert: {
             /**
@@ -1026,6 +1191,36 @@ export interface components {
             /** Models */
             models: string[];
         };
+        /** SetAggregation */
+        "SetAggregation-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_aggregation";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "mean" | "first" | "last" | "change";
+            /** Outcome */
+            outcome?: ("mean" | "first" | "last") | null;
+        };
+        /** SetAggregation */
+        "SetAggregation-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_aggregation";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "mean" | "first" | "last" | "change";
+            /** Outcome */
+            outcome: ("mean" | "first" | "last") | null;
+        };
         /** SetEnergyAdjustment */
         "SetEnergyAdjustment-Input": {
             /**
@@ -1075,6 +1270,21 @@ export interface components {
             strata: string | null;
         };
         /**
+         * SetEvent
+         * @description Which level of a binary outcome is the event. Stands only while ``column`` is the target.
+         */
+        SetEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_event";
+            /** Column */
+            column: string;
+            /** Level */
+            level: string;
+        };
+        /**
          * SetExclusions
          * @description Row exclusions; an empty list is the answer "keep every row".
          */
@@ -1099,6 +1309,36 @@ export interface components {
             kind: "set_exclusions";
             /** Rules */
             rules: components["schemas"]["ExclusionRule-Output"][];
+        };
+        /** SetGrain */
+        "SetGrain-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_grain";
+            /**
+             * Grain
+             * @enum {string}
+             */
+            grain: "one_row_per_unit" | "repeated";
+            /** Id Column */
+            id_column?: string | null;
+        };
+        /** SetGrain */
+        "SetGrain-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_grain";
+            /**
+             * Grain
+             * @enum {string}
+             */
+            grain: "one_row_per_unit" | "repeated";
+            /** Id Column */
+            id_column: string | null;
         };
         /** SetLens */
         SetLens: {
@@ -1130,6 +1370,17 @@ export interface components {
             strategy: "complete_case" | "impute";
             /** Drop Columns */
             drop_columns?: string[];
+            /**
+             * Categorical
+             * @default impute
+             * @enum {string}
+             */
+            categorical: "missing_category" | "impute";
+            /**
+             * Indicators
+             * @default false
+             */
+            indicators: boolean;
         };
         /**
          * SetMissing
@@ -1151,6 +1402,33 @@ export interface components {
             strategy: "complete_case" | "impute";
             /** Drop Columns */
             drop_columns: string[];
+            /**
+             * Categorical
+             * @default impute
+             * @enum {string}
+             */
+            categorical: "missing_category" | "impute";
+            /**
+             * Indicators
+             * @default false
+             */
+            indicators: boolean;
+        };
+        /**
+         * SetOrientation
+         * @description Which way round an assay table is; feature-major is transposed before any diagnosis.
+         */
+        SetOrientation: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_orientation";
+            /**
+             * Orientation
+             * @enum {string}
+             */
+            orientation: "sample_major" | "feature_major";
         };
         /** SetPurpose */
         SetPurpose: {
@@ -1164,6 +1442,36 @@ export interface components {
              * @enum {string}
              */
             purpose: "prediction" | "inference";
+        };
+        /** SetRepeatKind */
+        "SetRepeatKind-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_repeat_kind";
+            /**
+             * Repeat Kind
+             * @enum {string}
+             */
+            repeat_kind: "repeats" | "time_points";
+            /** Time Column */
+            time_column?: string | null;
+        };
+        /** SetRepeatKind */
+        "SetRepeatKind-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_repeat_kind";
+            /**
+             * Repeat Kind
+             * @enum {string}
+             */
+            repeat_kind: "repeats" | "time_points";
+            /** Time Column */
+            time_column: string | null;
         };
         /**
          * SetRoles
@@ -1299,6 +1607,46 @@ export interface components {
              * @enum {string}
              */
             task: "regression" | "binary" | "multiclass";
+        };
+        /** SetTemporal */
+        "SetTemporal-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_temporal";
+            /** Temporal */
+            temporal: boolean;
+            /** Time Column */
+            time_column?: string | null;
+        };
+        /** SetTemporal */
+        "SetTemporal-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_temporal";
+            /** Temporal */
+            temporal: boolean;
+            /** Time Column */
+            time_column: string | null;
+        };
+        /**
+         * SetUnit
+         * @description When a unit repeats: is one row of the analysis a unit (combined) or a record?
+         */
+        SetUnit: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_unit";
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "unit" | "row";
         };
         /** SplitSpec */
         SplitSpec: {
@@ -1489,6 +1837,13 @@ export interface components {
             term: string;
             /** Definition */
             definition: string;
+        };
+        /** TemporalSpec */
+        TemporalSpec: {
+            /** Temporal */
+            temporal: boolean;
+            /** Time Column */
+            time_column: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -2367,7 +2722,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"];
             };
         };
         responses: {
@@ -2502,7 +2857,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"];
             };
         };
         responses: {

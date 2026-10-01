@@ -177,6 +177,8 @@ class MissingSpec(_Value):
 
     strategy: MissingStrategy
     drop_columns: list[str] = Field(default_factory=list)
+    categorical: Literal["missing_category", "impute"] = "impute"
+    indicators: bool = False
 
 
 class SetRoles(_DecisionModel):
@@ -212,6 +214,11 @@ class SetMissing(_DecisionModel):
     kind: Literal["set_missing"] = "set_missing"
     strategy: MissingStrategy
     drop_columns: list[str] = Field(default_factory=list)
+    # M2 — routed by dtype and mechanism (ROADMAP lockbox constitution §07): binary/categorical
+    # blanks may become their own "Missing" level, which keeps the signal when a blank means
+    # "not asked"; numeric columns may carry a missing indicator beside the in-fold imputation.
+    categorical: Literal["missing_category", "impute"] = "impute"
+    indicators: bool = False
 
     @field_validator("drop_columns")
     @classmethod
@@ -250,11 +257,126 @@ class SetSubstitution(_DecisionModel):
     n_boot: int = Field(default=0, ge=0, le=MAX_BOOT)
 
 
+# ── M2 kinds (docs/turbotab-next/M2_CONTRACT.md) ─────────────────────────────
+# The opening sequence (OPENING_SEQUENCE.md), the seal, and findings with dispositions.
+
+Orientation = Literal["sample_major", "feature_major"]
+RepeatKind = Literal["repeats", "time_points"]
+AggregationMethod = Literal["mean", "first", "last", "change"]
+FindingAction = Literal["applied", "deferred", "dismissed"]
+
+
+class GrainSpec(_Value):
+    grain: Literal["one_row_per_unit", "repeated"]
+    id_column: str | None = None  # the column naming the unit (person, sample) when repeated
+
+
+class RepeatSpec(_Value):
+    repeat_kind: RepeatKind
+    time_column: str | None = None
+
+
+class AggregationSpec(_Value):
+    method: AggregationMethod
+    outcome: Literal["mean", "first", "last"] | None = None  # when the outcome varies within a unit
+
+
+class TemporalSpec(_Value):
+    temporal: bool
+    time_column: str | None = None
+
+
+class FindingDisposition(_Value):
+    action: FindingAction
+    option: str | None = None  # the repair option applied
+    params: dict[str, Any] = Field(default_factory=dict)
+    to: str | None = None  # the question key a deferral resurfaces at
+    reason: str | None = None  # why it was dismissed, when given
+
+
+class SetOrientation(_DecisionModel):
+    """Which way round an assay table is; feature-major is transposed before any diagnosis."""
+
+    kind: Literal["set_orientation"] = "set_orientation"
+    orientation: Orientation
+
+
+class SetEvent(_DecisionModel):
+    """Which level of a binary outcome is the event. Stands only while ``column`` is the target."""
+
+    kind: Literal["set_event"] = "set_event"
+    column: str = Field(min_length=1)
+    level: str = Field(min_length=1)
+
+
+class SetGrain(_DecisionModel):
+    kind: Literal["set_grain"] = "set_grain"
+    grain: Literal["one_row_per_unit", "repeated"]
+    id_column: str | None = None
+
+
+class SetRepeatKind(_DecisionModel):
+    kind: Literal["set_repeat_kind"] = "set_repeat_kind"
+    repeat_kind: RepeatKind
+    time_column: str | None = None
+
+
+class SetUnit(_DecisionModel):
+    """When a unit repeats: is one row of the analysis a unit (combined) or a record?"""
+
+    kind: Literal["set_unit"] = "set_unit"
+    unit: Literal["unit", "row"]
+
+
+class SetAggregation(_DecisionModel):
+    kind: Literal["set_aggregation"] = "set_aggregation"
+    method: AggregationMethod
+    outcome: Literal["mean", "first", "last"] | None = None
+
+
+class SetTemporal(_DecisionModel):
+    kind: Literal["set_temporal"] = "set_temporal"
+    temporal: bool
+    time_column: str | None = None
+
+
+class OpenSeal(_DecisionModel):
+    """Open the held-out rows: once, at the end. Held-out scores are withheld until then."""
+
+    kind: Literal["open_seal"] = "open_seal"
+
+
+class ApplyRepair(_DecisionModel):
+    """Apply one of a finding's repair options. Row-local repairs rewrite the working table now;
+    statistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06)."""
+
+    kind: Literal["apply_repair"] = "apply_repair"
+    finding_id: str = Field(min_length=1)
+    option: str = Field(min_length=1)
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class DeferFinding(_DecisionModel):
+    """Hold a finding until the question it belongs to; it resurfaces there, attributed."""
+
+    kind: Literal["defer_finding"] = "defer_finding"
+    finding_id: str = Field(min_length=1)
+    to: str = Field(min_length=1)
+
+
+class DismissFinding(_DecisionModel):
+    kind: Literal["dismiss_finding"] = "dismiss_finding"
+    finding_id: str = Field(min_length=1)
+    reason: str | None = None
+
+
 Decision = Annotated[
     Union[
         SetLens, SetTarget, SetTask, SetPurpose, Revert,
         SetRoles, SetEnergyAdjustment, SetExclusions, SetMissing, SetSplit,
         SelectModels, SetSubstitution,
+        SetOrientation, SetEvent, SetGrain, SetRepeatKind, SetUnit, SetAggregation, SetTemporal,
+        OpenSeal, ApplyRepair, DeferFinding, DismissFinding,
     ],
     Field(discriminator="kind"),
 ]
@@ -301,6 +423,16 @@ class ProjectState(BaseModel):
     split: SplitSpec | None = None
     models: list[str] | None = None
     substitution: SubstitutionSpec | None = None
+    # M2
+    orientation: Orientation | None = None
+    event: str | None = None  # the event level of a binary target (holds while its column is the target)
+    grain: GrainSpec | None = None
+    repeat_kind: RepeatSpec | None = None
+    unit: Literal["unit", "row"] | None = None
+    aggregation: AggregationSpec | None = None
+    temporal: TemporalSpec | None = None
+    seal_opened: bool | None = None
+    findings: dict[str, FindingDisposition] | None = None  # finding id -> its disposition
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -355,6 +487,7 @@ SLOTS: dict[str, str] = {}
 
 _SLOT_VALUE: dict[str, Callable[[Any], Any]] = {}
 _HOLDS: dict[str, Callable[[Any, Mapping[str, Any]], bool]] = {}
+_KEYS: dict[str, Callable[[Any], str]] = {}
 _VALIDATORS: dict[str, list[Callable[[Any, Any], None]]] = {}
 
 
@@ -371,6 +504,7 @@ def register_kind(
     *,
     value: Callable[[Any], Any] | None = None,
     holds: Callable[[Any, Mapping[str, Any]], bool] | None = None,
+    key: Callable[[Any], str] | None = None,
 ) -> type[BaseModel]:
     """Declare that decisions of ``model_cls`` write ``slot``.
 
@@ -378,6 +512,10 @@ def register_kind(
     single payload field. ``holds(decision, slots)``, when given, makes the write
     conditional: it stands only while it is true of the slots that
     unconditional kinds wrote, and the slot holds its latest write that stands.
+    ``key(decision)``, when given, makes the slot a mapping: each decision writes
+    one entry (the latest write per key wins, and a revert restores that key's
+    earlier entry). Several kinds may write one keyed slot — apply, defer and
+    dismiss all write a finding's disposition under its finding id.
     Returns the class, so it also works as a decorator via ``functools.partial``.
     """
     kind = kind_of(model_cls)
@@ -396,6 +534,10 @@ def register_kind(
 
     SLOTS[kind] = slot
     _SLOT_VALUE[kind] = value
+    if key is not None:
+        _KEYS[kind] = key
+    else:
+        _KEYS.pop(kind, None)
     if holds is not None:
         _HOLDS[kind] = holds
     else:
@@ -502,6 +644,24 @@ register_kind(SetSplit, "split", value=lambda d: SplitSpec(**d.model_dump(exclud
 register_kind(SelectModels, "models")
 register_kind(SetSubstitution, "substitution",
               value=lambda d: SubstitutionSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetOrientation, "orientation")
+register_kind(SetEvent, "event", value=lambda d: d.level,
+              holds=lambda d, slots: slots.get("target") == d.column)
+register_kind(SetGrain, "grain", value=lambda d: GrainSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetRepeatKind, "repeat_kind",
+              value=lambda d: RepeatSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetUnit, "unit")
+register_kind(SetAggregation, "aggregation",
+              value=lambda d: AggregationSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetTemporal, "temporal",
+              value=lambda d: TemporalSpec(**d.model_dump(exclude={"kind"})))
+register_kind(OpenSeal, "seal_opened", value=lambda d: True)
+register_kind(ApplyRepair, "findings", key=lambda d: d.finding_id,
+              value=lambda d: FindingDisposition(action="applied", option=d.option, params=d.params))
+register_kind(DeferFinding, "findings", key=lambda d: d.finding_id,
+              value=lambda d: FindingDisposition(action="deferred", to=d.to))
+register_kind(DismissFinding, "findings", key=lambda d: d.finding_id,
+              value=lambda d: FindingDisposition(action="dismissed", reason=d.reason))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 
@@ -985,7 +1145,14 @@ def fold(records: Sequence[DecisionRecord]) -> ProjectState:
     live = [r.decision for r in ordered if r.id not in cancelled and r.decision.kind in SLOTS]
     slots: dict[str, Any] = {}
     for decision in live:
-        if decision.kind not in _HOLDS:
+        if decision.kind in _HOLDS:
+            continue
+        keyed = _KEYS.get(decision.kind)
+        if keyed is not None:
+            entries = dict(slots.get(SLOTS[decision.kind]) or {})
+            entries[keyed(decision)] = _SLOT_VALUE[decision.kind](decision)
+            slots[SLOTS[decision.kind]] = entries
+        else:
             slots[SLOTS[decision.kind]] = _SLOT_VALUE[decision.kind](decision)
     base = dict(slots)
     for decision in live:

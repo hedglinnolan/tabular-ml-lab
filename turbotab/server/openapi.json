@@ -358,6 +358,39 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetSubstitution-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOrientation"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEvent"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetGrain-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetRepeatKind-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUnit"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetAggregation-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTemporal-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/OpenSeal"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyRepair-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DeferFinding"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DismissFinding-Input"
                   }
                 ],
                 "discriminator": {
@@ -374,7 +407,18 @@
                     "set_missing": "#/components/schemas/SetMissing-Input",
                     "set_split": "#/components/schemas/SetSplit-Input",
                     "select_models": "#/components/schemas/SelectModels",
-                    "set_substitution": "#/components/schemas/SetSubstitution-Input"
+                    "set_substitution": "#/components/schemas/SetSubstitution-Input",
+                    "set_orientation": "#/components/schemas/SetOrientation",
+                    "set_event": "#/components/schemas/SetEvent",
+                    "set_grain": "#/components/schemas/SetGrain-Input",
+                    "set_repeat_kind": "#/components/schemas/SetRepeatKind-Input",
+                    "set_unit": "#/components/schemas/SetUnit",
+                    "set_aggregation": "#/components/schemas/SetAggregation-Input",
+                    "set_temporal": "#/components/schemas/SetTemporal-Input",
+                    "open_seal": "#/components/schemas/OpenSeal",
+                    "apply_repair": "#/components/schemas/ApplyRepair-Input",
+                    "defer_finding": "#/components/schemas/DeferFinding",
+                    "dismiss_finding": "#/components/schemas/DismissFinding-Input"
                   }
                 },
                 "title": "Decision"
@@ -610,6 +654,39 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetSubstitution-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOrientation"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEvent"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetGrain-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetRepeatKind-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUnit"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetAggregation-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTemporal-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/OpenSeal"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyRepair-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DeferFinding"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DismissFinding-Input"
                   }
                 ],
                 "discriminator": {
@@ -626,7 +703,18 @@
                     "set_missing": "#/components/schemas/SetMissing-Input",
                     "set_split": "#/components/schemas/SetSplit-Input",
                     "select_models": "#/components/schemas/SelectModels",
-                    "set_substitution": "#/components/schemas/SetSubstitution-Input"
+                    "set_substitution": "#/components/schemas/SetSubstitution-Input",
+                    "set_orientation": "#/components/schemas/SetOrientation",
+                    "set_event": "#/components/schemas/SetEvent",
+                    "set_grain": "#/components/schemas/SetGrain-Input",
+                    "set_repeat_kind": "#/components/schemas/SetRepeatKind-Input",
+                    "set_unit": "#/components/schemas/SetUnit",
+                    "set_aggregation": "#/components/schemas/SetAggregation-Input",
+                    "set_temporal": "#/components/schemas/SetTemporal-Input",
+                    "open_seal": "#/components/schemas/OpenSeal",
+                    "apply_repair": "#/components/schemas/ApplyRepair-Input",
+                    "defer_finding": "#/components/schemas/DeferFinding",
+                    "dismiss_finding": "#/components/schemas/DismissFinding-Input"
                   }
                 },
                 "title": "Decision"
@@ -1243,6 +1331,112 @@
   },
   "components": {
     "schemas": {
+      "AggregationSpec": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "mean",
+              "first",
+              "last",
+              "change"
+            ],
+            "title": "Method"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "mean",
+                  "first",
+                  "last"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "method",
+          "outcome"
+        ],
+        "title": "AggregationSpec"
+      },
+      "ApplyRepair-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "apply_repair",
+            "title": "Kind",
+            "default": "apply_repair"
+          },
+          "finding_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Finding Id"
+          },
+          "option": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Option"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "finding_id",
+          "option"
+        ],
+        "title": "ApplyRepair",
+        "description": "Apply one of a finding's repair options. Row-local repairs rewrite the working table now;\nstatistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06)."
+      },
+      "ApplyRepair-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "apply_repair",
+            "title": "Kind",
+            "default": "apply_repair"
+          },
+          "finding_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Finding Id"
+          },
+          "option": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Option"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "finding_id",
+          "option",
+          "params"
+        ],
+        "title": "ApplyRepair",
+        "description": "Apply one of a finding's repair options. Row-local repairs rewrite the working table now;\nstatistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06)."
+      },
       "Caution": {
         "properties": {
           "text": {
@@ -1516,24 +1710,68 @@
               },
               {
                 "$ref": "#/components/schemas/SetSubstitution-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetOrientation"
+              },
+              {
+                "$ref": "#/components/schemas/SetEvent"
+              },
+              {
+                "$ref": "#/components/schemas/SetGrain-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetRepeatKind-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetUnit"
+              },
+              {
+                "$ref": "#/components/schemas/SetAggregation-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetTemporal-Output"
+              },
+              {
+                "$ref": "#/components/schemas/OpenSeal"
+              },
+              {
+                "$ref": "#/components/schemas/ApplyRepair-Output"
+              },
+              {
+                "$ref": "#/components/schemas/DeferFinding"
+              },
+              {
+                "$ref": "#/components/schemas/DismissFinding-Output"
               }
             ],
             "title": "Decision",
             "discriminator": {
               "propertyName": "kind",
               "mapping": {
+                "apply_repair": "#/components/schemas/ApplyRepair-Output",
+                "defer_finding": "#/components/schemas/DeferFinding",
+                "dismiss_finding": "#/components/schemas/DismissFinding-Output",
+                "open_seal": "#/components/schemas/OpenSeal",
                 "revert": "#/components/schemas/Revert",
                 "select_models": "#/components/schemas/SelectModels",
+                "set_aggregation": "#/components/schemas/SetAggregation-Output",
                 "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
+                "set_event": "#/components/schemas/SetEvent",
                 "set_exclusions": "#/components/schemas/SetExclusions-Output",
+                "set_grain": "#/components/schemas/SetGrain-Output",
                 "set_lens": "#/components/schemas/SetLens",
                 "set_missing": "#/components/schemas/SetMissing-Output",
+                "set_orientation": "#/components/schemas/SetOrientation",
                 "set_purpose": "#/components/schemas/SetPurpose",
+                "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                 "set_roles": "#/components/schemas/SetRoles",
                 "set_split": "#/components/schemas/SetSplit-Output",
                 "set_substitution": "#/components/schemas/SetSubstitution-Output",
                 "set_target": "#/components/schemas/SetTarget",
-                "set_task": "#/components/schemas/SetTask"
+                "set_task": "#/components/schemas/SetTask",
+                "set_temporal": "#/components/schemas/SetTemporal-Output",
+                "set_unit": "#/components/schemas/SetUnit"
               }
             }
           }
@@ -1549,6 +1787,102 @@
           "decision"
         ],
         "title": "DecisionRecord"
+      },
+      "DeferFinding": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "defer_finding",
+            "title": "Kind",
+            "default": "defer_finding"
+          },
+          "finding_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Finding Id"
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1,
+            "title": "To"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "finding_id",
+          "to"
+        ],
+        "title": "DeferFinding",
+        "description": "Hold a finding until the question it belongs to; it resurfaces there, attributed."
+      },
+      "DismissFinding-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "dismiss_finding",
+            "title": "Kind",
+            "default": "dismiss_finding"
+          },
+          "finding_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Finding Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "finding_id"
+        ],
+        "title": "DismissFinding"
+      },
+      "DismissFinding-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "dismiss_finding",
+            "title": "Kind",
+            "default": "dismiss_finding"
+          },
+          "finding_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Finding Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "finding_id",
+          "reason"
+        ],
+        "title": "DismissFinding"
       },
       "DistributionFrame": {
         "properties": {
@@ -1952,23 +2286,67 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetSubstitution-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOrientation"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEvent"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetGrain-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetRepeatKind-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUnit"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetAggregation-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTemporal-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/OpenSeal"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyRepair-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DeferFinding"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DismissFinding-Output"
                   }
                 ],
                 "discriminator": {
                   "propertyName": "kind",
                   "mapping": {
+                    "apply_repair": "#/components/schemas/ApplyRepair-Output",
+                    "defer_finding": "#/components/schemas/DeferFinding",
+                    "dismiss_finding": "#/components/schemas/DismissFinding-Output",
+                    "open_seal": "#/components/schemas/OpenSeal",
                     "revert": "#/components/schemas/Revert",
                     "select_models": "#/components/schemas/SelectModels",
+                    "set_aggregation": "#/components/schemas/SetAggregation-Output",
                     "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
+                    "set_event": "#/components/schemas/SetEvent",
                     "set_exclusions": "#/components/schemas/SetExclusions-Output",
+                    "set_grain": "#/components/schemas/SetGrain-Output",
                     "set_lens": "#/components/schemas/SetLens",
                     "set_missing": "#/components/schemas/SetMissing-Output",
+                    "set_orientation": "#/components/schemas/SetOrientation",
                     "set_purpose": "#/components/schemas/SetPurpose",
+                    "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                     "set_roles": "#/components/schemas/SetRoles",
                     "set_split": "#/components/schemas/SetSplit-Output",
                     "set_substitution": "#/components/schemas/SetSubstitution-Output",
                     "set_target": "#/components/schemas/SetTarget",
-                    "set_task": "#/components/schemas/SetTask"
+                    "set_task": "#/components/schemas/SetTask",
+                    "set_temporal": "#/components/schemas/SetTemporal-Output",
+                    "set_unit": "#/components/schemas/SetUnit"
                   }
                 }
               },
@@ -2048,6 +2426,67 @@
         ],
         "title": "FamilyInfo",
         "description": "What ``GET /api/models`` says about one family."
+      },
+      "FindingDisposition": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "applied",
+              "deferred",
+              "dismissed"
+            ],
+            "title": "Action"
+          },
+          "option": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Option"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action",
+          "option",
+          "params",
+          "to",
+          "reason"
+        ],
+        "title": "FindingDisposition"
       },
       "FitLine": {
         "properties": {
@@ -2155,6 +2594,36 @@
           "entries"
         ],
         "title": "FsListing"
+      },
+      "GrainSpec": {
+        "properties": {
+          "grain": {
+            "type": "string",
+            "enum": [
+              "one_row_per_unit",
+              "repeated"
+            ],
+            "title": "Grain"
+          },
+          "id_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "grain",
+          "id_column"
+        ],
+        "title": "GrainSpec"
       },
       "HTTPValidationError": {
         "properties": {
@@ -2681,16 +3150,49 @@
             },
             "type": "array",
             "title": "Drop Columns"
+          },
+          "categorical": {
+            "type": "string",
+            "enum": [
+              "missing_category",
+              "impute"
+            ],
+            "title": "Categorical",
+            "default": "impute"
+          },
+          "indicators": {
+            "type": "boolean",
+            "title": "Indicators",
+            "default": false
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "strategy",
-          "drop_columns"
+          "drop_columns",
+          "categorical",
+          "indicators"
         ],
         "title": "MissingSpec",
         "description": "The missing-values answer: columns left out of the predictors, then a strategy for the rest."
+      },
+      "OpenSeal": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "open_seal",
+            "title": "Kind",
+            "default": "open_seal"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "OpenSeal",
+        "description": "Open the held-out rows: once, at the end. Held-out scores are withheld until then."
       },
       "PreviewResult": {
         "properties": {
@@ -2924,6 +3426,112 @@
                 "type": "null"
               }
             ]
+          },
+          "orientation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "sample_major",
+                  "feature_major"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orientation"
+          },
+          "event": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event"
+          },
+          "grain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GrainSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repeat_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepeatSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "unit",
+                  "row"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "aggregation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AggregationSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "temporal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TemporalSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seal_opened": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seal Opened"
+          },
+          "findings": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/FindingDisposition"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Findings"
           }
         },
         "type": "object",
@@ -2938,7 +3546,16 @@
           "missing",
           "split",
           "models",
-          "substitution"
+          "substitution",
+          "orientation",
+          "event",
+          "grain",
+          "repeat_kind",
+          "unit",
+          "aggregation",
+          "temporal",
+          "seal_opened",
+          "findings"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -3328,6 +3945,36 @@
         "title": "RelationshipView",
         "description": "A before/after scatter, e.g. a nutrient against energy before and after adjustment."
       },
+      "RepeatSpec": {
+        "properties": {
+          "repeat_kind": {
+            "type": "string",
+            "enum": [
+              "repeats",
+              "time_points"
+            ],
+            "title": "Repeat Kind"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "repeat_kind",
+          "time_column"
+        ],
+        "title": "RepeatSpec"
+      },
       "Revert": {
         "properties": {
           "kind": {
@@ -3510,6 +4157,93 @@
         ],
         "title": "SelectModels"
       },
+      "SetAggregation-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_aggregation",
+            "title": "Kind",
+            "default": "set_aggregation"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "mean",
+              "first",
+              "last",
+              "change"
+            ],
+            "title": "Method"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "mean",
+                  "first",
+                  "last"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "method"
+        ],
+        "title": "SetAggregation"
+      },
+      "SetAggregation-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_aggregation",
+            "title": "Kind",
+            "default": "set_aggregation"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "mean",
+              "first",
+              "last",
+              "change"
+            ],
+            "title": "Method"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "mean",
+                  "first",
+                  "last"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "method",
+          "outcome"
+        ],
+        "title": "SetAggregation"
+      },
       "SetEnergyAdjustment-Input": {
         "properties": {
           "kind": {
@@ -3640,6 +4374,35 @@
         ],
         "title": "SetEnergyAdjustment"
       },
+      "SetEvent": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_event",
+            "title": "Kind",
+            "default": "set_event"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "level": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Level"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "level"
+        ],
+        "title": "SetEvent",
+        "description": "Which level of a binary outcome is the event. Stands only while ``column`` is the target."
+      },
       "SetExclusions-Input": {
         "properties": {
           "kind": {
@@ -3689,6 +4452,79 @@
         ],
         "title": "SetExclusions",
         "description": "Row exclusions; an empty list is the answer \"keep every row\"."
+      },
+      "SetGrain-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_grain",
+            "title": "Kind",
+            "default": "set_grain"
+          },
+          "grain": {
+            "type": "string",
+            "enum": [
+              "one_row_per_unit",
+              "repeated"
+            ],
+            "title": "Grain"
+          },
+          "id_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "grain"
+        ],
+        "title": "SetGrain"
+      },
+      "SetGrain-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_grain",
+            "title": "Kind",
+            "default": "set_grain"
+          },
+          "grain": {
+            "type": "string",
+            "enum": [
+              "one_row_per_unit",
+              "repeated"
+            ],
+            "title": "Grain"
+          },
+          "id_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "grain",
+          "id_column"
+        ],
+        "title": "SetGrain"
       },
       "SetLens": {
         "properties": {
@@ -3744,6 +4580,20 @@
             },
             "type": "array",
             "title": "Drop Columns"
+          },
+          "categorical": {
+            "type": "string",
+            "enum": [
+              "missing_category",
+              "impute"
+            ],
+            "title": "Categorical",
+            "default": "impute"
+          },
+          "indicators": {
+            "type": "boolean",
+            "title": "Indicators",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -3777,6 +4627,20 @@
             },
             "type": "array",
             "title": "Drop Columns"
+          },
+          "categorical": {
+            "type": "string",
+            "enum": [
+              "missing_category",
+              "impute"
+            ],
+            "title": "Categorical",
+            "default": "impute"
+          },
+          "indicators": {
+            "type": "boolean",
+            "title": "Indicators",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -3784,10 +4648,38 @@
         "required": [
           "kind",
           "strategy",
-          "drop_columns"
+          "drop_columns",
+          "categorical",
+          "indicators"
         ],
         "title": "SetMissing",
         "description": "How missing predictor values are handled.\n\n``drop_columns`` leave the predictors first (a mostly blank column that means \"not asked\"),\nand the strategy applies to the predictors that remain; the cohort and the design read both."
+      },
+      "SetOrientation": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_orientation",
+            "title": "Kind",
+            "default": "set_orientation"
+          },
+          "orientation": {
+            "type": "string",
+            "enum": [
+              "sample_major",
+              "feature_major"
+            ],
+            "title": "Orientation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "orientation"
+        ],
+        "title": "SetOrientation",
+        "description": "Which way round an assay table is; feature-major is transposed before any diagnosis."
       },
       "SetPurpose": {
         "properties": {
@@ -3813,6 +4705,79 @@
           "purpose"
         ],
         "title": "SetPurpose"
+      },
+      "SetRepeatKind-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_repeat_kind",
+            "title": "Kind",
+            "default": "set_repeat_kind"
+          },
+          "repeat_kind": {
+            "type": "string",
+            "enum": [
+              "repeats",
+              "time_points"
+            ],
+            "title": "Repeat Kind"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "repeat_kind"
+        ],
+        "title": "SetRepeatKind"
+      },
+      "SetRepeatKind-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_repeat_kind",
+            "title": "Kind",
+            "default": "set_repeat_kind"
+          },
+          "repeat_kind": {
+            "type": "string",
+            "enum": [
+              "repeats",
+              "time_points"
+            ],
+            "title": "Repeat Kind"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "repeat_kind",
+          "time_column"
+        ],
+        "title": "SetRepeatKind"
       },
       "SetRoles": {
         "properties": {
@@ -4062,6 +5027,97 @@
         ],
         "title": "SetTask",
         "description": "An override of task detection, for the outcome column it names.\n\nIt stands only while ``column`` is the target (see :func:`fold`)."
+      },
+      "SetTemporal-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_temporal",
+            "title": "Kind",
+            "default": "set_temporal"
+          },
+          "temporal": {
+            "type": "boolean",
+            "title": "Temporal"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "temporal"
+        ],
+        "title": "SetTemporal"
+      },
+      "SetTemporal-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_temporal",
+            "title": "Kind",
+            "default": "set_temporal"
+          },
+          "temporal": {
+            "type": "boolean",
+            "title": "Temporal"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "temporal",
+          "time_column"
+        ],
+        "title": "SetTemporal"
+      },
+      "SetUnit": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_unit",
+            "title": "Kind",
+            "default": "set_unit"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "unit",
+              "row"
+            ],
+            "title": "Unit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "unit"
+        ],
+        "title": "SetUnit",
+        "description": "When a unit repeats: is one row of the analysis a unit (combined) or a record?"
       },
       "SplitSpec": {
         "properties": {
@@ -4608,6 +5664,32 @@
           "definition"
         ],
         "title": "TeachingTerm"
+      },
+      "TemporalSpec": {
+        "properties": {
+          "temporal": {
+            "type": "boolean",
+            "title": "Temporal"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "temporal",
+          "time_column"
+        ],
+        "title": "TemporalSpec"
       },
       "ValidationError": {
         "properties": {

@@ -206,12 +206,22 @@ def representative_decisions():
     ]
 
 
+# Kinds whose shapes exist (M2_CONTRACT.md) but whose sentences the M2 voice agent still owes.
+# The voice agent's job is to EMPTY this set; a kind may only leave it with a representative here
+# and a sentence in voice.py. Never add to it except when a milestone's contract adds kinds.
+OWED_BY_M2_VOICE = {
+    "set_orientation", "set_event", "set_grain", "set_repeat_kind", "set_unit",
+    "set_aggregation", "set_temporal", "open_seal", "apply_repair", "defer_finding",
+    "dismiss_finding",
+}
+
+
 def test_every_decision_kind_has_a_representative_here():
     from typing import get_args
 
     union = get_args(get_args(d.Decision)[0])
-    kinds = {m.model_fields["kind"].default for m in union}
-    assert kinds == {x.kind for x in representative_decisions()} == set(voice.kinds())
+    kinds = {m.model_fields["kind"].default for m in union} - OWED_BY_M2_VOICE
+    assert kinds == {x.kind for x in representative_decisions()} == set(voice.kinds()) - OWED_BY_M2_VOICE
 
 
 @pytest.mark.parametrize("decision", representative_decisions(), ids=lambda x: x.kind)

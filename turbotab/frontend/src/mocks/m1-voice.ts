@@ -90,6 +90,9 @@ export function sentenceFor(
   records: DecisionRecord[],
 ): string {
   switch (d.kind) {
+    default:
+      // M2 kinds: the real sentences come from the server's voice.py (M2's voice agent).
+      return finish(`The ${d.kind.replace(/_/g, " ")} answer was recorded`);
     case "set_lens":
       return finish(
         `The table was read through the ${listing(d.lenses, 5)} ${d.lenses.length === 1 ? "lens" : "lenses"}`,
@@ -191,7 +194,7 @@ export function sentenceFor(
           `${drop.length ? `${listing(drop)} ${drop.length === 1 ? "was" : "were"} left out of the predictors; ` : ""}Missing predictor values were imputed from the training rows only, so no row is dropped for a blank`,
         );
       }
-      const state: ProjectState = { ...before, missing: { strategy: d.strategy, drop_columns: drop } };
+      const state: ProjectState = { ...before, missing: { strategy: d.strategy, drop_columns: drop, categorical: "impute", indicators: false } };
       const c = cohort(ds, state, records, drop).artifact;
       const step = c.steps.find((st) => st.key === "complete_cases");
       const prior = step ? step.n + step.dropped : c.n_final;

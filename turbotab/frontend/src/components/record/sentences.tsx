@@ -61,6 +61,26 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "models";
     case "set_substitution":
       return "substitution";
+    case "set_orientation":
+      return "orientation";
+    case "set_event":
+      return "event";
+    case "set_grain":
+      return "grain";
+    case "set_repeat_kind":
+      return "repeat_kind";
+    case "set_unit":
+      return "unit";
+    case "set_aggregation":
+      return "aggregation";
+    case "set_temporal":
+      return "temporal";
+    case "open_seal":
+      return "seal_opened";
+    case "apply_repair":
+    case "defer_finding":
+    case "dismiss_finding":
+      return "findings";
     case "revert": {
       const undone = records.find((r) => r.id === d.decision_id);
       return undone ? slotOf(undone.decision, records) : null;

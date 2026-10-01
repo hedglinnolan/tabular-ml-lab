@@ -211,14 +211,14 @@ export function MissingAsk({
     key: strategy,
     label: taught(p.entry, strategy)?.label ?? strategy,
     line: taught(p.entry, strategy)?.consequence ?? "",
-    decision: { kind: "set_missing", strategy, drop_columns: [] },
+    decision: { kind: "set_missing", strategy, drop_columns: [], categorical: "impute", indicators: false },
   });
   const leaveOut: OptionItem | null = drop.length
     ? {
         key: "leave_out",
         label: `Leave ${drop.length === 1 ? "it" : "them"} out first`,
         line: `Leave out ${listJoin(drop.map((d) => `\`${d}\``))} (blank on ${blankOn}), then complete cases.`,
-        decision: { kind: "set_missing", strategy: "complete_case", drop_columns: drop },
+        decision: { kind: "set_missing", strategy: "complete_case", drop_columns: drop, categorical: "impute", indicators: false },
         previewLabel: `Leave out ${listJoin(drop)}, then complete cases`,
         tags: [{ text: "likely not asked", tone: "suggested" }],
       }

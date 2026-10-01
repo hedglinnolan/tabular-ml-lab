@@ -379,3 +379,15 @@ def test_a_bundle_round_trips_and_clients_see_only_its_data(tmp_path):
     assert isinstance(whole, Bundle) and whole.data == {"n_train": 2}
     pd.testing.assert_frame_equal(whole.frames["assignment"], frame)
     assert whole.objects["model"].predict([[0.5]])[0] == pytest.approx(1.0)
+
+
+def test_a_bundle_carries_files_the_stage_wrote_itself(tmp_path):
+    from turbotab.core.graph import Bundle, read_artifact, write_artifact
+
+    scratch = tmp_path / "scratch.parquet"
+    scratch.write_bytes(b"PAR1-not-really")
+    write_artifact(tmp_path / "cache", "working", "k1", 1, Bundle(data={"n_rows": 3}, files={"table.parquet": scratch}))
+    assert not scratch.exists()  # moved, not copied: a working table can be gigabytes
+    whole = read_artifact(tmp_path / "cache", "working", "k1")
+    assert whole.files["table.parquet"].read_bytes() == b"PAR1-not-really"
+    assert read_artifact(tmp_path / "cache", "working", "k1", public=True) == {"n_rows": 3}
