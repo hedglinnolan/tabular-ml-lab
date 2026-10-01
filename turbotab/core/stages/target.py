@@ -7,6 +7,7 @@ import pandas as pd
 
 from turbotab.core.graph import StageContext
 from turbotab.core.stages.data import open_store
+from turbotab.core.stages.working import table_info
 
 HISTOGRAM_BINS = 30
 MAX_CLASSES = 100
@@ -68,7 +69,7 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
     detection's evidence in the app's voice (:func:`task_reason`).
     """
     target = ctx.state.target
-    columns = {c["name"]: c for c in ctx.inputs["ingest"]["columns"]}
+    columns = {c["name"]: c for c in table_info(ctx)["columns"]}
     column = columns.get(target)
     if column is None:
         raise ValueError(f"There is no column named {target!r} in this dataset.")

@@ -47,9 +47,16 @@ import s from "./Record.module.css";
 /** Each question's name in running text ("Change the column roles"). */
 const SUBJECT: Record<QuestionKey, string> = {
   lens: "the lens",
+  orientation: "the table's orientation",
   target: "the outcome",
+  event: "the event level",
   task: "the task",
   purpose: "the purpose",
+  grain: "the grain",
+  repeat_kind: "repeats or time points",
+  unit: "the unit of analysis",
+  aggregation: "how rows are combined",
+  temporal: "temporal prediction",
   roles: "the column roles",
   exclusions: "the exclusions",
   missing: "the missing values",
@@ -122,7 +129,7 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
   const onArrived = useCallback(() => setArrival(null), []);
 
   const entries = useMemo(
-    () => new Map((teaching.data ?? []).map((e) => [e.key, e])),
+    () => new Map<string, TeachingEntry>((teaching.data ?? []).map((e) => [e.key, e])),
     [teaching.data],
   );
   const byId = useMemo(() => new Map(decisions.map((r) => [r.id, r])), [decisions]);

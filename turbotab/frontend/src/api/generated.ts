@@ -737,6 +737,11 @@ export interface components {
             grain: "one_row_per_unit" | "repeated";
             /** Id Column */
             id_column: string | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -784,7 +789,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "lens" | "target" | "task" | "purpose" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution";
+            key: "lens" | "orientation" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution";
             /**
              * Status
              * @enum {string}
@@ -1324,6 +1329,11 @@ export interface components {
             grain: "one_row_per_unit" | "repeated";
             /** Id Column */
             id_column?: string | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /** SetGrain */
         "SetGrain-Output": {
@@ -1339,6 +1349,11 @@ export interface components {
             grain: "one_row_per_unit" | "repeated";
             /** Id Column */
             id_column: string | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /** SetLens */
         SetLens: {
@@ -1866,6 +1881,55 @@ export interface components {
             count: number;
         };
         /**
+         * AggregationMenu
+         * @description The domain-shaped menu: repeats → mean recommended with its reason; time points → none.
+         */
+        AggregationMenu: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "repeats" | "time_points";
+            /** Recommended */
+            recommended: ("mean" | "first" | "last" | "change") | null;
+            /** Reason */
+            reason: string | null;
+            /** Marker */
+            marker: string | null;
+            /** From Pack */
+            from_pack: string | null;
+            /** Options */
+            options: ("mean" | "first" | "last" | "change")[];
+        };
+        /**
+         * AggregationReceipt
+         * @description What combining did: rows → units, how the outcome was kept, what lost information.
+         */
+        AggregationReceipt: {
+            /** Id Column */
+            id_column: string;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "mean" | "first" | "last" | "change";
+            outcome: components["schemas"]["OutcomeRule"] | null;
+            /** Time Column */
+            time_column: string | null;
+            /** Ordered By */
+            ordered_by: string;
+            /** N Source Rows */
+            n_source_rows: number;
+            /** N Units */
+            n_units: number;
+            /** Single Record Units */
+            single_record_units: number;
+            /** Varying */
+            varying: string[];
+            /** Combined Numeric */
+            combined_numeric: number;
+        };
+        /**
          * BandEstimate
          * @description A measured estimate of what adding a band would cost: one refit per family, timed.
          */
@@ -2161,6 +2225,21 @@ export interface components {
             concerns: string[];
             baseline: components["schemas"]["Baseline"];
         };
+        /** GrainContradiction */
+        GrainContradiction: {
+            /** Columns */
+            columns: string[];
+            /** Message */
+            message: string;
+        };
+        /** GrainReading */
+        GrainReading: {
+            /** Suggested */
+            suggested: string[];
+            /** Evidence */
+            evidence: components["schemas"]["RepetitionEvidence"][];
+            if_one_row: components["schemas"]["GrainContradiction"] | null;
+        };
         /**
          * LeaveOut
          * @description The offer: leave the likely-not-asked columns out, then handle the rest.
@@ -2252,6 +2331,83 @@ export interface components {
             reason: string;
         };
         /**
+         * OrientationReading
+         * @description Question 1.5's shape reading: row-mean spread over column-mean spread, on a log scale.
+         */
+        OrientationReading: {
+            /**
+             * Reading
+             * @enum {string}
+             */
+            reading: "sample_major" | "feature_major" | "undetermined";
+            /** Ratio */
+            ratio: number | null;
+            /** S Rows */
+            s_rows: number | null;
+            /** S Cols */
+            s_cols: number | null;
+            /** N Rows */
+            n_rows: number;
+            /** N Numeric */
+            n_numeric: number;
+            /** Sentence */
+            sentence: string;
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "medium" | "low";
+        };
+        /**
+         * OrientedArtifact
+         * @description The ``oriented`` artifact: the raw table or its transpose (DatasetInfo of the result).
+         */
+        OrientedArtifact: {
+            /** N Rows */
+            n_rows: number;
+            /** N Cols */
+            n_cols: number;
+            /** Columns */
+            columns: components["schemas"]["ColumnInfo"][];
+            /** Source Bytes */
+            source_bytes: number;
+            /** Parquet Bytes */
+            parquet_bytes: number;
+            /** Ingest Seconds */
+            ingest_seconds: number;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Warnings */
+            warnings: string[];
+            /** Transposed */
+            transposed: boolean;
+            reading: components["schemas"]["OrientationReading"];
+            turn: components["schemas"]["TurnCheck"];
+        };
+        /** OutcomeRule */
+        OutcomeRule: {
+            /** Column */
+            column: string;
+            /** Varies */
+            varies: boolean;
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "constant" | "mean" | "first" | "last";
+        };
+        /** OutcomeWithinUnit */
+        OutcomeWithinUnit: {
+            /** Column */
+            column: string;
+            /** Varies */
+            varies: boolean;
+            /** N Units Varying */
+            n_units_varying: number;
+            /** Numeric */
+            numeric: boolean;
+        };
+        /**
          * ProfileArtifact
          * @description The ``profile`` artifact.
          */
@@ -2277,6 +2433,13 @@ export interface components {
             /** Basis */
             basis: string;
         };
+        /** Repair */
+        Repair: {
+            /** Column */
+            column: string;
+            /** Expression */
+            expression: string;
+        };
         /** Repeats */
         Repeats: {
             /** Column */
@@ -2285,6 +2448,42 @@ export interface components {
             n_units: number;
             /** Max Rows Per Unit */
             max_rows_per_unit: number;
+        };
+        /**
+         * RepeatsReading
+         * @description Repeats or time points, read from date spacing or a record index (turbotab/repeats.py).
+         */
+        RepeatsReading: {
+            /** Reading */
+            reading: ("repeats" | "time_points") | null;
+            /** Stated */
+            stated: boolean;
+            /** Confidence */
+            confidence: ("high" | "medium") | null;
+            /** Evidence */
+            evidence: string[];
+            /** Sentence */
+            sentence: string;
+            spacing: components["schemas"]["Spacing"] | null;
+            /** Replicate Index */
+            replicate_index: string | null;
+            /** N Units Read */
+            n_units_read: number;
+        };
+        /** RepetitionEvidence */
+        RepetitionEvidence: {
+            /** Column */
+            column: string;
+            /** N Distinct */
+            n_distinct: number;
+            /** N Rows */
+            n_rows: number;
+            /** Rows Per */
+            rows_per: number;
+            /** Modal Rows Per */
+            modal_rows_per: number;
+            /** Regular Share */
+            regular_share: number;
         };
         /** RoleProposal */
         RoleProposal: {
@@ -2346,6 +2545,25 @@ export interface components {
             /** Inductive Bias */
             inductive_bias: string;
         };
+        /** Spacing */
+        Spacing: {
+            /** Column */
+            column: string;
+            /** N People */
+            n_people: number;
+            /** N Gaps */
+            n_gaps: number;
+            /** Min Days */
+            min_days: number;
+            /** Max Days */
+            max_days: number;
+            /** Median Days */
+            median_days: number;
+            /** Cv */
+            cv: number;
+            /** All Identical */
+            all_identical: boolean;
+        };
         /**
          * SplitArtifact
          * @description The ``split`` artifact (a Bundle's ``data``): held-out rows and folds.
@@ -2369,6 +2587,21 @@ export interface components {
             stratified: boolean;
             /** Note */
             note: string;
+        };
+        /**
+         * StructureArtifact
+         * @description The ``structure`` artifact: what the grain, repeats, unit and aggregation questions offer.
+         */
+        StructureArtifact: {
+            grain: components["schemas"]["GrainReading"];
+            units: components["schemas"]["UnitCounts"] | null;
+            repeats: components["schemas"]["RepeatsReading"] | null;
+            outcome: components["schemas"]["OutcomeWithinUnit"] | null;
+            aggregation: components["schemas"]["AggregationMenu"] | null;
+            /** Time Columns */
+            time_columns: string[];
+            /** Time Column */
+            time_column: string | null;
         };
         /**
          * SubstitutionArtifact
@@ -2475,6 +2708,71 @@ export interface components {
             histogram: components["schemas"]["Histogram"] | null;
             /** Classes */
             classes: components["schemas"]["ValueCount"][] | null;
+        };
+        /**
+         * TurnCheck
+         * @description Whether the table can be turned around: the feature-name column, and why not.
+         */
+        TurnCheck: {
+            /** Label Column */
+            label_column: string | null;
+            /** N Features */
+            n_features: number;
+            /** N Samples */
+            n_samples: number;
+            /** Refusal */
+            refusal: string | null;
+            /** Code */
+            code: string | null;
+        };
+        /** UnitCounts */
+        UnitCounts: {
+            /** Column */
+            column: string;
+            /** N Units */
+            n_units: number;
+            /** Max Rows Per Unit */
+            max_rows_per_unit: number;
+            /** Min Rows Per Unit */
+            min_rows_per_unit: number;
+            /** N Missing */
+            n_missing: number;
+        };
+        /**
+         * WorkingArtifact
+         * @description The ``working`` artifact: DatasetInfo of the table every later stage reads.
+         */
+        WorkingArtifact: {
+            /** N Rows */
+            n_rows: number;
+            /** N Cols */
+            n_cols: number;
+            /** Columns */
+            columns: components["schemas"]["ColumnInfo"][];
+            /** Source Bytes */
+            source_bytes: number;
+            /** Parquet Bytes */
+            parquet_bytes: number;
+            /** Ingest Seconds */
+            ingest_seconds: number;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Warnings */
+            warnings: string[];
+            /** Pass Through */
+            pass_through: boolean;
+            /** Transposed */
+            transposed: boolean;
+            /** N Source Rows */
+            n_source_rows: number;
+            /** Repairs */
+            repairs: components["schemas"]["Repair"][];
+            aggregation: components["schemas"]["AggregationReceipt"] | null;
+            /**
+             * Row Map
+             * @enum {string}
+             */
+            row_map: "identity" | "row_map.parquet";
         };
     };
     responses: never;

@@ -269,6 +269,9 @@ FindingAction = Literal["applied", "deferred", "dismissed"]
 class GrainSpec(_Value):
     grain: Literal["one_row_per_unit", "repeated"]
     id_column: str | None = None  # the column naming the unit (person, sample) when repeated
+    # The user kept this answer over the data's contradiction (turbotab/grain.py): a noted
+    # disagreement the methods carry as a stated limitation.
+    acknowledged: bool = False
 
 
 class RepeatSpec(_Value):
@@ -313,6 +316,8 @@ class SetGrain(_DecisionModel):
     kind: Literal["set_grain"] = "set_grain"
     grain: Literal["one_row_per_unit", "repeated"]
     id_column: str | None = None
+    # The attestation exit of a grain contradiction: "my answer is right, the data is like this".
+    acknowledged: bool = False
 
 
 class SetRepeatKind(_DecisionModel):
@@ -1269,3 +1274,8 @@ class DecisionLog:
         records.sort(key=lambda r: r.seq)
         self._cache = (stamp, records)
         return records
+
+
+# The opening sequence's validators (orientation, event, grain, repeats, unit, aggregation,
+# temporal) live beside the Router's rules; importing them registers them.
+from turbotab.core import sequence as _sequence  # noqa: E402,F401

@@ -166,6 +166,8 @@ def test_decisions_are_refused_recorded_and_reverted(client):
     assert decide(client, pid, {"kind": "set_lens", "lenses": []}).status_code == 422
     assert client.get(f"/api/projects/{pid}").json()["decisions"] == []  # refusals are not recorded
 
+    # M2: the working table every later stage reads waits for the lens (through the findings)
+    assert decide(client, pid, {"kind": "set_lens", "lenses": ["dietary"]}).status_code == 200
     target = decide(client, pid, {"kind": "set_target", "column": "hba1c"})
     assert target.status_code == 200 and target.json()["state"]["target"] == "hba1c"
     target_id = target.json()["decisions"][-1]["id"]
@@ -191,12 +193,13 @@ def test_decisions_are_refused_recorded_and_reverted(client):
     assert view["state"]["target"] is None
     assert view["stages"]["target_info"]["status"] == "blocked"
     assert view["stages"]["target_info"]["missing"] == ["target"]
-    assert [d["seq"] for d in view["decisions"]] == [1, 2, 3, 4]
+    assert [d["seq"] for d in view["decisions"]] == [1, 2, 3, 4, 5]
 
 
 def test_a_task_answer_belongs_to_the_column_it_was_given_for(client):
     pid = open_by_path(client)
     wait_for(client, pid, {"ingest": "fresh"})
+    assert decide(client, pid, {"kind": "set_lens", "lenses": ["dietary"]}).status_code == 200
     assert decide(client, pid, {"kind": "set_target", "column": "sex"}).status_code == 200
     answered = decide(client, pid, {"kind": "set_task", "column": "sex", "task": "multiclass"})
     assert answered.json()["state"]["task"] == "multiclass"

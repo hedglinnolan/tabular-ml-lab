@@ -20,6 +20,16 @@ M1 (docs/turbotab-next/M1_CONTRACT.md):
     fit          heavy   deps: design, split, target_info     reads models, purpose, task; requires models
     substitution heavy   deps: fit, design                    reads substitution; requires substitution
 
+M2 (docs/turbotab-next/M2_CONTRACT.md §2) — the table the analysis reads:
+
+    oriented     heavy   deps: ingest                         reads orientation
+    structure    heavy   deps: oriented                       reads grain, target, lens, repeat_kind
+    working      heavy   deps: oriented, findings, structure  reads findings, target, grain, unit,
+                                                              aggregation, repeat_kind
+
+    findings and profile read the oriented table; target_info, roles, proposals, cohort, split,
+    design, fit and substitution read the working table (``stages.working.table_path``).
+
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
 call them and shape the result into the contract's artifact.
@@ -33,6 +43,7 @@ from turbotab.core.stages.modeling import design_stage, fit_stage, shelf_stage, 
 from turbotab.core.stages.proposals import proposals_stage
 from turbotab.core.stages.rows import cohort_stage, roles_stage, split_stage
 from turbotab.core.stages.target import target_info_stage
+from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
 
 GRAPH_FACTORY = "turbotab.core.stages:build_graph"
 
@@ -41,56 +52,65 @@ def build_graph() -> Graph:
     return Graph(
         [
             Stage("ingest", 1, (), (), ingest_stage, heavy=True, label="Reading the file"),
+            # ── M2: what the table is (M2_CONTRACT §2) ──
+            Stage("oriented", 1, ("ingest",), ("orientation",), oriented_stage, heavy=True,
+                  label="Reading which way round the table is"),
             Stage(
                 "profile",
                 1,
-                ("ingest",),
+                ("oriented",),
                 (),
                 profile_stage,
                 heavy=True,
                 label="Summarizing every column",
             ),
             Stage(
-                "target_info",
-                2,
-                ("ingest",),
-                ("target", "task"),
-                target_info_stage,
-                requires=("target",),
-                label="Reading the outcome column",
-            ),
-            Stage(
                 "findings",
                 2,
-                ("ingest",),
+                ("oriented",),
                 ("lens", "target"),
                 findings_stage,
                 heavy=True,
                 requires=("lens",),
                 label="Checking the table against the chosen lenses",
             ),
-            # ── M1 ──
-            Stage("roles", 1, ("ingest", "profile"), ("lens", "target"), roles_stage,
+            Stage("structure", 1, ("oriented",), ("grain", "target", "lens", "repeat_kind"),
+                  structure_stage, heavy=True, label="Reading how the rows repeat"),
+            Stage("working", 1, ("oriented", "findings", "structure"),
+                  ("findings", "target", "grain", "unit", "aggregation", "repeat_kind"),
+                  working_stage, heavy=True, label="Building the working table"),
+            Stage(
+                "target_info",
+                2,
+                ("working",),
+                ("target", "task"),
+                target_info_stage,
+                requires=("target",),
+                label="Reading the outcome column",
+            ),
+            # ── M1 (each reads the working table) ──
+            Stage("roles", 1, ("working",), ("lens", "target"), roles_stage,
                   heavy=True, label="Reading what each column is"),
-            Stage("proposals", 1, ("ingest", "profile", "roles"), ("lens", "roles", "target"),
+            Stage("proposals", 1, ("working", "roles"), ("lens", "roles", "target"),
                   proposals_stage, label="Looking up what the field usually does"),
-            Stage("cohort", 1, ("ingest", "target_info"),
+            Stage("cohort", 1, ("working", "target_info"),
                   ("target", "roles", "exclusions", "missing"), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
-            Stage("split", 1, ("cohort", "target_info"), ("split", "roles", "task"), split_stage,
-                  heavy=True, requires=("split",), label="Drawing the held-out rows"),
+            Stage("split", 1, ("working", "cohort", "target_info"), ("split", "roles", "task"),
+                  split_stage, heavy=True, requires=("split",), label="Drawing the held-out rows"),
             Stage("shelf", 1, ("cohort", "target_info"), ("purpose", "task", "roles"), shelf_stage,
                   requires=("roles",), label="Ranking the model families for this table"),
-            Stage("design", 1, ("split", "target_info"),
+            Stage("design", 1, ("working", "split", "target_info"),
                   ("roles", "energy_adjustment", "missing", "models", "purpose"), design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
-            Stage("fit", 1, ("design", "split", "target_info"), ("models", "purpose", "task"),
-                  fit_stage, heavy=True, requires=("models",), label="Fitting the models"),
-            Stage("substitution", 1, ("fit", "design"), ("substitution",), substitution_stage,
-                  heavy=True, requires=("substitution",), label="Drawing the substitution curves"),
+            Stage("fit", 1, ("working", "design", "split", "target_info"),
+                  ("models", "purpose", "task"), fit_stage, heavy=True, requires=("models",),
+                  label="Fitting the models"),
+            Stage("substitution", 1, ("working", "fit", "design"), ("substitution",),
+                  substitution_stage, heavy=True, requires=("substitution",),
+                  label="Drawing the substitution curves"),
         ]
     )
-
 
 __all__ = ["GRAPH_FACTORY", "build_graph"]
