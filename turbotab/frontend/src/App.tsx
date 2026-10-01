@@ -10,6 +10,9 @@ import { ThemeProvider } from "./theme";
 
 // The motion lab is a review surface, not part of the analysis: load it on demand.
 const LabScreen = lazy(() => import("./screens/LabScreen").then((m) => ({ default: m.LabScreen })));
+const StageScreen = lazy(() =>
+  import("./explore/stage/StageScreen").then((m) => ({ default: m.StageScreen })),
+);
 
 function Routes() {
   const route = useRoute();
@@ -22,6 +25,12 @@ function Routes() {
       return (
         <Suspense fallback={<Header />}>
           <LabScreen />
+        </Suspense>
+      );
+    case "explore-stage":
+      return (
+        <Suspense fallback={<Header />}>
+          <StageScreen />
         </Suspense>
       );
     case "missing":

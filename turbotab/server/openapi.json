@@ -1476,6 +1476,13 @@
             "type": "string",
             "title": "After Label"
           },
+          "marks": {
+            "items": {
+              "$ref": "#/components/schemas/Mark"
+            },
+            "type": "array",
+            "title": "Marks"
+          },
           "cuts": {
             "items": {
               "type": "number"
@@ -1496,6 +1503,7 @@
           "after",
           "before_label",
           "after_label",
+          "marks",
           "cuts"
         ],
         "title": "DistributionView"
@@ -2414,6 +2422,38 @@
           "after"
         ],
         "title": "LineageView"
+      },
+      "Mark": {
+        "properties": {
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "label",
+          "group"
+        ],
+        "title": "Mark",
+        "description": "A value drawn on a distribution's axis, e.g. an exclusion cut-off."
       },
       "PreviewResult": {
         "properties": {

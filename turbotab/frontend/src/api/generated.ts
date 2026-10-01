@@ -419,6 +419,8 @@ export interface components {
             before_label: string;
             /** After Label */
             after_label: string;
+            /** Marks */
+            marks: components["schemas"]["Mark"][];
             /** Cuts */
             cuts: number[];
         };
@@ -695,6 +697,18 @@ export interface components {
             kind: "lineage";
             before: components["schemas"]["Lineage"] | null;
             after: components["schemas"]["Lineage"];
+        };
+        /**
+         * Mark
+         * @description A value drawn on a distribution's axis, e.g. an exclusion cut-off.
+         */
+        Mark: {
+            /** Value */
+            value: number;
+            /** Label */
+            label: string;
+            /** Group */
+            group: string | null;
         };
         /** PreviewResult */
         PreviewResult: {
