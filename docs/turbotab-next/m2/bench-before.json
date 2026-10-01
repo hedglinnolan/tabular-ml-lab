@@ -1,0 +1,191 @@
+{
+ "label": "before",
+ "runs": [
+  {
+   "label": "before",
+   "workers": 2,
+   "machine": "arm64 macOS-27.0-arm64-arm-64bit-Mach-O",
+   "python": "3.13.0",
+   "total_seconds": 356.7,
+   "steps": [
+    {
+     "table": "wide",
+     "name": "ingest (request \u2192 table ready)",
+     "seconds": 10.957,
+     "note": "stage compute 10.17 s"
+    },
+    {
+     "table": "wide",
+     "name": "profile: summaries + lens hints (stage)",
+     "seconds": 24.736,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "summaries, cold (DataStore.summaries)",
+     "seconds": 4.699,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "GET /columns (every column's summary)",
+     "seconds": 0.115,
+     "note": "20,005 summaries"
+    },
+    {
+     "table": "wide",
+     "name": "GET /table 100 rows \u00d7 40 visible columns",
+     "seconds": 0.057,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "GET /table 100 rows \u00d7 all 20,005 columns",
+     "seconds": 0.748,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "roles (stage)",
+     "seconds": 1.802,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "findings (stage)",
+     "seconds": 135.496,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "record the roles (POST set_roles)",
+     "seconds": 0.659,
+     "note": "20,004 columns"
+    },
+    {
+     "table": "wide",
+     "name": "preview: complete cases (energy-free)",
+     "seconds": 0.075,
+     "note": "again: 0.10 s"
+    },
+    {
+     "table": "wide",
+     "name": "preview: roles (lineage)",
+     "seconds": 7.198,
+     "note": "again: 6.79 s"
+    },
+    {
+     "table": "wide",
+     "name": "preview: models (lineage)",
+     "seconds": 0.005,
+     "note": "again: 0.00 s"
+    },
+    {
+     "table": "wide",
+     "name": "cohort (stage)",
+     "seconds": 0.12,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "split (stage)",
+     "seconds": 0.152,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "design (stage)",
+     "seconds": 14.343,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "fit: elastic net, 5-fold CV + refit",
+     "seconds": null,
+     "note": "not done in 150 s (cancelled); first fold unfinished"
+    }
+   ]
+  },
+  {
+   "label": "before",
+   "workers": 2,
+   "machine": "arm64 macOS-27.0-arm64-arm-64bit-Mach-O",
+   "python": "3.13.0",
+   "total_seconds": 22.4,
+   "steps": [
+    {
+     "table": "tall",
+     "name": "ingest (request \u2192 table ready)",
+     "seconds": 2.352,
+     "note": "stage compute 1.49 s"
+    },
+    {
+     "table": "tall",
+     "name": "profile: summaries + lens hints (stage)",
+     "seconds": 2.462,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "summaries, cold (DataStore.summaries)",
+     "seconds": 0.722,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "GET /columns (every column's summary)",
+     "seconds": 0.005,
+     "note": "30 summaries"
+    },
+    {
+     "table": "tall",
+     "name": "GET /table 100 rows \u00d7 40 visible columns",
+     "seconds": 0.015,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "GET /table 100 rows \u00d7 all 30 columns",
+     "seconds": 0.004,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "roles (stage)",
+     "seconds": 0.085,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "findings (stage)",
+     "seconds": 15.137,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "record an exclusion (POST set_exclusions)",
+     "seconds": 0.036,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "cohort (stage)",
+     "seconds": 0.06,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "preview: exclusions (energy-free)",
+     "seconds": 0.383,
+     "note": "again: 0.15 s"
+    },
+    {
+     "table": "tall",
+     "name": "preview: complete cases (energy-free)",
+     "seconds": 0.348,
+     "note": "again: 0.34 s"
+    }
+   ]
+  }
+ ]
+}

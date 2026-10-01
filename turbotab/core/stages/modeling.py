@@ -172,7 +172,8 @@ def design_stage(ctx: StageContext) -> Bundle:
         X = modeling_frame(store, input_columns(predictors, adj), train_ids)
         info = {c.name: c for c in store.info().columns}  # every row's summary: as the cohort reads it
     spec = design_spec(state, X, predictors, column_info=info)
-    numeric = [c for c in spec.predictors if c in spec.numeric]
+    numeric_set = set(spec.numeric)  # a set: 20,000 predictors made the list test quadratic
+    numeric = [c for c in spec.predictors if c in numeric_set]
     nested = nested_components(X, numeric)  # on training rows: what the substitution will move
     warnings_list = warnings_for(spec, X, [f.key for f in families], {f.key: f for f in families},
                                  nested)

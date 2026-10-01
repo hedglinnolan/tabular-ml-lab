@@ -7,7 +7,10 @@ row identity everything downstream keys on — plus a small JSON sidecar
 
 ``DataStore`` answers row windows, column summaries and histograms as DuckDB
 queries over that Parquet file, and materializes pandas frames for modeling
-only under a memory budget. ``__row_id`` never appears in a column list, a
+only under a memory budget. A wide table (more columns than one DuckDB batch,
+M2_CONTRACT §5) is summarized and counted through Arrow instead, and frames are
+materialized through pyarrow: DuckDB pays per column per statement, seconds at
+20,000 columns. The two paths give the same answers (test_wide_data). ``__row_id`` never appears in a column list, a
 window or a summary; it comes back only as the index of a materialized frame.
 """
 from __future__ import annotations
@@ -58,6 +61,18 @@ MAX_WINDOW_ROWS = 10_000
 MAX_HISTOGRAM_BINS = 1_000
 PEAK_FACTOR = 2                # materializing holds the Arrow buffers and the frame at once
 PY_STR_OVERHEAD = 49           # bytes of a CPython str header
+
+# Wide tables (M2_CONTRACT §5). DuckDB pays per column per statement — binding, planning and
+# one aggregate state per column — so 20,000 columns cost seconds a query however few rows
+# there are. Past one batch of columns, per-column statistics and materializing go through
+# Arrow instead, a chunk of whole columns at a time; DuckDB keeps the tall tables it is fast on.
+ARROW_MAX_ROWS = 100_000       # above this, per-column statistics stay in DuckDB
+ARROW_CHUNK_CELLS = 10_000_000 # cells (rows × columns) the Arrow paths hold at once
+ROW_GROUP_CELLS = 10_000_000   # a wide table's Parquet row groups hold about this many cells
+DUCKDB_ROW_GROUP = 122_880     # DuckDB's default row group, in rows
+DUCKDB_VECTOR = 2_048          # DuckDB writes row groups in whole vectors of rows
+DUCKDB_MAX_LINE = 2_097_152    # DuckDB's default max_line_size, in bytes
+FIELD_BYTES = 64               # room per field when a line must hold very many fields
 
 _INT_TYPES = {"TINYINT", "SMALLINT", "INTEGER", "BIGINT", "HUGEINT", "UTINYINT",
               "USMALLINT", "UINTEGER", "UBIGINT", "UHUGEINT", "INT1", "INT2", "INT4",
@@ -400,10 +415,47 @@ def _select_expr(name: str, physical: str, out: str | None = None) -> str:
     return f"{expr} AS {_ident(out if out is not None else name)}"
 
 
-def _copy_sql(select_list: Sequence[str], source_sql: str, dest: Path) -> str:
+def row_group_rows(n_columns: int, n_rows: int | None = None) -> int | None:
+    """Rows per Parquet row group for a table this wide; None keeps DuckDB's default.
+
+    DuckDB buffers a whole row group before writing it, so 122,880 rows × 20,000 columns
+    would hold ~20 GB; and a row window or a sample reads whole row groups. A wide table's
+    groups hold about ROW_GROUP_CELLS cells instead, in whole DuckDB vectors (2,048 rows).
+    A table of a few groups' rows (``n_rows``, known or estimated) keeps the default: DuckDB
+    would otherwise flush each reader thread's rows as a group of their own, and a 500-row
+    table would get four groups — four times the metadata of 20,000 column chunks.
+    """
+    if n_columns * DUCKDB_ROW_GROUP <= ROW_GROUP_CELLS:
+        return None
+    rows = max(DUCKDB_VECTOR, ROW_GROUP_CELLS // max(1, n_columns) // DUCKDB_VECTOR * DUCKDB_VECTOR)
+    if n_rows is not None and n_rows <= 2 * rows:
+        return None
+    return rows
+
+
+def _parquet_options(n_columns: int, n_rows: int | None = None) -> str:
+    rows = row_group_rows(n_columns, n_rows)
+    group = f", ROW_GROUP_SIZE {rows}" if rows is not None else ""
+    return f"(FORMAT parquet, COMPRESSION zstd{group})"
+
+
+def _copy_sql(select_list: Sequence[str], source_sql: str, dest: Path,
+              n_rows: int | None = None) -> str:
     cols = ", ".join([*select_list, f"CAST(row_number() OVER () - 1 AS BIGINT) AS {ROW_ID}"])
     return (f"COPY (SELECT {cols} FROM {source_sql}) TO {_lit(dest)} "
-            "(FORMAT parquet, COMPRESSION zstd)")
+            f"{_parquet_options(len(select_list) + 1, n_rows)}")
+
+
+def estimated_csv_rows(source: Path) -> int | None:
+    """Data rows in a delimited file, guessed from its size and its header line's length."""
+    if source.name.lower().endswith(COMPRESSED_SUFFIXES):
+        return None
+    try:
+        with open(source, "rb") as fh:
+            header = len(fh.readline(MAX_HEADER_BYTES))
+        return max(0, source.stat().st_size // max(1, header) - 1)
+    except OSError:
+        return None
 
 
 class _EncodingError(Exception):
@@ -420,9 +472,11 @@ class _Dialect:
     types: list[str]
     dateformat: str | None
     timestampformat: str | None
+    max_line: int | None = None  # bytes; None keeps DuckDB's default
 
 
 WIDE_HEADER_FIELDS = 1_000
+MAX_HEADER_BYTES = 1 << 30
 
 
 def _wide_delimiter(source: Path) -> str | None:
@@ -442,15 +496,48 @@ def _wide_delimiter(source: Path) -> str | None:
     return delim if n >= WIDE_HEADER_FIELDS else None
 
 
+def max_line_size(source: Path) -> int | None:
+    """A ``max_line_size`` for a file whose lines DuckDB's default (2 MB) cannot hold; else None.
+
+    Read off the header line: twice its length, and at least FIELD_BYTES per field, so data
+    rows longer than the header (numbers written to many digits) still fit. Past ~32,000
+    fields the default is too small; at 150,000 the header alone is over 2 MB.
+    """
+    name = source.name.lower()
+    try:
+        if name.endswith(".gz"):
+            import gzip
+            fh: Any = gzip.open(source, "rb")
+        elif name.endswith(COMPRESSED_SUFFIXES):
+            return None
+        else:
+            fh = open(source, "rb")
+        with fh:
+            line = fh.readline(MAX_HEADER_BYTES)
+    except (OSError, EOFError):
+        return None
+    fields = 1 + max(line.count(d) for d in (b",", b"\t", b";", b"|"))
+    need = max(2 * len(line), fields * FIELD_BYTES)
+    return need if need > DUCKDB_MAX_LINE else None
+
+
+def _line_options(max_line: int | None) -> str:
+    """read_csv options for very long lines (the buffer must hold at least one line)."""
+    if max_line is None:
+        return ""
+    return f", max_line_size = {int(max_line)}, buffer_size = {2 * int(max_line)}"
+
+
 def _sniff_csv(con: duckdb.DuckDBPyConnection, source: Path, *, encoding: str,
                sample_size: int, delim: str | None = None,
-               null_padding: bool = False) -> _Dialect:
+               null_padding: bool = False, max_line: int | None = None) -> _Dialect:
     """DuckDB's sniffer, with the header forced on (as every CSV reader defaults)."""
     nulls = "[" + ", ".join(_lit(t) for t in NULL_TOKENS) + "]"
     pinned = (f", delim = {_lit(delim)}, quote = '\"', escape = '\"'"
               if delim is not None else "")
     if null_padding:
         pinned += ", null_padding = true"
+    pinned += _line_options(max_line)
     row = con.execute(
         f"SELECT Delimiter, Quote, Escape, Comment, SkipRows, Columns, DateFormat, "
         f"TimestampFormat FROM sniff_csv({_lit(source)}, header = true, "
@@ -467,7 +554,8 @@ def _sniff_csv(con: duckdb.DuckDBPyConnection, source: Path, *, encoding: str,
     return _Dialect(delim=given(delim) or ",", quote=quote, escape=escape,
                     comment=given(comment), skip=int(skip or 0),
                     types=[str(c["type"]) for c in columns],
-                    dateformat=given(dfmt) or None, timestampformat=given(tfmt) or None)
+                    dateformat=given(dfmt) or None, timestampformat=given(tfmt) or None,
+                    max_line=max_line)
 
 
 def _csv_sql(source: Path, d: _Dialect, *, encoding: str, header: bool,
@@ -482,6 +570,8 @@ def _csv_sql(source: Path, d: _Dialect, *, encoding: str, header: bool,
         opts.append(f"comment = {_lit(d.comment)}")
     if null_padding:
         opts.append("null_padding = true")
+    if d.max_line is not None:
+        opts.append(_line_options(d.max_line).lstrip(", "))
     if columns is not None:
         spec = ", ".join(f"{_lit(n)}: {_lit('VARCHAR' if all_varchar else t)}"
                          for n, t in columns.items())
@@ -545,6 +635,7 @@ def _ingest_csv_as(con: duckdb.DuckDBPyConnection, source: Path, tmp: Path,
     dialect: _Dialect | None = None
     attempts = (("sniff", SNIFF_SAMPLE_ROWS), ("sniff", -1), ("text", 0))
     wide_delim = _wide_delimiter(source)
+    max_line = max_line_size(source)
     step = 0
     while step < len(attempts):
         mode, sample_size = attempts[step]
@@ -553,13 +644,14 @@ def _ingest_csv_as(con: duckdb.DuckDBPyConnection, source: Path, tmp: Path,
                 report(0.02, "Detecting the file's layout and column types")
                 dialect = _sniff_csv(con, source, encoding=encoding, sample_size=sample_size,
                                      delim=wide_delim if step == 0 else None,
-                                     null_padding=null_padding)
+                                     null_padding=null_padding, max_line=max_line)
                 if len(dialect.types) == 1 and not null_padding and _first_line_splits(source):
                     # A short row makes every real delimiter look inconsistent,
                     # and the sniffer then settles on "one column" without a
                     # word. Try again allowing short rows.
                     padded = _sniff_csv(con, source, encoding=encoding,
-                                        sample_size=sample_size, null_padding=True)
+                                        sample_size=sample_size, null_padding=True,
+                                        max_line=max_line)
                     if len(padded.types) > 1:
                         dialect, null_padding = padded, True
                         warnings.append(_SHORT_ROWS_NOTE)
@@ -580,7 +672,8 @@ def _ingest_csv_as(con: duckdb.DuckDBPyConnection, source: Path, tmp: Path,
                 src = _csv_sql(source, dialect, encoding=encoding, header=True,
                                columns=columns, null_padding=null_padding)
                 select = [_select_expr(n, t) for n, t in columns.items()]
-                _execute(con, _copy_sql(select, src, tmp), report, 0.1, 0.7,
+                _execute(con, _copy_sql(select, src, tmp, estimated_csv_rows(source)),
+                         report, 0.1, 0.7,
                          "Writing the columnar copy")
 
             copy(types)
@@ -674,7 +767,8 @@ def _ingest_parquet(con: duckdb.DuckDBPyConnection, source: Path, tmp: Path,
             warnings.append(f"column \"{name}\" holds {physical} values; they are kept "
                             "as text")
         select.append(_select_expr(name, str(physical), out))
-    _execute(con, _copy_sql(select, src, tmp), report, 0.05, 0.8,
+    n_rows = int(con.execute(f"SELECT count(*) FROM {src}").fetchone()[0])  # from the footer
+    _execute(con, _copy_sql(select, src, tmp, n_rows), report, 0.05, 0.8,
              "Writing the columnar copy")
 
 
@@ -732,7 +826,7 @@ def _ingest_excel(con: duckdb.DuckDBPyConnection, source: Path, tmp: Path,
     try:
         described = con.execute("DESCRIBE SELECT * FROM __turbotab_excel").fetchall()
         select = [_select_expr(str(n), str(t)) for n, t, *_ in described]
-        _execute(con, _copy_sql(select, "__turbotab_excel", tmp), report, 0.3, 0.8,
+        _execute(con, _copy_sql(select, "__turbotab_excel", tmp, len(frame)), report, 0.3, 0.8,
                  "Writing the columnar copy")
     finally:
         con.unregister("__turbotab_excel")
@@ -764,21 +858,50 @@ def _head_values(parquet: Path, n: int) -> dict[str, list[Any]]:
     return {name: batch.column(i).to_pylist() for i, name in enumerate(batch.schema.names)}
 
 
-def _column_stats(con: duckdb.DuckDBPyConnection, parquet: Path, n_rows: int,
-                  report: _Progress | None = None, lo: float = 0.0, hi: float = 1.0
-                  ) -> tuple[list[ColumnInfo], dict[str, Any]]:
-    """ColumnInfo for every column of an ingested Parquet file.
+_ARROW_TYPES = ((_INT_TYPES - {"HUGEINT", "UHUGEINT", "INT128"}) | _FLOAT_TYPES
+                | {"BOOLEAN", "VARCHAR", "DATE", "TIMESTAMP", "TIME"})
 
-    ``extras`` carries what the contract does not: mean string length (for
-    memory estimates) and the float columns that still hold NaN.
+
+def arrow_safe(physical: str) -> bool:
+    """Whether Arrow reads this column of our Parquet files exactly as DuckDB does.
+
+    A zoned timestamp is not (DuckDB answers in the session's zone, Arrow in UTC), nor is a
+    decimal (Arrow's cast to double is off in the last digit: 37198.520000000004). Both go
+    through DuckDB; neither comes out of a CSV.
     """
-    rel = _parquet_rel(parquet)
-    schema = _schema(con, rel)
-    exact = n_rows <= EXACT_MAX_ROWS
-    infos: list[ColumnInfo] = []
-    avg_len: dict[str, float] = {}
-    nan_columns: list[str] = []
-    heads = _head_values(parquet, SAMPLE_HEAD_ROWS)
+    return _base_type(physical) in _ARROW_TYPES
+
+
+def arrow_columnwise(n_columns: int, n_rows: int) -> bool:
+    """Whether per-column statistics over the whole table go through Arrow (wide, short)."""
+    return n_columns > BATCH_COLUMNS and n_rows <= ARROW_MAX_ROWS
+
+
+def _arrow_column_chunks(parquet: Path, names: Sequence[str], n_rows: int,
+                         metadata: Any = None) -> Iterator[Any]:
+    """Arrow tables holding whole columns of ``parquet``, about ARROW_CHUNK_CELLS cells each."""
+    import pyarrow.parquet as pq
+
+    pf = pq.ParquetFile(parquet, metadata=metadata)
+    try:
+        schema = pf.schema_arrow
+        per = max(1, ARROW_CHUNK_CELLS // max(1, n_rows))
+        for batch in _chunks(list(names), per):
+            # By index, not name: pyarrow reads a dotted name as a nested path.
+            indices = [schema.get_field_index(n) for n in batch]
+            yield pf.reader.read_all(column_indices=indices, use_threads=True)
+    finally:
+        pf.close()
+
+
+# (non-missing, distinct, mean byte length of a text column or None, holds a NaN)
+_Counts = tuple[int, int, "float | None", bool]
+
+
+def _column_counts_duckdb(con: duckdb.DuckDBPyConnection, rel: str,
+                          schema: Sequence[tuple[str, str]], exact: bool,
+                          report: _Progress | None, lo: float, hi: float) -> dict[str, _Counts]:
+    out: dict[str, _Counts] = {}
     batches = list(_chunks(schema, BATCH_COLUMNS))
     for b, batch in enumerate(batches):
         if report is not None:
@@ -797,29 +920,94 @@ def _column_stats(con: duckdb.DuckDBPyConnection, parquet: Path, n_rows: int,
         for name, physical in batch:
             n_present, n_unique = int(row[k] or 0), int(row[k + 1] or 0)
             k += 2
+            length = None
             if _base_type(physical) == "VARCHAR":
-                avg_len[name] = float(row[k] or 0.0)
+                length = float(row[k] or 0.0)
                 k += 1
+            has_nan = False
             if _is_float(physical):
-                if int(row[k] or 0):
-                    nan_columns.append(name)
+                has_nan = bool(int(row[k] or 0))
                 k += 1
-            n_unique = min(n_unique, n_present)
-            sample: list[Any] = []
-            seen: set[Any] = set()
-            for v in heads.get(name, []):
-                if v is None or (isinstance(v, float) and math.isnan(v)):
-                    continue
-                key = json.dumps(json_safe(v), sort_keys=True)
-                if key in seen:
-                    continue
-                seen.add(key)
-                sample.append(json_safe(v))
-                if len(sample) >= SAMPLE_VALUES:
-                    break
-            infos.append(ColumnInfo(name=name, dtype=logical_dtype(physical, n_unique, n_rows),
-                                    physical_type=physical, n_missing=n_rows - n_present,
-                                    n_unique=n_unique, sample=sample))
+            out[name] = (n_present, n_unique, length, has_nan)
+    return out
+
+
+def _column_counts_arrow(parquet: Path, schema: Sequence[tuple[str, str]], n_rows: int,
+                         report: _Progress | None, lo: float, hi: float) -> dict[str, _Counts]:
+    """The DuckDB counts, from Arrow: distinct counts are exact, NaN is one value and
+    ``-0.0`` is ``0.0`` (as DuckDB's ``count(DISTINCT)`` has them), lengths are in bytes."""
+    import pyarrow.compute as pc
+
+    out: dict[str, _Counts] = {}
+    physical = dict(schema)
+    n_chunks = max(1, math.ceil(len(schema) / max(1, ARROW_CHUNK_CELLS // max(1, n_rows))))
+    chunks = _arrow_column_chunks(parquet, [n for n, _ in schema], n_rows)
+    for b, table in enumerate(chunks):
+        if report is not None:
+            report(lo + (hi - lo) * b / n_chunks, "Counting values per column")
+        for name, col in zip(table.column_names, table.columns):
+            phys = physical[name]
+            n_present = len(col) - col.null_count
+            values, has_nan = col, False
+            if _is_float(phys) and n_present:
+                has_nan = bool(pc.any(pc.is_nan(col)).as_py())
+                values = pc.add(col, 0.0)  # -0.0 + 0.0 is 0.0
+            n_unique = int(pc.count_distinct(values, mode="only_valid").as_py()) if n_present else 0
+            length = None
+            if _base_type(phys) == "VARCHAR":
+                length = float(pc.mean(pc.binary_length(col)).as_py() or 0.0) if n_present else 0.0
+            out[name] = (n_present, n_unique, length, has_nan)
+    return out
+
+
+def _column_stats(con: duckdb.DuckDBPyConnection, parquet: Path, n_rows: int,
+                  report: _Progress | None = None, lo: float = 0.0, hi: float = 1.0,
+                  arrow: bool | None = None) -> tuple[list[ColumnInfo], dict[str, Any]]:
+    """ColumnInfo for every column of an ingested Parquet file.
+
+    ``extras`` carries what the contract does not: mean string length (for
+    memory estimates) and the float columns that still hold NaN. A wide, short
+    table is counted through Arrow (``arrow=None`` decides by shape; the tests
+    force either path), any other through DuckDB, with the same answers.
+    """
+    rel = _parquet_rel(parquet)
+    schema = _schema(con, rel)
+    exact = n_rows <= EXACT_MAX_ROWS
+    if arrow is None:
+        arrow = arrow_columnwise(len(schema), n_rows)
+    counts: dict[str, _Counts] = {}
+    if arrow:
+        counts = _column_counts_arrow(parquet, [(n, t) for n, t in schema if arrow_safe(t)],
+                                      n_rows, report, lo, hi)
+    rest = [(n, t) for n, t in schema if n not in counts]
+    if rest:
+        counts.update(_column_counts_duckdb(con, rel, rest, exact, report, lo, hi))
+    infos: list[ColumnInfo] = []
+    avg_len: dict[str, float] = {}
+    nan_columns: list[str] = []
+    heads = _head_values(parquet, SAMPLE_HEAD_ROWS)
+    for name, physical in schema:
+        n_present, n_unique, length, has_nan = counts[name]
+        if length is not None:
+            avg_len[name] = length
+        if has_nan:
+            nan_columns.append(name)
+        n_unique = min(n_unique, n_present)
+        sample: list[Any] = []
+        seen: set[Any] = set()
+        for v in heads.get(name, []):
+            if v is None or (isinstance(v, float) and math.isnan(v)):
+                continue
+            key = json.dumps(json_safe(v), sort_keys=True)
+            if key in seen:
+                continue
+            seen.add(key)
+            sample.append(json_safe(v))
+            if len(sample) >= SAMPLE_VALUES:
+                break
+        infos.append(ColumnInfo(name=name, dtype=logical_dtype(physical, n_unique, n_rows),
+                                physical_type=physical, n_missing=n_rows - n_present,
+                                n_unique=n_unique, sample=sample))
     return infos, {"avg_len": avg_len, "exact": exact, "nan_columns": nan_columns}
 
 
@@ -840,7 +1028,8 @@ def _null_the_nans(con: duckdb.DuckDBPyConnection, parquet: Path, nan_columns: l
     select.append(ROW_ID)
     out = parquet.with_name(f"{parquet.name}.{token}.nan")
     con.execute(f"COPY (SELECT {', '.join(select)} FROM {_parquet_rel(parquet)} "
-                f"ORDER BY {ROW_ID}) TO {_lit(out)} (FORMAT parquet, COMPRESSION zstd)")
+                f"ORDER BY {ROW_ID}) TO {_lit(out)} "
+                f"{_parquet_options(len(select), _count_rows(con, parquet))}")
     os.replace(out, parquet)
 
 
@@ -951,6 +1140,58 @@ def ingest(source: Path, dest_parquet: Path, *,
     return info
 
 
+def _increasing(values: np.ndarray) -> bool:
+    return values.size < 2 or bool(np.all(values[1:] > values[:-1]))
+
+
+def _positions(found: np.ndarray, ids: np.ndarray) -> np.ndarray:
+    """Where each of ``ids`` sits in ``found`` (row ids as read); every id must be there."""
+    if found.size and found[-1] - found[0] == found.size - 1 and _increasing(found):
+        positions = ids - found[0]           # a dense run of row ids: direct
+        ok = (positions >= 0) & (positions < found.size)
+    elif not found.size:
+        positions, ok = np.zeros_like(ids), np.zeros(ids.shape, dtype=bool)
+    else:
+        order = None if _increasing(found) else np.argsort(found, kind="stable")
+        at = np.minimum(np.searchsorted(found, ids, sorter=order), found.size - 1)
+        positions = at if order is None else order[at]
+        ok = found[positions] == ids
+    if not bool(np.all(ok)):
+        raise ValueError(f"{int((~ok).sum())} row id(s) are not in this table")
+    return positions.astype(np.int64, copy=False)
+
+
+def _number_summary(values: np.ndarray, *, integer: bool) -> dict[str, Any]:
+    """mean, std, min, quartiles, max of present values, as DuckDB's aggregates give them.
+
+    ``stddev_samp`` of one value is missing; any non-finite answer is missing (json_safe).
+    Quartiles interpolate in double precision and come back in the column's own precision
+    (``quantile_cont`` of a FLOAT is a FLOAT).
+    """
+    n = int(values.size)
+    with np.errstate(all="ignore"):
+        x = values.astype(np.float64, copy=False)
+        if integer:
+            low, high = int(values.min()), int(values.max())
+            if max(abs(low), abs(high)) * n < 2 ** 62:
+                total: Any = int(values.sum(dtype=np.int64))
+            else:
+                total = sum(int(v) for v in values.tolist())
+            mean: Any = total / n                    # exact sum, correctly rounded division
+            lo_hi: tuple[Any, Any] = (low, high)
+        else:
+            mean = float(np.mean(x))
+            lo_hi = (float(np.min(x)), float(np.max(x)))
+        std = float(np.std(x, ddof=1)) if n > 1 else None
+        quartiles = np.quantile(x, [0.25, 0.5, 0.75])
+        if values.dtype == np.float32:
+            quartiles = quartiles.astype(np.float32)
+        q25, median, q75 = (float(q) for q in quartiles)
+    return {"mean": json_safe(mean), "std": json_safe(std), "min": json_safe(lo_hi[0]),
+            "max": json_safe(lo_hi[1]), "q25": json_safe(q25), "median": json_safe(median),
+            "q75": json_safe(q75)}
+
+
 # ── the store ────────────────────────────────────────────────────────────────
 
 class DataStore:
@@ -970,6 +1211,8 @@ class DataStore:
         self._extras: dict[str, Any] = {}
         self._summaries: dict[str, dict[str, Any]] | None = None
         self._row_group_bounds: tuple[Any, list[tuple[int, int]]] | None = None
+        self._cmap: dict[str, ColumnInfo] | None = None
+        self._names: list[str] | None = None
 
     # ── connections ───────────────────────────────────────────────────────────
     @contextmanager
@@ -1021,19 +1264,25 @@ class DataStore:
                                fingerprint=fingerprint_file(self.parquet),
                                warnings=["no ingest record was found beside the Parquet "
                                          "file; its details were recomputed from the file"])
+        self._cmap = {c.name: c for c in info.columns}  # 20,000 columns: build it once
+        self._names = [c.name for c in info.columns]
         self._info, self._extras = info, extras or {}
         return info
 
     @property
     def columns(self) -> list[str]:
-        return [c.name for c in self.info().columns]
+        self.info()
+        assert self._names is not None
+        return list(self._names)
 
     @property
     def n_rows(self) -> int:
         return self.info().n_rows
 
     def _column_map(self) -> dict[str, ColumnInfo]:
-        return {c.name: c for c in self.info().columns}
+        self.info()
+        assert self._cmap is not None
+        return self._cmap
 
     def _resolve(self, columns: Sequence[str] | str | None) -> list[str]:
         known = self._column_map()
@@ -1042,10 +1291,12 @@ class DataStore:
         if isinstance(columns, str):
             columns = [columns]
         out: list[str] = []
+        seen: set[str] = set()  # not `in out`: quadratic, half a second at 20,000 columns
         for col in columns:
             if col not in known:
                 raise UnknownColumn(str(col))
-            if col not in out:
+            if col not in seen:
+                seen.add(col)
                 out.append(col)
         return out
 
@@ -1143,7 +1394,70 @@ class DataStore:
             pass
         return {}
 
-    def _compute_summaries(self, cols: list[str]) -> dict[str, dict[str, Any]]:
+    def _compute_summaries(self, cols: list[str],
+                           arrow: bool | None = None) -> dict[str, dict[str, Any]]:
+        """Summaries of ``cols``: through Arrow for many columns of a short table, DuckDB
+        otherwise (``arrow`` forces either path, for the tests that hold them equal)."""
+        info = self.info()
+        cmap = self._column_map()
+        if arrow is None:
+            arrow = arrow_columnwise(len(cols), info.n_rows)
+        out: dict[str, dict[str, Any]] = {}
+        if arrow:
+            out = self._summaries_arrow([c for c in cols if arrow_safe(cmap[c].physical_type)])
+        rest = [c for c in cols if c not in out]
+        if rest:
+            out.update(self._summaries_duckdb(rest))
+        return out
+
+    def _summary_shell(self, name: str, n: int) -> dict[str, Any]:
+        ci = self._column_map()[name]
+        return {"name": name, "dtype": ci.dtype, "n": int(n), "n_missing": self.n_rows - int(n),
+                "n_unique": ci.n_unique, "mean": None, "std": None, "min": None, "q25": None,
+                "median": None, "q75": None, "max": None, "top": None}
+
+    def _summaries_arrow(self, cols: list[str]) -> dict[str, dict[str, Any]]:
+        """The DuckDB summaries, computed from Arrow columns with numpy.
+
+        Quartiles are linear interpolation between order statistics (DuckDB's
+        ``quantile_cont``); integer means divide the exact sum; ``top`` ranks the
+        exact value counts by count, then by the value's text — for a column with
+        more than EXACT_TOP_MAX_UNIQUE values too, where DuckDB finds the candidates
+        approximately (``approx_top_k``) and then counts them exactly.
+        """
+        import pyarrow.compute as pc
+
+        cmap = self._column_map()
+        n_rows = self.n_rows
+        metadata, _ = self._row_groups()
+        out: dict[str, dict[str, Any]] = {}
+        for table in _arrow_column_chunks(self.parquet, cols, n_rows, metadata):
+            for name, col in zip(table.column_names, table.columns):
+                ci = cmap[name]
+                n = len(col) - col.null_count
+                summary = self._summary_shell(name, n)
+                out[name] = summary
+                if ci.dtype in ("numeric", "integer"):
+                    if n == 0:
+                        continue
+                    values = pc.drop_null(col).to_numpy()
+                    summary.update(_number_summary(values, integer=_is_int(ci.physical_type)))
+                elif ci.dtype == "boolean":
+                    n_true = int(pc.sum(col).as_py() or 0) if n else 0
+                    summary["mean"] = n_true / n if n else None
+                    top = [{"value": True, "count": n_true}, {"value": False, "count": n - n_true}]
+                    summary["top"] = sorted([t for t in top if t["count"] > 0],
+                                            key=lambda t: -t["count"])
+                else:
+                    counts = pc.value_counts(pc.drop_null(col).combine_chunks()) if n else None
+                    pairs = (list(zip(counts.field("values").to_pylist(),
+                                      counts.field("counts").to_pylist())) if n else [])
+                    ranked = sorted(pairs, key=lambda kv: (-kv[1], str(kv[0])))
+                    summary["top"] = [{"value": json_safe(v), "count": int(c)}
+                                      for v, c in ranked[:TOP_K]]
+        return out
+
+    def _summaries_duckdb(self, cols: list[str]) -> dict[str, dict[str, Any]]:
         info = self.info()
         cmap = self._column_map()
         exact = info.n_rows <= EXACT_MAX_ROWS
@@ -1295,7 +1609,9 @@ class DataStore:
         """A pandas frame indexed by ``row_id``, in ``row_ids`` order (default: file order).
 
         Raises MemoryBudgetExceeded before reading anything when the estimate
-        exceeds the budget.
+        exceeds the budget. Read through pyarrow (only the row groups that hold
+        the rows asked for), or through DuckDB for a column type Arrow does not
+        read as DuckDB does; the two give the same frame (test_wide_data).
         """
         cols = self._resolve(columns)
         n_total = self.n_rows
@@ -1312,6 +1628,13 @@ class DataStore:
         estimate = self.estimate_bytes(cols, n)
         if estimate > self.memory_budget_bytes:
             raise MemoryBudgetExceeded(estimate, self.memory_budget_bytes)
+        cmap = self._column_map()
+        if all(arrow_safe(cmap[c].physical_type) for c in cols):
+            return self._materialize_arrow(cols, ids)
+        return self._materialize_duckdb(cols, ids)
+
+    def _materialize_duckdb(self, cols: list[str], ids: np.ndarray | None) -> pd.DataFrame:
+        """A DuckDB projection: exact for every type, but ~0.5 ms a column per query."""
         cmap = self._column_map()
 
         def expr(name: str, q: str = "") -> str:
@@ -1341,6 +1664,84 @@ class DataStore:
         del table
         frame = frame.set_index(ROW_ID)
         frame.index.name = INDEX_NAME
+        return frame
+
+    def _materialize_arrow(self, cols: list[str], ids: np.ndarray | None) -> pd.DataFrame:
+        """pyarrow reads of whole row groups, keeping only the rows asked for.
+
+        Row groups that hold none of ``ids`` are never read; the ones that do are read a
+        few at a time (ARROW_CHUNK_CELLS), so a sample of a tall table does not hold the
+        table.
+        """
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        metadata, bounds = self._row_groups()
+        wanted = None if ids is None else (ids if _increasing(ids) else np.unique(ids))
+        if wanted is None:
+            groups = list(range(len(bounds)))
+        else:
+            groups = [g for g, (first, last) in enumerate(bounds)
+                      if np.searchsorted(wanted, first) < np.searchsorted(wanted, last, "right")]
+        width = len(cols) + 1
+        pf = pq.ParquetFile(self.parquet, metadata=metadata)
+        parts: list[Any] = []
+        try:
+            schema = pf.schema_arrow
+            # By index, not name: pyarrow reads a dotted name as a nested path.
+            indices = [schema.get_field_index(c) for c in (ROW_ID, *cols)]
+            batch: list[int] = []
+            cells = 0
+
+            def flush() -> None:
+                part = pf.reader.read_row_groups(batch, column_indices=indices, use_threads=True)
+                part = part.select([ROW_ID, *cols])
+                if wanted is not None:  # keep only the rows asked for, in row-id order
+                    found = part.column(ROW_ID).to_numpy()
+                    if found.size and _increasing(found):
+                        inside = wanted[np.searchsorted(wanted, found[0]):
+                                        np.searchsorted(wanted, found[-1], side="right")]
+                        if found[-1] - found[0] == found.size - 1:  # a dense run: direct
+                            at = inside - found[0]
+                        else:
+                            at = np.searchsorted(found, inside)
+                            at = at[found[np.minimum(at, found.size - 1)] == inside]
+                        if at.size != found.size:
+                            part = part.take(pa.array(at))
+                    else:
+                        part = part.filter(pa.array(np.isin(found, wanted)))
+                parts.append(part)
+
+            for g in groups:
+                rows = metadata.row_group(g).num_rows
+                if batch and wanted is not None and (cells + rows * width) > ARROW_CHUNK_CELLS:
+                    flush()
+                    batch, cells = [], 0
+                batch.append(g)
+                cells += rows * width
+            if batch:
+                flush()
+        finally:
+            pf.close()
+        if parts:
+            table = pa.concat_tables(parts) if len(parts) > 1 else parts[0]
+        else:
+            fields = [schema.field(i) for i in indices]
+            table = pa.schema(fields).empty_table()
+        found = table.column(ROW_ID).to_numpy()
+        if ids is None:
+            if found.size > 1 and not bool(np.all(found[1:] > found[:-1])):
+                order = np.argsort(found, kind="stable")
+                table, found = table.take(pa.array(order)), found[order]
+            index = found
+        else:
+            if not (found.size == ids.size and np.array_equal(found, ids)):
+                table = table.take(pa.array(_positions(found, ids)))
+            index = ids
+        table = table.select(cols)
+        frame = table.to_pandas(date_as_object=False)
+        del table
+        frame.index = pd.Index(np.asarray(index, dtype=np.int64), name=INDEX_NAME)
         return frame
 
     def sample(self, n: int, columns: Sequence[str] | None = None,

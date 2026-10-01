@@ -84,9 +84,10 @@ INDICATOR_OPERATION = "missing indicator"
 
 def _map_by_name(outputs: Sequence[str], inputs: Sequence[str]) -> dict[str, list[str]]:
     by_length = sorted(inputs, key=len, reverse=True)
+    known = set(inputs)  # not `in inputs`: quadratic, a second a step at 20,000 columns
     mapping: dict[str, list[str]] = {}
     for out in outputs:
-        if out in inputs:
+        if out in known:
             mapping[out] = [out]
             continue
         if out.startswith(INDICATOR) and out[len(INDICATOR):] in inputs:

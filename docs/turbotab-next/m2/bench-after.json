@@ -1,0 +1,354 @@
+{
+ "label": "after",
+ "runs": [
+  {
+   "label": "after-final",
+   "workers": 2,
+   "machine": "arm64 macOS-27.0-arm64-arm-64bit-Mach-O",
+   "python": "3.13.0",
+   "total_seconds": 57.4,
+   "steps": [
+    {
+     "table": "wide",
+     "name": "ingest (request \u2192 table ready)",
+     "seconds": 6.256,
+     "note": "stage compute 5.44 s"
+    },
+    {
+     "table": "wide",
+     "name": "profile: summaries + lens hints (stage)",
+     "seconds": 7.179,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "summaries, cold (DataStore.summaries)",
+     "seconds": 1.021,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "GET /columns (every column's summary)",
+     "seconds": 0.119,
+     "note": "20,005 summaries"
+    },
+    {
+     "table": "wide",
+     "name": "GET /table 100 rows \u00d7 40 visible columns",
+     "seconds": 0.045,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "GET /table 100 rows \u00d7 all 20,005 columns",
+     "seconds": 0.766,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "roles (stage)",
+     "seconds": 1.834,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "findings (stage)",
+     "seconds": 17.512,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "record the roles (POST set_roles)",
+     "seconds": 0.783,
+     "note": "20,004 columns"
+    },
+    {
+     "table": "wide",
+     "name": "preview: complete cases (energy-free)",
+     "seconds": 0.065,
+     "note": "again: 0.09 s"
+    },
+    {
+     "table": "wide",
+     "name": "preview: roles (lineage)",
+     "seconds": 0.135,
+     "note": "again: 0.14 s"
+    },
+    {
+     "table": "wide",
+     "name": "cohort (stage)",
+     "seconds": 0.104,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "split (stage)",
+     "seconds": 0.201,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "design (stage)",
+     "seconds": 1.294,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "ingest (request \u2192 table ready)",
+     "seconds": 1.675,
+     "note": "stage compute 1.54 s"
+    },
+    {
+     "table": "tall",
+     "name": "profile: summaries + lens hints (stage)",
+     "seconds": 2.394,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "summaries, cold (DataStore.summaries)",
+     "seconds": 0.747,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "GET /columns (every column's summary)",
+     "seconds": 0.001,
+     "note": "30 summaries"
+    },
+    {
+     "table": "tall",
+     "name": "GET /table 100 rows \u00d7 40 visible columns",
+     "seconds": 0.005,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "GET /table 100 rows \u00d7 all 30 columns",
+     "seconds": 0.005,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "roles (stage)",
+     "seconds": 0.063,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "findings (stage)",
+     "seconds": 14.781,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "record an exclusion (POST set_exclusions)",
+     "seconds": 0.053,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "cohort (stage)",
+     "seconds": 0.043,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "preview: exclusions (energy-free)",
+     "seconds": 0.32,
+     "note": "again: 0.15 s"
+    },
+    {
+     "table": "tall",
+     "name": "preview: complete cases (energy-free)",
+     "seconds": 0.308,
+     "note": "again: 0.30 s"
+    }
+   ]
+  },
+  {
+   "label": "after",
+   "workers": 2,
+   "machine": "arm64 macOS-27.0-arm64-arm-64bit-Mach-O",
+   "python": "3.13.0",
+   "total_seconds": 368.6,
+   "steps": [
+    {
+     "table": "wide",
+     "name": "ingest (request \u2192 table ready)",
+     "seconds": 6.228,
+     "note": "stage compute 5.31 s"
+    },
+    {
+     "table": "wide",
+     "name": "profile: summaries + lens hints (stage)",
+     "seconds": 7.093,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "summaries, cold (DataStore.summaries)",
+     "seconds": 1.01,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "GET /columns (every column's summary)",
+     "seconds": 0.117,
+     "note": "20,005 summaries"
+    },
+    {
+     "table": "wide",
+     "name": "GET /table 100 rows \u00d7 40 visible columns",
+     "seconds": 0.044,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "GET /table 100 rows \u00d7 all 20,005 columns",
+     "seconds": 0.781,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "roles (stage)",
+     "seconds": null,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "findings (stage)",
+     "seconds": 17.479,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "record the roles (POST set_roles)",
+     "seconds": 0.757,
+     "note": "20,004 columns"
+    },
+    {
+     "table": "wide",
+     "name": "preview: complete cases (energy-free)",
+     "seconds": 0.069,
+     "note": "again: 0.09 s"
+    },
+    {
+     "table": "wide",
+     "name": "preview: roles (lineage)",
+     "seconds": 0.152,
+     "note": "again: 0.14 s"
+    },
+    {
+     "table": "wide",
+     "name": "preview: models (lineage)",
+     "seconds": 0.005,
+     "note": "again: 0.00 s"
+    },
+    {
+     "table": "wide",
+     "name": "cohort (stage)",
+     "seconds": 0.106,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "split (stage)",
+     "seconds": 0.174,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "design (stage)",
+     "seconds": 1.253,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "fit: elastic net, 5-fold CV + refit",
+     "seconds": 310.684,
+     "note": ""
+    },
+    {
+     "table": "wide",
+     "name": "fit: the family's own fit_seconds",
+     "seconds": 310.274,
+     "note": "CV R\u00b2 0.499"
+    },
+    {
+     "table": "tall",
+     "name": "ingest (request \u2192 table ready)",
+     "seconds": 1.655,
+     "note": "stage compute 1.53 s"
+    },
+    {
+     "table": "tall",
+     "name": "profile: summaries + lens hints (stage)",
+     "seconds": 2.413,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "summaries, cold (DataStore.summaries)",
+     "seconds": 0.768,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "GET /columns (every column's summary)",
+     "seconds": 0.001,
+     "note": "30 summaries"
+    },
+    {
+     "table": "tall",
+     "name": "GET /table 100 rows \u00d7 40 visible columns",
+     "seconds": 0.006,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "GET /table 100 rows \u00d7 all 30 columns",
+     "seconds": 0.004,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "roles (stage)",
+     "seconds": 0.072,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "findings (stage)",
+     "seconds": 15.023,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "record an exclusion (POST set_exclusions)",
+     "seconds": 0.031,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "cohort (stage)",
+     "seconds": 0.045,
+     "note": ""
+    },
+    {
+     "table": "tall",
+     "name": "preview: exclusions (energy-free)",
+     "seconds": 0.345,
+     "note": "again: 0.15 s"
+    },
+    {
+     "table": "tall",
+     "name": "preview: complete cases (energy-free)",
+     "seconds": 0.593,
+     "note": "again: 0.59 s"
+    }
+   ]
+  }
+ ],
+ "note": "runs[0] is the final code with the wide fit skipped; runs[1] is the run whose wide fit is reported (the model code did not change between them)"
+}

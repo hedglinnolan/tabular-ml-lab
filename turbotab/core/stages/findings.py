@@ -30,6 +30,7 @@ from typing import Any, Iterable
 
 from turbotab.core import repairs  # noqa: F401 - registers the repair validators, previews, key view
 from turbotab.core.graph import StageContext
+from turbotab.core.shape_memo import remembered
 from turbotab.core.stages.data import LENSES, open_store
 from turbotab.core.stages.finding_words import (
     FindingContext,
@@ -132,6 +133,7 @@ def _lens_phrase(lens: list[str]) -> str:
     return "the " + ", ".join(lens[:-1]) + f" and {lens[-1]} lenses"
 
 
+@remembered()  # the packs' shape readings once per table, not once per finding (wide data)
 def findings_stage(ctx: StageContext) -> dict[str, Any]:
     lens = [k for k in ctx.state.lens or [] if k in LENSES]
     target = ctx.state.target

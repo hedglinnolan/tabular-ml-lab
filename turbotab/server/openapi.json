@@ -844,7 +844,7 @@
           "data"
         ],
         "summary": "Table",
-        "description": "Rows ``[offset, offset + limit)`` in file order.",
+        "description": "Rows ``[offset, offset + limit)`` in file order, of the ``columns`` asked for (the ones a\ngrid shows): only those are read, so a window of a 20,000-column table costs what its\nvisible columns cost.",
         "operationId": "table_api_projects__pid__table_get",
         "parameters": [
           {
@@ -948,6 +948,7 @@
           "data"
         ],
         "summary": "Columns",
+        "description": "Column summaries in table order. A wide table's roles list searches with ``query`` and\npages with ``offset``/``limit``; ``X-Total-Count`` is the number of matches before paging.",
         "operationId": "columns_api_projects__pid__columns_get",
         "parameters": [
           {
@@ -958,6 +959,72 @@
               "type": "string",
               "title": "Pid"
             }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Words every returned column name holds, any case",
+              "title": "Query"
+            },
+            "description": "Words every returned column name holds, any case"
+          },
+          {
+            "name": "names",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated column names; default: all",
+              "title": "Names"
+            },
+            "description": "Comma-separated column names; default: all"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "At most this many; default: every match",
+              "title": "Limit"
+            },
+            "description": "At most this many; default: every match"
           }
         ],
         "responses": {
@@ -976,7 +1043,7 @@
             }
           },
           "404": {
-            "description": "No such project",
+            "description": "No such project or column",
             "content": {
               "application/json": {
                 "schema": {
