@@ -13,6 +13,15 @@ Rules:
 * ``energy_adjustment`` is ``not_applicable`` unless the lens includes ``dietary``, a column has
   the ``energy`` role and an ``exposure`` carries energy; ``reason`` names what is missing.
   ``substitution`` is ``not_applicable`` with fewer than two energy-bearing exposures.
+* The opening sequence (M2_CONTRACT §1, OPENING_SEQUENCE §01/§03), nothing resequenced:
+  ``orientation`` fires only when the lens includes an assay pack and the oriented stage's shape
+  reading is feature-major (and, while it is open, the target question waits behind it);
+  ``event`` only for a binary outcome; ``grain`` always; ``repeat_kind`` and ``unit`` only when
+  units repeat, ``repeat_kind`` usually ``skipped`` (stated from the structure stage's reading,
+  with its evidence as ``reason``); ``aggregation`` only when the unit is the unit; ``temporal``
+  only when time points stay as rows. A question that does not fire is ``not_applicable`` with
+  the reason; ``orientation`` stays answered once answered, since its slot turns the table
+  whatever the lens.
 * At most one question is ``open``: the first applicable unanswered one. It is ``waiting``
   instead while a stage it needs is still being computed (``waiting_on`` names the stage) —
   ``substitution`` waits until ``fit`` is fresh. Every later unanswered question is ``waiting``
@@ -27,20 +36,30 @@ from typing import Any, Callable, Literal, Mapping, Sequence
 from pydantic import BaseModel, ConfigDict
 
 QuestionKey = Literal[
-    "lens", "target", "task", "purpose", "roles", "exclusions", "missing", "split",
-    "energy_adjustment", "models", "substitution",
+    "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
+    "aggregation", "temporal", "roles", "exclusions", "missing", "split", "energy_adjustment",
+    "models", "substitution",
 ]
 QUESTION_KEYS: tuple[str, ...] = (
-    "lens", "target", "task", "purpose", "roles", "exclusions", "missing", "split",
-    "energy_adjustment", "models", "substitution",
+    "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
+    "aggregation", "temporal", "roles", "exclusions", "missing", "split", "energy_adjustment",
+    "models", "substitution",
 )
+ASSAY_LENSES = ("metabolomics", "genomics")
 StepStatus = Literal["answered", "open", "waiting", "skipped", "not_applicable"]
 
 # The stage a question needs before it can be shown (its options come from it).
 NEEDS: dict[str, tuple[str, ...]] = {
     "lens": ("ingest",),
-    "target": ("ingest",),
+    "orientation": ("oriented",),
+    "target": ("oriented",),
+    "event": ("target_info",),
     "task": ("target_info",),
+    "grain": ("structure",),
+    "repeat_kind": ("structure",),
+    "unit": (),
+    "aggregation": ("structure",),
+    "temporal": ("structure",),
     "purpose": (),
     "roles": ("roles",),
     "exclusions": ("proposals",),
@@ -126,6 +145,10 @@ def _live_writer(records: Sequence[Any], state: Any) -> dict[str, str]:
             decision.column != state.target or decision.task != state.task
         ):
             continue
+        if decision.kind == "set_event" and (
+            decision.column != state.target or decision.level != state.event
+        ):
+            continue
         out[slot] = record.id
     return out
 
@@ -154,6 +177,88 @@ def _substitution_applicability(state: Any, bearing: Callable[[str], bool]) -> s
     return None
 
 
+Gate = tuple[str, str | None] | None  # ("not_applicable" | "skipped", reason), or None: ask
+
+
+def _orientation_gate(state: Any, oriented: Any) -> Gate:
+    if state.lens is None:
+        return None
+    if not any(lens in ASSAY_LENSES for lens in state.lens):
+        return ("not_applicable",
+                "No assay lens is on, and other tables are not exported turned around.")
+    reading = _get(oriented, "reading") or {}
+    if oriented is None or _get(reading, "reading") == "feature_major":
+        return None
+    sentence = _get(reading, "sentence") or ""
+    return ("not_applicable", sentence or "The table's shape does not read as features in rows.")
+
+
+def _event_gate(state: Any, target_info: Any) -> Gate:
+    if state.target is None:
+        return None
+    task = state.task
+    if task is None and target_info is not None and _get(target_info, "column") == state.target:
+        task = _get(target_info, "task")
+    if task is None:
+        return None
+    if task != "binary":
+        return ("not_applicable", f"The outcome is read as {task}, so there is no event level to choose.")
+    return None
+
+
+def _repeats_known(state: Any) -> bool | None:
+    """True when units repeat, False when they do not, None while the grain is unanswered."""
+    if state.grain is None:
+        return None
+    return _get(state.grain, "grain") == "repeated"
+
+
+def _repeat_kind_gate(state: Any, structure: Any) -> Gate:
+    repeated = _repeats_known(state)
+    if repeated is None:
+        return None
+    if not repeated:
+        return ("not_applicable", "Each unit appears once, so there are no repeats to tell apart.")
+    reading = _get(structure, "repeats") or {}
+    units = _get(structure, "units") or {}
+    if (_get(reading, "stated") and _get(reading, "reading")
+            and _get(units, "column") == _get(state.grain, "id_column")):
+        return ("skipped", _get(reading, "sentence"))
+    return None
+
+
+def _unit_gate(state: Any) -> Gate:
+    repeated = _repeats_known(state)
+    if repeated is False:
+        return ("not_applicable", "Each unit appears once, so each row already is one.")
+    return None
+
+
+def _aggregation_gate(state: Any) -> Gate:
+    repeated = _repeats_known(state)
+    if repeated is False:
+        return ("not_applicable", "Each unit appears once, so there is nothing to combine.")
+    if repeated and state.unit == "row":
+        return ("not_applicable", "Records stay as they are, so nothing is combined.")
+    return None
+
+
+def _temporal_gate(state: Any, structure: Any) -> Gate:
+    from turbotab.core.stages.working import effective_repeat_kind
+
+    repeated = _repeats_known(state)
+    if repeated is False:
+        return ("not_applicable", "Each unit appears once, so no row comes later than another.")
+    if repeated is None:
+        return None
+    kind = effective_repeat_kind(state, structure if isinstance(structure, Mapping) else None)
+    if kind == "repeats":
+        return ("not_applicable", "The rows are repeats of one measurement, not different time points.")
+    if state.unit == "unit":
+        return ("not_applicable", "Each unit's rows are combined, so no time points stay as rows.")
+    return None
+
+
 def route(
     state: Any,
     stages: Mapping[str, Any],
@@ -166,8 +271,9 @@ def route(
     """The interview, in asking order.
 
     ``stages``: stage name -> StageStatus (or its dict). ``artifacts``: the fresh public artifacts
-    the Router reads — ``target_info`` (for the task skip). ``records``: the decision log, for
-    each answered step's ``decision_id``.
+    the Router reads — ``target_info`` (the task skip, the event's binary outcome), ``oriented``
+    (the shape reading orientation fires on) and ``structure`` (the stated repeats reading).
+    ``records``: the decision log, for each answered step's ``decision_id``.
     """
     if energy_bearing is None:
         from turbotab.core.stages.rows import energy_bearing as bearing
@@ -177,23 +283,42 @@ def route(
     pending = pending_stages(stages, deps)
     writers = _live_writer(records, state)
     target_info = artifacts.get("target_info")
+    oriented = artifacts.get("oriented")
+    structure = artifacts.get("structure")
+    gates: dict[str, Callable[[], Gate]] = {
+        "orientation": lambda: _orientation_gate(state, oriented),
+        "event": lambda: _event_gate(state, target_info),
+        "repeat_kind": lambda: _repeat_kind_gate(state, structure),
+        "unit": lambda: _unit_gate(state),
+        "aggregation": lambda: _aggregation_gate(state),
+        "temporal": lambda: _temporal_gate(state, structure),
+    }
 
     steps: list[InterviewStep] = []
     first_unanswered: str | None = None
     for key in QUESTION_KEYS:
         value = getattr(state, key, None)
         decision_id = writers.get(key)
+        if key == "orientation" and value is not None:  # its slot turns the table whatever the lens
+            steps.append(InterviewStep(key=key, status="answered", decision_id=decision_id))
+            continue
         not_applicable = None
+        gate = gates[key]() if key in gates else None
         if key == "energy_adjustment":
             not_applicable = _energy_applicability(state, bearing)
         elif key == "substitution":
             not_applicable = _substitution_applicability(state, bearing)
+        elif gate is not None and gate[0] == "not_applicable":
+            not_applicable = gate[1] or ""
         if not_applicable is not None:
             steps.append(InterviewStep(key=key, status="not_applicable", reason=not_applicable,
                                        decision_id=decision_id if value is not None else None))
             continue
         if value is not None:
             steps.append(InterviewStep(key=key, status="answered", decision_id=decision_id))
+            continue
+        if gate is not None and gate[0] == "skipped":
+            steps.append(InterviewStep(key=key, status="skipped", reason=gate[1]))
             continue
         if (key == "task" and state.target is not None and target_info is not None
                 and _get(target_info, "column") == state.target

@@ -1,0 +1,321 @@
+"""The opening sequence's refusals (M2_CONTRACT §1; OPENING_SEQUENCE.md §01 and §03).
+
+Validators for the structural questions — orientation, the event level, grain, repeats or time
+points, the unit of analysis, aggregation and temporal prediction. Each reads only what ``ctx``
+names (the server's ``DecisionContext``: ``columns``, ``column_info``, ``state``, ``task``,
+``target``, and ``artifact(stage)`` for a fresh public artifact) and checks nothing it is not told.
+Every refusal carries exits, and a contradiction between the user's answer and the data carries an
+attestation exit as well: the user is the authority, and the disagreement is recorded rather than
+blocked (``turbotab/grain.py``; DESIGN_LANGUAGE §09: resolve or attest, never a dead end).
+
+Decision A (structural answers refused after the seal) is the seal's, not this module's.
+
+Imported by ``turbotab.core.decisions``, which registers these on import.
+"""
+from __future__ import annotations
+
+from typing import Any, Mapping
+
+from turbotab.core.decisions import (
+    _UNKNOWN,
+    NUMERIC_DTYPES,
+    ROW_ID,
+    Refusal,
+    SetAggregation,
+    SetEvent,
+    SetGrain,
+    SetOrientation,
+    SetTask,
+    SetTemporal,
+    SetUnit,
+    _and,
+    _columns_of,
+    _ctx,
+    _state,
+    _target_of,
+    register_validator,
+)
+
+ATTEST = "My answer is right; the data is like this"
+
+
+def artifact(ctx: Any, stage: str) -> Mapping[str, Any] | None:
+    """A stage's fresh public artifact from ``ctx`` (its ``artifact`` callable), else None."""
+    fn = _ctx(ctx, "artifact")
+    if not callable(fn):
+        return None
+    try:
+        value = fn(stage)
+    except Exception:  # noqa: BLE001 - a missing artifact checks nothing
+        return None
+    value = getattr(value, "data", value)
+    return value if isinstance(value, Mapping) else None
+
+
+def _repeated(state: Any) -> bool:
+    spec = getattr(state, "grain", None)
+    return spec is not None and spec.grain == "repeated"
+
+
+def _unknown(column: str | None, ctx: Any) -> bool:
+    if column is None:
+        return False
+    if column == ROW_ID:
+        return True
+    columns = _columns_of(ctx)
+    return columns is not None and column not in columns
+
+
+def _no_such_column(column: str, exits: list[dict[str, Any]] | None = None) -> Refusal:
+    return Refusal("unknown_column", f"This dataset has no column named `{column}`.",
+                   exits=exits or [{"label": "Choose one of the dataset's columns", "decision": None}])
+
+
+# ── 1.5 · which way round ─────────────────────────────────────────────────────
+
+
+def _orientation_turns_before_the_target(decision: SetOrientation, ctx: Any) -> None:
+    state = _state(ctx)
+    if state is None or state.target is None:
+        return
+    turned = state.orientation == "feature_major"
+    if (decision.orientation == "feature_major") == turned:
+        return  # nothing about the table changes
+    keep = "feature_major" if turned else "sample_major"
+    raise Refusal(
+        "target_exists",
+        f"The outcome `{state.target}` is chosen, and turning the table around would make it a "
+        f"row. The table is turned before the outcome is chosen.",
+        exits=[{"label": "Keep the table as it is", "decision": SetOrientation(orientation=keep)}],
+    )
+
+
+def _orientation_can_turn(decision: SetOrientation, ctx: Any) -> None:
+    if decision.orientation != "feature_major":
+        return
+    turn = (artifact(ctx, "oriented") or {}).get("turn") or {}
+    if turn.get("refusal"):
+        raise Refusal(
+            str(turn.get("code") or "cannot_turn"), str(turn["refusal"]),
+            exits=[{"label": "Keep the table as it is",
+                    "decision": SetOrientation(orientation="sample_major")}],
+        )
+
+
+# ── 2 · which level is the event ──────────────────────────────────────────────
+
+
+def _levels(ctx: Any, target: str) -> list[Any]:
+    info = artifact(ctx, "target_info") or {}
+    if info.get("column") != target:
+        return []
+    return [c.get("value") for c in info.get("classes") or [] if c.get("value") is not None]
+
+
+def _event_is_a_level_of_the_outcome(decision: SetEvent, ctx: Any) -> None:
+    from turbotab.core.stages.rows import _level_key
+
+    target = _target_of(ctx)
+    if target is _UNKNOWN:
+        return
+    if target is None:
+        raise Refusal("no_target", "Choose the outcome first; the event is one of its levels.",
+                      exits=[{"label": "Choose the outcome", "decision": None}])
+    if decision.column != target:
+        raise Refusal(
+            "not_the_target",
+            f"The outcome is `{target}`, not `{decision.column}`; the event is a level of the outcome.",
+            exits=[{"label": f"Choose the event level of `{target}`", "decision": None}],
+        )
+    levels = _levels(ctx, target)
+    task = _ctx(ctx, "task")
+    if task is not None and task != "binary":
+        exits = ([{"label": "Treat it as binary", "decision": SetTask(column=target, task="binary")}]
+                 if len(levels) == 2 else [])
+        raise Refusal(
+            "not_binary",
+            f"`{target}` is read as a {task} outcome; an event level belongs to a two-level outcome.",
+            exits=exits + [{"label": "Keep it as it is", "decision": None}],
+        )
+    if levels and _level_key(decision.level) not in {_level_key(v) for v in levels}:
+        raise Refusal(
+            "unknown_level",
+            f"`{target}` has no level `{decision.level}`; its levels are {_and([str(v) for v in levels])}.",
+            exits=[{"label": f"The event is `{v}`", "decision": SetEvent(column=target, level=str(v))}
+                   for v in levels[:2]],
+        )
+
+
+# ── 3 · can one unit appear in more than one row ──────────────────────────────
+
+
+def _oriented_column(ctx: Any, column: str) -> tuple[Mapping[str, Any] | None, int | None]:
+    """The column's record in the oriented table (before any rows are combined), and its rows."""
+    oriented = artifact(ctx, "oriented")
+    if not oriented:
+        return None, None
+    for c in oriented.get("columns") or []:
+        if c.get("name") == column:
+            return c, int(oriented.get("n_rows") or 0)
+    return None, int(oriented.get("n_rows") or 0)
+
+
+def _grain_is_consistent(decision: SetGrain, ctx: Any) -> None:
+    structure = artifact(ctx, "structure") or {}
+    reading = structure.get("grain") or {}
+    target = _target_of(ctx)
+    target = None if target is _UNKNOWN else target
+    suggested = [c for c in reading.get("suggested") or [] if c != target]
+    column = decision.id_column
+
+    def repeats_by(c: str) -> dict[str, Any]:
+        return {"label": f"Rows repeat per `{c}`", "decision": SetGrain(grain="repeated", id_column=c)}
+
+    if column is not None and _unknown(column, ctx):
+        raise _no_such_column(column, [repeats_by(c) for c in suggested[:3]] or None)
+    if decision.grain == "repeated":
+        if not column:
+            raise Refusal(
+                "no_id_column",
+                "Name the column that says which unit a row belongs to; the held-out rows keep "
+                "each unit's rows together by it.",
+                exits=[repeats_by(c) for c in suggested[:3]] + [{"label": "Name the column", "decision": None}],
+            )
+        if column == target:
+            raise Refusal("target_is_id", f"`{column}` is the outcome, so it cannot name the units.",
+                          exits=[repeats_by(c) for c in suggested[:3]])
+        if decision.acknowledged:
+            return
+        info, n_rows = _oriented_column(ctx, column)
+        if info is not None and n_rows:
+            present = n_rows - int(info.get("n_missing") or 0)
+            if present and int(info.get("n_unique") or 0) >= present:
+                raise Refusal(
+                    "id_column_unique",
+                    f"`{column}` has a different value on every one of its {present:,} rows, so no "
+                    f"unit repeats in it; grouping by it would hold out single rows.",
+                    exits=[*(repeats_by(c) for c in suggested[:2] if c != column),
+                           {"label": "One row per unit", "decision": SetGrain(grain="one_row_per_unit")},
+                           {"label": ATTEST, "decision": SetGrain(grain="repeated", id_column=column,
+                                                                  acknowledged=True)}],
+                )
+        return
+    if decision.acknowledged:
+        return
+    found = reading.get("if_one_row")  # turbotab/grain.py's contradiction, read off the table
+    if found:
+        raise Refusal(
+            "data_repeats", str(found["message"]),
+            exits=[repeats_by(str(found["columns"][0])),
+                   {"label": ATTEST, "decision": SetGrain(grain="one_row_per_unit", id_column=column,
+                                                          acknowledged=True)}],
+        )
+
+
+# ── 4–7 · repeats, the unit, combining, temporal ──────────────────────────────
+
+
+def _needs_repeats(ctx: Any, question: str) -> None:
+    state = _state(ctx)
+    if state is None or _repeated(state):
+        return
+    if state.grain is None:
+        message = f"Say first whether a unit can appear in more than one row; {question} follows from it."
+    else:
+        message = f"Each unit appears once, so {question} does not arise."
+    raise Refusal("not_repeated", message, exits=[{"label": "Answer the grain question", "decision": None}])
+
+
+def _repeat_kind_follows_the_grain(decision: Any, ctx: Any) -> None:
+    _needs_repeats(ctx, "whether rows are repeats or time points")
+    if decision.time_column is not None and _unknown(decision.time_column, ctx):
+        raise _no_such_column(decision.time_column)
+
+
+def _unit_follows_the_grain(decision: SetUnit, ctx: Any) -> None:
+    _needs_repeats(ctx, "what one row of the analysis is")
+
+
+def _aggregation_knows_the_outcome(decision: SetAggregation, ctx: Any) -> None:
+    _needs_repeats(ctx, "how a unit's rows are combined")
+    state = _state(ctx)
+    if state is None:
+        return
+    if state.unit != "unit":
+        raise Refusal(
+            "rows_stay",
+            "The answer was one row per record, so no rows are combined.",
+            exits=[{"label": "Combine each unit's rows", "decision": SetUnit(unit="unit")}],
+        )
+    if state.target is None:
+        raise Refusal("no_target",
+                      "Choose the outcome first: combining rows has to know which outcome to keep.",
+                      exits=[{"label": "Choose the outcome", "decision": None}])
+    outcome = (artifact(ctx, "structure") or {}).get("outcome") or {}
+    if outcome.get("column") != state.target or not outcome.get("varies"):
+        return
+    task = _ctx(ctx, "task")
+    info = (_ctx(ctx, "column_info") or {}).get(state.target) or {}
+    numeric = bool(outcome.get("numeric", info.get("dtype") in NUMERIC_DTYPES))
+    allowed = ["first", "last"] + (["mean"] if numeric and task not in ("binary", "multiclass") else [])
+    label = {"first": "Keep the first outcome", "last": "Keep the last outcome",
+             "mean": "Average the outcome"}
+    exits = [{"label": label[o], "decision": SetAggregation(method=decision.method, outcome=o)}
+             for o in allowed]
+    n = int(outcome.get("n_units_varying") or 0)
+    if decision.outcome is None:
+        raise Refusal(
+            "which_outcome",
+            f"`{state.target}` changes within {n:,} units, so combining their rows needs to know "
+            f"which outcome to keep.",
+            exits=exits,
+        )
+    if decision.outcome not in allowed:
+        raise Refusal(
+            "outcome_not_numeric",
+            f"`{state.target}` is a {task or 'categorical'} outcome, so its mean is not one of its "
+            f"values; keep the first or the last.",
+            exits=exits,
+        )
+
+
+def _temporal_needs_time_points_as_rows(decision: SetTemporal, ctx: Any) -> None:
+    from turbotab.core.stages.working import time_column
+
+    _needs_repeats(ctx, "temporal prediction")
+    state = _state(ctx)
+    if state is None:
+        return
+    if state.unit == "unit":
+        raise Refusal(
+            "rows_combined",
+            "Each unit's rows are combined into one, so there is no later row to predict from an earlier one.",
+            exits=[{"label": "Keep one row per record", "decision": SetUnit(unit="row")}],
+        )
+    if not decision.temporal:
+        return
+    if decision.time_column is not None and _unknown(decision.time_column, ctx):
+        raise _no_such_column(decision.time_column)
+    structure = artifact(ctx, "structure")
+    if decision.time_column or time_column(state, structure):
+        return
+    candidates = [c for c in (structure or {}).get("time_columns") or []][:3]
+    raise Refusal(
+        "no_time_column",
+        "A chronological split needs a column that says when each row was taken, and none is known.",
+        exits=[{"label": f"Order by `{c}`", "decision": SetTemporal(temporal=True, time_column=c)}
+               for c in candidates]
+        + [{"label": "Not a temporal prediction", "decision": SetTemporal(temporal=False)}],
+    )
+
+
+register_validator("set_orientation", _orientation_turns_before_the_target)
+register_validator("set_orientation", _orientation_can_turn)
+register_validator("set_event", _event_is_a_level_of_the_outcome)
+register_validator("set_grain", _grain_is_consistent)
+register_validator("set_repeat_kind", _repeat_kind_follows_the_grain)
+register_validator("set_unit", _unit_follows_the_grain)
+register_validator("set_aggregation", _aggregation_knows_the_outcome)
+register_validator("set_temporal", _temporal_needs_time_points_as_rows)
+
+__all__ = ["ATTEST", "artifact"]

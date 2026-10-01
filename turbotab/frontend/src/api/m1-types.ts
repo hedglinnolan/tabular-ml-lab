@@ -22,9 +22,16 @@ type Exactly<L extends readonly unknown[], U> = [U] extends [L[number]]
 
 const questionKeys = [
   "lens",
+  "orientation",
   "target",
+  "event",
   "task",
   "purpose",
+  "grain",
+  "repeat_kind",
+  "unit",
+  "aggregation",
+  "temporal",
   "roles",
   "exclusions",
   "missing",

@@ -374,8 +374,164 @@ class ProposalsArtifact(Model):
     basis: str
 
 
+# ── the table the analysis reads (M2_CONTRACT §2; turbotab/core/stages/working.py) ──────────
+
+
+class OrientationReading(Model):
+    """Question 1.5's shape reading: row-mean spread over column-mean spread, on a log scale."""
+
+    reading: Literal["sample_major", "feature_major", "undetermined"]
+    ratio: float | None
+    s_rows: float | None
+    s_cols: float | None
+    n_rows: int
+    n_numeric: int
+    sentence: str
+    confidence: Literal["medium", "low"]
+
+
+class TurnCheck(Model):
+    """Whether the table can be turned around: the feature-name column, and why not."""
+
+    label_column: str | None
+    n_features: int
+    n_samples: int
+    refusal: str | None
+    code: str | None
+
+
+class OrientedArtifact(DatasetInfo):
+    """The ``oriented`` artifact: the raw table or its transpose (DatasetInfo of the result)."""
+
+    transposed: bool
+    reading: OrientationReading
+    turn: TurnCheck
+
+
+class RepetitionEvidence(Model):
+    column: str
+    n_distinct: int
+    n_rows: int
+    rows_per: float
+    modal_rows_per: int
+    regular_share: float
+
+
+class GrainContradiction(Model):
+    columns: list[str]  # the columns whose shape says rows repeat, most regular first
+    message: str
+
+
+class GrainReading(Model):
+    suggested: list[str]  # offered under "rows repeat", best first; never an answer
+    evidence: list[RepetitionEvidence]  # name-blind repetition, the most regular first
+    if_one_row: GrainContradiction | None  # what "one row per unit" would contradict
+
+
+class UnitCounts(Model):
+    column: str
+    n_units: int
+    max_rows_per_unit: int
+    min_rows_per_unit: int
+    n_missing: int
+
+
+class Spacing(Model):
+    column: str
+    n_people: int
+    n_gaps: int
+    min_days: float
+    max_days: float
+    median_days: float
+    cv: float
+    all_identical: bool
+
+
+class RepeatsReading(Model):
+    """Repeats or time points, read from date spacing or a record index (turbotab/repeats.py)."""
+
+    reading: Literal["repeats", "time_points"] | None
+    stated: bool  # strong enough to state as a skip ("Ask me anyway" reopens it)
+    confidence: Literal["high", "medium"] | None
+    evidence: list[str]
+    sentence: str
+    spacing: Spacing | None
+    replicate_index: str | None
+    n_units_read: int  # the reading walks at most 5,000 units, a fixed sample of a longer table
+
+
+class OutcomeWithinUnit(Model):
+    column: str
+    varies: bool  # then combining rows asks which outcome to keep
+    n_units_varying: int
+    numeric: bool
+
+
+class AggregationMenu(Model):
+    """The domain-shaped menu: repeats → mean recommended with its reason; time points → none."""
+
+    kind: Literal["repeats", "time_points"]
+    recommended: Literal["mean", "first", "last", "change"] | None
+    reason: str | None
+    marker: str | None
+    from_pack: str | None
+    options: list[Literal["mean", "first", "last", "change"]]
+
+
+class StructureArtifact(Model):
+    """The ``structure`` artifact: what the grain, repeats, unit and aggregation questions offer."""
+
+    grain: GrainReading
+    units: UnitCounts | None
+    repeats: RepeatsReading | None
+    outcome: OutcomeWithinUnit | None
+    aggregation: AggregationMenu | None
+    time_columns: list[str]
+    time_column: str | None
+
+
+class Repair(Model):
+    column: str
+    expression: str
+
+
+class OutcomeRule(Model):
+    column: str
+    varies: bool
+    rule: Literal["constant", "mean", "first", "last"]
+
+
+class AggregationReceipt(Model):
+    """What combining did: rows → units, how the outcome was kept, what lost information."""
+
+    id_column: str
+    method: Literal["mean", "first", "last", "change"]
+    outcome: OutcomeRule | None
+    time_column: str | None
+    ordered_by: str
+    n_source_rows: int
+    n_units: int
+    single_record_units: int
+    varying: list[str]  # non-numeric columns that differed within a unit and took the first record's
+    combined_numeric: int
+
+
+class WorkingArtifact(DatasetInfo):
+    """The ``working`` artifact: DatasetInfo of the table every later stage reads."""
+
+    pass_through: bool  # nothing structural recorded: the oriented table, referenced, not copied
+    transposed: bool
+    n_source_rows: int
+    repairs: list[Repair]
+    aggregation: AggregationReceipt | None
+    row_map: Literal["identity", "row_map.parquet"]
+
+
 ARTIFACT_MODELS: dict[str, type[BaseModel]] = {
     "ingest": DatasetInfo,
+    "oriented": OrientedArtifact,
+    "structure": StructureArtifact,
+    "working": WorkingArtifact,
     "profile": ProfileArtifact,
     "target_info": TargetInfo,
     "findings": FindingsArtifact,

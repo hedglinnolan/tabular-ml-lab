@@ -8,9 +8,16 @@ import type { DecisionRecord, ProjectState, StageStatus, TargetInfoArtifact } fr
 
 const NEEDS: Record<QuestionKey, string[]> = {
   lens: ["ingest"],
+  orientation: ["oriented"],
   target: ["ingest"],
+  event: ["target_info"],
   task: ["target_info"],
   purpose: [],
+  grain: ["structure"],
+  repeat_kind: ["structure"],
+  unit: [],
+  aggregation: ["structure"],
+  temporal: ["structure"],
   roles: ["roles"],
   exclusions: ["proposals"],
   missing: [],
@@ -33,7 +40,59 @@ const SLOT_OF: Record<string, QuestionKey> = {
   set_energy_adjustment: "energy_adjustment",
   select_models: "models",
   set_substitution: "substitution",
+  set_orientation: "orientation",
+  set_event: "event",
+  set_grain: "grain",
+  set_repeat_kind: "repeat_kind",
+  set_unit: "unit",
+  set_aggregation: "aggregation",
+  set_temporal: "temporal",
 };
+
+/**
+ * The opening sequence's gates (M2_CONTRACT §1), mirrored. The mock's tables are one row per
+ * sample, so orientation never fires; the repeats chain follows the grain answer.
+ */
+function sequenceGate(
+  key: QuestionKey,
+  state: ProjectState,
+  targetInfo: TargetInfoArtifact | null,
+): string | null {
+  const repeated = state.grain === null ? null : state.grain.grain === "repeated";
+  switch (key) {
+    case "orientation":
+      return state.lens === null
+        ? null
+        : state.lens.some((l) => l === "metabolomics" || l === "genomics")
+          ? "The table's shape reads as one row per sample."
+          : "No assay lens is on, and other tables are not exported turned around.";
+    case "event": {
+      const task =
+        state.task ?? (targetInfo && targetInfo.column === state.target ? targetInfo.task : null);
+      return task && task !== "binary"
+        ? `The outcome is read as ${task}, so there is no event level to choose.`
+        : null;
+    }
+    case "repeat_kind":
+      return repeated === false
+        ? "Each unit appears once, so there are no repeats to tell apart."
+        : null;
+    case "unit":
+      return repeated === false ? "Each unit appears once, so each row already is one." : null;
+    case "aggregation":
+      if (repeated === false) return "Each unit appears once, so there is nothing to combine.";
+      return repeated && state.unit === "row"
+        ? "Records stay as they are, so nothing is combined."
+        : null;
+    case "temporal":
+      if (repeated === false) return "Each unit appears once, so no row comes later than another.";
+      return repeated && state.unit === "unit"
+        ? "Each unit's rows are combined, so no time points stay as rows."
+        : null;
+    default:
+      return null;
+  }
+}
 
 /** Stages whose work for the current answers is under way or about to start. */
 export function pendingStages(
@@ -90,7 +149,11 @@ export function route(
   for (const key of QUESTION_KEYS) {
     const value = state[key];
     const decision_id = writers.get(key) ?? null;
-    let na: string | null = null;
+    if (key === "orientation" && value !== null) {
+      steps.push({ key, status: "answered", decision_id, reason: null, waiting_on: [] });
+      continue;
+    }
+    let na: string | null = sequenceGate(key, state, targetInfo);
     if (key === "energy_adjustment") {
       if (state.lens && !state.lens.includes("dietary"))
         na = "The dietary lens is off, so energy adjustment does not apply.";

@@ -2615,13 +2615,19 @@
               }
             ],
             "title": "Id Column"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "grain",
-          "id_column"
+          "id_column",
+          "acknowledged"
         ],
         "title": "GrainSpec"
       },
@@ -2736,9 +2742,16 @@
             "type": "string",
             "enum": [
               "lens",
+              "orientation",
               "target",
+              "event",
               "task",
               "purpose",
+              "grain",
+              "repeat_kind",
+              "unit",
+              "aggregation",
+              "temporal",
               "roles",
               "exclusions",
               "missing",
@@ -4479,6 +4492,11 @@
               }
             ],
             "title": "Id Column"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -4515,6 +4533,11 @@
               }
             ],
             "title": "Id Column"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -4522,7 +4545,8 @@
         "required": [
           "kind",
           "grain",
-          "id_column"
+          "id_column",
+          "acknowledged"
         ],
         "title": "SetGrain"
       },
@@ -5748,6 +5772,173 @@
         ],
         "title": "ValueCount"
       },
+      "AggregationMenu": {
+        "description": "The domain-shaped menu: repeats → mean recommended with its reason; time points → none.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "repeats",
+              "time_points"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "recommended": {
+            "anyOf": [
+              {
+                "enum": [
+                  "mean",
+                  "first",
+                  "last",
+                  "change"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "marker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marker"
+          },
+          "from_pack": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Pack"
+          },
+          "options": {
+            "items": {
+              "enum": [
+                "mean",
+                "first",
+                "last",
+                "change"
+              ],
+              "type": "string"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "recommended",
+          "reason",
+          "marker",
+          "from_pack",
+          "options"
+        ],
+        "title": "AggregationMenu",
+        "type": "object"
+      },
+      "AggregationReceipt": {
+        "description": "What combining did: rows → units, how the outcome was kept, what lost information.",
+        "properties": {
+          "id_column": {
+            "title": "Id Column",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "mean",
+              "first",
+              "last",
+              "change"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OutcomeRule"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column"
+          },
+          "ordered_by": {
+            "title": "Ordered By",
+            "type": "string"
+          },
+          "n_source_rows": {
+            "title": "N Source Rows",
+            "type": "integer"
+          },
+          "n_units": {
+            "title": "N Units",
+            "type": "integer"
+          },
+          "single_record_units": {
+            "title": "Single Record Units",
+            "type": "integer"
+          },
+          "varying": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Varying",
+            "type": "array"
+          },
+          "combined_numeric": {
+            "title": "Combined Numeric",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id_column",
+          "method",
+          "outcome",
+          "time_column",
+          "ordered_by",
+          "n_source_rows",
+          "n_units",
+          "single_record_units",
+          "varying",
+          "combined_numeric"
+        ],
+        "title": "AggregationReceipt",
+        "type": "object"
+      },
       "BandEstimate": {
         "additionalProperties": false,
         "description": "A measured estimate of what adding a band would cost: one refit per family, timed.",
@@ -6634,6 +6825,62 @@
         "title": "FittedModel",
         "type": "object"
       },
+      "GrainContradiction": {
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "columns",
+          "message"
+        ],
+        "title": "GrainContradiction",
+        "type": "object"
+      },
+      "GrainReading": {
+        "properties": {
+          "suggested": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggested",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/RepetitionEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "if_one_row": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GrainContradiction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "suggested",
+          "evidence",
+          "if_one_row"
+        ],
+        "title": "GrainReading",
+        "type": "object"
+      },
       "LeaveOut": {
         "description": "The offer: leave the likely-not-asked columns out, then handle the rest.",
         "properties": {
@@ -6872,6 +7119,210 @@
         "title": "NotAdjusted",
         "type": "object"
       },
+      "OrientationReading": {
+        "description": "Question 1.5's shape reading: row-mean spread over column-mean spread, on a log scale.",
+        "properties": {
+          "reading": {
+            "enum": [
+              "sample_major",
+              "feature_major",
+              "undetermined"
+            ],
+            "title": "Reading",
+            "type": "string"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio"
+          },
+          "s_rows": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "S Rows"
+          },
+          "s_cols": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "S Cols"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "n_numeric": {
+            "title": "N Numeric",
+            "type": "integer"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          },
+          "confidence": {
+            "enum": [
+              "medium",
+              "low"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reading",
+          "ratio",
+          "s_rows",
+          "s_cols",
+          "n_rows",
+          "n_numeric",
+          "sentence",
+          "confidence"
+        ],
+        "title": "OrientationReading",
+        "type": "object"
+      },
+      "OrientedArtifact": {
+        "description": "The ``oriented`` artifact: the raw table or its transpose (DatasetInfo of the result).",
+        "properties": {
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "n_cols": {
+            "title": "N Cols",
+            "type": "integer"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnInfo"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "source_bytes": {
+            "title": "Source Bytes",
+            "type": "integer"
+          },
+          "parquet_bytes": {
+            "title": "Parquet Bytes",
+            "type": "integer"
+          },
+          "ingest_seconds": {
+            "title": "Ingest Seconds",
+            "type": "number"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "transposed": {
+            "title": "Transposed",
+            "type": "boolean"
+          },
+          "reading": {
+            "$ref": "#/components/schemas/OrientationReading"
+          },
+          "turn": {
+            "$ref": "#/components/schemas/TurnCheck"
+          }
+        },
+        "required": [
+          "n_rows",
+          "n_cols",
+          "columns",
+          "source_bytes",
+          "parquet_bytes",
+          "ingest_seconds",
+          "fingerprint",
+          "warnings",
+          "transposed",
+          "reading",
+          "turn"
+        ],
+        "title": "OrientedArtifact",
+        "type": "object"
+      },
+      "OutcomeRule": {
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "varies": {
+            "title": "Varies",
+            "type": "boolean"
+          },
+          "rule": {
+            "enum": [
+              "constant",
+              "mean",
+              "first",
+              "last"
+            ],
+            "title": "Rule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "varies",
+          "rule"
+        ],
+        "title": "OutcomeRule",
+        "type": "object"
+      },
+      "OutcomeWithinUnit": {
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "varies": {
+            "title": "Varies",
+            "type": "boolean"
+          },
+          "n_units_varying": {
+            "title": "N Units Varying",
+            "type": "integer"
+          },
+          "numeric": {
+            "title": "Numeric",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "column",
+          "varies",
+          "n_units_varying",
+          "numeric"
+        ],
+        "title": "OutcomeWithinUnit",
+        "type": "object"
+      },
       "ProfileArtifact": {
         "description": "The ``profile`` artifact.",
         "properties": {
@@ -6944,6 +7395,24 @@
         "title": "ProposalsArtifact",
         "type": "object"
       },
+      "Repair": {
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "expression": {
+            "title": "Expression",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "expression"
+        ],
+        "title": "Repair",
+        "type": "object"
+      },
       "Repeats": {
         "properties": {
           "column": {
@@ -6965,6 +7434,131 @@
           "max_rows_per_unit"
         ],
         "title": "Repeats",
+        "type": "object"
+      },
+      "RepeatsReading": {
+        "description": "Repeats or time points, read from date spacing or a record index (turbotab/repeats.py).",
+        "properties": {
+          "reading": {
+            "anyOf": [
+              {
+                "enum": [
+                  "repeats",
+                  "time_points"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reading"
+          },
+          "stated": {
+            "title": "Stated",
+            "type": "boolean"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "high",
+                  "medium"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          },
+          "spacing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Spacing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "replicate_index": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replicate Index"
+          },
+          "n_units_read": {
+            "title": "N Units Read",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reading",
+          "stated",
+          "confidence",
+          "evidence",
+          "sentence",
+          "spacing",
+          "replicate_index",
+          "n_units_read"
+        ],
+        "title": "RepeatsReading",
+        "type": "object"
+      },
+      "RepetitionEvidence": {
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "n_distinct": {
+            "title": "N Distinct",
+            "type": "integer"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "rows_per": {
+            "title": "Rows Per",
+            "type": "number"
+          },
+          "modal_rows_per": {
+            "title": "Modal Rows Per",
+            "type": "integer"
+          },
+          "regular_share": {
+            "title": "Regular Share",
+            "type": "number"
+          }
+        },
+        "required": [
+          "column",
+          "n_distinct",
+          "n_rows",
+          "rows_per",
+          "modal_rows_per",
+          "regular_share"
+        ],
+        "title": "RepetitionEvidence",
         "type": "object"
       },
       "RoleProposal": {
@@ -7144,6 +7738,54 @@
         "title": "ShelfFamily",
         "type": "object"
       },
+      "Spacing": {
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "n_people": {
+            "title": "N People",
+            "type": "integer"
+          },
+          "n_gaps": {
+            "title": "N Gaps",
+            "type": "integer"
+          },
+          "min_days": {
+            "title": "Min Days",
+            "type": "number"
+          },
+          "max_days": {
+            "title": "Max Days",
+            "type": "number"
+          },
+          "median_days": {
+            "title": "Median Days",
+            "type": "number"
+          },
+          "cv": {
+            "title": "Cv",
+            "type": "number"
+          },
+          "all_identical": {
+            "title": "All Identical",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "column",
+          "n_people",
+          "n_gaps",
+          "min_days",
+          "max_days",
+          "median_days",
+          "cv",
+          "all_identical"
+        ],
+        "title": "Spacing",
+        "type": "object"
+      },
       "SplitArtifact": {
         "description": "The ``split`` artifact (a Bundle's ``data``): held-out rows and folds.",
         "properties": {
@@ -7210,6 +7852,83 @@
           "note"
         ],
         "title": "SplitArtifact",
+        "type": "object"
+      },
+      "StructureArtifact": {
+        "description": "The ``structure`` artifact: what the grain, repeats, unit and aggregation questions offer.",
+        "properties": {
+          "grain": {
+            "$ref": "#/components/schemas/GrainReading"
+          },
+          "units": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitCounts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repeats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepeatsReading"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OutcomeWithinUnit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aggregation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AggregationMenu"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Time Columns",
+            "type": "array"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column"
+          }
+        },
+        "required": [
+          "grain",
+          "units",
+          "repeats",
+          "outcome",
+          "aggregation",
+          "time_columns",
+          "time_column"
+        ],
+        "title": "StructureArtifact",
         "type": "object"
       },
       "SubstitutionArtifact": {
@@ -7561,6 +8280,192 @@
           "classes"
         ],
         "title": "TargetInfo",
+        "type": "object"
+      },
+      "TurnCheck": {
+        "description": "Whether the table can be turned around: the feature-name column, and why not.",
+        "properties": {
+          "label_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Column"
+          },
+          "n_features": {
+            "title": "N Features",
+            "type": "integer"
+          },
+          "n_samples": {
+            "title": "N Samples",
+            "type": "integer"
+          },
+          "refusal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refusal"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          }
+        },
+        "required": [
+          "label_column",
+          "n_features",
+          "n_samples",
+          "refusal",
+          "code"
+        ],
+        "title": "TurnCheck",
+        "type": "object"
+      },
+      "UnitCounts": {
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "n_units": {
+            "title": "N Units",
+            "type": "integer"
+          },
+          "max_rows_per_unit": {
+            "title": "Max Rows Per Unit",
+            "type": "integer"
+          },
+          "min_rows_per_unit": {
+            "title": "Min Rows Per Unit",
+            "type": "integer"
+          },
+          "n_missing": {
+            "title": "N Missing",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "column",
+          "n_units",
+          "max_rows_per_unit",
+          "min_rows_per_unit",
+          "n_missing"
+        ],
+        "title": "UnitCounts",
+        "type": "object"
+      },
+      "WorkingArtifact": {
+        "description": "The ``working`` artifact: DatasetInfo of the table every later stage reads.",
+        "properties": {
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "n_cols": {
+            "title": "N Cols",
+            "type": "integer"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnInfo"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "source_bytes": {
+            "title": "Source Bytes",
+            "type": "integer"
+          },
+          "parquet_bytes": {
+            "title": "Parquet Bytes",
+            "type": "integer"
+          },
+          "ingest_seconds": {
+            "title": "Ingest Seconds",
+            "type": "number"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "pass_through": {
+            "title": "Pass Through",
+            "type": "boolean"
+          },
+          "transposed": {
+            "title": "Transposed",
+            "type": "boolean"
+          },
+          "n_source_rows": {
+            "title": "N Source Rows",
+            "type": "integer"
+          },
+          "repairs": {
+            "items": {
+              "$ref": "#/components/schemas/Repair"
+            },
+            "title": "Repairs",
+            "type": "array"
+          },
+          "aggregation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AggregationReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "row_map": {
+            "enum": [
+              "identity",
+              "row_map.parquet"
+            ],
+            "title": "Row Map",
+            "type": "string"
+          }
+        },
+        "required": [
+          "n_rows",
+          "n_cols",
+          "columns",
+          "source_bytes",
+          "parquet_bytes",
+          "ingest_seconds",
+          "fingerprint",
+          "warnings",
+          "pass_through",
+          "transposed",
+          "n_source_rows",
+          "repairs",
+          "aggregation",
+          "row_map"
+        ],
+        "title": "WorkingArtifact",
         "type": "object"
       }
     }

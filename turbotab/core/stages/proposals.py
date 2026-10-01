@@ -528,9 +528,10 @@ def roles_from(state_roles: Mapping[str, str] | None, artifact: Any) -> dict[str
 
 def proposals_stage(ctx: StageContext) -> dict[str, Any]:
     from turbotab.core.stages.data import open_store
+    from turbotab.core.stages.working import table_info
 
     state = ctx.state
-    columns = ctx.inputs["ingest"]["columns"]
+    columns = table_info(ctx)["columns"]
     roles = roles_from(state.roles, ctx.inputs.get("roles"))
     target = state.target
     wanted = needed_columns(columns, target=target, roles=roles) if "dietary" in (state.lens or []) else []

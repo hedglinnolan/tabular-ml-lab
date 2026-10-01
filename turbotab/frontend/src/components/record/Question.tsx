@@ -26,9 +26,16 @@ export type Grammar = "fact" | "choice";
 /** Which grammar each question speaks (§09): facts about the table, choices about the model. */
 export const GRAMMAR: Record<QuestionKey, Grammar> = {
   lens: "fact",
+  orientation: "fact",
   target: "fact",
+  event: "choice",
   task: "fact",
   purpose: "fact",
+  grain: "fact",
+  repeat_kind: "fact",
+  unit: "choice",
+  aggregation: "choice",
+  temporal: "fact",
   roles: "fact",
   exclusions: "choice",
   missing: "choice",

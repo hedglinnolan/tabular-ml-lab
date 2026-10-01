@@ -26,6 +26,7 @@ from turbotab.core.graph import (
     Engine,
     ProjectContext,
     StageStatus,
+    artifact_dir,
     latest_key,
     read_artifact,
 )
@@ -158,7 +159,12 @@ class SentenceFacts:
         if self._flow is not False:
             return self._flow  # type: ignore[return-value]
         self._flow = None
-        state, store, ingest = self._ctx.state, self.datastore, self._artifact("ingest")
+        state, store = self._ctx.state, self.datastore
+        info = self._ctx.column_info or {}
+        # the columns of the table the cohort stage reads (the working table), as it records them
+        ingest = ({"columns": [{"name": c, "n_missing": (info.get(c) or {}).get("n_missing")}
+                               for c in self._ctx.columns]}
+                  if self._ctx.columns is not None else None)
         d = self._decision
         if state is None or store is None or not isinstance(ingest, dict):
             return None
@@ -420,12 +426,14 @@ class ProjectService:
 
     # ── reading projects ──
 
-    def _ingest_facts(self, pid: str, key: str) -> IngestFacts:
+    def _ingest_facts(self, pid: str, key: str, stage: str = "ingest") -> IngestFacts:
+        """Rows and columns of a table artifact (``ingest``, ``oriented`` or ``working``) by key."""
+        cache = f"{pid}#{stage}"
         with self._lock:
-            facts = self._facts.get(pid)
+            facts = self._facts.get(cache if stage != "ingest" else pid)
         if facts is not None and facts.key == key:
             return facts
-        info = read_artifact(self.workspace.cache_dir(pid), "ingest", key)
+        info = read_artifact(self.workspace.cache_dir(pid), stage, key, public=True)
         facts = IngestFacts(
             key=key,
             n_rows=int(info["n_rows"]),
@@ -438,8 +446,41 @@ class ProjectService:
             },
         )
         with self._lock:
-            self._facts[pid] = facts
+            self._facts[cache if stage != "ingest" else pid] = facts
         return facts
+
+    def table_source(self, pid: str, stages: dict[str, StageStatus] | None = None
+                     ) -> tuple[str, str] | None:
+        """``(stage, key)`` of the table the analysis reads now (M2_CONTRACT §2); None: the raw file.
+
+        The working table when it is fresh. While it recomputes, its newest artifact — the row space
+        the newest split and previews were drawn in — unless the table was turned around since, when
+        the oriented table names the columns. Before any working table, the oriented one.
+        """
+        stages = self.engine.status(pid) if stages is None else stages
+        cache = self.workspace.cache_dir(pid)
+
+        def current(stage: str) -> str | None:
+            status = stages.get(stage)
+            return status.key if status is not None and status.status == "fresh" and status.key else None
+
+        working = current("working")
+        if working:
+            return ("working", working)
+        oriented = current("oriented") or latest_key(cache, "oriented")
+        older = latest_key(cache, "working")
+        if older is not None:
+            turned = self._artifact(pid, "working", older, public=True).get("transposed")
+            if oriented is None or turned == self._artifact(pid, "oriented", oriented,
+                                                             public=True).get("transposed"):
+                return ("working", older)
+        return ("oriented", oriented) if oriented else None
+
+    def _table_facts(self, pid: str, stages: dict[str, StageStatus], ingest_key: str) -> IngestFacts:
+        source = self.table_source(pid, stages)
+        if source is None:
+            return self._ingest_facts(pid, ingest_key)
+        return self._ingest_facts(pid, source[1], stage=source[0])
 
     def summary(self, meta: ProjectMeta, ingest: StageStatus | None = None) -> dict[str, Any]:
         """ProjectSummary. The size comes from the ingest artifact once it exists.
@@ -495,9 +536,10 @@ class ProjectService:
                   records: list[Any]) -> list[InterviewStep]:
         """The Router's answer (turbotab/core/interview.py) for this project now."""
         artifacts: dict[str, Any] = {}
-        info = stages.get("target_info")
-        if info is not None and info.status == "fresh" and info.key:
-            artifacts["target_info"] = self._artifact(pid, "target_info", info.key, public=True)
+        for stage in ("target_info", "oriented", "structure"):  # what the Router reads, when fresh
+            status = stages.get(stage)
+            if status is not None and status.status == "fresh" and status.key:
+                artifacts[stage] = self._artifact(pid, stage, status.key, public=True)
         return route(state, stages, artifacts, records)
 
     # ── deciding ──
@@ -507,7 +549,7 @@ class ProjectService:
         ingest = stages["ingest"]
         facts = None
         if ingest.status == "fresh" and ingest.key:
-            facts = self._ingest_facts(pid, ingest.key)
+            facts = self._table_facts(pid, stages, ingest.key)
         state = self.log(pid).state()
         task = state.task
         info = stages.get("target_info")
@@ -575,7 +617,11 @@ class ProjectService:
         A decision that would be refused is refused here too (409), so an option that
         cannot be taken says why instead of previewing.
         """
-        from turbotab.core import fact_previews, row_previews  # noqa: F401 - register the builders
+        from turbotab.core import (  # noqa: F401 - register the builders
+            fact_previews,
+            row_previews,
+            structure_previews,
+        )
 
         self.workspace.get(pid)
         stages = self.engine.status(pid)
@@ -655,7 +701,7 @@ class ProjectService:
                    or [c for c in order if c != state.target])
         n = max(200, min(ctx.sample_size, PREVIEW_CELLS // max(1, len(columns))))
         pool_key = tuple((stages[s].key, stages[s].status) for s in ("split", "cohort") if s in stages)
-        key = (pid, stages["ingest"].key, pool_key, tuple(columns), n)
+        key = (pid, str(store.parquet), pool_key, tuple(columns), n)
         with self._lock:
             frame = self._frames.get(key)
             if frame is not None:
@@ -760,18 +806,24 @@ class ProjectService:
     # ── the data layer ──
 
     def store(self, pid: str) -> DataStore:
-        """The project's DataStore; answers only once the ingest stage is fresh."""
+        """The DataStore over the table the analysis reads (``table_source``): the working table,
+        else the oriented one, else the raw file. Answers only once the ingest stage is fresh."""
         self.workspace.get(pid)
         ingest = self.engine.status(pid)["ingest"]
         if ingest.status != "fresh" or not ingest.key:
             if ingest.status == "error":
                 raise ApiError(409, "ingest_failed", f"The table could not be read. {ingest.error or ''}".strip())
             raise ApiError(409, "table_not_ready", "The table is still being read.")
+        source = self.table_source(pid)
+        path = self.workspace.data_path(pid)
+        if source is not None:
+            path = (artifact_dir(self.workspace.cache_dir(pid), *source) / "files" / "table.parquet").resolve()
+        tag = f"{ingest.key}:{path}"
         with self._lock:
             cached = self._stores.get(pid)
-            if cached is not None and cached[0] == ingest.key:
+            if cached is not None and cached[0] == tag:
                 return cached[1]
-        store = DataStore(self.workspace.data_path(pid), int(self.settings.memory_budget_bytes))
-        with self._lock:
-            self._stores[pid] = (ingest.key, store)
+        store = DataStore(path, int(self.settings.memory_budget_bytes))
+        with self._lock:  # a request still reading the previous table keeps its own reference
+            self._stores[pid] = (tag, store)
         return store

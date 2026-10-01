@@ -11,12 +11,17 @@ HINT_SAMPLE_ROWS = 5_000
 
 
 def open_store(ctx: StageContext) -> Any:
-    """The project's DataStore, under the memory budget the server passed down."""
+    """The DataStore over the table this stage reads, under the memory budget the server passed down.
+
+    The working table for a stage that depends on ``working``, the oriented table for one that
+    depends on ``oriented``, else the raw file (M2_CONTRACT §2; ``stages.working.table_path``).
+    """
     from turbotab.core.config import default_memory_budget
     from turbotab.core.datastore import DataStore
+    from turbotab.core.stages.working import table_path
 
     budget = ctx.settings.get("memory_budget_bytes") or default_memory_budget()
-    return DataStore(Path(ctx.paths["data"]), int(budget))
+    return DataStore(table_path(ctx), int(budget))
 
 
 def gigabytes(n: int) -> str:
@@ -33,7 +38,10 @@ def ingest_stage(ctx: StageContext) -> dict[str, Any]:
 
 
 def profile_stage(ctx: StageContext) -> dict[str, Any]:
-    """Column summaries over every row, and the packs' lens hints.
+    """Column summaries over every row of the oriented table, and the packs' lens hints.
+
+    The oriented table rather than the working one: the lens hints are what the first question
+    offers, and the working table waits for the lens (through ``findings``).
 
     The hints need a pandas frame. The whole table is read when it fits the
     memory budget; otherwise a fixed 5,000-row sample is read instead, and the

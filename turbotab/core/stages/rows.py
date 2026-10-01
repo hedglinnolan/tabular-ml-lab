@@ -351,8 +351,16 @@ def _composition_reference(store: Any, proposals: Sequence[Mapping[str, Any]]) -
 
 def roles_stage(ctx: StageContext) -> dict[str, Any]:
     """Proposed roles for every column but the outcome, and whether rows repeat per unit."""
-    columns = [c for c in ctx.inputs["profile"]["columns"] if not str(c["name"]).startswith("__")]
-    n_rows = int(ctx.inputs["ingest"]["n_rows"])
+    from turbotab.core.stages.working import table_info
+
+    n_rows = int(table_info(ctx)["n_rows"])
+    ctx.progress(0.05, "Summarizing the working table's columns")
+    if "profile" in ctx.inputs:  # the M1 wiring (and its tests) hand the profile in
+        columns = ctx.inputs["profile"]["columns"]
+    else:  # M2: the working table's own summaries, cached beside it
+        with open_store(ctx) as store:
+            columns = store.summaries()
+    columns = [c for c in columns if not str(c["name"]).startswith("__")]
     ctx.progress(0.1, "Reading column names and summaries")
     proposals = propose_roles(
         columns,
@@ -573,7 +581,9 @@ def cohort_stage(ctx: StageContext) -> Bundle:
     import pandas as pd
 
     ctx.progress(0.05, "Reading the outcome and the columns the rules use")
-    ingest = ctx.inputs["ingest"]
+    from turbotab.core.stages.working import table_info
+
+    ingest = table_info(ctx)
     measured: list[Any] = []
     with open_store(ctx) as store:
         steps, kept, preds = compute_cohort(store, ctx.state, ingest, measured=measured)

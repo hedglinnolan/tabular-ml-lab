@@ -92,9 +92,16 @@ export interface BannerModel {
 /** The part of the pipeline each question acts on. */
 export const QUESTION_SEGMENT: Record<QuestionKey, BannerSegment> = {
   lens: "rows",
+  orientation: "columns",
   target: "rows",
+  event: "models",
   task: "models",
   purpose: "models",
+  grain: "rows",
+  repeat_kind: "rows",
+  unit: "rows",
+  aggregation: "rows",
+  temporal: "rows",
   roles: "columns",
   exclusions: "rows",
   missing: "rows",
@@ -106,9 +113,16 @@ export const QUESTION_SEGMENT: Record<QuestionKey, BannerSegment> = {
 
 export const QUESTION_NAME: Record<QuestionKey, string> = {
   lens: "the lens",
+  orientation: "the table's orientation",
   target: "the outcome",
+  event: "the event level",
   task: "the task",
   purpose: "the purpose",
+  grain: "repeated units",
+  repeat_kind: "repeats or time points",
+  unit: "the unit of analysis",
+  aggregation: "combining rows",
+  temporal: "temporal prediction",
   roles: "column roles",
   exclusions: "exclusions",
   missing: "missing values",

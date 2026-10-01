@@ -96,7 +96,8 @@ def test_a_kind_without_a_picture_says_so(client, project):
 def test_the_project_view_carries_the_interview(client, project):
     view = schemas.ProjectView.model_validate(client.get(f"/api/projects/{project}").json())
     steps = {s.key: s for s in view.interview}
-    assert [s.key for s in view.interview][:3] == ["lens", "target", "task"]
+    assert [s.key for s in view.interview][:5] == ["lens", "orientation", "target", "event", "task"]
+    assert steps["orientation"].status == "not_applicable"  # no assay lens: never asked
     assert steps["lens"].status == "answered" and steps["lens"].decision_id
     assert [s.status for s in view.interview].count("open") <= 1
 

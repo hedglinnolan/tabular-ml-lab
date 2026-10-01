@@ -62,7 +62,9 @@ function applyStage(qc: QueryClient, pid: string, status: StageStatus): void {
   if (!cached || !cached.fresh || cached.key !== status.key) {
     void qc.invalidateQueries({ queryKey: keys.stage(pid, status.stage), exact: true });
   }
-  if (status.stage === "ingest") {
+  // The rows and columns the UI reads are the working table's (M2_CONTRACT §2): the raw file
+  // until the table is turned around or combined, so each of these stages changes them.
+  if (status.stage === "ingest" || status.stage === "oriented" || status.stage === "working") {
     void qc.invalidateQueries({ queryKey: keys.tableAll(pid) });
     void qc.invalidateQueries({ queryKey: keys.columns(pid), exact: true });
     void qc.invalidateQueries({ queryKey: keys.view(pid), exact: true }); // n_rows, n_cols
