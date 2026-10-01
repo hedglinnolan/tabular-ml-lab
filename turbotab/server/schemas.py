@@ -262,6 +262,9 @@ class RoleProposal(Model):
     reason: str  # ≤ 16 words, plain language
     linked_to: str | None  # a flag's base column
     unit: str | None
+    # The column this one is part of (fat_sat in fat_total, sugar in carb): the names say so and
+    # the part never exceeds the total on 99% of rows. Substitution moves parts with their total.
+    nested_in: str | None
 
 
 class Repeats(Model):
@@ -327,11 +330,38 @@ class EnergyReading(Model):
     notes: list[str]
 
 
+class MissingColumn(Model):
+    """A predictor with blanks, counted among rows with the outcome measured."""
+
+    column: str
+    n_missing: int
+    share: float
+    # A mostly blank (≥ 50%) yes/no or medication-like column: a blank is a question not asked.
+    likely_not_asked: bool
+    reason: str
+
+
+class LeaveOut(Model):
+    """The offer: leave the likely-not-asked columns out, then handle the rest."""
+
+    columns: list[str]
+    n_rows: int  # rows blank in at least one of them
+    share: float
+
+
+class MissingReading(Model):
+    """What the missing-values question can offer on this table (M1_CONTRACT §12.4)."""
+
+    columns: list[MissingColumn]  # most blank first
+    leave_out: LeaveOut | None
+
+
 class ProposalsArtifact(Model):
-    """The ``proposals`` artifact: offered for the exclusions and energy questions."""
+    """The ``proposals`` artifact: offered for the exclusions, missing-values and energy questions."""
 
     exclusions: list[ExclusionProposal]
     energy: EnergyReading | None
+    missing: MissingReading
     basis: str
 
 

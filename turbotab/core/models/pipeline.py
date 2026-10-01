@@ -18,7 +18,7 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-from turbotab.core.decisions import EnergyAdjustment, ProjectState, Purpose, Task
+from turbotab.core.decisions import EnergyAdjustment, ProjectState, Purpose, Task, missing_strategy
 from turbotab.core.methods.energy import METHOD_TABLE
 from turbotab.core.models.base import ModelFamily
 from turbotab.core.models.steps import energy_step
@@ -28,11 +28,23 @@ ADJUST_STEPS = ("impute", "energy")  # the steps whose outputs form the lineage'
 MANY_LEVELS = 20
 
 
-def predictors_from_roles(roles: Mapping[str, str] | None, target: str | None) -> list[str]:
-    """Columns with role exposure, covariate or energy, in the order the roles list them."""
+def predictors_from_roles(roles: Mapping[str, str] | None, target: str | None,
+                          drop: Sequence[str] = ()) -> list[str]:
+    """Columns with role exposure, covariate or energy, in the order the roles list them.
+
+    ``drop``: columns the missing-values answer left out of the predictors.
+    """
     if not roles:
         return []
-    return [c for c, r in roles.items() if r in PREDICTOR_ROLES and c != target]
+    gone = set(drop)
+    return [c for c, r in roles.items() if r in PREDICTOR_ROLES and c != target and c not in gone]
+
+
+def model_predictors(state: ProjectState) -> list[str]:
+    """The predictors the models get under ``state``: by role, less the columns left out."""
+    from turbotab.core.decisions import left_out
+
+    return predictors_from_roles(state.roles, state.target, left_out(state))
 
 
 def modeling_frame(store: Any, columns: Sequence[str], row_ids: Any) -> pd.DataFrame:
@@ -118,7 +130,7 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
         categorical=categorical,
         numeric=numeric,
         energy=adj.model_dump() if adj is not None else None,
-        impute=state.missing == "impute",
+        impute=missing_strategy(state) == "impute",
         roles={str(k): str(v) for k, v in (state.roles or {}).items()},
     )
 
@@ -249,9 +261,14 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
 
 
 def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[str],
-                 families_by_key: Mapping[str, ModelFamily]) -> list[str]:
-    """Plain statements about the design a reader should know before trusting the results."""
+                 families_by_key: Mapping[str, ModelFamily],
+                 nested: Mapping[str, str] | None = None) -> list[str]:
+    """Plain statements about the design a reader should know before trusting the results.
+
+    ``nested``: child -> parent among the predictors (``turbotab.core.methods.nesting``).
+    """
     from turbotab.core.methods.energy import nutrient_role
+    from turbotab.core.methods.nesting import parts_of
 
     out: list[str] = []
     for c in spec.categorical:
@@ -273,10 +290,19 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
             role = None
         if role:
             by_role.setdefault(role, []).append(c)
+    nested = dict(nested or {})
+    for parent, parts in parts_of(nested).items():
+        if parent in spec.predictors:
+            verb = "is a part" if len(parts) == 1 else "are parts"
+            out.append(f"{', '.join(parts)} {verb} of {parent}: a substitution through {parent} "
+                       f"moves {'it' if len(parts) == 1 else 'them'} in proportion, and never pairs "
+                       f"{parent} with its own part.")
     for role, cols in by_role.items():
-        if len(cols) > 1:
-            out.append(f"{', '.join(cols)} all read as {role}. If some are parts of others, moving "
-                       f"energy through one while the rest stay fixed is not a coherent substitution.")
+        loose = [c for c in cols if c not in nested and c not in parts_of(nested)]
+        if len(cols) > 1 and len(loose) > 1:
+            out.append(f"{', '.join(loose)} all read as {role}, and none is part of another. If some "
+                       f"overlap, moving energy through one while the rest stay fixed is not a "
+                       f"coherent substitution.")
     if not spec.impute:
         incomplete = frame[spec.inputs].isna().any(axis=1)
         n_bad = int(incomplete.sum())
@@ -294,6 +320,7 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
 __all__ = [
     "ADJUST_STEPS", "DesignSpec", "PREDICTOR_ROLES", "build_pipeline", "describe_steps",
     "design_spec", "energy_detail", "family_steps", "input_columns", "is_categorical",
-    "modeling_frame", "normalize_frame", "predictors_from_roles", "shared_steps", "transformer",
+    "model_predictors", "modeling_frame", "normalize_frame", "predictors_from_roles",
+    "shared_steps", "transformer",
     "warnings_for",
 ]

@@ -162,7 +162,8 @@ class SentenceFacts:
         if d.kind == "set_exclusions":
             state = state.model_copy(update={"exclusions": d.rules, "missing": None})
         elif d.kind == "set_missing":
-            state = state.model_copy(update={"missing": d.strategy})
+            state = state.model_copy(update={"missing": decisions.MissingSpec(
+                strategy=d.strategy, drop_columns=list(d.drop_columns))})
         else:
             return None
         try:
@@ -562,7 +563,8 @@ class ProjectService:
         store = ctx.datastore
         state = ctx.state
         order = [c for c in store.columns if c != decisions.ROW_ID]
-        columns = predictors(state.roles, order) or [c for c in order if c != state.target]
+        columns = (predictors(state.roles, order, drop=decisions.left_out(state))
+                   or [c for c in order if c != state.target])
         n = max(200, min(ctx.sample_size, PREVIEW_CELLS // max(1, len(columns))))
         pool_key = next((stages[s].key for s in ("split", "cohort")
                          if s in stages and stages[s].status == "fresh"), None)
@@ -579,6 +581,30 @@ class ProjectService:
                     self._frames.popitem(last=False)
         used["rows"] = len(frame)
         return frame
+
+    # ── finding evidence ──
+
+    def evidence(self, pid: str, finding_id: str) -> consequences.PreviewResult:
+        """The views that show why a finding was raised (M1_CONTRACT §12.3). Nothing is recorded."""
+        from turbotab.core import evidence, row_previews
+
+        self.workspace.get(pid)
+        stages = self.engine.status(pid)
+        status = stages.get("findings")
+        if status is None or status.status != "fresh" or not status.key:
+            raise ApiError(409, "findings_not_ready",
+                           "The findings are still being worked out; their evidence follows them.")
+        found = self._artifact(pid, "findings", status.key, public=True)
+        finding = next((f for f in (found or {}).get("findings", []) if f.get("id") == finding_id), None)
+        if finding is None:
+            raise ApiError(404, "unknown_finding", f"There is no finding {finding_id!r} now.")
+        store = self.store(pid)
+        split = stages.get("split")
+        sealed = None
+        if split is not None and split.status == "fresh" and split.key:
+            sealed = row_previews.sealed_rows(self._artifact(pid, "split", split.key))
+        ctx = evidence.EvidenceContext(state=self.log(pid).state(), datastore=store, sealed=sealed)
+        return evidence.evidence(finding, ctx)
 
     def _artifact(self, pid: str, stage: str, key: str, public: bool = False) -> Any:
         """A stage's artifact by key, remembered (an artifact at a key never changes)."""

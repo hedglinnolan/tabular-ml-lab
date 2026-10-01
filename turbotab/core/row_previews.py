@@ -2,8 +2,9 @@
 
 | Kind             | Views (primary first)                                          |
 |------------------|----------------------------------------------------------------|
-| ``set_exclusions`` | row_flow · distribution of the excluded column, cut marked   |
-| ``set_missing``    | row_flow · table_focus of the rows and cells affected        |
+| ``set_exclusions`` | row_flow · distribution of the excluded column, cuts marked  |
+| ``set_missing``    | row_flow · table_focus of the rows and cells affected (with  |
+|                    | columns left out: the rows that leaving them out saves)      |
 | ``set_split``      | row_flow: the train / held-out fork                          |
 | ``set_roles``      | lineage: which columns enter the model                        |
 
@@ -22,11 +23,11 @@ from typing import Any, Sequence
 import numpy as np
 
 from turbotab.core.consequences import (
-    CAPTION_WORDS, TITLE_WORDS, DistributionView, LineageView, PreviewContext, RowFlowView,
+    CAPTION_WORDS, TITLE_WORDS, DistributionView, LineageView, Mark, PreviewContext, RowFlowView,
     RowStep, TableFocusView, TableRow, _histogram_pair, clip_words, fmt_count, fmt_value,
     lineage_of, register_consequence,
 )
-from turbotab.core.decisions import ROW_ID, ProjectState
+from turbotab.core.decisions import ROW_ID, MissingSpec, ProjectState, missing_strategy
 from turbotab.core.stages.rows import (
     PREDICTOR_ROLES, _missing_mask, cohort_flow, cohort_inputs, draw_split, predictors, rule_keep,
     split_inputs,
@@ -86,8 +87,9 @@ def _flows(ctx: PreviewContext, states: Sequence[ProjectState]) -> tuple[Any, An
     results = []
     for st in states:
         _, _, g = cohort_inputs(st, ingest)
-        steps, kept = cohort_flow(frame, target=st.target, rules=st.exclusions, missing=st.missing,
-                                  predictor_columns=g, missing_frame=mask)
+        steps, kept = cohort_flow(frame, target=st.target, rules=st.exclusions,
+                                  missing=missing_strategy(st), predictor_columns=g,
+                                  missing_frame=mask)
         results.append((steps, kept))
     return frame, mask, results
 
@@ -135,9 +137,8 @@ def _cut_view(frame: Any, target: str | None, rule: Any, *, removing: bool, ctx:
     rows = frame if target is None else frame[frame[target].notna()]
     values = pd.to_numeric(rows[rule.column], errors="coerce").astype(float)
     kept = values[rule_keep(rows, rule)]
-    cuts = sorted({float(b) for b in (rule.low, rule.high) if b is not None}
-                  | {float(b) for lo_hi in (rule.by.ranges.values() if rule.by else []) for b in lo_hi
-                     if b is not None})
+    marks = rule_marks(rule)
+    cuts = sorted({m.value for m in marks})
     everything, inside = _histogram_pair(
         np.concatenate([values.to_numpy(), np.asarray(cuts, dtype=float)]), kept.to_numpy())
     # The cuts only widen the axis; they are not values.
@@ -165,8 +166,25 @@ def _cut_view(frame: Any, target: str | None, rule: Any, *, removing: bool, ctx:
         after=inside,
         before_label="Every measured value",
         after_label="Kept by the rule" if removing else "Kept by the current rule",
-        cuts=cuts,
+        marks=marks,
     )
+
+
+def rule_marks(rule: Any) -> list[Mark]:
+    """A rule's bounds as labeled marks ("500 kcal"); a by-level bound names its level."""
+    from turbotab.core.stages.rows import _fmt_num, _unit
+
+    unit = _unit(rule.column)
+    suffix = f" {unit}" if unit else ""
+
+    def mark(value: float, group: str | None) -> Mark:
+        return Mark(value=float(value), label=f"{_fmt_num(value)}{suffix}", group=group)
+
+    out = [mark(b, None) for b in (rule.low, rule.high) if b is not None]
+    if rule.by is not None:
+        for level, (lo, hi) in rule.by.ranges.items():
+            out += [mark(b, str(level)) for b in (lo, hi) if b is not None]
+    return out
 
 
 def _histogram_counts(values: Any, edges: Sequence[float]) -> list[int]:
@@ -185,12 +203,19 @@ def missing_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     state = ctx.state
     if not state.roles:
         return []
-    proposed = state.model_copy(update={"missing": decision.strategy})
-    probe = state.model_copy(update={"missing": "complete_case"})  # which predictors can be missing
-    frame, mask, [(before, _), (after, _), (_, _)] = _flows(ctx, [state, proposed, probe])
+    drop = list(getattr(decision, "drop_columns", []) or [])
+    proposed = state.model_copy(update={"missing": MissingSpec(strategy=decision.strategy,
+                                                               drop_columns=drop)})
+    # Which predictors can be missing at all (nothing left out), and plain complete cases.
+    probe = state.model_copy(update={"missing": MissingSpec(strategy="complete_case")})
+    frame, mask, [(before, _), (after, kept_after), (plain, kept_plain)] = _flows(
+        ctx, [state, proposed, probe])
     training = ctx.artifact("split") is not None
     order = _order(ctx)
-    preds = predictors(state.roles, order)
+    if drop:
+        return _left_out_views(ctx, decision, drop, before, after, plain, kept_after, kept_plain,
+                               training, order)
+    preds = predictors(state.roles, order)  # the option leaves nothing out
     # Rows that reach the missing-values step: past the outcome and the rules.
     reach_ids = _kept_before_missing(frame, state)
     gaps: dict[str, int] = {}
@@ -220,6 +245,70 @@ def missing_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if ranked:
         views.append(_gaps_view(ctx, reach_ids, ranked, gaps, decision.strategy))
     return views
+
+
+def _left_out_views(ctx: PreviewContext, decision: Any, drop: list[str], before: list, after: list,
+                    plain: list, kept_after: Any, kept_plain: Any, training: bool,
+                    order: list[str]) -> list[Any]:
+    """Leaving columns out first: the rows that saves, against complete cases on every predictor."""
+    names = _names(drop)
+    if decision.strategy == "complete_case":
+        saved = np.setdiff1d(kept_after, kept_plain, assume_unique=True)
+        n_left = next((s["n"] for s in after if s["key"] == "complete_cases"), len(kept_after))
+        if len(saved):
+            caption = (f"Leaving out {names} keeps {fmt_count(len(saved))} rows complete cases would "
+                       f"drop; {fmt_count(n_left)} remain.")
+        else:
+            caption = f"Leaving out {names} saves no rows: {fmt_count(n_left)} remain either way."
+    else:
+        saved = np.asarray([], dtype=np.int64)
+        caption = f"{names} leave the predictors; the rest are imputed and no row leaves."
+    views: list[Any] = [RowFlowView(
+        title="Rows kept when values are missing",
+        caption=clip_words(caption, CAPTION_WORDS),
+        emphasis=["complete_cases"],
+        before=_steps(before, training),
+        after=_steps(after, training),
+    )]
+    if len(saved):
+        views.append(_saved_view(ctx, saved, drop, order))
+    return views
+
+
+def _names(columns: Sequence[str]) -> str:
+    shown = [f"`{c}`" for c in columns[:2]]
+    if len(columns) > 2:
+        return f"{', '.join(shown)} and {len(columns) - 2:,} more"
+    return " and ".join(shown)
+
+
+def _saved_view(ctx: PreviewContext, saved: Any, drop: list[str], order: list[str]) -> TableFocusView:
+    """A few of the saved rows: blank in the columns left out, complete in every other predictor."""
+    from turbotab.core.datastore import json_safe
+
+    preds = predictors(ctx.state.roles, order)
+    others = [c for c in preds if c not in drop]
+    columns = (drop + others)[:MAX_FOCUS_COLUMNS]
+    shown = np.sort(np.asarray(saved, dtype=np.int64))[:MAX_FOCUS_ROWS]
+    values = ctx.datastore.materialize(columns, shown)
+    rows, cells = [], []
+    for r in values.index:
+        before = {c: json_safe(values.at[r, c]) for c in columns}
+        after = {c: before[c] for c in columns if c not in drop}
+        rows.append(TableRow(row_id=int(r), before=before, after=after))
+        cells += [(int(r), c) for c in drop if c in columns and before[c] is None]
+    caption = (f"{fmt_count(len(saved))} rows are blank only in {_names(drop)}; without those "
+               f"columns, each is complete.")
+    return TableFocusView(
+        title="The rows leaving them out saves",
+        caption=clip_words(caption, CAPTION_WORDS),
+        emphasis=[c for c in drop if c in columns],
+        columns_before=columns,
+        columns_after=[c for c in columns if c not in drop],
+        rows=rows,
+        changed=cells,
+        n_affected_columns=len(drop),
+    )
 
 
 def _kept_before_missing(frame: Any, state: ProjectState) -> Any:

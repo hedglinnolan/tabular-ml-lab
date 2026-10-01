@@ -54,7 +54,8 @@ def test_every_row_kind_previews_within_its_word_budgets_and_records_nothing(cli
     views = preview(client, pid, {"kind": "set_exclusions", "rules": [rule]})["views"]
     assert [v["kind"] for v in views] == ["row_flow", "distribution"]
     assert views[0]["after"][-1]["n"] == 580 and "`20`" in views[0]["caption"]
-    assert views[1]["cuts"] == [500.0, 5000.0]
+    assert [(m["value"], m["label"], m["group"]) for m in views[1]["marks"]] == [
+        (500.0, "500 kcal", None), (5000.0, "5,000 kcal", None)]
 
     decide(client, pid, {"kind": "set_roles", "roles": proposed})
     views = preview(client, pid, {"kind": "set_missing", "strategy": "complete_case"})["views"]

@@ -2,7 +2,15 @@
 
 ``set_energy_adjustment``: the nutrient most correlated with energy, plotted against energy
 before and after the method (the picture *is* the method), then the lineage of the model matrix,
-then the nutrient's distribution before and after.
+then the nutrient's distribution before and after. Each method also tells its own storyboard
+(M1_CONTRACT §12.1), the real intermediate states between before and after:
+
+* residual — fit each nutrient on energy (the scatter with its fitted line), then keep what
+  energy does not explain (the residuals, centered at 0); the after adds the average back. The
+  distribution steps in time with the scatter.
+* partition — total energy split into its parts, told on the lineage: each nutrient becomes its
+  kcal, then the rest of energy becomes kcal from everything else; the after lets energy go.
+* density, standard and none — no intermediate step: before ⇄ after directly.
 
 ``select_models``: one lineage view per chosen family, newly added families first, each traced
 from the family's own pipeline — so a family registered later previews itself with no code here.
@@ -19,10 +27,17 @@ from turbotab.core.consequences import (
     CAPTION_WORDS,
     MAX_VIEWS,
     TITLE_WORDS,
+    DistributionFrame,
     DistributionView,
+    FitLine,
     HistogramData,
+    Lineage,
+    LineageFrame,
+    LineageLink,
+    LineageNode,
     LineageView,
     PreviewContext,
+    RelationshipFrame,
     RelationshipView,
     register_consequence,
 )
@@ -108,7 +123,10 @@ def _energy_reading(decision: Any, ctx: PreviewContext) -> tuple[str | None, lis
     if not nutrients:
         nutrients = [c for c, r in roles.items()
                      if r == "exposure" and c != E and energy_factor(c).factor is not None]
-    return E, nutrients
+    from turbotab.core.decisions import left_out
+
+    gone = set(left_out(state))  # left out with the missing values: not in the model to adjust
+    return (None if E in gone else E), [n for n in nutrients if n not in gone]
 
 
 def _read(ctx: PreviewContext, columns: Sequence[str]) -> Any:
@@ -168,9 +186,82 @@ def _relationship_caption(method: str, n: str, E: str, out: str, r0: float | Non
     return fit_words(text, CAPTION_WORDS)
 
 
+# ── storyboards ──────────────────────────────────────────────────────────────
+
+
+def _residual_story(fitted: Any, n: str, E: str, e: np.ndarray, raw: np.ndarray, after: np.ndarray,
+                    keep: np.ndarray, frame: Any, strata: str | None) -> tuple[list[Any], list[Any]]:
+    """Residual's two steps, for the scatter and the distribution: the fit, then the residuals.
+
+    The residual is the adjusted value less what the method adds back (the nutrient predicted at
+    the mean energy), so it is exactly ``N − N̂(E)`` on the fitting rows' own regression, per
+    level under strata. On the log scale it is the residual of ``log N`` on ``log E``.
+    """
+    pooled = getattr(fitted, "pooled_", fitted)
+    params = pooled.params_[n]
+    log = params["scale"] == "log"
+    added = np.full(len(after), float(params["constant_added"]))
+    if strata is not None and hasattr(fitted, "by_level_"):
+        levels = frame[strata].to_numpy(dtype=object)
+        for level, adjuster in fitted.by_level_.items():
+            added[levels == level] = float(adjuster.params_[n]["constant_added"])
+    with np.errstate(invalid="ignore", divide="ignore"):
+        residual = (np.log(after) if log else after) - added
+    line = None
+    if not log and strata is None:
+        line = FitLine(slope=float(params["slope"]), intercept=float(params["intercept"]))
+    if strata is not None:
+        fit_label = fit_words(f"Fit {n} on {E} within each {strata}", 8)
+    elif log:
+        fit_label = fit_words(f"Fit log {n} on log {E}", 8)
+    else:
+        fit_label = fit_words(f"Fit {n} on {E}", 8)
+    keep_label = "Keep what energy does not explain"
+    y_resid = f"log {n} residual" if log else f"{n} residual"
+    relationship = [
+        RelationshipFrame(label=fit_label, points=_points(e, raw, keep), r=_corr(raw, e),
+                          fit_line=line),
+        RelationshipFrame(label=keep_label, points=_points(e, residual, keep),
+                          r=_corr(residual, e), fit_line=FitLine(slope=0.0, intercept=0.0),
+                          y_label=y_resid),
+    ]
+    distribution = [
+        DistributionFrame(label=fit_label, hist=_histogram(raw)),
+        DistributionFrame(label=keep_label, hist=_histogram(residual), x_label=y_resid),
+    ]
+    return relationship, distribution
+
+
+def _without(lineage: Lineage, gone: set[str]) -> tuple[list[LineageNode], list[LineageLink]]:
+    nodes = [node for node in lineage.nodes if node.id not in gone]
+    links = [link for link in lineage.links if link.source not in gone and link.target not in gone]
+    return nodes, links
+
+
+def _partition_story(after: Lineage, E: str, nutrients: Sequence[str]) -> list[LineageFrame]:
+    """Partition's two steps on the lineage: each nutrient becomes its kcal, then the rest of
+    energy becomes kcal from everything else. Energy itself stays in the picture until the after
+    lets it go."""
+    ids = {node.id: node for node in after.nodes}
+    others = [nid for nid, node in ids.items() if node.column == "kcal_from_other"]
+    if not others or f"raw:{E}" not in ids:
+        return []
+    still = [LineageNode(id=f"adj:{E}", column=E, lane="adjusted", role="energy", label=E),
+             LineageNode(id=f"mx:{E}", column=E, lane="matrix", role="energy", label=E)]
+    kept = [LineageLink(source=f"raw:{E}", target=f"adj:{E}", operation="kept"),
+            LineageLink(source=f"adj:{E}", target=f"mx:{E}", operation="kept")]
+    first_nodes, first_links = _without(after, set(others))
+    first = Lineage(nodes=first_nodes + still, links=first_links + kept, collapsed=after.collapsed)
+    second = Lineage(nodes=list(after.nodes) + still, links=list(after.links) + kept,
+                     collapsed=after.collapsed)
+    one = "Each nutrient becomes its kcal" if len(nutrients) != 1 else f"{nutrients[0]} becomes its kcal"
+    return [LineageFrame(label=fit_words(one, 8), lineage=first),
+            LineageFrame(label=fit_words(f"The rest of {E} becomes other kcal", 8), lineage=second)]
+
+
 def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     from turbotab.core.decisions import EnergyAdjustment
-    from turbotab.core.models.pipeline import input_columns, predictors_from_roles
+    from turbotab.core.models.pipeline import input_columns, model_predictors
     from turbotab.core.models.steps import energy_step
 
     if ctx.training_row_ids is None:
@@ -181,7 +272,7 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
         return []
     after_adj = EnergyAdjustment(**decision.model_dump(exclude={"kind"}))
     before_adj = state.energy_adjustment
-    predictors = predictors_from_roles(state.roles, state.target)
+    predictors = model_predictors(state)
     predictors = predictors + [c for c in (E, *nutrients) if c not in predictors]
     frame = _read(ctx, [*input_columns(predictors, after_adj), *input_columns(predictors, before_adj)])
     if E not in frame.columns:
@@ -197,6 +288,7 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
 
     out_name, after = n, raw
     problem = None
+    fitted = None
     step = energy_step(after_adj, predictors) if after_adj.method != "none" else None
     if step is not None:
         inputs = input_columns(predictors, after_adj)
@@ -215,6 +307,11 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     method = after_adj.method
     caption = (fit_words(problem, CAPTION_WORDS) if problem else
                _relationship_caption(method, n, E, out_name, r0, r1, after_adj.strata))
+    scatter_story: list[Any] = []
+    hist_story: list[Any] = []
+    if not problem and method == "residual" and fitted is not None:
+        strata = after_adj.strata if after_adj.strata in frame.columns else None
+        scatter_story, hist_story = _residual_story(fitted, n, E, e, raw, after, keep, frame, strata)
     views: list[Any] = [RelationshipView(
         title=fit_words(f"{n} against {E}, before and after", TITLE_WORDS),
         caption=caption,
@@ -226,6 +323,7 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
         points_after=[] if problem else _points(e, after, keep),
         r_before=r0,
         r_after=r1,
+        story=scatter_story,
     )]
     if problem:
         return views
@@ -248,6 +346,7 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
             emphasis=changed[:12],
             before=lineage_before,
             after=lineage_after,
+            story=_partition_story(lineage_after, E, nutrients) if method == "partition" else [],
         ))
     if out_name != n or method in ("density", "density_multivariate", "partition"):
         finite0, finite1 = raw[np.isfinite(raw)], after[np.isfinite(after)]
@@ -262,6 +361,7 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
             after=_histogram(after),
             before_label=f"{n} as recorded",
             after_label=out_name,
+            story=hist_story,
         ))
     return views[:MAX_VIEWS]
 
@@ -276,7 +376,7 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
         design_spec,
         family_steps,
         input_columns,
-        predictors_from_roles,
+        model_predictors,
         shared_steps,
         transformer,
     )
@@ -284,7 +384,7 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     if ctx.training_row_ids is None:
         return []
     state = ctx.state
-    predictors = predictors_from_roles(state.roles, state.target)
+    predictors = model_predictors(state)
     if not predictors:
         return []
     frame = _read(ctx, input_columns(predictors, state.energy_adjustment))

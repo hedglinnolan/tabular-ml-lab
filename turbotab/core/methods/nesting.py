@@ -1,0 +1,120 @@
+"""Nested nutrients: columns that are parts of another column (``fat_sat`` ⊂ ``fat_total``).
+
+A dietary export often carries a macronutrient's total beside its components: saturated,
+monounsaturated and polyunsaturated fat beside total fat, sugars beside carbohydrate. Moving energy
+through the total while its parts stay fixed is not a coherent substitution (the parts would no
+longer fit inside the total), and pairing a total with its own part moves nothing at all.
+
+A column is read as nested in another when both hold:
+
+* **the names say so** — the child names a subtype of the parent's macronutrient (``sat``,
+  ``mufa``, ``poly``, ``sugar``, ``starch``, ``animal``…) and the parent names that macronutrient
+  with no subtype (``fat_total``, ``total_fat``, ``carb``);
+* **the data agree** — the child is at most the parent on at least :data:`MIN_INSIDE` of the rows
+  where both are recorded.
+
+Fiber is deliberately not read as part of carbohydrate: food tables disagree on whether total
+carbohydrate includes it.
+"""
+from __future__ import annotations
+
+import re
+from typing import Any, Mapping, Sequence
+
+import numpy as np
+
+MIN_INSIDE = 0.99  # share of rows on which a part may not exceed its total
+MIN_ROWS = 10
+
+# Subtype words by macronutrient. A child's name must carry one; a parent's must carry none.
+SUBTYPES: dict[str, frozenset[str]] = {
+    "fat": frozenset({"sat", "saturated", "sfa", "mon", "mono", "monounsaturated", "mufa", "poly",
+                      "polyunsaturated", "pufa", "trans", "tfa"}),
+    "carbohydrate": frozenset({"sugar", "sugars", "starch", "sucrose", "fructose", "lactose"}),
+    "protein": frozenset({"animal", "plant", "vegetable", "dairy"}),
+}
+# Words that name a subtype of one macronutrient on their own (``sfa_g``, ``sugar``).
+SPECIFIC: dict[str, frozenset[str]] = {
+    "fat": frozenset({"sfa", "mufa", "pufa", "saturated", "monounsaturated", "polyunsaturated"}),
+    "carbohydrate": frozenset({"sugar", "sugars", "starch", "sucrose", "fructose", "lactose"}),
+    "protein": frozenset(),
+}
+
+
+def _tokens(name: str) -> set[str]:
+    return {t for t in re.split(r"[^a-z0-9]+", str(name).lower()) if t}
+
+
+def _role(column: str) -> str | None:
+    from turbotab.core.methods.energy import nutrient_role
+
+    try:
+        return nutrient_role(column)
+    except ValueError:
+        return None
+
+
+def _macro_of_child(column: str) -> str | None:
+    """The macronutrient ``column`` names a subtype of, from its name alone."""
+    tokens = _tokens(column)
+    role = _role(column)
+    for macro, words in SUBTYPES.items():
+        if tokens & SPECIFIC[macro] or (role == macro and tokens & words):
+            return macro
+    return None
+
+
+def _unit_class(column: str) -> str | None:
+    from turbotab.core.methods.energy import unit_of
+
+    unit = unit_of(column)
+    if unit == "density":
+        return None  # a share of energy is not an amount a total can hold
+    return "grams" if unit in ("grams", "unmarked") else unit
+
+
+def candidates(columns: Sequence[str]) -> dict[str, list[str]]:
+    """Parent -> the children its name admits, from names alone (the data have not spoken yet)."""
+    parents: dict[str, list[str]] = {}
+    for c in columns:
+        role = _role(c)
+        if role in SUBTYPES and not _tokens(c) & SUBTYPES[role] and _unit_class(c) is not None:
+            parents.setdefault(role, []).append(c)
+    out: dict[str, list[str]] = {}
+    for macro, options in parents.items():
+        parent = sorted(options, key=lambda c: ("total" not in _tokens(c), columns.index(c)))[0]
+        children = [c for c in columns if c != parent and _macro_of_child(c) == macro
+                    and _unit_class(c) == _unit_class(parent)]
+        if children:
+            out[parent] = children
+    return out
+
+
+def nested_components(frame: Any, columns: Sequence[str] | None = None) -> dict[str, str]:
+    """Child -> parent for every name-admitted pair the data confirm, over ``frame``'s rows."""
+    import pandas as pd
+
+    columns = [str(c) for c in (frame.columns if columns is None else columns) if c in frame.columns]
+    out: dict[str, str] = {}
+    for parent, children in candidates(columns).items():
+        p = pd.to_numeric(frame[parent], errors="coerce").to_numpy(dtype=float, na_value=np.nan)
+        for child in children:
+            c = pd.to_numeric(frame[child], errors="coerce").to_numpy(dtype=float, na_value=np.nan)
+            both = np.isfinite(p) & np.isfinite(c)
+            if both.sum() < MIN_ROWS:
+                continue
+            inside = c[both] <= p[both] * (1 + 1e-9) + 1e-9
+            if float(inside.mean()) >= MIN_INSIDE:
+                out[child] = parent
+    return out
+
+
+def parts_of(nested: Mapping[str, str]) -> dict[str, list[str]]:
+    """Parent -> its children, in the order they were found."""
+    out: dict[str, list[str]] = {}
+    for child, parent in nested.items():
+        out.setdefault(parent, []).append(child)
+    return out
+
+
+__all__ = ["MIN_INSIDE", "SUBTYPES", "candidates", "nested_components", "parts_of"]

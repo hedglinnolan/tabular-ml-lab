@@ -36,11 +36,16 @@ CHUNK_COLUMNS = 1_000  # columns materialized at once when counting missing valu
 # ── shared helpers ────────────────────────────────────────────────────────────
 
 
-def predictors(roles: Mapping[str, str] | None, order: Sequence[str] | None = None) -> list[str]:
-    """Columns whose role puts them in the model (exposure, covariate or energy), in table order."""
+def predictors(roles: Mapping[str, str] | None, order: Sequence[str] | None = None,
+               drop: Iterable[str] = ()) -> list[str]:
+    """Columns whose role puts them in the model (exposure, covariate or energy), in table order.
+
+    ``drop``: columns the missing-values answer left out (``SetMissing.drop_columns``).
+    """
     if not roles:
         return []
-    names = [c for c, r in roles.items() if r in PREDICTOR_ROLES]
+    gone = set(drop)
+    names = [c for c, r in roles.items() if r in PREDICTOR_ROLES and c not in gone]
     if order is None:
         return names
     rank = {c: i for i, c in enumerate(order)}
@@ -220,7 +225,7 @@ def propose_roles(
         n_present = max(0, int(summary.get("n", n_rows - int(summary.get("n_missing", 0)))))
         n_unique = int(summary.get("n_unique") or 0)
         tokens = set(_tokens(name))
-        proposal = {"column": name, "linked_to": None, "unit": _unit(name)}
+        proposal = {"column": name, "linked_to": None, "unit": _unit(name), "nested_in": None}
 
         def put(role: str, confidence: str, reason: str, **extra: Any) -> None:
             out.append({**proposal, "proposed": role, "confidence": confidence, "reason": reason, **extra})
@@ -319,6 +324,19 @@ def _repeats(store: Any, proposals: Sequence[Mapping[str, Any]]) -> dict[str, An
     return best
 
 
+def _nesting(store: Any, columns: Sequence[Mapping[str, Any]], target: str | None) -> dict[str, str]:
+    """Child -> parent over every row: the names admit it and the part never exceeds the total."""
+    from turbotab.core.methods.nesting import candidates, nested_components
+
+    names = [str(c["name"]) for c in columns if str(c["name"]) != target
+             and str(c.get("dtype") or "") in ("numeric", "integer")]
+    pairs = candidates(names)
+    needed = list(dict.fromkeys([*pairs, *(c for kids in pairs.values() for c in kids)]))
+    if not needed:
+        return {}
+    return nested_components(store.materialize(needed), needed)
+
+
 def roles_stage(ctx: StageContext) -> dict[str, Any]:
     """Proposed roles for every column but the outcome, and whether rows repeat per unit."""
     columns = [c for c in ctx.inputs["profile"]["columns"] if not str(c["name"]).startswith("__")]
@@ -335,6 +353,10 @@ def roles_stage(ctx: StageContext) -> dict[str, Any]:
     ctx.progress(0.6, "Checking whether identifiers repeat")
     with open_store(ctx) as store:
         repeats = _repeats(store, proposals)
+        ctx.progress(0.8, "Checking which nutrients are parts of others")
+        nested = _nesting(store, columns, ctx.state.target)
+    for p in proposals:
+        p["nested_in"] = nested.get(p["column"])
     if repeats is not None:
         for p in proposals:
             if p["column"] == repeats["column"]:
@@ -467,16 +489,22 @@ def _columns_with_missing(ingest: Mapping[str, Any]) -> set[str]:
 
 
 def cohort_inputs(state: Any, ingest: Mapping[str, Any]) -> tuple[list[str], list[str], list[str]]:
-    """(columns the flow reads, predictors, predictors that can be missing), in table order."""
+    """(columns the flow reads, predictors, predictors that can be missing), in table order.
+
+    The predictors are those the missing-values answer kept: a column it left out is judged by
+    nothing, so its blanks never drop a row.
+    """
+    from turbotab.core.decisions import left_out, missing_strategy
+
     order = [str(c["name"]) for c in ingest.get("columns", [])]
-    preds = predictors(state.roles, order)
+    preds = predictors(state.roles, order, drop=left_out(state))
     needed = [state.target] if state.target is not None else []
     for rule in state.exclusions or []:
         needed.append(rule.column)
         if rule.by is not None:
             needed.append(rule.by.column)
     with_missing = _columns_with_missing(ingest)
-    gappy = [c for c in preds if c in with_missing] if state.missing == "complete_case" else []
+    gappy = [c for c in preds if c in with_missing] if missing_strategy(state) == "complete_case" else []
     return list(dict.fromkeys(needed)), preds, gappy
 
 
@@ -498,11 +526,13 @@ def compute_cohort(
     missing_frame = None
     if gappy:
         missing_frame = _missing_mask(store, gappy, frame.index)
+    from turbotab.core.decisions import missing_strategy
+
     steps, kept = cohort_flow(
         frame,
         target=state.target,
         rules=state.exclusions,
-        missing=state.missing,
+        missing=missing_strategy(state),
         predictor_columns=gappy,
         missing_frame=missing_frame,
     )

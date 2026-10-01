@@ -8,6 +8,7 @@ import pytest
 
 from turbotab.core.consequences import (
     CAPTION_WORDS,
+    FRAME_WORDS,
     MAX_VIEWS,
     TITLE_WORDS,
     PreviewContext,
@@ -210,3 +211,62 @@ def test_a_family_registered_later_previews_and_traces_itself_with_no_new_code(p
         assert [s["label"] for s in steps] == ["Spline basis", "Least squares on a spline basis"]
     finally:
         unregister_family("spline_linear")
+
+
+# ── storyboards (M1_CONTRACT §12.1) ──────────────────────────────────────────
+
+
+def check_story(result: PreviewResult) -> None:
+    for view in result.views:
+        for frame in view.story:
+            assert 1 <= words(frame.label) <= FRAME_WORDS, frame.label
+
+
+def test_the_residual_storyboard_fits_the_line_then_keeps_the_residuals_centered_at_zero(project):
+    frame, store, train = project
+    ctx = context(store, mf.state(energy_adjustment=None), train)
+    result = plan(energy_decision("residual"), ctx, basis="test")
+    check_story(result)
+    rel, lineage, dist = result.views
+    fit, resid = rel.story
+    assert fit.points == rel.points_before and fit.r == pytest.approx(rel.r_before, abs=1e-12)
+    n = rel.y_label_before
+    sample = frame.loc[ctx.sample_row_ids(train)]
+    slope, intercept = np.polyfit(sample["kcal"], sample[n], 1)
+    assert fit.fit_line.slope == pytest.approx(slope, rel=1e-9)
+    assert fit.fit_line.intercept == pytest.approx(intercept, rel=1e-9)
+    residuals = (sample[n] - (intercept + slope * sample["kcal"])).to_numpy()
+    assert abs(residuals.mean()) < 1e-9 and abs(resid.r) < 1e-8  # centered; energy explains none of it
+    ys = np.array([y for _, y in resid.points])
+    after = np.array([y for _, y in rel.points_after])
+    # The after is the residual plus the one average added back: the same points, shifted.
+    np.testing.assert_allclose(after - ys, np.full(len(ys), (after - ys)[0]), atol=1e-9)
+    assert resid.y_label == f"{n} residual" and resid.fit_line.slope == 0.0
+    assert [f.label for f in dist.story] == [fit.label, resid.label]
+    assert sum(dist.story[1].hist.counts) == len(sample)
+    assert lineage.story == []
+
+
+def test_the_partition_storyboard_splits_energy_into_its_parts_on_the_lineage(project):
+    _, store, train = project
+    result = plan(energy_decision("partition"), context(store, mf.state(energy_adjustment=None), train),
+                  basis="test")
+    check_story(result)
+    rel, lineage, dist = result.views
+    assert rel.story == [] and dist.story == []
+    first, second = lineage.story
+    adjusted = [{n.column for n in f.lineage.nodes if n.lane == "adjusted"} for f in (first, second)]
+    assert {"kcal_from_protein", "kcal_from_carb", "kcal"} <= adjusted[0]
+    assert "kcal_from_other" not in adjusted[0] and {"kcal_from_other", "kcal"} <= adjusted[1]
+    after = {n.column for n in lineage.after.nodes if n.lane == "adjusted"}
+    assert "kcal" not in after and "kcal_from_other" in after  # the after lets energy go
+    ids = {n.id for f in (first, second) for n in f.lineage.nodes}
+    assert all(link.source in ids and link.target in ids for f in (first, second) for link in f.lineage.links)
+
+
+@pytest.mark.parametrize("method", ["none", "standard", "density", "density_multivariate"])
+def test_methods_without_intermediate_steps_have_no_storyboard(project, method):
+    _, store, train = project
+    result = plan(energy_decision(method), context(store, mf.state(energy_adjustment=None), train),
+                  basis="test")
+    assert all(view.story == [] for view in result.views)

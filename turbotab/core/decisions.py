@@ -162,10 +162,21 @@ class SplitSpec(_Value):
         return value
 
 
+MAX_BOOT = 500
+
+
 class SubstitutionSpec(_Value):
     donor: str = Field(min_length=1)
     recipient: str = Field(min_length=1)
     step_kcal: float = Field(default=100.0, gt=0)
+    n_boot: int = Field(default=0, ge=0, le=MAX_BOOT)
+
+
+class MissingSpec(_Value):
+    """The missing-values answer: columns left out of the predictors, then a strategy for the rest."""
+
+    strategy: MissingStrategy
+    drop_columns: list[str] = Field(default_factory=list)
 
 
 class SetRoles(_DecisionModel):
@@ -192,8 +203,22 @@ class SetExclusions(_DecisionModel):
 
 
 class SetMissing(_DecisionModel):
+    """How missing predictor values are handled.
+
+    ``drop_columns`` leave the predictors first (a mostly blank column that means "not asked"),
+    and the strategy applies to the predictors that remain; the cohort and the design read both.
+    """
+
     kind: Literal["set_missing"] = "set_missing"
     strategy: MissingStrategy
+    drop_columns: list[str] = Field(default_factory=list)
+
+    @field_validator("drop_columns")
+    @classmethod
+    def _unique(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("each column may be left out only once")
+        return value
 
 
 class SetSplit(_DecisionModel):
@@ -216,10 +241,13 @@ class SelectModels(_DecisionModel):
 
 
 class SetSubstitution(_DecisionModel):
+    """The substitution to draw; ``n_boot > 0`` adds a band from that many bootstrap refits."""
+
     kind: Literal["set_substitution"] = "set_substitution"
     donor: str = Field(min_length=1)
     recipient: str = Field(min_length=1)
     step_kcal: float = Field(default=100.0, gt=0)
+    n_boot: int = Field(default=0, ge=0, le=MAX_BOOT)
 
 
 Decision = Annotated[
@@ -269,10 +297,28 @@ class ProjectState(BaseModel):
     roles: dict[str, Role] | None = None
     energy_adjustment: EnergyAdjustment | None = None
     exclusions: list[ExclusionRule] | None = None
-    missing: MissingStrategy | None = None
+    missing: MissingSpec | None = None
     split: SplitSpec | None = None
     models: list[str] | None = None
     substitution: SubstitutionSpec | None = None
+
+    @field_validator("missing", mode="before")
+    @classmethod
+    def _strategy_alone(cls, value: Any) -> Any:
+        """A bare strategy (``"impute"``) is the answer with no column left out."""
+        return {"strategy": value} if isinstance(value, str) else value
+
+
+def missing_strategy(state: Any) -> MissingStrategy | None:
+    """The missing-values strategy the state holds, or None while unanswered."""
+    spec = getattr(state, "missing", None)
+    return None if spec is None else spec.strategy
+
+
+def left_out(state: Any) -> list[str]:
+    """Columns the missing-values answer left out of the predictors."""
+    spec = getattr(state, "missing", None)
+    return list(spec.drop_columns) if spec is not None else []
 
 
 class Refusal(Exception):
@@ -451,7 +497,7 @@ register_kind(SetRoles, "roles")
 register_kind(SetEnergyAdjustment, "energy_adjustment",
               value=lambda d: EnergyAdjustment(**d.model_dump(exclude={"kind"})))
 register_kind(SetExclusions, "exclusions")
-register_kind(SetMissing, "missing")
+register_kind(SetMissing, "missing", value=lambda d: MissingSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetSplit, "split", value=lambda d: SplitSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SelectModels, "models")
 register_kind(SetSubstitution, "substitution",
@@ -633,6 +679,17 @@ def _energy_adjustment_fits_the_roles(decision: SetEnergyAdjustment, ctx: Any) -
         exits = [{"label": "Adjust only the exposures", "decision": with_(nutrients=exposures)}] if exposures else []
         raise Refusal("nutrients_not_exposures", message,
                       exits=exits + [{"label": "Choose the nutrients to adjust", "decision": None}])
+    gone = [c for c in (decision.energy_column, *decision.nutrients) if c in left_out(state)]
+    if gone:
+        kept = [n for n in decision.nutrients if n not in gone]
+        exits = ([{"label": "Adjust only the nutrients still in the model", "decision": with_(nutrients=kept)}]
+                 if kept and decision.energy_column not in gone else [])
+        raise Refusal(
+            "left_out",
+            f"{_and(gone)} {'was' if len(gone) == 1 else 'were'} left out of the predictors with the "
+            f"missing values, so energy adjustment cannot use {'it' if len(gone) == 1 else 'them'}.",
+            exits=exits + [{"label": "Do not adjust for energy", "decision": with_(method="none")}],
+        )
     from turbotab.core.methods.energy import METHOD_TABLE, applicable_methods
 
     table = applicable_methods(sorted(columns or roles), decision.energy_column, decision.nutrients)
@@ -745,8 +802,78 @@ def _substitution_swaps_energy(decision: SetSubstitution, ctx: Any) -> None:
         )
 
 
+def nesting_of(ctx: Any) -> dict[str, str]:
+    """Child column -> the column it is part of, as the design (else the roles stage) found it."""
+    artifact = _ctx(ctx, "artifact")
+    if not callable(artifact):
+        return {}
+    for stage in ("design", "roles"):
+        try:
+            data = artifact(stage)
+        except Exception:  # noqa: BLE001 - a missing artifact checks nothing
+            data = None
+        if not isinstance(data, Mapping):
+            continue
+        if stage == "design" and data.get("nested") is not None:
+            return {str(e["column"]): str(e["parent"]) for e in data["nested"]}
+        if stage == "roles":
+            return {str(e["column"]): str(e["nested_in"]) for e in data.get("columns") or []
+                    if e.get("nested_in")}
+    return {}
+
+
+def _substitution_moves_between_separate_nutrients(decision: SetSubstitution, ctx: Any) -> None:
+    nested = nesting_of(ctx)
+    d, r = decision.donor, decision.recipient
+    if nested.get(d) == r or nested.get(r) == d:
+        child, parent = (d, r) if nested.get(d) == r else (r, d)
+        raise Refusal(
+            "part_of_the_other",
+            f"`{child}` is part of `{parent}`, so moving kcal between them moves nothing; a "
+            f"substitution swaps two separate nutrients.",
+            exits=[{"label": "Choose two separate nutrients", "decision": None}],
+        )
+
+
+def _left_out_columns_are_predictors(decision: SetMissing, ctx: Any) -> None:
+    if not decision.drop_columns:
+        return
+    columns = _columns_of(ctx)
+    keep = {"label": "Keep every predictor", "decision": SetMissing(strategy=decision.strategy)}
+    if columns is not None:
+        unknown = [c for c in decision.drop_columns if c not in columns or c == ROW_ID]
+        if unknown:
+            raise Refusal("unknown_column", f"This dataset has no column named {_and(unknown)}.",
+                          exits=[keep])
+    state = _state(ctx)
+    roles = (state.roles if state is not None else None) or {}
+    if not roles:
+        return
+    preds = [c for c, r in roles.items() if r in PREDICTOR_ROLES]
+    outside = [c for c in decision.drop_columns if c not in preds]
+    if outside:
+        rest = [c for c in decision.drop_columns if c not in outside]
+        exits = ([{"label": f"Leave out only {_and(rest)}",
+                   "decision": SetMissing(strategy=decision.strategy, drop_columns=rest)}]
+                 if rest else []) + [keep]
+        raise Refusal(
+            "not_a_predictor",
+            f"{_and(outside)} {'is' if len(outside) == 1 else 'are'} not a predictor, so there is "
+            f"nothing to leave out.",
+            exits=exits,
+        )
+    if not [c for c in preds if c not in decision.drop_columns]:
+        raise Refusal(
+            "no_predictors",
+            "Leaving out every predictor would leave the models nothing to use.",
+            exits=[keep],
+        )
+
+
 register_validator("set_task", _task_fits_the_outcome)
 register_validator("set_roles", _roles_name_real_columns)
+register_validator("set_missing", _left_out_columns_are_predictors)
+register_validator("set_substitution", _substitution_moves_between_separate_nutrients)
 register_validator("set_exclusions", _exclusions_are_ranges_on_numbers)
 register_validator("set_energy_adjustment", _energy_adjustment_fits_the_roles)
 register_validator("select_models", _models_can_fit_the_task)

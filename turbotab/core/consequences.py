@@ -93,6 +93,55 @@ class Lineage(_Model):
     collapsed: bool = False  # True when groups were collapsed to keep the picture readable
 
 
+# ── storyboards ──────────────────────────────────────────────────────────────
+# A view's ``story`` is the method's own labeled intermediate states between its before and its
+# after (BLUEPRINT §11.1): real, computed states, never an interpolation. The client's flip plays
+# before → story… → after, and a save can capture any of them. Empty: a direct before ⇄ after.
+# Each frame has the data its view kind draws, and a ``label`` of at most :data:`FRAME_WORDS`.
+
+FRAME_WORDS = 8
+
+
+class FitLine(_Model):
+    slope: float
+    intercept: float
+
+
+class RelationshipFrame(_Model):
+    label: str
+    points: list[tuple[float, float]]
+    r: float | None
+    fit_line: FitLine | None = None  # y = intercept + slope · x, on this frame's axes
+    y_label: str | None = None  # the y axis when it is not the view's before label
+
+
+class DistributionFrame(_Model):
+    label: str
+    hist: HistogramData
+    x_label: str | None = None  # the axis when it is not the view's column
+
+
+class LineageFrame(_Model):
+    label: str
+    lineage: Lineage
+
+
+class FrameRow(_Model):
+    row_id: int
+    values: dict[str, Any]
+
+
+class TableFrame(_Model):
+    label: str
+    columns: list[str]
+    rows: list[FrameRow]
+
+
+class RowFlowFrame(_Model):
+    label: str
+    steps: list[RowStep]
+
+
 # ── the views ────────────────────────────────────────────────────────────────
 
 
@@ -106,12 +155,14 @@ class RowFlowView(_View):
     kind: Literal["row_flow"] = "row_flow"
     before: list[RowStep]
     after: list[RowStep]
+    story: list[RowFlowFrame] = Field(default_factory=list)
 
 
 class LineageView(_View):
     kind: Literal["lineage"] = "lineage"
     before: Lineage | None
     after: Lineage
+    story: list[LineageFrame] = Field(default_factory=list)
 
 
 class TableRow(_Model):
@@ -127,12 +178,13 @@ class TableFocusView(_View):
     columns_before: list[str]
     columns_after: list[str]
     rows: list[TableRow]
-    changed: list[tuple[int, str]]  # (row_id, column) cells whose value changes
+    changed: list[tuple[int, str]]  # (row_id, column) cells whose value changes (evidence: the cells it is about)
     n_affected_columns: int
+    story: list[TableFrame] = Field(default_factory=list)
 
 
 class Mark(_Model):
-    """A value drawn on a distribution's axis, e.g. an exclusion cut-off."""
+    """A labeled value on a distribution's axis, e.g. an exclusion cut-off ("500 kcal")."""
 
     value: float
     label: str
@@ -147,7 +199,7 @@ class DistributionView(_View):
     before_label: str
     after_label: str
     marks: list[Mark] = Field(default_factory=list)  # labeled values on the axis (e.g. a rule's bounds)
-    cuts: list[float] = Field(default_factory=list)  # DEPRECATED: unlabeled; M1 W2 moves builders to marks
+    story: list[DistributionFrame] = Field(default_factory=list)
 
 
 class RelationshipView(_View):
@@ -161,6 +213,7 @@ class RelationshipView(_View):
     points_after: list[tuple[float, float]]
     r_before: float | None
     r_after: float | None
+    story: list[RelationshipFrame] = Field(default_factory=list)
 
 
 ConsequenceView = Annotated[
@@ -736,9 +789,11 @@ def words(text: str) -> int:
 
 
 __all__ = [
-    "CAPTION_WORDS", "MAX_VIEWS", "TITLE_WORDS", "ConsequenceView", "DistributionView",
-    "HistogramData", "Lineage", "LineageLink", "LineageNode", "LineageView", "Mark", "PreviewContext",
-    "PreviewResult", "RelationshipView", "RowFlowView", "RowStep", "TableFocusView", "TableRow",
+    "CAPTION_WORDS", "FRAME_WORDS", "MAX_VIEWS", "TITLE_WORDS", "ConsequenceView",
+    "DistributionFrame", "DistributionView", "FitLine", "FrameRow", "HistogramData", "Lineage",
+    "LineageFrame", "LineageLink", "LineageNode", "LineageView", "Mark", "PreviewContext",
+    "PreviewResult", "RelationshipFrame", "RelationshipView", "RowFlowFrame", "RowFlowView",
+    "RowStep", "TableFocusView", "TableFrame", "TableRow",
     "clip_words", "diff_views", "fmt_count", "fmt_value", "lineage_of", "plan",
     "register_consequence", "register_transform", "words",
 ]

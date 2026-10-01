@@ -348,7 +348,7 @@
                     "$ref": "#/components/schemas/SetExclusions-Input"
                   },
                   {
-                    "$ref": "#/components/schemas/SetMissing"
+                    "$ref": "#/components/schemas/SetMissing-Input"
                   },
                   {
                     "$ref": "#/components/schemas/SetSplit-Input"
@@ -371,7 +371,7 @@
                     "set_roles": "#/components/schemas/SetRoles",
                     "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Input",
                     "set_exclusions": "#/components/schemas/SetExclusions-Input",
-                    "set_missing": "#/components/schemas/SetMissing",
+                    "set_missing": "#/components/schemas/SetMissing-Input",
                     "set_split": "#/components/schemas/SetSplit-Input",
                     "select_models": "#/components/schemas/SelectModels",
                     "set_substitution": "#/components/schemas/SetSubstitution-Input"
@@ -600,7 +600,7 @@
                     "$ref": "#/components/schemas/SetExclusions-Input"
                   },
                   {
-                    "$ref": "#/components/schemas/SetMissing"
+                    "$ref": "#/components/schemas/SetMissing-Input"
                   },
                   {
                     "$ref": "#/components/schemas/SetSplit-Input"
@@ -623,7 +623,7 @@
                     "set_roles": "#/components/schemas/SetRoles",
                     "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Input",
                     "set_exclusions": "#/components/schemas/SetExclusions-Input",
-                    "set_missing": "#/components/schemas/SetMissing",
+                    "set_missing": "#/components/schemas/SetMissing-Input",
                     "set_split": "#/components/schemas/SetSplit-Input",
                     "select_models": "#/components/schemas/SelectModels",
                     "set_substitution": "#/components/schemas/SetSubstitution-Input"
@@ -657,6 +657,78 @@
           },
           "404": {
             "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/findings/{fid}/evidence": {
+      "get": {
+        "tags": [
+          "previews"
+        ],
+        "summary": "Finding Evidence",
+        "description": "The views that show why finding ``fid`` was raised, in the preview's vocabulary.\n\n``kind`` is the finding's family. Data-quality evidence reads every row, as the finding did;\nevidence for a modeling choice never reads the held-out rows.",
+        "operationId": "finding_evidence_api_projects__pid__findings__fid__evidence_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          },
+          {
+            "name": "fid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Fid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The findings or the table are not read yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project, or no such finding now",
             "content": {
               "application/json": {
                 "schema": {
@@ -1391,7 +1463,7 @@
                 "$ref": "#/components/schemas/SetExclusions-Output"
               },
               {
-                "$ref": "#/components/schemas/SetMissing"
+                "$ref": "#/components/schemas/SetMissing-Output"
               },
               {
                 "$ref": "#/components/schemas/SetSplit-Output"
@@ -1412,7 +1484,7 @@
                 "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
                 "set_exclusions": "#/components/schemas/SetExclusions-Output",
                 "set_lens": "#/components/schemas/SetLens",
-                "set_missing": "#/components/schemas/SetMissing",
+                "set_missing": "#/components/schemas/SetMissing-Output",
                 "set_purpose": "#/components/schemas/SetPurpose",
                 "set_roles": "#/components/schemas/SetRoles",
                 "set_split": "#/components/schemas/SetSplit-Output",
@@ -1434,6 +1506,36 @@
           "decision"
         ],
         "title": "DecisionRecord"
+      },
+      "DistributionFrame": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "hist": {
+            "$ref": "#/components/schemas/HistogramData"
+          },
+          "x_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "X Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "hist",
+          "x_label"
+        ],
+        "title": "DistributionFrame"
       },
       "DistributionView": {
         "properties": {
@@ -1483,12 +1585,12 @@
             "type": "array",
             "title": "Marks"
           },
-          "cuts": {
+          "story": {
             "items": {
-              "type": "number"
+              "$ref": "#/components/schemas/DistributionFrame"
             },
             "type": "array",
-            "title": "Cuts"
+            "title": "Story"
           }
         },
         "additionalProperties": false,
@@ -1504,7 +1606,7 @@
           "before_label",
           "after_label",
           "marks",
-          "cuts"
+          "story"
         ],
         "title": "DistributionView"
       },
@@ -1797,7 +1899,7 @@
                     "$ref": "#/components/schemas/SetExclusions-Output"
                   },
                   {
-                    "$ref": "#/components/schemas/SetMissing"
+                    "$ref": "#/components/schemas/SetMissing-Output"
                   },
                   {
                     "$ref": "#/components/schemas/SetSplit-Output"
@@ -1817,7 +1919,7 @@
                     "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
                     "set_exclusions": "#/components/schemas/SetExclusions-Output",
                     "set_lens": "#/components/schemas/SetLens",
-                    "set_missing": "#/components/schemas/SetMissing",
+                    "set_missing": "#/components/schemas/SetMissing-Output",
                     "set_purpose": "#/components/schemas/SetPurpose",
                     "set_roles": "#/components/schemas/SetRoles",
                     "set_split": "#/components/schemas/SetSplit-Output",
@@ -1903,6 +2005,45 @@
         ],
         "title": "FamilyInfo",
         "description": "What ``GET /api/models`` says about one family."
+      },
+      "FitLine": {
+        "properties": {
+          "slope": {
+            "type": "number",
+            "title": "Slope"
+          },
+          "intercept": {
+            "type": "number",
+            "title": "Intercept"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "slope",
+          "intercept"
+        ],
+        "title": "FitLine"
+      },
+      "FrameRow": {
+        "properties": {
+          "row_id": {
+            "type": "integer",
+            "title": "Row Id"
+          },
+          "values": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "row_id",
+          "values"
+        ],
+        "title": "FrameRow"
       },
       "FsEntry": {
         "properties": {
@@ -2257,6 +2398,24 @@
         ],
         "title": "Lineage"
       },
+      "LineageFrame": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "lineage": {
+            "$ref": "#/components/schemas/Lineage"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "lineage"
+        ],
+        "title": "LineageFrame"
+      },
       "LineageLink": {
         "properties": {
           "source": {
@@ -2409,6 +2568,13 @@
           },
           "after": {
             "$ref": "#/components/schemas/Lineage"
+          },
+          "story": {
+            "items": {
+              "$ref": "#/components/schemas/LineageFrame"
+            },
+            "type": "array",
+            "title": "Story"
           }
         },
         "additionalProperties": false,
@@ -2419,7 +2585,8 @@
           "emphasis",
           "kind",
           "before",
-          "after"
+          "after",
+          "story"
         ],
         "title": "LineageView"
       },
@@ -2453,7 +2620,34 @@
           "group"
         ],
         "title": "Mark",
-        "description": "A value drawn on a distribution's axis, e.g. an exclusion cut-off."
+        "description": "A labeled value on a distribution's axis, e.g. an exclusion cut-off (\"500 kcal\")."
+      },
+      "MissingSpec": {
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "complete_case",
+              "impute"
+            ],
+            "title": "Strategy"
+          },
+          "drop_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Drop Columns"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "strategy",
+          "drop_columns"
+        ],
+        "title": "MissingSpec",
+        "description": "The missing-values answer: columns left out of the predictors, then a strategy for the rest."
       },
       "PreviewResult": {
         "properties": {
@@ -2636,17 +2830,12 @@
           "missing": {
             "anyOf": [
               {
-                "type": "string",
-                "enum": [
-                  "complete_case",
-                  "impute"
-                ]
+                "$ref": "#/components/schemas/MissingSpec"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Missing"
+            ]
           },
           "split": {
             "anyOf": [
@@ -2900,6 +3089,73 @@
         ],
         "title": "RefusalDetail"
       },
+      "RelationshipFrame": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "points": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Points"
+          },
+          "r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "R"
+          },
+          "fit_line": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FitLine"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "y_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Y Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "points",
+          "r",
+          "fit_line",
+          "y_label"
+        ],
+        "title": "RelationshipFrame"
+      },
       "RelationshipView": {
         "properties": {
           "title": {
@@ -2990,6 +3246,13 @@
               }
             ],
             "title": "R After"
+          },
+          "story": {
+            "items": {
+              "$ref": "#/components/schemas/RelationshipFrame"
+            },
+            "type": "array",
+            "title": "Story"
           }
         },
         "additionalProperties": false,
@@ -3005,7 +3268,8 @@
           "points_before",
           "points_after",
           "r_before",
-          "r_after"
+          "r_after",
+          "story"
         ],
         "title": "RelationshipView",
         "description": "A before/after scatter, e.g. a nutrient against energy before and after adjustment."
@@ -3031,6 +3295,28 @@
           "decision_id"
         ],
         "title": "Revert"
+      },
+      "RowFlowFrame": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/RowStep"
+            },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "steps"
+        ],
+        "title": "RowFlowFrame"
       },
       "RowFlowView": {
         "properties": {
@@ -3068,6 +3354,13 @@
             },
             "type": "array",
             "title": "After"
+          },
+          "story": {
+            "items": {
+              "$ref": "#/components/schemas/RowFlowFrame"
+            },
+            "type": "array",
+            "title": "Story"
           }
         },
         "additionalProperties": false,
@@ -3078,7 +3371,8 @@
           "emphasis",
           "kind",
           "before",
-          "after"
+          "after",
+          "story"
         ],
         "title": "RowFlowView"
       },
@@ -3374,7 +3668,7 @@
         ],
         "title": "SetLens"
       },
-      "SetMissing": {
+      "SetMissing-Input": {
         "properties": {
           "kind": {
             "type": "string",
@@ -3389,6 +3683,13 @@
               "impute"
             ],
             "title": "Strategy"
+          },
+          "drop_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Drop Columns"
           }
         },
         "additionalProperties": false,
@@ -3397,7 +3698,42 @@
           "kind",
           "strategy"
         ],
-        "title": "SetMissing"
+        "title": "SetMissing",
+        "description": "How missing predictor values are handled.\n\n``drop_columns`` leave the predictors first (a mostly blank column that means \"not asked\"),\nand the strategy applies to the predictors that remain; the cohort and the design read both."
+      },
+      "SetMissing-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_missing",
+            "title": "Kind",
+            "default": "set_missing"
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "complete_case",
+              "impute"
+            ],
+            "title": "Strategy"
+          },
+          "drop_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Drop Columns"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "strategy",
+          "drop_columns"
+        ],
+        "title": "SetMissing",
+        "description": "How missing predictor values are handled.\n\n``drop_columns`` leave the predictors first (a mostly blank column that means \"not asked\"),\nand the strategy applies to the predictors that remain; the cohort and the design read both."
       },
       "SetPurpose": {
         "properties": {
@@ -3555,6 +3891,13 @@
             "exclusiveMinimum": 0.0,
             "title": "Step Kcal",
             "default": 100.0
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 0.0,
+            "title": "N Boot",
+            "default": 0
           }
         },
         "additionalProperties": false,
@@ -3564,7 +3907,8 @@
           "donor",
           "recipient"
         ],
-        "title": "SetSubstitution"
+        "title": "SetSubstitution",
+        "description": "The substitution to draw; ``n_boot > 0`` adds a band from that many bootstrap refits."
       },
       "SetSubstitution-Output": {
         "properties": {
@@ -3589,6 +3933,13 @@
             "exclusiveMinimum": 0.0,
             "title": "Step Kcal",
             "default": 100.0
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 0.0,
+            "title": "N Boot",
+            "default": 0
           }
         },
         "additionalProperties": false,
@@ -3597,9 +3948,11 @@
           "kind",
           "donor",
           "recipient",
-          "step_kcal"
+          "step_kcal",
+          "n_boot"
         ],
-        "title": "SetSubstitution"
+        "title": "SetSubstitution",
+        "description": "The substitution to draw; ``n_boot > 0`` adds a band from that many bootstrap refits."
       },
       "SetTarget": {
         "properties": {
@@ -3869,6 +4222,13 @@
             "exclusiveMinimum": 0.0,
             "title": "Step Kcal",
             "default": 100.0
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 0.0,
+            "title": "N Boot",
+            "default": 0
           }
         },
         "additionalProperties": false,
@@ -3876,7 +4236,8 @@
         "required": [
           "donor",
           "recipient",
-          "step_kcal"
+          "step_kcal",
+          "n_boot"
         ],
         "title": "SubstitutionSpec"
       },
@@ -3944,6 +4305,13 @@
           "n_affected_columns": {
             "type": "integer",
             "title": "N Affected Columns"
+          },
+          "story": {
+            "items": {
+              "$ref": "#/components/schemas/TableFrame"
+            },
+            "type": "array",
+            "title": "Story"
           }
         },
         "additionalProperties": false,
@@ -3957,10 +4325,41 @@
           "columns_after",
           "rows",
           "changed",
-          "n_affected_columns"
+          "n_affected_columns",
+          "story"
         ],
         "title": "TableFocusView",
         "description": "The working table narrowed to the columns this choice touches (≤ 12 shown, ≤ 8 rows)."
+      },
+      "TableFrame": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/FrameRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "columns",
+          "rows"
+        ],
+        "title": "TableFrame"
       },
       "TableRow": {
         "properties": {
@@ -4213,6 +4612,58 @@
         ],
         "title": "ValueCount"
       },
+      "BandEstimate": {
+        "additionalProperties": false,
+        "description": "A measured estimate of what adding a band would cost: one refit per family, timed.",
+        "properties": {
+          "n_boot": {
+            "title": "N Boot",
+            "type": "integer"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "n_boot",
+          "seconds"
+        ],
+        "title": "BandEstimate",
+        "type": "object"
+      },
+      "Baseline": {
+        "additionalProperties": false,
+        "description": "What predicting without the predictors scores on the same folds (M1_CONTRACT §12.6).\n\nThe outcome's training-fold mean for regression; the training-fold class prior for\nclassification. ``value`` is the CV mean of ``metric`` (the primary metric).",
+        "properties": {
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "value",
+          "label"
+        ],
+        "title": "Baseline",
+        "type": "object"
+      },
       "Coefficient": {
         "additionalProperties": false,
         "properties": {
@@ -4448,6 +4899,22 @@
             },
             "title": "Warnings",
             "type": "array"
+          },
+          "nested": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/NestedColumn"
+            },
+            "title": "Nested",
+            "type": "array"
+          },
+          "left_out": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Left Out",
+            "type": "array"
           }
         },
         "required": [
@@ -4456,7 +4923,9 @@
           "models",
           "estimand",
           "substitution_pairs",
-          "warnings"
+          "warnings",
+          "nested",
+          "left_out"
         ],
         "title": "DesignArtifact",
         "type": "object"
@@ -5003,6 +5472,9 @@
             },
             "title": "Concerns",
             "type": "array"
+          },
+          "baseline": {
+            "$ref": "#/components/schemas/Baseline"
           }
         },
         "required": [
@@ -5012,9 +5484,37 @@
           "holdout",
           "coefficients",
           "fit_seconds",
-          "concerns"
+          "concerns",
+          "baseline"
         ],
         "title": "FittedModel",
+        "type": "object"
+      },
+      "LeaveOut": {
+        "description": "The offer: leave the likely-not-asked columns out, then handle the rest.",
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "share": {
+            "title": "Share",
+            "type": "number"
+          }
+        },
+        "required": [
+          "columns",
+          "n_rows",
+          "share"
+        ],
+        "title": "LeaveOut",
         "type": "object"
       },
       "LensHint": {
@@ -5127,6 +5627,88 @@
         "title": "MetricSummary",
         "type": "object"
       },
+      "MissingColumn": {
+        "description": "A predictor with blanks, counted among rows with the outcome measured.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "n_missing": {
+            "title": "N Missing",
+            "type": "integer"
+          },
+          "share": {
+            "title": "Share",
+            "type": "number"
+          },
+          "likely_not_asked": {
+            "title": "Likely Not Asked",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "n_missing",
+          "share",
+          "likely_not_asked",
+          "reason"
+        ],
+        "title": "MissingColumn",
+        "type": "object"
+      },
+      "MissingReading": {
+        "description": "What the missing-values question can offer on this table (M1_CONTRACT §12.4).",
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/MissingColumn"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "leave_out": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeaveOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "columns",
+          "leave_out"
+        ],
+        "title": "MissingReading",
+        "type": "object"
+      },
+      "NestedColumn": {
+        "additionalProperties": false,
+        "description": "A predictor that is part of another (``fat_sat`` of ``fat_total``), confirmed on training rows.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "parent": {
+            "title": "Parent",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "parent"
+        ],
+        "title": "NestedColumn",
+        "type": "object"
+      },
       "ProfileArtifact": {
         "description": "The ``profile`` artifact.",
         "properties": {
@@ -5158,7 +5740,7 @@
         "type": "object"
       },
       "ProposalsArtifact": {
-        "description": "The ``proposals`` artifact: offered for the exclusions and energy questions.",
+        "description": "The ``proposals`` artifact: offered for the exclusions, missing-values and energy questions.",
         "properties": {
           "exclusions": {
             "items": {
@@ -5177,6 +5759,9 @@
               }
             ]
           },
+          "missing": {
+            "$ref": "#/components/schemas/MissingReading"
+          },
           "basis": {
             "title": "Basis",
             "type": "string"
@@ -5185,6 +5770,7 @@
         "required": [
           "exclusions",
           "energy",
+          "missing",
           "basis"
         ],
         "title": "ProposalsArtifact",
@@ -5267,6 +5853,17 @@
               }
             ],
             "title": "Unit"
+          },
+          "nested_in": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nested In"
           }
         },
         "required": [
@@ -5275,7 +5872,8 @@
           "confidence",
           "reason",
           "linked_to",
-          "unit"
+          "unit",
+          "nested_in"
         ],
         "title": "RoleProposal",
         "type": "object"
@@ -5502,6 +6100,36 @@
             },
             "title": "Models",
             "type": "array"
+          },
+          "carried": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Carried",
+            "type": "array"
+          },
+          "band": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionBand"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "band_estimate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BandEstimate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -5513,9 +6141,54 @@
           "estimand",
           "note",
           "basis",
-          "models"
+          "models",
+          "carried",
+          "band",
+          "band_estimate"
         ],
         "title": "SubstitutionArtifact",
+        "type": "object"
+      },
+      "SubstitutionBand": {
+        "additionalProperties": false,
+        "description": "How the band was made: refits of every family on bootstrap resamples of training rows.",
+        "properties": {
+          "n_boot": {
+            "title": "N Boot",
+            "type": "integer"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "grouped_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grouped By"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "number"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "n_boot",
+          "n_rows",
+          "grouped_by",
+          "seconds",
+          "failed"
+        ],
+        "title": "SubstitutionBand",
         "type": "object"
       },
       "SubstitutionModel": {
