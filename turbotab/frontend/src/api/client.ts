@@ -18,6 +18,7 @@ import type {
   TableWindow,
 } from "./schema";
 import type { AnyStageArtifacts, AnyStageName, TeachingEntry } from "./m1-types";
+import type { M1StageArtifacts, M1StageName, PreviewResult } from "./m1-stage-types";
 
 export const API_BASE = "/api";
 
@@ -201,3 +202,28 @@ export const api = {
 export function eventsUrl(pid: string): string {
   return `${API_BASE}/projects/${enc(pid)}/events`;
 }
+
+// ── M1 part 2: the stage's routes (M1_CONTRACT §4, §12.3) ─────────────────────
+// Typed by the hand-written src/api/m1-stage-types.ts until the generated contract carries §12.
+
+export const stageApi = {
+  /** What recording `decision` would change, on the user's own data. Nothing is recorded. */
+  preview: (pid: string, decision: Decision, signal?: AbortSignal) =>
+    request<PreviewResult>(`/projects/${enc(pid)}/preview`, {
+      method: "POST",
+      json: decision,
+      signal,
+    }),
+
+  /** The views that show why a finding was raised. */
+  findingEvidence: (pid: string, findingId: string, signal?: AbortSignal) =>
+    request<PreviewResult>(`/projects/${enc(pid)}/findings/${enc(findingId)}/evidence`, {
+      signal,
+    }),
+
+  /** An M1 stage's artifact (cohort, split, shelf, design, fit, substitution …). */
+  stage: <K extends M1StageName>(pid: string, stage: K, signal?: AbortSignal) =>
+    request<StageResult<M1StageArtifacts[K]>>(`/projects/${enc(pid)}/stages/${enc(stage)}`, {
+      signal,
+    }),
+};
