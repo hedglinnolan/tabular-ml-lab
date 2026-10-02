@@ -457,7 +457,29 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
         ))
         if len(views) >= MAX_VIEWS:
             break
+    _say_the_cost(decision, ctx, int(len(ctx.training_row_ids)), len(predictors))
     return views
+
+
+def _say_the_cost(decision: Any, ctx: PreviewContext, n_rows: int, n_columns: int) -> None:
+    """The note says what fitting the chosen families will take, when it is long enough to matter
+    (M2_CONTRACT §12.6): the shelf's measured estimates, summed, and the family that takes most."""
+    from turbotab.core.models.cost import NOTEWORTHY_SECONDS, say
+
+    shelf = ctx.artifact("shelf")
+    shelf = getattr(shelf, "data", shelf)
+    if not isinstance(shelf, dict):
+        return
+    timed = {f["key"]: (f.get("estimate_seconds"), f.get("label")) for f in shelf.get("families") or []}
+    chosen = [timed[k] for k in decision.models if k in timed and timed[k][0] is not None]
+    total = float(sum(s for s, _ in chosen))
+    if not chosen or total < NOTEWORTHY_SECONDS:
+        return
+    note = f"Fitting {'it' if len(decision.models) == 1 else 'these'} takes {say(total, n_rows, n_columns)}"
+    slowest_seconds, slowest = max(chosen, key=lambda c: c[0])
+    if len(chosen) > 1 and slowest_seconds >= 0.5 * total:
+        note += f", most of it {str(slowest).lower()}"
+    ctx.read["note"] = note + "."
 
 
 register_consequence("set_energy_adjustment", energy_adjustment_preview)

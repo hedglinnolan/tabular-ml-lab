@@ -21,18 +21,19 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 # The interview's questions, in asking order (M2_CONTRACT §1): what a finding may route to.
+# Opening the seal is the Router's last step (M2_CONTRACT §12.1).
 QuestionKey = Literal[
     "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
     "aggregation", "temporal", "roles", "exclusions", "missing", "split", "energy_adjustment",
-    "models", "substitution",
+    "models", "substitution", "open_seal",
 ]
 QUESTION_KEYS: tuple[str, ...] = (
     "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
     "aggregation", "temporal", "roles", "exclusions", "missing", "split", "energy_adjustment",
-    "models", "substitution",
+    "models", "substitution", "open_seal",
 )
-# What is taught, in the sequence's order: every question, plus the two cards that are not
-# questions — the repairs offered before the outcome, and opening the seal once at the end.
+# What is taught, in the sequence's order: every question, plus the one card that is not a
+# question — the repairs offered before the outcome.
 TeachingKey = Literal[
     "lens", "orientation", "repairs", "target", "event", "task", "purpose", "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "exclusions", "missing", "split",

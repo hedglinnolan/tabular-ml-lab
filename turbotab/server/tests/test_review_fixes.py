@@ -12,10 +12,11 @@ import numpy as np
 
 from turbotab.core.graph import StageStatus
 from turbotab.server.service import ProjectService
-from turbotab.server.tests.conftest import open_by_path, wait_for
+from turbotab.server.tests.conftest import open_by_path, prepare, wait_for
 
 
 def decide(client, pid, decision):
+    prepare(client, pid, decision)  # the questions before it, answered as usual (M2 §12.2)
     response = client.post(f"/api/projects/{pid}/decisions", json=decision)
     assert response.status_code == 200, response.text
     return response.json()

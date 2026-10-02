@@ -39,6 +39,7 @@ const questionKeys = [
   "energy_adjustment",
   "models",
   "substitution",
+  "open_seal",
 ] as const;
 /** The questions in asking order (the server's Router owns the order; this is for lookups). */
 export const QUESTION_KEYS: Exactly<typeof questionKeys, QuestionKey> = questionKeys;

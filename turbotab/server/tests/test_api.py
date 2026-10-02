@@ -159,15 +159,19 @@ def test_decisions_are_refused_recorded_and_reverted(client):
     pid = open_by_path(client)
     wait_for(client, pid, {"ingest": "fresh"})
 
-    refused = decide(client, pid, {"kind": "set_target", "column": "nope"})
-    assert refused.status_code == 409
-    assert refused.json()["error"]["code"] == "unknown_column"
-    schemas.Refusal.model_validate(refused.json())
+    # M2 §12.2: the outcome waits for the lens, and says so with the way forward
+    early = decide(client, pid, {"kind": "set_target", "column": "hba1c"})
+    assert early.status_code == 409 and early.json()["error"]["code"] == "not_yet"
+    assert early.json()["error"]["exits"] == [{"label": "Answer the lens question first", "decision": None}]
     assert decide(client, pid, {"kind": "set_lens", "lenses": []}).status_code == 422
     assert client.get(f"/api/projects/{pid}").json()["decisions"] == []  # refusals are not recorded
 
     # M2: the working table every later stage reads waits for the lens (through the findings)
     assert decide(client, pid, {"kind": "set_lens", "lenses": ["dietary"]}).status_code == 200
+    refused = decide(client, pid, {"kind": "set_target", "column": "nope"})
+    assert refused.status_code == 409
+    assert refused.json()["error"]["code"] == "unknown_column"
+    schemas.Refusal.model_validate(refused.json())
     target = decide(client, pid, {"kind": "set_target", "column": "hba1c"})
     assert target.status_code == 200 and target.json()["state"]["target"] == "hba1c"
     target_id = target.json()["decisions"][-1]["id"]
@@ -201,6 +205,9 @@ def test_a_task_answer_belongs_to_the_column_it_was_given_for(client):
     wait_for(client, pid, {"ingest": "fresh"})
     assert decide(client, pid, {"kind": "set_lens", "lenses": ["dietary"]}).status_code == 200
     assert decide(client, pid, {"kind": "set_target", "column": "sex"}).status_code == 200
+    # the task waits on the outcome's reading (it decides whether the event comes first); read,
+    # it is stated as binary, and "Ask me anyway" may overturn it
+    wait_for(client, pid, {"target_info": "fresh"})
     answered = decide(client, pid, {"kind": "set_task", "column": "sex", "task": "multiclass"})
     assert answered.json()["state"]["task"] == "multiclass"
     wait_for(client, pid, {"target_info": "fresh"})

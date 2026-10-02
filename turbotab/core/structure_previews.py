@@ -205,6 +205,14 @@ def grain_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     loaded = RowStep(key="loaded", label="Rows in the table", n=n_rows)
     ctx.read["counted"] = n_rows
     key = decision.id_column
+    if decision.grain == "unknown":
+        # "I don't know": the rows stay, and the seal that follows is drawn row by row and labeled
+        # exploratory (its undetermined basis); the picture says what that answer costs.
+        return [RowFlowView(
+            title="Held out row by row",
+            caption=clip_words(f"The `{n_rows:,}` rows are held out one by one; every held-out "
+                               f"score is labeled exploratory.", CAPTION_WORDS),
+            before=[loaded], after=[loaded])]
     if decision.grain != "repeated" or not key:
         # attested over a contradiction: the data repeats, so only the answer is said
         said = f" and no `{key}` repeats" if key and not decision.acknowledged else ""
@@ -272,7 +280,8 @@ def temporal_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     probe = ctx.state.model_copy(update={"temporal": TemporalSpec(
         temporal=decision.temporal, time_column=decision.time_column)})
     usual = getattr(seal, "USUAL", 0.2)
-    draw = seal.seal_inputs(probe, universe, store, ctx.state.task, holdout=usual, seed=0)
+    draw = seal.seal_inputs(probe, universe, store, ctx.state.task, holdout=usual, seed=0,
+                            structure=_data(ctx.artifact("structure")))
     n = int(len(universe))
     loaded = RowStep(key="loaded", label="Rows with the outcome", n=n)
     ctx.read["counted"] = n

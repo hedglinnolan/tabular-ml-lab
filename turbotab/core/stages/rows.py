@@ -851,8 +851,10 @@ def split_stage(ctx: StageContext) -> Bundle:
     ctx.progress(0.1, "Reading the identifier and the outcome")
     from turbotab.core.seal import seal_inputs  # the basis and the chronological draw (M2 §3)
 
+    structure = ctx.inputs.get("structure")  # the grain stated from a unique identifier
     with open_store(ctx) as store:
-        seal = seal_inputs(ctx.state, universe, store, task, holdout=spec.holdout, seed=spec.seed)
+        seal = seal_inputs(ctx.state, universe, store, task, holdout=spec.holdout, seed=spec.seed,
+                           structure=getattr(structure, "data", structure))
     if seal.refusal:
         raise ValueError(seal.refusal)
     ctx.progress(0.4, "Drawing the held-out rows and the folds")

@@ -172,6 +172,8 @@ def _grain_is_consistent(decision: SetGrain, ctx: Any) -> None:
     def repeats_by(c: str) -> dict[str, Any]:
         return {"label": f"Rows repeat per `{c}`", "decision": SetGrain(grain="repeated", id_column=c)}
 
+    if decision.grain == "unknown":
+        return  # "I don't know" claims nothing the data could contradict; the seal says so
     if column is not None and _unknown(column, ctx):
         raise _no_such_column(column, [repeats_by(c) for c in suggested[:3]] or None)
     if decision.grain == "repeated":
@@ -217,11 +219,17 @@ def _grain_is_consistent(decision: SetGrain, ctx: Any) -> None:
 
 
 def _needs_repeats(ctx: Any, question: str) -> None:
+    from turbotab.core.stages.working import effective_grain
+
     state = _state(ctx)
     if state is None or _repeated(state):
         return
-    if state.grain is None:
+    grain = effective_grain(state, artifact(ctx, "structure"))
+    if grain is None:
         message = f"Say first whether a unit can appear in more than one row; {question} follows from it."
+    elif grain.grain == "unknown":
+        message = (f"Whether a unit can appear in more than one row was answered as not known, so "
+                   f"{question} does not arise.")
     else:
         message = f"Each unit appears once, so {question} does not arise."
     raise Refusal("not_repeated", message, exits=[{"label": "Answer the grain question", "decision": None}])
@@ -326,6 +334,90 @@ def _temporal_names_its_time_column(decision: SetTemporal, ctx: Any) -> SetTempo
     return decision.model_copy(update={"time_column": column}) if column else decision
 
 
+# ── answers in the Router's order (M2_CONTRACT §12.2) ─────────────────────────
+
+
+def question_of(kind: str) -> str | None:
+    """The Router question a decision kind answers (``set_grain`` → ``grain``), or None."""
+    from turbotab.core.decisions import SLOTS
+    from turbotab.core.interview import QUESTION_KEYS, SLOT_OF
+
+    by_slot = {SLOT_OF.get(k, k): k for k in QUESTION_KEYS}
+    slot = SLOTS.get(kind)
+    return by_slot.get(slot) if slot is not None else None
+
+
+def _steps(ctx: Any) -> list[Any] | None:
+    """The Router's steps for the project as it stands (``ctx.interview()``), else None."""
+    fn = _ctx(ctx, "interview")
+    if not callable(fn):
+        return None
+    try:
+        return list(fn())
+    except Exception:  # noqa: BLE001 - no Router: nothing is checked against it
+        return None
+
+
+def _answers_in_order(decision: Any, ctx: Any) -> None:
+    """Refuse an answer to a question still waiting behind an earlier unanswered one.
+
+    Changing an answered question is always allowed, as is overturning a stated skip ("Ask me
+    anyway"); only a question the Router has not reached yet is refused, with the way forward.
+    """
+    from turbotab.core.interview import first_unanswered
+    from turbotab.core.voice import question_name
+
+    steps = _steps(ctx)
+    question = question_of(decision.kind)
+    if not steps or question is None:
+        return
+    step = next((s for s in steps if s.key == question), None)
+    if step is None or step.status not in ("open", "waiting"):
+        return  # answered, stated, or not applicable: the Router is not holding it back
+    first = first_unanswered(steps)
+    if first is None or first.key == question:
+        return
+    name = question_name(first.key)
+    raise Refusal(
+        "not_yet",
+        f"{name[:1].upper()}{name[1:]} comes before this one and is not answered yet; the "
+        f"questions are asked in order because each later one depends on the earlier answers.",
+        exits=[{"label": f"Answer {name} first", "decision": None}],
+    )
+
+
+def _seal_needs_grain(decision: Any, ctx: Any) -> None:
+    """The seal is drawn by the grain answer: answered, or stated from a unique identifier. An
+    undetermined basis comes only from answering "I don't know", never from skipping the question."""
+    from turbotab.core.stages.working import effective_grain
+    from turbotab.core.voice import question_name
+
+    state = _state(ctx)
+    if state is None or state.grain is not None or not callable(_ctx(ctx, "artifact")):
+        return
+    if effective_grain(state, artifact(ctx, "structure")) is not None:
+        return
+    name = question_name("grain")
+    raise Refusal(
+        "not_yet",
+        "The held-out rows are drawn by the grain answer, and whether a unit can appear in more "
+        "than one row is not answered yet.",
+        exits=[{"label": f"Answer {name} first", "decision": None}],
+    )
+
+
+def _register_order() -> None:
+    from turbotab.core.decisions import SLOTS
+
+    # first: an answer the Router has not reached is refused for that reason before any other
+    # check reads it (the seal's Decision A, registered later and first, still outranks it)
+    for kind in list(SLOTS):
+        if question_of(kind) is not None:
+            register_validator(kind, _answers_in_order, first=True)
+    register_validator("set_split", _seal_needs_grain)
+
+
+_register_order()
 register_completion("set_temporal", _temporal_names_its_time_column)
 register_validator("set_orientation", _orientation_turns_before_the_target)
 register_validator("set_orientation", _orientation_can_turn)
@@ -336,4 +428,4 @@ register_validator("set_unit", _unit_follows_the_grain)
 register_validator("set_aggregation", _aggregation_knows_the_outcome)
 register_validator("set_temporal", _temporal_needs_time_points_as_rows)
 
-__all__ = ["ATTEST", "artifact"]
+__all__ = ["ATTEST", "artifact", "question_of"]

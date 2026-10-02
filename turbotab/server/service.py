@@ -80,6 +80,8 @@ class DecisionContext:
     sealed: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
     # The decision log as it stands (the seal's checks: who drew the seal, what a revert undoes).
     records: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
+    # The Router's steps as the project stands (answers in order, M2_CONTRACT §12.2).
+    interview: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
 
 
 def _target_needs_columns(decision: Any, ctx: Any) -> None:
@@ -96,8 +98,10 @@ def _target_needs_columns(decision: Any, ctx: Any) -> None:
     )
 
 
+# first: a table that cannot be read (or is still being read) is the reason before any other,
+# including an answer the Router has not reached yet (M2_CONTRACT §12.2)
 for _kind in ("set_target", "set_roles", "set_exclusions", "set_energy_adjustment", "set_substitution"):
-    decisions.register_validator(_kind, _target_needs_columns)
+    decisions.register_validator(_kind, _target_needs_columns, first=True)
 
 
 class SentenceFacts:
@@ -621,6 +625,7 @@ class ProjectService:
             artifact=lambda stage: self._fresh(pid, stage, public=True),
             sealed=lambda: self.sealed_rows(pid, stages),
             records=lambda: self.log(pid).records(),
+            interview=lambda: self.interview(pid, state, stages, self.log(pid).records()),
         )
 
     def decide(self, pid: str, decision: Any) -> dict[str, Any]:

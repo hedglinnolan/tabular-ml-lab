@@ -26,6 +26,11 @@ class ShelfFamily(_Model):
     fit: Fit
     concerns: list[str]
     inductive_bias: str
+    # What fitting this family takes here (M2_CONTRACT §12.6): one fit timed on a sample of the
+    # training rows, scaled to the whole table and to the folds the fit makes, as the band estimate
+    # is measured. None when the timing fit could not run. ``estimate`` says it in words.
+    estimate_seconds: float | None = None
+    estimate: str | None = None  # "about 5 minutes at 20,004 columns"
 
 
 class ShelfArtifact(_Model):

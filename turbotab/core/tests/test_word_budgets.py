@@ -30,7 +30,7 @@ def over(text: str, budget: int) -> bool:
 
 def test_there_is_one_teaching_entry_per_question_in_asking_order():
     assert [e.key for e in teaching.entries()] == list(teaching.TEACHING_KEYS)
-    cards = {"repairs", "open_seal"}  # taught, but not questions the Router asks
+    cards = {"repairs"}  # taught, but not a question the Router asks
     assert [k for k in teaching.TEACHING_KEYS if k not in cards] == list(teaching.QUESTION_KEYS)
 
 

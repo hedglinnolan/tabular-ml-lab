@@ -108,16 +108,45 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
                           n_features=len(predictors), n_events=n_events, n_classes=n_classes)
     ranked = rank(situation)
     events = f", {n_events:,} in the rarer class" if n_events is not None else ""
+    estimates = _estimates(ctx, task, rows if trained else None, [f for f, _ in ranked])
     artifact = ShelfArtifact(
         families=[
             ShelfFamily(key=f.key, label=f.label, rank=i + 1, fit=a.fit, concerns=list(a.concerns),
-                        inductive_bias=f.inductive_bias)
+                        inductive_bias=f.inductive_bias,
+                        estimate_seconds=estimates[f.key].seconds if estimates.get(f.key) else None,
+                        estimate=estimates[f.key].text if estimates.get(f.key) else None)
             for i, (f, a) in enumerate(ranked)
         ],
         basis=f"Ranked for {n:,} {'training ' if trained else ''}rows and {len(predictors):,} "
               f"predictors{events}.",
     )
     return artifact.model_dump(mode="json")
+
+
+def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[Any]) -> dict[str, Any]:
+    """Each family's measured fit time on these training rows (``models.cost``); {} without them.
+
+    A timing that fails is left out (the family says nothing about its cost) and never fails the
+    shelf: the ranking stands without it.
+    """
+    from turbotab.core.models.cost import estimate_fits
+
+    if train_ids is None or not len(train_ids):
+        return {}
+    split = ctx.inputs.get("split")
+    folds = int((split.data or {}).get("folds") or 5) if isinstance(split, Bundle) else 5
+    ctx.progress(0.5, "Timing one fit of each family on a sample of the training rows")
+    try:
+        with open_store(ctx) as store:
+            return estimate_fits(store, ctx.state, task, train_ids, families, folds,
+                                 cancelled=ctx.cancelled)
+    except Cancelled:
+        raise
+    except Exception:  # noqa: BLE001 - the shelf stands without its estimates
+        import logging
+
+        logging.getLogger(__name__).exception("timing the families failed")
+        return {}
 
 
 # ── design ────────────────────────────────────────────────────────────────────

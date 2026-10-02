@@ -43,6 +43,7 @@ export const GRAMMAR: Record<QuestionKey, Grammar> = {
   energy_adjustment: "choice",
   models: "choice",
   substitution: "choice",
+  open_seal: "choice",
 };
 
 /**

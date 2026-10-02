@@ -2737,7 +2737,8 @@
             "type": "string",
             "enum": [
               "one_row_per_unit",
-              "repeated"
+              "repeated",
+              "unknown"
             ],
             "title": "Grain"
           },
@@ -2894,7 +2895,8 @@
               "split",
               "energy_adjustment",
               "models",
-              "substitution"
+              "substitution",
+              "open_seal"
             ],
             "title": "Key"
           },
@@ -4650,7 +4652,8 @@
             "type": "string",
             "enum": [
               "one_row_per_unit",
-              "repeated"
+              "repeated",
+              "unknown"
             ],
             "title": "Grain"
           },
@@ -4691,7 +4694,8 @@
             "type": "string",
             "enum": [
               "one_row_per_unit",
-              "repeated"
+              "repeated",
+              "unknown"
             ],
             "title": "Grain"
           },
@@ -6895,7 +6899,8 @@
                   "split",
                   "energy_adjustment",
                   "models",
-                  "substitution"
+                  "substitution",
+                  "open_seal"
                 ],
                 "type": "string"
               },
@@ -7231,12 +7236,24 @@
                 "type": "null"
               }
             ]
+          },
+          "stated": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatedGrain"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
           "suggested",
           "evidence",
-          "if_one_row"
+          "if_one_row",
+          "stated"
         ],
         "title": "GrainReading",
         "type": "object"
@@ -8163,6 +8180,7 @@
               {
                 "enum": [
                   "grain",
+                  "stated",
                   "roles",
                   "aggregation"
                 ],
@@ -8262,7 +8280,14 @@
             "type": "integer"
           },
           "basis": {
-            "$ref": "#/components/schemas/SealBasis"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SealBasis"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "chronology": {
             "anyOf": [
@@ -8386,6 +8411,30 @@
           "inductive_bias": {
             "title": "Inductive Bias",
             "type": "string"
+          },
+          "estimate_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Estimate Seconds"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Estimate"
           }
         },
         "required": [
@@ -8394,7 +8443,9 @@
           "rank",
           "fit",
           "concerns",
-          "inductive_bias"
+          "inductive_bias",
+          "estimate_seconds",
+          "estimate"
         ],
         "title": "ShelfFamily",
         "type": "object"
@@ -8533,6 +8584,30 @@
           "exploratory"
         ],
         "title": "SplitArtifact",
+        "type": "object"
+      },
+      "StatedGrain": {
+        "description": "The grain stated rather than asked (M2_CONTRACT §10): a recognized person identifier that is\nunique on every row, with nothing else repeating like a roster. \"Ask me anyway\" reopens it.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "n_rows",
+          "sentence"
+        ],
+        "title": "StatedGrain",
         "type": "object"
       },
       "StructureArtifact": {

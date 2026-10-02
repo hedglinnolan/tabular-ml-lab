@@ -137,7 +137,8 @@ def test_the_opening_sequence_fires_only_on_its_conditions():
                          grain={"grain": "repeated", "id_column": "pid"})
     steps = _by_key(route(state, _stages(), {"structure": structure}))
     assert steps["event"].status == "not_applicable"  # a regression outcome has no event level
-    assert steps["repeat_kind"].status == "skipped" and steps["repeat_kind"].reason == "Not asked: visits."
+    # the reason is the clause after the client's own "Not asked:" label, never doubled
+    assert steps["repeat_kind"].status == "skipped" and steps["repeat_kind"].reason == "visits."
     assert steps["unit"].status == "open" and steps["temporal"].status == "waiting"
     rows = _by_key(route(state.model_copy(update={"unit": "row"}), _stages(), {"structure": structure}))
     assert rows["aggregation"].status == "not_applicable" and rows["temporal"].status == "open"
@@ -148,3 +149,50 @@ def test_the_opening_sequence_fires_only_on_its_conditions():
     assert computing["repeat_kind"].waiting_on == ["structure"]
     once = _by_key(route(state.model_copy(update={"grain": {"grain": "one_row_per_unit"}}), _stages()))
     assert all(once[k].status == "not_applicable" for k in ("repeat_kind", "unit", "aggregation", "temporal"))
+    # "I don't know" repeats nothing either, and says why in its own words
+    unknown = _by_key(route(state.model_copy(update={"grain": {"grain": "unknown"}}), _stages()))
+    for key in ("repeat_kind", "unit", "aggregation", "temporal"):
+        assert unknown[key].status == "not_applicable" and "not known" in unknown[key].reason
+
+
+# ── M2 part 2 (M2_CONTRACT §12) ──────────────────────────────────────────────
+
+SEQN = {"grain": {"suggested": [], "evidence": [], "if_one_row": None,
+                  "stated": {"column": "SEQN", "n_rows": 9,
+                             "sentence": "every `SEQN` appears once, so each person is one row."}}}
+
+
+def test_grain_is_stated_not_asked_when_a_person_identifier_is_unique():
+    state = ProjectState(lens=["dietary"], target="y", task="regression", purpose="prediction")
+    steps = _by_key(route(state, _stages(), {"structure": SEQN}))
+    assert steps["grain"].status == "skipped"
+    assert steps["grain"].reason == "every `SEQN` appears once, so each person is one row."
+    # the follow-ups read the stated grain as one row per unit, and the roles open next
+    assert all(steps[k].status == "not_applicable" for k in ("repeat_kind", "unit", "aggregation", "temporal"))
+    assert steps["roles"].status == "open"
+    # no identifier stated: grain stays a question
+    asked = {"grain": {"suggested": ["pid"], "evidence": [], "if_one_row": None, "stated": None}}
+    assert _by_key(route(state, _stages(), {"structure": asked}))["grain"].status == "open"
+    # an answer, "Ask me anyway" taken, outranks the statement
+    answered = state.model_copy(update={"grain": {"grain": "repeated", "id_column": "SEQN"}})
+    assert _by_key(route(answered, _stages(), {"structure": SEQN}))["grain"].status == "answered"
+
+
+def test_opening_the_seal_is_the_last_step_once_the_fit_is_fresh():
+    records = [_record(1, {"kind": "open_seal"})]
+    base = dict(lens=["genomics"], orientation="sample_major", target="y", task="regression",
+                purpose="prediction", grain=ONE_ROW, roles=GENE_ROLES, exclusions=[],
+                missing="complete_case", split={"holdout": 0.2}, models=["linear"])
+    state = ProjectState(**base)
+    assert QUESTION_KEYS[-1] == "open_seal"
+    fresh = _by_key(route(state, _stages()))
+    assert fresh["open_seal"].status == "open"
+    stale = _by_key(route(state, _stages(fit="running")))
+    assert stale["open_seal"].status == "waiting" and stale["open_seal"].waiting_on == ["fit"]
+    opened = _by_key(route(state.model_copy(update={"seal_opened": True}), _stages(), records=records))
+    assert opened["open_seal"].status == "answered" and opened["open_seal"].decision_id == "r1"
+    cv_only = _by_key(route(ProjectState(**{**base, "split": {"holdout": 0.0}}), _stages()))
+    assert cv_only["open_seal"].status == "not_applicable" and "cross-validation" in cv_only["open_seal"].reason
+    # behind an unanswered question it waits on that question, like any other
+    early = _by_key(route(ProjectState(**{**base, "models": None}), _stages()))
+    assert early["open_seal"].status == "waiting" and early["open_seal"].waiting_on[0] == "models"

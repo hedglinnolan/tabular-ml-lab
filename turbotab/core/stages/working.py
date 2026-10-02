@@ -541,6 +541,66 @@ def effective_repeat_kind(state: Any, structure: Mapping[str, Any] | None) -> st
     return str(reading["reading"]) if reading.get("stated") and reading.get("reading") else None
 
 
+def stated_grain(structure: Mapping[str, Any] | None) -> Any:
+    """The grain the structure stage states rather than asks (a ``GrainSpec``), or None.
+
+    Stated only when a recognized person identifier is unique on every row and nothing else
+    repeats like a roster (M2_CONTRACT §10): then each person is one row, and the column is named.
+    """
+    from turbotab.core.decisions import GrainSpec
+
+    stated = ((structure or {}).get("grain") or {}).get("stated") or {}
+    column = stated.get("column")
+    return GrainSpec(grain="one_row_per_unit", id_column=str(column)) if column else None
+
+
+def effective_grain(state: Any, structure: Mapping[str, Any] | None) -> Any:
+    """The answered grain, else the stated one (a skip the user has not reopened), else None."""
+    answered = getattr(state, "grain", None)
+    return answered if answered is not None else stated_grain(structure)
+
+
+def with_effective_grain(state: Any, structure: Mapping[str, Any] | None) -> tuple[Any, bool]:
+    """``state`` with the stated grain in its slot when none is answered, and whether it was."""
+    if getattr(state, "grain", None) is not None:
+        return state, False
+    stated = stated_grain(structure)
+    if stated is None:
+        return state, False
+    return state.model_copy(update={"grain": stated}), True
+
+
+def person_identifiers(columns: Sequence[str], target: str | None) -> list[str]:
+    """Columns whose names say they identify a person (``utils.test_lockbox``: ``SEQN``,
+    ``participant_id``, ``respondent_id``; never a sample, visit, record or site column)."""
+    try:
+        from utils.test_lockbox import _id_kind
+    except Exception:  # noqa: BLE001 - no name reading: none recognized, so grain is asked
+        return []
+    return [c for c in columns if c not in (target, ROW_ID) and _id_kind(c) == "subject"]
+
+
+def _stated_grain_reading(frame: Any, candidates: Sequence[str], n_rows: int,
+                          contradiction: Any) -> dict[str, Any] | None:
+    """``{column, n_rows, sentence}`` when a recognized person identifier is unique on every row.
+
+    Checked on every row (no blank, no value twice), and only when no column repeats like a
+    roster: grain stays a question whenever there is no identifier or something repeats.
+    """
+    if contradiction or n_rows < 2:
+        return None
+    from turbotab.core.voice import stated_grain_reason
+
+    for column in candidates:
+        if column not in frame.columns:
+            continue
+        values = frame[column]
+        if len(values) != n_rows or values.isna().any() or int(values.nunique()) != n_rows:
+            continue
+        return {"column": column, "n_rows": n_rows, "sentence": stated_grain_reason(column)}
+    return None
+
+
 def time_column(state: Any, structure: Mapping[str, Any] | None) -> str | None:
     """The column that orders a unit's rows: as answered, else the one the reading spaced them by."""
     for spec in (getattr(state, "repeat_kind", None), getattr(state, "temporal", None)):
@@ -599,11 +659,12 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
     unit = spec.id_column if (spec is not None and spec.grain == "repeated"
                               and spec.id_column in dtypes) else None
     n_rows = int(info["n_rows"])
+    people = person_identifiers(columns, target)  # what may state the grain (M2_CONTRACT §10)
     if n_rows * max(1, len(columns)) <= STRUCTURE_CELLS:
         wanted = columns
     else:  # a float column is a measurement: the rosters, dates and indices are the rest
         wanted = [c for c in columns if dtypes[c] != "numeric"][:STRUCTURE_MAX_COLUMNS]
-        wanted = list(dict.fromkeys([*wanted, *(c for c in (unit, target) if c)]))
+        wanted = list(dict.fromkeys([*wanted, *(c for c in (unit, target) if c), *people]))
     ctx.progress(0.1, "Reading the identifiers, dates and indices")
     with open_store(ctx) as store:
         frame = store.materialize(wanted).reset_index(drop=True)
@@ -624,7 +685,8 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
     _quiet_streamlit()
     out: dict[str, Any] = {
         "grain": {"suggested": [c for c in suggestion.get("columns") or [] if c != target][:SUGGESTED],
-                  "evidence": evidence[:SUGGESTED], "if_one_row": contradiction},
+                  "evidence": evidence[:SUGGESTED], "if_one_row": contradiction,
+                  "stated": _stated_grain_reading(frame, people, n_rows, contradiction)},
         "units": None, "repeats": None, "outcome": None, "aggregation": None,
         "time_columns": [], "time_column": None,
     }

@@ -392,6 +392,8 @@ def _slot_value(slot: str, value: Any) -> str | None:
         return tick(value)
     if slot == "grain":
         id_column = _attr(value, "id_column")
+        if _attr(value, "grain") == "unknown":
+            return "not known"
         if _attr(value, "grain") == "repeated":
             return f"repeated rows by {tick(id_column)}" if id_column else "repeated rows"
         return "one row per participant"
@@ -858,8 +860,16 @@ def _set_event(d: Any, state: Any, ctx: Any) -> str:
     return text
 
 
+def stated_grain_reason(column: str) -> str:
+    """The grain question's stated skip (M2_CONTRACT §10), as the clause after "Not asked:"."""
+    return f"every {tick(column)} appears once, so each person is one row."
+
+
 @register_sentence("set_grain")
 def _set_grain(d: Any, state: Any, ctx: Any) -> str:
+    if d.grain == "unknown":
+        return ("Whether a participant can appear in more than one row was answered as not known, "
+                "so the held-out rows are drawn row by row and their scores are exploratory")
     if d.grain == "one_row_per_unit":
         if d.id_column:
             return (f"Each row was declared a different participant: no {tick(d.id_column)} "
@@ -977,7 +987,13 @@ _QUESTION_NAME = {
     "energy_adjustment": "the energy-adjustment question",
     "models": "the model families question",
     "substitution": "the substitution question",
+    "open_seal": "opening the seal",
 }
+
+
+def question_name(key: str) -> str:
+    """How the app names a question in a sentence: ``the outcome question``."""
+    return _QUESTION_NAME.get(key, f"the {key.replace('_', ' ')} question")
 
 
 def _finding_name(finding_id: str | None, finding: Any) -> str:

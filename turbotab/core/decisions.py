@@ -266,8 +266,13 @@ AggregationMethod = Literal["mean", "first", "last", "change"]
 FindingAction = Literal["applied", "deferred", "dismissed"]
 
 
+# "unknown" is the user's explicit "I don't know" (OPENING_SEQUENCE §03 grain; M2_CONTRACT §12.2):
+# the only answer that makes the seal's basis ``undetermined``. Never inferred from silence.
+GrainAnswer = Literal["one_row_per_unit", "repeated", "unknown"]
+
+
 class GrainSpec(_Value):
-    grain: Literal["one_row_per_unit", "repeated"]
+    grain: GrainAnswer
     id_column: str | None = None  # the column naming the unit (person, sample) when repeated
     # The user kept this answer over the data's contradiction (turbotab/grain.py): a noted
     # disagreement the methods carry as a stated limitation.
@@ -314,7 +319,7 @@ class SetEvent(_DecisionModel):
 
 class SetGrain(_DecisionModel):
     kind: Literal["set_grain"] = "set_grain"
-    grain: Literal["one_row_per_unit", "repeated"]
+    grain: GrainAnswer
     id_column: str | None = None
     # The attestation exit of a grain contradiction: "my answer is right, the data is like this".
     acknowledged: bool = False
