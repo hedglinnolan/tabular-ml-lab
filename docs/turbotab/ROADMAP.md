@@ -385,8 +385,10 @@ Two operations that look identical in a spreadsheet and are not:
 
 TRIPOD+AI names continuous-variable restrictions ("e.g. age range") as an eligibility item
 reported in participant flow. The eligibility question is asked in **scientific terms** — *does
-your research question restrict the outcome range?* — with the target's distribution **withheld**,
-because an eligibility criterion comes from the research question and not from the histogram. If a
+your research question restrict who is studied?* — with the target's distribution **withheld**,
+because an eligibility criterion comes from the research question and not from the histogram. A
+rule on the outcome's own range is refused: selecting on the outcome biases the estimates, and no
+one whose outcome is still unknown could be screened by it (audit RO-01). If a
 user needs to see the shape to decide where to cut, that is data-driven cohort selection, which is
 its own publishable bias. The app may show what is needed to answer *"is this data corrupted?"*
 (observed min/max, impossible-value flags) and not what is needed to answer *"where should I cut?"*

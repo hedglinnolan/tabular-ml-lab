@@ -78,6 +78,12 @@ ingest ─▶ oriented ─▶ findings
   seal was opened".
 - **Decision A:** orientation, grain, unit and aggregation are refused after the seal is drawn
   (409 with an exit naming the re-seal path).
+- **What the draw reads** (audit RO-02, 2026-10-02): once rows are held out, a new outcome, a new
+  task, a chronological request, and any repair to a column the draw reads (the outcome, the unit
+  column, the time column) are refused the same way, with the re-seal exit; an outcome repair also
+  offers "exclude those rows", which moves no row. The split question waits for the findings, and a
+  finding that would rewrite a column the draw reads is repaired or kept first. No eligibility rule
+  may read the outcome (RO-01).
 - **Held-out discipline audit:** proposals, findings and evidence that read every row must say so
   in their basis ("across all 21,849 rows"). Anything that informs a modeling choice after the seal
   excludes the sealed rows.

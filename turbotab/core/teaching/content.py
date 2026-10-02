@@ -647,7 +647,7 @@ EXCLUSIONS = {
         option("sex_neutral_500_3500", "500–3,500 kcal a day",
                "Anyone outside 500–3,500 kcal a day is excluded; stricter, so it removes more."),
         option("custom", "Your own range",
-               "Rows outside a range you set on any numeric column are excluded."),
+               "Rows outside a range you set on a numeric column, never the outcome, are excluded."),
     ],
     "terms": [
         term("eligibility criterion", "Who the study is about, such as an age range: applied to "

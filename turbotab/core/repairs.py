@@ -565,6 +565,24 @@ def family_for(finding_id: str) -> Family | None:
     return FAMILIES.get(key) if key else None
 
 
+def option_columns(finding_id: str, option: str, params: Mapping[str, Any],
+                   effects: Iterable[Effect] = ("values", "rows", "columns")) -> set[str]:
+    """The columns a repair option acts on, by the effects asked for: the columns whose values it
+    rewrites, the columns its row rules read, the columns it sets aside."""
+    fam = family_for(finding_id)
+    if fam is None or option not in fam.effects:
+        return set()
+    wanted = set(effects)
+    out: set[str] = set()
+    if "values" in wanted:
+        out |= set(fam.values(option, params))
+    if "rows" in wanted:
+        out |= {rule.column for rule in fam.rows(option, params)}
+    if "columns" in wanted:
+        out |= set(fam.columns(option, params))
+    return out
+
+
 # ── offering: the findings stage attaches the options ───────────────────────
 
 
@@ -605,6 +623,9 @@ def _findings_of(artifact: Any) -> list[dict[str, Any]]:
     if isinstance(data, Mapping):
         return [f for f in data.get("findings") or [] if isinstance(f, Mapping)]
     return []
+
+
+findings_of = _findings_of  # the findings an artifact (or its Bundle) holds
 
 
 def _finding(artifact: Any, finding_id: str) -> dict[str, Any] | None:
@@ -921,6 +942,8 @@ def matching_answer(finding: Mapping[str, Any], state: Any) -> bool:
             return all(c in roles and roles[c] not in _PREDICTOR_ROLES for c in cols)
         return all(c in roles for c in cols)
     if route == "exclusions":
+        if finding.get("affected_columns") and not cols:
+            return False  # about the outcome alone: no eligibility rule may act on it (RO-01)
         named = {rule.column for rule in state.exclusions or []}
         return not cols or bool(named & set(cols))
     return True

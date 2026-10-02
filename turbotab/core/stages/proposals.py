@@ -525,8 +525,9 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     unit = "kcal"
     if energy is not None and energy in frame.columns:
         unit = _energy_unit(frame, energy)
-        exclusions = exclusion_proposals(frame, energy=energy, unit=unit, sex=sex,
-                                         sex_levels=sex_levels, base=base)
+        if energy != target:  # an eligibility rule never reads the outcome (audit RO-01)
+            exclusions = exclusion_proposals(frame, energy=energy, unit=unit, sex=sex,
+                                             sex_levels=sex_levels, base=base)
     reading = None
     if energy is not None or nutrients:
         reading = energy_reading(frame, info, roles, energy=energy, nutrients=nutrients, sex=sex,
