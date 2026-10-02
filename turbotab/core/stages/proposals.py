@@ -605,6 +605,12 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     info = {str(c["name"]): c for c in columns}
     roles = dict(roles or {})
     missing = missing_reading(frame, columns, roles, target)
+    # WP7: the missing-data methods, soundest first for the declared purpose, each with its
+    # "customary" and "sound" labels and its rung (turbotab.core.methods.missing).
+    from turbotab.core.methods.missing import below_detection_options, methods_for
+
+    missing["methods"] = methods_for(purpose)
+    missing["below_detection"] = below_detection_options(purpose)
     n_base = int(frame[target].notna().sum()) if target and target in frame.columns else len(frame)
     if "dietary" not in (lens or []):
         return {"exclusions": [], "energy": None, "missing": missing, "n_base": n_base,

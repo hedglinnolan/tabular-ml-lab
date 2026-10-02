@@ -18,8 +18,8 @@ M1 (docs/turbotab-next/M1_CONTRACT.md):
     shelf        light   deps: cohort, target_info            reads purpose, task, roles; requires roles
     design       heavy   deps: split, target_info             reads roles, energy_adjustment, missing, models, purpose, event,
                                                               exposure_forms; requires models, roles
-    fit          heavy   deps: design, split, target_info     reads models, purpose, task, survey, outcome_order,
-                                                              follow_up; requires models
+    fit          heavy   deps: design, split, target_info,    reads models, purpose, task, survey, outcome_order,
+                               cohort                         follow_up; requires models
     substitution heavy   deps: fit, design                    reads substitution; requires substitution
 
 M2 (docs/turbotab-next/M2_CONTRACT.md §2) — the table the analysis reads:
@@ -131,9 +131,11 @@ def build_graph() -> Graph:
                   heavy=True, label="Reading what each column is"),
             # proposals 3: the declared purpose orders the energy methods by soundness (audit WP6);
             # the survey question (WP10) and the Goldberg screen's recall days (WP12c).
-            Stage("proposals", 3, ("working", "roles"), ("lens", "roles", "target", "purpose"),
+            # proposals 4: the missing-data methods ordered by purpose (audit WP7).
+            Stage("proposals", 4, ("working", "roles"), ("lens", "roles", "target", "purpose"),
                   proposals_stage, label="Looking up what the field usually does"),
-            Stage("cohort", 1, ("working", "target_info"),
+            # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
+            Stage("cohort", 2, ("working", "target_info"),
                   ("target", "roles", "exclusions", "missing", "findings"), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
             Stage("split", 3, ("working", "cohort", "target_info", "structure"),
@@ -148,7 +150,8 @@ def build_graph() -> Graph:
             # energy-dropped residual's gap reads the outcome and its event (audit WP6); an omics
             # normalization step reads the lens and the findings (audit WP11); each formed
             # exposure's spline or quintiles (audit WP12a); a follow-up is no predictor (WP12b).
-            Stage("design", 6, ("working", "split", "target_info"),
+            # design 7: the energy-aware single fill and the below-detection step (WP7).
+            Stage("design", 7, ("working", "split", "target_info"),
                   ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up"),
                   design_stage,
@@ -157,13 +160,16 @@ def build_graph() -> Graph:
             # fit 8: the merged fit (WP8's every-row table, WP9's validation, WP10's survey design,
             # WP11's feature-wise tests, WP12a's ordinal outcome and exposure tests, WP12b's
             # follow-up and the families that model the unit).
-            Stage("fit", 8, ("working", "design", "split", "target_info"),
+            # fit 9: missing data by purpose (WP7): under inference the table is pooled over
+            # multiple imputations with the outcome, or held, or carries complete cases' cost.
+            Stage("fit", 9, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up"),
                   fit_stage, heavy=True, requires=("models",),
                   label="Fitting the models"),
-            # substitution 5: a swap can move a share of energy (WP12a); a random intercept's band
-            # refits one intercept per resampled unit (WP12b).
-            Stage("substitution", 5, ("working", "fit", "design"),
+            # substitution 6: a swap can move a share of energy (WP12a); a random intercept's band
+            # refits one intercept per resampled unit (WP12b); a curve says it is not pooled over
+            # multiple imputations (WP7).
+            Stage("substitution", 6, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order"),
                   substitution_stage, heavy=True, requires=("substitution",),
                   label="Drawing the substitution curves"),
@@ -174,11 +180,12 @@ def build_graph() -> Graph:
             # ── WP12: methods a reviewer expects (AUDIT_REPORT §5) ──
             # sensitivity 2: each analysis fit as the fit stage fits the primary (scale, survey
             # design, units, ordinal order, follow-up).
-            Stage("sensitivity", 2, ("working", "design", "split", "target_info"),
+            # sensitivity 3: under inference each analysis pools its own multiple imputations.
+            Stage("sensitivity", 3, ("working", "design", "split", "target_info"),
                   SENSITIVITY_READS, sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),
-            Stage("calibration", 2,
+            Stage("calibration", 3,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   CALIBRATION_READS, calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),

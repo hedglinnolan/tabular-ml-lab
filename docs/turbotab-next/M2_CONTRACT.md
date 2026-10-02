@@ -107,8 +107,11 @@ ingest ─▶ oriented ─▶ findings
   or whose routed question holds a matching answer, folds into "answered by #N".
 - **Missingness by mechanism** (constitution §07): binary/categorical blanks may become a `Missing`
   level (`categorical: "missing_category"`), which is the honest answer for "not asked" columns like
-  `meds_hbp`; numeric columns may add missing indicators; **the outcome is never in the imputation
-  model** (a Tier A test).
+  `meds_hbp`; numeric columns may add missing indicators. **The outcome's place in the imputation
+  model depends on the purpose** (BLUEPRINT §12 ruling 4; audit WP7 superseded the unscoped "never"):
+  "The outcome's place in the imputation model depends on the purpose. Under inference, missing predictors are multiply imputed with the outcome and total energy in the imputation model, and the analyses pooled by Rubin's rules (Moons et al. 2006, via Harrell). Under prediction, they are imputed inside each training fold without the outcome, so the fitted pipeline can impute a new row as it was developed (Sisk et al. 2023)." Tier A tests: under prediction the in-fold imputer never sees the outcome or a held-out
+  row (`test_repairs.py`); under inference the outcome and total energy are in the imputation model
+  and the table is pooled by Rubin's rules (`acceptance/test_wp7_missing_data.py`).
 
 ## 5 · Wide data (the M2 benchmark)
 

@@ -162,7 +162,8 @@ def test_nhanes_can_keep_meds_hbp_blanks_as_a_missing_level(client):
 
     impute = client.post(f"/api/projects/{pid}/preview", json={"kind": "set_missing", "strategy": "impute"}).json()
     level = {"kind": "set_missing", "strategy": "impute", "categorical": "missing_category",
-             "drop_columns": [], "indicators": False}
+             "drop_columns": [], "indicators": False, "m": 20, "below_detection": None,
+             "censored_columns": [], "acknowledged": False, "reason": None}
     assert level in [e["decision"] for e in impute["caution"]["exits"]]
     kept = client.post(f"/api/projects/{pid}/preview", json=level).json()
     assert kept["caution"] is None

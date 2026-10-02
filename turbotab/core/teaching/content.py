@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from turbotab.core.methods.missing import RULE
+
 _NUT = "research/NUTRITION_PACK.md"
 _CLIN = "research/CLINICAL_SURVEY_PACK.md"
 _GEN = "research/GENOMICS_PACK.md"
@@ -763,29 +765,37 @@ MISSING = {
     "key": "missing",
     "title": "Missing predictor values",
     "question": "How should rows with missing predictor values be handled?",
-    "one_liner": "Dropping incomplete rows can shrink and skew the sample; filling values keeps "
-                 "rows but adds an assumption.",
+    "one_liner": "The answer depends on the purpose: inference imputes with the outcome, prediction "
+                 "without it.",
     "why": "Complete cases keep only rows with every predictor measured, which can remove a large, "
-           "non-random share: a predictor blank for 70% of people drops 70% of rows. Imputation keeps "
-           "every row by filling values learned from training rows, assuming the blanks resemble "
-           "what was observed. A blank can also mean the question was not asked.",
+           "non-random share. Under inference, multiple imputation fills each blank many times "
+           "from the other variables, the outcome included, and pools the answers. Under "
+           "prediction, a fill learned in each training fold without the outcome lets the model "
+           "impute a new row the same way.",
     "consumer": "The participant flow, each model's pipeline and the banner's row counts read it.",
     "options": [
+        option("multiple_imputation", "Multiple imputation",
+               "Under inference: each blank imputed 20 times with the outcome; results pooled by "
+               "Rubin's rules."),
         option("complete_case", "Complete cases",
                "Rows missing any predictor are dropped; the participant flow shows how many."),
-        option("impute", "Impute",
-               "Missing predictor values are filled in, learned from training rows only; every "
+        option("impute", "Fill in each fold",
+               "Under prediction: blanks filled in each training fold without the outcome; every "
                "row stays."),
     ],
     "terms": [
         term("complete cases", "Analyzing only rows with every variable measured; it can bias "
                                "estimates when who is missing depends on the outcome."),
+        term("multiple imputation", "Filling each blank several times from its predicted "
+                                    "distribution, analyzing each copy and pooling the results "
+                                    "by Rubin's rules."),
         term("imputation", "Filling a missing value with an estimate learned from observed rows; "
                            "a single fill understates the uncertainty."),
         term("missing at random", "Missingness that the observed columns explain; the assumption "
                                   "standard multiple imputation relies on."),
     ],
     "drawer": {"sections": [
+        section("One rule, by purpose", RULE, "SETTLED", CLIN_A2),
         section("Blanks often mean something",
                 "On a food-frequency questionnaire a blank frequently means never, especially "
                 "among older participants. That missingness is not at random, and standard "
@@ -796,13 +806,16 @@ MISSING = {
                 "the food.",
                 "SETTLED", NUT06),
         section("Filling with the mean or median",
-                "Mean or median filling understates variance and distorts the distribution; the "
-                "clinical pack calls it indefensible in a manuscript.",
+                "For inference, mean or median filling understates variance and biases "
+                "coefficients; the clinical pack calls it indefensible in a manuscript, and here "
+                "it is blocked until recorded. For prediction, a fill learned in each training "
+                "fold is the deployable choice.",
                 "SETTLED", CLIN_A2),
-        section("The outcome belongs in the imputation model",
-                "Imputing with the outcome left out of the imputation model biases associations "
-                "toward the null.",
-                "SETTLED", CLIN_A2),
+        section("Values below detection",
+                "A blank below a detection limit is small, not unknown: the median puts it in the "
+                "middle of the distribution. Half the minimum is customary; a censoring-aware "
+                "fill is sound for associations.",
+                "SETTLED", MET03),
     ]},
     "evidence": None,
 }

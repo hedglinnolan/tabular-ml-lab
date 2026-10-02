@@ -22,10 +22,19 @@ missing-values answer:
   ``missingindicator_<column>`` beside its filled values.
 * Imputation is a pipeline step, so it is fit on each training fold, and the outcome is never
   among its inputs: the pipeline's inputs are the predictors (``DesignSpec.inputs``), and ``y``
-  never reaches a transformer.
+  never reaches a transformer. That is prediction's rule (BLUEPRINT §12 ruling 4). Under inference
+  with multiple imputation the coefficient table is pooled over completed tables imputed with the
+  outcome (``turbotab.core.methods.imputation``); the pipeline's in-fold fill then serves only the
+  cross-validated scores, which stay outcome-free.
+* An energy-bearing nutrient's single fill is its in-fold line on total energy, not its median
+  (:class:`~turbotab.core.methods.missing.EnergyAwareImputer`, audit WP7), so imputed rows keep the
+  nutrient–energy relation the energy step depends on.
+* Values below a detection limit (``detect``): a left-censored column's blanks are filled first,
+  by half its smallest detected value or by their expected value below the limit
+  (:class:`~turbotab.core.methods.missing.BelowDetectionFill`, audit ME-08), on the raw values.
 
-Step order: normalize → impute → energy adjustment → exposure form → levels → one-hot → scale →
-model.
+Step order: detect → normalize → impute → energy adjustment → exposure form → levels → one-hot →
+scale → model.
 
 Omics values (AUDIT_REPORT §5 WP11): when the ``omics_scale`` finding's normalization is recorded,
 the exposures among its columns are normalized first — log-CPM with TMM factors, or quotient
@@ -52,7 +61,7 @@ from turbotab.core.models.base import ModelFamily
 from turbotab.core.models.steps import energy_step
 
 PREDICTOR_ROLES = ("exposure", "covariate", "energy")
-ADJUST_STEPS = ("normalize", "impute", "energy")  # the steps whose outputs form the lineage's "adjusted" lane
+ADJUST_STEPS = ("detect", "normalize", "impute", "energy")  # the steps whose outputs form the lineage's "adjusted" lane
 MANY_LEVELS = 20
 MISSING_LEVEL = "Missing"
 LEVEL_DTYPES = ("boolean", "categorical", "text")
@@ -172,8 +181,11 @@ class MissingLevelEncoder(TransformerMixin, BaseEstimator):
     Per column, fit learns the observed levels in sorted order; the first is the reference (as
     the one-hot step's ``drop="first"``), every other level gets a ``<column>_<level>`` indicator,
     and blanks get ``<column>_Missing`` when the fitting rows have any. A level never seen in fit
-    reads as the reference, as the one-hot step's ``handle_unknown="ignore"`` does. Every other
-    column passes through. Row-local once fit: a row's output depends on its own values.
+    reads as the reference, as the one-hot step's ``handle_unknown="ignore"`` does. A blank when
+    the fitting rows had none has no level of its own to read as: it reads as the fitting rows'
+    most frequent level, as the categorical imputer fills one (audit B23), not as the reference
+    whatever that happens to be. Every other column passes through. Row-local once fit: a row's
+    output depends on its own values.
     """
 
     def __init__(self, columns: Sequence[str] = ()):
@@ -186,10 +198,15 @@ class MissingLevelEncoder(TransformerMixin, BaseEstimator):
         self.n_features_in_ = X.shape[1]
         self.levels_: dict[str, list[str]] = {}
         self.has_missing_: dict[str, bool] = {}
+        self.mode_: dict[str, str | None] = {}
         for c in self.columns:
             labels = X[c].dropna().map(_level_label)
             self.levels_[c] = sorted(labels.unique().tolist())
             self.has_missing_[c] = bool(X[c].isna().any())
+            counts = labels.value_counts()
+            # the most frequent level, ties to the first in sorted order (SimpleImputer's rule)
+            self.mode_[c] = (sorted(counts.index[counts == counts.max()].tolist())[0]
+                             if len(counts) else None)
         return self
 
     def _outputs(self, column: str) -> list[tuple[str, str | None]]:
@@ -209,7 +226,8 @@ class MissingLevelEncoder(TransformerMixin, BaseEstimator):
                 parts[str(name)] = X[name]
                 continue
             blank = X[name].isna().to_numpy()
-            labels = np.asarray([None if b else _level_label(v) for v, b in zip(X[name], blank)],
+            unseen = None if self.has_missing_[str(name)] else getattr(self, "mode_", {}).get(str(name))
+            labels = np.asarray([(unseen if b else _level_label(v)) for v, b in zip(X[name], blank)],
                                 dtype=object)
             for out, level in self._outputs(str(name)):
                 parts[out] = (blank if level is None else (labels == level)).astype(float)
@@ -241,6 +259,14 @@ class DesignSpec:
     lenses: list[str] = field(default_factory=list)  # the declared lenses (what the steps say)
     # predictor -> {"form": "spline" | "quintiles", "knots": k}: the non-linear forms (WP12a)
     exposure_forms: dict[str, Any] = field(default_factory=dict)
+    # WP7: the missing-values answer (MissingSpec as a dict), the energy-aware single fill
+    # ``{energy, nutrients}``, and the below-detection fill ``{method, columns}``
+    missing: dict[str, Any] | None = None
+    energy_fill: dict[str, Any] | None = None
+    censored: dict[str, Any] | None = None
+
+    def multiple_imputation(self) -> bool:
+        return bool(self.missing) and self.missing.get("strategy") == "multiple_imputation"
 
     def energy_adjustment(self) -> EnergyAdjustment | None:
         return EnergyAdjustment(**self.energy) if self.energy else None
@@ -284,11 +310,20 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
     present = [c for c in predictors if c in inputs]
     levels = (level_columns(state, present, column_info) if column_info is not None
               else frame_level_columns(state, frame, present))
-    impute = missing_strategy(state) == "impute"
+    # Multiple imputation (inference) keeps the in-fold fill for the cross-validated scores.
+    impute = missing_strategy(state) in ("impute", "multiple_imputation")
+    from turbotab.core.methods.missing import energy_fill
     from turbotab.core.methods.omics import design_normalization
 
     forms = {str(c): f.model_dump() for c, f in (getattr(state, "exposure_forms", None) or {}).items()
              if c in present and c in numeric and f.form != "linear"}
+    roles = {str(k): str(v) for k, v in (state.roles or {}).items()}
+    spec_missing = state.missing.model_dump(mode="json") if getattr(state, "missing", None) else None
+    censored = None
+    if spec_missing and spec_missing.get("below_detection") in ("half_minimum", "censoring_aware"):
+        cols = [c for c in spec_missing.get("censored_columns") or [] if c in numeric]
+        if cols:
+            censored = {"method": spec_missing["below_detection"], "columns": cols}
     return DesignSpec(
         predictors=predictors,
         inputs=inputs,
@@ -296,12 +331,16 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
         numeric=numeric,
         energy=adj.model_dump() if adj is not None else None,
         impute=impute,
-        roles={str(k): str(v) for k, v in (state.roles or {}).items()},
+        roles=roles,
         levels=levels,
         indicators=bool(impute and state.missing is not None and state.missing.indicators),
         normalization=design_normalization(state, inputs),
         lenses=[str(k) for k in (getattr(state, "lens", None) or [])],
         exposure_forms=forms,
+        missing=spec_missing,
+        energy_fill=(energy_fill(adj.model_dump() if adj is not None else None, present, roles,
+                                 [c for c in numeric if c not in levels]) if impute else None),
+        censored=censored,
     )
 
 
@@ -321,6 +360,11 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
 
     levels = [c for c in spec.levels if c in spec.predictors and c in spec.inputs]
     steps: list[tuple[str, Any]] = []
+    censored = getattr(spec, "censored", None)
+    if censored and censored.get("columns"):
+        from turbotab.core.methods.missing import BelowDetectionFill
+
+        steps.append(("detect", BelowDetectionFill(list(censored["columns"]), str(censored["method"]))))
     if spec.normalization:
         from turbotab.core.methods.omics import normalizer
 
@@ -331,7 +375,15 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
         numeric = [c for c in spec.numeric if c not in levels]
         categorical = [c for c in spec.categorical if c not in levels]
         parts = []
-        if numeric:
+        fill = getattr(spec, "energy_fill", None)
+        nutrients = [c for c in (fill or {}).get("nutrients") or [] if c in numeric]
+        if numeric and fill and nutrients and fill.get("energy") in numeric:
+            from turbotab.core.methods.missing import EnergyAwareImputer
+
+            parts.append(("numeric", EnergyAwareImputer(energy=str(fill["energy"]), nutrients=nutrients,
+                                                        keep_empty_features=True,
+                                                        add_indicator=spec.indicators), numeric))
+        elif numeric:
             parts.append(("numeric", SimpleImputer(strategy="median", keep_empty_features=True,
                                                    add_indicator=spec.indicators), numeric))
         if categorical:
@@ -446,10 +498,11 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
             label, detail = describe_normalization(spec.normalization or {}) or ("Normalize", "")
             out.append({"key": "normalize", "label": label, "detail": detail})
         elif name == "impute":
-            marked = "; each filled number also gets a missing indicator" if spec.indicators else ""
             out.append({"key": "impute", "label": "Fill missing values",
-                        "detail": f"Median for numbers, most frequent value for categories, "
-                                  f"learned within each training fold{marked}."})
+                        "detail": impute_detail(spec, step)})
+        elif name == "detect":
+            out.append({"key": "detect", "label": "Fill values below detection",
+                        "detail": detect_detail(spec)})
         elif name == "form":
             from turbotab.core.methods.exposure_form import describe as describe_forms
 
@@ -489,6 +542,40 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
     label, detail = family.describe(task, purpose)
     out.append({"key": "model", "label": label, "detail": detail})
     return out
+
+
+def impute_detail(spec: DesignSpec, step: Any = None) -> str:
+    """The impute step's line: what fills which blanks, learned where, and under multiple
+    imputation what the step is for."""
+    marked = "; each filled number also gets a missing indicator" if spec.indicators else ""
+    fill = getattr(spec, "energy_fill", None) or {}
+    nutrients = list(fill.get("nutrients") or [])
+    numeric = getattr(step, "named_transformers_", {}).get("numeric") if step is not None else None
+    if numeric is None and step is not None:
+        numeric = next((t for n, t, _ in getattr(step, "transformers", []) if n == "numeric"), None)
+    energy_aware = numeric is not None and type(numeric).__name__ == "EnergyAwareImputer"
+    by_energy = (f"; {', '.join(nutrients[:4])}{' and others' if len(nutrients) > 4 else ''} from "
+                 f"{'its' if len(nutrients) == 1 else 'their'} line on {fill.get('energy')}"
+                 if energy_aware and nutrients else "")
+    text = (f"Median for numbers{by_energy}, most frequent value for categories, learned within "
+            f"each training fold without the outcome{marked}.")
+    if spec.multiple_imputation():
+        m = int((spec.missing or {}).get("m") or 20)
+        text += (f" It serves the cross-validated scores; the coefficients are pooled over {m} "
+                 f"multiple imputations with the outcome.")
+    return text
+
+
+def detect_detail(spec: DesignSpec) -> str:
+    censored = getattr(spec, "censored", None) or {}
+    cols = list(censored.get("columns") or [])
+    named = f"{', '.join(cols[:3])}{f' and {len(cols) - 3:,} more' if len(cols) > 3 else ''}"
+    if censored.get("method") == "half_minimum":
+        return (f"Blanks in {named} are values below detection: each becomes half the column's "
+                f"smallest detected value, learned within each training fold.")
+    return (f"Blanks in {named} are values below detection: each becomes its expected value below "
+            f"the smallest detected one under a censored-normal fit, learned within each training "
+            f"fold without the outcome.")
 
 
 def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[str],
@@ -569,7 +656,8 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
 
 __all__ = [
     "ADJUST_STEPS", "DesignSpec", "MISSING_LEVEL", "MissingLevelEncoder", "PREDICTOR_ROLES",
-    "build_pipeline", "describe_steps", "design_spec", "energy_detail", "family_steps",
+    "build_pipeline", "describe_steps", "design_spec", "detect_detail", "energy_detail",
+    "family_steps", "impute_detail",
     "frame_level_columns", "input_columns", "is_categorical", "level_columns", "missing_as_level",
     "model_predictors", "modeling_frame", "normalize_frame", "predictors_from_roles",
     "shared_steps", "takes_level", "transformer", "warnings_for",

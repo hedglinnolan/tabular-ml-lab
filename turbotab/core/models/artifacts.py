@@ -135,6 +135,8 @@ class Coefficient(_Model):
     ratio_high: float | None = None
     # The Benjamini–Hochberg adjusted p-value across the features a feature-wise family tested.
     q: float | None = None
+    # Under multiple imputation (WP7): the fraction of missing information, Rubin's γ.
+    fmi: float | None = None
 
 
 class InferenceExit(_Model):
@@ -162,6 +164,29 @@ class SurveyInference(_Model):
     df: int | None = None  # design degrees of freedom: domain PSUs minus domain strata
     lonely_strata: list[str] = []  # strata with a single PSU, centered at the mean PSU total
     lonely_method: str = "centered"
+
+
+class MissingData(_Model):
+    """How the inference table handled missing predictor values (AUDIT_REPORT §5 WP7, ME-01;
+    ``turbotab/core/methods/missing.py``): multiple imputation with the outcome (m imputations by
+    chained equations, pooled by Rubin's rules), complete cases with their assumption, or a single
+    fill kept with its recorded attestation."""
+
+    method: Literal["multiple_imputation", "complete_case", "single_fill"]
+    assumption: str
+    m: int | None = None
+    iterations: int | None = None
+    n_rows: int | None = None
+    n_incomplete_rows: int | None = None  # rows with at least one imputed value
+    imputed: dict[str, int] = {}  # column -> cells imputed
+    variables: list[str] = []  # the imputation model's variables ("the outcome" among them)
+    outcome_in_model: bool = False
+    energy: str | None = None  # total energy, in the imputation model
+    censored: list[str] = []  # left-censored columns drawn below their detection limit
+    below_detection: str | None = None
+    n_dropped: int | None = None  # complete cases: rows dropped for a missing predictor
+    recorded: bool = False  # a blocked answer kept with its attestation
+    note: str | None = None
 
 
 class BrantColumn(_Model):
@@ -214,6 +239,7 @@ class Inference(_Model):
     rows: Literal["all", "training"] | None = None
     survey: SurveyInference | None = None  # the design, when the table is design-based
     brant: BrantCheck | None = None  # the proportional-odds family's check (independent rows)
+    missing: MissingData | None = None  # how missing predictor values were handled (WP7)
 
 
 class ExposureTest(_Model):
@@ -452,6 +478,6 @@ MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
 
 __all__ = [
     "BandEstimate", "Baseline", "BrantCheck", "BrantColumn", "ExposureTest", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel", "HoldoutDetail",
-    "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "OmittedEnergy", "Selection", "ShelfArtifact", "ShelfFamily",
+    "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "MissingData", "OmittedEnergy", "Selection", "ShelfArtifact", "ShelfFamily",
     "SubstitutionArtifact", "SubstitutionModel", "SubstitutionPair", "SubstitutionSupport",
 ]

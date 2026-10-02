@@ -124,7 +124,11 @@ Role = Literal["identifier", "exposure", "energy", "covariate", "design", "flag"
 # (BLUEPRINT §12 ruling 1); "all_components" gives every energy source its own term (audit WP6).
 EnergyMethod = Literal["none", "standard", "residual", "residual_energy_dropped",
                        "density_multivariate", "density", "partition", "all_components"]
-MissingStrategy = Literal["complete_case", "impute"]
+# "multiple_imputation" is inference's: chained equations with the outcome and total energy in the
+# imputation model, pooled by Rubin's rules (BLUEPRINT §12 ruling 4; turbotab/core/methods/missing.py).
+MissingStrategy = Literal["complete_case", "impute", "multiple_imputation"]
+# How a left-censored column's blanks (values below a detection limit) are filled (audit ME-08).
+BelowDetection = Literal["half_minimum", "censoring_aware", "as_missing"]
 
 
 class _Value(BaseModel):
@@ -326,12 +330,23 @@ class SubstitutionSpec(_Value):
 
 
 class MissingSpec(_Value):
-    """The missing-values answer: columns left out of the predictors, then a strategy for the rest."""
+    """The missing-values answer: columns left out of the predictors, then a strategy for the rest.
+
+    ``m``: the imputations under multiple imputation. ``below_detection`` and ``censored_columns``:
+    how the blanks of columns whose values lie below a detection limit are filled. ``acknowledged``
+    and ``reason``: the recorded attestation that keeps a blocked answer (a single fill or the
+    missing-indicator method under inference; a median fill of non-detections, with its reason).
+    """
 
     strategy: MissingStrategy
     drop_columns: list[str] = Field(default_factory=list)
     categorical: Literal["missing_category", "impute"] = "impute"
     indicators: bool = False
+    m: int = Field(default=20, ge=20, le=200)
+    below_detection: BelowDetection | None = None
+    censored_columns: list[str] = Field(default_factory=list)
+    acknowledged: bool = False
+    reason: str | None = None
 
 
 class SetRoles(_DecisionModel):
@@ -408,13 +423,29 @@ class SetMissing(_DecisionModel):
     # "not asked"; numeric columns may carry a missing indicator beside the in-fold imputation.
     categorical: Literal["missing_category", "impute"] = "impute"
     indicators: bool = False
+    # WP7 (audit §5, ME-01, ME-08): missing data by purpose. Under inference, multiple imputation
+    # with ``m`` imputations; a single fill or the missing-indicator method only with the recorded
+    # attestation (``acknowledged``); non-detections filled by ``below_detection``, and a median
+    # fill of them only with a ``reason``.
+    m: int = Field(default=20, ge=20, le=200)
+    below_detection: BelowDetection | None = None
+    censored_columns: list[str] = Field(default_factory=list)
+    acknowledged: bool = False
+    reason: str | None = None
 
-    @field_validator("drop_columns")
+    @field_validator("drop_columns", "censored_columns")
     @classmethod
     def _unique(cls, value: list[str]) -> list[str]:
         if len(set(value)) != len(value):
-            raise ValueError("each column may be left out only once")
+            raise ValueError("each column may be named only once")
         return value
+
+    @field_validator("reason")
+    @classmethod
+    def _said(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("a reason must say something")
+        return value.strip() if value is not None else None
 
 
 class SetSplit(_DecisionModel):
@@ -1853,6 +1884,151 @@ def _left_out_columns_are_predictors(decision: SetMissing, ctx: Any) -> None:
         )
 
 
+def _missing_base(decision: SetMissing, **change: Any) -> SetMissing:
+    """``decision`` with ``change``: an exit that keeps the answer's other parts."""
+    return SetMissing(**{**decision.model_dump(exclude={"kind"}), **change})
+
+
+def _missing_fits_the_purpose(decision: SetMissing, ctx: Any) -> None:
+    """Missing data by purpose (BLUEPRINT §12 ruling 4; AUDIT_REPORT §5 WP7, ME-01).
+
+    Multiple imputation puts the outcome in the imputation model, so under prediction it is
+    refused: a held-out row's own outcome would fill its predictors, and a new row has none. Under
+    inference a single fill and the missing-indicator method (a missing indicator, or blanks as a
+    level) are blocked and recorded: refused with their exits, multiple imputation first, and kept
+    only with the attestation (``acknowledged``) the methods sentence carries.
+    """
+    from turbotab.core.methods.missing import INDICATOR_CAUTION, SINGLE_FILL_CAUTION
+
+    state = _state(ctx)
+    purpose = getattr(state, "purpose", None)
+    keep = {"drop_columns": list(decision.drop_columns)}
+    if decision.strategy == "multiple_imputation":
+        if purpose != "inference":
+            raise Refusal(
+                "imputation_with_the_outcome",
+                "Multiple imputation puts the outcome in the imputation model. That is right for "
+                "inference, but a prediction model must impute a new row without its outcome, so "
+                "under prediction the imputation is fit in each training fold without it (Sisk et "
+                "al. 2023).",
+                exits=[{"label": "Fill in each training fold, without the outcome",
+                        "decision": SetMissing(strategy="impute", **keep)},
+                       {"label": "Complete cases", "decision": SetMissing(strategy="complete_case", **keep)},
+                       {"label": "Change the purpose to inference", "decision": None}])
+        if decision.indicators:
+            raise Refusal(
+                "indicators_with_imputation",
+                "Multiple imputation fills every blank from the other variables; a missing "
+                "indicator beside it is the other method, not an addition to it.",
+                exits=[{"label": "Multiple imputation without indicators",
+                        "decision": _missing_base(decision, indicators=False)}])
+    if purpose != "inference" or decision.acknowledged:
+        return
+    single = decision.strategy == "impute"
+    indicator = decision.indicators or decision.categorical == "missing_category"
+    if not (single or indicator):
+        return
+    exits: list[dict[str, Any]] = [
+        {"label": "Multiple imputation with the outcome and energy (m = 20)",
+         "decision": _missing_base(decision, strategy="multiple_imputation", indicators=False,
+                                   categorical="impute", acknowledged=False)},
+        {"label": "Complete cases, with their assumption stated",
+         "decision": _missing_base(decision, strategy="complete_case", indicators=False,
+                                   categorical="impute", acknowledged=False)},
+    ]
+    if indicator:
+        what = ("blanks as their own level" if decision.categorical == "missing_category"
+                and not decision.indicators else "missing indicators")
+        exits.append({"label": "Keep it, recorded: a blank here means not asked, or the "
+                               "covariates are baseline ones in a randomized trial",
+                      "decision": _missing_base(decision, acknowledged=True)})
+        raise Refusal(
+            "indicator_under_inference",
+            f"Under inference {what} are the missing-indicator method: {INDICATOR_CAUTION}. "
+            f"Multiple imputation with the outcome keeps every row without that bias.",
+            exits=exits)
+    exits.append({"label": "Keep the single fill, recorded: intervals too narrow, estimates "
+                           "possibly biased",
+                  "decision": _missing_base(decision, acknowledged=True)})
+    raise Refusal(
+        "single_fill_under_inference",
+        f"Under inference {SINGLE_FILL_CAUTION}. With a confounder 40% missing at random, a median "
+        f"fill's 95% intervals never covered the truth (audit ME-01). Multiple imputation with the "
+        f"outcome and energy in the imputation model, pooled by Rubin's rules, is the sound "
+        f"answer.",
+        exits=exits)
+
+
+def _censored_named(ctx: Any) -> list[str]:
+    """Left-censored columns the findings (and the zeros-as-non-detections repair) name."""
+    from turbotab.core.methods.missing import censored_columns
+
+    artifact = _ctx(ctx, "artifact")
+    findings = None
+    if callable(artifact):
+        try:
+            findings = artifact("findings")
+        except Exception:  # noqa: BLE001 - no findings yet: nothing is known to be censored
+            findings = None
+    return censored_columns(findings, _state(ctx))
+
+
+def _non_detections_are_not_filled_by_the_median(decision: SetMissing, ctx: Any) -> None:
+    """Values below a detection limit are small, not unknown (audit ME-08): when the left-censoring
+    finding names predictors (or the user recoded zeros as non-detections), a fill that treats
+    their blanks as any other blank is refused unless the answer gives a reason. Half the minimum
+    (customary) and a censoring-aware fill are offered. Complete cases keep only the rows with every
+    value detected, and say what they lose under inference."""
+    columns = _columns_of(ctx)
+    named = list(decision.censored_columns)
+    if columns is not None:
+        unknown = [c for c in named if c not in columns or c == ROW_ID]
+        if unknown:
+            raise Refusal("unknown_column", f"This dataset has no column named {_and(unknown)}.",
+                          exits=[{"label": "Name no censored column",
+                                  "decision": _missing_base(decision, censored_columns=[])}])
+    state = _state(ctx)
+    roles = (getattr(state, "roles", None) or {}) if state is not None else {}
+    gone = set(decision.drop_columns)
+    found = [c for c in _censored_named(ctx)
+             if (not roles or roles.get(c) in PREDICTOR_ROLES) and c not in gone]
+    censored = list(dict.fromkeys([*named, *found]))
+    if decision.below_detection in ("half_minimum", "censoring_aware") and not named:
+        if not censored:
+            raise Refusal(
+                "no_censored_columns",
+                "No column is known to hold values below a detection limit: name the columns "
+                "whose blanks are non-detections.",
+                exits=[{"label": "Treat blanks as any other blank",
+                        "decision": _missing_base(decision, below_detection=None)}])
+        raise Refusal(
+            "censored_columns_unnamed",
+            f"Name the columns whose blanks are non-detections; the findings name "
+            f"{_and(censored[:6])}{' and more' if len(censored) > 6 else ''}.",
+            exits=[{"label": "Those columns", "decision": _missing_base(decision, censored_columns=censored)}])
+    if not censored or decision.strategy == "complete_case" or decision.reason:
+        return
+    if decision.below_detection in ("half_minimum", "censoring_aware"):
+        return
+    inference = getattr(state, "purpose", None) == "inference"
+    how = ("multiple imputation reads them as missing at random" if decision.strategy ==
+           "multiple_imputation" else "the median fill places them in the middle of the distribution")
+    aware = ("a censored-normal draw below the limit, given the outcome" if inference else
+             "the expected value below the limit, fit in each training fold")
+    raise Refusal(
+        "median_below_detection",
+        f"{_and(censored[:6])}{' and others' if len(censored) > 6 else ''} hold values below a "
+        f"detection limit: each blank is known to be small, but {how}. Choose how non-detections "
+        f"are filled, or keep this fill with your reason.",
+        exits=[{"label": f"Censoring-aware: {aware}",
+                "decision": _missing_base(decision, below_detection="censoring_aware",
+                                          censored_columns=censored)},
+               {"label": "Half the smallest detected value (customary)",
+                "decision": _missing_base(decision, below_detection="half_minimum",
+                                          censored_columns=censored)},
+               {"label": "Keep this fill: give your reason", "decision": None}])
+
+
 def _raw_columns(ctx: Any) -> set[str] | None:
     """The file's own columns (the ingest's), which a features-in-rows table is declared over."""
     fn = _ctx(ctx, "artifact")
@@ -2067,6 +2243,8 @@ register_validator("set_roles", _roles_name_real_columns)
 register_validator("set_feature_table", _feature_table_names_the_files_columns)
 register_validator("set_categorical", _categorical_names_predictors)
 register_validator("set_missing", _left_out_columns_are_predictors)
+register_validator("set_missing", _missing_fits_the_purpose)
+register_validator("set_missing", _non_detections_are_not_filled_by_the_median)
 register_validator("set_substitution", _substitution_moves_between_separate_nutrients)
 register_validator("set_exclusions", _exclusions_are_ranges_on_numbers)
 # first: a rule on the outcome is refused for that reason, whatever else is wrong with its bounds

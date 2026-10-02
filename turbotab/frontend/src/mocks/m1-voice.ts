@@ -218,6 +218,11 @@ export function sentenceFor(
           drop_columns: drop,
           categorical: d.categorical ?? "impute",
           indicators: false,
+          m: 20,
+          below_detection: null,
+          censored_columns: [],
+          acknowledged: false,
+          reason: null,
         },
       };
       const c = cohort(ds, state, records, drop).artifact;

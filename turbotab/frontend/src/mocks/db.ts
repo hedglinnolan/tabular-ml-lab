@@ -673,6 +673,11 @@ function valueOf(d: Decision): ProjectState[Slot] {
         drop_columns: d.drop_columns ?? [],
         categorical: d.categorical ?? "impute",
         indicators: d.indicators ?? false,
+        m: d.m ?? 20,
+        below_detection: d.below_detection ?? null,
+        censored_columns: d.censored_columns ?? [],
+        acknowledged: d.acknowledged ?? false,
+        reason: d.reason ?? null,
       };
     case "set_split":
       return {

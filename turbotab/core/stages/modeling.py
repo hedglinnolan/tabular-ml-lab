@@ -17,6 +17,7 @@ made it "significant" in 9 of 20, where all 2,996 rows give one answer.
 """
 from __future__ import annotations
 
+import math
 import time
 import warnings
 from collections import Counter
@@ -692,6 +693,239 @@ def _survey(ctx: StageContext, clusters: Any) -> tuple[Any, str | None]:
         return for_fit(state, store, unit), None
 
 
+# ── missing data under inference (audit §5 WP7) ──────────────────────────────
+
+
+class TableMissing:
+    """How the inference table handles missing predictor values: blocked (``refusal`` with its
+    ``exits``), pooled over ``imputations``, or a record (``info``) and ``concerns`` its table
+    carries (complete cases with their assumption and cost; a recorded single fill)."""
+
+    def __init__(self, refusal: str | None = None, exits: Sequence[dict[str, Any]] = (),
+                 imputations: Any = None, info: dict[str, Any] | None = None,
+                 concerns: Sequence[str] = ()):
+        self.refusal = refusal
+        self.exits = list(exits)
+        self.imputations = imputations
+        self.info = info
+        self.concerns = [c for c in concerns if c]
+
+    def record(self, table: Any) -> Any:
+        """Put the record and concerns on a table that is not blocked (a pooled table has its own)."""
+        if table.info.get("refused") and table.info.get("covariance") == "none" and not table.rows:
+            return table
+        if self.info is not None and not table.info.get("missing"):
+            table.info["missing"] = dict(self.info)
+        for c in self.concerns:
+            if c not in table.concerns:
+                table.concerns.append(c)
+        return table
+
+
+def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, task: str,
+                       keys: Sequence[str], loss: Mapping[str, Any] | None = None) -> TableMissing | None:
+    """Under inference, the missing-values answer as the coefficient table applies it.
+
+    ``X`` and ``y`` are the rows the table is estimated from; ``loss`` the complete-case comparison
+    the cohort made (default: the cohort artifact's, when the stage has it)."""
+    from turbotab.core.methods.imputation import ImputationRefused, M_DEFAULT
+    from turbotab.core.methods.missing import (COMPLETE_CASE_ASSUMPTION, INDICATOR_CAUTION,
+                                               MI_ASSUMPTION, SINGLE_FILL_CAUTION,
+                                               impute_for_inference, missing_block, row_loss_concern)
+    from turbotab.core.models import get_family
+
+    state = ctx.state
+    answer = spec.missing or (state.missing.model_dump(mode="json") if state.missing else None)
+    if not answer:
+        return None
+    levels = [c for c in spec.levels if c in X.columns and X[c].isna().any()]
+    held = missing_block(answer, "inference", levels)
+    if held is not None:
+        return TableMissing(refusal=held[0], exits=held[1])
+    strategy = answer.get("strategy")
+    m = int(answer.get("m") or M_DEFAULT)
+    if strategy == "multiple_imputation":
+        gaps = [c for c in spec.inputs if c not in levels and c in X.columns and X[c].isna().any()]
+        base = {"method": "multiple_imputation", "assumption": MI_ASSUMPTION, "m": m,
+                "n_rows": int(len(X)), "outcome_in_model": True}
+        if not gaps:
+            return TableMissing(info={**base, "n_incomplete_rows": 0, "note": (
+                "No predictor value is missing among the analyzed rows, so nothing was imputed.")})
+        pools = [k for k in keys if hasattr(get_family(k), "inference")]
+        if not pools:
+            return TableMissing(info={**base, "note": "No chosen family has a table to pool."})
+        seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
+        last = [0.0]
+
+        def progress(done: int, total: int) -> None:
+            if done == total or done - last[0] >= max(1, total // 50):
+                last[0] = done
+                ctx.progress(0.01 + 0.01 * done / max(total, 1),
+                             f"Imputing missing values with the outcome: model {done:,} of {total:,}")
+
+        try:
+            imputations = impute_for_inference(spec, X, y, task, seed=seed, progress=progress,
+                                               cancelled=ctx.cancelled)
+        except ImputationRefused as exc:
+            return TableMissing(
+                refusal=f"Multiple imputation cannot run on these data: {exc}",
+                exits=[{"label": "Complete cases, with their assumption stated",
+                        "decision": {**answer, "kind": "set_missing", "strategy": "complete_case"}}])
+        return TableMissing(imputations=imputations)
+    if strategy == "complete_case":
+        if loss is None:
+            cohort = ctx.inputs.get("cohort")
+            data = getattr(cohort, "data", cohort) if cohort is not None else None
+            loss = (data or {}).get("complete_case_loss") if isinstance(data, Mapping) else None
+        concern = row_loss_concern(loss)
+        info = {"method": "complete_case",
+                "assumption": COMPLETE_CASE_ASSUMPTION[0].upper() + COMPLETE_CASE_ASSUMPTION[1:] + ".",
+                "n_dropped": (int(loss["n_dropped"]) if loss and loss.get("n_dropped") is not None
+                              else (0 if loss is None else None)),
+                "n_rows": int(len(X))}
+        return TableMissing(info=info, concerns=[concern] if concern else [])
+    if answer.get("acknowledged"):
+        indicator = bool(answer.get("indicators")) or (answer.get("categorical") == "missing_category"
+                                                       and bool(levels))
+        caution = INDICATOR_CAUTION if indicator else SINGLE_FILL_CAUTION
+        said = f" The recorded reason: {answer['reason']}" if answer.get("reason") else ""
+        return TableMissing(
+            info={"method": "single_fill", "assumption": caution[0].upper() + caution[1:] + ".",
+                  "recorded": True, "n_rows": int(len(X)), "note": answer.get("reason")},
+            concerns=[f"Kept under inference with its recorded limitation: {caution}.{said}"])
+    return None
+
+
+def _with_levels(fitted: Any, levels: Sequence[str] | None) -> Any:
+    """An ordinal fit's cut-points named by the declared levels (as the fit stage names them)."""
+    if levels is not None:
+        fitted[-1].level_names_ = list(levels)
+    return fitted
+
+
+def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: str, clusters: Any,
+                 outcome: Any, survey: Any, design: Any, spec: Any, rows: str,
+                 fit: Any, cancelled: Any = None, energy_rows: bool = True
+                 ) -> tuple[Any, list[dict[str, Any]] | None, list[dict[str, Any]], list[str]]:
+    """The family's inference table pooled over the completed copies (Rubin's rules), with its
+    energy rows and exposure-form tests pooled beside it: (table, pooled rows, tests, concerns).
+
+    Each copy is analyzed exactly as an unimputed table is (``fit(model, X_k)`` refits the whole
+    pipeline on it; the table, the all-components relative effects and the form tests follow). A
+    table refused in one copy (too few clusters) is refused: the reason does not depend on the
+    imputed values. ``rows`` = None in the result marks such a refusal."""
+    from sklearn.base import clone
+
+    from turbotab.core.methods.exposure_form import exposure_tests
+    from turbotab.core.methods.imputation import pool_rows, pooled_cov
+    from turbotab.core.methods.missing import mi_concerns, multiple_imputation_info
+    from turbotab.core.models.inference import InferenceTable
+
+    m = int(imputations.m)
+    tables, row_sets, fits, tests = [], [], [], []
+    form_concerns: list[str] = []
+    for k, X_k in enumerate(imputations.frames):
+        if cancelled is not None and cancelled():
+            raise Cancelled()
+        fitted = fit(clone(template), X_k)
+        table = _inference_table(family, fitted, X_k, y, task=task, clusters=clusters,
+                                 outcome=outcome, rows=rows, survey=survey)
+        if table.info.get("refused"):
+            table.info["missing"] = multiple_imputation_info(imputations, spec, len(y))
+            return table, None, [], []
+        row_sets.append(_energy_rows(table.rows, design, spec, family, fitted, X_k, y, task,
+                                     clusters, outcome, survey) if energy_rows else table.rows)
+        found, worries = exposure_tests(family, fitted, X_k, y, task=task, clusters=clusters,
+                                        table=table, outcome=outcome, survey=survey)
+        if k == 0:
+            form_concerns = list(worries)
+        tables.append(table)
+        fits.append(fitted)
+        tests.append(found)
+    pooled = pool_rows(row_sets)
+    info = dict(tables[0].info)
+    info["caption"] = (f"Multiple imputation, m = {m}: each completed table analyzed as follows, "
+                       f"then pooled by Rubin's rules, each interval on t with Barnard–Rubin degrees "
+                       f"of freedom. {tables[0].info.get('caption', '')}").strip()
+    info["missing"] = multiple_imputation_info(imputations, spec, len(y))
+    concerns = list(tables[0].concerns) + mi_concerns(imputations, pooled, len(y))
+    covs = [t.cov for t in tables]
+    cov = None
+    if all(c is not None for c in covs) and len({np.shape(c) for c in covs}) == 1:
+        names = [str(r["feature"]) for r in tables[0].rows]
+        Q = np.asarray([[r["estimate"] if r["estimate"] is not None else np.nan for r in t.rows]
+                        for t in tables], dtype=float)
+        if Q.shape[1] == len(names) and np.all(np.isfinite(Q)):
+            cov = pooled_cov(Q, np.asarray(covs, dtype=float))
+    table = InferenceTable(pooled, info, concerns, cov=cov)
+    return table, pooled, _pool_form_tests(tests, tables, fits, m), form_concerns
+
+
+def _pool_form_tests(tests: Sequence[Sequence[dict[str, Any]]], tables: Sequence[Any],
+                     fits: Sequence[Any], m: int) -> list[dict[str, Any]]:
+    """Each exposure-form test pooled over the imputations: a spline's Wald tests by Li,
+    Raghunathan & Rubin's D1 (on each copy's estimates and covariance), the quintile trend's
+    coefficient by Rubin's rules."""
+    from turbotab.core.methods.exposure_form import form_step
+    from turbotab.core.methods.imputation import pool_scalar, pooled_wald
+    from turbotab.core.models.inference import format_p
+
+    if not tests or not tests[0]:
+        return []
+    out: list[dict[str, Any]] = []
+    step = form_step(fits[0])
+    for test in tests[0]:
+        same = [next((t for t in ts if t["column"] == test["column"] and t["test"] == test["test"]),
+                     None) for ts in tests]
+        if any(t is None for t in same):
+            continue
+        if test["form"] == "spline":
+            if step is None:
+                continue
+            outputs = step._outputs(test["column"])
+            names = outputs if test["test"] == "overall" else outputs[1:]
+            Q, U = [], []
+            for table in tables:
+                where = {str(r["feature"]): j for j, r in enumerate(table.rows)}
+                if table.cov is None or any(n not in where for n in names):
+                    Q = []
+                    break
+                ids = [where[n] for n in names]
+                Q.append([table.rows[j]["estimate"] for j in ids])
+                U.append(np.asarray(table.cov, dtype=float)[np.ix_(ids, ids)])
+            result = pooled_wald(np.asarray(Q, dtype=float), np.asarray(U, dtype=float)) if Q else None
+            if result is None:
+                continue
+            f_ref = result["df_den"] is not None
+            stat = (f"F({result['df_num']}, {result['df_den']:,.0f}) = {result['statistic']:.2f}"
+                    if f_ref else f"χ²({result['df_num']}) = {result['statistic'] * result['df_num']:.2f}")
+            out.append({**test, "statistic": result["statistic"] if f_ref else result["statistic"] * result["df_num"],
+                        "df_num": result["df_num"], "df_den": result["df_den"],
+                        "distribution": "F" if f_ref else "chi2", "p": result["p"],
+                        "caption": (f"Pooled over {m} imputations by Li, Raghunathan & Rubin's D1: "
+                                    f"{stat}, p = {format_p(result['p'])}. Within each imputation: "
+                                    f"{test['caption']}")})
+            continue
+        ests = [t.get("estimate") for t in same]
+        stats_ = [t.get("statistic") for t in same]
+        if any(e is None for e in ests) or any(st in (None, 0) for st in stats_):
+            continue
+        variances = [(float(e) / float(st)) ** 2 for e, st in zip(ests, stats_)]
+        dfs = [t.get("df_den") for t in same]
+        df_com = None if any(d is None for d in dfs) else float(np.mean(dfs))
+        pooled = pool_scalar(ests, variances, df_com)
+        if pooled.p is None:
+            continue
+        out.append({**test, "estimate": pooled.estimate, "ci_low": pooled.ci_low,
+                    "ci_high": pooled.ci_high, "p": pooled.p,
+                    "statistic": pooled.estimate / math.sqrt(pooled.total), "df_den": pooled.df,
+                    "distribution": "t" if pooled.df is not None else "z",
+                    "caption": (f"Pooled over {m} imputations by Rubin's rules: the trend coefficient "
+                                f"{pooled.estimate:+.4g} per unit, p = {format_p(pooled.p)}. Within "
+                                f"each imputation: {test['caption']}")})
+    return out
+
+
 def fit_stage(ctx: StageContext) -> Bundle:
     """Cross-validate each pipeline on the split's folds, then refit on all training rows.
 
@@ -812,6 +1046,10 @@ def fit_stage(ctx: StageContext) -> Bundle:
     # Under a survey design (audit §5 WP10, ME-06): whose estimate the table is. The design is read
     # over every row of the working table, so rows outside the analysis stay in its variance.
     survey, survey_note = _survey(ctx, clusters)
+    # Missing data by purpose (BLUEPRINT §12 ruling 4; audit §5 WP7): under inference, multiple
+    # imputation with the outcome and energy for the coefficient table; a single fill or the
+    # missing-indicator method held until recorded; complete cases with their assumption and cost.
+    missing = _missing_for_table(ctx, spec, X_tab, y_tab, task, keys) if inference else None
 
     def fit(model: Any, X_fit: Any, y_fit: Any, rows: Any = None) -> Any:
         """Fit a pipeline on these training rows, its inner splits drawn as the folds are."""
@@ -819,9 +1057,10 @@ def fit_stage(ctx: StageContext) -> Bundle:
         return fit_pipeline(model, X_fit, y_fit, groups=None if groups is None else groups[take],
                             order=None if order is None else order[take])
 
-    def fit_table(model: Any) -> Any:
-        """Fit a pipeline on the coefficient table's rows, its inner splits drawn as the folds are."""
-        return fit_pipeline(model, X_tab, y_tab,
+    def fit_table(model: Any, X_fit: Any = None) -> Any:
+        """Fit a pipeline on the coefficient table's rows (``X_fit``: a completed copy of them,
+        under multiple imputation), its inner splits drawn as the folds are."""
+        return fit_pipeline(model, X_tab if X_fit is None else X_fit, y_tab,
                             groups=None if unit_all is None else unit_all[table_rows],
                             order=None if order_all is None else order_all[table_rows])
 
@@ -868,7 +1107,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
             unit_c = (None if unit_all is None else unit_all[table_rows]) if all_rows else groups
             models.append(_tests_only(family, tested, X_c, y_c, task, state, clusters, unit_c,
                                       baseline, started, rows="all" if all_rows else "training",
-                                      survey=survey, survey_note=survey_note))
+                                      survey=survey, survey_note=survey_note,
+                                      missing=missing if all_rows else None))
             done += len(pairs) + 2
             continue
 
@@ -922,6 +1162,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
             n_coefficients = None
             on_all = inference and reports_coefficients(family)
             form_tests: list[dict[str, Any]] = []
+            pooled = None  # the coefficient rows pooled over the imputations (multiple imputation)
             try:
                 if on_all and not same_rows:
                     ctx.progress(share(done), f"{family.label}: coefficients on every analyzed row")
@@ -929,10 +1170,25 @@ def fit_stage(ctx: StageContext) -> Bundle:
                              if on_all else final)
                 X_c, y_c = (X_tab, y_tab) if on_all else (X, y)
                 if clusters is not None and hasattr(family, "inference"):
-                    if survey is not None and survey.refusal:
-                        from turbotab.core.models.survey import blocked
+                    from turbotab.core.models.survey import blocked
 
+                    design_of = survey.design if survey is not None else None
+                    if survey is not None and survey.refusal:
                         table = blocked(survey.refusal, survey.exits)
+                    elif missing is not None and missing.refusal:
+                        table = blocked(missing.refusal, missing.exits,
+                                        estimator="not fitted: the missing-values answer decides it")
+                    elif missing is not None and missing.imputations is not None and on_all:
+                        ctx.progress(share(done), f"{family.label}: each of "
+                                                  f"{missing.imputations.m} imputations")
+                        table, pooled, form_tests, form_concerns = pooled_table(
+                            family, pipelines[key], missing.imputations, y_c, task=task,
+                            clusters=clusters, outcome=outcome, survey=design_of, design=design,
+                            spec=spec, rows="all",
+                            fit=lambda model, X_k: _with_levels(
+                                fit_table(with_units(model, unit_of), X_k), levels),
+                            cancelled=ctx.cancelled)
+                        concerns.extend(form_concerns)
                     else:
                         # Under the population answer the table is design-based, its domain every
                         # analysis row: a holdout is a prediction concept (BLUEPRINT §12 ruling 3),
@@ -940,19 +1196,22 @@ def fit_stage(ctx: StageContext) -> Bundle:
                         table = _inference_table(
                             family, table_fit, X_c, y_c, task=task, clusters=clusters,
                             outcome=outcome, rows="all" if on_all else "training",
-                            survey=survey.design if survey is not None else None)
+                            survey=design_of)
+                    if missing is not None:
+                        missing.record(table)
                     coefficients, interval_info = table.rows, table.info
                     concerns.extend(table.concerns)
                     if survey is not None and survey.concern():
                         concerns.insert(0, survey.concern())
-                    # A spline's tests of association and of nonlinearity; quintiles' trend: on
-                    # the fit, rows and design the table itself was estimated from.
-                    from turbotab.core.methods.exposure_form import exposure_tests
+                    if pooled is None:
+                        # A spline's tests of association and of nonlinearity; quintiles' trend:
+                        # on the fit, rows and design the table itself was estimated from.
+                        from turbotab.core.methods.exposure_form import exposure_tests
 
-                    form_tests, form_concerns = exposure_tests(
-                        family, table_fit, X_c, y_c, task=task, clusters=clusters, table=table,
-                        outcome=outcome, survey=survey.design if survey is not None else None)
-                    concerns.extend(form_concerns)
+                        form_tests, form_concerns = exposure_tests(
+                            family, table_fit, X_c, y_c, task=task, clusters=clusters, table=table,
+                            outcome=outcome, survey=design_of)
+                        concerns.extend(form_concerns)
                 else:
                     unit_c = (None if unit_all is None else unit_all[table_rows]) if on_all else groups
                     coefficients = family.coefficients(table_fit, X_c, y_c, task=task,
@@ -961,6 +1220,10 @@ def fit_stage(ctx: StageContext) -> Bundle:
                         concerns.append("Fit without the survey weights: its scores and "
                                         "coefficients describe these participants, not the "
                                         "surveyed population.")
+                    if missing is not None and missing.imputations is not None and coefficients:
+                        concerns.append("These coefficients come from a single fill in each "
+                                        "fold, not the multiple imputations: the family has no "
+                                        "table to pool.")
                 n_coefficients = len(y_c) if coefficients is not None else None
                 if on_all and not same_rows and coefficients is not None:
                     concerns.append(
@@ -971,9 +1234,10 @@ def fit_stage(ctx: StageContext) -> Bundle:
             except Exception as exc:  # noqa: BLE001 - a table that cannot be computed is a concern
                 coefficients = None
                 concerns.append(f"The coefficient table could not be computed: {exc}")
-            if coefficients:
+            if coefficients and pooled is None:
                 # The relative effects come from the fit the table came from: under inference
-                # every analyzed row, with the table's clusters and outcome scale.
+                # every analyzed row, with the table's clusters and outcome scale. (Pooled tables
+                # carry each imputation's, pooled with the coefficients.)
                 coefficients = _energy_rows(coefficients, design, spec, family, table_fit, X_c, y_c,
                                             task, clusters, outcome,
                                             survey.design if survey is not None else None)
@@ -1103,7 +1367,7 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
 def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, clusters: Any,
                 groups: Any, baseline: dict[str, Any], started: float,
                 rows: str = "training", survey: Any = None,
-                survey_note: str | None = None) -> dict[str, Any]:
+                survey_note: str | None = None, missing: Any = None) -> dict[str, Any]:
     """The fit artifact's entry for a family that tests and makes no predictions: its table, its
     concerns, and no score (``cv`` empty, ``holdout`` and ``versus_baseline`` null). ``X`` and
     ``y`` are the rows the table is estimated from (``rows``: every analyzed row under inference).
@@ -1121,12 +1385,25 @@ def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, 
             from turbotab.core.models.survey import blocked
 
             table = blocked(survey.refusal, survey.exits)
+        elif missing is not None and (missing.refusal or missing.imputations is not None):
+            from turbotab.core.models.survey import blocked
+
+            reason = missing.refusal or (
+                f"{family.label} is not pooled over multiple imputations here: its tests run "
+                f"feature by feature over more columns than an imputation model holds. Choose "
+                f"complete cases, or a below-detection fill for values below a limit.")
+            exits = missing.exits if missing.refusal else [
+                {"label": "Complete cases", "decision": {"kind": "set_missing",
+                                                         "strategy": "complete_case"}}]
+            table = blocked(reason, exits, estimator="not fitted: the missing-values answer decides it")
         else:
             table = family.inference(final, X, y, task=task,
                                      clusters=clusters if clusters is not None else as_clusters(groups),
                                      event=state.event)
             if table.info.get("n_rows") is None:
                 table = _on_rows(table, len(X), rows)
+            if missing is not None:
+                missing.record(table)
             if survey is not None and survey.answer == "population":
                 concerns.append("Fit without the survey weights: its tests describe these "
                                 "participants, not the surveyed population.")
@@ -1353,6 +1630,11 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         if not reading.declared:
             notes.append(f"{c} is read as {reading.role} in grams at {reading.factor:g} kcal/g; its "
                          f"name does not state the unit.")
+    if spec.multiple_imputation() and X_fit.isna().any().any():
+        # WP7: the coefficient table pools the multiple imputations; the curve does not.
+        notes.append("The curve follows the training fit, whose blanks are filled once in each "
+                     "fold without the outcome; it is not pooled over the multiple imputations the "
+                     "coefficient table uses, so its band leaves out their uncertainty.")
     if skipped and task in ("multiclass", "ordinal"):
         kind = "An ordinal" if task == "ordinal" else "A multiclass"
         notes.append(f"{kind} outcome has one curve per level, which is not drawn yet.")

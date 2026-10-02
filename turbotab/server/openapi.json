@@ -4062,7 +4062,8 @@
             "type": "string",
             "enum": [
               "complete_case",
-              "impute"
+              "impute",
+              "multiple_imputation"
             ],
             "title": "Strategy"
           },
@@ -4086,6 +4087,52 @@
             "type": "boolean",
             "title": "Indicators",
             "default": false
+          },
+          "m": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 20.0,
+            "title": "M",
+            "default": 20
+          },
+          "below_detection": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "half_minimum",
+                  "censoring_aware",
+                  "as_missing"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Below Detection"
+          },
+          "censored_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Censored Columns"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           }
         },
         "additionalProperties": false,
@@ -4094,10 +4141,15 @@
           "strategy",
           "drop_columns",
           "categorical",
-          "indicators"
+          "indicators",
+          "m",
+          "below_detection",
+          "censored_columns",
+          "acknowledged",
+          "reason"
         ],
         "title": "MissingSpec",
-        "description": "The missing-values answer: columns left out of the predictors, then a strategy for the rest."
+        "description": "The missing-values answer: columns left out of the predictors, then a strategy for the rest.\n\n``m``: the imputations under multiple imputation. ``below_detection`` and ``censored_columns``:\nhow the blanks of columns whose values lie below a detection limit are filled. ``acknowledged``\nand ``reason``: the recorded attestation that keeps a blocked answer (a single fill or the\nmissing-indicator method under inference; a median fill of non-detections, with its reason)."
       },
       "OpenSeal-Input": {
         "properties": {
@@ -6355,7 +6407,8 @@
             "type": "string",
             "enum": [
               "complete_case",
-              "impute"
+              "impute",
+              "multiple_imputation"
             ],
             "title": "Strategy"
           },
@@ -6379,6 +6432,52 @@
             "type": "boolean",
             "title": "Indicators",
             "default": false
+          },
+          "m": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 20.0,
+            "title": "M",
+            "default": 20
+          },
+          "below_detection": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "half_minimum",
+                  "censoring_aware",
+                  "as_missing"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Below Detection"
+          },
+          "censored_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Censored Columns"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           }
         },
         "additionalProperties": false,
@@ -6402,7 +6501,8 @@
             "type": "string",
             "enum": [
               "complete_case",
-              "impute"
+              "impute",
+              "multiple_imputation"
             ],
             "title": "Strategy"
           },
@@ -6426,6 +6526,52 @@
             "type": "boolean",
             "title": "Indicators",
             "default": false
+          },
+          "m": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 20.0,
+            "title": "M",
+            "default": 20
+          },
+          "below_detection": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "half_minimum",
+                  "censoring_aware",
+                  "as_missing"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Below Detection"
+          },
+          "censored_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Censored Columns"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           }
         },
         "additionalProperties": false,
@@ -6435,7 +6581,12 @@
           "strategy",
           "drop_columns",
           "categorical",
-          "indicators"
+          "indicators",
+          "m",
+          "below_detection",
+          "censored_columns",
+          "acknowledged",
+          "reason"
         ],
         "title": "SetMissing",
         "description": "How missing predictor values are handled.\n\n``drop_columns`` leave the predictors first (a mostly blank column that means \"not asked\"),\nand the strategy applies to the predictors that remain; the cohort and the design read both."
@@ -9195,6 +9346,18 @@
             ],
             "default": null,
             "title": "Q"
+          },
+          "fmi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Fmi"
           }
         },
         "required": [
@@ -9209,7 +9372,8 @@
           "ratio",
           "ratio_low",
           "ratio_high",
-          "q"
+          "q",
+          "fmi"
         ],
         "title": "Coefficient",
         "type": "object"
@@ -9234,12 +9398,24 @@
             },
             "title": "Predictors",
             "type": "array"
+          },
+          "complete_case_loss": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompleteCaseLoss"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
           "steps",
           "n_final",
-          "predictors"
+          "predictors",
+          "complete_case_loss"
         ],
         "title": "CohortArtifact",
         "type": "object"
@@ -9337,6 +9513,54 @@
           "chosen"
         ],
         "title": "CombinedColumn",
+        "type": "object"
+      },
+      "CompleteCaseLoss": {
+        "description": "What complete cases cost: the rows dropped beside the rows kept (audit WP7, E14).",
+        "properties": {
+          "n_before": {
+            "title": "N Before",
+            "type": "integer"
+          },
+          "n_kept": {
+            "title": "N Kept",
+            "type": "integer"
+          },
+          "n_dropped": {
+            "title": "N Dropped",
+            "type": "integer"
+          },
+          "share": {
+            "title": "Share",
+            "type": "number"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RowComparison"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/RowComparison"
+            },
+            "title": "Columns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "n_before",
+          "n_kept",
+          "n_dropped",
+          "share",
+          "outcome",
+          "columns"
+        ],
+        "title": "CompleteCaseLoss",
         "type": "object"
       },
       "CurvePoint": {
@@ -11291,6 +11515,17 @@
               }
             ],
             "default": null
+          },
+          "missing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MissingData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -11311,7 +11546,8 @@
           "n_rows",
           "rows",
           "survey",
-          "brant"
+          "brant",
+          "missing"
         ],
         "title": "Inference",
         "type": "object"
@@ -11708,6 +11944,221 @@
         "title": "MissingColumn",
         "type": "object"
       },
+      "MissingData": {
+        "additionalProperties": false,
+        "description": "How the inference table handled missing predictor values (AUDIT_REPORT §5 WP7, ME-01;\n``turbotab/core/methods/missing.py``): multiple imputation with the outcome (m imputations by\nchained equations, pooled by Rubin's rules), complete cases with their assumption, or a single\nfill kept with its recorded attestation.",
+        "properties": {
+          "method": {
+            "enum": [
+              "multiple_imputation",
+              "complete_case",
+              "single_fill"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "assumption": {
+            "title": "Assumption",
+            "type": "string"
+          },
+          "m": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "M"
+          },
+          "iterations": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Iterations"
+          },
+          "n_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Rows"
+          },
+          "n_incomplete_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Incomplete Rows"
+          },
+          "imputed": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Imputed",
+            "type": "object"
+          },
+          "variables": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Variables",
+            "type": "array"
+          },
+          "outcome_in_model": {
+            "default": false,
+            "title": "Outcome In Model",
+            "type": "boolean"
+          },
+          "energy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Energy"
+          },
+          "censored": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Censored",
+            "type": "array"
+          },
+          "below_detection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Below Detection"
+          },
+          "n_dropped": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Dropped"
+          },
+          "recorded": {
+            "default": false,
+            "title": "Recorded",
+            "type": "boolean"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Note"
+          }
+        },
+        "required": [
+          "method",
+          "assumption",
+          "m",
+          "iterations",
+          "n_rows",
+          "n_incomplete_rows",
+          "imputed",
+          "variables",
+          "outcome_in_model",
+          "energy",
+          "censored",
+          "below_detection",
+          "n_dropped",
+          "recorded",
+          "note"
+        ],
+        "title": "MissingData",
+        "type": "object"
+      },
+      "MissingMethodOption": {
+        "description": "A way to handle missing values (or values below detection), with its two labels (north star\n5) and its rung for the declared purpose (audit WP7; ``turbotab/core/methods/missing.py``).",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "customary": {
+            "title": "Customary",
+            "type": "string"
+          },
+          "sound": {
+            "title": "Sound",
+            "type": "string"
+          },
+          "rung": {
+            "enum": [
+              "recommended",
+              "available",
+              "block_and_record",
+              "refused"
+            ],
+            "title": "Rung",
+            "type": "string"
+          },
+          "decision": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Decision",
+            "type": "object"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "customary",
+          "sound",
+          "rung",
+          "decision"
+        ],
+        "title": "MissingMethodOption",
+        "type": "object"
+      },
       "MissingReading": {
         "description": "What the missing-values question can offer on this table (M1_CONTRACT §12.4).",
         "properties": {
@@ -11727,11 +12178,29 @@
                 "type": "null"
               }
             ]
+          },
+          "methods": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MissingMethodOption"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "below_detection": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MissingMethodOption"
+            },
+            "title": "Below Detection",
+            "type": "array"
           }
         },
         "required": [
           "columns",
-          "leave_out"
+          "leave_out",
+          "methods",
+          "below_detection"
         ],
         "title": "MissingReading",
         "type": "object"
@@ -12700,6 +13169,45 @@
           "categorical"
         ],
         "title": "RolesArtifact",
+        "type": "object"
+      },
+      "RowComparison": {
+        "description": "One column on the rows complete cases kept and on those they dropped (audit E14).",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "kept": {
+            "title": "Kept",
+            "type": "number"
+          },
+          "dropped": {
+            "title": "Dropped",
+            "type": "number"
+          },
+          "smd": {
+            "title": "Smd",
+            "type": "number"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "n_dropped_observed": {
+            "title": "N Dropped Observed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "column",
+          "kept",
+          "dropped",
+          "smd",
+          "kind",
+          "n_dropped_observed"
+        ],
+        "title": "RowComparison",
         "type": "object"
       },
       "SealBasis": {

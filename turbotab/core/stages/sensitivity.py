@@ -137,15 +137,18 @@ def rows_of(store: Any, state: Any, ingest: Mapping[str, Any], rules: Sequence[A
 
 def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inputs: Sequence[str],
                 y: np.ndarray, task: str, unit_columns: Sequence[str], *, outcome: Any = None,
-                survey: Any = None, levels: Sequence[str] | None = None
-                ) -> tuple[Any, Any, list[str]]:
+                survey: Any = None, levels: Sequence[str] | None = None, missing: Any = None,
+                spec: Any = None) -> tuple[Any, Any, list[str]]:
     """Refit ``pipeline`` on ``frame``'s rows; its coefficient table and concerns, as fit makes them.
 
     As the fit stage makes them (``stages.modeling.fit_stage``): a family that models the unit is
     told each row's unit (WP12b); the table is on the outcome's scale, its odds or relative-risk
     ratios named by ``outcome`` (WP8); under the "surveyed population" answer it is design-based,
     these rows its domain (``survey``, a ``FitSurvey``; WP10), or blocked while the survey question
-    is unanswered; an ordinal model's cut-points carry the declared ``levels`` (WP12a)."""
+    is unanswered; an ordinal model's cut-points carry the declared ``levels`` (WP12a). Under
+    inference ``missing`` (``stages.modeling.TableMissing``) is the missing-values answer on these
+    rows: the table pooled over their own multiple imputations, held while a single fill or the
+    missing-indicator method is unrecorded, or carrying complete cases' assumption (WP7)."""
     from sklearn.base import clone
 
     from turbotab.core.models.inference import resolve_clusters
@@ -162,14 +165,29 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
     concerns: list[str] = []
     info = None
     if state.purpose == "inference" and hasattr(family, "inference"):
-        if survey is not None and survey.refusal:
-            from turbotab.core.models.survey import blocked
+        from turbotab.core.models.survey import blocked
 
+        design = survey.design if survey is not None else None
+        if survey is not None and survey.refusal:
             table = blocked(survey.refusal, survey.exits)
+        elif missing is not None and missing.refusal:
+            table = blocked(missing.refusal, missing.exits,
+                            estimator="not fitted: the missing-values answer decides it")
         else:
-            table = _inference_table(family, fitted, X, y, task=task, clusters=clusters,
-                                     outcome=outcome, rows="all",
-                                     survey=survey.design if survey is not None else None)
+            if missing is not None and missing.imputations is not None:
+                from turbotab.core.stages.modeling import _with_levels, pooled_table
+
+                table, _, _, _ = pooled_table(
+                    family, pipeline, missing.imputations, y, task=task, clusters=clusters,
+                    outcome=outcome, survey=design, design=None, spec=spec, rows="all",
+                    fit=lambda model, X_k: _with_levels(
+                        fit_pipeline(with_units(model, units), X_k, y), levels),
+                    energy_rows=False)
+            else:
+                table = _inference_table(family, fitted, X, y, task=task, clusters=clusters,
+                                         outcome=outcome, rows="all", survey=design)
+            if missing is not None:
+                missing.record(table)
             if survey is not None and survey.concern():
                 concerns.append(survey.concern())
         rows, info = table.rows, table.info
@@ -322,6 +340,7 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
     out_families: list[dict[str, Any]] = []
     exposures: list[str] = []
     concerns: list[str] = []
+    missing_by: dict[str, Any] = {}  # each analysis's missing-data handling, under inference
     total = max(1, len(families) * len(analyses))
     done = 0
     for family in families:
@@ -334,11 +353,19 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
                              "concerns": [a["refused"]]})
                 continue
             part = frame.loc[rows]
+            y_part = y_values[position.loc[rows].to_numpy()]
             try:
+                if inference and a["label"] not in missing_by:
+                    # Each analysis imputes its own rows (WP7), once for every family.
+                    from turbotab.core.stages.modeling import _missing_for_table
+
+                    missing_by[a["label"]] = _missing_for_table(
+                        ctx, spec, part[list(spec.inputs)], y_part, task,
+                        [f.key for f in families], loss={"n_dropped": None})
                 fitted, (coef, info), worries = fit_on_rows(
                     state, family, pipelines[family.key], part, spec.inputs,
-                    y_values[position.loc[rows].to_numpy()], task, unit_columns, outcome=outcome,
-                    survey=survey, levels=levels)
+                    y_part, task, unit_columns, outcome=outcome,
+                    survey=survey, levels=levels, missing=missing_by.get(a["label"]), spec=spec)
             except Exception as exc:  # noqa: BLE001 - an analysis that cannot be fit says why
                 fits.append({"label": a["label"], "n_rows": int(len(rows)), "coefficients": None,
                              "concerns": [f"This analysis could not be fit: {exc}"]})

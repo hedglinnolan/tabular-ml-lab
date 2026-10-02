@@ -242,6 +242,11 @@ export function MissingAsk({
     drop_columns: [],
     categorical: "impute",
     indicators: false,
+    m: 20,
+    below_detection: null,
+    censored_columns: [],
+    acknowledged: false,
+    reason: null,
     ...patch,
   });
 

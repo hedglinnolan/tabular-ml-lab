@@ -233,8 +233,11 @@ Generic ML tooling gets this wrong, and the correct answer is field-specific.
    sicker (or better-worked-up) subpopulation. Flag when listwise deletion drops >10% of rows.
 2. **Mean/median imputation.** Understates variance, destroys the distribution, indefensible in a
    manuscript. **[SETTLED as bad]**
-3. **Imputing with the outcome excluded from the imputation model.** Biases associations toward the
-   null. The outcome *must* be in the imputation model. **[SETTLED]**
+3. **Imputing with the outcome excluded from the imputation model — for inference.** Biases
+   associations toward the null (Moons et al. 2006: "MI without outcome yielded very
+   biased--underestimated--coefficients"). Under inference the outcome *must* be in the imputation
+   model; under prediction it must not be, so the model imputes a new row as it was developed
+   (Sisk et al. 2023). The app's one rule: "The outcome's place in the imputation model depends on the purpose. Under inference, missing predictors are multiply imputed with the outcome and total energy in the imputation model, and the analyses pooled by Rubin's rules (Moons et al. 2006, via Harrell). Under prediction, they are imputed inside each training fold without the outcome, so the fitted pipeline can impute a new row as it was developed (Sisk et al. 2023)." **[SETTLED]**
 4. **Imputation fit before splitting.** Parameters learned on the full dataset = leakage. Imputation
    must be fit inside the resampling loop.
 5. **Imputing structurally-missing values** (pregnancy test in men, PSA in women).

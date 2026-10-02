@@ -393,6 +393,11 @@ def calibration_stage(ctx: StageContext) -> Bundle:
         concerns.append("The calibration is fit without the survey weights: it corrects these "
                         "participants' coefficient, not the surveyed population's design-based "
                         "one in the fit's table.")
+    if good and spec.multiple_imputation() and X.isna().any().any():
+        # WP7: the fit's table pools multiple imputations; this correction refits one fill.
+        concerns.append("The calibration refits the model with blanks filled once without the "
+                        "outcome, not over the multiple imputations the fit's table pools; its "
+                        "naive coefficient can differ from the table's.")
     short = [e for e in good if e.get("n_boot_ok", 0) < e.get("n_boot", 0)]
     for e in short:
         concerns.append(f"`{e['feature']}`: {e['n_boot_ok']:,} of {e['n_boot']:,} bootstrap refits "

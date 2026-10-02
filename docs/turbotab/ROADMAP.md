@@ -440,8 +440,16 @@ missingness.
   blocker with typed acknowledgment, and the **stability assumption** — that missingness means the
   same thing at deployment — is recorded as a methods assumption, because it may not hold across
   sites.
-- **Numeric** — offer single vs multiple imputation and the strategy; fit **inside the fold**; and
-  **never place the outcome in the imputation model**, which is a blocker in any configuration.
+- **Numeric** — the outcome's place in the imputation model is the purpose's, not a universal
+  rule (BLUEPRINT §12 ruling 4; audit WP7, which superseded this section's unscoped "never"):
+
+  > The outcome's place in the imputation model depends on the purpose. Under inference, missing predictors are multiply imputed with the outcome and total energy in the imputation model, and the analyses pooled by Rubin's rules (Moons et al. 2006, via Harrell). Under prediction, they are imputed inside each training fold without the outcome, so the fitted pipeline can impute a new row as it was developed (Sisk et al. 2023).
+
+  Under inference a single fill or a missing indicator is blocked and recorded, and complete cases
+  stay available with their assumption stated. Under prediction the in-fold, outcome-free fill and
+  the indicators stand. Either way an energy-bearing nutrient is filled from its line on total
+  energy, and values below a detection limit are never filled by the median without a reason
+  (`turbotab/core/methods/missing.py`).
 
 ### 08 · What this does not settle
 

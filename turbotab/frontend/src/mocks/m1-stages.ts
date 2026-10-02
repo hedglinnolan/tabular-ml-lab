@@ -544,11 +544,16 @@ function missingReading(
   }
   columns.sort((a, b) => b.share - a.share);
   const notAsked = columns.filter((c) => c.likely_not_asked).map((c) => c.column);
-  if (!notAsked.length) return { columns, leave_out: null };
+  if (!notAsked.length) return { columns, leave_out: null, methods: [], below_detection: [] };
   const cols = notAsked.map((c) => findColumn(ds, c)).filter((c): c is MockColumn => !!c);
   let n = 0;
   for (let i = 0; i < ds.nRows; i++) if (cols.some((c) => missing(c.values[i]))) n += 1;
-  return { columns, leave_out: { columns: notAsked, n_rows: n, share: n / ds.nRows } };
+  return {
+    columns,
+    leave_out: { columns: notAsked, n_rows: n, share: n / ds.nRows },
+    methods: [],
+    below_detection: [],
+  };
 }
 
 // ── the participant flow and the split ───────────────────────────────────────
@@ -649,7 +654,11 @@ export function cohort(
       decision_id: missRec?.id ?? null,
     });
   }
-  return { artifact: { steps, n_final: n, predictors }, rows, measured: meas };
+  return {
+    artifact: { steps, n_final: n, predictors, complete_case_loss: null },
+    rows,
+    measured: meas,
+  };
 }
 
 /** A row's place in [0, 1), fixed by the seed: the same split can be drawn again. */
@@ -1212,6 +1221,7 @@ export function fit(
                 ratio_low: null,
                 ratio_high: null,
                 q: null,
+                fmi: null,
               };
             });
     return {

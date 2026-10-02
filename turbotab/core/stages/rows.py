@@ -742,18 +742,54 @@ def _missing_mask(store: Any, columns: Sequence[str], index: Any) -> Any:
     return mask.where(mask, np.nan)  # absent -> NaN, so notna() in the flow reads it back
 
 
+COMPARED_PREDICTORS = 60  # predictors the complete-case comparison reads (the widest tables)
+COMPARED_ROWS = 50_000  # rows on each side of it, drawn evenly when there are more
+
+
+def complete_case_loss(store: Any, state: Any, ingest: Mapping[str, Any], kept: Any,
+                       preds: Sequence[str]) -> dict[str, Any] | None:
+    """The rows complete cases dropped beside the rows they kept (``methods.missing.row_loss``):
+    the outcome and the predictors, so a reader sees whether the kept rows are a different group
+    (audit E14; CLINICAL_SURVEY_PACK: "Flag when listwise deletion drops >10% of rows")."""
+    from turbotab.core.methods.missing import row_loss
+
+    _, before, _ = compute_cohort(store, state.model_copy(update={"missing": None}), ingest)
+    dropped = np.setdiff1d(np.asarray(before, dtype=np.int64), np.asarray(kept, dtype=np.int64))
+    if not len(dropped):
+        return None
+
+    def even(ids: Any) -> Any:
+        ids = np.asarray(ids, dtype=np.int64)
+        return ids if len(ids) <= COMPARED_ROWS else ids[np.linspace(0, len(ids) - 1, COMPARED_ROWS).astype(int)]
+
+    columns = [c for c in [state.target, *list(preds)[:COMPARED_PREDICTORS]] if c]
+    loss = row_loss(store.materialize(columns, even(kept)), store.materialize(columns, even(dropped)),
+                    state.target, list(preds)[:COMPARED_PREDICTORS])
+    if loss is not None:  # the counts are the cohort's, whatever the comparison read
+        loss.update(n_before=int(len(before)), n_kept=int(len(kept)), n_dropped=int(len(dropped)),
+                    share=round(len(dropped) / len(before), 4))
+    return loss
+
+
 def cohort_stage(ctx: StageContext) -> Bundle:
     import pandas as pd
 
     ctx.progress(0.05, "Reading the outcome and the columns the rules use")
+    from turbotab.core.decisions import missing_strategy
     from turbotab.core.stages.working import table_info
 
     ingest = table_info(ctx)
     measured: list[Any] = []
+    loss = None
     with open_store(ctx) as store:
         steps, kept, preds = compute_cohort(store, ctx.state, ingest, measured=measured)
+        cc = next((st for st in steps if st["key"] == "complete_cases"), None)
+        if missing_strategy(ctx.state) == "complete_case" and cc is not None and cc["dropped"]:
+            ctx.progress(0.7, "Comparing the rows complete cases drop with the rows they keep")
+            loss = complete_case_loss(store, ctx.state, ingest, kept, preds)
     ctx.progress(0.9, "Counting who is left")
-    data = {"steps": steps, "n_final": int(len(kept)), "predictors": preds}
+    data = {"steps": steps, "n_final": int(len(kept)), "predictors": preds,
+            "complete_case_loss": loss}
     # "measured" (every row with an outcome) is what the split draws its held-out rows over.
     return Bundle(data=data, frames={"rows": pd.DataFrame({"row_id": kept}),
                                      "measured": pd.DataFrame({"row_id": measured[0]})})

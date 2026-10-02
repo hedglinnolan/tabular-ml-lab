@@ -311,8 +311,12 @@ def _ordinal(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
 
 
 def _left_censored(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
+    # Every column the reading names, not the eight the card shows: the missing-values question
+    # refuses a median fill of their blanks and offers half-minimum or a censoring-aware fill
+    # (audit ME-08; turbotab.core.methods.missing.censored_columns).
+    f["censored_columns"] = [str(c) for c in p.get("columns") or f.get("affected_columns") or []]
     return Voice("Missing values cluster in the lowest-abundance features: likely below detection, "
-                 "not missing at random.", "missing", "Choose missing-value handling")
+                 "not missing at random.", "missing", "Choose how non-detections are filled")
 
 
 def _no_run_order(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
@@ -346,7 +350,9 @@ def _sentinel(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice
     if f.get("lens") and values:  # reframed by an assay lens: the title says these are counts
         said = ("is a count, not a missing-value code" if len(values) == 1
                 else "are counts, not missing-value codes")
-        return Voice(f"{tick(col)} holds low counts: {listing(values, limit=3)} {said}.", closes=True)
+        # No "treat as missing" repair is offered for counts (audit F14), and the summary says so.
+        return Voice(f"{tick(col)} holds low counts: {listing(values, limit=3)} {said}; nothing "
+                     f"needs repairing.", closes=True)
     if values:
         return Voice(f"{tick(col)} may code missing values as {listing(values, limit=3)}.")
     return Voice(f"{tick(col)} may use numeric codes for missing values.")

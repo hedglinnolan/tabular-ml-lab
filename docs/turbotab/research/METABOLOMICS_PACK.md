@@ -240,7 +240,7 @@ Two subtleties the pack must get right:
 | **Zero replacement** | true absence | Not defensible for intensities; breaks log; creates false enormous fold changes. **Anti-pattern.** |
 | **Half-minimum** | MNAR | The de-facto default (MetaboAnalyst). Deterministic, so it collapses all missing to one point, deflating variance and creating ties → can inflate significance and shrink QC RSD. Second-best after QRILC under MNAR in Wei et al. 2018, *Sci Rep* 8:663. **[CONVENTION — widely used, statistically criticized]** |
 | **MinProb / MinDet / LOD-2** | MNAR | Same family. MinProb (random draw near the detection limit) beats MinDet because it preserves variance. |
-| **QRILC** | MNAR | Draws from a truncated distribution estimated by quantile regression. **Best performer for MNAR** in Wei et al. 2018, with much smaller error than RF/SVD/kNN. **Best-supported default when the intensity-dependence plot shows censoring.** |
+| **QRILC** | MNAR | Draws from a truncated distribution estimated by quantile regression. **Best performer for MNAR value recovery** in Wei et al. 2018 (NRMSE, Procrustes), with much smaller error than RF/SVD/kNN. **Best for recovering values, not for association estimates:** an outcome-blind truncated draw attenuates a slope as censoring grows (audit ME-08: 0.38 of 0.5 at 60% censored). For a coefficient, a censoring-aware fill that conditions on the outcome (Tobit-type multiple imputation; Lubin et al. 2004) is the sound choice, and is what the app offers. |
 | **GSimp** | MNAR | Gibbs sampler with an embedded prediction model (Wei et al. 2018, *PLoS Comput Biol* 14:e1005973). Stronger than QRILC in principle because it uses inter-feature structure; heavier, less widely implemented. |
 | **kNN** | MCAR/MAR | Good for MAR, **poor for MNAR** — no left-censoring constraint, so it *overestimates* censored values. |
 | **Random forest (missForest)** | MCAR/MAR | Best for MCAR/MAR in Wei et al.; but also reported "consistently robust across all MNAR situations" and most suitable for label-free proteomics when the mechanism is unknown (*Sci Rep* 2021). **This is a genuine contradiction between the metabolomics and proteomics benchmark literature — the pack must not pretend it's resolved.** |
@@ -253,7 +253,9 @@ Two subtleties the pack must get right:
 1. **Filter first** — never impute a feature that fails the missingness filter.
 2. If **differential missingness** is FDR-significant, do **not** impute; report presence/absence with
    a Fisher test.
-3. If the intensity-dependence plot shows **censoring** (the usual case): **QRILC** or GSimp.
+3. If the intensity-dependence plot shows **censoring** (the usual case): for associations, a
+   censoring-aware fill (Tobit-type multiple imputation conditioning on the outcome, under
+   inference); QRILC or GSimp when the values themselves are wanted.
 4. If missingness is **flat** with respect to intensity: random forest or kNN.
 5. Always offer half-min as the "match what everyone else published" option, with the caveat attached.
 6. **★ Always run the primary analysis under two imputation schemes and report whether conclusions

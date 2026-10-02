@@ -32,6 +32,7 @@ KEPT = "kept"
 
 OPERATIONS: dict[str, str] = {
     "SimpleImputer": "imputed",
+    "EnergyAwareImputer": "imputed",  # WP7: a nutrient's fill is its line on total energy
     "OneHotEncoder": "one-hot",
     "MissingLevelEncoder": "one-hot, blank as a level",
     "StandardScaler": "scaled",

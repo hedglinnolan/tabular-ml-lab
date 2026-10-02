@@ -260,6 +260,12 @@ def missing_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                    f"would leave" + (f"; `{ranked[0]}` is missing most." if ranked else "."))
         if not dropped:
             caption = f"No {_pool_words(ctx)} miss a predictor, so none would leave."
+    elif decision.strategy == "multiple_imputation":
+        cells = sum(gaps.values())
+        m = int(getattr(decision, "m", 20) or 20)
+        caption = (f"No rows leave; {fmt_count(cells)} missing cells are imputed {m} times, given the "
+                   f"outcome and the other predictors.") if cells else (
+            "No predictor has a missing value, so nothing is imputed.")
     else:
         cells = sum(gaps.values())
         caption = (f"No rows leave; {fmt_count(cells)} missing cells in {fmt_count(len(gaps))} predictors "
@@ -471,12 +477,18 @@ def _gaps_view(ctx: PreviewContext, reach_ids: Any, ranked: list[str], gaps: dic
         before = {c: json_safe(values.at[r, c]) for c in columns}
         if strategy == "impute":
             after = {c: (json_safe(fills[c]) if missing.at[r, c] else before[c]) for c in columns}
+        elif strategy == "multiple_imputation":  # no one value: each imputation draws its own
+            after = {c: ("imputed" if missing.at[r, c] else before[c]) for c in columns}
         else:
             after = {}  # the row leaves the analysis
         rows.append(TableRow(row_id=int(r), before=before, after=after))
         cells += [(int(r), c) for c in columns if bool(missing.at[r, c])]
     n_cells = sum(gaps.values())
-    if strategy == "impute":
+    if strategy == "multiple_imputation":
+        caption = (f"{fmt_count(n_cells)} cells would be imputed several times, each draw given the "
+                   f"outcome and the other predictors.")
+        title = "The cells that would be imputed"
+    elif strategy == "impute":
         shown = [c for c in columns[:2]]
         said = " and ".join(f"`{c}` with `{_shown(fills.get(c))}`" for c in shown)
         caption = (f"{fmt_count(n_cells)} cells would be filled: {said}"
@@ -491,7 +503,7 @@ def _gaps_view(ctx: PreviewContext, reach_ids: Any, ranked: list[str], gaps: dic
         caption=clip_words(caption, CAPTION_WORDS),
         emphasis=columns,
         columns_before=columns,
-        columns_after=columns if strategy == "impute" else [],
+        columns_after=columns if strategy in ("impute", "multiple_imputation") else [],
         rows=rows,
         changed=cells,
         n_affected_columns=len(gaps),

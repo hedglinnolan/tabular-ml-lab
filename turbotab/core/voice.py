@@ -381,7 +381,8 @@ def _slot_value(slot: str, value: Any) -> str | None:
         return "no exclusions" if n == 0 else f"{count(n)} exclusion {plural(n, 'rule')}"
     if slot == "missing":
         strategy = value if isinstance(value, str) else _attr(value, "strategy")
-        how = "complete cases" if strategy == "complete_case" else "imputation"
+        how = {"complete_case": "complete cases",
+               "multiple_imputation": "multiple imputation"}.get(strategy, "imputation")
         dropped = [] if isinstance(value, str) else list(_attr(value, "drop_columns") or [])
         return f"{how}, with {listing(dropped)} left out" if dropped else how
     if slot == "split":
@@ -660,14 +661,78 @@ def _set_missing(d: Any, state: Any, ctx: Any) -> str:
                         f"{other}, so all {count(before)} rows remain")
                 return text[0].upper() + text[1:]
             text += f": {count(kept)} of {count(before)} rows remain"
+        if getattr(state, "purpose", None) == "inference":
+            from turbotab.core.methods.missing import COMPLETE_CASE_ASSUMPTION
+
+            text += f"; {COMPLETE_CASE_ASSUMPTION}"
         text += _domain_clause(state)
         return text[0].upper() + text[1:]
     others = "the other predictors' missing values" if dropped or levels else "missing predictor values"
-    text = (f"{first}{others} were imputed, learned from training rows only; no row was dropped "
-            f"for a missing predictor")
-    if getattr(d, "indicators", False):
-        text += ", and each imputed number carries a missing indicator"
+    if d.strategy == "multiple_imputation":
+        energy = _energy_column(state)
+        with_energy = f" and total energy ({tick(energy)})" if energy else ""
+        text = (f"{first}{others} were imputed by multiple imputation by chained equations (m = "
+                f"{tick(getattr(d, 'm', 20))}), with the outcome{with_energy} in the imputation "
+                f"model, and the coefficients pooled over the imputations by Rubin's rules; no row "
+                f"was dropped for a missing predictor")
+    else:
+        fill = _energy_fill_words(state)
+        text = (f"{first}{others} were imputed in each training fold without the outcome: the "
+                f"median for numbers{fill}, the most frequent value for categories; no row was "
+                f"dropped for a missing predictor")
+        if getattr(d, "indicators", False):
+            text += ", and each imputed number carries a missing indicator"
+    text += _below_detection_clause(d, state)
+    if getattr(d, "acknowledged", False) and getattr(state, "purpose", None) == "inference":
+        from turbotab.core.methods.missing import INDICATOR_CAUTION, SINGLE_FILL_CAUTION
+
+        indicator = getattr(d, "indicators", False) or levels
+        text += (f"; it was kept under inference as a recorded limitation: "
+                 f"{INDICATOR_CAUTION if indicator else SINGLE_FILL_CAUTION}")
     return text[0].upper() + text[1:]
+
+
+def _energy_column(state: Any) -> str | None:
+    adj = getattr(state, "energy_adjustment", None)
+    if adj is not None and getattr(adj, "energy_column", None):
+        return str(adj.energy_column)
+    return next((c for c, r in (getattr(state, "roles", None) or {}).items() if r == "energy"), None)
+
+
+def _energy_fill_words(state: Any) -> str:
+    """", an energy-bearing nutrient from its line on `kcal`" when the single fill is energy-aware
+    (``methods.missing.energy_fill``), else nothing."""
+    from turbotab.core.methods.missing import energy_fill
+
+    roles = dict(getattr(state, "roles", None) or {})
+    adj = getattr(state, "energy_adjustment", None)
+    try:
+        predictors = [c for c, r in roles.items() if r in ("exposure", "covariate", "energy")]
+        fill = energy_fill(adj.model_dump() if adj is not None else None, predictors, roles, predictors)
+    except Exception:  # a sentence never fails a decision; it says less
+        fill = None
+    if not fill:
+        return ""
+    return f", an energy-bearing nutrient from its line on total energy ({tick(fill['energy'])})"
+
+
+def _below_detection_clause(d: Any, state: Any) -> str:
+    """How values below a detection limit were filled (audit ME-08)."""
+    columns = list(getattr(d, "censored_columns", None) or [])
+    method = getattr(d, "below_detection", None)
+    if not columns or method not in ("half_minimum", "censoring_aware"):
+        reason = getattr(d, "reason", None)
+        return f"; non-detections were filled as any other blank, for the recorded reason: {reason}" \
+            if reason else ""
+    named = listing(columns, limit=3)
+    if method == "half_minimum":
+        return (f"; values below the detection limit in {named} were set to half the column's "
+                f"smallest detected value")
+    if getattr(d, "strategy", None) == "multiple_imputation":
+        return (f"; values below the detection limit in {named} were drawn below the limit from a "
+                f"censored-normal (Tobit) model within the multiple imputation, given the outcome")
+    return (f"; values below the detection limit in {named} were set to their expected value below "
+            f"the limit under a censored-normal fit, in each training fold")
 
 
 # set_split

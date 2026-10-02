@@ -33,7 +33,14 @@ below detection     ``below_detection__<col>`` (detected       ``half_limit``, `
 infinite values     ``infinite_values`` (detected here)        ``set_missing`` (values)
 date reading        ``ambiguous_dates`` (detected here)        ``month_first``, ``day_first``
                                                                (values)
+zeros as non-       ``pack::metabolomics::zeros_or_missing``   ``nondetect``: zeros become blanks
+detections                                                     below the detection limit (values)
 ==================  =========================================  =================================
+
+A sentinel finding an assay lens reframed as counts (genomics low counts) offers no repair: its
+own summary says the values are counts (audit F14). Zeros are read as non-detections only when the
+user applies ``nondetect`` (audit ME-08); the missing-values answer then says how non-detections
+are filled (``turbotab.core.methods.missing``).
 
 Where each effect executes
 --------------------------
@@ -342,6 +349,10 @@ def _code_values(params: Mapping[str, Any]) -> dict[str, list[float]]:
 def _offer_sentinels(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> list[RepairOption]:
     from turbotab.core.stages.finding_words import family
 
+    if family(finding["id"]) == "sentinel_missing" and finding.get("lens"):
+        # An assay lens reframed these values as counts (genomics low counts; audit F14): a repair
+        # that blanks them would contradict the finding's own summary, so none is offered.
+        return []
     if family(finding["id"]) == "pack::survey::sentinel_codes":
         codes = {str(e["item"]): [float(v) for v in e.get("sentinel_values") or []]
                  for e in p.get("items") or [] if isinstance(e, Mapping) and oc.has(e.get("item"))}
@@ -968,6 +979,58 @@ def _infinite_marks(option: str, params: Mapping[str, Any]) -> set[tuple[str, st
     return {(str(c), "infinite") for c in params.get("columns") or []}
 
 
+# zeros that mean "not detected" (audit ME-08) ─────────────────────────────
+
+
+def _zero_columns(frame: pd.DataFrame) -> dict[str, int]:
+    """The intensity block's columns that hold zeros, with how many (``packs.metabolite_columns``
+    reads which numeric columns are measurements)."""
+    from turbotab import packs
+
+    columns = [c for c in packs.metabolite_columns(frame) if c in frame.columns]
+    if not columns:
+        return {}
+    values = frame[columns].apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
+    hits = (values == 0.0).sum(axis=0)
+    return {str(c): int(n) for c, n in zip(columns, hits) if n}
+
+
+def _offer_zeros(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> list[RepairOption]:
+    """Zeros an export wrote for non-detections become blanks below the detection limit — only
+    when the user says so: the finding states that nothing has assumed what they mean, and this
+    option is that answer. The missing-values question then asks how non-detections are filled."""
+    counts = _zero_columns(oc.frame)
+    if not counts:
+        return []
+    cols, total = sorted(counts, key=lambda c: (-counts[c], c)), sum(counts.values())
+    return [_option(
+        finding, "nondetect", "Zeros mean not detected",
+        f"{_count(total)} zeros in {_count(len(cols))} features become non-detections, filled as "
+        f"the missing-values answer says.",
+        f"{_count(total)} zeros in {_count(len(cols))} {_plural(len(cols), 'feature')} were read as "
+        f"values below the detection limit (non-detections), as the export writes them.",
+        "values", {"columns": cols})]
+
+
+def _zero_values(option: str, params: Mapping[str, Any]) -> dict[str, Wrap]:
+    def wrap(x: str) -> str:
+        return f"CASE WHEN TRY_CAST({x} AS DOUBLE) = 0 THEN NULL ELSE {x} END"
+    return {str(c): wrap for c in params.get("columns") or []}
+
+
+def _zero_marks(option: str, params: Mapping[str, Any]) -> set[tuple[str, str]]:
+    return {(str(c), "nondetect") for c in params.get("columns") or []}
+
+
+def nondetect_columns(dispositions: Any, findings: Any = None) -> list[str]:
+    """Columns whose zeros the user recoded as non-detections (left-censored blanks)."""
+    out: list[str] = []
+    for fam, _, option, params in _applied(dispositions, findings):
+        if fam.key == "zeros_nondetect":
+            out.extend(str(c) for c in params.get("columns") or [] if str(c) not in out)
+    return out
+
+
 FAMILIES: dict[str, Family] = {}
 _BY_FINDING: dict[str, str] = {}
 
@@ -993,6 +1056,9 @@ register_family(Family("text_numbers", 1, _offer_text_numbers,
                        values=_text_number_values, marks=_text_number_marks), ["text_numbers"])
 register_family(Family("sas_zeros", 2, _offer_sas, {"zero": "values"},
                        values=_sas_values, marks=_sas_marks), ["sas_zeros"])
+register_family(Family("zeros_nondetect", 3, _offer_zeros, {"nondetect": "values"},
+                       values=_zero_values, marks=_zero_marks),
+                ["pack::metabolomics::zeros_or_missing"])
 register_family(Family("sentinel_codes", 3, _offer_sentinels, {"set_missing": "values"},
                        values=_sentinel_values, marks=_sentinel_marks),
                 ["sentinel_missing", "pack::survey::sentinel_codes"])

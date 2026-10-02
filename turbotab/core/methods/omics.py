@@ -843,7 +843,7 @@ LOGGED = ("pqn_log2", "log2")  # the normalizations that take a plain log, so a 
 def _fills_missing(state: Any) -> bool:
     from turbotab.core.decisions import missing_strategy
 
-    return missing_strategy(state) == "impute"
+    return missing_strategy(state) in ("impute", "multiple_imputation")
 
 
 def zeros_message(n_zero: int, names: Sequence[str]) -> str:

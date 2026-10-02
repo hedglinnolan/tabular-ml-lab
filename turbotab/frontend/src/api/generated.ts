@@ -1213,13 +1213,18 @@ export interface components {
         /**
          * MissingSpec
          * @description The missing-values answer: columns left out of the predictors, then a strategy for the rest.
+         *
+         *     ``m``: the imputations under multiple imputation. ``below_detection`` and ``censored_columns``:
+         *     how the blanks of columns whose values lie below a detection limit are filled. ``acknowledged``
+         *     and ``reason``: the recorded attestation that keeps a blocked answer (a single fill or the
+         *     missing-indicator method under inference; a median fill of non-detections, with its reason).
          */
         MissingSpec: {
             /**
              * Strategy
              * @enum {string}
              */
-            strategy: "complete_case" | "impute";
+            strategy: "complete_case" | "impute" | "multiple_imputation";
             /** Drop Columns */
             drop_columns: string[];
             /**
@@ -1233,6 +1238,22 @@ export interface components {
              * @default false
              */
             indicators: boolean;
+            /**
+             * M
+             * @default 20
+             */
+            m: number;
+            /** Below Detection */
+            below_detection: ("half_minimum" | "censoring_aware" | "as_missing") | null;
+            /** Censored Columns */
+            censored_columns: string[];
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+            /** Reason */
+            reason: string | null;
         };
         /**
          * OpenSeal
@@ -1975,7 +1996,7 @@ export interface components {
              * Strategy
              * @enum {string}
              */
-            strategy: "complete_case" | "impute";
+            strategy: "complete_case" | "impute" | "multiple_imputation";
             /** Drop Columns */
             drop_columns?: string[];
             /**
@@ -1989,6 +2010,22 @@ export interface components {
              * @default false
              */
             indicators: boolean;
+            /**
+             * M
+             * @default 20
+             */
+            m: number;
+            /** Below Detection */
+            below_detection?: ("half_minimum" | "censoring_aware" | "as_missing") | null;
+            /** Censored Columns */
+            censored_columns?: string[];
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+            /** Reason */
+            reason?: string | null;
         };
         /**
          * SetMissing
@@ -2007,7 +2044,7 @@ export interface components {
              * Strategy
              * @enum {string}
              */
-            strategy: "complete_case" | "impute";
+            strategy: "complete_case" | "impute" | "multiple_imputation";
             /** Drop Columns */
             drop_columns: string[];
             /**
@@ -2021,6 +2058,22 @@ export interface components {
              * @default false
              */
             indicators: boolean;
+            /**
+             * M
+             * @default 20
+             */
+            m: number;
+            /** Below Detection */
+            below_detection: ("half_minimum" | "censoring_aware" | "as_missing") | null;
+            /** Censored Columns */
+            censored_columns: string[];
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+            /** Reason */
+            reason: string | null;
         };
         /**
          * SetOrientation
@@ -3169,6 +3222,11 @@ export interface components {
              * @default null
              */
             q: number | null;
+            /**
+             * Fmi
+             * @default null
+             */
+            fmi: number | null;
         };
         /**
          * CohortArtifact
@@ -3181,6 +3239,8 @@ export interface components {
             n_final: number;
             /** Predictors */
             predictors: string[];
+            /** @default null */
+            complete_case_loss: components["schemas"]["CompleteCaseLoss"] | null;
         };
         /** ColumnInfo */
         ColumnInfo: {
@@ -3221,6 +3281,23 @@ export interface components {
             varied: boolean;
             /** Chosen */
             chosen: boolean;
+        };
+        /**
+         * CompleteCaseLoss
+         * @description What complete cases cost: the rows dropped beside the rows kept (audit WP7, E14).
+         */
+        CompleteCaseLoss: {
+            /** N Before */
+            n_before: number;
+            /** N Kept */
+            n_kept: number;
+            /** N Dropped */
+            n_dropped: number;
+            /** Share */
+            share: number;
+            outcome: components["schemas"]["RowComparison"] | null;
+            /** Columns */
+            columns: components["schemas"]["RowComparison"][];
         };
         /** CurvePoint */
         CurvePoint: {
@@ -3923,6 +4000,8 @@ export interface components {
             survey: components["schemas"]["SurveyInference"] | null;
             /** @default null */
             brant: components["schemas"]["BrantCheck"] | null;
+            /** @default null */
+            missing: components["schemas"]["MissingData"] | null;
         };
         /**
          * InferenceExit
@@ -4092,6 +4171,116 @@ export interface components {
             reason: string;
         };
         /**
+         * MissingData
+         * @description How the inference table handled missing predictor values (AUDIT_REPORT §5 WP7, ME-01;
+         *     ``turbotab/core/methods/missing.py``): multiple imputation with the outcome (m imputations by
+         *     chained equations, pooled by Rubin's rules), complete cases with their assumption, or a single
+         *     fill kept with its recorded attestation.
+         */
+        MissingData: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "multiple_imputation" | "complete_case" | "single_fill";
+            /** Assumption */
+            assumption: string;
+            /**
+             * M
+             * @default null
+             */
+            m: number | null;
+            /**
+             * Iterations
+             * @default null
+             */
+            iterations: number | null;
+            /**
+             * N Rows
+             * @default null
+             */
+            n_rows: number | null;
+            /**
+             * N Incomplete Rows
+             * @default null
+             */
+            n_incomplete_rows: number | null;
+            /**
+             * Imputed
+             * @default {}
+             */
+            imputed: {
+                [key: string]: number;
+            };
+            /**
+             * Variables
+             * @default []
+             */
+            variables: string[];
+            /**
+             * Outcome In Model
+             * @default false
+             */
+            outcome_in_model: boolean;
+            /**
+             * Energy
+             * @default null
+             */
+            energy: string | null;
+            /**
+             * Censored
+             * @default []
+             */
+            censored: string[];
+            /**
+             * Below Detection
+             * @default null
+             */
+            below_detection: string | null;
+            /**
+             * N Dropped
+             * @default null
+             */
+            n_dropped: number | null;
+            /**
+             * Recorded
+             * @default false
+             */
+            recorded: boolean;
+            /**
+             * Note
+             * @default null
+             */
+            note: string | null;
+        };
+        /**
+         * MissingMethodOption
+         * @description A way to handle missing values (or values below detection), with its two labels (north star
+         *     5) and its rung for the declared purpose (audit WP7; ``turbotab/core/methods/missing.py``).
+         */
+        MissingMethodOption: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Customary */
+            customary: string;
+            /** Sound */
+            sound: string;
+            /**
+             * Rung
+             * @enum {string}
+             */
+            rung: "recommended" | "available" | "block_and_record" | "refused";
+            /**
+             * Decision
+             * @default {}
+             */
+            decision: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * MissingReading
          * @description What the missing-values question can offer on this table (M1_CONTRACT §12.4).
          */
@@ -4099,6 +4288,16 @@ export interface components {
             /** Columns */
             columns: components["schemas"]["MissingColumn"][];
             leave_out: components["schemas"]["LeaveOut"] | null;
+            /**
+             * Methods
+             * @default []
+             */
+            methods: components["schemas"]["MissingMethodOption"][];
+            /**
+             * Below Detection
+             * @default []
+             */
+            below_detection: components["schemas"]["MissingMethodOption"][];
         };
         /**
          * NestedColumn
@@ -4450,6 +4649,24 @@ export interface components {
             repeats: components["schemas"]["Repeats"] | null;
             /** Categorical */
             categorical: components["schemas"]["CategoricalProposal"][];
+        };
+        /**
+         * RowComparison
+         * @description One column on the rows complete cases kept and on those they dropped (audit E14).
+         */
+        RowComparison: {
+            /** Column */
+            column: string;
+            /** Kept */
+            kept: number;
+            /** Dropped */
+            dropped: number;
+            /** Smd */
+            smd: number;
+            /** Kind */
+            kind: string;
+            /** N Dropped Observed */
+            n_dropped_observed: number;
         };
         /**
          * SealBasis

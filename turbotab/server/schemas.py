@@ -307,12 +307,35 @@ class RolesArtifact(Model):
     categorical: list[CategoricalProposal]
 
 
+class RowComparison(Model):
+    """One column on the rows complete cases kept and on those they dropped (audit E14)."""
+
+    column: str
+    kept: float
+    dropped: float
+    smd: float  # the standardized difference, dropped minus kept
+    kind: str  # "mean", or "share <level>" for a category
+    n_dropped_observed: int
+
+
+class CompleteCaseLoss(Model):
+    """What complete cases cost: the rows dropped beside the rows kept (audit WP7, E14)."""
+
+    n_before: int
+    n_kept: int
+    n_dropped: int
+    share: float
+    outcome: RowComparison | None
+    columns: list[RowComparison]  # largest standardized difference first
+
+
 class CohortArtifact(Model):
     """The ``cohort`` artifact (a Bundle's ``data``): the participant flow."""
 
     steps: list[RowStep]
     n_final: int
     predictors: list[str]
+    complete_case_loss: CompleteCaseLoss | None = None
 
 
 class SplitArtifact(Model):
@@ -406,11 +429,26 @@ class LeaveOut(Model):
     share: float
 
 
+class MissingMethodOption(Model):
+    """A way to handle missing values (or values below detection), with its two labels (north star
+    5) and its rung for the declared purpose (audit WP7; ``turbotab/core/methods/missing.py``)."""
+
+    key: str
+    label: str
+    customary: str  # customary in the field, with a source
+    sound: str  # sound for the declared purpose, with the reason
+    rung: Literal["recommended", "available", "block_and_record", "refused"]
+    decision: dict[str, Any] = {}  # the set_missing fields that choose it (below detection: none)
+
+
 class MissingReading(Model):
     """What the missing-values question can offer on this table (M1_CONTRACT §12.4)."""
 
     columns: list[MissingColumn]  # most blank first
     leave_out: LeaveOut | None
+    # WP7: the methods, soundest first for the declared purpose; and the below-detection fills.
+    methods: list[MissingMethodOption] = []
+    below_detection: list[MissingMethodOption] = []
 
 
 class SurveyOption(Model):

@@ -294,7 +294,11 @@ def test_every_fitted_step_sees_only_training_fold_rows(tmp_path, monkeypatch, p
 
     monkeypatch.setattr(sm, "OLS", ols)
 
-    st = mf.state(energy_adjustment=mf.energy("residual"), missing="impute", purpose=purpose)
+    # Under inference a single fill is blocked until recorded (WP7): the recorded one is fit as before.
+    from turbotab.core.decisions import MissingSpec
+
+    missing = "impute" if purpose == "prediction" else MissingSpec(strategy="impute", acknowledged=True)
+    st = mf.state(energy_adjustment=mf.energy("residual"), missing=missing, purpose=purpose)
     seen.clear()
     run(st, paths, split)
     design_rows = seen.pop("energy")[0]  # the design's shared steps: every training row, once

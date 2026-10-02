@@ -210,13 +210,15 @@ some things outright, so the line has to be stated rather than assumed:
 
 | Rung | When | Example |
 |---|---|---|
-| **Refuse** | No legitimate use exists at all. Proceeding makes the app assert something false that no caveat repairs. | The outcome inside the imputation model. A post-seal eligibility restriction. |
+| **Refuse** | No legitimate use exists at all. Proceeding makes the app assert something false that no caveat repairs. | The outcome inside the imputation model of a *prediction* model (BLUEPRINT §12 ruling 4: under inference it belongs there). A post-seal eligibility restriction. |
 | **Block and record** | A legitimate use exists but is rare, and the user may know something the engine cannot. | Keeping a leakage-suspect column. Imputing informatively-missing data. Contradicting the grain evidence. Typed acknowledgment, and the manuscript carries it as a limitation. |
 | **Rank and state the concern** | A matter of judgment with a real cost. | SMOTE (documented calibration harm, but legitimate when only discrimination matters). PLS-DA on small *n*. A tree ensemble at p ≫ n. |
 
 The test for the top rung is not severity — it is whether a competent researcher could have a
-reason. There is no analysis in which the outcome belongs in the imputation model; there are many
-in which a suspicious column is measured before the outcome and the researcher knows it.
+reason. There is no prediction model whose imputation should read the outcome a new row will not
+have (under inference the opposite holds: multiple imputation with the outcome, Moons et al. 2006;
+audit WP7); there are many analyses in which a suspicious column is measured before the outcome and
+the researcher knows it.
 
 ### The export, and what a marked figure means — the product owner's rulings
 

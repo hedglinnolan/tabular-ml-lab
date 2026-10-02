@@ -58,6 +58,7 @@ const cohort: CohortArtifact = {
   ],
   n_final: 2943,
   predictors: Array.from({ length: 11 }, (_, i) => `p${i}`),
+  complete_case_loss: null,
 };
 
 const split: SplitArtifact = {

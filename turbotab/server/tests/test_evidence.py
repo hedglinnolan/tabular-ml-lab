@@ -126,7 +126,10 @@ def test_the_missing_question_previews_the_rows_leaving_the_blank_columns_out_sa
     assert said.startswith("`meds_hbp` and `meds_chol` were left out of the predictors; then a "
                            "complete-case analysis was applied: no row is missing any other "
                            "predictor, so all `21,348` rows remain")
-    assert view["state"]["missing"] == {"strategy": "complete_case", "drop_columns": ["meds_hbp", "meds_chol"], "categorical": "impute", "indicators": False}
+    assert view["state"]["missing"] == {"strategy": "complete_case", "drop_columns": ["meds_hbp", "meds_chol"],
+                                        "categorical": "impute", "indicators": False, "m": 20,
+                                        "below_detection": None, "censored_columns": [],
+                                        "acknowledged": False, "reason": None}
     wait_for(client, nhanes, {"cohort": "fresh"})
     cohort = client.get(f"/api/projects/{nhanes}/stages/cohort").json()["artifact"]
     assert cohort["n_final"] == 21_348 and not {"meds_hbp", "meds_chol"} & set(cohort["predictors"])
