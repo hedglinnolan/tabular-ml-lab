@@ -239,19 +239,19 @@ def grain_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         con.close()
     caption = (f"`{n_rows:,}` rows from `{int(n_units or 0):,}` `{key}` values, at most "
                f"`{int(most or 0)}` each; each one's rows are held out together.")
-    views: list[Any] = [RowFlowView(title=f"Rows per {key}", caption=clip_words(caption, CAPTION_WORDS),
-                                    before=[loaded], after=[loaded])]
-    if records is not None and len(records):
-        rows = [TableRow(row_id=int(r[ROW_ID]), before={c: json_safe(r[c]) for c in shown},
-                         after={c: json_safe(r[c]) for c in shown}) for _, r in records.iterrows()]
-        frames = [FrameRow(row_id=row.row_id, values=row.before) for row in rows]
-        views.insert(0, TableFocusView(
-            title=f"{len(picked)} {key} values, each in several rows",
-            caption=clip_words(caption, CAPTION_WORDS), emphasis=[key],
-            columns_before=shown, columns_after=shown, rows=rows, changed=[],
-            n_affected_columns=0,
-            story=[TableFrame(label=f"Each {key}'s rows", columns=shown, rows=frames)]))
-    return views
+    if records is None or not len(records):
+        return [RowFlowView(title=f"Rows per {key}", caption=clip_words(caption, CAPTION_WORDS),
+                            before=[loaded], after=[loaded])]
+    # One view: the units' rows, captioned with the counts (a second view repeating the caption
+    # would answer nothing new; BLUEPRINT §11.2).
+    rows = [TableRow(row_id=int(r[ROW_ID]), before={c: json_safe(r[c]) for c in shown},
+                     after={c: json_safe(r[c]) for c in shown}) for _, r in records.iterrows()]
+    frames = [FrameRow(row_id=row.row_id, values=row.before) for row in rows]
+    return [TableFocusView(
+        title=f"{len(picked)} {key} values, each in several rows",
+        caption=clip_words(caption, CAPTION_WORDS), emphasis=[key],
+        columns_before=shown, columns_after=shown, rows=rows, changed=[], n_affected_columns=0,
+        story=[TableFrame(label=f"Each {key}'s rows", columns=shown, rows=frames)])]
 
 
 def temporal_views(decision: Any, ctx: PreviewContext) -> list[Any]:
@@ -334,19 +334,15 @@ def orientation_views(decision: Any, ctx: PreviewContext) -> list[Any]:
               for i, s in enumerate(samples)]
     caption = (f"`{n_rows:,}` feature rows become columns: `{n_cols - 1:,}` rows, one per sample, "
                f"named by the header.")
-    after = [RowStep(key="turned", label="Rows after turning: samples", n=n_cols - 1)]
     rows = [TableRow(row_id=f.row_id, before=f.values, after=f.values) for f in turned]
-    return [
-        TableFocusView(title="The table turned round", caption=clip_words(caption, CAPTION_WORDS),
-                       emphasis=["sample_id"], columns_before=[label, *samples],
-                       columns_after=turned_cols, rows=rows, changed=[], n_affected_columns=0,
-                       story=[TableFrame(label="As supplied: features in rows",
-                                         columns=[label, *samples], rows=supplied),
-                              TableFrame(label="Turned: one row per sample", columns=turned_cols,
-                                         rows=turned)]),
-        RowFlowView(title="Rows before and after turning", caption=clip_words(caption, CAPTION_WORDS),
-                    before=[loaded], after=after),
-    ]
+    # One view: the corner, as supplied and then turned; the caption carries the counts.
+    return [TableFocusView(
+        title="The table turned round", caption=clip_words(caption, CAPTION_WORDS),
+        emphasis=["sample_id"], columns_before=[label, *samples], columns_after=turned_cols,
+        rows=rows, changed=[], n_affected_columns=0,
+        story=[TableFrame(label="As supplied: features in rows", columns=[label, *samples],
+                          rows=supplied),
+               TableFrame(label="Turned: one row per sample", columns=turned_cols, rows=turned)])]
 
 
 def _plain(value: Any) -> Any:

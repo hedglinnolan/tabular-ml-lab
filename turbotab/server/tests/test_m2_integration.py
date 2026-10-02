@@ -135,8 +135,8 @@ def test_every_structural_answer_previews_its_picture(client, tmp_path):
     event = preview(client, pid, {"kind": "set_event", "column": "progressed", "level": "1"})
     assert event["note"].startswith("`1` (`161` rows) becomes 1")
     grain = preview(client, pid, {"kind": "set_grain", "grain": "repeated", "id_column": "subject_id"})
-    assert [v["kind"] for v in grain["views"]] == ["table_focus", "row_flow"]
-    assert "`200` `subject_id` values, at most `3` each" in grain["views"][1]["caption"]
+    assert [v["kind"] for v in grain["views"]] == ["table_focus"]
+    assert "`200` `subject_id` values, at most `3` each" in grain["views"][0]["caption"]
     decide(client, pid, {"kind": "set_grain", "grain": "repeated", "id_column": "subject_id"})
     decide(client, pid, {"kind": "set_unit", "unit": "row"})
     wait_for(client, pid, {"structure": "fresh", "cohort": "fresh"})
@@ -159,5 +159,5 @@ def test_every_structural_answer_previews_its_picture(client, tmp_path):
     focus = turn["views"][0]
     assert focus["kind"] == "table_focus" and [f["label"] for f in focus["story"]] == [
         "As supplied: features in rows", "Turned: one row per sample"]
-    assert focus["story"][1]["columns"][0] == "sample_id"
-    assert turn["views"][1]["after"][-1]["n"] == turned.shape[1]  # one row per sample
+    assert focus["story"][1]["columns"][0] == "sample_id" and len(turn["views"]) == 1
+    assert f"`{turned.shape[1]}` rows, one per sample" in focus["caption"]
