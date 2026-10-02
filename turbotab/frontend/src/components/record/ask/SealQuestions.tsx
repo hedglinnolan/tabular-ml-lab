@@ -12,11 +12,7 @@
  */
 import { useId, useMemo, useState } from "react";
 import { useStageFocus } from "../../../state/focus";
-import type {
-  RolesArtifact,
-  SplitArtifact,
-  TeachingEntry,
-} from "../../../api/m1-types";
+import type { RolesArtifact, SplitArtifact, TeachingEntry } from "../../../api/m1-types";
 import type { SealBasis, SealPlan } from "../../../api/m2-types";
 import type { Decision, ProjectState } from "../../../api/schema";
 import { Options, type OptionItem } from "../Options";
@@ -34,6 +30,11 @@ const splitDecision = (holdout: number): Decision => ({
   holdout,
   seed: 0,
   folds: 5,
+  // The server's defaults (decisions.py SplitSpec); the validation choice is not drawn yet (WP9).
+  validation: "kfold",
+  repeats: 10,
+  n_boot: 200,
+  cluster: null,
 });
 
 /** The seal's basis, said once: the glyph, its label, and the sentence that says how it was drawn. */

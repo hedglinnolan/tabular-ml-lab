@@ -2,10 +2,15 @@
 
 M1 said when a family scores *worse* than its baseline (the outcome's training-fold mean, or the
 class prior); M2 added "no better". The comparison is paired, fold by fold, on the primary metric
-(higher is better for R², AUC and macro-F1), and the gain is the difference of the two reported
-cross-validated scores (for R², the pooled estimate, :mod:`turbotab.core.models.metrics`):
+and the gain is the difference of the two reported cross-validated scores (for R², the pooled
+estimate, :mod:`turbotab.core.models.metrics`), signed so that a gain is an improvement: for a
+metric that is better when higher (R², AUC)
 
     d_k = model_k − baseline_k            gain = model CV score − baseline CV score
+
+and the other way round for one that is better when lower (log loss, the multiclass primary).
+Under repeated k-fold every repeat's folds enter, so with r repeats of K folds this is Bouckaert &
+Frank's corrected repeated k-fold t (PAKDD 2004): ``1/(rK)`` in place of ``1/K``, ``rK − 1`` df.
 
 **The interval corrects for the folds sharing training rows.** Fold scores are not independent:
 any two folds' models share most of their training rows, so the spread of ``d_k`` understates the
@@ -65,13 +70,16 @@ def versus_baseline(metric: str, model_folds: Sequence[float | None],
                     test_share: float | None = None) -> VersusBaseline:
     """The paired comparison and its verdict (see the module docstring).
 
-    ``gain``: the difference of the reported cross-validated scores (default: the mean per-fold
-    difference). ``test_share``: rows scored over rows fit, per fold, on average (default
+    ``gain``: the improvement of the reported cross-validated score over the baseline's, signed
+    as the per-fold differences are (default: their mean). ``test_share``: rows scored over rows fit, per fold, on average (default
     ``1/(K − 1)``, a K-fold cross-validation's).
     """
+    from turbotab.core.models.metrics import higher_is_better
+
+    sign = 1.0 if higher_is_better(metric) else -1.0
     pairs = [(float(m), float(b)) for m, b in zip(model_folds, baseline_folds)
              if m is not None and b is not None and math.isfinite(float(m)) and math.isfinite(float(b))]
-    diffs = [m - b for m, b in pairs]
+    diffs = [sign * (m - b) for m, b in pairs]
     k = len(diffs)
     if gain is None or not math.isfinite(gain):
         gain = sum(diffs) / k if k else None
@@ -105,17 +113,20 @@ def versus_baseline(metric: str, model_folds: Sequence[float | None],
                           tolerance_basis=basis, se=se, ci_low=ci_low, ci_high=ci_high, df=df)
 
 
-def compare(task: str, model: Any, baseline: Any) -> tuple[dict[str, dict[str, Any]], VersusBaseline]:
+def compare(task: str, model: Any, baseline: Any,
+            summary: dict[str, dict[str, Any]] | None = None
+            ) -> tuple[dict[str, dict[str, Any]], VersusBaseline]:
     """A family's cross-validated summary and its verdict against the baseline's, as the fit
     stage reports them. ``model`` and ``baseline`` are ``metrics.CrossValidated`` on the same
-    fold pairs."""
-    from turbotab.core.models.metrics import PRIMARY
+    fold pairs; ``summary`` is the model's, when the caller has made it (with its units)."""
+    from turbotab.core.models.metrics import PRIMARY, higher_is_better
 
     primary = PRIMARY[task]
-    summary = model.summary(task)
+    summary = summary if summary is not None else model.summary(task)
     estimate = summary[primary]["estimate"]
     base = baseline.summary(task)[primary]["estimate"]
-    gain = estimate - base if estimate is not None and base is not None else None
+    sign = 1.0 if higher_is_better(primary) else -1.0
+    gain = sign * (estimate - base) if estimate is not None and base is not None else None
     versus = versus_baseline(primary, [f[primary] for f in model.per_fold],
                              [b[primary] for b in baseline.per_fold], gain=gain,
                              test_share=model.test_share)
@@ -132,8 +143,7 @@ def no_better_concern(task: str, metric_label: str, versus: VersusBaseline,
     if versus.verdict != "no_better" or model is None or base is None or versus.gain is None:
         return None
     m, b = fmt(model, base)
-    against = {"regression": "the outcome's average", "binary": "the class prior"}.get(
-        task, "always guessing the most common class")
+    against = "the outcome's average" if task == "regression" else "the class prior"
     if versus.ci_low is None or versus.ci_high is None:
         return f"Not shown to beat {against}: CV {metric_label} {m} against {b}, from one fold."
     if versus.se == 0 and versus.gain == 0:  # e.g. a penalty that removed every predictor

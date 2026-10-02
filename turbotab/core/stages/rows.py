@@ -842,6 +842,38 @@ def _assign_folds(
     return fold, k
 
 
+NOT_RECORDED = "(not recorded)"  # a cluster level of its own: rows whose cluster is missing
+
+
+def _cluster_key(value: Any) -> str:
+    return NOT_RECORDED if _isna(value) else _level_key(value)
+
+
+def _cluster_folds(levels: Any, units: Any | None, column: str | None,
+                   notes: list[str]) -> tuple[Any, list[str]]:
+    """One fold per cluster level (sorted), and the levels in fold order. A unit whose rows fall in
+    more than one cluster is counted in a note: its rows then sit in different folds."""
+    import pandas as pd
+
+    labels = np.asarray(levels, dtype=object)
+    names = sorted(pd.unique(labels).tolist(), key=lambda v: (v == NOT_RECORDED, str(v)))
+    index = {name: i for i, name in enumerate(names)}
+    folds = np.asarray([index[v] for v in labels.tolist()], dtype=np.int64)
+    if NOT_RECORDED in index:
+        notes.append(f"`{int((labels == NOT_RECORDED).sum()):,}` training rows have no "
+                     f"`{column}`; they are scored as a cluster of their own, {NOT_RECORDED}.")
+    if units is not None and len(labels):
+        spread = pd.DataFrame({"u": np.asarray(units, dtype=object), "c": labels}).groupby("u")["c"].nunique()
+        crossing = int((spread > 1).sum())
+        if crossing:
+            notes.append(f"`{crossing:,}` units have rows in more than one level of `{column}`; "
+                         f"those rows sit in different folds.")
+    if len(names) < 2:
+        notes.append(f"`{column}` has one level among the training rows, so no cluster can be "
+                     f"held out.")
+    return folds, [str(n) for n in names]
+
+
 def draw_split(
     row_ids: Any,
     *,
@@ -854,8 +886,16 @@ def draw_split(
     universe: Any | None = None,
     held: Any | None = None,
     order: Any | None = None,
+    repeats: int = 1,
+    clusters: Any | None = None,
+    cluster_column: str | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """Assign each row of ``row_ids`` to ``train`` or ``holdout``, and each training row a fold.
+
+    ``repeats`` > 1 draws that many fold assignments (repeated k-fold, audit ME-11): ``fold`` is the
+    first, ``fold_r1`` … the others, each drawn as the first is with seeds ``seed + r``.
+    ``clusters`` (aligned like ``groups``) makes each level of ``cluster_column`` a fold of its own
+    (internal–external validation, audit E16); ``fold_labels`` in the facts name them in order.
 
     The held-out rows are drawn over ``universe`` (default: ``row_ids``) and ``row_ids`` keeps
     the ones that fall in it. The split stage passes every row whose outcome is measured, so an
@@ -902,14 +942,37 @@ def draw_split(
 
     train = np.flatnonzero(~held)
     fold = np.full(len(rows), -1, dtype=np.int64)
-    # Folds are stratified whenever there are classes to keep in proportion, however the held-out
-    # rows were drawn (a chronological draw cannot be stratified; its folds still can be).
-    train_folds, k = _assign_folds(
-        len(train), None if y_r is None else y_r[train], None if g_r is None else g_r[train],
-        folds, seed, y_r is not None, notes, order=None if o_r is None else o_r[train])
+    fold_labels: list[str] | None = None
+    extra: dict[str, Any] = {}
+    if clusters is not None:
+        c_u = keyed(clusters, _cluster_key)
+        c_r = np.where(inside, c_u[pos] if len(uids) else NOT_RECORDED, NOT_RECORDED)
+        train_folds, fold_labels = _cluster_folds(
+            c_r[train], None if g_r is None else g_r[train], cluster_column, notes)
+        k = len(fold_labels)
+        if o_r is not None:
+            notes.append(f"The folds are the levels of `{cluster_column}`, not time-ordered blocks.")
+            o_r = None
+    else:
+        # Folds are stratified whenever there are classes to keep in proportion, however the
+        # held-out rows were drawn (a chronological draw cannot be stratified; its folds can be).
+        train_folds, k = _assign_folds(
+            len(train), None if y_r is None else y_r[train], None if g_r is None else g_r[train],
+            folds, seed, y_r is not None, notes, order=None if o_r is None else o_r[train])
+        if repeats > 1 and o_r is not None:
+            notes.append("Time-ordered folds are the same in every repeat, so they run once.")
+        elif repeats > 1:
+            for r in range(1, int(repeats)):
+                column = np.full(len(rows), -1, dtype=np.int64)
+                column[train], _ = _assign_folds(
+                    len(train), None if y_r is None else y_r[train],
+                    None if g_r is None else g_r[train], folds, seed + r, y_r is not None, [])
+                extra[f"fold_r{r}"] = column
     fold[train] = train_folds
 
     frame = pd.DataFrame({"row_id": rows, "partition": np.where(held, "holdout", "train"), "fold": fold})
+    for name, column in extra.items():
+        frame[name] = column
     if o_r is not None:
         frame["order"] = o_r  # each row's unit rank in time: the inner splits follow it too
     info = {
@@ -922,8 +985,11 @@ def draw_split(
         "n_groups": int(len(pd.unique(g_r))) if g_r is not None else None,
         "stratified": bool(stratified),
         "fold_scheme": "time_ordered" if o_r is not None else "random",
-        "folds_stratified": bool(y_r is not None and o_r is None
+        "folds_stratified": bool(y_r is not None and o_r is None and clusters is None
                                  and not any("could not be stratified" in t for t in notes)),
+        "repeats": 1 + len(extra),
+        "cluster": cluster_column if clusters is not None else None,
+        "fold_labels": fold_labels,
         "notes": notes,
         "sealed": uids[held_u],
     }
@@ -941,9 +1007,14 @@ def split_note(info: Mapping[str, Any], unit_rows: int | None = None) -> str:
         parts.append(f"grouped by `{info['grouped_by']}` so a unit's rows stay together")
     if info["stratified"]:
         parts.append("with the outcome's classes in proportion")
-    if info.get("fold_scheme") == "time_ordered":
+    if info.get("cluster"):
+        sentence = (", ".join(parts) + f"; `{info['folds']}` folds, one per level of "
+                    f"`{info['cluster']}`, each scored by models fit on the others.")
+    elif info.get("fold_scheme") == "time_ordered":
         sentence = (", ".join(parts) + f"; `{info['folds']}` time-ordered folds, each scored by models "
                     f"fit on the units before it.")
+    elif int(info.get("repeats") or 1) > 1:
+        sentence = ", ".join(parts) + f"; `{info['folds']}` folds, drawn `{info['repeats']}` times."
     else:
         sentence = ", ".join(parts) + f"; `{info['folds']}` folds."
     extra = " ".join(info.get("notes") or [])
@@ -1005,11 +1076,22 @@ def split_stage(ctx: StageContext) -> Bundle:
                            structure=getattr(structure, "data", structure))
     if seal.refusal:
         raise ValueError(seal.refusal)
+    validation = getattr(spec, "validation", "kfold")
+    clusters = None
+    if validation == "internal_external":
+        with open_store(ctx) as store:
+            if spec.cluster not in store.columns:
+                raise ValueError(f"The table has no column `{spec.cluster}` to fold by.")
+            clusters = store.materialize([spec.cluster], universe)[spec.cluster].to_numpy(dtype=object)
     ctx.progress(0.4, "Drawing the held-out rows and the folds")
     frame, info = draw_split(
         rows, holdout=spec.holdout, seed=spec.seed, folds=spec.folds, universe=universe,
+        repeats=int(spec.repeats) if validation == "repeated_kfold" else 1,
+        clusters=clusters, cluster_column=spec.cluster if clusters is not None else None,
         **seal.split_args(),
     )
+    info["validation"] = validation
+    info["n_boot"] = int(spec.n_boot) if validation == "bootstrap" else None
     notes = info.pop("notes")
     sealed = info.pop("sealed")
     if seal.chronology is not None:

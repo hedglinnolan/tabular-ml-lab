@@ -13,6 +13,8 @@ from turbotab.core.consequences import Lineage
 from turbotab.core.decisions import Task
 from turbotab.core.models.base import Fit
 from turbotab.core.models.baseline import VersusBaseline
+from turbotab.core.models.performance import Calibration, Interval
+from turbotab.core.models.validation import FamilyDifference, InternalExternal, Optimism
 
 
 class _Model(BaseModel):
@@ -95,6 +97,14 @@ class MetricSummary(_Model):
     folds: list[float | None]
     estimate: float | None = None  # null only in artifacts from before the pooled estimator
     estimator: Literal["pooled", "fold_mean"] = "fold_mean"
+    # The estimate's standard error and 95% interval (turbotab/core/models/performance.py): LeDell
+    # et al.'s for a fold mean, the delta method for a pooled score; null for macro-F1, and in
+    # artifacts from before WP9.
+    se: float | None = None
+    ci_low: float | None = None
+    ci_high: float | None = None
+    repeats: int = 1  # repeated k-fold: the estimate is the mean of this many repeats' estimates
+    repeat_sd: float | None = None  # the spread of the repeats' estimates (null for one run)
 
 
 class Coefficient(_Model):
@@ -145,6 +155,13 @@ class Baseline(_Model):
     label: str  # "the outcome's average" | "the class prior"
 
 
+class HoldoutDetail(_Model):
+    """What the held-out rows say beyond their scores: an interval on each, and calibration."""
+
+    intervals: dict[str, Interval]
+    calibration: Calibration | None = None
+
+
 class FittedModel(_Model):
     family: str
     label: str
@@ -162,6 +179,15 @@ class FittedModel(_Model):
     # How the intervals were made, under inference; null under prediction and for families
     # without an inference table.
     inference: Inference | None = None
+    # Out-of-fold calibration (the first repeat's predictions): intercept, slope, smoothed curve
+    # (audit ME-10). Null for a multiclass outcome.
+    calibration: Calibration | None = None
+    # Held-out intervals and calibration: sealed like ``holdout`` until the seal is opened.
+    holdout_detail: HoldoutDetail | None = None
+    # Bootstrap optimism correction, when the split asked for it (audit ME-11).
+    optimism: Optimism | None = None
+    # Internal–external validation by a cluster column, when the split asked for it (audit E16).
+    internal_external: InternalExternal | None = None
 
 
 class FitArtifact(_Model):
@@ -183,6 +209,18 @@ class FitArtifact(_Model):
     # "time_ordered" (each fold scored by a model fit on the earlier ones, forward chaining).
     fold_scheme: Literal["random", "time_ordered"] = "random"
     cv_definition: str | None = None  # what a cross-validated score is, in one or two sentences
+    # How the training rows validated the models (the split's answer; audit ME-11, E16).
+    validation: Literal["kfold", "repeated_kfold", "bootstrap", "internal_external"] = "kfold"
+    repeats: int = 1
+    # How the families are ranked, in words: "highest AUC", "highest R²", "lowest log loss".
+    ranking: str | None = None
+    se_definition: str | None = None  # what the standard errors count and leave out
+    # On the user's own rows: how far apart the families are, pair by pair, with intervals
+    # corrected for shared training rows (replaces the unsourced "below about 50 rows" claim).
+    comparisons: list[FamilyDifference] = []
+    precision: str | None = None  # one sentence: each family's standard error on these rows
+    # Binary outcomes: the event's share and the resampling tension in one line (audit E15).
+    imbalance: str | None = None
 
 
 class SubstitutionModel(_Model):
@@ -263,7 +301,7 @@ MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
 }
 
 __all__ = [
-    "BandEstimate", "Baseline", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel",
+    "BandEstimate", "Baseline", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel", "HoldoutDetail",
     "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "ShelfArtifact", "ShelfFamily",
     "SubstitutionArtifact", "SubstitutionModel", "SubstitutionPair", "SubstitutionSupport",
 ]

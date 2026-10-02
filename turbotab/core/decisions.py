@@ -36,7 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any, Callable, Iterable, Literal, Mapping, Sequence, Union
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 try:  # POSIX only; on Windows the in-process lock is the whole of it.
     import fcntl
@@ -153,10 +153,32 @@ class EnergyAdjustment(_Value):
     strata: str | None = None
 
 
+# How the training rows validate a model (audit ME-11; turbotab/core/models/validation.py):
+# k-fold once; repeated k-fold; Harrell's bootstrap optimism correction (alongside one k-fold run);
+# or internal–external validation, one fold per level of a cluster column. Independent of the
+# holdout, which seals rows for one final score.
+Validation = Literal["kfold", "repeated_kfold", "bootstrap", "internal_external"]
+REPEATS = 10  # repeated k-fold's default: 10 × 5
+MAX_REPEATS = 50
+OPTIMISM_BOOT = 200  # bootstrap optimism correction's default resamples (audit WP9: B ≈ 200)
+
+
+def _validation_fields(validation: str, cluster: str | None) -> None:
+    if validation == "internal_external" and not cluster:
+        raise ValueError("internal–external validation needs the cluster column whose levels are "
+                         "the folds")
+    if cluster and validation != "internal_external":
+        raise ValueError("a cluster column is read only by internal–external validation")
+
+
 class SplitSpec(_Value):
     holdout: float = Field(ge=0.0, le=0.4)
     seed: int = 0
     folds: int = Field(default=5, ge=2, le=10)
+    validation: Validation = "kfold"
+    repeats: int = Field(default=REPEATS, ge=2, le=MAX_REPEATS)  # repeated_kfold
+    n_boot: int = Field(default=OPTIMISM_BOOT, ge=20, le=2000)  # bootstrap
+    cluster: str | None = None  # internal_external: each level is a fold
 
     @field_validator("holdout")
     @classmethod
@@ -164,6 +186,11 @@ class SplitSpec(_Value):
         if value != 0.0 and value < 0.1:
             raise ValueError("a holdout is 0 (cross-validation only) or between 0.1 and 0.4")
         return value
+
+    @model_validator(mode="after")
+    def _scheme(self) -> "SplitSpec":
+        _validation_fields(self.validation, self.cluster)
+        return self
 
 
 # A percentile band needs 1,000 to 2,000 refits (Carpenter & Bithell 2000, Stat Med 19:1141).
@@ -238,6 +265,15 @@ class SetSplit(_DecisionModel):
     holdout: float = Field(ge=0.0, le=0.4)
     seed: int = 0
     folds: int = Field(default=5, ge=2, le=10)
+    validation: Validation = "kfold"
+    repeats: int = Field(default=REPEATS, ge=2, le=MAX_REPEATS)
+    n_boot: int = Field(default=OPTIMISM_BOOT, ge=20, le=2000)
+    cluster: str | None = None
+
+    @model_validator(mode="after")
+    def _scheme(self) -> "SetSplit":
+        _validation_fields(self.validation, self.cluster)
+        return self
 
 
 class SelectModels(_DecisionModel):
@@ -761,6 +797,7 @@ register_kind(SetFeatureTable, "feature_table",
 register_kind(SetCategorical, "categorical")
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
+register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
 
 
 # ── M1 validators (M1_CONTRACT.md §2) ────────────────────────────────────────
@@ -797,6 +834,30 @@ def _state(ctx: Any) -> "ProjectState | None":
 def _and(items: Sequence[str]) -> str:
     items = [f"`{i}`" for i in items]
     return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _cluster_is_a_column_with_levels(decision: "SetSplit", ctx: Any) -> None:
+    """Internal–external validation folds by a column's levels (audit E16): it must be one of the
+    table's columns, not the outcome, with at least two levels."""
+    cluster = decision.cluster
+    if not cluster:
+        return
+    columns = _columns_of(ctx)
+    if cluster == ROW_ID or (columns is not None and cluster not in columns):
+        raise Refusal("unknown_column", f"This table has no column named `{cluster}`.",
+                      exits=[{"label": "Choose the column that names each site, study or period",
+                              "decision": None}])
+    target = _ctx(ctx, "target") or getattr(_state(ctx), "target", None)
+    if cluster == target:
+        raise Refusal("cluster_is_outcome",
+                      f"`{cluster}` is the outcome; the folds of internal–external validation are "
+                      f"the levels of a column that says where or when a row came from.",
+                      exits=[{"label": "Choose another column", "decision": None}])
+    info = _info(ctx, cluster)
+    if info is not None and int(info.get("n_unique") or 0) < 2:
+        raise Refusal("one_cluster",
+                      f"`{cluster}` has one level, so no cluster could be held out.",
+                      exits=[{"label": "Choose a column with two or more levels", "decision": None}])
 
 
 def _task_fits_the_outcome(decision: SetTask, ctx: Any) -> None:

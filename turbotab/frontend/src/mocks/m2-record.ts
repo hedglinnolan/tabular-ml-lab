@@ -522,6 +522,7 @@ function sealPlan(
       "Widths are approximate 95% intervals of a score on that many held-out rows: R² by its large-sample standard error 2·√R²·(1 − R²)/√n at an R² of 0.2, AUC by Hanley & McNeil (1982) at an AUC of 0.75, macro-F1 by a proportion's interval on the rarest class.",
     refusal: null,
     time_ordered_folds: Boolean(state.temporal?.temporal && state.temporal.time_column),
+    validation: null,
   };
 }
 

@@ -60,6 +60,7 @@ from pydantic import BaseModel, ConfigDict
 
 from turbotab.core import decisions
 from turbotab.core.decisions import ProjectState, Refusal, Revert, SetSplit
+from turbotab.core.models.validation import ValidationPlan, validation_plan
 
 BasisState = Literal["grouped", "one_row_per_unit", "abandoned", "undetermined"]
 EXPLORATORY_STATES = ("abandoned", "undetermined")
@@ -75,6 +76,7 @@ DEFAULT_MIN_GROUPS = 8
 MAX_UNDATED_SHARE = 0.10
 
 SEALED_SCORES = "sealed_scores"  # the fit Bundle frame that holds the held-out scores
+SEALED_DETAIL = "sealed_detail"  # … and the one that holds their intervals and calibration
 
 
 def min_groups() -> int:
@@ -543,6 +545,10 @@ class SealPlan(_Model):
     # True when the answers ask for time order and the time column reads: the cross-validation
     # folds then forward-chain by whole unit (each scored by a model fit on earlier units).
     time_ordered_folds: bool = False
+    # How the training rows validate the models, in the order to offer them (audit ME-11, WP9;
+    # turbotab/core/models/validation.py::validation_plan). Under prediction below a stated size
+    # the resampling options lead, and cross-validation alone leads the holdout options too.
+    validation: ValidationPlan | None = None
 
 
 def floor_for(task: str | None) -> SealFloor:
@@ -676,12 +682,20 @@ def plan(state: Any, universe: Any, store: Any, task: str | None,
         frame = store.materialize([state.target], analyzed)
         counts = class_counts(frame[state.target].to_numpy(dtype=object))
     options, cv_first, reason = holdout_options(task, int(len(analyzed)), counts)
+    grouped = draw.basis is not None and draw.basis.state == "grouped" and draw.basis.n_units
+    validation = validation_plan(
+        getattr(state, "purpose", None),
+        min(int(draw.basis.n_units), int(len(analyzed))) if grouped else int(len(analyzed)),
+        time_ordered=draw.order is not None, unit="units" if grouped else "rows")
+    if validation.resampling_first and not cv_first:  # audit ME-11: the holdout keeps its tension
+        options = [o for o in options if o.holdout == 0] + [o for o in options if o.holdout > 0]
+        cv_first, reason = True, f"{validation.reason} {validation.holdout_note}"
     return SealPlan(
         task=str(task), n_measured=int(len(universe)), n_analyzed=int(len(analyzed)),
         basis=draw.basis, chronology=draw.chronology, exploratory=draw.exploratory,
         floor=floor_for(task), options=options, cv_first=cv_first, reason=reason,
         precision_note=PRECISION_NOTE, refusal=draw.refusal,
-        time_ordered_folds=draw.order is not None,
+        time_ordered_folds=draw.order is not None, validation=validation,
     ).model_dump(mode="json")
 
 
@@ -719,13 +733,46 @@ def scores_by_family(frame: Any) -> dict[str, dict[str, float | None]]:
     return out
 
 
+def sealed_detail_frame(details: Mapping[str, Mapping[str, Any]]) -> Any:
+    """The fit Bundle frame holding each family's held-out intervals and calibration
+    (``family``, ``detail`` as JSON): withheld with the scores (audit WP9)."""
+    import json
+
+    import pandas as pd
+
+    rows = [{"family": key, "detail": json.dumps(detail)} for key, detail in details.items() if detail]
+    return pd.DataFrame(rows, columns=["family", "detail"])
+
+
+def details_by_family(frame: Any) -> dict[str, dict[str, Any]]:
+    import json
+
+    return {str(row.family): json.loads(row.detail) for row in frame.itertuples(index=False)}
+
+
+def read_sealed_detail(cache_root: str | Path, key: str) -> dict[str, dict[str, Any]] | None:
+    """The held-out details a fit artifact holds, read from its sealed frame (None: none)."""
+    import pandas as pd
+
+    from turbotab.core.graph import artifact_dir
+
+    path = artifact_dir(cache_root, "fit", key) / "frames" / f"{SEALED_DETAIL}.parquet"
+    if not path.is_file():
+        return None
+    return details_by_family(pd.read_parquet(path))
+
+
 def serve_fit(data: Mapping[str, Any], *, opened: bool,
-              scores: Callable[[], Mapping[str, Mapping[str, Any]] | None]) -> dict[str, Any]:
+              scores: Callable[[], Mapping[str, Mapping[str, Any]] | None],
+              details: Callable[[], Mapping[str, Mapping[str, Any]] | None] | None = None
+              ) -> dict[str, Any]:
     """The fit artifact as a client may see it now.
 
     Held-out scores are withheld (``holdout: null``, ``holdout_sealed: true``) until the seal is
     opened, whatever the artifact holds (an older artifact kept them in its data); once opened
     they are the scores the fit computed, unchanged. ``scores()`` reads them from the sealed frame.
+    The held-out intervals and calibration (``holdout_detail``) are withheld and served the same
+    way; ``details()`` reads them.
     """
     out = copy.deepcopy(dict(data))
     models = out.get("models") or []
@@ -733,6 +780,8 @@ def serve_fit(data: Mapping[str, Any], *, opened: bool,
     for m in models:
         kept[m.get("family")] = m.get("holdout")
         m["holdout"] = None
+        if "holdout_detail" in m:
+            m["holdout_detail"] = None
     has_holdout = int(out.get("n_holdout") or 0) > 0
     if not has_holdout:
         out["holdout_sealed"] = False
@@ -741,9 +790,12 @@ def serve_fit(data: Mapping[str, Any], *, opened: bool,
         out["holdout_sealed"] = True
         return out
     sealed = scores() or {}
+    more = (details() if details is not None else None) or {}
     for m in models:
         found = sealed.get(m.get("family"))
         m["holdout"] = dict(found) if found else kept.get(m.get("family"))
+        if more.get(m.get("family")):
+            m["holdout_detail"] = dict(more[m.get("family")])
     out["holdout_sealed"] = False
     return out
 
@@ -1147,7 +1199,7 @@ def _the_draw_reads_settled_values(decision: Any, ctx: Any) -> None:
     state = _ctx(ctx, "state")
     if state is None or decision.holdout <= 0:
         return
-    if state.split == SplitSpec(holdout=decision.holdout, seed=decision.seed, folds=decision.folds):
+    if state.split == SplitSpec(**decision.model_dump(exclude={"kind"})):
         return  # the same answer again draws nothing new
     findings = _fresh_artifact(ctx, "findings")
     pending = unsettled_on_the_draw(state, findings) if findings is not None else []
@@ -1244,7 +1296,8 @@ def _open_seal_once_on_a_fresh_fit(decision: Any, ctx: Any) -> None:
         raise Refusal("no_seal", "No rows are held out yet, so there is nothing to open.",
                       exits=[{"label": "Choose how many rows to hold out", "decision": None}])
     hold = [{"label": f"Hold out {USUAL:.0%} first",
-             "decision": SetSplit(holdout=USUAL, seed=spec.seed, folds=spec.folds)}]
+             # The validation answer (WP9) is kept; only the holdout changes.
+             "decision": SetSplit(**{**spec.model_dump(), "holdout": USUAL})}]
     if spec.holdout == 0:
         raise Refusal("nothing_sealed",
                       "Every row trains under cross-validation alone, so there are no held-out rows "
@@ -1312,7 +1365,8 @@ def _register_preview() -> None:
 _register_preview()
 
 __all__ = [
-    "BasisState", "Chronology", "DECISION_A", "GRAIN_FIRST", "HoldoutOption", "SEALED_SCORES",
+    "BasisState", "Chronology", "DECISION_A", "GRAIN_FIRST", "HoldoutOption", "SEALED_DETAIL",
+    "SEALED_SCORES", "details_by_family", "read_sealed_detail", "sealed_detail_frame",
     "SealBasis",
     "SealDraw", "SealFloor", "SealPlan", "changed_after_seal", "chronological_holdout",
     "decide_basis", "draw_columns", "floor_for", "holdout_options", "holds_rows_out", "keys_for",

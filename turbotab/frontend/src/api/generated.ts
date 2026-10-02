@@ -1711,6 +1711,24 @@ export interface components {
              * @default 5
              */
             folds: number;
+            /**
+             * Validation
+             * @default kfold
+             * @enum {string}
+             */
+            validation: "kfold" | "repeated_kfold" | "bootstrap" | "internal_external";
+            /**
+             * Repeats
+             * @default 10
+             */
+            repeats: number;
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
+            /** Cluster */
+            cluster?: string | null;
         };
         /** SetSplit */
         "SetSplit-Output": {
@@ -1731,6 +1749,24 @@ export interface components {
              * @default 5
              */
             folds: number;
+            /**
+             * Validation
+             * @default kfold
+             * @enum {string}
+             */
+            validation: "kfold" | "repeated_kfold" | "bootstrap" | "internal_external";
+            /**
+             * Repeats
+             * @default 10
+             */
+            repeats: number;
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
+            /** Cluster */
+            cluster: string | null;
         };
         /**
          * SetSubstitution
@@ -1866,6 +1902,24 @@ export interface components {
              * @default 5
              */
             folds: number;
+            /**
+             * Validation
+             * @default kfold
+             * @enum {string}
+             */
+            validation: "kfold" | "repeated_kfold" | "bootstrap" | "internal_external";
+            /**
+             * Repeats
+             * @default 10
+             */
+            repeats: number;
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
+            /** Cluster */
+            cluster: string | null;
         };
         /** StageResult */
         StageResult: {
@@ -2181,6 +2235,55 @@ export interface components {
             label: string;
         };
         /**
+         * Calibration
+         * @description Calibration of one set of predictions: in the large, its slope, and its smoothed curve.
+         */
+        Calibration: {
+            /** N */
+            n: number;
+            /** Observed */
+            observed: number;
+            /** Expected */
+            expected: number;
+            intercept: components["schemas"]["Interval"];
+            slope: components["schemas"]["Interval"];
+            /**
+             * Curve
+             * @default []
+             */
+            curve: components["schemas"]["CurvePoint"][];
+            /**
+             * Eavg
+             * @default null
+             */
+            eavg: number | null;
+            /**
+             * E90
+             * @default null
+             */
+            e90: number | null;
+            /**
+             * Emax
+             * @default null
+             */
+            emax: number | null;
+            /**
+             * Smoother
+             * @default lowess, span 2/3, no robustness iterations (as rms val.prob)
+             */
+            smoother: string;
+            /**
+             * Flagged
+             * @default false
+             */
+            flagged: boolean;
+            /**
+             * Concern
+             * @default null
+             */
+            concern: string | null;
+        };
+        /**
          * CategoricalProposal
          * @description A predictor whose numbers may be codes for groups (``set_categorical`` declares it).
          */
@@ -2214,6 +2317,31 @@ export interface components {
             n_undated: number;
             /** Sentence */
             sentence: string;
+        };
+        /**
+         * ClusterScore
+         * @description One held-out cluster: its rows, its scores, and the primary metric's interval.
+         */
+        ClusterScore: {
+            /** Cluster */
+            cluster: string;
+            /** N */
+            n: number;
+            /**
+             * N Events
+             * @default null
+             */
+            n_events: number | null;
+            /** Scores */
+            scores: {
+                [key: string]: number | null;
+            };
+            primary: components["schemas"]["Interval"];
+            /**
+             * Note
+             * @default null
+             */
+            note: string | null;
         };
         /** Coefficient */
         Coefficient: {
@@ -2289,6 +2417,13 @@ export interface components {
             varied: boolean;
             /** Chosen */
             chosen: boolean;
+        };
+        /** CurvePoint */
+        CurvePoint: {
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
         };
         /**
          * DatasetInfo
@@ -2437,6 +2572,28 @@ export interface components {
              */
             missing: "exclude" | "keep";
         };
+        /**
+         * FamilyDifference
+         * @description Two families' primary metric, paired over the same folds, with a corrected interval.
+         */
+        FamilyDifference: {
+            /** A */
+            a: string;
+            /** B */
+            b: string;
+            /** Metric */
+            metric: string;
+            /** Difference */
+            difference: number | null;
+            /** Ci Low */
+            ci_low: number | null;
+            /** Ci High */
+            ci_high: number | null;
+            /** Df */
+            df: number | null;
+            /** Sentence */
+            sentence: string;
+        };
         /** Finding */
         Finding: {
             /** Id */
@@ -2548,6 +2705,42 @@ export interface components {
              * @default null
              */
             cv_definition: string | null;
+            /**
+             * Validation
+             * @default kfold
+             * @enum {string}
+             */
+            validation: "kfold" | "repeated_kfold" | "bootstrap" | "internal_external";
+            /**
+             * Repeats
+             * @default 1
+             */
+            repeats: number;
+            /**
+             * Ranking
+             * @default null
+             */
+            ranking: string | null;
+            /**
+             * Se Definition
+             * @default null
+             */
+            se_definition: string | null;
+            /**
+             * Comparisons
+             * @default []
+             */
+            comparisons: components["schemas"]["FamilyDifference"][];
+            /**
+             * Precision
+             * @default null
+             */
+            precision: string | null;
+            /**
+             * Imbalance
+             * @default null
+             */
+            imbalance: string | null;
         };
         /** FittedModel */
         FittedModel: {
@@ -2574,6 +2767,14 @@ export interface components {
             versus_baseline: components["schemas"]["VersusBaseline"] | null;
             /** @default null */
             inference: components["schemas"]["Inference"] | null;
+            /** @default null */
+            calibration: components["schemas"]["Calibration"] | null;
+            /** @default null */
+            holdout_detail: components["schemas"]["HoldoutDetail"] | null;
+            /** @default null */
+            optimism: components["schemas"]["Optimism"] | null;
+            /** @default null */
+            internal_external: components["schemas"]["InternalExternal"] | null;
         };
         /** GrainContradiction */
         GrainContradiction: {
@@ -2591,6 +2792,18 @@ export interface components {
             if_one_row: components["schemas"]["GrainContradiction"] | null;
             /** @default null */
             stated: components["schemas"]["StatedGrain"] | null;
+        };
+        /**
+         * HoldoutDetail
+         * @description What the held-out rows say beyond their scores: an interval on each, and calibration.
+         */
+        HoldoutDetail: {
+            /** Intervals */
+            intervals: {
+                [key: string]: components["schemas"]["Interval"];
+            };
+            /** @default null */
+            calibration: components["schemas"]["Calibration"] | null;
         };
         /** HoldoutOption */
         HoldoutOption: {
@@ -2667,6 +2880,54 @@ export interface components {
             } | null;
         };
         /**
+         * InternalExternal
+         * @description Internal–external validation by ``cluster`` (module docstring).
+         */
+        InternalExternal: {
+            /** Cluster */
+            cluster: string;
+            /** Metric */
+            metric: string;
+            /** Clusters */
+            clusters: components["schemas"]["ClusterScore"][];
+            pooled: components["schemas"]["Pooled"];
+            /** Spread */
+            spread: string;
+        };
+        /**
+         * Interval
+         * @description A score with its standard error and its 95% interval.
+         */
+        Interval: {
+            /** Estimate */
+            estimate: number | null;
+            /**
+             * Se
+             * @default null
+             */
+            se: number | null;
+            /**
+             * Ci Low
+             * @default null
+             */
+            ci_low: number | null;
+            /**
+             * Ci High
+             * @default null
+             */
+            ci_high: number | null;
+            /**
+             * Level
+             * @default 0.95
+             */
+            level: number;
+            /**
+             * Method
+             * @default
+             */
+            method: string;
+        };
+        /**
          * LeaveOut
          * @description The offer: leave the likely-not-asked columns out, then handle the rest.
          */
@@ -2728,6 +2989,31 @@ export interface components {
              * @enum {string}
              */
             estimator: "pooled" | "fold_mean";
+            /**
+             * Se
+             * @default null
+             */
+            se: number | null;
+            /**
+             * Ci Low
+             * @default null
+             */
+            ci_low: number | null;
+            /**
+             * Ci High
+             * @default null
+             */
+            ci_high: number | null;
+            /**
+             * Repeats
+             * @default 1
+             */
+            repeats: number;
+            /**
+             * Repeat Sd
+             * @default null
+             */
+            repeat_sd: number | null;
         };
         /**
          * MissingColumn
@@ -2773,6 +3059,45 @@ export interface components {
             column: string;
             /** Reason */
             reason: string;
+        };
+        /**
+         * Optimism
+         * @description Harrell's bootstrap optimism correction of one family (module docstring).
+         */
+        Optimism: {
+            /** N Boot */
+            n_boot: number;
+            /** N Ok */
+            n_ok: number;
+            /** Failed */
+            failed: number;
+            /** Seconds */
+            seconds: number;
+            /** Resampled */
+            resampled: string;
+            /** Estimates */
+            estimates: {
+                [key: string]: components["schemas"]["OptimismEstimate"];
+            };
+            /**
+             * Refused
+             * @default null
+             */
+            refused: string | null;
+        };
+        /** OptimismEstimate */
+        OptimismEstimate: {
+            /** Apparent */
+            apparent: number | null;
+            /** Optimism */
+            optimism: number | null;
+            /** Corrected */
+            corrected: number | null;
+            /**
+             * Optimism Sd
+             * @default null
+             */
+            optimism_sd: number | null;
         };
         /**
          * OrientationReading
@@ -2852,6 +3177,53 @@ export interface components {
             n_units_varying: number;
             /** Numeric */
             numeric: boolean;
+        };
+        /**
+         * Pooled
+         * @description A DerSimonian–Laird random-effects summary of one score across clusters.
+         */
+        Pooled: {
+            /** Metric */
+            metric: string;
+            /**
+             * Scale
+             * @enum {string}
+             */
+            scale: "identity" | "logit";
+            /** K */
+            k: number;
+            /** Estimate */
+            estimate: number | null;
+            /**
+             * Ci Low
+             * @default null
+             */
+            ci_low: number | null;
+            /**
+             * Ci High
+             * @default null
+             */
+            ci_high: number | null;
+            /**
+             * Tau
+             * @default null
+             */
+            tau: number | null;
+            /**
+             * I2
+             * @default null
+             */
+            i2: number | null;
+            /**
+             * Pi Low
+             * @default null
+             */
+            pi_low: number | null;
+            /**
+             * Pi High
+             * @default null
+             */
+            pi_high: number | null;
         };
         /**
          * ProfileArtifact
@@ -3070,6 +3442,8 @@ export interface components {
              * @default false
              */
             time_ordered_folds: boolean;
+            /** @default null */
+            validation: components["schemas"]["ValidationPlan"] | null;
         };
         /**
          * ShelfArtifact
@@ -3467,6 +3841,52 @@ export interface components {
             min_rows_per_unit: number;
             /** N Missing */
             n_missing: number;
+        };
+        /**
+         * ValidationOption
+         * @description One way the training rows can validate the models, as the split question offers it.
+         */
+        ValidationOption: {
+            /**
+             * Validation
+             * @enum {string}
+             */
+            validation: "kfold" | "repeated_kfold" | "bootstrap" | "internal_external";
+            /** Label */
+            label: string;
+            /** Measures */
+            measures: string;
+            /** Cost */
+            cost: string;
+            /**
+             * Needs Cluster
+             * @default false
+             */
+            needs_cluster: boolean;
+        };
+        /**
+         * ValidationPlan
+         * @description The validation options in the order to offer them, and why (module docstring).
+         */
+        ValidationPlan: {
+            /** Options */
+            options: components["schemas"]["ValidationOption"][];
+            /** Resampling First */
+            resampling_first: boolean;
+            /** Reason */
+            reason: string;
+            /** Holdout Note */
+            holdout_note: string | null;
+            /**
+             * Below
+             * @default 20000
+             */
+            below: number;
+            /**
+             * Source
+             * @default Harrell 2017, Split-sample model validation: data splitting is unstable below about 20,000 subjects
+             */
+            source: string;
         };
         /**
          * VersusBaseline

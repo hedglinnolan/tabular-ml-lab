@@ -830,7 +830,8 @@ class ProjectService:
         opened = bool(decisions.fold(records).seal_opened)
         cache = self.workspace.cache_dir(pid)
         out = seal.serve_fit(data, opened=opened,
-                             scores=lambda: seal.read_sealed_scores(cache, key) if key else None)
+                             scores=lambda: seal.read_sealed_scores(cache, key) if key else None,
+                             details=lambda: seal.read_sealed_detail(cache, key) if key else None)
         out["changed_after_seal"] = bool(opened and seal.changed_after_seal(
             self.engine.graph, records, self.fingerprint(pid), key))
         out["post_seal_decisions"] = (seal.post_seal_changes(
