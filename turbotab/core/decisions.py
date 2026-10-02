@@ -116,7 +116,10 @@ class Revert(_DecisionModel):
 # validators, sentences and the stages that read them are the agents' work.
 
 Role = Literal["identifier", "exposure", "energy", "covariate", "design", "flag", "time", "excluded"]
-EnergyMethod = Literal["none", "standard", "residual", "density_multivariate", "density", "partition"]
+# "residual" keeps total energy in the outcome model; "residual_energy_dropped" lets it leave
+# (BLUEPRINT §12 ruling 1); "all_components" gives every energy source its own term (audit WP6).
+EnergyMethod = Literal["none", "standard", "residual", "residual_energy_dropped",
+                       "density_multivariate", "density", "partition", "all_components"]
 MissingStrategy = Literal["complete_case", "impute"]
 
 
@@ -175,6 +178,9 @@ class SubstitutionSpec(_Value):
     recipient: str = Field(min_length=1)
     step_kcal: float = Field(default=100.0, gt=0)
     n_boot: int = Field(default=0, ge=0, le=MAX_BOOT)
+    # Kept under inference although energy sources are missing from the model (audit ME-05): the
+    # recorded attestation that the curve carries their confounding.
+    acknowledged: bool = False
 
 
 class MissingSpec(_Value):
@@ -260,6 +266,9 @@ class SetSubstitution(_DecisionModel):
     recipient: str = Field(min_length=1)
     step_kcal: float = Field(default=100.0, gt=0)
     n_boot: int = Field(default=0, ge=0, le=MAX_BOOT)
+    # The attestation exit of the omitted-sources block under inference (audit ME-05): "keep this
+    # swap; the curve carries the confounding of the energy sources not in the model".
+    acknowledged: bool = False
 
 
 # ── M2 kinds (docs/turbotab-next/M2_CONTRACT.md) ─────────────────────────────
@@ -1086,7 +1095,7 @@ def _energy_adjustment_fits_the_roles(decision: SetEnergyAdjustment, ctx: Any) -
         exits = [{"label": METHOD_TABLE[m]["label"], "decision": with_(method=m)}
                  for m, v in table.items() if v["ok"] and m != decision.method]
         raise Refusal("method_not_applicable", str(verdict["reason"]), exits=exits)
-    if decision.method == "partition":
+    if decision.method in ("partition", "all_components"):
         _partition_runs_on_the_data(decision, ctx, with_, table)
     if decision.strata is not None:
         info = _info(ctx, decision.strata)
@@ -1145,8 +1154,10 @@ def _partition_runs_on_the_data(decision: SetEnergyAdjustment, ctx: Any,
                       "decision": with_(nutrients=refused["nutrients"])})
     exits += [{"label": METHOD_TABLE[m]["label"], "decision": with_(method=m)}
               for m in ("residual", "standard") if table.get(m, {}).get("ok")]
-    raise Refusal("method_not_applicable", _ticked(str(refused["reason"]), [E, *nutrients]),
-                  exits=exits)
+    reason = str(refused["reason"])
+    if decision.method == "all_components":
+        reason = reason.replace("a partition would", "the all-components model would", 1)
+    raise Refusal("method_not_applicable", _ticked(reason, [E, *nutrients]), exits=exits)
 
 
 def _ticked(text: str, columns: Sequence[str]) -> str:
@@ -1281,6 +1292,90 @@ def _substitution_moves_between_separate_nutrients(decision: SetSubstitution, ct
         )
 
 
+OMITTED_CHECK_ROWS = 5_000
+
+
+def _substitution_has_every_energy_source(decision: SetSubstitution, ctx: Any) -> None:
+    """Under inference, block and record a swap whose model leaves a large share of total energy
+    to the composite of the sources not in it (audit ME-05).
+
+    A substitution curve with only some energy sources in the model is confounded through the
+    implicit "other" composite total energy carries (Tomova, Gilthorpe & Tennant 2022). Above
+    :data:`~turbotab.core.methods.energy.MAX_OMITTED_SHARE` of total energy on average, on the
+    rows outside the held-out set, the swap is refused with its exits: add the missing sources to
+    the model, or keep it with the recorded attestation that the curve carries their confounding.
+    Under prediction the curve is a model contrast and the substitution artifact states the
+    concern instead.
+    """
+    import numpy as np
+
+    from turbotab.core.methods.energy import MAX_OMITTED_SHARE, energy_factor, nutrient_role, omitted_energy
+    from turbotab.core.methods.nesting import nested_components
+
+    state = _state(ctx)
+    if state is None or state.purpose != "inference" or decision.acknowledged:
+        return
+    roles = state.roles or {}
+    adj = state.energy_adjustment
+    E = (adj.energy_column if adj is not None and adj.energy_column else
+         next((c for c, r in roles.items() if r == "energy"), None))
+    opener = _ctx(ctx, "store")
+    try:
+        store = opener() if callable(opener) else None
+    except Exception:  # noqa: BLE001 - no data to check: the curve states the concern
+        store = None
+    gone = set(left_out(state))
+    exposures = [c for c, r in roles.items() if r == "exposure" and c not in gone]
+    if store is None or E is None or E not in store.columns:
+        return
+    pool = np.arange(int(store.n_rows), dtype=np.int64)
+    sealed_of = _ctx(ctx, "sealed")
+    sealed = sealed_of() if callable(sealed_of) else None
+    if sealed is not None and len(sealed):
+        pool = np.setdiff1d(pool, np.asarray(sealed, dtype=np.int64), assume_unique=True)
+    if len(pool) > OMITTED_CHECK_ROWS:
+        pool = np.sort(np.random.default_rng(0).choice(pool, size=OMITTED_CHECK_ROWS, replace=False))
+    present = [c for c in exposures if c in store.columns]
+    frame = store.materialize([E, *present], pool)
+    nested = nesting_of(ctx) or nested_components(frame, present)
+    reading = omitted_energy(frame, E, present, nested=nested)
+    share = None if reading is None else reading["mean_share"]
+    if share is None or share <= MAX_OMITTED_SHARE:
+        return
+
+    def source(column: str) -> str | None:
+        try:
+            return nutrient_role(column)
+        except ValueError:
+            return None
+
+    target = getattr(state, "target", None)
+    addable = [c for c in store.columns if c not in exposures and c not in (E, target)
+               and roles.get(c) != "energy" and source(c) in reading["omitted"]
+               and energy_factor(c).factor is not None]
+    base = decision.model_dump(exclude={"kind"})
+    held = _and(reading["columns"]) if reading["columns"] else "no energy source"
+    missing = [s for s in reading["omitted"] if s != "other"]
+    named = ", ".join([*missing, "other energy"]) if missing else "other energy"
+    exits: list[dict[str, Any]] = []
+    if addable:
+        exits.append({"label": f"Add {_and(addable)} to the model",
+                      "decision": SetRoles(roles={**roles, **{c: "exposure" for c in addable}})})
+    exits += [
+        {"label": "Keep this swap; the curve carries their confounding",
+         "decision": SetSubstitution(**{**base, "acknowledged": True})},
+        {"label": "Choose another swap", "decision": None},
+    ]
+    raise Refusal(
+        "omitted_energy_sources",
+        f"Under inference this curve is read as an effect, but the model holds {held}: "
+        f"{named} make up {share:.0%} of total energy on average, more than the "
+        f"{MAX_OMITTED_SHARE:.0%} the Atwater factors' own error explains. Total energy carries "
+        f"them as one composite, so the curve carries their confounding.",
+        exits=exits,
+    )
+
+
 def _left_out_columns_are_predictors(decision: SetMissing, ctx: Any) -> None:
     if not decision.drop_columns:
         return
@@ -1379,6 +1474,7 @@ register_validator("revert", _revert_leaves_no_rule_on_the_outcome)
 register_validator("set_energy_adjustment", _energy_adjustment_fits_the_roles)
 register_validator("select_models", _models_can_fit_the_task)
 register_validator("set_substitution", _substitution_swaps_energy)
+register_validator("set_substitution", _substitution_has_every_energy_source)
 
 
 # ── the fold ─────────────────────────────────────────────────────────────────

@@ -369,6 +369,8 @@ def _slot_value(slot: str, value: Any) -> str | None:
         return f"the roles recorded for {count(len(value))} columns"
     if slot == "energy_adjustment":
         method = _attr(value, "method")
+        if method == "residual_energy_dropped":
+            return "the residual method with total energy left out of the outcome model"
         return "no adjustment" if method == "none" else f"the {_METHOD_NAME.get(method, tick(method))}"
     if slot == "exclusions":
         n = len(value)
@@ -693,31 +695,59 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
 _METHOD_NAME = {
     "standard": "standard (multivariate) model",
     "residual": "residual method",
+    "residual_energy_dropped": "residual method",
     "density_multivariate": "multivariate nutrient density model",
     "density": "nutrient density model",
     "partition": "energy partition model",
+    "all_components": "all-components model",
 }
+
+
+def _energy_role_columns(state: Any) -> list[str]:
+    roles = getattr(state, "roles", None) or {}
+    return [c for c, r in roles.items() if r == "energy"]
 
 
 @register_sentence("set_energy_adjustment")
 def _set_energy_adjustment(d: Any, state: Any, ctx: Any) -> str:
-    # Every adjusted nutrient by name: a methods sentence never says "and 3 more".
+    # Every adjusted nutrient by name: a methods sentence never says "and 3 more". Each sentence
+    # says whether total energy stayed in the outcome model, because that decides the estimand
+    # (audit WP6: ME-02, ME-03).
     nutrients = listing(d.nutrients, limit=len(d.nutrients)) if d.nutrients else ""
     energy = tick(d.energy_column) if d.energy_column else "total energy"
     if d.method == "none":
-        who = nutrients or "nutrients"
-        return f"No energy adjustment was applied: {who} enter the models as absolute intakes"
+        gone = [c for c in dict.fromkeys([d.energy_column, *_energy_role_columns(state)]) if c]
+        if gone:
+            verb = plural(len(gone), "was", "were")
+            return (f"No energy adjustment was applied: {listing(gone, limit=len(gone))} {verb} "
+                    f"left out of the models, so nutrients enter as absolute intakes")
+        return ("No energy adjustment was applied: no total-energy column is among the "
+                "predictors, so nutrients enter as absolute intakes")
     each = f"{nutrients} were each" if len(d.nutrients) > 1 else (f"{nutrients} was" if nutrients else "each nutrient was")
     where = f" within levels of {tick(d.strata)}" if d.strata else ""
     name = _METHOD_NAME[d.method]
-    if d.method == "residual":
+    if d.method in ("residual", "residual_energy_dropped"):
         many = len(d.nutrients) > 1
         who = f"{nutrients} were each" if many else (f"{nutrients} was" if nutrients else "each nutrient was")
-        logged = ", both logged," if d.log_transform else ""
-        # Under strata, one constant for every level (StratifiedEnergyAdjuster), not each level's.
-        mean = "the nutrient's mean over all training rows" if d.strata else "the nutrient's mean"
-        return (f"Energy was adjusted by the {name}: {who} regressed on {energy}{logged}{where} "
-                f"on training rows and replaced by the residual plus {mean}")
+        if d.log_transform:
+            # The log variant adds back the predicted log nutrient at the mean log energy, then
+            # back-transforms: the nutrient at the geometric-mean energy (audit G17).
+            pooled = "all training rows' " if d.strata else ""
+            how = (f"regressed on {energy} with both logged{where} on training rows and replaced "
+                   f"by exp(the log residual plus the predicted log nutrient at {pooled}mean log "
+                   f"energy), the nutrient at the geometric-mean energy")
+        else:
+            # Under strata, one constant for every level (StratifiedEnergyAdjuster), not each level's.
+            mean = "the nutrient's mean over all training rows" if d.strata else "the nutrient's mean"
+            how = (f"regressed on {energy}{where} on training rows and replaced by the residual "
+                   f"plus {mean}")
+        if d.method == "residual":
+            return (f"Energy was adjusted by the {name} with total energy kept in the outcome model "
+                    f"(the Willett–Stampfer variant): {who} {how}, and {energy} enters the models "
+                    f"beside the adjusted values")
+        return (f"Energy was adjusted by the {name} with total energy left out of the outcome "
+                f"model: {who} {how}, and {energy} then left the models, so a coefficient equals "
+                f"the standard model's only when no other covariate correlates with energy")
     if d.method == "standard":
         who = nutrients or "the nutrients"
         return (f"Energy was adjusted by the {name}: {energy} enters the models beside {who}, so "
@@ -729,6 +759,11 @@ def _set_energy_adjustment(d: Any, state: Any, ctx: Any) -> str:
         return (f"Energy was adjusted by the {name}: {each} divided by {energy}{where}, which "
                 f"leaves the models")
     who = nutrients or "the chosen nutrients"
+    if d.method == "all_components":
+        return (f"Energy was adjusted by the {name} (Tomova et al. 2022): {energy} was split into "
+                f"kcal from {who}, each its own term, and kcal from everything else; each "
+                f"nutrient's average relative effect is its coefficient less the other sources' "
+                f"coefficients weighted by their share of the remaining energy")
     return (f"Energy was partitioned: {energy} was split into kcal from {who} and kcal from "
             f"everything else, each its own term")
 
@@ -779,6 +814,10 @@ def _set_substitution(d: Any, state: Any, ctx: Any) -> str:
     if n_boot:
         text += (f"; its band comes from {count(n_boot)} refits of each model on bootstrap "
                  f"resamples of training rows")
+    if getattr(d, "acknowledged", False):
+        # The recorded attestation of the omitted-sources block under inference (audit ME-05).
+        text += ("; it was kept although energy sources are missing from the model, so the curve "
+                 "carries the confounding of the sources total energy holds as one composite")
     return text
 
 

@@ -182,21 +182,70 @@ def lineage_caption(before: Sequence[str], after: Sequence[str]) -> str:
 
 
 def _relationship_caption(method: str, n: str, E: str, out: str, r0: float | None,
-                          r1: float | None, strata: str | None) -> str:
+                          r1: float | None, strata: str | None,
+                          gap: dict[str, Any] | None = None) -> str:
     if method == "none":
-        text = f"`{n}` enters unadjusted; it correlates {_r(r0)} with `{E}`, so energy confounds it."
+        text = f"`{n}` enters unadjusted and `{E}` leaves the model; r = {_r(r0)}, so energy confounds it."
     elif method == "standard":
         text = f"`{n}` stays as recorded (r = {_r(r0)} with `{E}`); `{E}` enters the model beside it."
     elif method == "residual":
         within = f" within `{strata}`" if strata else ""
         text = (f"`{n}` correlates {_r(r0)} with `{E}`; after residual adjustment{within}, "
-                f"{_r(r1)}.")
+                f"{_r(r1)}, with `{E}` kept in the model.")
+    elif method == "residual_energy_dropped" and gap is not None:
+        # The card shows the gap the energy-dropped form opens on these rows (audit ME-03).
+        text = (f"`{E}` leaves the outcome model: `{out}` coefficient {_gap_number(gap['dropped'])}, "
+                f"against {_gap_number(gap['standard'])} with `{E}` kept.")
+    elif method == "residual_energy_dropped":
+        text = (f"`{n}` correlates {_r(r0)} with `{E}`; after residual adjustment, {_r(r1)}; "
+                f"`{E}` leaves the outcome model.")
     elif method in ("density", "density_multivariate"):
         stays = "stays as its own term" if method == "density_multivariate" else "leaves the model"
         text = f"`{out}` correlates {_r(r1)} with `{E}`, down from {_r(r0)}; `{E}` {stays}."
+    elif method == "all_components":
+        text = f"`{n}` becomes kcal in `{out}`; every energy source is its own term, the rest other kcal."
     else:
         text = f"`{n}` becomes kcal in `{out}`; `{E}` leaves, split into nutrient and other kcal."
     return fit_words(text, CAPTION_WORDS)
+
+
+def _gap_number(value: float) -> str:
+    """A coefficient on the card: three significant digits, signed, a true minus."""
+    return f"{value:+.3g}".replace("-", "−")
+
+
+def _residual_gap(ctx: PreviewContext, state: Any, frame: Any, predictors: Sequence[str],
+                  adjustment: Any, out_name: str) -> dict[str, Any] | None:
+    """The energy-dropped residual's coefficient for the pictured nutrient against the standard
+    model's, on the preview's training rows: what leaving energy out costs (audit ME-03).
+
+    The outcome is read for the same training rows the picture uses (never a held-out row). None
+    when the outcome or task cannot carry it (multiclass, no outcome yet) or a fit fails.
+    """
+    from turbotab.core.methods.energy import coefficient_gap
+    from turbotab.core.models.pipeline import design_spec, shared_steps, transformer
+    from turbotab.core.stages.modeling import coded_outcome
+
+    target = getattr(state, "target", None)
+    task = getattr(state, "task", None)
+    if task is None:
+        info = ctx.artifact("target_info")
+        info = getattr(info, "data", info)
+        task = (info or {}).get("task") if isinstance(info, dict) else None
+    if not target or task not in ("regression", "binary") or target not in ctx.datastore.columns:
+        return None
+    try:
+        y = ctx.datastore.materialize([target], frame.index.to_numpy())[target]
+        coded = coded_outcome(task, y.reindex(frame.index).to_numpy(), getattr(state, "event", None))
+        mats = []
+        for method in ("residual_energy_dropped", "residual"):
+            spec = design_spec(state, frame, predictors,
+                               energy=adjustment.model_copy(update={"method": method}))
+            mats.append(transformer(shared_steps(spec)).fit_transform(frame[spec.inputs]))
+        gaps = coefficient_gap(task, coded, mats[0], mats[1], [(out_name, out_name)])
+    except (ValueError, TypeError, KeyError):
+        return None
+    return gaps[0] if gaps else None
 
 
 # ── storyboards ──────────────────────────────────────────────────────────────
@@ -327,8 +376,12 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     keep = np.zeros(len(e), dtype=bool)
     keep[np.random.default_rng(0).permutation(len(e))[:POINTS]] = True
     method = after_adj.method
+    gap = (_residual_gap(ctx, state, frame, predictors, after_adj, out_name)
+           if method == "residual_energy_dropped" and not problem else None)
     if problem:
         caption = fit_words(problem, CAPTION_WORDS)
+    elif gap is not None:  # the gap is this option's own consequence, whatever is on record now
+        caption = _relationship_caption(method, n, E, out_name, r0, r1, after_adj.strata, gap)
     elif reopened:
         caption = fit_words(f"Recorded now: `{now_name}` correlates {_r(r0)} with `{E}`; with this "
                             f"choice, `{out_name}` correlates {_r(r1)}.", CAPTION_WORDS)
@@ -336,7 +389,8 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
         caption = _relationship_caption(method, n, E, out_name, r0, r1, after_adj.strata)
     scatter_story: list[Any] = []
     hist_story: list[Any] = []
-    if not problem and not reopened and method == "residual" and fitted is not None:
+    if (not problem and not reopened and method in ("residual", "residual_energy_dropped")
+            and fitted is not None):
         strata = after_adj.strata if after_adj.strata in frame.columns else None
         scatter_story, hist_story = _residual_story(fitted, n, E, e, raw, after, keep, strata)
     views: list[Any] = [RelationshipView(

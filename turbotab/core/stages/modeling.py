@@ -178,7 +178,6 @@ def substitution_pairs(predictors: Sequence[str], energy_column: str | None,
 def design_stage(ctx: StageContext) -> Bundle:
     """Each chosen family's pipeline, and the lineage from raw columns to the model matrix."""
     from turbotab.core.decisions import left_out
-    from turbotab.core.methods.energy import METHOD_TABLE
     from turbotab.core.methods.nesting import nested_components
     from turbotab.core.models.artifacts import DesignArtifact
     from turbotab.core.models.lineage import missing_counts, trace
@@ -205,9 +204,13 @@ def design_stage(ctx: StageContext) -> Bundle:
     train_ids = assignment.index[assignment["train"]].to_numpy()
     adj = state.energy_adjustment
     ctx.progress(0.05, "Reading the training rows")
+    y_train = None
     with open_store(ctx) as store:
         X = modeling_frame(store, input_columns(predictors, adj), train_ids)
         info = {c.name: c for c in store.info().columns}  # every row's summary: as the cohort reads it
+        if adj is not None and adj.method == "residual_energy_dropped" and state.target in store.columns:
+            # The gap the energy-dropped residual opens on these training rows (audit ME-03).
+            y_train = store.materialize([state.target], train_ids)[state.target]
     spec = design_spec(state, X, predictors, column_info=info)
     numeric_set = set(spec.numeric)  # a set: 20,000 predictors made the list test quadratic
     numeric = [c for c in spec.predictors if c in numeric_set]
@@ -221,6 +224,14 @@ def design_stage(ctx: StageContext) -> Bundle:
     lineage = trace(shared.steps, spec.inputs, spec.roles, missing_counts(X[spec.inputs]))
     if "energy" in shared.named_steps:
         warnings_list.extend(_energy_warnings(shared.named_steps["energy"]))
+    # The estimand and each coefficient's meaning, read off the matrix the models will see: the
+    # label equals the model fitted (audit WP6; methods.energy.describe_model).
+    from turbotab.core.methods.energy import describe_model
+
+    described = describe_model(adj, spec.predictors, spec.roles, list(matrix.columns), nested=nested,
+                               step=shared.named_steps.get("energy"))
+    if y_train is not None:
+        warnings_list.extend(_residual_gap(state, task, spec, X, matrix, y_train, info))
 
     ctx.progress(0.8, "Building each model's pipeline")
     n_rows, n_cols = int(matrix.shape[0]), int(matrix.shape[1])
@@ -232,17 +243,54 @@ def design_stage(ctx: StageContext) -> Bundle:
         lineage=lineage,
         matrix={"n_rows": n_rows, "n_cols": n_cols},
         models=models,
-        estimand=METHOD_TABLE[adj.method]["estimand"] if adj is not None else None,
+        estimand=described.text,
         substitution_pairs=substitution_pairs(spec.predictors, energy_column, nested),
         warnings=warnings_list,
         nested=[{"column": c, "parent": p} for c, p in nested.items()],
         left_out=[c for c in left_out(state) if c in (state.roles or {})],
+        terms=described.terms,
+        energy_form=described.form if described.text else None,
     )
     return Bundle(
         data=artifact.model_dump(mode="json"),
         frames={"training": pd.DataFrame({"row_id": train_ids.astype(np.int64)})},
         objects={"pipelines": pipelines, "spec": spec.to_dict(), "nested": nested},
     )
+
+
+def _coef(value: float) -> str:
+    """A coefficient as the gap states it: three significant digits, signed, a true minus."""
+    return f"{value:+.3g}".replace("-", "−")
+
+
+def _residual_gap(state: Any, task: str, spec: Any, X: pd.DataFrame, matrix: pd.DataFrame,
+                  y: Any, info: Mapping[str, Any]) -> list[str]:
+    """The energy-dropped residual against the standard model, on the training rows (ME-03).
+
+    The model kept with total energy is the residual with energy (identical to the standard
+    model's coefficient); both are fit with the same family of least squares or logistic
+    regression the linear model uses. One sentence per nutrient, at most three.
+    """
+    from turbotab.core.methods.energy import coefficient_gap
+    from turbotab.core.models.pipeline import design_spec, shared_steps, transformer
+
+    adj = state.energy_adjustment
+    kept_adj = adj.model_copy(update={"method": "residual"})
+    kept_spec = design_spec(state, X, spec.predictors, energy=kept_adj, column_info=info)
+    kept = transformer(shared_steps(kept_spec)).fit_transform(X[kept_spec.inputs])
+    coded = coded_outcome(task, pd.Series(y).reindex(matrix.index).to_numpy(), state.event)
+    if task == "binary" and not set(pd.unique(pd.Series(coded).dropna())) <= {0, 1}:
+        return []
+    pairs = [(f"{n}_adj", f"{n}_adj") for n in adj.nutrients]
+    gaps = coefficient_gap(task, coded, matrix, kept.loc[matrix.index], pairs)
+    E = adj.energy_column
+    out = []
+    for g in sorted(gaps, key=lambda g: -abs(g["dropped"] - g["standard"]))[:3]:
+        out.append(f"{E} left the outcome model: on {g['n_rows']:,} training rows "
+                   f"{g['nutrient']}'s coefficient is {_coef(g['dropped'])}, against "
+                   f"{_coef(g['standard'])} with {E} kept (the standard model's). The two agree "
+                   f"only when no covariate correlates with {E}.")
+    return out
 
 
 def _energy_warnings(step: Any) -> list[str]:
@@ -490,6 +538,9 @@ def fit_stage(ctx: StageContext) -> Bundle:
             except Exception as exc:  # noqa: BLE001 - a table that cannot be computed is a concern
                 coefficients = None
                 concerns.append(f"The coefficient table could not be computed: {exc}")
+            if coefficients:
+                coefficients = _energy_rows(coefficients, design, spec, family, final, X, y, task,
+                                            clusters)
             done += 1
         concerns = _concerns(caught, len(pairs) + 1) + concerns
         if family.key == "linear":
@@ -531,6 +582,42 @@ def fit_stage(ctx: StageContext) -> Bundle:
     frames = {SEALED_SCORES: sealed_scores_frame(models, sealed)} if n_holdout else {}
     return Bundle(data=artifact.model_dump(mode="json"), frames=frames,
                   objects={"fitted": fitted, "grouped_by": grouped_by})
+
+
+def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, family: Any,
+                 final: Any, X: Any, y: Any, task: str, clusters: Any) -> list[dict[str, Any]]:
+    """The coefficient rows with what each means (the design's ``terms``), and under the
+    all-components model each nutrient's average relative effect beside them (audit ME-14):
+    with the family's own intervals under inference, as a point estimate otherwise."""
+    terms = ((design.data or {}).get("terms") or {}) if isinstance(design, Bundle) else {}
+    rows = [{**row, "meaning": terms[row["feature"]]} if row.get("feature") in terms else row
+            for row in coefficients]
+    adj = spec.energy_adjustment()
+    if (adj is None or adj.method != "all_components" or task == "multiclass"
+            or not hasattr(family, "inference")):
+        return rows
+    from turbotab.core.methods.energy import relative_effect_rows
+    from turbotab.core.models.inference import inference_table
+    from turbotab.core.models.linear import model_matrix
+
+    matrix = model_matrix(final, X)
+    step = getattr(final, "named_steps", {}).get("energy")
+    factors = dict(getattr(getattr(step, "pooled_", step), "factors_", {}) or {})
+    table = None
+    if clusters is not None:
+        classes = list(getattr(final[-1], "classes_", [])) or None
+
+        def table(m: Any) -> Any:
+            return inference_table(task, m, y, classes, clusters).rows
+    try:
+        extra = relative_effect_rows(matrix, list(adj.nutrients), factors, table=table,
+                                     coefficients=rows)
+    except Exception:  # noqa: BLE001 - the coefficients stand without their contrasts
+        import logging
+
+        logging.getLogger(__name__).exception("the average relative effects failed")
+        extra = []
+    return rows + extra
 
 
 # ── substitution ─────────────────────────────────────────────────────────────
@@ -689,6 +776,17 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                 estimate += timed["seconds"] * BAND_BOOT
         models.append(entry)
     notes = [note] if note else []
+    # The energy sources the model leaves to total energy's composite (audit ME-05), on every row
+    # the models were fit on: named whenever a main source is missing, or the rest is large.
+    from turbotab.core.methods.energy import MAX_OMITTED_SHARE, omitted_energy, omitted_sentence
+
+    exposures = [c for c in spec.predictors if spec.roles.get(c) == "exposure"]
+    omitted = omitted_energy(X_fit, total_energy, exposures, nested=nested) if total_energy else None
+    if omitted is not None and (len(omitted["omitted"]) > 1
+                                or (omitted["mean_share"] or 0.0) > MAX_OMITTED_SHARE):
+        said = omitted_sentence(omitted)
+        if said:
+            notes.append(said)
     for c, reading in readings.items():
         if not reading.declared:
             notes.append(f"{c} is read as {reading.role} in grams at {reading.factor:g} kcal/g; its "
@@ -725,6 +823,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         band_estimate=({"n_boot": BAND_BOOT, "seconds": round(estimate, 1)}
                        if not n_boot and drawable and estimate else None),
         support=support,
+        omitted_energy=omitted,
     )
     ctx.progress(1.0, "Done")
     return artifact.model_dump(mode="json")
