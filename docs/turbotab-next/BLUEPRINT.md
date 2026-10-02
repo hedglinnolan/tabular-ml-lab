@@ -306,3 +306,35 @@ From the screenshots of `explore/stage`, `explore/inline` and `explore/scrub`:
   always-visible strip: row counts through the flow, the column path to the model matrix, the
   models, the result. It doubles as the map of where you are (DRIVE_RUBRIC §2.4) and as a
   provenance summary. Clicking a node navigates there.
+
+### 11.2 · Every element earns its place — the pedagogy audit (Nolan, 2026-10-01)
+
+*"We need to be meticulous in that every part of what is presented to the user serves a legitimate
+pedagogical purpose and is designed well, which is very difficult on an app where the user can make a
+myriad of modeling decisions."*
+
+**The test for every element on screen** — a view, a coach note, a sentence, a chip, a number, a
+caption — is that it answers a question the user has *at that moment*. There are five such
+questions:
+
+1. **What is this choice?**
+2. **What will it change in my data or my model?**
+3. **Why does that matter for my result?**
+4. **Is my data okay?**
+5. **What did I decide, and can a reviewer reproduce it?**
+
+An element that answers none of them, or only repeats what another element already answers, is
+removed. It is not restyled, shrunk or tucked behind a disclosure.
+
+How it is enforced:
+
+- **Declared purpose.** Every stage view kind, coach note kind and Record component declares which of
+  the five questions it answers in a purpose registry. A test fails when a new kind has no entry.
+  New kinds arrive with a purpose or not at all.
+- **The audit is a reviewer, every milestone.** A pedagogy reviewer walks every screen of the
+  milestone's journey. It lists each visible element with its purpose and flags elements with none,
+  elements that duplicate another, and elements that answer a question the user does not have yet
+  (a later step's concern shown now). Its blockers are fixed before the milestone ships.
+- **The myriad-of-decisions problem is handled by the closed vocabulary** (§11 rule 2), not by
+  per-decision design. Each view kind's purpose is audited once and holds for every decision that
+  uses it.
