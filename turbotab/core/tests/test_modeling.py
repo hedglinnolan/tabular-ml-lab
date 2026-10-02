@@ -251,7 +251,12 @@ def test_binary_holdout_uses_the_second_class_as_positive(table):
 # ── leakage ──────────────────────────────────────────────────────────────────
 
 
-def test_every_fitted_step_sees_only_training_fold_rows(tmp_path, monkeypatch):
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_every_fitted_step_sees_only_training_fold_rows(tmp_path, monkeypatch, purpose):
+    """Every step of every pipeline is fit on one training fold or on all training rows, never on a
+    held-out row; except, under inference, the coefficient table, which is estimated from every
+    analyzed row (BLUEPRINT §12 ruling 3, AUDIT_REPORT §5 WP8): one more fit of each family that
+    has coefficients (linear and elastic net, not boosted trees), on training and held-out rows."""
     from sklearn.ensemble import HistGradientBoostingRegressor
     from sklearn.impute import SimpleImputer
     from sklearn.linear_model import ElasticNetCV, LinearRegression
@@ -289,7 +294,7 @@ def test_every_fitted_step_sees_only_training_fold_rows(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sm, "OLS", ols)
 
-    st = mf.state(energy_adjustment=mf.energy("residual"), missing="impute", purpose="inference")
+    st = mf.state(energy_adjustment=mf.energy("residual"), missing="impute", purpose=purpose)
     seen.clear()
     run(st, paths, split)
     design_rows = seen.pop("energy")[0]  # the design's shared steps: every training row, once
@@ -301,17 +306,23 @@ def test_every_fitted_step_sees_only_training_fold_rows(tmp_path, monkeypatch):
     fit_stage(mf.context(st, {"design": design, "split": split,
                               "target_info": mf.target_info("regression")}, paths))
     holdout = set(hold_ids.tolist())
+    every = frozenset(train_ids.tolist()) | frozenset(holdout)
     n_folds = len(np.unique(folds))
+    inference = purpose == "inference"
     for name in ("imputer", "energy", "onehot", "scaler", "ols", "enet", "trees"):
         rows = seen[name]
         assert rows, name
+        table = inference and name != "trees"  # boosted trees have no coefficient table
         for r in rows:
+            if table and r == every:
+                continue  # the coefficient table's fit on every analyzed row
             assert r in allowed, f"{name} was fit on rows that are not one training fold"
             assert not (r & holdout), f"{name} saw held-out rows"
-        # Every fold and the refit, each once per family that has the step.
-        assert set(rows) == allowed, name
-    assert len(seen["energy"]) == 3 * (n_folds + 1)
-    assert ols_rows == [frozenset(train_ids.tolist())]
+        # Every fold and the refit, each once per family that has the step (and, under inference,
+        # the table's fit on every analyzed row).
+        assert set(rows) == (allowed | {every} if table else allowed), name
+    assert len(seen["energy"]) == 3 * (n_folds + 1) + (2 if inference else 0)
+    assert ols_rows == ([every] if inference else [])
 
 
 def test_the_fit_stops_between_folds_when_cancelled_and_reports_progress(table):

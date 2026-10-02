@@ -3,11 +3,17 @@ substitution curves (M1_CONTRACT §3).
 
 Owner: the M1 "modeling" agent.
 
-Row discipline: everything learned from data is learned on training rows. The design fits its
-shared steps on training rows only to name the matrix's columns; the fit cross-validates on
+Row discipline: everything learned for prediction is learned on training rows. The design fits
+its shared steps on training rows only to name the matrix's columns; the fit cross-validates on
 training rows with the split's own folds (every step refit per fold, inside the pipeline) and
 scores the held-out rows once, with the pipeline refit on all training rows; substitution curves
 average over training rows.
+
+The seal is purpose-scoped (BLUEPRINT §12 ruling 3; AUDIT_REPORT §5 WP8, ME-12): under inference
+the coefficient table is estimated from every analyzed row, held-out ones included, with the
+pipeline refit on all of them and the number of rows stated. A holdout is a prediction concept: on
+the NHANES export, twenty random 80% seals moved the sugar coefficient from −0.097 to −0.021 and
+made it "significant" in 9 of 20, where all 2,996 rows give one answer.
 """
 from __future__ import annotations
 
@@ -104,15 +110,25 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
         rows = np.intersect1d(rows, assignment.index[assignment["train"]].to_numpy())
         n = int(len(rows))
     n_events = n_classes = None
-    if task != "regression" and rows is not None:
-        with open_store(ctx) as store:
-            y = store.materialize([ctx.state.target], rows)
-        counts = y[ctx.state.target].value_counts(dropna=True)
-        n_classes = int(len(counts))
-        if task == "binary" and n_classes:
-            n_events = int(counts.min())
+    outcome_mean = outcome_sd = None
+    with open_store(ctx) as store:
+        column_info = {c.name: c for c in store.info().columns}
+        if rows is not None:
+            y = store.materialize([ctx.state.target], rows)[ctx.state.target]
+            if task == "regression":
+                values = pd.to_numeric(y, errors="coerce").dropna()
+                if len(values) > 1:
+                    outcome_mean, outcome_sd = float(values.mean()), float(values.std(ddof=1))
+            else:
+                counts = y.value_counts(dropna=True)
+                n_classes = int(len(counts))
+                if task == "binary" and n_classes:
+                    n_events = int(counts.min())
     situation = Situation(task=task, purpose=ctx.state.purpose, n_rows=n,
-                          n_features=len(predictors), n_events=n_events, n_classes=n_classes)
+                          n_features=len(predictors), n_events=n_events, n_classes=n_classes,
+                          n_parameters=predictor_parameters(predictors, column_info,
+                                                            ctx.state.categorical),
+                          outcome_mean=outcome_mean, outcome_sd=outcome_sd)
     ranked = rank(situation)
     events = f", {n_events:,} in the rarer class" if n_events is not None else ""
     estimates = _estimates(ctx, task, rows if trained else None, [f for f, _ in ranked])
@@ -128,6 +144,24 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
               f"predictors{events}.",
     )
     return artifact.model_dump(mode="json")
+
+
+CATEGORY_DTYPES = ("categorical", "text")
+
+
+def predictor_parameters(predictors: Sequence[str], column_info: Mapping[str, Any],
+                         declared: Sequence[str] | None = None) -> int:
+    """The candidate predictor parameters a sample-size criterion counts: one per number, and
+    k − 1 per category of k levels (text, or an integer column declared categorical), as the
+    one-hot step encodes it. A column the summaries do not know counts once."""
+    codes = set(declared or [])
+    total = 0
+    for column in predictors:
+        info = column_info.get(column)
+        dtype = getattr(info, "dtype", None)
+        levels = int(getattr(info, "n_unique", 0) or 0)
+        total += max(1, levels - 1) if (dtype in CATEGORY_DTYPES or column in codes) else 1
+    return total
 
 
 def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[Any]) -> dict[str, Any]:
@@ -368,6 +402,38 @@ def coded_outcome(task: str | None, y: Any, event: str | None) -> Any:
     return hit.astype(int) if hit.any() else y
 
 
+def outcome_levels(task: str | None, y: Any, event: str | None) -> dict[Any, Any] | None:
+    """Each class as the models hold it, mapped to its level as the data spell it.
+
+    A binary outcome whose event was named is coded 1 for that level and 0 for the other
+    (:func:`coded_outcome`); otherwise the models hold the levels themselves. None for regression.
+    """
+    if task not in ("binary", "multiclass"):
+        return None
+    values = [v for v in pd.unique(pd.Series(np.asarray(y, dtype=object))) if not pd.isna(v)]
+    coded = coded_outcome(task, y, event)
+    if coded is y:
+        return {v: v for v in values}
+    from turbotab.core.stages.rows import _level_key
+
+    key = _level_key(event)
+    hit = [v for v in values if _level_key(v) == key]
+    others = [v for v in values if _level_key(v) != key]
+    reference = others[0] if len(others) == 1 else (" or ".join(str(o) for o in others) or None)
+    return {1: hit[0], 0: reference}
+
+
+def _inference_table(family: Any, pipeline: Any, X: Any, y: Any, *, task: str, clusters: Any,
+                     outcome: Any, rows: str) -> Any:
+    """``family.inference``, handing it the outcome's names and the rows it is estimated from when
+    it takes them (a family registered before WP8 may not)."""
+    import inspect
+
+    accepts = inspect.signature(family.inference).parameters
+    extra = {name: value for name, value in (("outcome", outcome), ("rows", rows)) if name in accepts}
+    return family.inference(pipeline, X, y, task=task, clusters=clusters, **extra)
+
+
 def fit_stage(ctx: StageContext) -> Bundle:
     """Cross-validate each pipeline on the split's folds, then refit on all training rows.
 
@@ -378,17 +444,25 @@ def fit_stage(ctx: StageContext) -> Bundle:
     (``fold_scheme``) score each fold by a model fit on the folds before it; every inner split a
     model makes (elastic net's penalty, boosted trees' early stopping) is drawn the same way
     (``turbotab.core.models.inner_cv.fit_pipeline``).
+
+    Under inference the coefficients come from the pipeline refit on every analyzed row (the
+    training fit when nothing is held out), clustered by whatever unit repeats among them, and on
+    the outcome's own scale: odds ratios or relative-risk ratios with the event and the reference
+    level named (``models/inference.py``). With two or more families, ``selection`` states how much
+    picking the best of them by cross-validation flatters it (``models/selection.py``).
     """
     from sklearn.base import clone
 
     from turbotab.core.models import get_family
     from turbotab.core.models.artifacts import FitArtifact
+    from turbotab.core.models.base import reports_coefficients
     from turbotab.core.models.baseline import compare, no_better_concern
-    from turbotab.core.models.inference import cluster_columns, resolve_clusters
+    from turbotab.core.models.inference import Outcome, cluster_columns, resolve_clusters
     from turbotab.core.models.inner_cv import fit_pipeline
     from turbotab.core.models.metrics import (CV_DEFINITION, LABELS, PRIMARY, cross_validate,
                                               fold_pairs, metric_labels, score)
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
+    from turbotab.core.models.selection import selection_optimism
     from turbotab.core.seal import SEALED_SCORES, sealed_scores_frame
 
     state = ctx.state
@@ -419,25 +493,40 @@ def fit_stage(ctx: StageContext) -> Bundle:
     if y_all.isna().any():
         raise ValueError(f"{int(y_all.isna().sum()):,} analysis rows have no {target}; the cohort "
                          f"should have left them out.")
+    outcome = Outcome(name=target, labels=outcome_levels(task, y_all.to_numpy(), state.event))
     y_all = pd.Series(coded_outcome(task, y_all.to_numpy(), state.event), index=y_all.index)
     X, y = frame.loc[train, spec.inputs], y_all[train].to_numpy()
     X_hold, y_hold = frame.loc[~train, spec.inputs], y_all[~train].to_numpy()
     folds = assignment.loc[train, "fold"].to_numpy().astype(int)
-    order = assignment.loc[train, "order"].to_numpy(dtype=float) if scheme == "time_ordered" else None
+    order_all = assignment["order"].to_numpy(dtype=float) if scheme == "time_ordered" else None
+    order = order_all[train] if order_all is not None else None
     pairs = fold_pairs(folds, scheme)
-    groups = frame.loc[train, grouped_by].to_numpy() if grouped_by else None
-    clusters = resolve_clusters(state, frame.loc[train, unit_columns], [grouped_by]) if inference else None
+    unit_all = frame[grouped_by].to_numpy() if grouped_by else None
+    groups = unit_all[train] if unit_all is not None else None
+    # The rows the coefficient table is estimated from: every analyzed row under inference
+    # (BLUEPRINT §12 ruling 3: a holdout is a prediction concept), the training rows otherwise.
+    table_rows = np.ones(len(train), dtype=bool) if inference else train
+    same_rows = bool(table_rows.sum() == train.sum())
+    X_tab, y_tab = frame.loc[table_rows, spec.inputs], y_all[table_rows].to_numpy()
+    clusters = (resolve_clusters(state, frame.loc[table_rows, unit_columns], [grouped_by])
+                if inference else None)
     if groups is not None and len(pd.unique(groups)) == len(groups):
         # One row per unit (the rows were combined per unit, M2_CONTRACT §2): the split is keyed by
         # the unit, but no unit repeats, so clustering by it changes nothing and "its rows repeat"
         # would be false.
-        groups, grouped_by = None, None
+        groups, grouped_by, unit_all = None, None, None
 
     def fit(model: Any, X_fit: Any, y_fit: Any, rows: Any = None) -> Any:
         """Fit a pipeline on these training rows, its inner splits drawn as the folds are."""
         take = slice(None) if rows is None else rows
         return fit_pipeline(model, X_fit, y_fit, groups=None if groups is None else groups[take],
                             order=None if order is None else order[take])
+
+    def fit_table(model: Any) -> Any:
+        """Fit a pipeline on the coefficient table's rows, its inner splits drawn as the folds are."""
+        return fit_pipeline(model, X_tab, y_tab,
+                            groups=None if unit_all is None else unit_all[table_rows],
+                            order=None if order_all is None else order_all[table_rows])
 
     keys = [k for k in (state.models or []) if k in pipelines]
     primary = PRIMARY[task]
@@ -454,6 +543,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
     models: list[dict[str, Any]] = []
     fitted: dict[str, Any] = {}
     sealed: dict[str, Any] = {}  # held-out scores: kept out of the public data (M2_CONTRACT §3)
+    results: dict[str, Any] = {}  # each family's cross-validation, for the selection's optimism
     for key in keys:
         family = get_family(key)
         started = time.perf_counter()
@@ -479,14 +569,30 @@ def fit_stage(ctx: StageContext) -> Bundle:
             ctx.progress(share(done), f"{family.label}: coefficients")
             concerns: list[str] = []
             interval_info = None
+            n_coefficients = None
+            on_all = inference and reports_coefficients(family)
             try:
+                if on_all and not same_rows:
+                    ctx.progress(share(done), f"{family.label}: coefficients on every analyzed row")
+                table_fit = (final if same_rows else fit_table(clone(pipelines[key]))) if on_all else final
+                X_c, y_c = (X_tab, y_tab) if on_all else (X, y)
                 if clusters is not None and hasattr(family, "inference"):
-                    table = family.inference(final, X, y, task=task, clusters=clusters)
+                    table = _inference_table(family, table_fit, X_c, y_c, task=task,
+                                             clusters=clusters, outcome=outcome,
+                                             rows="all" if on_all else "training")
                     coefficients, interval_info = table.rows, table.info
                     concerns.extend(table.concerns)
                 else:
-                    coefficients = family.coefficients(final, X, y, task=task,
-                                                       purpose=state.purpose, groups=groups)
+                    unit_c = (None if unit_all is None else unit_all[table_rows]) if on_all else groups
+                    coefficients = family.coefficients(table_fit, X_c, y_c, task=task,
+                                                       purpose=state.purpose, groups=unit_c)
+                n_coefficients = len(y_c) if coefficients is not None else None
+                if on_all and not same_rows and coefficients is not None:
+                    concerns.append(
+                        f"Under inference the coefficients are estimated from all {len(y_c):,} "
+                        f"analyzed rows, the {int((~train).sum()):,} held-out ones included: a "
+                        f"holdout scores prediction only, and every eligible row makes the estimates "
+                        f"more precise and independent of the seal's seed.")
             except Exception as exc:  # noqa: BLE001 - a table that cannot be computed is a concern
                 coefficients = None
                 concerns.append(f"The coefficient table could not be computed: {exc}")
@@ -510,6 +616,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
             concerns.insert(0, worse or tie)
         fitted[key] = final
         sealed[key] = holdout
+        results[key] = result
         models.append({
             "family": key,
             "label": family.label,
@@ -521,13 +628,17 @@ def fit_stage(ctx: StageContext) -> Bundle:
             "baseline": baseline,
             "versus_baseline": versus.model_dump(mode="json"),
             "inference": interval_info,
+            "coefficients_n": n_coefficients,
         })
     ctx.progress(1.0, "Done")
     n_holdout = int((~train).sum())
+    # Picking the best of several families by cross-validation flatters it (audit ME-13).
+    selection = selection_optimism(task, primary, results, {m["family"]: m["label"] for m in models},
+                                   LABELS[primary])
     artifact = FitArtifact(task=task, primary_metric=PRIMARY[task], metric_labels=metric_labels(task),
                            n_train=int(train.sum()), n_holdout=n_holdout, models=models,
                            holdout_sealed=n_holdout > 0, fold_scheme=scheme,
-                           cv_definition=CV_DEFINITION[task])
+                           cv_definition=CV_DEFINITION[task], selection=selection)
     frames = {SEALED_SCORES: sealed_scores_frame(models, sealed)} if n_holdout else {}
     return Bundle(data=artifact.model_dump(mode="json"), frames=frames,
                   objects={"fitted": fitted, "grouped_by": grouped_by})

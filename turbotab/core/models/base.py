@@ -32,6 +32,12 @@ class Situation:
     n_features: int
     n_events: int | None = None  # binary: rows in the rarer class
     n_classes: int | None = None
+    # Candidate predictor parameters (a category with k levels is k − 1 of them), which sample-size
+    # criteria count; None: one per predictor. The outcome's mean and SD on the rows ranked
+    # (regression), which Riley et al.'s intercept criterion needs.
+    n_parameters: int | None = None
+    outcome_mean: float | None = None
+    outcome_sd: float | None = None
 
 
 @dataclass(frozen=True)
@@ -63,7 +69,8 @@ class ModelFamily(Protocol):
     def coefficients(self, pipeline: Any, X: Any, y: Any, *, task: Task,
                      purpose: Purpose | None, groups: Any = None) -> list[dict[str, Any]] | None:
         """Coefficient rows ``{feature, estimate, ci_low, ci_high, p}`` from the pipeline fit on
-        ``X``/``y`` (training rows), or None when the family has none."""
+        ``X``/``y``, or None when the family has none. Under prediction those are the training
+        rows; under inference, every analyzed row (BLUEPRINT §12 ruling 3)."""
 
     def assess(self, situation: Situation) -> Assessment:
         """How well this family suits the situation, with every concern stated."""
@@ -160,6 +167,13 @@ class FamilyBase:
         return f"<model family {self.key}>"
 
 
+def reports_coefficients(family: Any) -> bool:
+    """Whether ``family`` has a coefficient table: it defines ``coefficients`` itself rather than
+    inheriting :class:`FamilyBase`'s, which has none."""
+    method = getattr(type(family), "coefficients", None)
+    return method is not None and method is not FamilyBase.coefficients
+
+
 def coefficient_rows(features: Sequence[str], estimates: Any, *, intercept: Any = None,
                      classes: Sequence[Any] | None = None, ci_low: Any = None, ci_high: Any = None,
                      p: Any = None) -> list[dict[str, Any]]:
@@ -198,5 +212,6 @@ def _finite(value: Any) -> float | None:
 
 __all__ = [
     "Assessment", "FamilyBase", "FamilyInfo", "Fit", "ModelFamily", "Situation", "TASKS",
-    "coefficient_rows", "families", "get_family", "info", "rank", "register_family", "unregister_family",
+    "coefficient_rows", "families", "get_family", "info", "rank", "register_family",
+    "reports_coefficients", "unregister_family",
 ]

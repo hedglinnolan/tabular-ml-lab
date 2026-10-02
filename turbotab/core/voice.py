@@ -1000,6 +1000,16 @@ def _set_temporal(d: Any, state: Any, ctx: Any) -> str:
 def _open_seal(d: Any, state: Any, ctx: Any) -> str:
     n = _get(ctx, "n_holdout")
     rows = f"The {count(n)} held-out rows were" if n else "The held-out rows were"
+    # AUDIT_REPORT §5 WP8 (ME-13): the final model was declared on cross-validation beforehand.
+    family = getattr(d, "family", None)
+    if family:
+        task = getattr(state, "task", None) or _get(ctx, "detected_task")
+        others = len(getattr(state, "models", None) or []) > 1
+        rest = ", the other families' are secondary," if others else ","
+        return (f"With {_family_label(family, task, ctx)} declared the final model on "
+                f"cross-validation beforehand, {rows[0].lower()}{rows[1:]} opened once and scored; "
+                f"its held-out score is the reported result{rest} and any later change is marked "
+                f"as made after the seal was opened")
     return (f"{rows} opened once and scored; those scores are fixed in the record, and any later "
             f"change is marked as made after the seal was opened")
 
