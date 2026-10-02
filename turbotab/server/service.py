@@ -163,8 +163,10 @@ class SentenceFacts:
         self._flow = None
         state, store = self._ctx.state, self.datastore
         info = self._ctx.column_info or {}
-        # the columns of the table the cohort stage reads (the working table), as it records them
-        ingest = ({"columns": [{"name": c, "n_missing": (info.get(c) or {}).get("n_missing")}
+        # the columns of the table the cohort stage reads (the working table), as it records them:
+        # dtype and distinct counts too, which decide the columns whose blanks become a level
+        ingest = ({"columns": [{"name": c, "n_missing": (info.get(c) or {}).get("n_missing"),
+                                **{k: v for k, v in (info.get(c) or {}).items() if k != "n_missing"}}
                                for c in self._ctx.columns]}
                   if self._ctx.columns is not None else None)
         d = self._decision
@@ -222,6 +224,12 @@ class SentenceFacts:
         if isinstance(info, dict) and info.get("column") == column and info.get("classes"):
             return [c["value"] for c in info["classes"]]
         return None
+
+    @cached_property
+    def seal_plan(self) -> dict[str, Any] | None:
+        """The seal's basis and chronological draw for the current answers (the split sentence)."""
+        plan = self._artifact("seal_plan")
+        return plan if isinstance(plan, dict) else None
 
     @cached_property
     def n_holdout(self) -> int | None:

@@ -562,6 +562,28 @@ def _quiet_streamlit() -> None:
 _MENU_KEY = {"change_from_baseline": "change"}
 
 
+def _without_assay_block(frame: Any, state: Any, keep: set[str]) -> Any:
+    """``frame`` without an assay's count block when an assay lens is on (the lens is field
+    knowledge, OPENING_SEQUENCE §01): 495 gene counts taking a few small values each repeat
+    "like a roster" by shape alone, and are measurements, not people. Columns the name heuristic
+    offers as identifiers stay, as do the named unit and the outcome."""
+    if not any(lens in ASSAY_LENSES for lens in (getattr(state, "lens", None) or [])):
+        return frame
+    from turbotab import packs
+
+    block = packs.count_matrix(frame)
+    if not block:
+        return frame
+    try:
+        from utils.test_lockbox import rank_grouping_candidates
+
+        named = {str(c.get("column")) for c in rank_grouping_candidates(frame)}
+    except Exception:  # noqa: BLE001 - no name reading: every count column is a measurement
+        named = set()
+    drop = [c for c in block["columns"] if c not in named and c not in keep]
+    return frame.drop(columns=drop) if drop else frame
+
+
 def structure_stage(ctx: StageContext) -> dict[str, Any]:
     """The grain suggestion, the repeats reading, and the outcome's behavior within a unit."""
     from turbotab import grain as grain_mod
@@ -588,13 +610,14 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
 
     ctx.progress(0.4, "Looking for columns that repeat like a roster")
     _quiet_streamlit()
-    suggestion = grain_mod.suggestion(frame)
+    roster = _without_assay_block(frame, state, keep={c for c in (unit, target) if c})
+    suggestion = grain_mod.suggestion(roster)
     _quiet_streamlit()
     evidence = [{k: e[k] for k in ("column", "n_distinct", "n_rows", "rows_per", "modal_rows_per",
                                    "regular_share")} for e in suggestion.get("evidence") or []]
     # What answering "one row per unit" would contradict (grain.contradiction, name-blind): the
     # outcome is left out, since a repeating outcome is not a roster.
-    found = grain_mod.contradiction(frame.drop(columns=[target]) if target else frame,
+    found = grain_mod.contradiction(roster.drop(columns=[target]) if target else roster,
                                     grain_mod.ONE_ROW_PER_PERSON)
     contradiction = ({"columns": list(found["columns"]), "message": str(found["message"])}
                      if found else None)

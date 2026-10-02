@@ -336,6 +336,10 @@ def _column_title(template: str) -> Say:
 def _sentinel(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
     col = p.get("column") or (f["affected_columns"] or [None])[0]
     values = [number(v) for v in p.get("values") or []]
+    if f.get("lens") and values:  # reframed by an assay lens: the title says these are counts
+        said = ("is a count, not a missing-value code" if len(values) == 1
+                else "are counts, not missing-value codes")
+        return Voice(f"{tick(col)} holds low counts: {listing(values, limit=3)} {said}.", closes=True)
     if values:
         return Voice(f"{tick(col)} may code missing values as {listing(values, limit=3)}.")
     return Voice(f"{tick(col)} may use numeric codes for missing values.")

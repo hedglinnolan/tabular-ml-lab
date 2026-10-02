@@ -311,6 +311,21 @@ def baseline_concern(task: str, metric_label: str, model: float | None, base: fl
             f"against {b}.")
 
 
+def coded_outcome(task: str | None, y: Any, event: str | None) -> Any:
+    """A binary outcome coded 1 for the level the user named as the event (``set_event``), else 0.
+
+    The event is never guessed (M2_CONTRACT §1), and its methods sentence says that level was
+    coded 1; the models, their metrics and coefficients must then be about that level, not about
+    whichever level sorts last. Unchanged when there is no event or it is not a level here.
+    """
+    if task != "binary" or event is None:
+        return y
+    from turbotab.core.stages.rows import _level_key
+
+    hit = pd.Series(np.asarray(y, dtype=object)).map(_level_key).to_numpy() == _level_key(event)
+    return hit.astype(int) if hit.any() else y
+
+
 def fit_stage(ctx: StageContext) -> Bundle:
     """Cross-validate each pipeline on the split's folds, then refit on all training rows.
 
@@ -347,11 +362,17 @@ def fit_stage(ctx: StageContext) -> Bundle:
     if y_all.isna().any():
         raise ValueError(f"{int(y_all.isna().sum()):,} analysis rows have no {target}; the cohort "
                          f"should have left them out.")
+    y_all = pd.Series(coded_outcome(task, y_all.to_numpy(), state.event), index=y_all.index)
     X, y = frame.loc[train, spec.inputs], y_all[train].to_numpy()
     X_hold, y_hold = frame.loc[~train, spec.inputs], y_all[~train].to_numpy()
     folds = assignment.loc[train, "fold"].to_numpy().astype(int)
     fold_keys = sorted(set(folds.tolist()))
     groups = frame.loc[train, grouped_by].to_numpy() if grouped_by else None
+    if groups is not None and len(pd.unique(groups)) == len(groups):
+        # One row per unit (the rows were combined per unit, M2_CONTRACT §2): the split is keyed by
+        # the unit, but no unit repeats, so clustering by it changes nothing and "its rows repeat"
+        # would be false.
+        groups, grouped_by = None, None
 
     keys = [k for k in (state.models or []) if k in pipelines]
     primary = PRIMARY[task]
@@ -516,7 +537,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     drawable = [k for k in keys if task != "multiclass"]
     slot = 0.93 / max(1, len(keys))  # each family's share of the progress bar, in order
     X_band = band_frame[spec.inputs]
-    y_band = band_frame[target].to_numpy()
+    y_band = coded_outcome(task, band_frame[target].to_numpy(), ctx.state.event)
     groups = band_frame[grouped_by].to_numpy() if grouped_by else None
     # Each unit of a refit's resample keeps one inner fold (its rows keep their row-id index).
     group_of = pd.Series(groups, index=X_band.index) if groups is not None else None
@@ -585,7 +606,8 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         band = {"n_boot": n_boot, "n_rows": int(len(band_ids)), "grouped_by": grouped_by,
                 "seconds": round(band_seconds, 3), "failed": band_failed}
     if task == "binary" and keys:
-        positive = fitted[keys[0]].classes_[1]
+        # the event the user named was coded 1 (``coded_outcome``); else the level sorting last
+        positive = ctx.state.event if ctx.state.event is not None else fitted[keys[0]].classes_[1]
         outcome = f"the predicted probability that {target} is {positive}"
     else:
         outcome = f"predicted {target}" + (f" (in {outcome_unit})" if outcome_unit else "")

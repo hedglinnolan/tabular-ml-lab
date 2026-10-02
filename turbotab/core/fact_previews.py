@@ -271,28 +271,12 @@ def _levels_note(column: str, values: Any) -> str | None:
 
 def purpose_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     """What the purpose changes downstream, said in a note: no value changes, so no view."""
-    from turbotab.core.models import Situation, rank
-
     purpose = decision.purpose
-    state = ctx.state
-    info = ctx.artifact("target_info")
-    data = getattr(info, "data", info)
-    task = state.task or (data.get("task") if isinstance(data, dict) else None) or "regression"
-    cohort = ctx.artifact("cohort")
-    cdata = getattr(cohort, "data", cohort)
-    n_rows = int(cdata["n_final"]) if isinstance(cdata, dict) and "n_final" in cdata \
-        else int(ctx.datastore.n_rows)
-    roles = state.roles or {}
-    if roles:
-        n_features = sum(1 for r in roles.values() if r in ("exposure", "covariate", "energy"))
-    else:
-        n_features = max(1, len(ctx.datastore.columns) - 2)
-    try:
-        ranked = rank(Situation(task=task, purpose=purpose, n_rows=n_rows, n_features=n_features))
-        order = [f.label.lower() for f, _ in ranked]
-    except Exception:  # noqa: BLE001 - the order is a courtesy; the report below is the point
-        order = []
-    shelf = f"the shelf leads with the {order[0]}" if order else "the shelf is reordered"
+    # What the purpose does to the shelf, as a policy rather than a promised order: the shelf is
+    # ranked later with what is known then (the roles, the events per predictor), so a plain
+    # linear model can still rank last under inference when the rows cannot support it.
+    shelf = ("the shelf favors the linear model" if purpose == "inference" else
+             "the shelf favors penalized and flexible models")
     # Which later questions and checks change (OPENING_SEQUENCE §2.5: the advice inverts in
     # several places): the shelf's order, the Results, and the missing-value indicator.
     if purpose == "inference":

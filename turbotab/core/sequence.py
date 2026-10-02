@@ -33,6 +33,7 @@ from turbotab.core.decisions import (
     _ctx,
     _state,
     _target_of,
+    register_completion,
     register_validator,
 )
 
@@ -242,9 +243,12 @@ def _aggregation_knows_the_outcome(decision: SetAggregation, ctx: Any) -> None:
     if state is None:
         return
     if state.unit != "unit":
+        said = ("The answer was one row per record, so no rows are combined." if state.unit == "row"
+                else "What one row of the analysis is has not been answered yet; combining "
+                     "follows it.")
         raise Refusal(
             "rows_stay",
-            "The answer was one row per record, so no rows are combined.",
+            said,
             exits=[{"label": "Combine each unit's rows", "decision": SetUnit(unit="unit")}],
         )
     if state.target is None:
@@ -309,6 +313,20 @@ def _temporal_needs_time_points_as_rows(decision: SetTemporal, ctx: Any) -> None
     )
 
 
+def _temporal_names_its_time_column(decision: SetTemporal, ctx: Any) -> SetTemporal:
+    """A "yes" that names no column takes the one the validator accepted it by (the stated
+    reading's): the seal draws by the recorded column only, so the record must name it, or the
+    sentence would say "the latest" while the seal drew at random."""
+    from turbotab.core.stages.working import time_column
+
+    if not decision.temporal or decision.time_column:
+        return decision
+    state = _state(ctx)
+    column = time_column(state, artifact(ctx, "structure")) if state is not None else None
+    return decision.model_copy(update={"time_column": column}) if column else decision
+
+
+register_completion("set_temporal", _temporal_names_its_time_column)
 register_validator("set_orientation", _orientation_turns_before_the_target)
 register_validator("set_orientation", _orientation_can_turn)
 register_validator("set_event", _event_is_a_level_of_the_outcome)

@@ -7,6 +7,14 @@
   so a preview and the table it foretells cannot disagree.
 
 Aggregation is pre-seal (Decision A refuses it after), so nothing here reads held-out rows.
+
+The other structural answers, found without a picture on the M2 journeys:
+
+* ``set_orientation`` — the table's corner as supplied, then turned to one row per sample.
+* ``set_grain`` — two units' rows side by side, and how many rows each unit has.
+* ``set_repeat_kind`` — a note: what the combining menu and the temporal question become.
+* ``set_temporal`` — the seal's own chronological draw at the usual size, or a random one.
+* ``set_event`` — a note: which level becomes 1, with its rows.
 """
 from __future__ import annotations
 
@@ -162,5 +170,223 @@ def aggregation_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     return views
 
 
+# ── the other structural answers (found missing on the M2 journeys) ─────────────
+# Orientation, grain and temporal change what a row is or how the seal is drawn, so each shows
+# its picture before it is recorded; the event says, in a note, which rows become 1.
+
+SHOWN_COLUMNS = 5
+SHOWN_ROWS = 4
+
+
+def _oriented_source(ctx: PreviewContext) -> tuple[Any, Any] | None:
+    from turbotab.core.stages.working import _bundle_table
+
+    oriented = ctx.artifact("oriented")
+    if oriented is None:
+        return None
+    path = _bundle_table(oriented)
+    return (path, _data(oriented)) if path is not None else None
+
+
+def grain_views(decision: Any, ctx: PreviewContext) -> list[Any]:
+    """Repeated: two units' records side by side, and how many rows each unit has; one row per
+    unit: the rows stay, each its own unit, and the held-out rows are drawn row by row."""
+    import duckdb
+
+    from turbotab.core.consequences import CAPTION_WORDS, clip_words
+    from turbotab.core.datastore import json_safe
+    from turbotab.core.stages.working import ROW_ID, _ident, _lit
+
+    found = _oriented_source(ctx)
+    if found is None:
+        return []
+    source, info = found
+    n_rows = int(info["n_rows"])
+    loaded = RowStep(key="loaded", label="Rows in the table", n=n_rows)
+    ctx.read["counted"] = n_rows
+    key = decision.id_column
+    if decision.grain != "repeated" or not key:
+        # attested over a contradiction: the data repeats, so only the answer is said
+        said = f" and no `{key}` repeats" if key and not decision.acknowledged else ""
+        return [RowFlowView(
+            title="Each row its own unit",
+            caption=clip_words(f"Each of the `{n_rows:,}` rows is a different unit{said}; the "
+                               f"held-out rows are drawn row by row.", CAPTION_WORDS),
+            before=[loaded], after=[loaded])]
+    names = [str(c["name"]) for c in info["columns"]]
+    if key not in names:
+        return []
+    numeric = [str(c["name"]) for c in info["columns"]
+               if str(c["dtype"]) in ("numeric", "integer") and str(c["name"]) != key]
+    target = ctx.state.target if ctx.state.target in names else None
+    shown = list(dict.fromkeys([key, *([target] if target else []), *numeric]))[:SHOWN_COLUMNS]
+    q = _ident(key)
+    rel = f"read_parquet({_lit(str(source))})"
+    con = duckdb.connect()
+    try:
+        n_units, most = con.execute(
+            f"SELECT count(*), max(n) FROM (SELECT count(*) AS n FROM {rel} "
+            f"WHERE {q} IS NOT NULL GROUP BY {q})").fetchone()
+        picked = [r[0] for r in con.execute(
+            f"SELECT {q} FROM {rel} WHERE {q} IS NOT NULL GROUP BY {q} HAVING count(*) > 1 "
+            f"ORDER BY min({ROW_ID}) LIMIT {SHOWN_UNITS}").fetchall()]
+        records = (con.execute(
+            f"SELECT {ROW_ID}, {', '.join(_ident(c) for c in shown)} FROM {rel} WHERE {q} IN "
+            f"(SELECT {q} FROM {rel} WHERE {q} IS NOT NULL GROUP BY {q} HAVING count(*) > 1 "
+            f"ORDER BY min({ROW_ID}) LIMIT {SHOWN_UNITS}) ORDER BY {ROW_ID} LIMIT 8").df()
+                   if picked else None)
+    finally:
+        con.close()
+    caption = (f"`{n_rows:,}` rows from `{int(n_units or 0):,}` `{key}` values, at most "
+               f"`{int(most or 0)}` each; each one's rows are held out together.")
+    views: list[Any] = [RowFlowView(title=f"Rows per {key}", caption=clip_words(caption, CAPTION_WORDS),
+                                    before=[loaded], after=[loaded])]
+    if records is not None and len(records):
+        rows = [TableRow(row_id=int(r[ROW_ID]), before={c: json_safe(r[c]) for c in shown},
+                         after={c: json_safe(r[c]) for c in shown}) for _, r in records.iterrows()]
+        frames = [FrameRow(row_id=row.row_id, values=row.before) for row in rows]
+        views.insert(0, TableFocusView(
+            title=f"{len(picked)} {key} values, each in several rows",
+            caption=clip_words(caption, CAPTION_WORDS), emphasis=[key],
+            columns_before=shown, columns_after=shown, rows=rows, changed=[],
+            n_affected_columns=0,
+            story=[TableFrame(label=f"Each {key}'s rows", columns=shown, rows=frames)]))
+    return views
+
+
+def temporal_views(decision: Any, ctx: PreviewContext) -> list[Any]:
+    """Yes: the seal's own chronological draw at the usual size (the latest units held out);
+    no: a random draw, grouped by the unit."""
+    import numpy as np
+
+    from turbotab.core import seal
+    from turbotab.core.consequences import CAPTION_WORDS, clip_words
+    from turbotab.core.decisions import TemporalSpec
+
+    store = ctx.datastore
+    cohort = ctx.artifact("cohort")
+    frames = getattr(cohort, "frames", None) or {}
+    measured = frames.get("measured")
+    universe = (measured["row_id"].to_numpy(dtype=np.int64) if measured is not None
+                else np.arange(int(store.n_rows), dtype=np.int64))
+    probe = ctx.state.model_copy(update={"temporal": TemporalSpec(
+        temporal=decision.temporal, time_column=decision.time_column)})
+    usual = getattr(seal, "USUAL", 0.2)
+    draw = seal.seal_inputs(probe, universe, store, ctx.state.task, holdout=usual, seed=0)
+    n = int(len(universe))
+    loaded = RowStep(key="loaded", label="Rows with the outcome", n=n)
+    ctx.read["counted"] = n
+    if draw.refusal:
+        ctx.read["note"] = draw.refusal
+        return []
+    chron = draw.chronology
+    if decision.temporal and chron is not None and chron.drawn and draw.held is not None:
+        held = int(np.asarray(draw.held, dtype=bool).sum())
+        after = [loaded, RowStep(key="holdout", label="Held out: the latest", n=n - held,
+                                 dropped=held, reason=chron.sentence)]
+        return [RowFlowView(title="The latest rows held out",
+                            caption=clip_words(chron.sentence, CAPTION_WORDS),
+                            emphasis=["holdout"], before=[loaded], after=after)]
+    group = f", keeping each `{draw.grouped_by}`'s rows together" if draw.grouped_by else ""
+    return [RowFlowView(title="Held-out rows drawn at random",
+                        caption=clip_words(f"About `{usual:.0%}` of the `{n:,}` rows are held out "
+                                           f"at random{group}.", CAPTION_WORDS),
+                        before=[loaded], after=[loaded])]
+
+
+def orientation_views(decision: Any, ctx: PreviewContext) -> list[Any]:
+    """Feature-major: the table's corner as supplied, then turned (one row per sample)."""
+    import duckdb
+
+    from turbotab.core.consequences import CAPTION_WORDS, clip_words
+    from turbotab.core.stages.working import ROW_ID, _ident, _lit
+
+    found = _oriented_source(ctx)
+    if found is None:
+        return []
+    source, info = found
+    if _data(ctx.artifact("oriented")).get("transposed"):
+        ctx.read["note"] = "The table is turned already; this preview reads it as supplied."
+        return []
+    names = [str(c["name"]) for c in info["columns"]]
+    n_rows, n_cols = int(info["n_rows"]), len(names)
+    loaded = RowStep(key="loaded", label="Rows as supplied", n=n_rows)
+    ctx.read["counted"] = n_rows
+    if decision.orientation != "feature_major":
+        return [RowFlowView(title="The table as supplied",
+                            caption=clip_words(f"The `{n_rows:,}` rows stay as they are, one per "
+                                               f"sample.", CAPTION_WORDS),
+                            before=[loaded], after=[loaded])]
+    label, samples = names[0], names[1:SHOWN_COLUMNS]
+    con = duckdb.connect()
+    try:
+        corner = con.execute(
+            f"SELECT {ROW_ID}, {', '.join(_ident(c) for c in [label, *samples])} "
+            f"FROM read_parquet({_lit(str(source))}) ORDER BY {ROW_ID} LIMIT {SHOWN_ROWS}").df()
+    finally:
+        con.close()
+    features = [str(v) for v in corner[label]]
+    supplied = [FrameRow(row_id=int(r[ROW_ID]), values={c: _plain(r[c]) for c in [label, *samples]})
+                for _, r in corner.iterrows()]
+    turned_cols = ["sample_id", *features]
+    turned = [FrameRow(row_id=i, values={"sample_id": s, **{f: _plain(corner.iloc[j][s])
+                                                            for j, f in enumerate(features)}})
+              for i, s in enumerate(samples)]
+    caption = (f"`{n_rows:,}` feature rows become columns: `{n_cols - 1:,}` rows, one per sample, "
+               f"named by the header.")
+    after = [RowStep(key="turned", label="Rows after turning: samples", n=n_cols - 1)]
+    rows = [TableRow(row_id=f.row_id, before=f.values, after=f.values) for f in turned]
+    return [
+        TableFocusView(title="The table turned round", caption=clip_words(caption, CAPTION_WORDS),
+                       emphasis=["sample_id"], columns_before=[label, *samples],
+                       columns_after=turned_cols, rows=rows, changed=[], n_affected_columns=0,
+                       story=[TableFrame(label="As supplied: features in rows",
+                                         columns=[label, *samples], rows=supplied),
+                              TableFrame(label="Turned: one row per sample", columns=turned_cols,
+                                         rows=turned)]),
+        RowFlowView(title="Rows before and after turning", caption=clip_words(caption, CAPTION_WORDS),
+                    before=[loaded], after=after),
+    ]
+
+
+def _plain(value: Any) -> Any:
+    from turbotab.core.datastore import json_safe
+
+    return json_safe(value)
+
+
+def event_views(decision: Any, ctx: PreviewContext) -> list[Any]:
+    """Which rows become 1 and which 0, in a note: the levels and their counts."""
+    from turbotab.core.stages.rows import _level_key
+
+    info = _data(ctx.artifact("target_info")) or {}
+    classes = info.get("classes") or [] if info.get("column") == decision.column else []
+    event = _level_key(decision.level)
+    hit = [c for c in classes if _level_key(c.get("value")) == event]
+    rest = [c for c in classes if _level_key(c.get("value")) != event]
+    if not hit:
+        return []
+    others = " and ".join(f"`{_level_key(c['value'])}` (`{int(c['count']):,}` rows)" for c in rest)
+    ctx.read["note"] = (f"`{event}` (`{int(hit[0]['count']):,}` rows) becomes 1 and {others} 0; "
+                        f"scores and coefficients are about `{event}`.")
+    return []
+
+
+def repeat_kind_views(decision: Any, ctx: PreviewContext) -> list[Any]:
+    """What the answer changes downstream, in a note: the combining menu and the temporal question."""
+    if decision.repeat_kind == "repeats":
+        ctx.read["note"] = ("As repeats of one measurement, combining a unit's rows recommends their "
+                            "mean, and no temporal question follows.")
+    else:
+        ctx.read["note"] = ("As time points, combining has no default (first, last or change), and "
+                            "kept as rows they raise the temporal question.")
+    return []
+
+
 register_consequence("set_unit", unit_views)
 register_consequence("set_aggregation", aggregation_views)
+register_consequence("set_repeat_kind", repeat_kind_views)
+register_consequence("set_grain", grain_views)
+register_consequence("set_temporal", temporal_views)
+register_consequence("set_orientation", orientation_views)
+register_consequence("set_event", event_views)

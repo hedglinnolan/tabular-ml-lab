@@ -329,13 +329,22 @@ def _unit_column(state: Any) -> str | None:
     return getattr(grain, "id_column", None) if grain is not None else None
 
 
-def _time_column(state: Any) -> str | None:
-    for slot in ("repeat_kind", "temporal"):
-        spec = getattr(state, slot, None)
-        column = getattr(spec, "time_column", None) if spec is not None else None
-        if column:
-            return column
-    return None
+def _structure(ctx: PreviewContext) -> dict[str, Any] | None:
+    """The structure artifact (the stated repeats reading), when it is fresh."""
+    try:
+        found = ctx.artifact("structure")
+    except Exception:  # noqa: BLE001 - no reading: only the answers speak
+        return None
+    found = getattr(found, "data", found)
+    return found if isinstance(found, dict) else None
+
+
+def _time_column(state: Any, structure: Mapping[str, Any] | None = None) -> str | None:
+    """The column that orders a unit's rows, as the working stage reads it: the answers' time
+    column, else the one the stated reading spaced the rows by."""
+    from turbotab.core.stages.working import time_column
+
+    return time_column(state, structure)
 
 
 def _anchor_for(view: Any, unit: str) -> tuple[str, Any]:
@@ -357,8 +366,10 @@ def aggregation_coach(decision: Any, views: list, ctx: PreviewContext) -> None:
         return
     k = int(np.median(sizes.to_numpy()))
     singles = int((sizes == 1).sum())
-    spec = getattr(ctx.state, "repeat_kind", None)
-    kind = getattr(spec, "repeat_kind", None) if spec is not None else None
+    from turbotab.core.stages.working import effective_repeat_kind
+
+    structure = _structure(ctx)
+    kind = effective_repeat_kind(ctx.state, structure)  # answered, else stated (a skip)
     primary = views[0]
     anchor = _anchor_for(primary, unit)
     notes: list[CoachNote | None] = []
@@ -371,7 +382,7 @@ def aggregation_coach(decision: Any, views: list, ctx: PreviewContext) -> None:
     if decision.method == "change" and singles:
         notes.append(note(f"{count(singles)} {tick(unit)} values have one row: no change to take",
                           "column", unit))
-    if decision.method in ("first", "last", "change") and not _time_column(ctx.state):
+    if decision.method in ("first", "last", "change") and not _time_column(ctx.state, structure):
         notes.append(note("No time column is named, so order is file order", "column", unit))
     if target and target in frame.columns and decision.outcome is None:
         varies = frame.dropna(subset=[target]).groupby(unit)[target].nunique()

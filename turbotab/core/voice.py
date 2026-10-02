@@ -26,6 +26,7 @@ optional; a sentence says only what its context can support and never prints a p
 
 M2 keys (the opening sequence, the seal and findings; each optional like the rest):
 
+    seal_plan        the ``seal_plan`` artifact: the seal's basis and chronological draw (split)
     levels           the outcome's distinct levels (``set_event`` names the one coded 0)
     n_units          distinct values of the unit's identifier (grain, aggregation), with
                      ``rows_per_unit`` the most rows one unit has; counted from ``datastore`` when
@@ -638,10 +639,20 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
     target = getattr(state, "target", None)
     repeats = _get(ctx, "repeats")
     group = _attr(repeats, "column") if repeats else None
+    # M2 (the seal, M2_CONTRACT §3): the seal's own basis and chronological draw for these answers
+    # (the seal_plan artifact) outrank the roles' reading, so the sentence says how the rows were
+    # really drawn: grouped or not, latest-first or at random, and whether the score is exploratory.
+    plan = _get(ctx, "seal_plan")
+    basis = _attr(plan, "basis") if plan else None
+    chron = _attr(plan, "chronology") if plan else None
+    if basis is not None:
+        grouped = _attr(basis, "state") == "grouped" and _attr(basis, "source") != "aggregation"
+        group = _attr(basis, "column") if grouped else None  # combined per unit: nothing repeats
+    latest = bool(chron is not None and _attr(chron, "drawn") and _attr(chron, "time_column"))
     how = []
     if group:
         how.append(f"keeping each {tick(group)}'s rows together")
-    if task in ("binary", "multiclass") and target:
+    if task in ("binary", "multiclass") and target and not latest:
         how.append(f"stratified by {tick(target)}")
     manner = " (" + ", ".join([f"seed {tick(d.seed)}", *how]) + ")"
     folds = f"{tick(d.folds)}-fold cross-validation"
@@ -652,8 +663,18 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
     # analysis count changes with any later exclusion or missing-values answer; the banner and
     # the Rows view say how many, as they stand.
     pool = f" of the rows with {tick(target)} recorded" if target else " of the rows"
-    return (f"A random {share}{pool}{manner} was held out for one final score; models were "
-            f"compared by {folds} on the rest")
+    if latest:
+        time = tick(_attr(chron, "time_column"))
+        whole = f"whole {tick(group)} units by their last {time}" if group else f"by {time}"
+        text = (f"The latest {share}{pool} ({whole}) were held out for one final score, so the "
+                f"models are scored on later data than they learned from; models were compared by "
+                f"{folds} on the rest")
+    else:
+        text = (f"A random {share}{pool}{manner} was held out for one final score; models were "
+                f"compared by {folds} on the rest")
+    if basis is not None and _attr(basis, "exploratory"):
+        text += f"; the held-out score is exploratory, as the split's basis is {_attr(basis, 'label')}"
+    return text
 
 
 # set_energy_adjustment
@@ -827,10 +848,11 @@ def _levels(ctx: Any, column: str) -> list[str]:
 
 @register_sentence("set_event")
 def _set_event(d: Any, state: Any, ctx: Any) -> str:
-    from turbotab.core.stages.proposals import level_key
+    from turbotab.core.stages.rows import _level_key as level_key  # "1", "1.0" and 1.0 are one level
 
-    text = f"{tick(d.level)} of {tick(d.column)} was taken as the event and coded 1"
-    others = [v for v in _levels(ctx, d.column) if v != level_key(d.level)]
+    event = level_key(d.level)
+    text = f"{tick(event)} of {tick(d.column)} was taken as the event and coded 1"
+    others = [v for v in _levels(ctx, d.column) if level_key(v) != event]
     if 0 < len(others) <= 3:
         text += f"; {listing(others)} {plural(len(others), 'was', 'were')} coded 0"
     return text
@@ -991,6 +1013,9 @@ def _apply_repair(d: Any, state: Any, ctx: Any) -> str:
     if own is not None:
         return own(d, state, ctx)
     finding, repair = _get(ctx, "finding"), _get(ctx, "repair")
+    offered = _offered_sentence(d, finding)
+    if offered:
+        return offered  # the repair registry's own methods sentence for this option (M2 §4)
     label = finish(str(_attr(repair, "label") or ""), terminal=False) if repair is not None else ""
     label = label or _humanized(d.option)
     label = label[:1].upper() + label[1:]
@@ -1013,6 +1038,22 @@ def _apply_repair(d: Any, state: Any, ctx: Any) -> str:
     elif row_local is False:
         text += "; it is recorded now and runs inside each training fold"
     return text
+
+
+def _offered_sentence(d: Any, finding: Any) -> str | None:
+    """The methods sentence the finding's offered option carries (``repairs.RepairOption``), for
+    the option and params this decision applies; None when the finding does not offer it."""
+    for option in list(_attr(finding, "repairs") or []) if finding is not None else []:
+        if _attr(option, "key") != d.option:
+            continue
+        decision = _attr(option, "decision") or {}
+        params = _attr(decision, "params") or {}
+        if d.params and dict(params) != dict(d.params):
+            continue
+        said = _attr(option, "sentence")
+        if isinstance(said, str) and said.strip():
+            return said.strip().rstrip(".")
+    return None
 
 
 @register_sentence("defer_finding")
