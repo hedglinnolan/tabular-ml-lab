@@ -102,7 +102,9 @@ def test_the_options_cover_what_the_decisions_accept():
     assert set(get_args(d.Role)) == values["roles"]
     assert set(get_args(d.EnergyMethod)) == values["energy_adjustment"]
     assert set(get_args(d.MissingStrategy)) == values["missing"]
-    assert {"linear", "elastic_net", "boosted_trees"} == values["models"]
+    from turbotab.core.models import families
+
+    assert {f.key for f in families()} == values["models"]
     assert set(get_args(d.Orientation)) == values["orientation"]
     assert set(get_args(d.SetGrain.model_fields["grain"].annotation)) == values["grain"]
     assert set(get_args(d.RepeatKind)) == values["repeat_kind"]
@@ -248,6 +250,8 @@ def representative_decisions():
         # WP1 (audit §5): what values mean
         d.SetFeatureTable(label="metabolite", annotations=["mz", "rt"]),
         d.SetCategorical(columns=["RIDRETH3", "DMDEDUC2"]),
+        # WP12: a time-to-event outcome's follow-up
+        d.SetFollowUp(column="hba1c", time_column="followup_years", entry_column="enrolled_years"),
     ]
 
 

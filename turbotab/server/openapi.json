@@ -397,6 +397,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetCategorical"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetFollowUp-Input"
                   }
                 ],
                 "discriminator": {
@@ -426,7 +429,8 @@
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Input",
                     "set_feature_table": "#/components/schemas/SetFeatureTable-Input",
-                    "set_categorical": "#/components/schemas/SetCategorical"
+                    "set_categorical": "#/components/schemas/SetCategorical",
+                    "set_follow_up": "#/components/schemas/SetFollowUp-Input"
                   }
                 },
                 "title": "Decision"
@@ -701,6 +705,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetCategorical"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetFollowUp-Input"
                   }
                 ],
                 "discriminator": {
@@ -730,7 +737,8 @@
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Input",
                     "set_feature_table": "#/components/schemas/SetFeatureTable-Input",
-                    "set_categorical": "#/components/schemas/SetCategorical"
+                    "set_categorical": "#/components/schemas/SetCategorical",
+                    "set_follow_up": "#/components/schemas/SetFollowUp-Input"
                   }
                 },
                 "title": "Decision"
@@ -1911,6 +1919,9 @@
               },
               {
                 "$ref": "#/components/schemas/SetCategorical"
+              },
+              {
+                "$ref": "#/components/schemas/SetFollowUp-Output"
               }
             ],
             "title": "Decision",
@@ -1929,6 +1940,7 @@
                 "set_event": "#/components/schemas/SetEvent",
                 "set_exclusions": "#/components/schemas/SetExclusions-Output",
                 "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
+                "set_follow_up": "#/components/schemas/SetFollowUp-Output",
                 "set_grain": "#/components/schemas/SetGrain-Output",
                 "set_lens": "#/components/schemas/SetLens",
                 "set_missing": "#/components/schemas/SetMissing-Output",
@@ -2524,6 +2536,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetCategorical"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetFollowUp-Output"
                   }
                 ],
                 "discriminator": {
@@ -2541,6 +2556,7 @@
                     "set_event": "#/components/schemas/SetEvent",
                     "set_exclusions": "#/components/schemas/SetExclusions-Output",
                     "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
+                    "set_follow_up": "#/components/schemas/SetFollowUp-Output",
                     "set_grain": "#/components/schemas/SetGrain-Output",
                     "set_lens": "#/components/schemas/SetLens",
                     "set_missing": "#/components/schemas/SetMissing-Output",
@@ -2587,7 +2603,8 @@
               "enum": [
                 "regression",
                 "binary",
-                "multiclass"
+                "multiclass",
+                "time_to_event"
               ]
             },
             "type": "array",
@@ -2743,6 +2760,33 @@
           "intercept"
         ],
         "title": "FitLine"
+      },
+      "FollowUpSpec": {
+        "properties": {
+          "time_column": {
+            "type": "string",
+            "title": "Time Column"
+          },
+          "entry_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "time_column",
+          "entry_column"
+        ],
+        "title": "FollowUpSpec",
+        "description": "How long each row of a time-to-event outcome was observed (WP12,\n``turbotab/core/models/survival.py``): at risk from ``entry`` (0 when not named) to ``time``,\nwhen the event happened or follow-up ended without it, both on one time scale."
       },
       "FrameRow": {
         "properties": {
@@ -3601,7 +3645,8 @@
                 "enum": [
                   "regression",
                   "binary",
-                  "multiclass"
+                  "multiclass",
+                  "time_to_event"
                 ]
               },
               {
@@ -3846,6 +3891,16 @@
               }
             ],
             "title": "Categorical"
+          },
+          "follow_up": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FollowUpSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3871,7 +3926,8 @@
           "seal_opened",
           "findings",
           "feature_table",
-          "categorical"
+          "categorical",
+          "follow_up"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -5131,6 +5187,87 @@
         "title": "SetFeatureTable",
         "description": "How a features-in-rows table reads: the column naming the features, and the columns that\ndescribe them (m/z, retention time, IDs). Turning it makes every other column a sample."
       },
+      "SetFollowUp-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_follow_up",
+            "title": "Kind",
+            "default": "set_follow_up"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "time_column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Time Column"
+          },
+          "entry_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "time_column"
+        ],
+        "title": "SetFollowUp",
+        "description": "The follow-up of a time-to-event outcome. Stands only while ``column`` is the target."
+      },
+      "SetFollowUp-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_follow_up",
+            "title": "Kind",
+            "default": "set_follow_up"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "time_column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Time Column"
+          },
+          "entry_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "time_column",
+          "entry_column"
+        ],
+        "title": "SetFollowUp",
+        "description": "The follow-up of a time-to-event outcome. Stands only while ``column`` is the target."
+      },
       "SetGrain-Input": {
         "properties": {
           "kind": {
@@ -5733,7 +5870,8 @@
             "enum": [
               "regression",
               "binary",
-              "multiclass"
+              "multiclass",
+              "time_to_event"
             ],
             "title": "Task"
           }
@@ -7727,7 +7865,8 @@
             "enum": [
               "regression",
               "binary",
-              "multiclass"
+              "multiclass",
+              "time_to_event"
             ],
             "title": "Task",
             "type": "string"
@@ -8033,6 +8172,7 @@
             "enum": [
               "HC3",
               "CR2",
+              "CR0",
               "model",
               "profile",
               "none"
@@ -10158,7 +10298,8 @@
             "enum": [
               "regression",
               "binary",
-              "multiclass"
+              "multiclass",
+              "time_to_event"
             ],
             "title": "Task",
             "type": "string"
@@ -10167,7 +10308,8 @@
             "enum": [
               "regression",
               "binary",
-              "multiclass"
+              "multiclass",
+              "time_to_event"
             ],
             "title": "Detected Task",
             "type": "string"

@@ -16,12 +16,12 @@ Rules:
 * The opening sequence (M2_CONTRACT §1, OPENING_SEQUENCE §01/§03), nothing resequenced:
   ``orientation`` fires only when the lens includes an assay pack and the oriented stage's shape
   reading is feature-major (and, while it is open, the target question waits behind it);
-  ``event`` only for a binary outcome; ``grain`` always, but ``skipped`` (stated) when a recognized
-  person identifier is unique on every row and nothing repeats like a roster (M2_CONTRACT §10;
-  the structure stage's ``grain.stated``); ``repeat_kind`` and ``unit`` only when units repeat,
-  ``repeat_kind`` usually ``skipped`` (stated from the structure stage's reading, with its evidence
-  as ``reason``); ``aggregation`` only when the unit is the unit; ``temporal`` only when time
-  points stay as rows. A grain of ``unknown`` ("I don't know") repeats nothing, so the four
+  ``event`` only for a binary or time-to-event outcome; ``grain`` always, but ``skipped``
+  (stated) when a recognized person identifier is unique on every row and nothing repeats like a
+  roster (M2_CONTRACT §10; the structure stage's ``grain.stated``); ``repeat_kind`` and ``unit``
+  only when units repeat, ``repeat_kind`` usually ``skipped`` (stated from the structure stage's
+  reading, with its evidence as ``reason``); ``aggregation`` only when the unit is the unit;
+  ``temporal`` only when time points stay as rows. A grain of ``unknown`` ("I don't know") repeats nothing, so the four
   follow-ups do not apply. A question that does not fire is ``not_applicable`` with the reason;
   ``orientation`` stays answered once answered, since its slot turns the table whatever the lens.
 * ``open_seal`` is the last step (M2_CONTRACT §12.1): asked once the fit is fresh (it waits on the
@@ -217,7 +217,7 @@ def _event_gate(state: Any, target_info: Any) -> Gate:
         task = _get(target_info, "task")
     if task is None:
         return None
-    if task != "binary":
+    if task not in ("binary", "time_to_event"):  # a time-to-event outcome's column is its event
         return ("not_applicable", f"The outcome is read as {task}, so there is no event level to choose.")
     return None
 

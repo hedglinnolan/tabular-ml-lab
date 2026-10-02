@@ -147,6 +147,16 @@ coefficients(...)`. M1 families: `linear` (OLS / logistic; statsmodels for infer
 native missing values). `GET /api/models` → the registry. Later milestones add families by
 registering, never by editing a switch.
 
+Audit WP12 (AUDIT_REPORT §5) registers three: `mixed`, a random-intercept linear mixed model by
+REML with Satterthwaite t intervals, and `gee`, generalized estimating equations with an
+exchangeable working correlation and CR2 intervals (`models/repeated.py`; the exits WP2's unit
+floor names), each told every row's unit through its model step's `units` parameter; and `cox`,
+Cox proportional hazards with Efron ties, delayed entry and Lin–Wei intervals by unit
+(`models/survival.py`), the only family for the `time_to_event` task, whose outcome is the event
+with the follow-up `set_follow_up` names, scored by Harrell's C-index. A family models the
+regression, binary and multiclass tasks unless it declares otherwise; it takes a time-to-event
+outcome only by declaring it.
+
 ## 8 · Ownership
 
 | Agent | Owns |

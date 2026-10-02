@@ -43,6 +43,10 @@ M2 part 2 (M2_CONTRACT.md §12): ``split`` and ``seal_plan`` also depend on ``st
 identifier); the seal needs a grain, answered or stated. ``shelf`` is heavy: it times one fit of
 each family on a sample of the training rows, so each family carries ``estimate_seconds``.
 
+Audit WP12 (AUDIT_REPORT §5): a time-to-event outcome's follow-up (``set_follow_up``) is read by
+``design`` (a follow-up column is never a predictor) and ``fit`` (the outcome is the event with
+its follow-up); ``shelf`` and ``seal_plan`` read the event, which they count for such an outcome.
+
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
 call them and shape the result into the contract's artifact.
@@ -116,16 +120,18 @@ def build_graph() -> Graph:
             Stage("split", 3, ("working", "cohort", "target_info", "structure"),
                   ("split", "roles", "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
-            Stage("shelf", 3, ("working", "cohort", "target_info", "split"),
-                  ("purpose", "task", "roles", "missing", "categorical"), shelf_stage, heavy=True,
+            Stage("shelf", 4, ("working", "cohort", "target_info", "split"),
+                  ("purpose", "task", "roles", "missing", "categorical", "event"), shelf_stage,
+                  heavy=True,
                   requires=("roles",), label="Ranking the model families for this table"),
             Stage("design", 2, ("working", "split", "target_info"),
-                  ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical"),
+                  ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical",
+                   "follow_up"),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
-            Stage("fit", 4, ("working", "design", "split", "target_info"),
-                  ("models", "purpose", "task", "event"), fit_stage, heavy=True,
+            Stage("fit", 5, ("working", "design", "split", "target_info"),
+                  ("models", "purpose", "task", "event", "follow_up"), fit_stage, heavy=True,
                   requires=("models",),
                   label="Fitting the models"),
             Stage("substitution", 2, ("working", "fit", "design"), ("substitution", "event"),
@@ -133,7 +139,7 @@ def build_graph() -> Graph:
                   label="Drawing the substitution curves"),
             # ── M2: the seal (docs/turbotab-next/M2_CONTRACT.md §3) ──
             Stage("seal_plan", 2, ("working", "cohort", "target_info", "structure"),
-                  ("roles", "task", *SEAL_READS), seal_plan_stage, requires=("target",),
+                  ("roles", "task", "event", *SEAL_READS), seal_plan_stage, requires=("target",),
                   label="Reading what a held-out set can measure"),
         ]
     )

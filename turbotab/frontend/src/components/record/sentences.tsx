@@ -22,6 +22,10 @@ export const TASK_TEXT: Record<Task, { label: string; body: string }> = {
     label: "Multiclass",
     body: "The outcome has several unordered classes; models predict which one.",
   },
+  time_to_event: {
+    label: "Time to event",
+    body: "The outcome is an event with each row's follow-up; models estimate hazard ratios.",
+  },
 };
 
 export const PURPOSE_TEXT: Record<Purpose, { label: string; body: string; clause: string }> = {
@@ -85,6 +89,8 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "feature_table";
     case "set_categorical":
       return "categorical";
+    case "set_follow_up":
+      return "follow_up";
     case "revert": {
       const undone = records.find((r) => r.id === d.decision_id);
       return undone ? slotOf(undone.decision, records) : null;

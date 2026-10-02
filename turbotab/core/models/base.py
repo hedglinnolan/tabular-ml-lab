@@ -18,7 +18,10 @@ from pydantic import BaseModel, ConfigDict
 from turbotab.core.decisions import Purpose, Task
 
 Fit = Literal["good", "fair", "poor"]
-TASKS: tuple[Task, ...] = ("regression", "binary", "multiclass")
+TASKS: tuple[Task, ...] = ("regression", "binary", "multiclass", "time_to_event")
+# What a family models unless it says otherwise: a time-to-event outcome is an event with its
+# follow-up, which a family takes only by declaring it (``survival.Cox``).
+DEFAULT_TASKS: tuple[Task, ...] = ("regression", "binary", "multiclass")
 INDUCTIVE_BIAS_WORDS = 20
 
 
@@ -30,8 +33,11 @@ class Situation:
     purpose: Purpose | None
     n_rows: int
     n_features: int
-    n_events: int | None = None  # binary: rows in the rarer class
+    n_events: int | None = None  # binary: rows in the rarer class; time to event: rows with the event
     n_classes: int | None = None
+    # Units when an identifier repeats in these rows (``inference.resolve_clusters``); None when
+    # every row is a unit of its own, or nothing says which rows belong together.
+    n_units: int | None = None
 
 
 @dataclass(frozen=True)
@@ -145,7 +151,7 @@ class FamilyBase:
 
     key: str = ""
     label: str = ""
-    tasks: tuple[Task, ...] = TASKS
+    tasks: tuple[Task, ...] = DEFAULT_TASKS
     inductive_bias: str = ""
     strengths: tuple[str, ...] = ()
     cautions: tuple[str, ...] = ()
@@ -197,6 +203,6 @@ def _finite(value: Any) -> float | None:
 
 
 __all__ = [
-    "Assessment", "FamilyBase", "FamilyInfo", "Fit", "ModelFamily", "Situation", "TASKS",
-    "coefficient_rows", "families", "get_family", "info", "rank", "register_family", "unregister_family",
+    "Assessment", "DEFAULT_TASKS", "FamilyBase", "FamilyInfo", "Fit", "ModelFamily", "Situation",
+    "TASKS", "coefficient_rows", "families", "get_family", "info", "rank", "register_family", "unregister_family",
 ]

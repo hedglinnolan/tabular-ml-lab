@@ -120,9 +120,10 @@ class Inference(_Model):
     ``turbotab/core/models/inference.py``): the estimator, the covariance, and the clusters."""
 
     estimator: str  # "ordinary least squares", "Firth-penalized logistic regression", …
-    # HC3 · CR2 (cluster-robust, Bell–McCaffrey df) · model (Wald, from the information) ·
-    # profile (penalized likelihood) · none (refused: ``refused`` says why).
-    covariance: Literal["HC3", "CR2", "model", "profile", "none"]
+    # HC3 · CR2 (cluster-robust, Bell–McCaffrey df) · CR0 (the Cox model's Lin–Wei cluster
+    # sandwich, on t(G − 1)) · model (Wald from the information, or a mixed model's REML
+    # covariance) · profile (penalized likelihood) · none (refused: ``refused`` says why).
+    covariance: Literal["HC3", "CR2", "CR0", "model", "profile", "none"]
     caption: str  # one line naming the covariance, the clusters and the reference distribution
     grouped_by: str | None = None  # the identifier the intervals are clustered by
     n_clusters: int | None = None

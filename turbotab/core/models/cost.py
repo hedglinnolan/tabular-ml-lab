@@ -140,11 +140,23 @@ def estimate_fits(store: Any, state: Any, task: str, train_ids: Any, families: S
         return out
     X = frame[sampled]
     y = coded_outcome(task, frame[target].to_numpy(), getattr(state, "event", None))
+    if task == "time_to_event":  # the event with its follow-up, as the fit stage reads it
+        from turbotab.core.models.survival import follow_up_columns, time_to_event_outcome
+
+        try:
+            y = time_to_event_outcome(state, modeling_frame(store, follow_up_columns(state),
+                                                            X.index.to_numpy()), y)
+        except (ValueError, KeyError):
+            return out  # no follow-up yet: nothing to time a fit on
+    units = _units(store, state, X.index)
     spec = design_spec(state, X, sampled, energy=None)  # adjusting energy costs next to nothing
     for family in families:
         if callable(cancelled) and cancelled():
             break
         pipeline = build_pipeline(spec, family, task, getattr(state, "purpose", None), n_rows, n_columns)
+        name, step = pipeline.steps[-1]
+        if units is not None and "units" in step.get_params(deep=False):
+            pipeline.set_params(**{f"{name}__units": units})  # a family that models the unit
         model = pipeline[-1]
         scale = fit_cost(model, n_rows, n_columns) / max(fit_cost(model, len(y), len(sampled)), 1.0)
         seconds = time_one_fit(pipeline, X[spec.inputs], y)
@@ -153,6 +165,22 @@ def estimate_fits(store: Any, state: Any, task: str, train_ids: Any, families: S
         total = seconds * scale * full_fits(folds, scheme)
         out[family.key] = Estimate(seconds=round(total, 1), text=say(total, n_rows, n_columns))
     return out
+
+
+def _units(store: Any, state: Any, index: Any) -> Any:
+    """Each sampled row's unit, as the fit stage tells a family that models it (a Series indexed
+    by row id); None when no identifier repeats in these rows."""
+    import pandas as pd
+
+    from turbotab.core.models.inference import cluster_columns, resolve_clusters
+    from turbotab.core.models.pipeline import modeling_frame
+
+    available = getattr(store, "columns", None)  # a store that lists no columns names no unit
+    columns = cluster_columns(state, available) if available is not None else []
+    if not columns:
+        return None
+    clusters = resolve_clusters(state, modeling_frame(store, columns, np.asarray(index)))
+    return pd.Series(clusters.codes, index=index) if clusters.clustered else None
 
 
 __all__ = ["NOTEWORTHY_SECONDS", "Estimate", "duration", "estimate_fits", "fit_cost", "full_fits",

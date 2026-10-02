@@ -169,6 +169,17 @@ class Linear(FamilyBase):
                 concerns.append(f"{s.n_events:,} events for {s.n_features:,} predictors ({epv:.1f} "
                                 f"each); a common rule of thumb asks for {EPV_RULE}.")
                 fit = "poor" if epv < EPV_RULE / 2 else "fair"
+        units = getattr(s, "n_units", None)
+        if s.purpose == "inference" and units is not None:
+            from turbotab.core.models.inference import min_clusters
+
+            if units < min_clusters():
+                # Below the unit floor its table reports no interval (``inference.floor_refusal``).
+                other = ("; a random-intercept mixed model can" if s.task == "regression" else "")
+                concerns.append(f"Rows repeat within only {units} units, fewer than the "
+                                f"{min_clusters()} a cluster-robust interval needs, so no interval "
+                                f"is reported{other}.")
+                fit = "poor"
         score = 3.0 if s.purpose == "inference" else 1.5
         if fit == "fair":
             score -= 1.0

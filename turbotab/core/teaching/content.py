@@ -286,9 +286,10 @@ TASK = {
     "question": "What kind of outcome is this column?",
     "one_liner": "The task decides which models apply and how they are scored.",
     "why": "A quantity is regression, scored by R², RMSE and MAE. Two classes are binary, scored "
-           "by AUC, Brier score and log loss. Several unordered classes are multiclass. An ordered "
-           "score, such as a 1–5 rating, fits none of these well: regression assumes equal gaps, "
-           "and classification discards the order.",
+           "by AUC, Brier score and log loss. Several unordered classes are multiclass. An event "
+           "whose follow-up varies is time to event. An ordered score, such as a 1–5 rating, fits "
+           "none of these well: regression assumes equal gaps, and classification discards the "
+           "order.",
     "consumer": "The model shelf, the split's stratification and every metric read it.",
     "options": [
         option("regression", "Regression",
@@ -299,6 +300,9 @@ TASK = {
         option("multiclass", "Multiclass",
                "Several unordered classes; models predict each class's probability, scored by "
                "accuracy."),
+        option("time_to_event", "Time to event",
+               "An event with each row's follow-up; a Cox model gives hazard ratios, scored by "
+               "the C-index."),
     ],
     "terms": [
         term("regression", "A model of a quantity: it predicts a number, and its errors are "
@@ -910,6 +914,15 @@ MODELS = {
         option("boosted_trees", "Boosted trees",
                "Many shallow trees: finds curves and interactions and handles missing values; no "
                "coefficients."),
+        option("mixed", "Mixed model",
+               "A random intercept per unit: model-based intervals when rows repeat, even within "
+               "few units."),
+        option("gee", "GEE",
+               "Population-average effects, with intervals robust to how a unit's repeated rows "
+               "correlate."),
+        option("cox", "Cox model",
+               "Hazard ratios for a time-to-event outcome, using every row's follow-up, censored "
+               "or not."),
     ],
     "terms": [
         term("inductive bias", "What a model assumes before it sees data, such as straight lines "

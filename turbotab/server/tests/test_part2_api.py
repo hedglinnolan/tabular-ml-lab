@@ -138,7 +138,9 @@ def test_the_shelf_says_what_each_fit_will_take_before_it_runs(client):
     prepare(client, pid, {"kind": "select_models"})
     wait_for(client, pid, {"shelf": "fresh"})
     shelf = schemas.ARTIFACT_MODELS["shelf"].model_validate(artifact(client, pid, "shelf"))
-    assert {f.key for f in shelf.families} == {"linear", "elastic_net", "boosted_trees"}
+    from turbotab.core.models import families
+
+    assert {f.key for f in shelf.families} == {f.key for f in families("regression")}
     for family in shelf.families:
         assert family.estimate_seconds is not None and family.estimate_seconds >= 0
         assert family.estimate and family.estimate.startswith(("under", "about"))

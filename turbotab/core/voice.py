@@ -656,7 +656,7 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
     how = []
     if group:
         how.append(f"keeping each {tick(group)}'s rows together")
-    if task in ("binary", "multiclass") and target and not latest:
+    if task in ("binary", "multiclass", "time_to_event") and target and not latest:
         how.append(f"stratified by {tick(target)}")
     manner = " (" + ", ".join([f"seed {tick(d.seed)}", *how]) + ")"
     folds = f"{tick(d.folds)}-fold cross-validation"
@@ -738,6 +738,9 @@ def _set_energy_adjustment(d: Any, state: Any, ctx: Any) -> str:
 _FAMILY_LABEL = {
     "elastic_net": "elastic net",
     "boosted_trees": "gradient-boosted trees",
+    "mixed": "a random-intercept mixed model",
+    "gee": "generalized estimating equations",
+    "cox": "Cox proportional hazards",
 }
 _LINEAR_LABEL = {
     "regression": "linear regression",
@@ -890,6 +893,16 @@ def _set_event(d: Any, state: Any, ctx: Any) -> str:
     others = [v for v in _levels(ctx, d.column) if level_key(v) != event]
     if 0 < len(others) <= 3:
         text += f"; {listing(others)} {plural(len(others), 'was', 'were')} coded 0"
+    return text
+
+
+@register_sentence("set_follow_up")
+def _set_follow_up(d: Any, state: Any, ctx: Any) -> str:
+    text = (f"{tick(d.column)} was analyzed as a time to event, each row followed until "
+            f"{tick(d.time_column)}, at the event or when follow-up ended without it")
+    if d.entry_column:
+        text += (f"; a row was at risk only after its {tick(d.entry_column)}, on the same time "
+                 f"scale")
     return text
 
 

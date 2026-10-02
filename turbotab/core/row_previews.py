@@ -597,7 +597,8 @@ def split_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if draw.labels is not None:  # the classes among the rows a held-out score would be made on
         held = assignment.loc[assignment["partition"] == "holdout", "row_id"].to_numpy()
         in_held = np.isin(np.asarray(universe, dtype=np.int64), held)
-        held_counts = seal.class_counts(np.asarray(draw.labels, dtype=object)[in_held])
+        held_counts = seal.outcome_counts(task, np.asarray(draw.labels, dtype=object)[in_held],
+                                          getattr(state, "event", None))
     measures, below = seal.measure(task, int(info["n_holdout"]), held_counts)
     if info["n_holdout"]:
         how = (f"the latest by `{draw.chronology.time_column}`" if draw.chronology and draw.chronology.drawn

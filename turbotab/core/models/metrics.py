@@ -2,6 +2,10 @@
 
 Regression: R², RMSE, MAE. Binary: AUC, Brier score, log loss (the positive class is the second
 of the sorted classes, as scikit-learn orders them). Multiclass: accuracy, macro-F1, log loss.
+Time to event: Harrell's concordance index of the model's risk score
+(:func:`turbotab.core.models.survival.concordance`; Harrell et al. 1996, *Stat Med* 15:361), the
+time-to-event analogue of the AUC, with the outcome a structured array of event, time and entry
+(``survival.survival_outcome``). Pairs are ordered by follow-up time, not by entry.
 
 **R² is measured against the training rows' mean** — in every fold, in the pooled estimate and on
 the held-out rows. R² compares the model with the model that predicts without predictors; that
@@ -39,11 +43,13 @@ METRICS: dict[str, tuple[str, ...]] = {
     "regression": ("r2", "rmse", "mae"),
     "binary": ("auc", "brier", "log_loss"),
     "multiclass": ("accuracy", "macro_f1", "log_loss"),
+    "time_to_event": ("c_index",),
 }
-PRIMARY: dict[str, str] = {"regression": "r2", "binary": "auc", "multiclass": "macro_f1"}
+PRIMARY: dict[str, str] = {"regression": "r2", "binary": "auc", "multiclass": "macro_f1",
+                           "time_to_event": "c_index"}
 LABELS: dict[str, str] = {
     "r2": "R²", "rmse": "RMSE", "mae": "MAE", "auc": "AUC", "brier": "Brier score",
-    "log_loss": "Log loss", "accuracy": "Accuracy", "macro_f1": "Macro-F1",
+    "log_loss": "Log loss", "accuracy": "Accuracy", "macro_f1": "Macro-F1", "c_index": "C-index",
 }
 POOLED = ("r2", "rmse", "mae")  # estimated over every out-of-fold prediction, not fold by fold
 CV_DEFINITION = {
@@ -52,6 +58,9 @@ CV_DEFINITION = {
                    "held-out R² is against the training rows' mean. The fold values show the spread."),
     "binary": "Cross-validated scores are the mean over folds; the fold values show the spread.",
     "multiclass": "Cross-validated scores are the mean over folds; the fold values show the spread.",
+    "time_to_event": ("Cross-validated scores are the mean over folds of Harrell's C, the share of "
+                      "comparable pairs whose order of events the risk score gets right; the fold "
+                      "values show the spread."),
 }
 
 
@@ -77,6 +86,10 @@ def score(task: Task, model: Any, X: Any, y: Any, *, reference: float | None = N
     from sklearn import metrics as m
 
     y = np.asarray(y)
+    if task == "time_to_event":
+        from turbotab.core.models.survival import concordance
+
+        return {"c_index": concordance(y["time"], y["event"], model.predict(X))}
     if task == "regression":
         pred = model.predict(X)
         r2 = (float(m.r2_score(y, pred)) if reference is None

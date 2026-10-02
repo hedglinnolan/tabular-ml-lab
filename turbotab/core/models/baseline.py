@@ -1,9 +1,10 @@
 """Whether a model does better than predicting without its predictors, with an honest interval.
 
-M1 said when a family scores *worse* than its baseline (the outcome's training-fold mean, or the
-class prior); M2 added "no better". The comparison is paired, fold by fold, on the primary metric
-(higher is better for R², AUC and macro-F1), and the gain is the difference of the two reported
-cross-validated scores (for R², the pooled estimate, :mod:`turbotab.core.models.metrics`):
+M1 said when a family scores *worse* than its baseline (the outcome's training-fold mean, the
+class prior, or for a time-to-event outcome one risk for everyone); M2 added "no better". The
+comparison is paired, fold by fold, on the primary metric (higher is better for R², AUC, macro-F1
+and the C-index), and the gain is the difference of the two reported cross-validated scores
+(for R², the pooled estimate, :mod:`turbotab.core.models.metrics`):
 
     d_k = model_k − baseline_k            gain = model CV score − baseline CV score
 
@@ -132,7 +133,8 @@ def no_better_concern(task: str, metric_label: str, versus: VersusBaseline,
     if versus.verdict != "no_better" or model is None or base is None or versus.gain is None:
         return None
     m, b = fmt(model, base)
-    against = {"regression": "the outcome's average", "binary": "the class prior"}.get(
+    against = {"regression": "the outcome's average", "binary": "the class prior",
+               "time_to_event": "one risk for everyone"}.get(
         task, "always guessing the most common class")
     if versus.ci_low is None or versus.ci_high is None:
         return f"Not shown to beat {against}: CV {metric_label} {m} against {b}, from one fold."

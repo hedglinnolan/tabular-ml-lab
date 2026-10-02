@@ -103,18 +103,25 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
         assignment = read_assignment(split)
         rows = np.intersect1d(rows, assignment.index[assignment["train"]].to_numpy())
         n = int(len(rows))
-    n_events = n_classes = None
-    if task != "regression" and rows is not None:
+    n_events = n_classes = n_units = None
+    if rows is not None:
         with open_store(ctx) as store:
-            y = store.materialize([ctx.state.target], rows)
-        counts = y[ctx.state.target].value_counts(dropna=True)
-        n_classes = int(len(counts))
-        if task == "binary" and n_classes:
-            n_events = int(counts.min())
+            if task != "regression":
+                y = store.materialize([ctx.state.target], rows)
+                counts = y[ctx.state.target].value_counts(dropna=True)
+                n_classes = int(len(counts))
+                if task == "binary" and n_classes:
+                    n_events = int(counts.min())
+                elif task == "time_to_event":
+                    coded = coded_outcome(task, y[ctx.state.target].to_numpy(), ctx.state.event)
+                    n_events = int((pd.to_numeric(pd.Series(coded), errors="coerce") == 1).sum())
+            n_units = _units_in(ctx, store, rows)
     situation = Situation(task=task, purpose=ctx.state.purpose, n_rows=n,
-                          n_features=len(predictors), n_events=n_events, n_classes=n_classes)
+                          n_features=len(predictors), n_events=n_events, n_classes=n_classes,
+                          n_units=n_units)
     ranked = rank(situation)
-    events = f", {n_events:,} in the rarer class" if n_events is not None else ""
+    events = ("" if n_events is None else f", {n_events:,} with the event" if task == "time_to_event"
+              else f", {n_events:,} in the rarer class")
     estimates = _estimates(ctx, task, rows if trained else None, [f for f, _ in ranked])
     artifact = ShelfArtifact(
         families=[
@@ -128,6 +135,21 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
               f"predictors{events}.",
     )
     return artifact.model_dump(mode="json")
+
+
+def _units_in(ctx: StageContext, store: Any, rows: Any) -> int | None:
+    """How many units these rows repeat within, read as the inference table reads them
+    (``inference.resolve_clusters``); None when no identifier repeats in them."""
+    from turbotab.core.models.inference import cluster_columns, resolve_clusters
+    from turbotab.core.models.pipeline import modeling_frame
+
+    split = ctx.inputs.get("split")
+    grouped_by = ((split.data or {}).get("grouped_by") if isinstance(split, Bundle) else None)
+    columns = cluster_columns(ctx.state, store.columns, [grouped_by])
+    if not columns or rows is None or not len(rows):
+        return None
+    clusters = resolve_clusters(ctx.state, modeling_frame(store, columns, rows), [grouped_by])
+    return clusters.n_clusters if clusters.clustered else None
 
 
 def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[Any]) -> dict[str, Any]:
@@ -201,6 +223,13 @@ def design_stage(ctx: StageContext) -> Bundle:
     if not predictors:
         raise ValueError("No column has the role exposure, covariate or energy, so there is "
                          "nothing to model the outcome with.")
+    if task == "time_to_event":
+        from turbotab.core.models.survival import follow_up_columns
+
+        inside = [c for c in follow_up_columns(state) if c in predictors]
+        if inside:
+            raise ValueError(f"`{inside[0]}` is the outcome's follow-up time, so it cannot also be "
+                             f"a predictor: give it the role time.")
     assignment = read_assignment(ctx.inputs["split"])
     train_ids = assignment.index[assignment["train"]].to_numpy()
     adj = state.energy_adjustment
@@ -302,13 +331,18 @@ def _concerns(caught: Sequence[warnings.WarningMessage], n_fits: int) -> list[st
 
 
 BASELINE_LABEL = {"regression": "the outcome's average", "binary": "the class prior",
-                  "multiclass": "the class prior"}
+                  "multiclass": "the class prior", "time_to_event": "one risk for everyone"}
 
 
 def baseline_model(task: str) -> Any:
-    """What predicts without the predictors: the training mean, or the training class prior."""
+    """What predicts without the predictors: the training mean, the training class prior, or for a
+    time-to-event outcome one risk score for every row (which orders no pair: C = ½)."""
     from sklearn.dummy import DummyClassifier, DummyRegressor
 
+    if task == "time_to_event":
+        from turbotab.core.models.survival import ConstantRisk
+
+        return ConstantRisk()
     return DummyRegressor(strategy="mean") if task == "regression" else DummyClassifier(strategy="prior")
 
 
@@ -349,18 +383,22 @@ def baseline_concern(task: str, metric_label: str, model: float | None, base: fl
         return f"Predicts worse than the outcome's average: CV {metric_label} {m}, against {b} for the average."
     if task == "binary":
         return f"Separates the classes worse than the class prior: CV {metric_label} {m}, against {b} for the prior."
+    if task == "time_to_event":
+        return (f"Orders the events worse than one risk for everyone: CV {metric_label} {m}, against "
+                f"{b}.")
     return (f"Classifies worse than always guessing the most common class: CV {metric_label} {m}, "
             f"against {b}.")
 
 
 def coded_outcome(task: str | None, y: Any, event: str | None) -> Any:
-    """A binary outcome coded 1 for the level the user named as the event (``set_event``), else 0.
+    """A binary or time-to-event outcome coded 1 for the level the user named as the event
+    (``set_event``), else 0.
 
     The event is never guessed (M2_CONTRACT §1), and its methods sentence says that level was
     coded 1; the models, their metrics and coefficients must then be about that level, not about
     whichever level sorts last. Unchanged when there is no event or it is not a level here.
     """
-    if task != "binary" or event is None:
+    if task not in ("binary", "time_to_event") or event is None:
         return y
     from turbotab.core.stages.rows import _level_key
 
@@ -389,6 +427,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.models.metrics import (CV_DEFINITION, LABELS, PRIMARY, cross_validate,
                                               fold_pairs, metric_labels, score)
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
+    from turbotab.core.models.survival import follow_up_columns, time_to_event_outcome
     from turbotab.core.seal import SEALED_SCORES, sealed_scores_frame
 
     state = ctx.state
@@ -407,11 +446,18 @@ def fit_stage(ctx: StageContext) -> Bundle:
     ctx.progress(0.01, "Reading the analysis rows")
     columns = [*spec.inputs, target] + ([grouped_by] if grouped_by and grouped_by not in spec.inputs
                                         and grouped_by != target else [])
+    follow_up = follow_up_columns(state) if task == "time_to_event" else []
+    columns += [c for c in follow_up if c not in columns]
     inference = state.purpose == "inference"
+    keys = [k for k in (state.models or []) if k in pipelines]
+    # A family that models the unit itself (a random intercept, a working correlation) is told
+    # each row's unit through its model step's ``units`` parameter, under either purpose.
+    unit_models = [k for k in keys if "units" in pipelines[k].steps[-1][1].get_params(deep=False)]
     with open_store(ctx) as store:
         # Under inference the intervals cluster by whatever identifier repeats, however the seal
         # was drawn (AUDIT_REPORT MA-01): read every column that may name the unit.
-        unit_columns = cluster_columns(state, store.columns, [grouped_by]) if inference else []
+        unit_columns = (cluster_columns(state, store.columns, [grouped_by])
+                        if inference or unit_models else [])
         columns += [c for c in unit_columns if c not in columns]
         frame = modeling_frame(store, columns, assignment.index.to_numpy())
     train = assignment["train"].to_numpy()
@@ -419,14 +465,21 @@ def fit_stage(ctx: StageContext) -> Bundle:
     if y_all.isna().any():
         raise ValueError(f"{int(y_all.isna().sum()):,} analysis rows have no {target}; the cohort "
                          f"should have left them out.")
-    y_all = pd.Series(coded_outcome(task, y_all.to_numpy(), state.event), index=y_all.index)
-    X, y = frame.loc[train, spec.inputs], y_all[train].to_numpy()
-    X_hold, y_hold = frame.loc[~train, spec.inputs], y_all[~train].to_numpy()
+    coded = coded_outcome(task, y_all.to_numpy(), state.event)
+    # A time-to-event outcome is the event with its follow-up: one structured value per row.
+    y_values = (time_to_event_outcome(state, frame, coded) if task == "time_to_event"
+                else np.asarray(coded))
+    X, y = frame.loc[train, spec.inputs], y_values[train]
+    X_hold, y_hold = frame.loc[~train, spec.inputs], y_values[~train]
     folds = assignment.loc[train, "fold"].to_numpy().astype(int)
     order = assignment.loc[train, "order"].to_numpy(dtype=float) if scheme == "time_ordered" else None
     pairs = fold_pairs(folds, scheme)
     groups = frame.loc[train, grouped_by].to_numpy() if grouped_by else None
     clusters = resolve_clusters(state, frame.loc[train, unit_columns], [grouped_by]) if inference else None
+    unit_clusters = clusters if clusters is not None or not unit_models else resolve_clusters(
+        state, frame.loc[train, unit_columns], [grouped_by])
+    unit_of = (pd.Series(unit_clusters.codes, index=X.index)
+               if unit_clusters is not None and unit_clusters.clustered else None)
     if groups is not None and len(pd.unique(groups)) == len(groups):
         # One row per unit (the rows were combined per unit, M2_CONTRACT §2): the split is keyed by
         # the unit, but no unit repeats, so clustering by it changes nothing and "its rows repeat"
@@ -439,7 +492,6 @@ def fit_stage(ctx: StageContext) -> Bundle:
         return fit_pipeline(model, X_fit, y_fit, groups=None if groups is None else groups[take],
                             order=None if order is None else order[take])
 
-    keys = [k for k in (state.models or []) if k in pipelines]
     primary = PRIMARY[task]
     base = _baseline_cv(task, X, y, pairs)
     base_cv = base.summary(task)
@@ -467,12 +519,12 @@ def fit_stage(ctx: StageContext) -> Bundle:
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            result = cross_validate(task, lambda _k=key: clone(pipelines[_k]), X, y, pairs, fit=fit,
-                                    before_fold=before_fold)
+            result = cross_validate(task, lambda _k=key: with_units(clone(pipelines[_k]), unit_of),
+                                    X, y, pairs, fit=fit, before_fold=before_fold)
             if ctx.cancelled():
                 raise Cancelled()
             ctx.progress(share(done), f"{family.label}: refitting on all training rows")
-            final = fit(clone(pipelines[key]), X, y)
+            final = fit(with_units(clone(pipelines[key]), unit_of), X, y)
             done += 1
             # R² on the held-out rows is measured against the training rows' mean.
             holdout = score(task, final, X_hold, y_hold, reference=reference) if len(y_hold) else None
@@ -531,6 +583,25 @@ def fit_stage(ctx: StageContext) -> Bundle:
     frames = {SEALED_SCORES: sealed_scores_frame(models, sealed)} if n_holdout else {}
     return Bundle(data=artifact.model_dump(mode="json"), frames=frames,
                   objects={"fitted": fitted, "grouped_by": grouped_by})
+
+
+def with_units(pipeline: Any, units: pd.Series | None) -> Any:
+    """``pipeline`` with its model step told each row's unit (a Series of unit labels indexed by
+    row id), when the step takes ``units``; unchanged otherwise. Returns ``pipeline``."""
+    name, model = pipeline.steps[-1]
+    if units is not None and "units" in model.get_params(deep=False):
+        pipeline.set_params(**{f"{name}__units": units})
+    return pipeline
+
+
+def resampled_units(units: pd.Series, index: Any) -> pd.Series:
+    """The units of a resample by whole unit (rows indexed by row id, a unit's rows repeated
+    together): the k-th copy of a row is in the k-th copy of its unit, a unit of its own, as a
+    cluster bootstrap counts it."""
+    index = pd.Index(index)
+    labels = units.reindex(index).astype(object).to_numpy()
+    copy = pd.Series(np.arange(len(index))).groupby(np.asarray(index)).cumcount().to_numpy()
+    return pd.Series([f"{u}#{k}" for u, k in zip(labels, copy)], index=index, dtype=object)
 
 
 # ── substitution ─────────────────────────────────────────────────────────────
@@ -613,7 +684,8 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     fitted = fit.objects["fitted"]
     pipelines = design.objects["pipelines"]
     keys = [m["family"] for m in fit.data["models"] if m["family"] in fitted]
-    drawable = [k for k in keys if task != "multiclass"]
+    undrawn = ("multiclass", "time_to_event")  # one curve per class; a hazard, not a prediction
+    drawable = [k for k in keys if task not in undrawn]
     slot = 0.93 / max(1, len(keys))  # each family's share of the progress bar, in order
     y_fit = coded_outcome(task, fit_frame[target].to_numpy(), ctx.state.event)
     groups = fit_frame[grouped_by].to_numpy() if grouped_by else None
@@ -632,7 +704,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         family = get_family(key)
         start = 0.05 + slot * i
         ctx.progress(start, f"{family.label}: moving energy")
-        if task == "multiclass":
+        if task in undrawn:
             skipped.append(family.label)
             continue
         curve = substitution_curve(_predictor(task, fitted[key]), X, donor=sub.donor,
@@ -664,6 +736,9 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                 inner = (group_of.loc[Xb.index].to_numpy() if group_of is not None
                          else Xb.index.to_numpy())
                 pipe = pinned_to_full_fit(clone(_pipe), _full)
+                full_units = _full.steps[-1][1].get_params(deep=False).get("units")
+                if isinstance(full_units, pd.Series):  # a random intercept: one per resampled unit
+                    with_units(pipe, resampled_units(full_units, Xb.index))
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     return _predictor(task, fit_pipeline(pipe, Xb, yb, groups=inner))
@@ -693,8 +768,11 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         if not reading.declared:
             notes.append(f"{c} is read as {reading.role} in grams at {reading.factor:g} kcal/g; its "
                          f"name does not state the unit.")
-    if skipped:
+    if skipped and task == "multiclass":
         notes.append("A multiclass outcome has one curve per class, which is not drawn yet.")
+    elif skipped:
+        notes.append("A time-to-event outcome's substitution is a hazard ratio, which is not drawn "
+                     "yet; the Cox coefficients are log hazard ratios per unit of each column.")
     band = None
     if n_boot and bands:
         first = bands[0][1]

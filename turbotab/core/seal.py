@@ -407,7 +407,8 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
     grain = getattr(state, "grain", None)
     named = getattr(grain, "id_column", None) if grain is not None else None
     requested, time_column = temporal_request(state)
-    classify = task in ("binary", "multiclass")
+    # Classes, or a time-to-event outcome's event, are kept in proportion by the draw.
+    classify = task in ("binary", "multiclass", "time_to_event")
     target = getattr(state, "target", None)
     wanted = [*identifiers, *([named] if named in columns else [])]
     if classify and target in columns:
@@ -496,6 +497,9 @@ HOLDOUTS = (0.0, 0.1, 0.2, 0.3)  # the split question's options (teaching conten
 USUAL = 0.2  # the holdout the floor is checked at: the usual choice
 BINARY_FLOOR_SOURCE = ("Collins, Ogundimu & Altman, Stat Med 2016;35:214–226; Vergouwe et al., "
                        "J Clin Epidemiol 2005;58:475–483")
+# Collins et al. resampled Cox models (QRISK2, Cox Framingham): "externally validating a prognostic
+# model requires a minimum of 100 events and ideally 200 (or more) events".
+TIME_TO_EVENT_FLOOR_SOURCE = "Collins, Ogundimu & Altman, Stat Med 2016;35:214–226"
 # The R² a plan assumes, as the AUC's width assumes 0.75: a held-out R²'s precision depends on the
 # R² itself, and a plan comes before any fit. 0.2 is a modest prediction R² for a diet outcome.
 PLAN_R2 = 0.2
@@ -550,6 +554,10 @@ def floor_for(task: str | None) -> SealFloor:
         return SealFloor(unit="events", n=FLOOR, convention=False, source=BINARY_FLOOR_SOURCE,
                          text=f"A held-out score needs at least {FLOOR} events and {FLOOR} "
                               f"non-events to be estimated with useful precision.")
+    if task == "time_to_event":
+        return SealFloor(unit="events", n=FLOOR, convention=False, source=TIME_TO_EVENT_FLOOR_SOURCE,
+                         text=f"A held-out score needs at least {FLOOR} events to be estimated "
+                              f"with useful precision.")
     if task == "multiclass":
         return SealFloor(unit="rows in the rarest class", n=FLOOR, convention=True, source=None,
                          text=f"A convention: at least {FLOOR} held-out rows in the rarest class, "
@@ -584,6 +592,10 @@ def measure(task: str | None, n: int, counts: Sequence[int] | None = None) -> tu
         what = f"AUC known to about ±{width:.2f}" if width < 0.5 else "too few to measure an AUC"
         return (f"About {rows} held-out rows, {tick(f'{events:,}')} in the rarer class: {what}.",
                 below)
+    if task == "time_to_event":  # counts: [events, the rest] (:func:`outcome_counts`)
+        events = int(counts[0]) if counts else 0
+        return (f"About {rows} held-out rows, {tick(f'{events:,}')} with the event: a C-index "
+                f"rests on its events.", events < FLOOR)
     if task == "multiclass":
         rarest = min((int(c) for c in counts or []), default=0)
         width = Z95 * math.sqrt(0.25 / rarest) if rarest else math.inf
@@ -633,7 +645,11 @@ def holdout_options(task: str | None, n_rows: int,
                                      below_floor=bool(h > 0 and below)))
     usual = next(o for o in options if o.holdout == USUAL)
     smallest =min((int(round(USUAL * c)) for c in counts), default=0)
-    if task in ("binary", "multiclass"):
+    if task == "time_to_event":
+        smallest = int(round(USUAL * counts[0])) if counts else 0
+        leaves = f"about {tick(f'{smallest:,}')} held-out events"
+        floor_words = f"{FLOOR} events"
+    elif task in ("binary", "multiclass"):
         which = "rarer class" if task == "binary" else "rarest class"
         leaves = f"about {tick(f'{smallest:,}')} held-out rows in the {which}"
         floor_words = (f"{FLOOR} events and {FLOOR} non-events" if task == "binary"
@@ -659,6 +675,21 @@ def class_counts(labels: Any) -> list[int]:
     return [int(c) for c in pd.Series(np.asarray(labels, dtype=object)).value_counts(dropna=True)]
 
 
+def outcome_counts(task: str | None, labels: Any, event: Any = None) -> list[int]:
+    """:func:`class_counts`, or for a time-to-event outcome ``[events, the rest]``: the level the
+    user named as the event (``set_event``), else 1, as the fit codes it."""
+    if task != "time_to_event":
+        return class_counts(labels)
+    if labels is None:
+        return []
+    from turbotab.core.stages.rows import _level_key
+
+    keys = [_level_key(v) for v in np.asarray(labels, dtype=object) if not _isna(v)]
+    hit = _level_key(event) if event is not None else "1"
+    events = sum(k == hit for k in keys)
+    return [events, len(keys) - events]
+
+
 def plan(state: Any, universe: Any, store: Any, task: str | None,
          analyzed: Any | None = None, structure: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The ``seal_plan`` artifact (see :class:`SealPlan`).
@@ -672,9 +703,10 @@ def plan(state: Any, universe: Any, store: Any, task: str | None,
     analyzed = universe if analyzed is None else np.asarray(analyzed, dtype=np.int64)
     draw = seal_inputs(state, universe, store, task, holdout=USUAL, seed=0, structure=structure)
     counts: list[int] = []
-    if task in ("binary", "multiclass") and getattr(state, "target", None):
+    if task in ("binary", "multiclass", "time_to_event") and getattr(state, "target", None):
         frame = store.materialize([state.target], analyzed)
-        counts = class_counts(frame[state.target].to_numpy(dtype=object))
+        counts = outcome_counts(task, frame[state.target].to_numpy(dtype=object),
+                                getattr(state, "event", None))
     options, cv_first, reason = holdout_options(task, int(len(analyzed)), counts)
     return SealPlan(
         task=str(task), n_measured=int(len(universe)), n_analyzed=int(len(analyzed)),
