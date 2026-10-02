@@ -381,7 +381,7 @@
                     "$ref": "#/components/schemas/SetTemporal-Input"
                   },
                   {
-                    "$ref": "#/components/schemas/OpenSeal"
+                    "$ref": "#/components/schemas/OpenSeal-Input"
                   },
                   {
                     "$ref": "#/components/schemas/ApplyRepair-Input"
@@ -421,7 +421,7 @@
                     "set_unit": "#/components/schemas/SetUnit",
                     "set_aggregation": "#/components/schemas/SetAggregation-Input",
                     "set_temporal": "#/components/schemas/SetTemporal-Input",
-                    "open_seal": "#/components/schemas/OpenSeal",
+                    "open_seal": "#/components/schemas/OpenSeal-Input",
                     "apply_repair": "#/components/schemas/ApplyRepair-Input",
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Input",
@@ -685,7 +685,7 @@
                     "$ref": "#/components/schemas/SetTemporal-Input"
                   },
                   {
-                    "$ref": "#/components/schemas/OpenSeal"
+                    "$ref": "#/components/schemas/OpenSeal-Input"
                   },
                   {
                     "$ref": "#/components/schemas/ApplyRepair-Input"
@@ -725,7 +725,7 @@
                     "set_unit": "#/components/schemas/SetUnit",
                     "set_aggregation": "#/components/schemas/SetAggregation-Input",
                     "set_temporal": "#/components/schemas/SetTemporal-Input",
-                    "open_seal": "#/components/schemas/OpenSeal",
+                    "open_seal": "#/components/schemas/OpenSeal-Input",
                     "apply_repair": "#/components/schemas/ApplyRepair-Input",
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Input",
@@ -1895,7 +1895,7 @@
                 "$ref": "#/components/schemas/SetTemporal-Output"
               },
               {
-                "$ref": "#/components/schemas/OpenSeal"
+                "$ref": "#/components/schemas/OpenSeal-Output"
               },
               {
                 "$ref": "#/components/schemas/ApplyRepair-Output"
@@ -1920,7 +1920,7 @@
                 "apply_repair": "#/components/schemas/ApplyRepair-Output",
                 "defer_finding": "#/components/schemas/DeferFinding",
                 "dismiss_finding": "#/components/schemas/DismissFinding-Output",
-                "open_seal": "#/components/schemas/OpenSeal",
+                "open_seal": "#/components/schemas/OpenSeal-Output",
                 "revert": "#/components/schemas/Revert",
                 "select_models": "#/components/schemas/SelectModels",
                 "set_aggregation": "#/components/schemas/SetAggregation-Output",
@@ -2510,7 +2510,7 @@
                     "$ref": "#/components/schemas/SetTemporal-Output"
                   },
                   {
-                    "$ref": "#/components/schemas/OpenSeal"
+                    "$ref": "#/components/schemas/OpenSeal-Output"
                   },
                   {
                     "$ref": "#/components/schemas/ApplyRepair-Output"
@@ -2534,7 +2534,7 @@
                     "apply_repair": "#/components/schemas/ApplyRepair-Output",
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Output",
-                    "open_seal": "#/components/schemas/OpenSeal",
+                    "open_seal": "#/components/schemas/OpenSeal-Output",
                     "revert": "#/components/schemas/Revert",
                     "select_models": "#/components/schemas/SelectModels",
                     "set_aggregation": "#/components/schemas/SetAggregation-Output",
@@ -3469,13 +3469,24 @@
         "title": "MissingSpec",
         "description": "The missing-values answer: columns left out of the predictors, then a strategy for the rest."
       },
-      "OpenSeal": {
+      "OpenSeal-Input": {
         "properties": {
           "kind": {
             "type": "string",
             "const": "open_seal",
             "title": "Kind",
             "default": "open_seal"
+          },
+          "family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family"
           }
         },
         "additionalProperties": false,
@@ -3484,7 +3495,36 @@
           "kind"
         ],
         "title": "OpenSeal",
-        "description": "Open the held-out rows: once, at the end. Held-out scores are withheld until then."
+        "description": "Open the held-out rows: once, at the end. Held-out scores are withheld until then.\n\n``family`` is the final model, declared on cross-validation before any held-out score is seen\n(AUDIT_REPORT §5 WP8, ME-13; ``turbotab/core/models/selection.py``): its held-out score is the\nreported result. Required when several families are fitted; with one, the opening declares it.\nNull only in records from before the rule."
+      },
+      "OpenSeal-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "open_seal",
+            "title": "Kind",
+            "default": "open_seal"
+          },
+          "family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "family"
+        ],
+        "title": "OpenSeal",
+        "description": "Open the held-out rows: once, at the end. Held-out scores are withheld until then.\n\n``family`` is the final model, declared on cross-validation before any held-out score is seen\n(AUDIT_REPORT §5 WP8, ME-13; ``turbotab/core/models/selection.py``): its held-out score is the\nreported result. Required when several families are fitted; with one, the opening declares it.\nNull only in records from before the rule."
       },
       "PreviewResult": {
         "properties": {
@@ -6977,6 +7017,42 @@
             ],
             "default": null,
             "title": "Meaning"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ratio"
+          },
+          "ratio_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ratio Low"
+          },
+          "ratio_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ratio High"
           }
         },
         "required": [
@@ -6987,7 +7063,10 @@
           "p",
           "se",
           "df",
-          "meaning"
+          "meaning",
+          "ratio",
+          "ratio_low",
+          "ratio_high"
         ],
         "title": "Coefficient",
         "type": "object"
@@ -7923,6 +8002,41 @@
             ],
             "default": null,
             "title": "Cv Definition"
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Selection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "final_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Final Model"
+          },
+          "final_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Final Note"
           }
         },
         "required": [
@@ -7936,7 +8050,10 @@
           "changed_after_seal",
           "post_seal_decisions",
           "fold_scheme",
-          "cv_definition"
+          "cv_definition",
+          "selection",
+          "final_model",
+          "final_note"
         ],
         "title": "FitArtifact",
         "type": "object"
@@ -8029,6 +8146,34 @@
               }
             ],
             "default": null
+          },
+          "coefficients_n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Coefficients N"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "final",
+                  "secondary"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Role"
           }
         },
         "required": [
@@ -8041,7 +8186,9 @@
           "concerns",
           "baseline",
           "versus_baseline",
-          "inference"
+          "inference",
+          "coefficients_n",
+          "role"
         ],
         "title": "FittedModel",
         "type": "object"
@@ -8227,6 +8374,89 @@
             },
             "title": "Exits",
             "type": "array"
+          },
+          "scale": {
+            "default": "difference",
+            "enum": [
+              "difference",
+              "odds_ratio",
+              "relative_risk_ratio"
+            ],
+            "title": "Scale",
+            "type": "string"
+          },
+          "axis": {
+            "default": "linear",
+            "enum": [
+              "linear",
+              "log"
+            ],
+            "title": "Axis",
+            "type": "string"
+          },
+          "effect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Effect"
+          },
+          "event": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Event"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reference"
+          },
+          "n_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Rows"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "enum": [
+                  "all",
+                  "training"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rows"
           }
         },
         "required": [
@@ -8238,7 +8468,14 @@
           "n_missing_ids",
           "separated",
           "refused",
-          "exits"
+          "exits",
+          "scale",
+          "axis",
+          "effect",
+          "event",
+          "reference",
+          "n_rows",
+          "rows"
         ],
         "title": "Inference",
         "type": "object"
@@ -9436,6 +9673,82 @@
           "time_ordered_folds"
         ],
         "title": "SealPlan",
+        "type": "object"
+      },
+      "Selection": {
+        "additionalProperties": false,
+        "description": "What choosing among families on cross-validation costs (``models/selection.py``): the best\nfamily's CV score flatters it, by about ``optimism``, estimated by bootstrap bias-corrected\ncross-validation over the families' out-of-fold predictions (Tsamardinos et al. 2018).",
+        "properties": {
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "families": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "best": {
+            "title": "Best",
+            "type": "string"
+          },
+          "cv": {
+            "title": "Cv",
+            "type": "number"
+          },
+          "optimism": {
+            "title": "Optimism",
+            "type": "number"
+          },
+          "corrected": {
+            "title": "Corrected",
+            "type": "number"
+          },
+          "corrected_low": {
+            "title": "Corrected Low",
+            "type": "number"
+          },
+          "corrected_high": {
+            "title": "Corrected High",
+            "type": "number"
+          },
+          "replicates": {
+            "title": "Replicates",
+            "type": "integer"
+          },
+          "wins": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Wins",
+            "type": "object"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "families",
+          "best",
+          "cv",
+          "optimism",
+          "corrected",
+          "corrected_low",
+          "corrected_high",
+          "replicates",
+          "wins",
+          "method",
+          "text"
+        ],
+        "title": "Selection",
         "type": "object"
       },
       "ShelfArtifact": {

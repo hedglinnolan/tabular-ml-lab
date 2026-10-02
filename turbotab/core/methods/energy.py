@@ -1715,11 +1715,21 @@ def relative_effect_rows(matrix: pd.DataFrame, nutrients: Sequence[str],
             found = next((r for r in table(moved) if str(r["feature"]) == j), None)
             if found is None:
                 continue
-            rows.append({"feature": f"{n}_relative", "estimate": scaled(found.get("estimate")),
-                         "ci_low": scaled(found.get("ci_low")),
-                         "ci_high": scaled(found.get("ci_high")), "p": found.get("p"),
-                         "se": scaled(found.get("se")), "df": found.get("df"),
-                         "meaning": meaning})
+            row = {"feature": f"{n}_relative", "estimate": scaled(found.get("estimate")),
+                   "ci_low": scaled(found.get("ci_low")),
+                   "ci_high": scaled(found.get("ci_high")), "p": found.get("p"),
+                   "se": scaled(found.get("se")), "df": found.get("df"),
+                   "meaning": meaning}
+            if "ratio" in found:
+                # On the table's ratio scale (WP8): exp of the per-unit estimate and its ends, or
+                # None where that is missing or overflows, as the table's own rows do.
+                def ratio(v: Optional[float]) -> Optional[float]:
+                    return (None if v is None or not np.isfinite(v) or v > 700
+                            else float(np.exp(v)))
+
+                row.update(ratio=ratio(row["estimate"]), ratio_low=ratio(row["ci_low"]),
+                           ratio_high=ratio(row["ci_high"]))
+            rows.append(row)
             continue
         if j not in by_feature or any(k not in by_feature for k in others):
             continue

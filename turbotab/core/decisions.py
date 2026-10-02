@@ -414,9 +414,16 @@ class SetTemporal(_DecisionModel):
 
 
 class OpenSeal(_DecisionModel):
-    """Open the held-out rows: once, at the end. Held-out scores are withheld until then."""
+    """Open the held-out rows: once, at the end. Held-out scores are withheld until then.
+
+    ``family`` is the final model, declared on cross-validation before any held-out score is seen
+    (AUDIT_REPORT §5 WP8, ME-13; ``turbotab/core/models/selection.py``): its held-out score is the
+    reported result. Required when several families are fitted; with one, the opening declares it.
+    Null only in records from before the rule.
+    """
 
     kind: Literal["open_seal"] = "open_seal"
+    family: str | None = None
 
 
 class ApplyRepair(_DecisionModel):

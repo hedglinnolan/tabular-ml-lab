@@ -1,0 +1,400 @@
+"""One declared model: choosing among families, and what the choice costs (AUDIT_REPORT §5 WP8: ME-13).
+
+Two rules, one for each side of the seal.
+
+**Before the seal is opened, the choice is made on cross-validation and its optimism is estimated.**
+The family with the best cross-validated score was chosen *because* that score was best, so it
+flatters the family (Varma & Simon 2006, *BMC Bioinformatics* 7:91: "Using CV to compute an error
+estimate for a classifier that has itself been tuned using CV gives a significantly biased estimate
+of the true error"). On null binary data the CV-best of the three families averaged an AUC of 0.536
+against a true 0.50 (audit A7).
+
+:func:`selection_optimism` estimates it by bootstrap bias-corrected cross-validation, BBC-CV
+(Tsamardinos, Greasidou & Borboudakis 2018, *Mach Learn* 107:1895, algorithm 5): "BBC-CV's main
+idea is to bootstrap the whole process of selecting the best-performing configuration on the
+out-of-sample predictions of each configuration, without additional training of models." The
+out-of-fold predictions of every family (:class:`OutOfFold`, the paper's matrix Π, kept as
+cross-validation fits each fold) are resampled by row, B times; each time the family with the best
+score on the resampled rows is chosen and scored on the rows the resample left out, and the mean of
+those scores is the corrected estimate, with the 2.5th and 97.5th percentiles as its interval (the
+paper's percentile interval, "accurate albeit somewhat conservative"). The optimism is the best
+family's reported CV score less that estimate. Scores are computed on the pooled out-of-fold
+predictions, as the paper computes them; for AUC that pools scores from different fold models,
+which the paper notes must be "comparable (in the same scale)", true of the predicted probabilities
+the families give. On the audit's null scenario (150 rows, ten noise predictors, three families,
+five folds) it recovers the optimism (+0.039 measured, +0.036 estimated over 100 datasets), where
+Tibshirani & Tibshirani's fold-wise correction (2009), tried first, recovered about two thirds of it
+(+0.023 of +0.035 over 100 other datasets). With a real signal (a log-odds slope of 0.5 on one
+predictor, 60 datasets) the corrected AUC averaged 0.567 against a true 0.580: conservative, as the
+paper found, partly because each fold's model learns from four fifths of the rows.
+
+**Opening the seal needs the final family declared** (:func:`_a_final_model_is_declared`), chosen
+on cross-validation before any held-out score is seen; with one family fitted it is that one. Once
+opened, the served fit marks the declared family ``final`` (its held-out score is the reported
+result) and the others ``secondary`` (:func:`mark_final`): the best of several held-out scores,
+picked after seeing them, is optimistic in turn (+0.023 AUC on 150-row holdouts, audit A7).
+
+Importing this module registers the ``open_seal`` validator and completion.
+"""
+from __future__ import annotations
+
+import math
+from typing import Any, Callable, Mapping, Sequence
+
+import numpy as np
+
+from turbotab.core import decisions
+from turbotab.core.decisions import OpenSeal, Refusal
+
+LOWER_IS_BETTER = frozenset({"rmse", "mae", "brier", "log_loss"})
+METHOD = "bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018)"
+REPLICATES = 1000  # the paper's B
+LARGE = 10_000  # above this many scored rows, fewer resamples: each costs more, the optimism is small
+REPLICATES_LARGE = 200
+SEED = 0
+
+
+# ── the optimism of choosing on cross-validation ─────────────────────────────
+
+
+def _rows(data: Any, mask: np.ndarray) -> Any:
+    import pandas as pd
+
+    if isinstance(data, (pd.DataFrame, pd.Series)):
+        return data.iloc[np.flatnonzero(mask)]
+    return np.asarray(data)[mask]
+
+
+class OutOfFold:
+    """Each family's out-of-fold predictions on the training rows (Tsamardinos et al.'s Π).
+
+    :meth:`wrap` turns the fit stage's fit function into one that also predicts the rows its fold
+    scores, for :func:`~turbotab.core.models.metrics.cross_validate`, which passes each pair's fit
+    mask as it is. Regression keeps the predicted values and, for R², the mean of the rows each
+    fold's model was fit on; classification keeps the predicted probabilities, in the order of the
+    outcome's sorted classes. Rows no fold scores (the first block of time-ordered folds) stay
+    missing and are never resampled.
+    """
+
+    def __init__(self, task: str, X: Any, y: Any, pairs: Sequence[tuple[int, np.ndarray, np.ndarray]]):
+        self.task = task
+        self.X = X
+        self.y = np.asarray(y)
+        self.pairs = list(pairs)
+        n = len(self.y)
+        self.scored = np.zeros(n, dtype=bool)
+        self.reference = np.full(n, np.nan)
+        for _, fit_rows, test_rows in self.pairs:
+            self.scored |= np.asarray(test_rows, dtype=bool)
+            if task == "regression":
+                self.reference[test_rows] = float(np.mean(self.y[fit_rows].astype(float)))
+        self.classes: list[Any] = [] if task == "regression" else np.unique(self.y).tolist()
+        self.predictions: dict[str, np.ndarray] = {}
+
+    def wrap(self, key: str, fit: Callable[..., Any]) -> Callable[..., Any]:
+        def fit_and_keep(model: Any, X_fit: Any, y_fit: Any, rows: Any) -> Any:
+            fitted = fit(model, X_fit, y_fit, rows)
+            self.keep(key, fitted, self._scored_by(rows))
+            return fitted
+        return fit_and_keep
+
+    def _scored_by(self, fit_rows: Any) -> np.ndarray:
+        for _, f, t in self.pairs:
+            if f is fit_rows:
+                return t
+        for _, f, t in self.pairs:
+            if np.array_equal(f, fit_rows):
+                return t
+        raise ValueError("The fold being fit is not one of the split's folds.")
+
+    def keep(self, key: str, fitted: Any, test_rows: np.ndarray) -> None:
+        """Store ``fitted``'s predictions for the rows ``test_rows`` marks."""
+        X_test = _rows(self.X, test_rows)
+        n = len(self.y)
+        if self.task == "regression":
+            out = self.predictions.setdefault(key, np.full(n, np.nan))
+            out[test_rows] = np.asarray(fitted.predict(X_test), dtype=float)
+            return
+        proba = np.asarray(fitted.predict_proba(X_test), dtype=float)
+        block = np.zeros((proba.shape[0], len(self.classes)))
+        for j, c in enumerate(fitted.classes_):
+            block[:, self.classes.index(c)] = proba[:, j]
+        out = self.predictions.setdefault(key, np.full((n, len(self.classes)), np.nan))
+        out[test_rows] = block
+
+    def score(self, metric: str, key: str, rows: np.ndarray) -> float:
+        """``metric`` of family ``key`` on the out-of-fold predictions of ``rows`` (indices, with
+        repeats), pooled as Tsamardinos et al. pool them; NaN where it is undefined."""
+        return pooled_score(self.task, metric, self.y[rows], self.predictions[key][rows],
+                            self.reference[rows], self.classes)
+
+
+def _auc(positive: np.ndarray, p: np.ndarray) -> float:
+    """The area under the ROC curve by the Mann–Whitney statistic, ties counted half (the trapezoid
+    rule scikit-learn uses)."""
+    from scipy.stats import rankdata
+
+    n1 = int(positive.sum())
+    n0 = len(positive) - n1
+    if n1 == 0 or n0 == 0:
+        return float("nan")
+    ranks = rankdata(p)
+    return float((ranks[positive].sum() - n1 * (n1 + 1) / 2) / (n1 * n0))
+
+
+def pooled_score(task: str, metric: str, y: np.ndarray, pred: np.ndarray, reference: np.ndarray,
+                 classes: Sequence[Any]) -> float:
+    """A metric of ``models/metrics.py`` on pooled out-of-fold predictions."""
+    from sklearn import metrics as m
+
+    if task == "regression":
+        y = y.astype(float)
+        e = y - pred
+        if metric == "r2":
+            sst = float(((y - reference) ** 2).sum())
+            return 1.0 - float((e ** 2).sum()) / sst if sst > 0 else float("nan")
+        if metric == "rmse":
+            return float(np.sqrt(np.mean(e ** 2)))
+        if metric == "mae":
+            return float(np.mean(np.abs(e)))
+        raise KeyError(metric)
+    if task == "binary":
+        positive = y == classes[1]
+        p = pred[:, 1]
+        if metric == "auc":
+            return _auc(positive, p)
+        if metric == "brier":
+            return float(np.mean((positive - p) ** 2))
+        if metric == "log_loss":
+            return float(m.log_loss(positive, p, labels=[False, True]))
+        raise KeyError(metric)
+    labels = np.asarray(classes, dtype=object)[np.argmax(pred, axis=1)]
+    if metric == "accuracy":
+        return float(np.mean(labels == y))
+    if metric == "macro_f1":
+        return float(m.f1_score(y, labels, average="macro", labels=list(classes), zero_division=0))
+    if metric == "log_loss":
+        return float(m.log_loss(y, pred, labels=list(classes)))
+    raise KeyError(metric)
+
+
+def selection_optimism(task: str, metric: str, results: Mapping[str, Any], oof: OutOfFold,
+                       labels: Mapping[str, str] | None = None, metric_label: str | None = None,
+                       replicates: int | None = None, seed: int = SEED) -> dict[str, Any] | None:
+    """How much the best family's cross-validated ``metric`` flatters it, by BBC-CV over the
+    families' out-of-fold predictions; None with fewer than two families or nothing to resample.
+
+    ``results`` maps each family to its :class:`~turbotab.core.models.metrics.CrossValidated`.
+    Returns the ``selection`` artifact field: the best family, its CV score, the corrected estimate
+    with its 95% percentile interval, the optimism (the CV score less the corrected estimate, in the
+    score's units, signed so that positive flatters), how often each family won a resample, and the
+    sentence that states it.
+    """
+    keys = [k for k in results if k in oof.predictions]
+    if len(keys) < 2:
+        return None
+    estimates = {k: results[k].summary(task)[metric]["estimate"] for k in keys}
+    if not all(e is not None and math.isfinite(e) for e in estimates.values()):
+        return None
+    lower = metric in LOWER_IS_BETTER
+
+    def pick(scores: Mapping[str, float]) -> str:
+        return (min if lower else max)(scores, key=scores.get)  # ties: the first family listed
+
+    best = pick(estimates)
+    ok = oof.scored.copy()
+    for k in keys:
+        values = oof.predictions[k]
+        ok &= np.isfinite(values if values.ndim == 1 else values.sum(axis=1))
+    rows = np.flatnonzero(ok)
+    n = len(rows)
+    if n < 2:
+        return None
+    B = replicates or (REPLICATES if n <= LARGE else REPLICATES_LARGE)
+    rng = np.random.default_rng(seed)
+    left = np.ones(len(oof.y), dtype=bool)
+    scores: list[float] = []
+    wins = {k: 0 for k in keys}
+    for _ in range(B):
+        draw = rows[rng.integers(0, n, n)]
+        left[:] = True
+        left[draw] = False
+        out = rows[left[rows]]
+        inbag = {k: oof.score(metric, k, draw) for k in keys}
+        inbag = {k: v for k, v in inbag.items() if math.isfinite(v)}
+        if not inbag or not len(out):
+            continue
+        chosen = pick(inbag)
+        value = oof.score(metric, chosen, out)
+        if math.isfinite(value):
+            scores.append(value)
+            wins[chosen] += 1
+    if len(scores) < B / 2:
+        return None
+    corrected = float(np.mean(scores))
+    low, high = (float(v) for v in np.percentile(scores, [2.5, 97.5]))
+    cv = float(estimates[best])
+    optimism = corrected - cv if lower else cv - corrected
+    names = labels or {}
+    label = metric_label or metric
+    family = names.get(best, best)
+    flatter = (f"{family}'s CV {label} of {_num(cv)} is {'low' if lower else 'high'} by about "
+               f"{_num(optimism)}" if optimism > 0 else
+               f"{family}'s CV {label} of {_num(cv)} shows no optimism from the choice")
+    text = (f"Choosing the best of {len(keys)} families by cross-validated {label} flatters the "
+            f"winner: {flatter}; corrected for the choice, about {_num(corrected)} (95% interval "
+            f"{_num(low)} to {_num(high)}) is expected on new rows ({METHOD}, {len(scores):,} "
+            f"resamples of the out-of-fold predictions). The held-out score of a family declared "
+            f"before the seal is opened carries no such optimism.")
+    return {"metric": metric, "families": keys, "best": best, "cv": cv, "optimism": optimism,
+            "corrected": corrected, "corrected_low": low, "corrected_high": high,
+            "replicates": len(scores), "wins": wins, "method": METHOD, "text": text}
+
+
+def _num(value: float) -> str:
+    return f"{value:.3f}".replace("-", "−")
+
+
+# ── declaring the final family before the seal is opened ─────────────────────
+
+
+def _ctx(ctx: Any, name: str) -> Any:
+    if ctx is None:
+        return None
+    if isinstance(ctx, Mapping):
+        return ctx.get(name)
+    return getattr(ctx, name, None)
+
+
+def _openable_fit(ctx: Any) -> Mapping[str, Any] | None:
+    """The fit the seal would open on, when the seal can be opened at all; else None (the seal's
+    own validator says why it cannot)."""
+    state = _ctx(ctx, "state")
+    if state is None or getattr(state, "seal_opened", None):
+        return None
+    split = getattr(state, "split", None)
+    if split is None or float(getattr(split, "holdout", 0) or 0) == 0:
+        return None
+    artifact = _ctx(ctx, "artifact")
+    if not callable(artifact):
+        return None
+    try:
+        fit = artifact("fit")
+    except Exception:  # noqa: BLE001 - no fit: the seal's validator refuses
+        return None
+    if not isinstance(fit, Mapping) or not int(fit.get("n_holdout") or 0):
+        return None
+    return fit
+
+
+def _cv_of(fit: Mapping[str, Any], model: Mapping[str, Any]) -> float | None:
+    metric = fit.get("primary_metric")
+    entry = (model.get("cv") or {}).get(metric) or {}
+    value = entry.get("estimate", entry.get("mean"))
+    return float(value) if value is not None and math.isfinite(float(value)) else None
+
+
+def _a_final_model_is_declared(decision: Any, ctx: Any) -> None:
+    fit = _openable_fit(ctx)
+    if fit is None:
+        return
+    models = [m for m in fit.get("models") or [] if m.get("family")]
+    fitted = [str(m["family"]) for m in models]
+    metric = str(fit.get("primary_metric") or "")
+    label = (fit.get("metric_labels") or {}).get(metric, metric)
+    lower = metric in LOWER_IS_BETTER
+    ranked = sorted(models, key=lambda m: (_cv_of(fit, m) is None,
+                                           (1 if lower else -1) * (_cv_of(fit, m) or 0.0)))
+    exits = []
+    for i, m in enumerate(ranked):
+        cv = _cv_of(fit, m)
+        said = f" (CV {label} {_num(cv)}{', the best' if i == 0 and len(ranked) > 1 else ''})" \
+            if cv is not None else ""
+        exits.append({"label": f"Open with {m.get('label') or m['family']} as the final model{said}",
+                      "decision": OpenSeal(family=str(m["family"]))})
+    family = getattr(decision, "family", None)
+    if family is not None and family not in fitted:
+        raise Refusal("not_a_fitted_family",
+                      f"`{family}` is not one of the fitted families, so it cannot be the final "
+                      f"model.", exits=exits)
+    if family is None and len(fitted) > 1:
+        chosen = fit.get("selection") or {}
+        cost = (f" Choosing on cross-validation flatters the best family's CV {label} too, by about "
+                f"{_num(chosen['optimism'])} here (bootstrap bias-corrected)."
+                if chosen.get("optimism") is not None and chosen["optimism"] > 0 else "")
+        raise Refusal(
+            "final_model_needed",
+            f"Name the final model before the held-out rows are opened, choosing it on "
+            f"cross-validation: its held-out {label} is then the result. The best of "
+            f"{len(fitted)} held-out scores, picked after seeing them, would flatter itself.{cost}",
+            exits=exits)
+
+
+def _the_only_family_is_the_final_one(decision: Any, ctx: Any) -> Any:
+    """With one family fitted, the opening declares it (nothing else could be the final model)."""
+    if getattr(decision, "family", None) is not None:
+        return decision
+    fit = _openable_fit(ctx)
+    if fit is None:
+        return decision
+    fitted = [str(m["family"]) for m in fit.get("models") or [] if m.get("family")]
+    return OpenSeal(family=fitted[0]) if len(fitted) == 1 else decision
+
+
+decisions.register_validator("open_seal", _a_final_model_is_declared)
+decisions.register_completion("open_seal", _the_only_family_is_the_final_one)
+
+
+# ── the served fit: final and secondary ──────────────────────────────────────
+
+
+def declared_family(records: Sequence[Any]) -> str | None:
+    """The family the opening declared final, or None (not opened, or opened before a final model
+    had to be declared)."""
+    from turbotab.core.seal import opening
+
+    record = opening(records)
+    return getattr(record.decision, "family", None) if record is not None else None
+
+
+def mark_final(out: dict[str, Any], *, opened: bool, family: str | None) -> dict[str, Any]:
+    """Mark the served fit's declared final family and its secondary ones (in place; returned).
+
+    Before the opening nothing is final: ``final_model`` and every ``role`` are null.
+    """
+    models = out.get("models") or []
+    for m in models:
+        m["role"] = None
+    out["final_model"] = None
+    out["final_note"] = None
+    if not opened or not int(out.get("n_holdout") or 0):
+        return out
+    metric = str(out.get("primary_metric") or "")
+    label = (out.get("metric_labels") or {}).get(metric, metric)
+    if family is None:
+        out["final_note"] = (f"The seal was opened before a final model had to be declared, so no "
+                             f"held-out {label} is the reported result, and the best of them, "
+                             f"picked after seeing them, is optimistic.")
+        return out
+    named = next((m for m in models if m.get("family") == family), None)
+    if named is None:
+        for m in models:
+            m["role"] = "secondary"
+        out["final_note"] = (f"`{family}` was declared the final model when the seal was opened, "
+                             f"but it is not among the families fitted now, so every held-out "
+                             f"score here is secondary.")
+        return out
+    out["final_model"] = family
+    for m in models:
+        m["role"] = "final" if m is named else "secondary"
+    others = len(models) - 1
+    rest = (f"; the other {others} {'family' if others == 1 else 'families'}' held-out scores are "
+            f"secondary" if others else "")
+    out["final_note"] = (f"{named.get('label') or family} was declared the final model on "
+                         f"cross-validation before the held-out rows were opened, so its held-out "
+                         f"{label} is the reported result{rest}.")
+    return out
+
+
+__all__ = ["LOWER_IS_BETTER", "METHOD", "OutOfFold", "declared_family", "mark_final", "pooled_score",
+           "selection_optimism"]

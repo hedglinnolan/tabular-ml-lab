@@ -117,6 +117,12 @@ class Coefficient(_Model):
     # alcohol and other energy, total energy fixed"; the all-components model's average relative
     # effects (``<nutrient>_relative`` rows) say their weights here.
     meaning: str | None = None
+    # On a ratio scale (the table's ``inference.scale``): exp(estimate), the odds ratio or the
+    # relative-risk ratio, and exp of the interval's ends. Null for the intercept and on the
+    # difference scale.
+    ratio: float | None = None
+    ratio_low: float | None = None
+    ratio_high: float | None = None
 
 
 class InferenceExit(_Model):
@@ -134,13 +140,28 @@ class Inference(_Model):
     # HC3 · CR2 (cluster-robust, Bell–McCaffrey df) · model (Wald, from the information) ·
     # profile (penalized likelihood) · none (refused: ``refused`` says why).
     covariance: Literal["HC3", "CR2", "model", "profile", "none"]
-    caption: str  # one line naming the covariance, the clusters and the reference distribution
+    # One or two lines: the scale (on a ratio scale), the covariance, the clusters, the reference
+    # distribution and the rows the table was estimated from.
+    caption: str
     grouped_by: str | None = None  # the identifier the intervals are clustered by
     n_clusters: int | None = None
     n_missing_ids: int = 0  # rows with no identifier, each counted as a unit of its own
     separated: list[str] = []  # columns that separate a binary outcome
     refused: str | None = None  # why no interval or p-value is reported
     exits: list[InferenceExit] = []
+    # The scale a row's effect is read on (AUDIT_REPORT §5 WP8, ME-07): a difference in the mean
+    # outcome (drawn on a linear axis), or an odds ratio or relative-risk ratio (the rows' ``ratio``
+    # fields, drawn on a log axis). ``effect`` says it in a sentence that names the outcome, and
+    # for a ratio the ``event`` (binary) and the ``reference`` level it is against.
+    scale: Literal["difference", "odds_ratio", "relative_risk_ratio"] = "difference"
+    axis: Literal["linear", "log"] = "linear"
+    effect: str | None = None
+    event: str | None = None
+    reference: str | None = None
+    # The rows the table was estimated from: every analyzed row under inference (BLUEPRINT §12
+    # ruling 3), the training rows otherwise. Null only in artifacts from before WP8.
+    n_rows: int | None = None
+    rows: Literal["all", "training"] | None = None
 
 
 class Baseline(_Model):
@@ -173,6 +194,33 @@ class FittedModel(_Model):
     # How the intervals were made, under inference; null under prediction and for families
     # without an inference table.
     inference: Inference | None = None
+    # How many rows the coefficients were estimated from (every analyzed row under inference, the
+    # training rows under prediction); null without coefficients.
+    coefficients_n: int | None = None
+    # Once the seal is opened: "final" for the family declared before the opening (its held-out
+    # score is the reported result), "secondary" for the others. Null while sealed.
+    role: Literal["final", "secondary"] | None = None
+
+
+class Selection(_Model):
+    """What choosing among families on cross-validation costs (``models/selection.py``): the best
+    family's CV score flatters it, by about ``optimism``, estimated by bootstrap bias-corrected
+    cross-validation over the families' out-of-fold predictions (Tsamardinos et al. 2018)."""
+
+    metric: str
+    families: list[str]
+    best: str  # the family with the best cross-validated score
+    cv: float  # its cross-validated score
+    # How much that score overstates the chosen family's performance, in the score's units (positive
+    # flatters): ``cv`` less ``corrected`` for a score where higher is better.
+    optimism: float
+    corrected: float  # the performance expected on new rows once the choice is accounted for
+    corrected_low: float  # its 95% percentile interval over the resamples
+    corrected_high: float
+    replicates: int  # resamples of the out-of-fold predictions
+    wins: dict[str, int]  # how often each family was the one chosen on a resample
+    method: str
+    text: str
 
 
 class FitArtifact(_Model):
@@ -194,6 +242,12 @@ class FitArtifact(_Model):
     # "time_ordered" (each fold scored by a model fit on the earlier ones, forward chaining).
     fold_scheme: Literal["random", "time_ordered"] = "random"
     cv_definition: str | None = None  # what a cross-validated score is, in one or two sentences
+    # With two or more families: the optimism of picking the best of them by cross-validation.
+    selection: Selection | None = None
+    # Set by the server once the seal is opened: the family declared final at the opening (its
+    # held-out score is the reported result), and the sentence that says so.
+    final_model: str | None = None
+    final_note: str | None = None
 
 
 class SubstitutionModel(_Model):
@@ -290,6 +344,6 @@ MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
 
 __all__ = [
     "BandEstimate", "Baseline", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel",
-    "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "OmittedEnergy", "ShelfArtifact", "ShelfFamily",
+    "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "OmittedEnergy", "Selection", "ShelfArtifact", "ShelfFamily",
     "SubstitutionArtifact", "SubstitutionModel", "SubstitutionPair", "SubstitutionSupport",
 ]

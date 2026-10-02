@@ -1,10 +1,16 @@
 """``linear``: ordinary least squares and unpenalized logistic regression.
 
 Predictions and cross-validation use scikit-learn. When the purpose is inference, the
-coefficient table is fit on the same training matrix by :mod:`turbotab.core.models.inference`:
-HC3 intervals for least squares on independent rows, CR2 cluster-robust intervals with
-Bell–McCaffrey degrees of freedom when a unit's rows repeat (refused below the unit floor), and
-Firth's penalized likelihood when a column separates a binary outcome.
+coefficient table is made by :mod:`turbotab.core.models.inference` on the matrix of every analyzed
+row (the fit stage refits the pipeline on all of them; BLUEPRINT §12 ruling 3): HC3 intervals for
+least squares on independent rows, CR2 cluster-robust intervals with Bell–McCaffrey degrees of
+freedom when a unit's rows repeat (refused below the unit floor), and Firth's penalized likelihood
+when a column separates a binary outcome. Binary and multinomial rows carry their odds ratios or
+relative-risk ratios, with the event and the reference level named.
+
+The shelf judges the sample size by purpose (:mod:`turbotab.core.models.sample_size`): Riley et
+al.'s criteria under prediction; under inference about two rows per parameter for least squares
+(Austin & Steyerberg 2015) and ten events per parameter for logistic coefficients (Peduzzi 1996).
 """
 from __future__ import annotations
 
@@ -22,7 +28,7 @@ from turbotab.core.models.base import (
     register_family,
 )
 
-EPV_RULE = 10  # events per predictor: a common rule of thumb (Peduzzi 1996), not a law
+ROWS_PER_PREDICTOR = 10  # multiclass only: no published criterion is computed for it yet
 # Belsley, Kuh & Welsch (1980): the condition number of the design matrix with its intercept, each
 # column scaled to unit length. Above 30 is the usual "moderate" mark; 1,000 is far past "strong"
 # and means some columns are close to an exact linear combination of others (shares that sum to
@@ -124,14 +130,17 @@ class Linear(FamilyBase):
         if task == "regression":
             label, detail = "Ordinary least squares", "Fits the straight-line effect of every column."
             if purpose == "inference":
-                detail += (" Intervals use HC3 robust standard errors, or CR2 cluster-robust ones "
-                           "when a unit's rows repeat.")
+                detail += (" The coefficient table uses every analyzed row; intervals use HC3 "
+                           "robust standard errors, or CR2 cluster-robust ones when a unit's rows "
+                           "repeat.")
         else:
             label = "Logistic regression"
             detail = "Fits the log-odds effect of every column, without a penalty."
             if purpose == "inference":
-                detail += (" Intervals are cluster-robust (CR2) when a unit's rows repeat; a column "
-                           "that separates the outcome gets Firth's penalized fit.")
+                detail += (" The coefficient table uses every analyzed row and reports odds ratios "
+                           "(relative-risk ratios for several classes); intervals are "
+                           "cluster-robust (CR2) when a unit's rows repeat; a column that separates "
+                           "the outcome gets Firth's penalized fit.")
         return label, detail
 
     def coefficients(self, pipeline: Any, X: Any, y: Any, *, task: Task,
@@ -144,31 +153,49 @@ class Linear(FamilyBase):
                                     classes=classes if classes and len(classes) > 2 else None)
         return self.inference(pipeline, X, y, task=task, clusters=as_clusters(groups)).rows
 
-    def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any) -> Any:
+    def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
+                  outcome: Any = None, rows: Any = None) -> Any:
         """The inference table (:class:`~turbotab.core.models.inference.InferenceTable`): rows,
-        how their intervals were made, and the concerns to state, on the matrix the model saw."""
+        how their intervals were made, and the concerns to state, on the matrix the model saw.
+
+        ``outcome`` (:class:`~turbotab.core.models.inference.Outcome`) names the outcome and its
+        levels for the odds or relative-risk ratios; ``rows`` says which rows ``X`` holds."""
         from turbotab.core.models.inference import inference_table
 
         classes = list(getattr(pipeline[-1], "classes_", [])) or None
-        return inference_table(task, model_matrix(pipeline, X), y, classes, clusters)
+        return inference_table(task, model_matrix(pipeline, X), y, classes, clusters,
+                               outcome=outcome, rows=rows)
 
     def assess(self, s: Situation) -> Assessment:
+        from turbotab.core.models.sample_size import (
+            inference_concern,
+            prediction_concern,
+            prediction_minimum,
+        )
+
         concerns: list[str] = []
         if s.n_features >= s.n_rows:
             concerns.append(f"{s.n_features:,} predictors for {s.n_rows:,} rows: least squares has "
                             f"no unique solution.")
             return Assessment(0.0, "poor", tuple(concerns))
         fit = "good"
-        if s.n_rows < 10 * s.n_features:
-            concerns.append(f"{s.n_rows:,} rows for {s.n_features:,} predictors: unpenalized "
-                            f"estimates will be unstable.")
-            fit = "fair"
-        if s.task == "binary" and s.n_events is not None and s.n_features:
-            epv = s.n_events / s.n_features
-            if epv < EPV_RULE:
-                concerns.append(f"{s.n_events:,} events for {s.n_features:,} predictors ({epv:.1f} "
-                                f"each); a common rule of thumb asks for {EPV_RULE}.")
-                fit = "poor" if epv < EPV_RULE / 2 else "fair"
+        parameters = s.n_parameters if s.n_parameters is not None else s.n_features
+        if s.purpose == "inference":
+            short = inference_concern(s.task, parameters, s.n_rows, s.n_events)
+            if short is not None:
+                concerns.append(short[0])
+                fit = "poor" if short[1] else "fair"
+        else:  # prediction, or a purpose not declared yet: the model is judged by how it predicts
+            minimum = prediction_minimum(s.task, parameters, n_rows=s.n_rows, n_events=s.n_events,
+                                         outcome_mean=s.outcome_mean, outcome_sd=s.outcome_sd)
+            said = prediction_concern(minimum, s.n_rows) if minimum is not None else None
+            if said:
+                concerns.append(said)
+                fit = "fair"
+        if s.task == "multiclass" and s.n_rows < ROWS_PER_PREDICTOR * parameters:
+            concerns.append(f"{s.n_rows:,} rows for {parameters:,} predictor parameters: "
+                            f"unpenalized estimates will be unstable.")
+            fit = "fair" if fit == "good" else fit
         score = 3.0 if s.purpose == "inference" else 1.5
         if fit == "fair":
             score -= 1.0

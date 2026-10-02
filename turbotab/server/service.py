@@ -835,7 +835,10 @@ class ProjectService:
             self.engine.graph, records, self.fingerprint(pid), key))
         out["post_seal_decisions"] = (seal.post_seal_changes(
             records, seal.slots_read_by(self.engine.graph, "fit")) if opened else [])
-        return out
+        # AUDIT_REPORT §5 WP8 (ME-13): the family declared final at the opening is the result.
+        from turbotab.core.models.selection import declared_family, mark_final
+
+        return mark_final(out, opened=opened, family=declared_family(records) if opened else None)
 
     # ── stages and jobs ──
 

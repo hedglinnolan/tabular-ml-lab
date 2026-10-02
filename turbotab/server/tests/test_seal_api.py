@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Iterator
 
 import pytest
@@ -194,7 +195,10 @@ def assert_nothing_held_out_in(bodies: list[Any], sealed: dict[str, dict[str, fl
         text = " ".join(strings(b))
         for v in hidden:
             for shown in (f"{v:.4f}", f"{v:.4f}".replace("-", "−")):
-                assert shown not in text, (shown, text[:400])
+                # A number of its own, not the tail of a longer one: a score of 0.9229 is not the
+                # "20.922908" of a timestamp (a false alarm seen once the project list grew).
+                found = re.search(rf"(?<![\d.]){re.escape(shown)}", text)
+                assert found is None, (shown, text[max(0, found.start() - 200):found.end() + 200])
 
 
 @pytest.fixture
@@ -242,13 +246,32 @@ def test_no_held_out_score_reaches_any_response_until_the_seal_is_opened(client,
                 if m["cv"]["r2"]["folds"] and all(v == 0.0 for v in m["cv"]["r2"]["folds"])}
     assert_nothing_held_out_in(bodies + events, sealed, constant)
 
+    # With three families fitted, the final one is declared first, chosen on cross-validation
+    # (AUDIT_REPORT §5 WP8, ME-13): an opening that names none is refused, with one exit per family,
+    # the CV-best first, and still no held-out score in the answer.
+    prepare(client, pid, {"kind": "open_seal"})  # the questions before it, answered as usual
+    wait_for(client, pid, {"fit": "fresh"}, timeout=180)
+    undeclared = client.post(f"/api/projects/{pid}/decisions", json={"kind": "open_seal"})
+    assert undeclared.status_code == 409, undeclared.text
+    error = undeclared.json()["error"]
+    assert error["code"] == "final_model_needed"
+    assert {e["decision"]["family"] for e in error["exits"]} == set(FAMILIES)
+    cv = {m["family"]: m["cv"][fit["primary_metric"]]["estimate"] for m in fit["models"]}
+    assert error["exits"][0]["decision"]["family"] == max(cv, key=cv.get)
+    assert_nothing_held_out_in([undeclared.json()], sealed, constant)
+    final = error["exits"][0]["decision"]
+
     # Opened once: the scores appear, exactly the ones the fit computed.
-    view = decide(client, pid, {"kind": "open_seal"})
+    view = decide(client, pid, final)
     assert view["state"]["seal_opened"] is True
     opened = client.get(f"/api/projects/{pid}/stages/fit").json()["artifact"]
     assert opened["holdout_sealed"] is False and opened["changed_after_seal"] is False
     assert {m["family"]: m["holdout"] for m in opened["models"]} == sealed
-    again = client.post(f"/api/projects/{pid}/decisions", json={"kind": "open_seal"})
+    # The declared family's held-out score is the result; the others are secondary.
+    assert opened["final_model"] == final["family"]
+    assert {m["family"]: m["role"] for m in opened["models"]} == {
+        f: "final" if f == final["family"] else "secondary" for f in FAMILIES}
+    again = client.post(f"/api/projects/{pid}/decisions", json=final)
     assert again.status_code == 409 and again.json()["error"]["code"] == "seal_already_open"
     opening = next(r for r in view["decisions"] if r["decision"]["kind"] == "open_seal")
     undo = client.post(f"/api/projects/{pid}/decisions", json={"kind": "revert", "decision_id": opening["id"]})
@@ -266,11 +289,11 @@ def test_a_change_after_the_opening_is_marked_post_seal_and_the_results_say_so(c
     decide(client, pid, {"kind": "select_models", "models": ["linear", "boosted_trees"]})
     wait_for(client, pid, {"fit": "fresh"}, timeout=180)
     # M2_CONTRACT §12.1: once the fit is fresh, opening the seal is the Router's last question
-    prepare(client, pid, {"kind": "open_seal"})
+    prepare(client, pid, {"kind": "open_seal", "family": "linear"})
     wait_for(client, pid, {"fit": "fresh"}, timeout=180)
     asked = {s["key"]: s for s in client.get(f"/api/projects/{pid}").json()["interview"]}
     assert list(asked)[-1] == "open_seal" and asked["open_seal"]["status"] == "open"
-    view = decide(client, pid, {"kind": "open_seal"})
+    view = decide(client, pid, {"kind": "open_seal", "family": "linear"})
     assert not any(r["post_seal"] for r in view["decisions"])  # nothing before it, nor the opening
     opened = next(s for s in view["interview"] if s["key"] == "open_seal")
     assert opened["status"] == "answered" and opened["decision_id"] == view["decisions"][-1]["id"]

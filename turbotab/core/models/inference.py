@@ -23,12 +23,19 @@ Under inference the linear family's coefficient table is made here, in four part
   DPhil thesis, Oxford), named, and the table becomes Firth's penalized likelihood (Firth 1993,
   *Biometrika* 80:27) with profile penalized-likelihood intervals and likelihood-ratio p-values
   (Heinze & Schemper 2002, *Stat Med* 21:2409), whose estimates are finite.
+
+And on the outcome's own scale (AUDIT_REPORT §5 WP8: ME-07): every table says what one unit of an
+input does, in words that name the outcome (:class:`Outcome`). A least-squares row is a difference
+in the mean outcome. A logistic row's estimate is a log-odds; its ``ratio`` is the odds ratio
+exp(β) for the named event against the named reference level, with exp of the interval's ends, to
+be drawn on a log axis. A multinomial row's ``ratio`` is the relative-risk ratio exp(β_k) of its
+class against the reference class (the first, as the model codes it), which the table names.
 """
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, Literal, Sequence
+from typing import Any, Literal, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -50,6 +57,8 @@ BM_BUDGET = 1e11
 _EIG_FLOOR = 1e-10  # 1 − λ below this is a zero eigenvalue of I − H_gg: pseudo-inverted (clubSandwich)
 
 Covariance = Literal["HC3", "CR2", "model", "profile", "none"]
+Scale = Literal["difference", "odds_ratio", "relative_risk_ratio"]
+Rows = Literal["all", "training"]
 
 
 def min_clusters() -> int:
@@ -600,9 +609,99 @@ def heteroskedasticity_concern(resid: np.ndarray, X: np.ndarray, names: Sequence
             f"robust standard errors, which allow for it.")
 
 
+@dataclass(frozen=True)
+class Outcome:
+    """What the outcome and its levels are called, so a table's scale names them.
+
+    ``labels`` maps a class as the model holds it to its level as the data spell it: a binary
+    outcome whose event the user named is coded 1 for that level and 0 for the other
+    (``turbotab/core/stages/modeling.py::coded_outcome``), so the model's classes are 0 and 1 and
+    only this map says which level each is.
+    """
+
+    name: str | None = None
+    labels: Mapping[Any, Any] | None = None
+
+    def level(self, value: Any) -> str:
+        labels = self.labels or {}
+        for key in (value, str(value)):
+            if key in labels:
+                return str(labels[key])
+        return str(value)
+
+
+def _tick(value: Any) -> str:
+    return f"`{value}`"
+
+
+def _ratio(value: float | None) -> float | None:
+    """exp(value), or None when it is missing or does not fit in a float."""
+    if value is None or not math.isfinite(value) or value > 700:
+        return None
+    return math.exp(value)
+
+
+def _on_scale(table: InferenceTable, task: str, classes: Sequence[Any] | None,
+              outcome: Outcome | None) -> InferenceTable:
+    """Name the table's scale (``info``: scale, axis, effect, event, reference) and, for a ratio
+    scale, add each input's ratio and its interval to its row. The intercept is a baseline, not a
+    ratio between two values of an input, so its row carries none."""
+    outcome = outcome or Outcome()
+    who = _tick(outcome.name) if outcome.name else "the outcome"
+    per = "per unit of each input, holding the others"
+    if task == "regression":
+        table.info.update(scale="difference", axis="linear", event=None, reference=None,
+                          effect=f"Difference in mean {who} {per}.")
+        return table
+    labels = list(classes or [])
+    reference = outcome.level(labels[0]) if labels else None
+    if task == "binary":
+        event = outcome.level(labels[1]) if len(labels) > 1 else None
+        table.info.update(scale="odds_ratio", axis="log", event=event, reference=reference,
+                          effect=f"Odds ratio of {who} being {_tick(event)} rather than "
+                                 f"{_tick(reference)}, {per}.")
+        lead = (f"Estimates are log-odds of {_tick(event)} against {_tick(reference)}; each odds "
+                f"ratio is exp(estimate).")
+    else:
+        table.info.update(scale="relative_risk_ratio", axis="log", event=None, reference=reference,
+                          effect=f"Relative-risk ratio of each level of {who} against "
+                                 f"{_tick(reference)}, {per}.")
+        lead = (f"Estimates are log relative risks of each level against {_tick(reference)}; each "
+                f"relative-risk ratio is exp(estimate).")
+    for row in table.rows:
+        if str(row["feature"]).startswith("(intercept)"):
+            row.update(ratio=None, ratio_low=None, ratio_high=None)
+            continue
+        row.update(ratio=_ratio(row["estimate"]), ratio_low=_ratio(row["ci_low"]),
+                   ratio_high=_ratio(row["ci_high"]))
+    table.info["caption"] = f"{lead} {table.info['caption']}"
+    return table
+
+
+def _on_rows(table: InferenceTable, n: int, rows: Rows | None) -> InferenceTable:
+    """Say how many rows the table was estimated from, and which."""
+    table.info.update(n_rows=int(n), rows=rows)
+    if rows == "all":
+        table.info["caption"] += f" Estimated from all {n:,} analyzed rows."
+    elif rows == "training":
+        table.info["caption"] += f" Estimated from the {n:,} training rows."
+    return table
+
+
 def inference_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
-                    clusters: Clusters = INDEPENDENT) -> InferenceTable:
-    """The inference coefficient table for the linear family on the model matrix it saw."""
+                    clusters: Clusters = INDEPENDENT, *, outcome: Outcome | None = None,
+                    rows: Rows | None = None) -> InferenceTable:
+    """The inference coefficient table for the linear family on the model matrix it saw.
+
+    ``outcome`` names the outcome and its levels for the scale's words; ``rows`` says whether
+    the matrix holds every analyzed row (inference, BLUEPRINT §12 ruling 3) or the training rows.
+    """
+    table = _table(task, matrix, y, classes, clusters)
+    return _on_rows(_on_scale(table, task, classes, outcome), len(matrix), rows)
+
+
+def _table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
+           clusters: Clusters) -> InferenceTable:
     import statsmodels.api as sm
 
     if clusters.clustered and len(clusters.codes) != len(matrix):
@@ -745,7 +844,8 @@ def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: l
 
 
 __all__ = [
-    "Clusters", "FEW_CLUSTERS", "FirthFit", "INDEPENDENT", "InferenceTable", "bread_of",
+    "Clusters", "FEW_CLUSTERS", "FirthFit", "INDEPENDENT", "InferenceTable", "Outcome", "Rows",
+    "Scale", "bread_of",
     "cluster_columns", "cr2", "logistic_working", "multinomial_working",
     "firth_fit", "firth_profile", "floor_refusal", "format_p", "heteroskedasticity_concern",
     "inference_table", "min_clusters", "resolve_clusters", "separated_columns",
