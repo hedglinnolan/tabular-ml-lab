@@ -26,13 +26,21 @@ binary text         ``binary_text__<col>``, written as text,   ``level``: one op
                     not the outcome                            which becomes 1 (values)
 energy in kJ        ``pack::dietary::atwater``, verdict        ``to_kcal`` (values)
                     ``energy_in_kj``
+text numbers        ``text_numbers__<col>`` (detected here)    ``read_numbers``, or ``thousands``
+                                                               and ``decimal_comma`` (values)
+below detection     ``below_detection__<col>`` (detected       ``half_limit``, ``limit_root2``
+                    here)                                      (values)
+infinite values     ``infinite_values`` (detected here)        ``set_missing`` (values)
+date reading        ``ambiguous_dates`` (detected here)        ``month_first``, ``day_first``
+                                                               (values)
 ==================  =========================================  =================================
 
 Where each effect executes
 --------------------------
 * **values** — :func:`column_expressions` gives one DuckDB SQL expression per column, which the
   ``working`` stage selects in place of the column (M2_CONTRACT §2). Two repairs on one column
-  compose in a fixed order: SAS zeros, then units, then codes, then levels, then impossible bands.
+  compose in a fixed order: text read as numbers, then SAS zeros, then codes, then units, then
+  levels, infinities and impossible bands (the families' ``priority``).
 * **rows** — :func:`exclusion_rules`: the impossible values become range rules the participant
   flow applies after the eligibility answer's own, so the rows leave in the flow diagram before
   the seal, and no row id moves.
@@ -62,6 +70,7 @@ Importing this module registers the validators, the completion, the preview buil
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Literal, Mapping, Sequence
@@ -309,7 +318,9 @@ def _impossible_values(option: str, params: Mapping[str, Any]) -> dict[str, Wrap
 def _impossible_rows(option: str, params: Mapping[str, Any]) -> list[ExclusionRule]:
     if option != "exclude_rows":
         return []
-    return [ExclusionRule(column=c, low=lo, high=hi, reason="a physiologically impossible value")
+    # A blank is not an impossible value: these rules keep the rows they cannot check.
+    return [ExclusionRule(column=c, low=lo, high=hi, reason="a physiologically impossible value",
+                          missing="keep")
             for c, (lo, hi) in _bands(params).items()]
 
 
@@ -372,7 +383,9 @@ def _sentinel_values(option: str, params: Mapping[str, Any]) -> dict[str, Wrap]:
         listed = ", ".join(lit_num(v) for v in vs)
 
         def wrap(x: str, listed: str = listed) -> str:
-            return f"CASE WHEN {x} IN ({listed}) THEN NULL ELSE {x} END"
+            # TRY_CAST: a text column's codes ("7", "9" beside "refused") are compared as the
+            # numbers the preview counted, where a plain IN raised a conversion error (audit B18).
+            return f"CASE WHEN TRY_CAST({x} AS DOUBLE) IN ({listed}) THEN NULL ELSE {x} END"
         out[column] = wrap
     return out
 
@@ -530,6 +543,431 @@ def _kj_marks(option: str, params: Mapping[str, Any]) -> set[tuple[str, str]]:
     return {(str(params.get("column")), "kj_to_kcal")}
 
 
+# numbers written as text (audit MA-16) ─────────────────────────────────────
+#
+# A SAS or Stata "." for missing, a spreadsheet error ("#DIV/0!"), a trailing space or a decimal
+# comma made a whole numeric column text: age became a 61-level category and total energy "free
+# text", and no repair existed. ``text_numbers`` reads such a column as numbers and blanks the
+# values that are not numbers, counted and named; values below a detection limit ("<0.2") are not
+# "not numbers" but values below a limit, and go to their own family, ``below_detection``.
+
+NUMBER_SHARE = 0.8  # a text column is numbers written as text when this share of it reads as numbers
+_LOD = r"<\s*([0-9]*\.?[0-9]+)"
+# Spellings of "no value" in research exports: SAS and Stata's "." (and their lettered special
+# missing values, ".a" to ".z"), spreadsheet errors, and the NaN spellings of C runtimes.
+_MISSING_SPELLINGS = re.compile(r"^(\.[A-Za-z_]?|-+|\?|#[A-Z0-9/!?]+[!?]?|n/?a|nan|-nan|null|none|"
+                                r"missing|[-+]?1\.#(IND|QNAN|INF)\w*)$", re.IGNORECASE)
+_SPREADSHEET = re.compile(r"^#[A-Z0-9/!?]+[!?]?$", re.IGNORECASE)
+
+
+def _text_of(x: str, decimal: str = ".", thousands: bool = False) -> str:
+    """SQL: the text of ``x``, trimmed, with its decimal mark made a point (thousands marks out)."""
+    t = f"trim(CAST({x} AS VARCHAR))"
+    if decimal == ",":
+        return f"replace(replace({t}, '.', ''), ',', '.')"
+    if thousands:
+        return f"replace({t}, ',', '')"
+    return t
+
+
+def number_sql(x: str, decimal: str = ".", thousands: bool = False,
+               lod_factor: float | None = None) -> str:
+    """SQL reading text ``x`` as a DOUBLE: NULL where it is not a number (a NaN spelling included).
+
+    ``lod_factor``: a value below a detection limit (``<0.2``) becomes that fraction of its limit;
+    without it, such a value is NULL like any other text.
+    """
+    t = _text_of(x, decimal, thousands)
+    plain = f"TRY_CAST({t} AS DOUBLE)"
+    plain = f"CASE WHEN isnan({plain}) THEN NULL ELSE {plain} END"
+    if lod_factor is None:
+        return plain
+    limit = f"TRY_CAST(regexp_extract({t}, '^{_LOD}$', 1) AS DOUBLE)"
+    return (f"CASE WHEN regexp_full_match({t}, '{_LOD}') THEN {limit} * {lit_num(lod_factor)} "
+            f"ELSE {plain} END")
+
+
+def _spelling_kind(value: str) -> str:
+    if _SPREADSHEET.match(value):
+        return "a spreadsheet error"
+    if value.startswith(".") and len(value) <= 2:
+        return "a missing value in SAS or Stata"
+    if _MISSING_SPELLINGS.match(value):
+        return "a spelling of missing"
+    return "not a number"
+
+
+def read_text_numbers(values: pd.Series) -> dict[str, Any] | None:
+    """How a text column reads as numbers, over every value; None when it is not numbers.
+
+    ``decimal`` and ``thousands`` say how its marks read (``ambiguous_comma`` when every comma could
+    split thousands: ``1,234``); ``numbers`` the values that read; ``below`` the values below a
+    detection limit, by limit; ``unparsed`` every other spelling, with its count, most frequent
+    first. Text whose numbers carry leading zeros ("007") is an identifier, never numbers.
+    """
+    import duckdb
+    import pyarrow as pa
+
+    from turbotab.core.datastore import DECIMAL_COMMA, THOUSANDS_COMMA
+
+    text = [None if v is None or (isinstance(v, float) and math.isnan(v)) else str(v)
+            for v in values.tolist()]
+    con = duckdb.connect()
+    try:
+        con.register("__v", pa.table({"v": pa.array(text, pa.string())}))
+        t = "trim(v)"
+        n, with_comma, comma_ok, plain_decimal, leading = con.execute(
+            f"SELECT count(v), count_if(contains(v, ',')), "
+            f"count_if(contains(v, ',') AND regexp_full_match({t}, '{DECIMAL_COMMA}')), "
+            f"count_if(contains(v, ',') AND regexp_full_match({t}, '{DECIMAL_COMMA}') AND NOT "
+            f"regexp_full_match({t}, '{THOUSANDS_COMMA}')), "
+            f"count_if(regexp_full_match({t}, '[+-]?0[0-9]+')) FROM __v").fetchone()
+        n = int(n or 0)
+        if n == 0 or int(leading or 0):
+            return None
+        decimal, thousands, ambiguous = ".", False, False
+        if int(with_comma or 0) and int(comma_ok or 0) == int(with_comma):
+            if int(plain_decimal or 0):
+                decimal = ","
+            else:
+                thousands, ambiguous = True, True
+        x = "v"
+        number = number_sql(x, decimal, thousands)
+        lod = f"regexp_full_match({_text_of(x, decimal, thousands)}, '{_LOD}')"
+        numbers = int(con.execute(f"SELECT count({number}) FROM __v").fetchone()[0] or 0)
+        below = con.execute(
+            f"SELECT regexp_extract({_text_of(x, decimal, thousands)}, '^{_LOD}$', 1) AS l, count(*) "
+            f"FROM __v WHERE {lod} GROUP BY l ORDER BY count(*) DESC, l").fetchall()
+        unparsed = con.execute(
+            f"SELECT {t} AS s, count(*) FROM __v WHERE v IS NOT NULL AND ({number}) IS NULL AND NOT "
+            f"{lod} GROUP BY s ORDER BY count(*) DESC, s").fetchall()
+    finally:
+        con.close()
+    n_below = sum(int(c) for _, c in below)
+    if numbers == 0 or (numbers + n_below) < NUMBER_SHARE * n:
+        return None
+    return {"n_values": n, "numbers": numbers, "decimal": decimal, "thousands": thousands,
+            "ambiguous_comma": ambiguous, "below": {str(l): int(c) for l, c in below},
+            "unparsed": {str(s): int(c) for s, c in unparsed}}
+
+
+def _named_values(unparsed: Mapping[str, int], limit: int = 10) -> str:
+    """```.``` (`90`), ```#DIV/0!``` (`3`)…: every spelling with its count, the first ``limit``
+    named and the rest counted (the recorded decision holds them all)."""
+    items = list(unparsed.items())
+    shown = ", ".join(f"{_tick(v)} ({_count(n)})" for v, n in items[:limit])
+    if len(items) > limit:
+        rest = sum(n for _, n in items[limit:])
+        shown += f" and {_count(len(items) - limit)} other spellings ({_count(rest)})"
+    return shown
+
+
+def text_number_findings(frame: pd.DataFrame) -> list[tuple[dict, dict]]:
+    """The app's own findings for text columns that hold numbers (``text_numbers__<column>``) and
+    for values below a detection limit (``below_detection__<column>``), as ``(raw, finding)``."""
+    out: list[tuple[dict, dict]] = []
+    for column in frame.columns:
+        s = frame[column]
+        if s.dtype != object:
+            continue
+        # A cheap look at the first values first: only a column that starts out as numbers is
+        # read in full (a table may hold thousands of text columns).
+        head = s.dropna().astype(str).head(50).str.strip().str.lstrip("<").str.replace(",", ".")
+        if head.empty or pd.to_numeric(head, errors="coerce").notna().mean() < 0.5:
+            continue
+        reading = read_text_numbers(s)
+        if reading is None:
+            continue
+        c = str(column)
+        n, numbers, unparsed, below = (reading["n_values"], reading["numbers"], reading["unparsed"],
+                                       reading["below"])
+        n_bad, n_below = sum(unparsed.values()), sum(below.values())
+        lead = next(iter(unparsed), None)
+        how = (" Commas split thousands or mark decimals; nothing in the column says which."
+               if reading["ambiguous_comma"] else
+               " Its decimals are written with a comma." if reading["decimal"] == "," else "")
+        spelled = (f" The values that are not numbers: {_named_values(unparsed)}." if unparsed else "")
+        limited = (f" {_count(n_below)} {_plural(n_below, 'value is', 'values are')} below a detection "
+                   f"limit, such as {_tick('<' + next(iter(below)))}: that is its own finding."
+                   if below else "")
+        what = f"; {_count(n_bad)} are not" if n_bad else ""
+        summary = (f"{_count(numbers)} of {_count(n)} values of {_tick(c)} read as numbers{what}"
+                   + (f", such as {_tick(lead)}, {_spelling_kind(lead)}" if lead else "") + ".")
+        out.append(({"params": {"column": c, **reading}, "confidence": "high"}, {
+            "id": f"text_numbers__{c}", "severity": "warning",
+            "title": f"{_tick(c)} holds numbers stored as text.",
+            "detail": (f"{_count(numbers)} of its {_count(n)} values read as numbers.{how}{spelled}"
+                       f"{limited}"),
+            "why_it_matters": ("As text the column cannot be modeled, correlated or plotted: it "
+                               "would sit out of the analysis while looking complete."),
+            "affected_columns": [c], "source": "structural", "lens": None, "evidence": None,
+            "summary": summary, "routes_to": None, "lever_label": None, "group": None,
+        }))
+        if below:
+            first = next(iter(below))
+            out.append(({"params": {"column": c, **reading}, "confidence": "high"}, {
+                "id": f"below_detection__{c}", "severity": "warning",
+                "title": (f"{_tick(c)} has {_count(n_below)} {_plural(n_below, 'value')} below a "
+                          f"detection limit."),
+                "detail": (f"{_named_values({'<' + k: v for k, v in below.items()})}. Each is a value "
+                           f"somewhere below its limit, not a missing one."),
+                "why_it_matters": ("Read as blanks they are left out as if unknown, though each is "
+                                   "known to be small; replaced by one value they all become that "
+                                   "value, which narrows their spread."),
+                "affected_columns": [c], "source": "structural", "lens": None, "evidence": None,
+                "summary": (f"{_count(n_below)} {_plural(n_below, 'value')} of {_tick(c)}, such as "
+                            f"{_tick('<' + first)}, lie below a detection limit."),
+                "routes_to": None, "lever_label": None, "group": None,
+            }))
+    return out
+
+
+def _parse_spec(params: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    return {str(c): dict(spec) for c, spec in dict(params.get("columns") or {}).items()}
+
+
+def _offer_text_numbers(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> list[RepairOption]:
+    column = p.get("column")
+    if not oc.has(column):
+        return []
+    c = str(column)
+    n, numbers = int(p.get("n_values") or 0), int(p.get("numbers") or 0)
+    unparsed = {str(k): int(v) for k, v in dict(p.get("unparsed") or {}).items()}
+    n_below = sum(int(v) for v in dict(p.get("below") or {}).values())
+    n_bad = sum(unparsed.values())
+    blank = n_bad + n_below
+    named = _named_values(unparsed) if unparsed else ""
+    below = (f"{_count(n_below)} below a detection limit" if n_below else "")
+    gone = " and ".join(x for x in (f"{_count(n_bad)} that are not numbers" if n_bad else "", below) if x)
+
+    def option(key: str, label: str, decimal: str, thousands: bool, example: str = "") -> RepairOption:
+        spec = {"decimal": decimal, "thousands": thousands}
+        consequence = (f"{_count(numbers)} values of {_tick(c)} become numbers{example}"
+                       + (f"; {_count(blank)} become blank." if blank else "."))
+        sentence = (f"{_tick(c)} was read as numbers{example}"
+                    + (f"; {gone} {_plural(blank, 'was', 'were')} set to missing" if blank else "")
+                    + (f" ({named})" if named else "") + ".")
+        return _option(finding, key, label, consequence, sentence, "values", {"columns": {c: spec}})
+
+    if p.get("ambiguous_comma"):
+        return [option("thousands", "Commas split thousands", ".", True, ", `1,234` as `1234`"),
+                option("decimal_comma", "Commas mark decimals", ",", False, ", `1,234` as `1.234`")]
+    return [option("read_numbers", "Read as numbers", str(p.get("decimal") or "."),
+                   bool(p.get("thousands")))]
+
+
+def _text_number_values(option: str, params: Mapping[str, Any]) -> dict[str, Wrap]:
+    out: dict[str, Wrap] = {}
+    for column, spec in _parse_spec(params).items():
+        def wrap(x: str, spec: dict[str, Any] = spec) -> str:
+            return number_sql(x, str(spec.get("decimal") or "."), bool(spec.get("thousands")))
+        out[column] = wrap
+    return out
+
+
+def _text_number_marks(option: str, params: Mapping[str, Any]) -> set[tuple[str, str]]:
+    return {(c, "parse") for c in _parse_spec(params)}
+
+
+LOD_FACTORS = {"half_limit": 0.5, "limit_root2": 1 / math.sqrt(2)}
+
+
+def _offer_below_detection(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> list[RepairOption]:
+    column = p.get("column")
+    below = {str(k): int(v) for k, v in dict(p.get("below") or {}).items()}
+    if not oc.has(column) or not below or p.get("ambiguous_comma"):
+        return []
+    c = str(column)
+    n_below = sum(below.values())
+    n_bad = sum(int(v) for v in dict(p.get("unparsed") or {}).values())
+    first = next(iter(below))
+    spec = {"decimal": str(p.get("decimal") or "."), "thousands": bool(p.get("thousands"))}
+    out = []
+    for key, label, words in (("half_limit", "Half the limit", "half"),
+                              ("limit_root2", "Limit over √2", "the limit over √2")):
+        factor = LOD_FACTORS[key]
+        example = float(first) * factor
+        rest = f"; {_count(n_bad)} other text values become blank" if n_bad else ""
+        out.append(_option(
+            finding, key, label,
+            f"{_count(n_below)} values below a limit become {words} of it: {_tick('<' + first)} is "
+            f"{_tick(f'{example:.4g}')}{rest}.",
+            f"{_count(n_below)} {_plural(n_below, 'value')} of {_tick(c)} below a detection limit "
+            f"{_plural(n_below, 'was', 'were')} set to {words} of {_plural(n_below, 'its', 'their')} "
+            f"limit, and the column was read as numbers.",
+            "values", {"columns": {c: {**spec, "factor": factor}}}))
+    return out
+
+
+def _below_detection_values(option: str, params: Mapping[str, Any]) -> dict[str, Wrap]:
+    out: dict[str, Wrap] = {}
+    for column, spec in _parse_spec(params).items():
+        def wrap(x: str, spec: dict[str, Any] = spec) -> str:
+            return number_sql(x, str(spec.get("decimal") or "."), bool(spec.get("thousands")),
+                              float(spec.get("factor") or 0.5))
+        out[column] = wrap
+    return out
+
+
+def _below_detection_marks(option: str, params: Mapping[str, Any]) -> set[tuple[str, str]]:
+    return {m for c, spec in _parse_spec(params).items()
+            for m in ((c, "parse"), (c, f"lod:{float(spec.get('factor') or 0.5):.6f}"))}
+
+
+# dates that read two ways (audit MA-05) ─────────────────────────────────────
+
+
+def ambiguous_date_finding(frame: pd.DataFrame) -> tuple[dict, dict] | None:
+    """The app's own finding for text date columns that read month-first and day-first alike."""
+    from turbotab.core import dates
+    from turbotab.core.stages.working import _DATEISH
+
+    found: dict[str, dict[str, Any]] = {}
+    for column in frame.columns:
+        s = frame[column]
+        if s.dtype != object:
+            continue
+        head = s.dropna().astype(str).head(20)
+        if head.empty or head.map(lambda v: bool(_DATEISH.search(v))).mean() < 0.5:
+            continue
+        reading = dates.read_series(s, column=str(column))
+        if reading.kind == "ambiguous" and reading.pair:
+            found[str(column)] = {"pair": list(reading.pair), "examples": reading.examples,
+                                  "n": reading.n}
+    if not found:
+        return None
+    cols = list(found)
+    lead = found[cols[0]]
+    rows = "; ".join(f"{_tick(e['text'])} is {e[dates.MONTH_FIRST]} month-first or "
+                     f"{e[dates.DAY_FIRST]} day-first" for e in lead["examples"])
+    finding = {
+        "id": "ambiguous_dates", "severity": "warning",
+        "title": f"{_names(cols)} {'holds' if len(cols) == 1 else 'hold'} dates that read two ways.",
+        "detail": (f"No day in {_names(cols)} is above 12, so nothing in the file says whether the "
+                   f"month or the day comes first: {rows}. Until you say which, "
+                   f"{'it stays' if len(cols) == 1 else 'they stay'} text."),
+        "why_it_matters": ("Read the wrong way, each date moves by up to eleven months: quarterly "
+                           "visits read as days apart, and every order and interval built on them "
+                           "is wrong."),
+        "affected_columns": cols, "source": "structural", "lens": None, "evidence": None,
+        "summary": f"{_names(cols)} could be month-first or day-first; the file does not say which.",
+        "routes_to": None, "lever_label": None, "group": None,
+    }
+    return {"params": {"columns": found}, "confidence": "high"}, finding
+
+
+def _offer_dates(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> list[RepairOption]:
+    from turbotab.core import dates
+
+    columns = {str(c): v for c, v in dict(p.get("columns") or {}).items() if oc.has(c)}
+    if not columns:
+        return []
+    cols = list(columns)
+    lead = columns[cols[0]]
+    example = (lead.get("examples") or [None])[0]
+    out = []
+    for key, label, at in (("month_first", "Month first", 0), ("day_first", "Day first", 1)):
+        formats = {c: v["pair"][at] for c, v in columns.items()}
+        shown = (f"{_tick(example['text'])} reads as {_tick(example[dates.MONTH_FIRST if at == 0 else dates.DAY_FIRST])}"
+                 if example else "dates read")
+        out.append(_option(
+            finding, key, label,
+            f"{shown}: {'month' if at == 0 else 'day'} first, in every row of {_names(cols)}.",
+            f"{_names(cols)} {'was' if len(cols) == 1 else 'were'} read as dates written "
+            f"{'month' if at == 0 else 'day'} first ({_tick(formats[cols[0]])}).",
+            "values", {"formats": formats}))
+    return out
+
+
+def _date_formats(params: Mapping[str, Any]) -> dict[str, str]:
+    return {str(c): str(f) for c, f in dict(params.get("formats") or {}).items()}
+
+
+def _date_values(option: str, params: Mapping[str, Any]) -> dict[str, Wrap]:
+    from turbotab.core import dates
+
+    out: dict[str, Wrap] = {}
+    for column, fmt in _date_formats(params).items():
+        def wrap(x: str, fmt: str = fmt) -> str:
+            parsed = dates.parse_sql(x, [fmt])
+            return parsed if dates.has_time(fmt) else f"CAST({parsed} AS DATE)"
+        out[column] = wrap
+    return out
+
+
+def _date_marks(option: str, params: Mapping[str, Any]) -> set[tuple[str, str]]:
+    return {(c, f"date:{f}") for c, f in _date_formats(params).items()}
+
+
+def date_formats(state: Any) -> dict[str, str]:
+    """Column -> the format an applied date-reading repair chose (month or day first)."""
+    out: dict[str, str] = {}
+    for fam, _, option, params in _applied(state):
+        if fam.key == "date_reading":
+            out.update(_date_formats(params))
+    return out
+
+
+# infinite values (audit MA-18) ─────────────────────────────────────────────
+
+
+def infinite_counts(frame: pd.DataFrame) -> dict[str, int]:
+    floats = [c for c in frame.columns if frame[c].dtype.kind == "f"]
+    if not floats:
+        return {}
+    hits = np.isinf(frame[floats].to_numpy(dtype=float, na_value=np.nan)).sum(axis=0)
+    return {str(c): int(n) for c, n in zip(floats, hits) if n}
+
+
+def infinite_finding(frame: pd.DataFrame) -> tuple[dict, dict] | None:
+    """The app's own finding for infinite values (a ratio over zero), as ``(raw, finding)``."""
+    counts = infinite_counts(frame)
+    if not counts:
+        return None
+    cols = sorted(counts, key=lambda c: (-counts[c], list(frame.columns).index(c)))
+    total = sum(counts.values())
+    each = ", ".join(f"{_tick(c)} ({counts[c]:,})" for c in cols[:6]) + (
+        f" and {len(cols) - 6} more" if len(cols) > 6 else "")
+    finding = {
+        "id": "infinite_values", "severity": "warning",
+        "title": (f"{_count(len(cols))} {_plural(len(cols), 'column holds', 'columns hold')} "
+                  f"infinite values."),
+        "detail": (f"{_count(total)} {_plural(total, 'cell is', 'cells are')} infinite: {each}. A "
+                   f"ratio whose denominator is zero gives one, such as protein per 1,000 kcal on a "
+                   f"day recorded as 0 kcal."),
+        "why_it_matters": ("An infinite value is not a measurement: no mean, model or plot can use "
+                           "it. The summaries count it and leave it out."),
+        "affected_columns": cols, "source": "structural", "lens": None, "evidence": None,
+        "summary": f"{_count(total)} {_plural(total, 'cell')} in {_names(cols)} {_plural(total, 'is', 'are')} infinite.",
+        "routes_to": None, "lever_label": None, "group": None,
+    }
+    return {"params": {"columns": counts}, "confidence": "high"}, finding
+
+
+def _offer_infinite(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> list[RepairOption]:
+    counts = {str(c): int(n) for c, n in dict(p.get("columns") or {}).items() if oc.has(c)}
+    if not counts:
+        return []
+    cols, total = list(counts), sum(counts.values())
+    return [_option(
+        finding, "set_missing", "Set to missing",
+        f"{_count(total)} infinite {_plural(total, 'value')} in {_names(cols)} become blank; the "
+        f"finite values stay.",
+        f"{_count(total)} infinite {_plural(total, 'value')} in {_names(cols)} (a ratio over zero) "
+        f"{_plural(total, 'was', 'were')} set to missing.",
+        "values", {"columns": cols})]
+
+
+def _infinite_values(option: str, params: Mapping[str, Any]) -> dict[str, Wrap]:
+    def wrap(x: str) -> str:
+        return f"CASE WHEN isinf(CAST({x} AS DOUBLE)) THEN NULL ELSE {x} END"
+    return {str(c): wrap for c in params.get("columns") or []}
+
+
+def _infinite_marks(option: str, params: Mapping[str, Any]) -> set[tuple[str, str]]:
+    return {(str(c), "infinite") for c in params.get("columns") or []}
+
+
 FAMILIES: dict[str, Family] = {}
 _BY_FINDING: dict[str, str] = {}
 
@@ -542,20 +980,35 @@ def register_family(family: Family, finding_families: Iterable[str]) -> Family:
     return family
 
 
-register_family(Family("sas_zeros", 0, _offer_sas, {"zero": "values"},
+# The order two repairs on one column compose in: text is read as numbers (values below a limit
+# first, so the plain reading finds them already read), then SAS zeros, then codes, which are
+# written in the file's own units, before any conversion of units (a 99999 code divided by 4.184
+# was no longer 99999: audit B18), then levels, infinities and impossible bands. Dates stand alone.
+register_family(Family("below_detection", 0, _offer_below_detection,
+                       {"half_limit": "values", "limit_root2": "values"},
+                       values=_below_detection_values, marks=_below_detection_marks),
+                ["below_detection"])
+register_family(Family("text_numbers", 1, _offer_text_numbers,
+                       {"read_numbers": "values", "thousands": "values", "decimal_comma": "values"},
+                       values=_text_number_values, marks=_text_number_marks), ["text_numbers"])
+register_family(Family("sas_zeros", 2, _offer_sas, {"zero": "values"},
                        values=_sas_values, marks=_sas_marks), ["sas_zeros"])
-register_family(Family("energy_kj", 1, _offer_kj, {"to_kcal": "values"},
-                       values=_kj_values, marks=_kj_marks), ["pack::dietary::atwater"])
-register_family(Family("sentinel_codes", 2, _offer_sentinels, {"set_missing": "values"},
+register_family(Family("sentinel_codes", 3, _offer_sentinels, {"set_missing": "values"},
                        values=_sentinel_values, marks=_sentinel_marks),
                 ["sentinel_missing", "pack::survey::sentinel_codes"])
-register_family(Family("binary_text", 3, _offer_binary, {"level": "values"},
+register_family(Family("energy_kj", 4, _offer_kj, {"to_kcal": "values"},
+                       values=_kj_values, marks=_kj_marks), ["pack::dietary::atwater"])
+register_family(Family("binary_text", 5, _offer_binary, {"level": "values"},
                        values=_binary_values, marks=_binary_marks), ["binary_text"])
-register_family(Family("impossible_values", 4, _offer_impossible,
+register_family(Family("infinite_values", 6, _offer_infinite, {"set_missing": "values"},
+                       values=_infinite_values, marks=_infinite_marks), ["infinite_values"])
+register_family(Family("impossible_values", 7, _offer_impossible,
                        {"set_missing": "values", "exclude_rows": "rows", "unusable": "columns"},
                        values=_impossible_values, rows=_impossible_rows, columns=_impossible_columns,
                        marks=_impossible_marks),
                 ["pack::clinical::impossible_vs_extreme"])
+register_family(Family("date_reading", 8, _offer_dates, {"month_first": "values", "day_first": "values"},
+                       values=_date_values, marks=_date_marks), ["ambiguous_dates"])
 
 
 def family_for(finding_id: str) -> Family | None:
@@ -1116,8 +1569,9 @@ def _distribution(fam: Family, option: str, params: Mapping[str, Any], column: s
                   before: pd.Series, after: pd.Series, changed: pd.Series) -> Any | None:
     from turbotab.core.consequences import CAPTION_WORDS, TITLE_WORDS, DistributionView, _histogram_pair, clip_words
 
-    if before.dtype.kind not in "biuf" or after.dtype.kind not in "biuf" or fam.key == "binary_text":
-        return None
+    if (before.dtype.kind not in "biuf" or after.dtype.kind not in "biuf"
+            or fam.key in ("binary_text", "infinite_values")):
+        return None  # an infinity has no place on a histogram's axis
     x = before.to_numpy(dtype=float, na_value=np.nan)
     y = after.to_numpy(dtype=float, na_value=np.nan)
     hist_before, hist_after = _histogram_pair(x, y)
@@ -1176,11 +1630,13 @@ def _row_views(params: Mapping[str, Any], proposed: Mapping[str, Any], ctx: Any)
         after=_steps(after, _sealed(ctx)),
     )]
     values = ctx.datastore.materialize(list(bands), _pool(ctx))
-    outside = {c: int((~rule_keep(values, ExclusionRule(column=c, low=lo, high=hi, reason="r"))).sum())
+    outside = {c: int((~rule_keep(values, ExclusionRule(column=c, low=lo, high=hi, reason="r",
+                                                        missing="keep"))).sum())
                for c, (lo, hi) in bands.items()}
     column = max(bands, key=lambda c: (outside[c], -list(bands).index(c)))  # the one that excludes most
     lo, hi = bands[column]
-    rule = ExclusionRule(column=column, low=lo, high=hi, reason="a physiologically impossible value")
+    rule = ExclusionRule(column=column, low=lo, high=hi, reason="a physiologically impossible value",
+                         missing="keep")
     x = _numeric(values[column]).to_numpy(dtype=float, na_value=np.nan)
     kept = rule_keep(values, rule).to_numpy()
     hist_before, hist_after = _histogram_pair(x, np.where(kept, x, np.nan))
@@ -1243,9 +1699,11 @@ _register_previews()
 
 
 __all__ = [
-    "CONSEQUENCE_WORDS", "FAMILIES", "Family", "KJ_PER_KCAL", "LABEL_WORDS", "OfferContext",
-    "RepairOption", "SAS_ZERO", "admits", "annotate", "attach", "column_expressions",
-    "deferred_to", "disposition_writers", "evaluate", "exclusion_rules", "family_for",
-    "is_sas_zero", "matching_answer", "offer", "register_family", "repair_views",
-    "sas_zero_counts", "sas_zero_finding", "unusable_columns",
+    "CONSEQUENCE_WORDS", "FAMILIES", "Family", "KJ_PER_KCAL", "LABEL_WORDS", "LOD_FACTORS",
+    "NUMBER_SHARE", "OfferContext", "RepairOption", "SAS_ZERO", "admits", "ambiguous_date_finding",
+    "annotate", "attach", "column_expressions", "date_formats", "deferred_to",
+    "disposition_writers", "evaluate", "exclusion_rules", "family_for", "infinite_counts",
+    "infinite_finding", "is_sas_zero", "matching_answer", "number_sql", "offer",
+    "read_text_numbers", "register_family", "repair_views", "sas_zero_counts", "sas_zero_finding",
+    "text_number_findings", "unusable_columns",
 ]

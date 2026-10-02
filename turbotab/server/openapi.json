@@ -391,6 +391,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/DismissFinding-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetFeatureTable-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCategorical"
                   }
                 ],
                 "discriminator": {
@@ -418,7 +424,9 @@
                     "open_seal": "#/components/schemas/OpenSeal",
                     "apply_repair": "#/components/schemas/ApplyRepair-Input",
                     "defer_finding": "#/components/schemas/DeferFinding",
-                    "dismiss_finding": "#/components/schemas/DismissFinding-Input"
+                    "dismiss_finding": "#/components/schemas/DismissFinding-Input",
+                    "set_feature_table": "#/components/schemas/SetFeatureTable-Input",
+                    "set_categorical": "#/components/schemas/SetCategorical"
                   }
                 },
                 "title": "Decision"
@@ -687,6 +695,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/DismissFinding-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetFeatureTable-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCategorical"
                   }
                 ],
                 "discriminator": {
@@ -714,7 +728,9 @@
                     "open_seal": "#/components/schemas/OpenSeal",
                     "apply_repair": "#/components/schemas/ApplyRepair-Input",
                     "defer_finding": "#/components/schemas/DeferFinding",
-                    "dismiss_finding": "#/components/schemas/DismissFinding-Input"
+                    "dismiss_finding": "#/components/schemas/DismissFinding-Input",
+                    "set_feature_table": "#/components/schemas/SetFeatureTable-Input",
+                    "set_categorical": "#/components/schemas/SetCategorical"
                   }
                 },
                 "title": "Decision"
@@ -1425,13 +1441,28 @@
               }
             ],
             "title": "Outcome"
+          },
+          "columns": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "mean",
+                "first",
+                "last",
+                "change",
+                "mode"
+              ]
+            },
+            "type": "object",
+            "title": "Columns"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "method",
-          "outcome"
+          "outcome",
+          "columns"
         ],
         "title": "AggregationSpec"
       },
@@ -1721,6 +1752,10 @@
               }
             ],
             "title": "Top"
+          },
+          "n_infinite": {
+            "type": "integer",
+            "title": "N Infinite"
           }
         },
         "type": "object",
@@ -1737,7 +1772,8 @@
           "median",
           "q75",
           "max",
-          "top"
+          "top",
+          "n_infinite"
         ],
         "title": "ColumnSummary"
       },
@@ -1869,6 +1905,12 @@
               },
               {
                 "$ref": "#/components/schemas/DismissFinding-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetFeatureTable-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetCategorical"
               }
             ],
             "title": "Decision",
@@ -1882,9 +1924,11 @@
                 "revert": "#/components/schemas/Revert",
                 "select_models": "#/components/schemas/SelectModels",
                 "set_aggregation": "#/components/schemas/SetAggregation-Output",
+                "set_categorical": "#/components/schemas/SetCategorical",
                 "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
                 "set_event": "#/components/schemas/SetEvent",
                 "set_exclusions": "#/components/schemas/SetExclusions-Output",
+                "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
                 "set_grain": "#/components/schemas/SetGrain-Output",
                 "set_lens": "#/components/schemas/SetLens",
                 "set_missing": "#/components/schemas/SetMissing-Output",
@@ -2304,6 +2348,15 @@
             "type": "string",
             "minLength": 1,
             "title": "Reason"
+          },
+          "missing": {
+            "type": "string",
+            "enum": [
+              "exclude",
+              "keep"
+            ],
+            "title": "Missing",
+            "default": "exclude"
           }
         },
         "additionalProperties": false,
@@ -2363,6 +2416,15 @@
             "type": "string",
             "minLength": 1,
             "title": "Reason"
+          },
+          "missing": {
+            "type": "string",
+            "enum": [
+              "exclude",
+              "keep"
+            ],
+            "title": "Missing",
+            "default": "exclude"
           }
         },
         "additionalProperties": false,
@@ -2373,7 +2435,8 @@
           "low",
           "high",
           "by",
-          "reason"
+          "reason",
+          "missing"
         ],
         "title": "ExclusionRule"
       },
@@ -2455,6 +2518,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/DismissFinding-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetFeatureTable-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCategorical"
                   }
                 ],
                 "discriminator": {
@@ -2467,9 +2536,11 @@
                     "revert": "#/components/schemas/Revert",
                     "select_models": "#/components/schemas/SelectModels",
                     "set_aggregation": "#/components/schemas/SetAggregation-Output",
+                    "set_categorical": "#/components/schemas/SetCategorical",
                     "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
                     "set_event": "#/components/schemas/SetEvent",
                     "set_exclusions": "#/components/schemas/SetExclusions-Output",
+                    "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
                     "set_grain": "#/components/schemas/SetGrain-Output",
                     "set_lens": "#/components/schemas/SetLens",
                     "set_missing": "#/components/schemas/SetMissing-Output",
@@ -2562,6 +2633,36 @@
         ],
         "title": "FamilyInfo",
         "description": "What ``GET /api/models`` says about one family."
+      },
+      "FeatureTableSpec": {
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "annotations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Annotations"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "annotations"
+        ],
+        "title": "FeatureTableSpec",
+        "description": "How a features-in-rows table's columns read before it is turned (audit MA-04)."
       },
       "FindingDisposition": {
         "properties": {
@@ -3721,6 +3822,30 @@
               }
             ],
             "title": "Findings"
+          },
+          "feature_table": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeatureTableSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "categorical": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categorical"
           }
         },
         "type": "object",
@@ -3744,7 +3869,9 @@
           "aggregation",
           "temporal",
           "seal_opened",
-          "findings"
+          "findings",
+          "feature_table",
+          "categorical"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -4163,13 +4290,28 @@
               }
             ],
             "title": "Time Column"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levels"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "repeat_kind",
-          "time_column"
+          "time_column",
+          "levels"
         ],
         "title": "RepeatSpec"
       },
@@ -4600,6 +4742,20 @@
               }
             ],
             "title": "Outcome"
+          },
+          "columns": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "mean",
+                "first",
+                "last",
+                "change",
+                "mode"
+              ]
+            },
+            "type": "object",
+            "title": "Columns"
           }
         },
         "additionalProperties": false,
@@ -4643,6 +4799,20 @@
               }
             ],
             "title": "Outcome"
+          },
+          "columns": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "mean",
+                "first",
+                "last",
+                "change",
+                "mode"
+              ]
+            },
+            "type": "object",
+            "title": "Columns"
           }
         },
         "additionalProperties": false,
@@ -4650,9 +4820,35 @@
         "required": [
           "kind",
           "method",
-          "outcome"
+          "outcome",
+          "columns"
         ],
         "title": "SetAggregation"
+      },
+      "SetCategorical": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_categorical",
+            "title": "Kind",
+            "default": "set_categorical"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "columns"
+        ],
+        "title": "SetCategorical",
+        "description": "Columns whose numbers are codes for categories (RIDRETH3: 1, 2, 3, 4, 6, 7): each enters\nthe models as indicators, one per level after the first, never as one straight line."
       },
       "SetEnergyAdjustment-Input": {
         "properties": {
@@ -4862,6 +5058,78 @@
         ],
         "title": "SetExclusions",
         "description": "Row exclusions; an empty list is the answer \"keep every row\"."
+      },
+      "SetFeatureTable-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_feature_table",
+            "title": "Kind",
+            "default": "set_feature_table"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "annotations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Annotations"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "SetFeatureTable",
+        "description": "How a features-in-rows table reads: the column naming the features, and the columns that\ndescribe them (m/z, retention time, IDs). Turning it makes every other column a sample."
+      },
+      "SetFeatureTable-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_feature_table",
+            "title": "Kind",
+            "default": "set_feature_table"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "annotations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Annotations"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "label",
+          "annotations"
+        ],
+        "title": "SetFeatureTable",
+        "description": "How a features-in-rows table reads: the column naming the features, and the columns that\ndescribe them (m/z, retention time, IDs). Turning it makes every other column a sample."
       },
       "SetGrain-Input": {
         "properties": {
@@ -5155,6 +5423,20 @@
               }
             ],
             "title": "Time Column"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levels"
           }
         },
         "additionalProperties": false,
@@ -5191,6 +5473,20 @@
               }
             ],
             "title": "Time Column"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levels"
           }
         },
         "additionalProperties": false,
@@ -5198,7 +5494,8 @@
         "required": [
           "kind",
           "repeat_kind",
-          "time_column"
+          "time_column",
+          "levels"
         ],
         "title": "SetRepeatKind"
       },
@@ -6317,6 +6614,24 @@
             "title": "Ordered By",
             "type": "string"
           },
+          "order": {
+            "enum": [
+              "numbers",
+              "dates",
+              "declared levels",
+              "file order"
+            ],
+            "title": "Order",
+            "type": "string"
+          },
+          "undated_records": {
+            "title": "Undated Records",
+            "type": "integer"
+          },
+          "units_without_dated_records": {
+            "title": "Units Without Dated Records",
+            "type": "integer"
+          },
           "n_source_rows": {
             "title": "N Source Rows",
             "type": "integer"
@@ -6339,6 +6654,17 @@
           "combined_numeric": {
             "title": "Combined Numeric",
             "type": "integer"
+          },
+          "constant_columns": {
+            "title": "Constant Columns",
+            "type": "integer"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/CombinedColumn"
+            },
+            "title": "Columns",
+            "type": "array"
           }
         },
         "required": [
@@ -6347,11 +6673,16 @@
           "outcome",
           "time_column",
           "ordered_by",
+          "order",
+          "undated_records",
+          "units_without_dated_records",
           "n_source_rows",
           "n_units",
           "single_record_units",
           "varying",
-          "combined_numeric"
+          "combined_numeric",
+          "constant_columns",
+          "columns"
         ],
         "title": "AggregationReceipt",
         "type": "object"
@@ -6441,6 +6772,39 @@
           "label"
         ],
         "title": "Baseline",
+        "type": "object"
+      },
+      "CategoricalProposal": {
+        "description": "A predictor whose numbers may be codes for groups (``set_categorical`` declares it).",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "levels": {
+            "title": "Levels",
+            "type": "integer"
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "levels",
+          "confidence",
+          "reason"
+        ],
+        "title": "CategoricalProposal",
         "type": "object"
       },
       "Chronology": {
@@ -6643,6 +7007,54 @@
         "title": "ColumnInfo",
         "type": "object"
       },
+      "CombinedColumn": {
+        "description": "One column that varied within a unit (or was given its own rule), and how it was combined.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "amount",
+              "code",
+              "category",
+              "constant"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "rule": {
+            "enum": [
+              "mean",
+              "first",
+              "last",
+              "change",
+              "mode",
+              "constant"
+            ],
+            "title": "Rule",
+            "type": "string"
+          },
+          "varied": {
+            "title": "Varied",
+            "type": "boolean"
+          },
+          "chosen": {
+            "title": "Chosen",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "column",
+          "kind",
+          "rule",
+          "varied",
+          "chosen"
+        ],
+        "title": "CombinedColumn",
+        "type": "object"
+      },
       "DatasetInfo": {
         "description": "The ``ingest`` artifact.",
         "properties": {
@@ -6696,6 +7108,29 @@
           "warnings"
         ],
         "title": "DatasetInfo",
+        "type": "object"
+      },
+      "DateExample": {
+        "properties": {
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "month_first": {
+            "title": "Month First",
+            "type": "string"
+          },
+          "day_first": {
+            "title": "Day First",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "month_first",
+          "day_first"
+        ],
+        "title": "DateExample",
         "type": "object"
       },
       "DesignArtifact": {
@@ -7006,6 +7441,15 @@
             "minLength": 1,
             "title": "Reason",
             "type": "string"
+          },
+          "missing": {
+            "default": "exclude",
+            "enum": [
+              "exclude",
+              "keep"
+            ],
+            "title": "Missing",
+            "type": "string"
           }
         },
         "required": [
@@ -7014,7 +7458,8 @@
           "low",
           "high",
           "by",
-          "reason"
+          "reason",
+          "missing"
         ],
         "title": "ExclusionRule",
         "type": "object"
@@ -7919,12 +8364,17 @@
             ],
             "title": "Rule",
             "type": "string"
+          },
+          "n_missing": {
+            "title": "N Missing",
+            "type": "integer"
           }
         },
         "required": [
           "column",
           "varies",
-          "rule"
+          "rule",
+          "n_missing"
         ],
         "title": "OutcomeRule",
         "type": "object"
@@ -8352,11 +8802,19 @@
                 "type": "null"
               }
             ]
+          },
+          "categorical": {
+            "items": {
+              "$ref": "#/components/schemas/CategoricalProposal"
+            },
+            "title": "Categorical",
+            "type": "array"
           }
         },
         "required": [
           "columns",
-          "repeats"
+          "repeats",
+          "categorical"
         ],
         "title": "RolesArtifact",
         "type": "object"
@@ -8896,6 +9354,23 @@
               }
             ],
             "title": "Time Column"
+          },
+          "unread_dates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unread Dates",
+            "type": "array"
+          },
+          "time_order": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimeOrder"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -8905,7 +9380,9 @@
           "outcome",
           "aggregation",
           "time_columns",
-          "time_column"
+          "time_column",
+          "unread_dates",
+          "time_order"
         ],
         "title": "StructureArtifact",
         "type": "object"
@@ -9291,8 +9768,74 @@
         "title": "TargetInfo",
         "type": "object"
       },
+      "TimeOrder": {
+        "description": "Whether the time column can put a unit's records in order (stages.working.time_order).",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "numbers",
+              "dates",
+              "levels",
+              "ambiguous",
+              "mixed",
+              "none"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "placed": {
+            "title": "Placed",
+            "type": "integer"
+          },
+          "orderable": {
+            "title": "Orderable",
+            "type": "boolean"
+          },
+          "levels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Levels",
+            "type": "array"
+          },
+          "proposed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Proposed",
+            "type": "array"
+          },
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/DateExample"
+            },
+            "title": "Examples",
+            "type": "array"
+          }
+        },
+        "required": [
+          "column",
+          "kind",
+          "n",
+          "placed",
+          "orderable",
+          "levels",
+          "proposed",
+          "examples"
+        ],
+        "title": "TimeOrder",
+        "type": "object"
+      },
       "TurnCheck": {
-        "description": "Whether the table can be turned around: the feature-name column, and why not.",
+        "description": "Whether the table can be turned around: the feature-name column, the columns that describe\nthe features (kept beside them, never turned into samples), and why not.",
         "properties": {
           "label_column": {
             "anyOf": [
@@ -9304,6 +9847,28 @@
               }
             ],
             "title": "Label Column"
+          },
+          "label_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "text",
+                  "number"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Kind"
+          },
+          "annotations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Annotations",
+            "type": "array"
           },
           "n_features": {
             "title": "N Features",
@@ -9334,16 +9899,57 @@
               }
             ],
             "title": "Code"
+          },
+          "exits": {
+            "items": {
+              "$ref": "#/components/schemas/TurnExit"
+            },
+            "title": "Exits",
+            "type": "array"
+          },
+          "declared": {
+            "title": "Declared",
+            "type": "boolean"
           }
         },
         "required": [
           "label_column",
+          "label_kind",
+          "annotations",
           "n_features",
           "n_samples",
           "refusal",
-          "code"
+          "code",
+          "exits",
+          "declared"
         ],
         "title": "TurnCheck",
+        "type": "object"
+      },
+      "TurnExit": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          }
+        },
+        "required": [
+          "label",
+          "decision"
+        ],
+        "title": "TurnExit",
         "type": "object"
       },
       "UnitCounts": {

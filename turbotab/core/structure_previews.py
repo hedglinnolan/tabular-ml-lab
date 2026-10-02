@@ -38,11 +38,14 @@ SHOWN_NUMBERS = 4
 # so rows can be seen meeting their partners (M2_CONTRACT §11).
 RESHAPE_UNITS = 4
 RESHAPE_ROWS = 8
-_METHOD_WORDS = {
-    "mean": "are averaged",
-    "first": "keep the first record",
-    "last": "keep the last record",
-    "change": "become last minus first",
+# What each combining rule (stages.working.column_rule) does, for the reshape's caption.
+_RULE_CAPTIONS = {
+    "mean": "amounts averaged",
+    "change": "amounts as last minus first",
+    "first": "the first record kept",
+    "last": "the last record kept",
+    "mode": "codes by their most frequent value",
+    "constant": "unchanging columns as they are",
 }
 
 
@@ -84,18 +87,21 @@ def unit_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 def _reshape(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> TableFocusView | None:
     import duckdb
 
+    from turbotab.core.consequences import CAPTION_WORDS, clip_words
     from turbotab.core.datastore import json_safe
     from turbotab.core.decisions import AggregationSpec
     from turbotab.core.stages.working import (
         _K,
+        _M,
         _UNIT,
-        NUMERIC,
         ROW_ID,
+        StructureError,
         _bundle_table,
         _ident,
         _lit,
         aggregation_plan,
         combine_sql,
+        prepare_combine,
         rank_units,
         repair_expressions,
         source_sql,
@@ -104,10 +110,8 @@ def _reshape(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> Table
     oriented = ctx.artifact("oriented")
     info = _data(oriented)
     names = [str(c["name"]) for c in info["columns"]]
-    dtypes = {str(c["name"]): str(c["dtype"]) for c in info["columns"]}
-    physical = {str(c["name"]): str(c["physical_type"]) for c in info["columns"]}
     state = ctx.state.model_copy(update={"aggregation": AggregationSpec(
-        method=decision.method, outcome=decision.outcome)})
+        method=decision.method, outcome=decision.outcome, columns=dict(decision.columns))})
     plan = aggregation_plan(state, set(names), facts["structure"])
     if plan is None:
         return None
@@ -117,6 +121,12 @@ def _reshape(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> Table
     q = _ident(key)
     con = duckdb.connect()
     try:
+        src = source_sql(source, names, repairs)
+        try:  # the stage's own decisions, over the whole table: the order, each column's rule
+            prep = prepare_combine(con, src, plan, state.target)
+        except StructureError as exc:
+            ctx.read["note"] = str(exc)
+            return None
         candidates = con.execute(
             f"SELECT CAST({q} AS VARCHAR) AS u, count(*) AS n FROM read_parquet({_lit(source)}) "
             f"WHERE {q} IS NOT NULL GROUP BY u HAVING count(*) > 1 ORDER BY min({ROW_ID}) "
@@ -130,20 +140,21 @@ def _reshape(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> Table
         if not picked:
             return None
         chosen = ", ".join(_lit(u) for u in picked)
-        subset = (f"(SELECT * FROM {source_sql(source, names, repairs)} "
-                  f"WHERE CAST({q} AS VARCHAR) IN ({chosen}))")
-        rank_units(con, subset, plan, physical)
-        outcome = facts["structure"].get("outcome") or {}
-        target = state.target if state.target in dtypes else None
-        varies = bool(outcome.get("varies")) and outcome.get("column") == target
-        select, numeric, _ = combine_sql(info, plan, target, varies)
+        subset = f"(SELECT * FROM {src} WHERE CAST({q} AS VARCHAR) IN ({chosen}))"
+        rank_units(con, subset, plan, prep["order_expr"])
+        target = prep["target"]
+        select = combine_sql(prep["names"], prep["physical"], plan, target, prep["varies"],
+                             prep["rules"])
         combined = con.execute(select).df()
         records = con.execute(f"SELECT * FROM ranked ORDER BY {_UNIT}, {_K}").df()
     finally:
         con.close()
 
+    rules, kinds = prep["rules"], prep["kinds"]
+    numeric = [c for c in prep["others"] if prep["numeric"][c]]
+    numeric.sort(key=lambda c: not kinds[c]["varied"])  # the ones combining changes first
     shown = [c for c in dict.fromkeys([key, plan["time_column"], target]) if c]
-    shown += [c for c in numeric if c not in shown and dtypes.get(c) in NUMERIC][:SHOWN_NUMBERS]
+    shown += [c for c in numeric if c not in shown][:SHOWN_NUMBERS]
     unit_of = records.groupby(_UNIT).ngroup().to_numpy()
     rows: list[TableRow] = []
     changed: list[tuple[int, str]] = []
@@ -162,16 +173,18 @@ def _reshape(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> Table
     combined_frames: list[FrameRow] = []
     for j, (u, group) in enumerate(records.groupby(_UNIT, sort=True)):
         ids = [int(x) for x in group.sort_values(_K)[ROW_ID]]
-        if decision.method in ("first", "last"):
-            ids = [ids[0] if decision.method == "first" else ids[-1]]
+        if decision.method in ("first", "last"):  # the dated record kept; undated ones never are
+            at = group[_K] == (1 if decision.method == "first" else group[_M])
+            ids = [int(x) for x in group.loc[at, ROW_ID]] or ids[:1]
         combined_frames.append(FrameRow(row_id=ids[0] if len(ids) == 1 else min(ids),
                                         values={c: json_safe(combined.iloc[j][c]) for c in shown},
                                         unit=label_of[int(u)], sources=sorted(ids)))
-    words = _METHOD_WORDS[decision.method]
-    kept = "last" if decision.method == "last" else "first"
+    used = {rules[c] for c in prep["others"]}
+    parts = [_RULE_CAPTIONS[r] for r in ("mean", "change", "first", "last", "mode", "constant")
+             if r in used]
     return TableFocusView(
         title=f"{len(picked)} units' records, combined",
-        caption=f"Numeric columns {words}; other columns keep the {kept} record.",
+        caption=clip_words("Each column by what it holds: " + "; ".join(parts) + ".", CAPTION_WORDS),
         emphasis=shown[1:], columns_before=shown, columns_after=shown, rows=rows, changed=changed,
         n_affected_columns=len(numeric),
         story=[TableFrame(label=f"Each {key}'s records", columns=shown, rows=record_frames),
@@ -182,7 +195,8 @@ def _reshape(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> Table
 # does to the values the model will see. Only columns that vary within a unit are candidates, and
 # only the first few numeric ones, so a wide table costs what a narrow one does.
 SPREAD_CANDIDATES = 12
-_SPREAD_WORDS = {"mean": "mean", "first": "first record", "last": "last record"}
+_SPREAD_WORDS = {"mean": "mean", "first": "first record", "last": "last record",
+                 "mode": "most frequent value"}
 
 
 def _spread(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> DistributionView | None:
@@ -200,14 +214,14 @@ def _spread(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> Distri
     from turbotab.core.stages.working import NUMERIC, ROW_ID, _bundle_table, _ident, aggregation_plan
     from turbotab.core.stages.working import repair_expressions, source_sql
 
-    if decision.method not in _SPREAD_WORDS:
+    if decision.method == "change":
         return None  # last minus first is a change, on another axis than the records
     oriented = ctx.artifact("oriented")
     info = _data(oriented)
     names = [str(c["name"]) for c in info["columns"]]
     dtypes = {str(c["name"]): str(c["dtype"]) for c in info["columns"]}
     state = ctx.state.model_copy(update={"aggregation": AggregationSpec(
-        method=decision.method, outcome=decision.outcome)})
+        method=decision.method, outcome=decision.outcome, columns=dict(decision.columns))})
     plan = aggregation_plan(state, set(names), facts["structure"])
     if plan is None:
         return None
@@ -225,9 +239,9 @@ def _spread(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> Distri
 
     repairs = repair_expressions(_data(ctx.artifact("findings")), state.findings)
     wanted = list(dict.fromkeys([key, *([order] if order else []), *candidates]))
+    src = source_sql(_bundle_table(oriented), names, repairs)
     con = duckdb.connect()
     try:
-        src = source_sql(_bundle_table(oriented), names, repairs)
         frame = con.execute(f"SELECT {', '.join(_ident(c) for c in wanted)}, {ROW_ID} FROM {src} "
                             f"ORDER BY {ROW_ID}").df()
     finally:
@@ -257,20 +271,29 @@ def _spread(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> Distri
             if float((v - v.groupby(unit).transform("mean")).pow(2).mean()) > 0.01 * float(v.var(ddof=0)):
                 best = energy
     values = pd.to_numeric(frame[best], errors="coerce")
-    if decision.method == "mean":
-        combined = values.groupby(unit, sort=False).mean()
-    else:
-        # The method's order: the time column (missing last), then file order.
-        ranked = pd.DataFrame({"u": unit, "v": values, "r": frame[ROW_ID]})
-        if order:
-            ranked["t"] = frame[order]
-            ranked = ranked.sort_values(["t", "r"], na_position="last", kind="stable")
-        # The kept record is that record, blank or not (nth, unlike first(), skips no blank).
-        combined = ranked.groupby("u", sort=False)["v"].nth(0 if decision.method == "first" else -1)
+    # Each unit's value as the working stage computes it: its order, its rule for this column.
+    from turbotab.core.stages.working import _UNIT, StructureError, _rule_sql, prepare_combine
+
+    con = duckdb.connect()
+    try:
+        try:
+            prep = prepare_combine(con, src, plan, state.target)
+        except StructureError as exc:
+            ctx.read["note"] = str(exc)
+            return None
+        rule = prep["rules"].get(best)
+        if rule not in _SPREAD_WORDS:
+            return None  # a change is on another axis than the records; a constant does not move
+        combined = con.execute(
+            f"SELECT {_rule_sql(best, rule, prep['physical'][best])} AS v FROM ranked "
+            f"GROUP BY {_UNIT} ORDER BY {_UNIT}").df()["v"]
+    finally:
+        con.close()
+    combined = pd.to_numeric(combined, errors="coerce")
     before, after = _histogram_pair(values.to_numpy(), combined.to_numpy())
     n_rows, n_units = int(len(values)), int(len(combined))
     ctx.read["counted"] = n_rows
-    noun = _SPREAD_WORDS[decision.method]
+    noun = _SPREAD_WORDS[rule]
     sd0, sd1 = float(values.std()), float(combined.std())
     caption = (f"`{n_rows:,}` records become `{n_units:,}` values of `{best}`, one per `{key}`: "
                f"SD `{sd0:,.3g}` → `{sd1:,.3g}`.")
@@ -446,8 +469,7 @@ def orientation_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if _data(ctx.artifact("oriented")).get("transposed"):
         ctx.read["note"] = "The table is turned already; this preview reads it as supplied."
         return []
-    names = [str(c["name"]) for c in info["columns"]]
-    n_rows, n_cols = int(info["n_rows"]), len(names)
+    n_rows = int(info["n_rows"])
     loaded = RowStep(key="loaded", label="Rows as supplied", n=n_rows)
     ctx.read["counted"] = n_rows
     if decision.orientation != "feature_major":
@@ -455,31 +477,40 @@ def orientation_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                             caption=clip_words(f"The `{n_rows:,}` rows stay as they are, one per "
                                                f"sample.", CAPTION_WORDS),
                             before=[loaded], after=[loaded])]
-    label, samples = names[0], names[1:1 + TURN_SAMPLES]
+    from turbotab.core.stages.working import turn_plan, turned_corner
+
     con = duckdb.connect()
     try:
+        # The stage's own partition and block functions (audit MA-04): the label, the feature
+        # annotations kept beside the features, and the samples; never a guess of its own.
+        plan = turn_plan(con, source, info, getattr(ctx.state, "feature_table", None))
+        if plan["refusal"]:
+            ctx.read["note"] = plan["refusal"]
+            return []
+        turned_frame = turned_corner(con, source, info, plan, TURN_SAMPLES, TURN_FEATURES)
+        label, samples = plan["label_column"], list(plan["samples"][:TURN_SAMPLES])
+        shown = [c for c in [label, *plan["annotations"][:2], *samples] if c]
         corner = con.execute(
-            f"SELECT {ROW_ID}, {', '.join(_ident(c) for c in [label, *samples])} "
+            f"SELECT {ROW_ID}, {', '.join(_ident(c) for c in shown)} "
             f"FROM read_parquet({_lit(str(source))}) ORDER BY {ROW_ID} LIMIT {TURN_FEATURES}").df()
     finally:
         con.close()
-    features = [str(v) for v in corner[label]]
-    supplied = [FrameRow(row_id=int(r[ROW_ID]), values={c: _plain(r[c]) for c in [label, *samples]})
+    supplied = [FrameRow(row_id=int(r[ROW_ID]), values={c: _plain(r[c]) for c in shown})
                 for _, r in corner.iterrows()]
-    turned_cols = ["sample_id", *features]
-    turned = [FrameRow(row_id=i, values={"sample_id": s, **{f: _plain(corner.iloc[j][s])
-                                                            for j, f in enumerate(features)}})
-              for i, s in enumerate(samples)]
-    caption = (f"`{n_rows:,}` feature rows become columns: `{n_cols - 1:,}` rows, one per sample, "
-               f"named by the header.")
+    turned_cols = [str(c) for c in turned_frame.columns]
+    turned = [FrameRow(row_id=i, values={c: _plain(r[c]) for c in turned_cols})
+              for i, (_, r) in enumerate(turned_frame.iterrows())]
+    kept = (f"; {', '.join(f'`{c}`' for c in plan['annotations'][:3])} stay beside the features"
+            if plan["annotations"] else "")
+    caption = (f"`{n_rows:,}` feature rows become columns: `{plan['n_samples']:,}` rows, one per "
+               f"sample, named by the header{kept}.")
     rows = [TableRow(row_id=f.row_id, before=f.values, after=f.values) for f in turned]
     # One view: the corner, as supplied and then turned; the caption carries the counts.
     return [TableFocusView(
         title="The table turned round", caption=clip_words(caption, CAPTION_WORDS),
-        emphasis=["sample_id"], columns_before=[label, *samples], columns_after=turned_cols,
+        emphasis=["sample_id"], columns_before=shown, columns_after=turned_cols,
         rows=rows, changed=[], n_affected_columns=0,
-        story=[TableFrame(label="As supplied: features in rows", columns=[label, *samples],
-                          rows=supplied),
+        story=[TableFrame(label="As supplied: features in rows", columns=shown, rows=supplied),
                TableFrame(label="Turned: one row per sample", columns=turned_cols, rows=turned)])]
 
 

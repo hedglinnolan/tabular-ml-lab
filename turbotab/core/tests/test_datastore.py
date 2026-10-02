@@ -36,7 +36,7 @@ INFO_KEYS = {"n_rows", "n_cols", "columns", "source_bytes", "parquet_bytes", "in
              "fingerprint", "warnings"}
 COLUMN_KEYS = {"name", "dtype", "physical_type", "n_missing", "n_unique", "sample"}
 SUMMARY_KEYS = {"name", "dtype", "n", "n_missing", "n_unique", "mean", "std", "min", "q25",
-                "median", "q75", "max", "top"}
+                "median", "q75", "max", "top", "n_infinite"}
 DTYPES = {"numeric", "integer", "boolean", "categorical", "datetime", "text"}
 
 

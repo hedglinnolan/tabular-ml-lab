@@ -517,6 +517,8 @@ def _range_phrase(low: Any, high: Any) -> str:
 
 def _rule_phrase(rule: Any) -> str:
     column = tick(rule.column)
+    # A rule leaves out the rows it cannot confirm unless told to keep them (stages.rows.rule_keep).
+    unconfirmed = " or not recorded" if getattr(rule, "missing", "exclude") == "exclude" else ""
     if rule.by is not None and rule.by.ranges:
         parts = []
         for i, (level, (low, high)) in enumerate(rule.by.ranges.items()):
@@ -525,8 +527,8 @@ def _rule_phrase(rule: Any) -> str:
         text = f"{column} " + listing(parts, limit=6, ticked=False)
         if rule.low is not None or rule.high is not None:
             text += f", and {_range_phrase(rule.low, rule.high)} otherwise"
-        return text
-    return f"{column} {_range_phrase(rule.low, rule.high)}"
+        return text + unconfirmed
+    return f"{column} {_range_phrase(rule.low, rule.high)}{unconfirmed}"
 
 
 def _as_reason(reason: str) -> str:
@@ -562,7 +564,7 @@ def exclusion_counts(rules: Sequence[Any], state: Any, ctx: Any) -> tuple[list[i
             frame = store.materialize(wanted)
         if not columns <= set(frame.columns):
             return None, None
-        from turbotab.core.stages.proposals import rule_excludes
+        from turbotab.core.stages.rows import rule_keep  # what the participant flow removes
 
         keep = frame[target].notna() if target in frame.columns else None
         if keep is None:
@@ -572,7 +574,7 @@ def exclusion_counts(rules: Sequence[Any], state: Any, ctx: Any) -> tuple[list[i
         n_before = int(keep.sum())
         out = []
         for rule in rules:
-            hit = rule_excludes(frame, rule) & keep
+            hit = ~rule_keep(frame, rule) & keep
             out.append(int(hit.sum()))
             keep = keep & ~hit
         return out, n_before
@@ -826,6 +828,28 @@ def _set_orientation(d: Any, state: Any, ctx: Any) -> str:
     return text
 
 
+@register_sentence("set_feature_table")
+def _set_feature_table(d: Any, state: Any, ctx: Any) -> str:
+    named = (f"{tick(d.label)} names the features" if d.label
+             else "the features are named by their row")
+    if not d.annotations:
+        return f"For the features-in-rows table, {named} and every other column is a sample"
+    n = len(d.annotations)
+    return (f"For the features-in-rows table, {named}; {listing(d.annotations)} "
+            f"{'describes' if n == 1 else 'describe'} the features and {'stays' if n == 1 else 'stay'} "
+            f"beside them, and every other column is a sample")
+
+
+@register_sentence("set_categorical")
+def _set_categorical(d: Any, state: Any, ctx: Any) -> str:
+    if not d.columns:
+        return "No numeric column was declared a set of categories"
+    n = len(d.columns)
+    return (f"{listing(d.columns)} {'was' if n == 1 else 'were'} declared "
+            f"{'a code' if n == 1 else 'codes'} for categories and entered the models as one "
+            f"indicator per level after the first")
+
+
 def _levels(ctx: Any, column: str) -> list[str]:
     """The outcome's levels as written (``1.0`` and ``1`` are one level), from ``ctx`` or the data."""
     from turbotab.core.stages.proposals import level_key
@@ -943,6 +967,11 @@ def _set_aggregation(d: Any, state: Any, ctx: Any) -> str:
     target = getattr(state, "target", None)
     if d.outcome and target:
         text += f"; the outcome {tick(target)} was taken as their {_OUTCOME_HOW[d.outcome]}"
+    # Codes and unchanging columns are never averaged or differenced (stages.working.column_rule).
+    if d.method == "mean":
+        text += "; any codes took their most frequent value"
+    elif d.method == "change":
+        text += "; any codes and unchanging columns kept their first value"
     return text
 
 

@@ -378,6 +378,10 @@ export interface components {
             method: "mean" | "first" | "last" | "change";
             /** Outcome */
             outcome: ("mean" | "first" | "last") | null;
+            /** Columns */
+            columns: {
+                [key: string]: "mean" | "first" | "last" | "change" | "mode";
+            };
         };
         /**
          * ApplyRepair
@@ -491,6 +495,8 @@ export interface components {
             max: number | null;
             /** Top */
             top: components["schemas"]["ValueCount"][] | null;
+            /** N Infinite */
+            n_infinite: number;
         };
         /**
          * CreateProject
@@ -521,7 +527,7 @@ export interface components {
              */
             post_seal: boolean;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"];
         };
         /**
          * DeferFinding
@@ -660,6 +666,12 @@ export interface components {
             by?: components["schemas"]["RangeByLevel"] | null;
             /** Reason */
             reason: string;
+            /**
+             * Missing
+             * @default exclude
+             * @enum {string}
+             */
+            missing: "exclude" | "keep";
         };
         /** ExclusionRule */
         "ExclusionRule-Output": {
@@ -678,13 +690,19 @@ export interface components {
             by: components["schemas"]["RangeByLevel"] | null;
             /** Reason */
             reason: string;
+            /**
+             * Missing
+             * @default exclude
+             * @enum {string}
+             */
+            missing: "exclude" | "keep";
         };
         /** Exit */
         Exit: {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"]) | null;
         };
         /**
          * FamilyInfo
@@ -707,6 +725,16 @@ export interface components {
             needs_scaling: boolean;
             /** Handles Missing */
             handles_missing: boolean;
+        };
+        /**
+         * FeatureTableSpec
+         * @description How a features-in-rows table's columns read before it is turned (audit MA-04).
+         */
+        FeatureTableSpec: {
+            /** Label */
+            label: string | null;
+            /** Annotations */
+            annotations: string[];
         };
         /** FindingDisposition */
         FindingDisposition: {
@@ -1040,6 +1068,9 @@ export interface components {
             findings: {
                 [key: string]: components["schemas"]["FindingDisposition"];
             } | null;
+            feature_table: components["schemas"]["FeatureTableSpec"] | null;
+            /** Categorical */
+            categorical: string[] | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -1174,6 +1205,8 @@ export interface components {
             repeat_kind: "repeats" | "time_points";
             /** Time Column */
             time_column: string | null;
+            /** Levels */
+            levels: string[] | null;
         };
         /** Revert */
         Revert: {
@@ -1308,6 +1341,10 @@ export interface components {
             method: "mean" | "first" | "last" | "change";
             /** Outcome */
             outcome?: ("mean" | "first" | "last") | null;
+            /** Columns */
+            columns?: {
+                [key: string]: "mean" | "first" | "last" | "change" | "mode";
+            };
         };
         /** SetAggregation */
         "SetAggregation-Output": {
@@ -1323,6 +1360,24 @@ export interface components {
             method: "mean" | "first" | "last" | "change";
             /** Outcome */
             outcome: ("mean" | "first" | "last") | null;
+            /** Columns */
+            columns: {
+                [key: string]: "mean" | "first" | "last" | "change" | "mode";
+            };
+        };
+        /**
+         * SetCategorical
+         * @description Columns whose numbers are codes for categories (RIDRETH3: 1, 2, 3, 4, 6, 7): each enters
+         *     the models as indicators, one per level after the first, never as one straight line.
+         */
+        SetCategorical: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_categorical";
+            /** Columns */
+            columns: string[];
         };
         /** SetEnergyAdjustment */
         "SetEnergyAdjustment-Input": {
@@ -1412,6 +1467,38 @@ export interface components {
             kind: "set_exclusions";
             /** Rules */
             rules: components["schemas"]["ExclusionRule-Output"][];
+        };
+        /**
+         * SetFeatureTable
+         * @description How a features-in-rows table reads: the column naming the features, and the columns that
+         *     describe them (m/z, retention time, IDs). Turning it makes every other column a sample.
+         */
+        "SetFeatureTable-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_feature_table";
+            /** Label */
+            label?: string | null;
+            /** Annotations */
+            annotations?: string[];
+        };
+        /**
+         * SetFeatureTable
+         * @description How a features-in-rows table reads: the column naming the features, and the columns that
+         *     describe them (m/z, retention time, IDs). Turning it makes every other column a sample.
+         */
+        "SetFeatureTable-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_feature_table";
+            /** Label */
+            label: string | null;
+            /** Annotations */
+            annotations: string[];
         };
         /** SetGrain */
         "SetGrain-Input": {
@@ -1570,6 +1657,8 @@ export interface components {
             repeat_kind: "repeats" | "time_points";
             /** Time Column */
             time_column?: string | null;
+            /** Levels */
+            levels?: string[] | null;
         };
         /** SetRepeatKind */
         "SetRepeatKind-Output": {
@@ -1585,6 +1674,8 @@ export interface components {
             repeat_kind: "repeats" | "time_points";
             /** Time Column */
             time_column: string | null;
+            /** Levels */
+            levels: string[] | null;
         };
         /**
          * SetRoles
@@ -2018,6 +2109,15 @@ export interface components {
             time_column: string | null;
             /** Ordered By */
             ordered_by: string;
+            /**
+             * Order
+             * @enum {string}
+             */
+            order: "numbers" | "dates" | "declared levels" | "file order";
+            /** Undated Records */
+            undated_records: number;
+            /** Units Without Dated Records */
+            units_without_dated_records: number;
             /** N Source Rows */
             n_source_rows: number;
             /** N Units */
@@ -2028,6 +2128,10 @@ export interface components {
             varying: string[];
             /** Combined Numeric */
             combined_numeric: number;
+            /** Constant Columns */
+            constant_columns: number;
+            /** Columns */
+            columns: components["schemas"]["CombinedColumn"][];
         };
         /**
          * ApplyRepair
@@ -2074,6 +2178,23 @@ export interface components {
             value: number | null;
             /** Label */
             label: string;
+        };
+        /**
+         * CategoricalProposal
+         * @description A predictor whose numbers may be codes for groups (``set_categorical`` declares it).
+         */
+        CategoricalProposal: {
+            /** Column */
+            column: string;
+            /** Levels */
+            levels: number;
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "high" | "medium";
+            /** Reason */
+            reason: string;
         };
         /**
          * Chronology
@@ -2137,6 +2258,28 @@ export interface components {
             sample: unknown[];
         };
         /**
+         * CombinedColumn
+         * @description One column that varied within a unit (or was given its own rule), and how it was combined.
+         */
+        CombinedColumn: {
+            /** Column */
+            column: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "amount" | "code" | "category" | "constant";
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "mean" | "first" | "last" | "change" | "mode" | "constant";
+            /** Varied */
+            varied: boolean;
+            /** Chosen */
+            chosen: boolean;
+        };
+        /**
          * DatasetInfo
          * @description The ``ingest`` artifact.
          */
@@ -2157,6 +2300,15 @@ export interface components {
             fingerprint: string;
             /** Warnings */
             warnings: string[];
+        };
+        /** DateExample */
+        DateExample: {
+            /** Text */
+            text: string;
+            /** Month First */
+            month_first: string;
+            /** Day First */
+            day_first: string;
         };
         /**
          * DesignArtifact
@@ -2267,6 +2419,12 @@ export interface components {
             by: components["schemas"]["RangeByLevel"] | null;
             /** Reason */
             reason: string;
+            /**
+             * Missing
+             * @default exclude
+             * @enum {string}
+             */
+            missing: "exclude" | "keep";
         };
         /** Finding */
         Finding: {
@@ -2578,6 +2736,8 @@ export interface components {
              * @enum {string}
              */
             rule: "constant" | "mean" | "first" | "last";
+            /** N Missing */
+            n_missing: number;
         };
         /** OutcomeWithinUnit */
         OutcomeWithinUnit: {
@@ -2731,6 +2891,8 @@ export interface components {
             /** Columns */
             columns: components["schemas"]["RoleProposal"][];
             repeats: components["schemas"]["Repeats"] | null;
+            /** Categorical */
+            categorical: components["schemas"]["CategoricalProposal"][];
         };
         /**
          * SealBasis
@@ -2913,6 +3075,9 @@ export interface components {
             time_columns: string[];
             /** Time Column */
             time_column: string | null;
+            /** Unread Dates */
+            unread_dates: string[];
+            time_order: components["schemas"]["TimeOrder"] | null;
         };
         /**
          * SubstitutionArtifact
@@ -3031,12 +3196,42 @@ export interface components {
             unit_source: ("name" | "pack") | null;
         };
         /**
+         * TimeOrder
+         * @description Whether the time column can put a unit's records in order (stages.working.time_order).
+         */
+        TimeOrder: {
+            /** Column */
+            column: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "numbers" | "dates" | "levels" | "ambiguous" | "mixed" | "none";
+            /** N */
+            n: number;
+            /** Placed */
+            placed: number;
+            /** Orderable */
+            orderable: boolean;
+            /** Levels */
+            levels: string[];
+            /** Proposed */
+            proposed: string[];
+            /** Examples */
+            examples: components["schemas"]["DateExample"][];
+        };
+        /**
          * TurnCheck
-         * @description Whether the table can be turned around: the feature-name column, and why not.
+         * @description Whether the table can be turned around: the feature-name column, the columns that describe
+         *     the features (kept beside them, never turned into samples), and why not.
          */
         TurnCheck: {
             /** Label Column */
             label_column: string | null;
+            /** Label Kind */
+            label_kind: ("text" | "number") | null;
+            /** Annotations */
+            annotations: string[];
             /** N Features */
             n_features: number;
             /** N Samples */
@@ -3045,6 +3240,19 @@ export interface components {
             refusal: string | null;
             /** Code */
             code: string | null;
+            /** Exits */
+            exits: components["schemas"]["TurnExit"][];
+            /** Declared */
+            declared: boolean;
+        };
+        /** TurnExit */
+        TurnExit: {
+            /** Label */
+            label: string;
+            /** Decision */
+            decision: {
+                [key: string]: unknown;
+            } | null;
         };
         /** UnitCounts */
         UnitCounts: {
@@ -3360,7 +3568,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"];
             };
         };
         responses: {
@@ -3495,7 +3703,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"];
             };
         };
         responses: {

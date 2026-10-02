@@ -67,6 +67,8 @@ function view(): ProjectView {
       temporal: null,
       seal_opened: null,
       findings: null,
+      feature_table: null,
+      categorical: null,
     },
     decisions: [record(1)],
     stages: {

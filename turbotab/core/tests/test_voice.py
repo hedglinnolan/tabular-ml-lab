@@ -54,7 +54,21 @@ def frame():
 def test_an_exclusion_counts_rows_with_the_outcome_measured():
     rule = d.ExclusionRule(column="kcal", low=500, high=5000, reason="implausible intakes")
     text = voice.sentence_for(d.SetExclusions(rules=[rule]), ProjectState(target="y"), {"frame": frame()})
-    # rows 0, 4, 6 (row 1 and 5 have no outcome, so the flow never reaches them here)
+    # rows 0, 4, 6 (row 1 and 5 have no outcome, so the flow never reaches them here); a rule
+    # also leaves out the rows it cannot confirm (audit MA-19), and the sentence says so
+    assert text == ("`3` rows with `kcal` outside `500`–`5000` or not recorded were excluded as "
+                    "implausible intakes.")
+
+
+def test_an_exclusion_counts_the_rows_it_could_not_confirm_unless_told_to_keep_them():
+    f = frame().assign(kcal=[300, 450, np.nan, 2200, 5200, 6000, 400, 2500])
+    rule = d.ExclusionRule(column="kcal", low=500, high=5000, reason="implausible intakes")
+    text = voice.sentence_for(d.SetExclusions(rules=[rule]), ProjectState(target="y"), {"frame": f})
+    # of the rows with an outcome, 300, 5200 and 400 are outside and row 2 has no kcal: four
+    assert text == ("`4` rows with `kcal` outside `500`–`5000` or not recorded were excluded as "
+                    "implausible intakes.")
+    kept = rule.model_copy(update={"missing": "keep"})
+    text = voice.sentence_for(d.SetExclusions(rules=[kept]), ProjectState(target="y"), {"frame": f})
     assert text == "`3` rows with `kcal` outside `500`–`5000` were excluded as implausible intakes."
 
 
@@ -63,8 +77,9 @@ def test_rules_count_in_order_each_removing_only_what_the_last_kept():
     second = d.ExclusionRule(column="kcal", high=2000, reason="a stricter cap")
     text = voice.sentence_for(d.SetExclusions(rules=[first, second]), ProjectState(), {"frame": frame()})
     # 300, 450, 400 go first; of 1800, 2200, 5200, 6000, 2500 the cap takes four
-    assert text == ("`3` rows with `kcal` below `500` were excluded as implausibly low intakes; "
-                    "`4` rows with `kcal` above `2000` were excluded as a stricter cap, `7` in all.")
+    assert text == ("`3` rows with `kcal` below `500` or not recorded were excluded as implausibly "
+                    "low intakes; `4` rows with `kcal` above `2000` or not recorded were excluded as "
+                    "a stricter cap, `7` in all.")
 
 
 def test_an_exclusion_by_sex_names_each_range():
@@ -73,8 +88,8 @@ def test_an_exclusion_by_sex_names_each_range():
     f = pd.DataFrame({"kcal": [3600, 3600, 700, 700], "sex": ["F", "M", "F", "M"]})
     text = voice.sentence_for(d.SetExclusions(rules=[rule]), ProjectState(), {"frame": f})
     assert text == ("`2` rows with `kcal` outside `500`–`3500` for `sex` `F` and outside "
-                    "`800`–`4200` for `M` were excluded as implausible intakes (Willett's "
-                    "sex-specific cut-offs).")
+                    "`800`–`4200` for `M` or not recorded were excluded as implausible intakes "
+                    "(Willett's sex-specific cut-offs).")
 
 
 def test_no_exclusion_is_a_recorded_answer():
@@ -85,7 +100,7 @@ def test_no_exclusion_is_a_recorded_answer():
 def test_without_data_the_sentence_says_less_and_never_a_placeholder():
     rule = d.ExclusionRule(column="kcal", low=500, high=5000, reason="implausible intakes")
     assert voice.sentence_for(d.SetExclusions(rules=[rule])) == \
-        "Rows with `kcal` outside `500`–`5000` were excluded as implausible intakes."
+        "Rows with `kcal` outside `500`–`5000` or not recorded were excluded as implausible intakes."
 
 
 # ── revert and roles: what holds now ─────────────────────────────────────────
@@ -177,7 +192,8 @@ def test_the_grain_sentence_counts_the_units_it_names():
 
 def test_the_aggregation_sentence_says_how_and_what_it_did_to_n():
     assert say(d.SetAggregation(method="mean")) == (
-        "Each `participant_id`'s rows were combined into one by their mean: `7` rows became `4`.")
+        "Each `participant_id`'s rows were combined into one by their mean: `7` rows became `4`; "
+        "any codes took their most frequent value.")
     timed = REPEATED.model_copy(update={"repeat_kind": d.RepeatSpec(repeat_kind="time_points",
                                                                     time_column="recall_date")})
     assert say(d.SetAggregation(method="last", outcome="last"), timed) == (

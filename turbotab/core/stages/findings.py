@@ -158,6 +158,17 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
     sas = repairs.sas_zero_finding(frame, target)  # M2: the app's own detector for XPT zeros
     if sas is not None:
         spoken.append(sas)
+    # WP1 (audit MA-05, MA-16, MA-18): what values mean, each with its repair. A column the app's
+    # own text-number finding reads is not also reported, without a lever, by the legacy checks.
+    own = repairs.text_number_findings(frame)
+    for found in (repairs.ambiguous_date_finding(frame), repairs.infinite_finding(frame)):
+        if found is not None:
+            own.append(found)
+    read = {c for _, f in own if family(f["id"]) == "text_numbers" for c in f["affected_columns"]}
+    spoken = [pair for pair in spoken
+              if not (family(pair[1]["id"]) in ("numeric_as_text", "text_missing")
+                      and set(pair[1]["affected_columns"]) & read)]
+    spoken.extend(own)
     ranked = sorted(
         spoken,
         key=lambda pair: (

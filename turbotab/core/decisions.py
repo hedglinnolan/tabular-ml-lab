@@ -139,6 +139,10 @@ class ExclusionRule(_Value):
     high: float | None = None
     by: RangeByLevel | None = None
     reason: str = Field(min_length=1)
+    # A row whose value is not recorded (or, with ``by``, whose level has no range) cannot be
+    # confirmed eligible. "exclude" (the default, STROBE item 13a's "confirmed eligible") leaves it
+    # out on a line of its own, "`age` not recorded"; "keep" keeps it and the step says so.
+    missing: Literal["exclude", "keep"] = "exclude"
 
 
 class EnergyAdjustment(_Value):
@@ -279,14 +283,30 @@ class GrainSpec(_Value):
     acknowledged: bool = False
 
 
+CombineRule = Literal["mean", "first", "last", "change", "mode"]
+
+
 class RepeatSpec(_Value):
     repeat_kind: RepeatKind
     time_column: str | None = None
+    # The order of a text time column's levels ("baseline", "month_6", "month_12"): what puts a
+    # unit's records in order when the labels do not say it themselves (audit MA-03).
+    levels: list[str] | None = None
 
 
 class AggregationSpec(_Value):
     method: AggregationMethod
     outcome: Literal["mean", "first", "last"] | None = None  # when the outcome varies within a unit
+    # A column's own rule, over the one the method and the column's kind give it (audit MA-14):
+    # e.g. age at every visit kept at baseline under "change".
+    columns: dict[str, CombineRule] = Field(default_factory=dict)
+
+
+class FeatureTableSpec(_Value):
+    """How a features-in-rows table's columns read before it is turned (audit MA-04)."""
+
+    label: str | None = None  # the column naming the features (None: rows are named row_<i>)
+    annotations: list[str] = Field(default_factory=list)  # columns describing features, never samples
 
 
 class TemporalSpec(_Value):
@@ -329,6 +349,14 @@ class SetRepeatKind(_DecisionModel):
     kind: Literal["set_repeat_kind"] = "set_repeat_kind"
     repeat_kind: RepeatKind
     time_column: str | None = None
+    levels: list[str] | None = None  # the declared order of a text time column's levels
+
+    @field_validator("levels")
+    @classmethod
+    def _distinct(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and len(set(value)) != len(value):
+            raise ValueError("each level may be placed only once")
+        return value
 
 
 class SetUnit(_DecisionModel):
@@ -342,6 +370,31 @@ class SetAggregation(_DecisionModel):
     kind: Literal["set_aggregation"] = "set_aggregation"
     method: AggregationMethod
     outcome: Literal["mean", "first", "last"] | None = None
+    columns: dict[str, CombineRule] = Field(default_factory=dict)  # a column's own rule
+
+
+class SetFeatureTable(_DecisionModel):
+    """How a features-in-rows table reads: the column naming the features, and the columns that
+    describe them (m/z, retention time, IDs). Turning it makes every other column a sample."""
+
+    kind: Literal["set_feature_table"] = "set_feature_table"
+    label: str | None = None
+    annotations: list[str] = Field(default_factory=list)
+
+
+class SetCategorical(_DecisionModel):
+    """Columns whose numbers are codes for categories (RIDRETH3: 1, 2, 3, 4, 6, 7): each enters
+    the models as indicators, one per level after the first, never as one straight line."""
+
+    kind: Literal["set_categorical"] = "set_categorical"
+    columns: list[str]
+
+    @field_validator("columns")
+    @classmethod
+    def _unique(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("each column may be named only once")
+        return value
 
 
 class SetTemporal(_DecisionModel):
@@ -387,6 +440,7 @@ Decision = Annotated[
         SelectModels, SetSubstitution,
         SetOrientation, SetEvent, SetGrain, SetRepeatKind, SetUnit, SetAggregation, SetTemporal,
         OpenSeal, ApplyRepair, DeferFinding, DismissFinding,
+        SetFeatureTable, SetCategorical,
     ],
     Field(discriminator="kind"),
 ]
@@ -447,6 +501,9 @@ class ProjectState(BaseModel):
     temporal: TemporalSpec | None = None
     seal_opened: bool | None = None
     findings: dict[str, FindingDisposition] | None = None  # finding id -> its disposition
+    # WP1 (audit §5): what values mean
+    feature_table: FeatureTableSpec | None = None  # a features-in-rows table's label and annotations
+    categorical: list[str] | None = None  # integer columns that are codes for categories
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -698,6 +755,9 @@ register_kind(DeferFinding, "findings", key=lambda d: d.finding_id,
               value=lambda d: FindingDisposition(action="deferred", to=d.to))
 register_kind(DismissFinding, "findings", key=lambda d: d.finding_id,
               value=lambda d: FindingDisposition(action="dismissed", reason=d.reason))
+register_kind(SetFeatureTable, "feature_table",
+              value=lambda d: FeatureTableSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetCategorical, "categorical")
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 
@@ -1124,8 +1184,59 @@ def _left_out_columns_are_predictors(decision: SetMissing, ctx: Any) -> None:
         )
 
 
+def _raw_columns(ctx: Any) -> set[str] | None:
+    """The file's own columns (the ingest's), which a features-in-rows table is declared over."""
+    fn = _ctx(ctx, "artifact")
+    if callable(fn):
+        try:
+            found = fn("ingest")
+        except Exception:  # noqa: BLE001 - no artifact: the context's columns stand in
+            found = None
+        found = getattr(found, "data", found)
+        if isinstance(found, Mapping) and found.get("columns") is not None:
+            return {str(c["name"]) for c in found["columns"]}
+    return _columns_of(ctx)
+
+
+def _feature_table_names_the_files_columns(decision: SetFeatureTable, ctx: Any) -> None:
+    columns = _raw_columns(ctx)
+    named = [c for c in [decision.label, *decision.annotations] if c]
+    if columns is not None:
+        unknown = [c for c in named if c not in columns or c == ROW_ID]
+        if unknown:
+            raise Refusal("unknown_column", f"This file has no column named {_and(unknown)}.",
+                          exits=[{"label": "Name the file's own columns", "decision": None}])
+    if decision.label is not None and decision.label in decision.annotations:
+        rest = [c for c in decision.annotations if c != decision.label]
+        raise Refusal(
+            "label_is_annotation",
+            f"`{decision.label}` names the features, so it is not also one of their annotations.",
+            exits=[{"label": f"`{decision.label}` names the features",
+                    "decision": SetFeatureTable(label=decision.label, annotations=rest)}])
+
+
+def _categorical_names_predictors(decision: SetCategorical, ctx: Any) -> None:
+    columns = _columns_of(ctx)
+    if columns is not None:
+        unknown = [c for c in decision.columns if c not in columns or c == ROW_ID]
+        if unknown:
+            rest = [c for c in decision.columns if c not in unknown]
+            raise Refusal(
+                "unknown_column", f"This dataset has no column named {_and(unknown)}.",
+                exits=[{"label": "Keep the real columns", "decision": SetCategorical(columns=rest)}])
+    target = _target_of(ctx)
+    if target is not _UNKNOWN and target is not None and target in decision.columns:
+        rest = [c for c in decision.columns if c != target]
+        raise Refusal(
+            "target_categorical",
+            f"`{target}` is the outcome; whether it is a category is the task question's answer.",
+            exits=[{"label": "Leave the outcome out", "decision": SetCategorical(columns=rest)}])
+
+
 register_validator("set_task", _task_fits_the_outcome)
 register_validator("set_roles", _roles_name_real_columns)
+register_validator("set_feature_table", _feature_table_names_the_files_columns)
+register_validator("set_categorical", _categorical_names_predictors)
 register_validator("set_missing", _left_out_columns_are_predictors)
 register_validator("set_substitution", _substitution_moves_between_separate_nutrients)
 register_validator("set_exclusions", _exclusions_are_ranges_on_numbers)

@@ -8,22 +8,28 @@ rather than the raw file::
                  │  └────▶ profile (lens hints, asked before the working table can exist)
                  └─────────────────────────┴─▶ working ─▶ target_info · roles · proposals · cohort · …
 
-* **oriented** (reads ``orientation``): the raw table, or its transpose when the user said each
-  row is a feature. The transpose runs through DuckDB and pyarrow a block of samples at a time,
-  so the whole table is never in memory at once, and the new rows are named by the header (the
-  sample identifiers) in a ``sample_id`` column. It also carries the shape reading question 1.5
-  fires on (:func:`orientation_reading`, the statistic of ``turbotab/orientation.py``) and whether
-  the table can be turned at all (:func:`turn_check`). Answering nothing, or "each row is a
-  sample", references the raw file instead of copying it.
-* **structure** (reads ``grain``, ``target``, ``lens``, ``repeat_kind``): what the opening
-  sequence asks from, read off the oriented table. The grain suggestion and the evidence its
-  contradiction check uses (``turbotab/grain.py``), the repeats-or-time-points reading for the
-  named unit (``turbotab/repeats.py``), whether the outcome varies within a unit, and the
-  domain-shaped aggregation menu. Suggestions only: nothing here is an answer.
+* **oriented** (reads ``orientation``, ``feature_table``): the raw table, or its transpose when
+  the user said each row is a feature. Before turning, :func:`turn_plan` partitions the columns
+  into the label, the feature annotations (m/z, retention time, IDs: kept in ``features.parquet``,
+  never turned into samples) and the samples (audit MA-04). The transpose runs through DuckDB and
+  pyarrow a block of samples at a time, so the whole table is never in memory at once, and the new
+  rows are named by the header (the sample identifiers) in a ``sample_id`` column. It also carries
+  the shape reading question 1.5 fires on (:func:`orientation_reading`, the statistic of
+  ``turbotab/orientation.py``) and whether the table can be turned at all (:func:`turn_check`).
+  Answering nothing, or "each row is a sample", references the raw file instead of copying it.
+* **structure** (reads ``grain``, ``target``, ``lens``, ``repeat_kind``, ``findings``): what the
+  opening sequence asks from, read off the oriented table. The grain suggestion and the evidence
+  its contradiction check uses (``turbotab/grain.py``), the repeats-or-time-points reading for the
+  named unit (``turbotab/repeats.py``), whether the outcome varies within a unit, the
+  domain-shaped aggregation menu, and whether the time column can order a unit's records
+  (:func:`time_order`). Text dates are read by ``turbotab.core.dates`` (the date-reading repair, in
+  ``findings``, settles month-first or day-first); a column that reads both ways is left out of
+  the reading until then. Suggestions only: nothing here is an answer.
 * **working** (reads ``findings``, ``target``, ``grain``, ``unit``, ``aggregation``,
-  ``repeat_kind``): row-local repairs (SQL column expressions from ``turbotab/core/repairs.py``,
-  when that module exists), then one row per unit by DuckDB ``GROUP BY`` when the user combined
-  rows. It writes ``table.parquet`` (``__row_id`` dense over its rows) and, when rows were
+  ``repeat_kind``): row-local repairs (SQL column expressions from ``turbotab/core/repairs.py``),
+  then one row per unit by DuckDB ``GROUP BY`` when the user combined rows, each column by the
+  rule that fits it (:func:`column_rule`; audit MA-14), in the time column's real order (audit
+  MA-03). It writes ``table.parquet`` (``__row_id`` dense over its rows) and, when rows were
   combined, ``row_map.parquet``: working ``row_id`` → oriented ``source_row_id``, one line per
   source row. That map is how the participant flow and provenance stay true. When nothing
   structural is recorded it is a pass-through that references the oriented file.
@@ -37,6 +43,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import time
 import uuid
@@ -375,44 +382,267 @@ def label_column(info: Mapping[str, Any]) -> str | None:
     return None
 
 
-def turn_check(con: Any, parquet: Path, info: Mapping[str, Any]) -> dict[str, Any]:
-    """Whether the table can be turned around, and why not (OPENING_SEQUENCE §03, 1.5).
+# ── what a features-in-rows table's columns are (audit MA-04) ─────────────────
+#
+# Turned round, every column but the label becomes a sample, so a column that describes the
+# features (m/z, retention time, an HMDB or Entrez ID) became a "participant" whose values were
+# m/z readings, and a text annotation made every feature text. Before turning, the columns are
+# partitioned into the label, the feature annotations (kept beside the features, never turned)
+# and the samples; the stage, the turn check and the orientation preview read this one partition.
 
-    Two refusals, each because a transpose would quietly corrupt the table: two rows with one name
-    become two columns with one name (also when the names differ only in case, which DuckDB reads
-    as one), and a row named ``sample_id`` collides with the column the samples are named in.
+def _name_key(name: str) -> str:
+    """``"row m/z"`` → ``"row m z"``; ``"RT (min)"`` → ``"rt min"``: lowercase words, nothing else."""
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", str(name).lower()).split())
+
+
+# Whole column names (as :func:`_name_key` writes them) that describe a feature, not a sample.
+FEATURE_ANNOTATIONS = frozenset({
+    "mz", "m z", "mass", "exact mass", "monoisotopic mass", "neutral mass", "mw",
+    "molecular weight", "ppm", "delta ppm", "charge", "rt", "rt min", "rt s", "retention time",
+    "retention time min", "ret time", "ri", "retention index", "ccs", "id", "feature id",
+    "feature", "compound id", "metabolite id", "entrez", "entrez id", "entrezid",
+    "entrez gene id", "gene id", "geneid", "probe id", "probeset id", "chr", "chromosome",
+    "start", "end", "stop", "strand", "length", "gene length", "position", "pos", "cas",
+    "pubchem", "pubchem cid", "cid", "kegg", "kegg id", "hmdb", "hmdb id", "chebi", "inchikey",
+    "smiles", "formula", "adduct", "isotope", "index", "msi level", "msi", "score",
+})
+# Words that name a column of feature identifiers (a numeric label: Entrez IDs, row IDs).
+FEATURE_ID_WORDS = frozenset({"id", "ids", "entrez", "entrezid", "geneid", "gene", "probe",
+                              "probeset", "feature", "compound", "metabolite", "row", "index"})
+COHERENCE_FEATURES = 2_000   # features the sample-coherence guard reads, at most
+COHERENCE_CELLS = 4_000_000  # …and cells (features × samples)
+COHERENT_BLOCK = 0.6         # median rank correlation of a sample with the block's median
+NOT_A_SAMPLE = 0.2           # a column below this, in a coherent block, is not a sample
+
+
+def is_feature_annotation(name: str) -> bool:
+    """A numeric column whose name says it describes the features: m/z, RT, an ID, a position.
+
+    The whole name is read, never a word inside it, so a sample called ``gene_KO_1`` stays a
+    sample. MZmine writes every feature column ``row …`` (``row m/z``, ``row retention time``,
+    ``row ID``); a sample column never starts so.
     """
-    label = label_column(info)
-    names = [str(c["name"]) for c in info["columns"] if str(c["name"]) != label]
-    out: dict[str, Any] = {"label_column": label, "n_features": int(info["n_rows"]),
-                           "n_samples": len(names), "refusal": None, "code": None}
-    if label is None:
-        return out
+    key = _name_key(name)
+    return key in FEATURE_ANNOTATIONS or key.startswith("row ")
+
+
+def _feature_id_name(name: str) -> bool:
+    return bool(set(_name_key(name).split()) & FEATURE_ID_WORDS)
+
+
+def _number_shares(con: Any, rel: str, columns: Sequence[str]) -> dict[str, float]:
+    """The share of each text column's values that read as numbers. At least half: a sample with
+    a few text cells ("<LOD", "n.d."); less: an annotation (an HMDB ID, a formula)."""
+    out: dict[str, float] = {}
+    for start in range(0, len(columns), 200):
+        batch = list(columns[start:start + 200])
+        aggs = []
+        for c in batch:
+            x = _ident(c)
+            aggs += [f"count({x})", f"count(TRY_CAST(trim(CAST({x} AS VARCHAR)) AS DOUBLE))"]
+        row = con.execute(f"SELECT {', '.join(aggs)} FROM {rel}").fetchone()
+        for i, c in enumerate(batch):
+            n, numbers = int(row[2 * i] or 0), int(row[2 * i + 1] or 0)
+            out[c] = numbers / n if n else 0.0
+    return out
+
+
+def _whole_numbers(con: Any, rel: str, column: str, physical: str) -> bool:
+    """Every value is a whole number (an integer column, or doubles with nothing after the point)."""
+    from turbotab.core.datastore import _is_float, _is_int
+
+    if _is_int(physical):
+        return True
+    if not _is_float(physical):
+        return False
+    x = _ident(column)
+    whole = con.execute(f"SELECT bool_and({x} = floor({x})) FROM {rel} WHERE {x} IS NOT NULL").fetchone()[0]
+    return bool(whole)
+
+
+def _incoherent(con: Any, rel: str, samples: Sequence[str], n_features: int) -> list[tuple[str, float, float]]:
+    """Columns that do not move with the rest of the measurement block: ``(column, its rank
+    correlation with the block's median, the block's median correlation)``.
+
+    In an assay table a feature abundant in one sample is abundant in every sample, so the samples'
+    ranks across features agree (Spearman ρ near 1); an m/z or retention-time column does not.
+    Read on the first COHERENCE_FEATURES features. Empty when the block itself is not coherent.
+    """
+    import numpy as np
+    import pandas as pd
+
+    if len(samples) < 3 or n_features < 10:
+        return []
+    # A cell budget, so 20,000 samples read ~200 features (ρ's noise is then about ±0.07).
+    rows = max(50, min(COHERENCE_FEATURES, COHERENCE_CELLS // len(samples)))
+    block = np.empty((min(rows, n_features), 0))
+    for start in range(0, len(samples), 200):
+        cols = ", ".join(f"TRY_CAST(CAST({_ident(c)} AS VARCHAR) AS DOUBLE) AS v{i}"
+                         for i, c in enumerate(samples[start:start + 200]))
+        part = con.execute(f"SELECT {cols} FROM {rel} ORDER BY {ROW_ID} LIMIT {rows}"
+                           ).df().to_numpy(dtype=float)
+        block = np.hstack([block, part])
+    import warnings
+
+    ranks = pd.DataFrame(block).rank(axis=0).to_numpy()
+    rho = []
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.simplefilter("ignore", RuntimeWarning)  # a constant or empty column: no ρ
+        median = np.nanmedian(ranks, axis=1)
+        for j in range(ranks.shape[1]):
+            # With few samples a column's own ranks pull the median toward it: compare it with
+            # the median of the others.
+            ref = (np.nanmedian(np.delete(ranks, j, axis=1), axis=1) if ranks.shape[1] <= 50
+                   else median)
+            ok = ~np.isnan(ranks[:, j]) & ~np.isnan(ref)
+            r = float(np.corrcoef(ranks[ok, j], ref[ok])[0, 1]) if ok.sum() >= 10 else np.nan
+            rho.append(r)
+    rho_arr = np.asarray(rho)
+    typical = float(np.nanmedian(rho_arr)) if np.isfinite(rho_arr).any() else float("nan")
+    if not typical >= COHERENT_BLOCK:
+        return []
+    return [(samples[j], float(r), typical) for j, r in enumerate(rho_arr)
+            if np.isfinite(r) and r < NOT_A_SAMPLE]
+
+
+def turn_plan(con: Any, parquet: Path, info: Mapping[str, Any],
+              declared: Any = None) -> dict[str, Any]:
+    """The partition a turn follows: the label, the feature annotations, the samples; or a refusal.
+
+    * **label**: the first text column that is filled and near-unique (:func:`label_column`); else,
+      the first column when it holds a different whole number on every row and its name says it
+      identifies features (``entrez_id``, ``row ID``): numeric IDs stay feature names, never a
+      sample whose values are gene IDs.
+    * **annotations**: text columns that do not read as numbers (an HMDB ID, a formula), and
+      numeric columns whose whole name says they describe the features (:func:`is_feature_annotation`).
+    * **samples**: the rest, the measurement block.
+
+    ``declared`` (the ``feature_table`` answer, a FeatureTableSpec) replaces the reading: its label
+    and its annotation list are the user's, and the guards below do not second-guess them.
+    Refusals (each with ``code``): duplicate or case-colliding feature names, a feature named like
+    the sample column, a first column of unique whole numbers whose name does not say what it is,
+    and a column that does not move with the measurement block (it reads like an annotation).
+    """
     rel = f"read_parquet({_lit(parquet)})"
-    v = f"CAST({_ident(label)} AS VARCHAR)"
+    columns = [str(c["name"]) for c in info["columns"]]
+    physical = {str(c["name"]): str(c["physical_type"]) for c in info["columns"]}
+    dtypes = {str(c["name"]): str(c["dtype"]) for c in info["columns"]}
+    n = int(info["n_rows"])
+    out: dict[str, Any] = {"label_column": None, "label_kind": None, "annotations": [],
+                           "samples": [], "n_features": n, "n_samples": 0, "refusal": None,
+                           "code": None, "exits": [], "declared": declared is not None}
+
+    def refuse(code: str, message: str, exits: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        out.update(code=code, refusal=message, exits=exits or [])
+        return out
+
+    if declared is not None:  # the user's reading: no inference, no second-guessing
+        label = getattr(declared, "label", None)
+        annotations = [c for c in getattr(declared, "annotations", None) or [] if c in physical]
+        if label is not None and label not in physical:
+            label = None
+    else:
+        label, annotations = label_column(info), []
+    if declared is None and label is None and columns and n:
+        first = columns[0]
+        c_info = next(c for c in info["columns"] if str(c["name"]) == first)
+        unique = int(c_info["n_missing"]) == 0 and int(c_info["n_unique"]) == n
+        if unique and dtypes[first] in NUMERIC and _whole_numbers(con, rel, first, physical[first]):
+            if _feature_id_name(first):
+                label = first
+            else:
+                return refuse(
+                    "label_unclear",
+                    f"The first column, `{first}`, holds a different whole number on every row, so "
+                    f"it reads like the features' identifiers (Entrez IDs, row numbers), not a "
+                    f"sample; turned round, its values would become a sample's measurements. Say "
+                    f"what it is first.",
+                    exits=[{"label": f"`{first}` names the features",
+                            "decision": {"kind": "set_feature_table", "label": first,
+                                         "annotations": []}},
+                           {"label": f"`{first}` is a sample",
+                            "decision": {"kind": "set_feature_table", "label": None,
+                                         "annotations": []}}])
+    label_kind = None if label is None else ("number" if dtypes.get(label) in NUMERIC else "text")
+    rest = [c for c in columns if c != label]
+    if declared is None:
+        shares = _number_shares(con, rel, [c for c in rest if dtypes[c] not in (*NUMERIC, "boolean")])
+        for c in rest:
+            if dtypes[c] in NUMERIC:
+                if is_feature_annotation(c):
+                    annotations.append(c)
+            elif dtypes[c] == "boolean" or shares.get(c, 0.0) < 0.5:
+                annotations.append(c)
+    samples = [c for c in rest if c not in annotations]
+    out.update(label_column=label, label_kind=label_kind, annotations=annotations, samples=samples,
+               n_samples=len(samples))
+    if label is not None:
+        problem = _label_problem(con, rel, label, label_kind)
+        if problem is not None:
+            return refuse(*problem)
+    if declared is None:
+        odd = _incoherent(con, rel, samples, n)
+        if odd:
+            names = [c for c, _, _ in odd]
+            col, r, typical = odd[0]
+            more = f" (and {len(odd) - 1} more)" if len(odd) > 1 else ""
+            return refuse(
+                "not_a_sample",
+                f"`{col}`{more} does not move with the other samples: its ranks across the features "
+                f"agree with theirs at ρ = `{r:.2f}`, where a typical sample agrees at `{typical:.2f}`. "
+                f"It reads like a description of the features (m/z, retention time, an ID), and "
+                f"turned round it would become a sample.",
+                exits=[{"label": "Keep it beside the features",
+                        "decision": {"kind": "set_feature_table", "label": label,
+                                     "annotations": [*annotations, *names]}},
+                       {"label": "It is a sample",
+                        "decision": {"kind": "set_feature_table", "label": label,
+                                     "annotations": list(annotations)}}])
+    return out
+
+
+def _label_sql(label: str, kind: str | None) -> str:
+    """The features' names as text: a whole-number label is written without a decimal point."""
+    x = _ident(label)
+    if kind == "number":
+        return f"CAST(CAST({x} AS HUGEINT) AS VARCHAR)"
+    return f"CAST({x} AS VARCHAR)"
+
+
+def _label_problem(con: Any, rel: str, label: str, kind: str | None) -> tuple[str, str] | None:
+    """Why the label's values cannot name columns, or None (``(code, message)``)."""
+    v = _label_sql(label, kind)
+    blank = con.execute(f"SELECT count(*) FROM {rel} WHERE {_ident(label)} IS NULL").fetchone()[0]
+    if int(blank or 0):
+        return ("unnamed_features", f"`{int(blank):,}` rows have no name in `{label}`; turned round, "
+                                    f"they would be columns with no name. Name every row first.")
     dupe = con.execute(f"SELECT {v} AS v FROM {rel} GROUP BY v HAVING count(*) > 1 "
                        f"ORDER BY v LIMIT 1").fetchone()
     if dupe is not None:
-        out["code"] = "duplicate_features"
-        out["refusal"] = (f"Two rows are both named `{dupe[0]}`. Turned around, they would be two "
-                          f"columns with one name, and every reading after would silently use one "
-                          f"of them. Give the rows distinct names first.")
-        return out
+        return ("duplicate_features",
+                f"Two rows are both named `{dupe[0]}`. Turned around, they would be two columns with "
+                f"one name, and every reading after would silently use one of them. Give the rows "
+                f"distinct names first.")
     case = con.execute(f"SELECT min({v}), max({v}) FROM {rel} GROUP BY lower({v}) "
                        f"HAVING count(DISTINCT {v}) > 1 ORDER BY 1 LIMIT 1").fetchone()
     if case is not None:
-        out["code"] = "duplicate_features"
-        out["refusal"] = (f"Rows `{case[0]}` and `{case[1]}` differ only in case. Turned around, "
-                          f"they would be two columns the query engine reads as one. Give the rows "
-                          f"distinct names first.")
-        return out
+        return ("duplicate_features",
+                f"Rows `{case[0]}` and `{case[1]}` differ only in case. Turned around, they would be "
+                f"two columns the query engine reads as one. Give the rows distinct names first.")
     taken = con.execute(f"SELECT {v} FROM {rel} WHERE lower({v}) IN "
                         f"({_lit(SAMPLE_COLUMN)}, {_lit(ROW_ID)}) LIMIT 1").fetchone()
     if taken is not None:
-        out["code"] = "sample_id_taken"
-        out["refusal"] = (f"One of the rows is named `{taken[0]}`, the name the turned-around "
-                          f"table needs for its sample identifiers. Rename that row first.")
-    return out
+        return ("sample_id_taken",
+                f"One of the rows is named `{taken[0]}`, the name the turned-around table needs for "
+                f"its sample identifiers. Rename that row first.")
+    return None
+
+
+def turn_check(con: Any, parquet: Path, info: Mapping[str, Any], declared: Any = None) -> dict[str, Any]:
+    """Whether the table can be turned around, and why not (OPENING_SEQUENCE §03, 1.5): the
+    :func:`turn_plan` without its sample list (which may run to tens of thousands of names)."""
+    plan = turn_plan(con, parquet, info, declared)
+    return {k: v for k, v in plan.items() if k != "samples"}
 
 
 def _double(name: str, physical: str) -> str:
@@ -424,47 +654,116 @@ def _double(name: str, physical: str) -> str:
     return f"TRY_CAST(CAST({q} AS VARCHAR) AS DOUBLE)"
 
 
-def transpose(ctx: StageContext, con: Any, raw: Path, info: Mapping[str, Any],
-              check: Mapping[str, Any]) -> tuple[Path, Path, dict[str, Any]]:
-    """Write the turned-around table; returns (table, sidecar, DatasetInfo).
+FEATURES = "features.parquet"   # a turned table's features: name and annotations, one row each
 
-    One output row per input column (bar the label column), named in ``sample_id`` by its header;
-    one output column per input row, named by its label (``row_<i>`` without one). A feature whose
-    every value is a number becomes a DOUBLE column; any other stays text, so a value that will not
-    read as a number is kept rather than blanked. A block of samples is transposed at a time.
-    """
+
+def feature_names(con: Any, rel: str, plan: Mapping[str, Any], limit: int | None = None) -> list[str]:
+    """The turned table's column names, one per feature row in file order (``row_<i>`` unnamed)."""
+    label = plan["label_column"]
+    cap = f" LIMIT {int(limit)}" if limit is not None else ""
+    if label is None:
+        n = int(plan["n_features"]) if limit is None else min(int(limit), int(plan["n_features"]))
+        return [f"row_{i}" for i in range(n)]
+    return [str(r[0]) for r in con.execute(
+        f"SELECT {_label_sql(label, plan['label_kind'])} FROM {rel} ORDER BY {ROW_ID}{cap}").fetchall()]
+
+
+def numeric_features(con: Any, rel: str, plan: Mapping[str, Any], physical: Mapping[str, str],
+                     limit: int | None = None) -> Any:
+    """Per feature row: is every sample's value a number? (Then the feature is a DOUBLE column.)"""
     import numpy as np
-    import pyarrow as pa
-    import pyarrow.parquet as pq
 
     from turbotab.core.datastore import _is_decimal, _is_float, _is_int
 
-    started = time.perf_counter()
-    rel = f"read_parquet({_lit(raw)})"
-    label = check["label_column"]
-    physical = {str(c["name"]): str(c["physical_type"]) for c in info["columns"]}
-    samples = [str(c["name"]) for c in info["columns"] if str(c["name"]) != label]
-    n_features = int(info["n_rows"])
-    if label is not None:
-        names = [str(r[0]) for r in con.execute(
-            f"SELECT CAST({_ident(label)} AS VARCHAR) FROM {rel} ORDER BY {ROW_ID}").fetchall()]
-    else:
-        names = [f"row_{i}" for i in range(n_features)]
-    if SAMPLE_COLUMN in names or ROW_ID in names:
-        raise StructureError(check.get("refusal") or "A row is named like the sample identifiers.")
-
-    ctx.progress(0.15, "Reading which features are numbers")
-    numeric = np.ones(n_features, dtype=bool)
-    text_samples = [c for c in samples if not (_is_int(physical[c]) or _is_float(physical[c])
-                                              or _is_decimal(physical[c]))]
-    for start in range(0, len(text_samples), 200):
-        batch = text_samples[start:start + 200]
+    n = int(plan["n_features"]) if limit is None else min(int(limit), int(plan["n_features"]))
+    numeric = np.ones(n, dtype=bool)
+    cap = f" LIMIT {int(limit)}" if limit is not None else ""
+    text = [c for c in plan["samples"]
+            if not (_is_int(physical[c]) or _is_float(physical[c]) or _is_decimal(physical[c]))]
+    for start in range(0, len(text), 200):
+        batch = text[start:start + 200]
         test = " AND ".join(f"({_ident(c)} IS NULL OR {_double(c, physical[c])} IS NOT NULL)"
                             for c in batch)
-        flags = con.execute(f"SELECT {test} AS ok FROM {rel} ORDER BY {ROW_ID}").fetchnumpy()["ok"]
+        flags = con.execute(f"SELECT {test} AS ok FROM {rel} ORDER BY {ROW_ID}{cap}").fetchnumpy()["ok"]
         numeric &= np.asarray(flags, dtype=bool)
-    any_text = not bool(numeric.all())
+    return numeric
 
+
+def turn_block(con: Any, rel: str, chunk: Sequence[str], physical: Mapping[str, str],
+               numeric: Any, limit: int | None = None) -> list[Any]:
+    """One Arrow array per feature row, each holding the ``chunk`` samples' values in that row.
+
+    The stage writes every block of samples with this, and the orientation preview draws its
+    corner with it (``limit`` feature rows), so the preview shows what the stage writes.
+    """
+    import numpy as np
+    import pyarrow as pa
+
+    any_text = not bool(np.asarray(numeric).all())
+    cap = f" LIMIT {int(limit)}" if limit is not None else ""
+    select = [f"{_double(c, physical[c])} AS v{i}" for i, c in enumerate(chunk)]
+    if any_text:
+        select += [f"CAST({_ident(c)} AS VARCHAR) AS s{i}" for i, c in enumerate(chunk)]
+    got = con.execute(f"SELECT {', '.join(select)} FROM {rel} ORDER BY {ROW_ID}{cap}").to_arrow_table()
+    values = np.column_stack([got.column(f"v{i}").to_numpy(zero_copy_only=False)
+                              for i in range(len(chunk))]).astype(np.float64)
+    texts = (np.column_stack([np.asarray(got.column(f"s{i}").to_pylist(), dtype=object)
+                              for i in range(len(chunk))]) if any_text else None)
+    arrays = []
+    for f in range(len(numeric)):
+        if numeric[f]:
+            row = values[f]
+            arrays.append(pa.array(row, pa.float64(), mask=np.isnan(row)))
+        else:
+            arrays.append(pa.array(list(texts[f]), pa.string()))  # type: ignore[index]
+    return arrays
+
+
+def turned_corner(con: Any, parquet: Path, info: Mapping[str, Any], plan: Mapping[str, Any],
+                  n_samples: int, n_features: int) -> Any:
+    """The turned table's top-left corner (``sample_id`` and the first features) as a DataFrame,
+    computed by the stage's own functions: the orientation preview draws this."""
+    import pandas as pd
+
+    rel = f"read_parquet({_lit(parquet)})"
+    physical = {str(c["name"]): str(c["physical_type"]) for c in info["columns"]}
+    names = feature_names(con, rel, plan, n_features)
+    numeric = numeric_features(con, rel, plan, physical, n_features)
+    chunk = list(plan["samples"][:n_samples])
+    if not chunk:
+        return pd.DataFrame(columns=[SAMPLE_COLUMN, *names])
+    arrays = turn_block(con, rel, chunk, physical, numeric, n_features)
+    data = {SAMPLE_COLUMN: chunk}
+    for name, array in zip(names, arrays):
+        data[name] = array.to_pylist()
+    return pd.DataFrame(data)
+
+
+def transpose(ctx: StageContext, con: Any, raw: Path, info: Mapping[str, Any],
+              plan: Mapping[str, Any]) -> tuple[Path, Path, Path, dict[str, Any]]:
+    """Write the turned-around table; returns (table, sidecar, features, DatasetInfo).
+
+    One output row per sample column of the :func:`turn_plan`, named in ``sample_id`` by its
+    header; one output column per input row, named by its label (``row_<i>`` without one). The
+    label and the feature annotations are never turned: they are written to ``features.parquet``,
+    one row per feature in file order. A feature whose every sample value is a number becomes a
+    DOUBLE column; any other stays text, so a value that will not read as a number is kept rather
+    than blanked. A block of samples is transposed at a time.
+    """
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    started = time.perf_counter()
+    rel = f"read_parquet({_lit(raw)})"
+    physical = {str(c["name"]): str(c["physical_type"]) for c in info["columns"]}
+    samples = list(plan["samples"])
+    n_features = int(info["n_rows"])
+    names = feature_names(con, rel, plan)
+    if SAMPLE_COLUMN in names or ROW_ID in names:
+        raise StructureError(plan.get("refusal") or "A row is named like the sample identifiers.")
+
+    ctx.progress(0.15, "Reading which features are numbers")
+    numeric = numeric_features(con, rel, plan, physical)
     fields = [pa.field(SAMPLE_COLUMN, pa.string())]
     fields += [pa.field(name, pa.float64() if numeric[i] else pa.string())
                for i, name in enumerate(names)]
@@ -473,37 +772,30 @@ def transpose(ctx: StageContext, con: Any, raw: Path, info: Mapping[str, Any],
 
     table_path = _scratch(ctx, "oriented", TABLE)
     sidecar = _scratch(ctx, "oriented", SIDECAR)
+    features_path = _scratch(ctx, "oriented", FEATURES)
     block = max(1, min(len(samples) or 1, TRANSPOSE_CELLS // max(1, n_features)))
     writer = pq.ParquetWriter(table_path, schema, compression="zstd")
     try:
         for start in range(0, len(samples), block):
             ctx.progress(0.2 + 0.6 * start / max(1, len(samples)), "Turning the table around")
             chunk = samples[start:start + block]
-            select = [f"{_double(c, physical[c])} AS v{i}" for i, c in enumerate(chunk)]
-            if any_text:
-                select += [f"CAST({_ident(c)} AS VARCHAR) AS s{i}" for i, c in enumerate(chunk)]
-            got = con.execute(f"SELECT {', '.join(select)} FROM {rel} ORDER BY {ROW_ID}").to_arrow_table()
-            values = np.column_stack([got.column(f"v{i}").to_numpy(zero_copy_only=False)
-                                      for i in range(len(chunk))]).astype(np.float64)
-            texts = (np.column_stack([np.asarray(got.column(f"s{i}").to_pylist(), dtype=object)
-                                      for i in range(len(chunk))]) if any_text else None)
-            arrays = [pa.array(chunk, pa.string())]
-            for f in range(n_features):
-                if numeric[f]:
-                    row = values[f]
-                    arrays.append(pa.array(row, pa.float64(), mask=np.isnan(row)))
-                else:
-                    arrays.append(pa.array(list(texts[f]), pa.string()))  # type: ignore[index]
-            arrays.append(pa.array(np.arange(start, start + len(chunk), dtype=np.int64)))
+            arrays = [pa.array(chunk, pa.string()), *turn_block(con, rel, chunk, physical, numeric),
+                      pa.array(range(start, start + len(chunk)), pa.int64())]
             writer.write_table(pa.Table.from_arrays(arrays, schema=schema), row_group_size=len(chunk))
         writer.close()
+        label = plan["label_column"]
+        name_sql = (_label_sql(label, plan["label_kind"]) if label is not None
+                    else f"'row_' || CAST({ROW_ID} AS VARCHAR)")
+        kept = "".join(f", {_ident(c)}" for c in plan["annotations"])
+        con.execute(f"COPY (SELECT {name_sql} AS feature{kept} FROM {rel} ORDER BY {ROW_ID}) "
+                    f"TO {_lit(features_path)} (FORMAT parquet, COMPRESSION zstd)")
         ctx.progress(0.85, "Describing the turned-around table")
         described = _describe(table_path, sidecar, started)
     except BaseException:  # cancelled or failed: leave nothing beside the raw table
         writer.close()
-        _cleanup(table_path, sidecar)
+        _cleanup(table_path, sidecar, features_path)
         raise
-    return table_path, sidecar, described
+    return table_path, sidecar, features_path, described
 
 
 def oriented_stage(ctx: StageContext) -> Bundle:
@@ -513,20 +805,24 @@ def oriented_stage(ctx: StageContext) -> Bundle:
     ctx.progress(0.02, "Reading which way round the table is")
     reading = orientation_reading(raw, info)
     con, temp = _connect(ctx, "oriented")
+    declared = getattr(ctx.state, "feature_table", None)
     try:
-        check = turn_check(con, raw, info)
+        plan = turn_plan(con, raw, info, declared)
+        check = {k: v for k, v in plan.items() if k != "samples"}
         if ctx.state.orientation != "feature_major":
             data = {**_dataset_fields(info), "transposed": False, "reading": reading, "turn": check}
             return Bundle(data=data, files={TABLE: _reference(raw, ctx, "oriented")})
-        if check["refusal"]:
-            raise StructureError(check["refusal"])
-        table, sidecar, described = transpose(ctx, con, raw, info, check)
+        if plan["refusal"]:
+            raise StructureError(plan["refusal"])
+        table, sidecar, features, described = transpose(ctx, con, raw, info, plan)
     finally:
         con.close()
         _cleanup(temp)
     data = {**described, "transposed": True, "reading": reading,
             "turn": {**check, "sample_column": SAMPLE_COLUMN}}
-    return Bundle(data=data, files={TABLE: table, SIDECAR: sidecar})
+    return Bundle(data=data, files={TABLE: table, SIDECAR: sidecar, FEATURES: features})
+
+
 
 
 # ── what the sequence asks from (structure) ───────────────────────────────────
@@ -668,6 +964,12 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
     ctx.progress(0.1, "Reading the identifiers, dates and indices")
     with open_store(ctx) as store:
         frame = store.materialize(wanted).reset_index(drop=True)
+    # Dates written as text are read by the formats every value fits (turbotab.core.dates), never
+    # by pandas' lenient guess; a column that reads both month-first and day-first is left out of
+    # the date reading until the date-reading repair says which (audit MA-05).
+    declared = declared_date_formats(state)
+    as_written = frame
+    frame, unread = read_date_columns(frame, declared)
 
     ctx.progress(0.4, "Looking for columns that repeat like a roster")
     _quiet_streamlit()
@@ -688,7 +990,7 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
                   "evidence": evidence[:SUGGESTED], "if_one_row": contradiction,
                   "stated": _stated_grain_reading(frame, people, n_rows, contradiction)},
         "units": None, "repeats": None, "outcome": None, "aggregation": None,
-        "time_columns": [], "time_column": None,
+        "time_columns": [], "time_column": None, "unread_dates": unread, "time_order": None,
     }
     if unit is None:
         return out
@@ -709,6 +1011,7 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
 
         keep = np.random.default_rng(0).choice(known, size=READING_UNITS, replace=False)
         sampled = frame[ids.isin(keep)]
+    sampled = sampled.drop(columns=[c for c in unread if c != unit])
     reading = repeats.read(sampled, unit)
     out["repeats"] = {k: reading.get(k) for k in ("reading", "stated", "confidence", "evidence",
                                                    "sentence", "spacing", "replicate_index")}
@@ -732,7 +1035,176 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
             "options": [_MENU_KEY.get(o["key"], o["key"]) for o in menu["options"]],
         }
     out["time_column"] = time_column(state, out)
+    if out["time_column"] in as_written.columns:
+        # Whether that column can put a unit's records in order: what combining by first, last
+        # or change needs, and what the aggregation answer is refused on (sequence.py).
+        out["time_order"] = frame_time_order(as_written, out["time_column"],
+                                             declared_levels(state, out["time_column"]),
+                                             declared.get(out["time_column"]))
     return out
+
+
+# ── putting a unit's records in order (audit MA-03) ───────────────────────────
+#
+# Combining by first, last or change orders each unit's records by the time column. A text column
+# that is not a date (visit labels: "baseline", "month_6") or a date the cast could not read
+# ("Mar 3, 2021", "03/14/2021") once cast to NULL, so the order silently fell back to file order
+# while the receipt said "ordered by visit_date"; a change from baseline came out wrong-signed.
+# Now a column orders by its numbers, by its dates (every format turbotab.core.dates reads), or by
+# a declared order of its levels; records it cannot place are undated and counted; and a column
+# that places fewer than half of them is refused, with the exits to declare the order.
+
+ORDERABLE = 0.5      # share of a time column's values it must place to order the records
+MAX_LEVELS = 50      # text levels listed for declaring an order
+
+
+def _levels_key(level: str) -> tuple[Any, ...]:
+    """A natural order for visit labels: baseline first, then by the time they name
+    ("week 4" before "month 3" before "month 12"; "V2" before "V10"), then alphabetically."""
+    words = [w for w in re.split(r"[^a-z0-9.]+", str(level).lower()) if w]
+    start = {"baseline", "bl", "screening", "screen", "enrollment", "enrolment", "pre", "pretest",
+             "randomization", "randomisation", "entry"}
+    if start & set(words):
+        return (0, 0.0, str(level))
+    scale = {"day": 1, "days": 1, "d": 1, "week": 7, "weeks": 7, "wk": 7, "w": 7, "month": 30.44,
+             "months": 30.44, "mo": 30.44, "m": 30.44, "year": 365.25, "years": 365.25, "yr": 365.25,
+             "y": 365.25}
+    parts = re.findall(r"([a-z]*)\s*([0-9]+(?:\.[0-9]+)?)", " ".join(words))
+    for unit_word, number in parts:
+        return (1, float(number) * scale.get(unit_word, 1.0), str(level))
+    return (2, 0.0, str(level))
+
+
+def natural_order(levels: Sequence[str]) -> list[str]:
+    return sorted((str(v) for v in levels), key=_levels_key)
+
+
+def time_order(con: Any, rel: str, column: str, physical: str, levels: Sequence[str] | None = None,
+               declared: str | None = None) -> dict[str, Any]:
+    """How ``column`` of relation ``rel`` puts records in order, read over every value.
+
+    ``kind``: ``numbers`` or ``dates`` (a number, date or timestamp column), ``dates`` (text every
+    format of :mod:`turbotab.core.dates` reads, or the declared one), ``levels`` (text, by the
+    declared order), ``ambiguous`` (dates that read both month-first and day-first), ``mixed``
+    (both orders in one column) or ``none`` (text that is not dates). ``placed`` counts the values
+    it orders; the rest are undated. ``expr`` is the SQL ordering expression (not for the
+    artifact). ``levels`` lists the text levels in the order first seen; ``proposed`` a natural order.
+    """
+    from turbotab.core import dates
+    from turbotab.core.datastore import _is_decimal, _is_float, _is_int, _is_temporal
+
+    x = _ident(column)
+    n = int(con.execute(f"SELECT count({x}) FROM {rel}").fetchone()[0] or 0)
+    out: dict[str, Any] = {"column": column, "kind": "none", "n": n, "placed": 0, "orderable": False,
+                           "levels": [], "proposed": [], "examples": [], "expr": "NULL"}
+    if _is_int(physical) or _is_float(physical) or _is_decimal(physical) or _is_temporal(physical):
+        out.update(kind="dates" if _is_temporal(physical) else "numbers", placed=n, expr=x)
+    else:
+        text = f"CAST({x} AS VARCHAR)"
+        if levels:
+            listed = ", ".join(_lit(v) for v in levels)
+            placed = con.execute(f"SELECT count_if({text} IN ({listed})) FROM {rel}").fetchone()[0]
+            cases = " ".join(f"WHEN {_lit(v)} THEN {i}" for i, v in enumerate(levels))
+            out.update(kind="levels", placed=int(placed or 0), expr=f"CASE {text} {cases} END")
+        else:
+            reading = dates.read_text_dates(con, rel, column, declared)
+            out.update(kind=reading.kind, examples=reading.examples)
+            if reading.kind == "dates":
+                out.update(placed=reading.parsed, expr=dates.parse_sql(x, reading.formats))
+        if out["kind"] in ("none", "levels"):
+            seen = con.execute(
+                f"SELECT v FROM (SELECT {text} AS v, row_number() OVER () AS r FROM {rel}) "
+                f"WHERE v IS NOT NULL GROUP BY v ORDER BY min(r) LIMIT {MAX_LEVELS + 1}").fetchall()
+            out["levels"] = [str(r[0]) for r in seen[:MAX_LEVELS]]
+            out["proposed"] = natural_order(out["levels"]) if len(seen) <= MAX_LEVELS else []
+    out["orderable"] = (out["kind"] in ("numbers", "dates", "levels") and n > 0
+                        and out["placed"] >= ORDERABLE * n)
+    return out
+
+
+def frame_time_order(frame: Any, column: str, levels: Sequence[str] | None = None,
+                     declared: str | None = None) -> dict[str, Any]:
+    """:func:`time_order` over one column of a pandas frame (the structure stage's), for the artifact."""
+    import duckdb
+    import pandas as pd
+    import pyarrow as pa
+
+    s = frame[column]
+    if pd.api.types.is_bool_dtype(s):
+        physical = "VARCHAR"
+    elif pd.api.types.is_numeric_dtype(s):
+        physical = "DOUBLE"
+    elif pd.api.types.is_datetime64_any_dtype(s):
+        physical = "TIMESTAMP"
+    else:
+        physical = "VARCHAR"
+    if physical == "VARCHAR":
+        values = pa.array([None if pd.isna(v) else str(v) for v in s.tolist()], pa.string())
+    else:
+        values = pa.array(s, from_pandas=True)  # NaN and NaT are missing, not values
+    con = duckdb.connect()
+    try:
+        con.register("__order", pa.table({column: values}))
+        found = time_order(con, "__order", column, physical, levels, declared)
+    finally:
+        con.close()
+    found.pop("expr", None)
+    return found
+
+
+def declared_levels(state: Any, column: str | None) -> list[str] | None:
+    """The declared order of a text time column's levels (the repeats answer's ``levels``)."""
+    spec = getattr(state, "repeat_kind", None)
+    levels = getattr(spec, "levels", None) if spec is not None else None
+    named = getattr(spec, "time_column", None) if spec is not None else None
+    if not levels or (named and column and named != column):
+        return None
+    return [str(v) for v in levels]
+
+
+def declared_date_formats(state: Any) -> dict[str, str]:
+    """Column -> the strptime format the date-reading repair chose (month or day first)."""
+    try:
+        from turbotab.core.repairs import date_formats
+    except ImportError:  # pragma: no cover - the repairs module is part of the engine
+        return {}
+    return date_formats(state)
+
+
+_DATEISH = re.compile(r"\d{1,4}[-/.]\d{1,2}|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)",
+                      re.IGNORECASE)
+
+
+def read_date_columns(frame: Any, declared: Mapping[str, str]) -> tuple[Any, list[str]]:
+    """``frame`` with its text date columns read as dates, and the columns that read two ways.
+
+    A text column is tried when half of its first values look like a date (digits with separators,
+    or a month's name); it becomes datetime64 when the formats :mod:`turbotab.core.dates` reads
+    (and the declared one) read at least 90% of it. Ambiguous and mixed columns stay text and are
+    returned, so no reader downstream guesses their order.
+    """
+    import pandas as pd
+
+    from turbotab.core import dates
+
+    out = frame
+    unread: list[str] = []
+    for c in frame.columns:
+        s = frame[c]
+        if pd.api.types.is_numeric_dtype(s) or pd.api.types.is_datetime64_any_dtype(s) \
+                or pd.api.types.is_bool_dtype(s):
+            continue
+        head = s.dropna().astype(str).head(20)
+        if head.empty or head.map(lambda v: bool(_DATEISH.search(v))).mean() < 0.5:
+            continue
+        reading = dates.read_series(s, declared.get(str(c)), column=str(c))
+        if reading.kind == "dates" and reading.share >= dates.READS_AS_DATES:
+            if out is frame:
+                out = frame.copy()
+            out[c] = dates.to_timestamps(s, reading.formats)
+        elif reading.kind in ("ambiguous", "mixed"):
+            unread.append(str(c))
+    return out, unread
 
 
 # ── the working table ─────────────────────────────────────────────────────────
@@ -759,6 +1231,32 @@ def repair_expressions(findings: Any, dispositions: Mapping[str, Any] | None) ->
     return {str(k): str(v) for k, v in (fn(findings, dispositions or {}) or {}).items()}
 
 
+# ── combining a unit's records (audit MA-03, MA-14; B21, B22) ─────────────────
+#
+# One rule for every numeric column once differenced a sex code into 0 for everyone and averaged
+# smoking codes 1/2/3 into 1.67, and the receipt listed nothing. Each column now gets the rule
+# that fits what it is:
+#
+#   kind \ method   mean       first    last     change
+#   constant        its value  ·        ·        ·         (never varies within a unit)
+#   amount          mean       first    last     last − first
+#   code            mode       first    last     first (the baseline value)
+#   category        mode       first    last     first
+#
+# A code is a whole-number column with at most CODE_LEVELS values, each seen CODE_REPEATS times
+# on average, other than a 0/1 indicator (whose mean is a share of records). "first" and "last" are the value AT the first and last dated
+# record, for predictors and the outcome alike: never a value from another visit standing in for a
+# missing one. Undated records are left out of first, last and change, and counted. The aggregation
+# answer's ``columns`` may set any column's rule; the receipt lists every column that varied within
+# a unit, with the rule it got.
+
+CODE_LEVELS = 10
+CODE_REPEATS = 3
+COMBINE_RULES = ("mean", "first", "last", "change", "mode")
+_RULE_WORDS = {"mean": "mean", "first": "first record", "last": "last record",
+               "change": "last minus first", "mode": "most frequent", "constant": "its one value"}
+
+
 def aggregation_plan(state: Any, columns: set[str], structure: Mapping[str, Any] | None
                      ) -> dict[str, Any] | None:
     spec, agg = state.grain, state.aggregation
@@ -770,102 +1268,170 @@ def aggregation_plan(state: Any, columns: set[str], structure: Mapping[str, Any]
     if spec.id_column not in columns:
         raise StructureError(f"There is no column named `{spec.id_column}` to combine rows by.")
     order = time_column(state, structure)
-    index = ((structure or {}).get("repeats") or {}).get("replicate_index")
-    # The columns that say WHEN a record was taken are taken from a record, never averaged or
-    # differenced: a mean recall number of 1.5 describes nothing.
-    ordering = [c for c in dict.fromkeys([order, index]) if c and c in columns]
+    overrides = dict(getattr(agg, "columns", None) or {})
+    unknown = [c for c in overrides if c not in columns]
+    if unknown:
+        raise StructureError(f"The combining answer sets a rule for `{unknown[0]}`, which is not a "
+                             f"column.")
     return {"id_column": spec.id_column, "method": agg.method, "outcome_rule": agg.outcome,
-            "time_column": order if order in columns else None, "ordering": ordering}
+            "time_column": order if order in columns else None,
+            "levels": declared_levels(state, order), "overrides": overrides}
 
 
-def _order_expr(column: str | None, physical: str) -> str:
-    from turbotab.core.datastore import _is_decimal, _is_float, _is_int, _is_temporal
-
-    if column is None:
-        return "NULL"
-    q = _ident(column)
-    if _is_int(physical) or _is_float(physical) or _is_decimal(physical) or _is_temporal(physical):
-        return q
-    return f"TRY_CAST({q} AS TIMESTAMP)"
+def needs_order(method: str, outcome_rule: str | None, overrides: Mapping[str, str] | None = None) -> bool:
+    """Whether combining takes values from a particular record (so the records need an order)."""
+    taken = {method, outcome_rule or "", *(overrides or {}).values()}
+    return bool(taken & {"first", "last", "change"})
 
 
-def rank_units(con: Any, src_sql: str, plan: Mapping[str, Any],
-               physical: Mapping[str, str]) -> None:
-    """``ranked``: the source rows, each with its unit, its place in the unit's order, the unit's size.
+def order_refusal(order: Mapping[str, Any], method: str) -> str:
+    """Why the time column cannot order the records, and what to do: the stage's and the
+    aggregation answer's refusal (sequence.py), worded once."""
+    col, kind = f"`{order['column']}`", order["kind"]
+    if kind == "ambiguous":
+        ex = (order.get("examples") or [{}])[0]
+        said = (f" (`{ex['text']}` is {ex['month_first']} month-first and {ex['day_first']} "
+                f"day-first)") if ex else ""
+        return (f"{col} holds dates that read two ways{said}, so it cannot order each unit's "
+                f"records until you say whether the month or the day comes first.")
+    if kind == "mixed":
+        return (f"{col} writes some dates month-first and others day-first, so it cannot order "
+                f"each unit's records. Choose another column, or combine by the mean.")
+    if kind in ("none", "levels") and order.get("levels"):
+        shown = ", ".join(f"`{v}`" for v in order["levels"][:4])
+        more = " …" if len(order["levels"]) > 4 else ""
+        placed = (f"; the declared order places `{order['placed']:,}` of its `{order['n']:,}` "
+                  f"values") if kind == "levels" else ""
+        return (f"{col} holds text labels ({shown}{more}) that do not say their order{placed}. "
+                f"Declare the order of the levels, or choose another column, before combining "
+                f"by {method}.")
+    return (f"{col} places only `{order['placed']:,}` of its `{order['n']:,}` values in time, so "
+            f"it cannot order each unit's records. Choose another column, or combine by the mean.")
+
+
+def rank_units(con: Any, src_sql: str, plan: Mapping[str, Any], order_expr: str) -> None:
+    """``ranked``: the source rows, each with its unit, its place in the unit's order, and the
+    unit's count of dated records.
 
     A unit is the rows sharing the id (a row with no id is a unit of its own), named by its first
-    row; the order is the time column (missing last), then file order.
+    row. ``_K`` orders a unit's dated records by the time column, then file order, and its undated
+    records after them; ``_M`` counts the dated ones, so the first dated record is ``_K = 1`` and
+    the last is ``_K = _M``. With no time column every record is dated, in file order.
     """
-    key, order = plan["id_column"], plan["time_column"]
+    key = plan["id_column"]
     q_key = _ident(key)
     part = f"PARTITION BY {q_key}, CASE WHEN {q_key} IS NULL THEN {ROW_ID} END"
     con.execute(
         f"CREATE OR REPLACE TEMP TABLE ranked AS SELECT *, "
         f"min({ROW_ID}) OVER ({part}) AS {_UNIT}, "
         f"row_number() OVER ({part} ORDER BY {_T} ASC NULLS LAST, {ROW_ID}) AS {_K}, "
-        f"count(*) OVER ({part}) AS {_M} "
-        f"FROM (SELECT *, {_order_expr(order, physical.get(order or '', ''))} AS {_T} FROM {src_sql})")
+        f"count({_T}) OVER ({part}) AS {_M} "
+        f"FROM (SELECT *, {order_expr} AS {_T} FROM {src_sql})")
 
 
-def combine_sql(info: Mapping[str, Any], plan: Mapping[str, Any], target: str | None,
-                varies: bool) -> tuple[str, list[str], list[str]]:
-    """The ``SELECT`` over ``ranked`` that makes one row per unit, and the numeric and other columns.
+def column_kinds(con: Any, columns: Sequence[str], physical: Mapping[str, str]) -> dict[str, dict[str, Any]]:
+    """Per column of ``ranked``: did it vary within any unit, and is it an amount, a code, a
+    category or constant (see the table above)."""
+    from turbotab.core.datastore import _is_decimal, _is_float, _is_int
 
-    Numeric columns follow the method (mean, first record, last record, last minus first); the
-    columns that say when a record was taken, and every non-numeric one, come from the first record
-    (the last for "last"); the outcome is its one value per unit, or, when it varies, the rule.
-    """
+    out: dict[str, dict[str, Any]] = {}
+    for start in range(0, len(columns), 100):
+        batch = list(columns[start:start + 100])
+        within = ", ".join(f"count(DISTINCT {_ident(c)}) AS d{i}" for i, c in enumerate(batch))
+        varied = con.execute(f"SELECT {', '.join(f'max(d{i})' for i in range(len(batch)))} FROM "
+                             f"(SELECT {within} FROM ranked GROUP BY {_UNIT})").fetchone()
+        aggs = []
+        for c in batch:
+            x, phys = _ident(c), physical[c]
+            numeric = _is_int(phys) or _is_float(phys) or _is_decimal(phys)
+            if numeric:
+                whole = "true" if _is_int(phys) else (
+                    f"coalesce(bool_and({x} = floor({x})) FILTER (WHERE isfinite(CAST({x} AS DOUBLE))), true)")
+                aggs += [f"count(DISTINCT {x})", whole,
+                         f"coalesce(bool_and(CAST({x} AS DOUBLE) IN (0, 1)), true)", f"count({x})"]
+            else:
+                aggs += ["0", "false", "false", "0"]
+        row = con.execute(f"SELECT {', '.join(aggs)} FROM ranked").fetchone()
+        for i, c in enumerate(batch):
+            phys = physical[c]
+            numeric = _is_int(phys) or _is_float(phys) or _is_decimal(phys)
+            n_values, whole, indicator, n_present = row[4 * i: 4 * i + 4]
+            n_values = int(n_values or 0)
+            # A code repeats its few levels: whole numbers, at most CODE_LEVELS of them, each seen
+            # CODE_REPEATS times on average. Three weights of 80, 85 and 90 kg are amounts.
+            code = (whole and not indicator and n_values <= CODE_LEVELS
+                    and int(n_present or 0) >= CODE_REPEATS * n_values)
+            if not int(varied[i] or 0) > 1:
+                kind = "constant"
+            elif not numeric:
+                kind = "category"
+            elif code:
+                kind = "code"
+            else:
+                kind = "amount"
+            out[c] = {"varied": int(varied[i] or 0) > 1, "kind": kind, "numeric": numeric}
+    return out
+
+
+def column_rule(kind: str, method: str) -> str:
+    if kind == "constant":
+        return "constant"
+    if kind == "amount":
+        return method
+    return {"mean": "mode", "first": "first", "last": "last", "change": "first"}[method]
+
+
+def _rule_sql(c: str, rule: str, physical: str) -> str:
     from turbotab.core.datastore import _is_float, _is_int
 
-    physical = {str(c["name"]): str(c["physical_type"]) for c in info["columns"]}
-    dtypes = {str(c["name"]): str(c["dtype"]) for c in info["columns"]}
+    q = _ident(c)
+    first = f"first({q}) FILTER (WHERE {_K} = 1 AND {_M} > 0)"
+    last = f"first({q}) FILTER (WHERE {_K} = {_M})"
+    if rule == "constant":
+        return f"any_value({q})"
+    if rule == "mean":
+        return f"avg({q})"
+    if rule == "first":
+        return first
+    if rule == "last":
+        return last
+    if rule == "mode":
+        return f"mode({q} ORDER BY {_K})"  # ties: the earliest record
+    # change: last minus first; signed integers and floats keep their type, anything else is DOUBLE
+    kind = physical.upper()
+    native = _is_float(kind) or (_is_int(kind) and not kind.startswith("U") and "HUGE" not in kind)
+    a, b = (last, first) if native else (f"CAST({last} AS DOUBLE)", f"CAST({first} AS DOUBLE)")
+    return f"CASE WHEN max({_M}) > 1 THEN {a} - {b} END"
+
+
+def combine_sql(names: Sequence[str], physical: Mapping[str, str], plan: Mapping[str, Any],
+                target: str | None, varies: bool, rules: Mapping[str, str]) -> str:
+    """The ``SELECT`` over ``ranked`` that makes one row per unit, column by column.
+
+    ``rules``: column -> its rule (:func:`column_rule`, or the answer's override). The unit's id is
+    its one value; the time column is taken from the record the method keeps (the last for
+    "last", else the first); the outcome is its one value, or, when it varies, the outcome rule.
+    """
     key, method, rule = plan["id_column"], plan["method"], plan["outcome_rule"]
-
-    def first(c: str) -> str:
-        return f"first({_ident(c)}) FILTER (WHERE {_K} = 1)"
-
-    def last(c: str) -> str:
-        return f"first({_ident(c)}) FILTER (WHERE {_K} = {_M})"
-
-    def change(c: str) -> str:
-        """Last minus first; signed integers and floats keep their type, anything else is DOUBLE."""
-        a, b = last(c), first(c)
-        kind = physical[c].upper()
-        native = _is_float(kind) or (_is_int(kind) and not kind.startswith("U") and "HUGE" not in kind)
-        if not native:
-            a, b = f"CAST({a} AS DOUBLE)", f"CAST({b} AS DOUBLE)"
-        return f"CASE WHEN max({_M}) > 1 THEN {a} - {b} END"
-
+    order = plan["time_column"]
     combined: list[str] = []
-    numeric_cols: list[str] = []
-    other_cols: list[str] = []
-    for c in (str(c["name"]) for c in info["columns"]):
+    for c in names:
         q = _ident(c)
         if c == key:
-            expr = f"first({q})"
+            expr = f"any_value({q})"
         elif c == target:
-            if not varies:
-                expr = f"any_value({q})"
-            elif rule == "mean":
-                expr = f"avg({q})"
-            else:
-                pick = "arg_min" if rule == "first" else "arg_max"
-                expr = f"{pick}({q}, {_K}) FILTER (WHERE {q} IS NOT NULL)"
-        elif c in plan["ordering"] or dtypes[c] not in NUMERIC:
-            expr = last(c) if method == "last" else first(c)
-            other_cols.append(c)
+            expr = f"any_value({q})" if not varies else _rule_sql(c, str(rule), physical[c])
+        elif c == order:
+            expr = _rule_sql(c, "last" if method == "last" else "first", physical[c])
         else:
-            numeric_cols.append(c)
-            expr = {"mean": f"avg({q})", "first": first(c), "last": last(c),
-                    "change": change(c)}[method]
+            expr = _rule_sql(c, rules[c], physical[c])
         combined.append(f"{expr} AS {q}")
     combined.append(f"CAST(row_number() OVER (ORDER BY {_UNIT}) - 1 AS BIGINT) AS {ROW_ID}")
-    sql = f"SELECT {', '.join(combined)} FROM ranked GROUP BY {_UNIT} ORDER BY {_UNIT}"
-    return sql, numeric_cols, other_cols
+    return f"SELECT {', '.join(combined)} FROM ranked GROUP BY {_UNIT} ORDER BY {_UNIT}"
 
 
 def outcome_rule_problem(target: str | None, key: str, varies: bool, rule: str | None,
-                         dtypes: Mapping[str, str]) -> str | None:
+                         dtypes: Mapping[str, str], n_levels: int | None = None) -> str | None:
     """Why the outcome cannot be combined as recorded, or None."""
     if target is None or not varies:
         return None
@@ -875,29 +1441,82 @@ def outcome_rule_problem(target: str | None, key: str, varies: bool, rule: str |
     if rule == "mean" and dtypes.get(target) not in NUMERIC:
         return (f"`{target}` is not a number, so its mean cannot be the outcome; keep the first or "
                 f"the last value instead.")
+    if rule == "mean" and n_levels is not None and n_levels <= 2:
+        return (f"`{target}` takes two values, so its mean (a share of records) is not one of its "
+                f"levels; keep the first or the last value instead.")
     return None
+
+
+def prepare_combine(con: Any, src_sql: str, plan: Mapping[str, Any], target: str | None) -> dict[str, Any]:
+    """Everything combining decides before it writes, read over the whole source: the types as
+    the repairs left them, the time column's order, ``ranked`` (:func:`rank_units`), whether the
+    outcome varies, and each column's kind and rule. The working stage and its preview both start
+    here, so the preview's rules are the table's. Raises :class:`StructureError` with what to do.
+    """
+    from turbotab.core.datastore import _is_decimal, _is_float, _is_int
+
+    # The types as the repairs left them (a text column read as numbers is a number now).
+    physical = {str(r[0]): str(r[1]) for r in con.execute(f"DESCRIBE SELECT * FROM {src_sql}").fetchall()
+                if str(r[0]) != ROW_ID}
+    names = list(physical)
+    numeric = {c: _is_int(t) or _is_float(t) or _is_decimal(t) for c, t in physical.items()}
+    dtypes = {c: ("numeric" if numeric[c] else "other") for c in names}
+    key, method, order = plan["id_column"], plan["method"], plan["time_column"]
+    target = target if target in physical else None
+    rule, overrides = plan["outcome_rule"], dict(plan.get("overrides") or {})
+
+    reading = None
+    order_expr = f"CAST({ROW_ID} AS BIGINT)"  # no time column: file order, every record dated
+    if order is not None:
+        reading = time_order(con, src_sql, order, physical[order], plan.get("levels"))
+        if reading["orderable"]:
+            order_expr = reading["expr"]
+        elif needs_order(method, rule, overrides):
+            raise StructureError(order_refusal(reading, method))
+    rank_units(con, src_sql, plan, order_expr)
+
+    varies, n_levels = False, None
+    if target is not None:
+        varies = bool(con.execute(
+            f"SELECT count(*) FROM (SELECT count(DISTINCT {_ident(target)}) AS d FROM ranked "
+            f"GROUP BY {_UNIT}) WHERE d > 1").fetchone()[0])
+        n_levels = int(con.execute(f"SELECT count(DISTINCT {_ident(target)}) FROM ranked").fetchone()[0])
+    problem = outcome_rule_problem(target, key, varies, rule, dtypes, n_levels)
+    if problem:
+        raise StructureError(problem)
+
+    others = [c for c in names if c not in (key, target, order)]
+    kinds = column_kinds(con, others, physical)
+    rules: dict[str, str] = {}
+    for c in others:
+        chosen = overrides.get(c)
+        if chosen is not None:
+            if chosen not in COMBINE_RULES:
+                raise StructureError(f"`{chosen}` is not a way to combine `{c}`; use one of "
+                                     f"{', '.join(COMBINE_RULES)}.")
+            if chosen in ("mean", "change") and not numeric[c]:
+                raise StructureError(f"`{c}` is not a number, so its {chosen} is not one of its "
+                                     f"values; keep the first, the last or the most frequent.")
+            rules[c] = chosen
+        else:
+            rules[c] = column_rule(kinds[c]["kind"], method)
+    return {"physical": physical, "names": names, "numeric": numeric, "target": target,
+            "reading": reading, "ordered": reading is not None and bool(reading["orderable"]),
+            "order_expr": order_expr, "varies": varies, "others": others, "kinds": kinds,
+            "rules": rules, "overrides": overrides}
 
 
 def _aggregate(ctx: StageContext, con: Any, src_sql: str, info: Mapping[str, Any],
                plan: dict[str, Any], table_out: Path, map_out: Path) -> dict[str, Any]:
     """One row per unit (DuckDB GROUP BY) and the row map; returns what the receipt states."""
-    physical = {str(c["name"]): str(c["physical_type"]) for c in info["columns"]}
-    dtypes = {str(c["name"]): str(c["dtype"]) for c in info["columns"]}
-    key, method, order = plan["id_column"], plan["method"], plan["time_column"]
-    rank_units(con, src_sql, plan, physical)
+    prep = prepare_combine(con, src_sql, plan, ctx.state.target)
+    names, physical, numeric = prep["names"], prep["physical"], prep["numeric"]
+    target, varies, others = prep["target"], prep["varies"], prep["others"]
+    kinds, rules, overrides = prep["kinds"], prep["rules"], prep["overrides"]
+    reading, ordered = prep["reading"], prep["ordered"]
+    key, method, order, rule = plan["id_column"], plan["method"], plan["time_column"], plan["outcome_rule"]
 
-    target = ctx.state.target if ctx.state.target in physical else None
-    varies = False
-    if target is not None:
-        varies = bool(con.execute(
-            f"SELECT count(*) FROM (SELECT count(DISTINCT {_ident(target)}) AS d FROM ranked "
-            f"GROUP BY {_UNIT}) WHERE d > 1").fetchone()[0])
-    rule = plan["outcome_rule"]
-    problem = outcome_rule_problem(target, key, varies, rule, dtypes)
-    if problem:
-        raise StructureError(problem)
-
-    select, numeric_cols, other_cols = combine_sql(info, plan, target, varies)
+    select = combine_sql(names, physical, plan, target, varies, rules)
     _execute(con, ctx, f"COPY ({select}) TO {_lit(table_out)} (FORMAT parquet, COMPRESSION zstd)",
              0.35, 0.7, "Combining each unit's rows")
     _execute(con, ctx,
@@ -906,28 +1525,33 @@ def _aggregate(ctx: StageContext, con: Any, src_sql: str, info: Mapping[str, Any
              f"TO {_lit(map_out)} (FORMAT parquet, COMPRESSION zstd)",
              0.7, 0.8, "Writing which rows became which")
 
-    varying: list[str] = []
-    if method in ("mean", "change"):
-        mixed = [c for c in other_cols if c not in plan["ordering"]]
-        for start in range(0, len(mixed), 200):
-            batch = mixed[start:start + 200]
-            counts = ", ".join(f"count(DISTINCT {_ident(c)}) AS n{i}" for i, c in enumerate(batch))
-            maxima = ", ".join(f"max(n{i})" for i in range(len(batch)))
-            row = con.execute(f"SELECT {maxima} FROM (SELECT {counts} FROM ranked "
-                              f"GROUP BY {_UNIT})").fetchone()
-            varying += [c for c, m in zip(batch, row) if int(m or 0) > 1]
-    n_units, single = con.execute(
-        f"SELECT count(*), count(*) FILTER (WHERE m = 1) FROM "
-        f"(SELECT max({_M}) AS m FROM ranked GROUP BY {_UNIT})").fetchone()
+    n_units, single, no_dated, undated = con.execute(
+        f"SELECT count(*), count(*) FILTER (WHERE m = 1), count(*) FILTER (WHERE m = 0), "
+        f"sum(n - m) FROM (SELECT max({_M}) AS m, count(*) AS n FROM ranked GROUP BY {_UNIT})"
+    ).fetchone()
+    outcome = None
+    if target is not None:
+        missing = con.execute(f"SELECT count(*) FILTER (WHERE {_ident(target)} IS NULL) FROM "
+                              f"read_parquet({_lit(table_out)})").fetchone()[0]
+        outcome = {"column": target, "varies": varies, "rule": (rule if varies else "constant"),
+                   "n_missing": int(missing or 0)}
     con.execute("DROP TABLE ranked")
+    listed = [{"column": c, "kind": kinds[c]["kind"], "rule": rules[c], "varied": kinds[c]["varied"],
+               "chosen": c in overrides}
+              for c in others if kinds[c]["varied"] or c in overrides]
+    order_kind = ("file order" if not ordered else
+                  "declared levels" if reading["kind"] == "levels" else reading["kind"])
     return {
-        "id_column": key, "method": method,
-        "outcome": ({"column": target, "varies": varies,
-                     "rule": (rule if varies else "constant")} if target else None),
-        "time_column": order, "ordered_by": order or "file order",
+        "id_column": key, "method": method, "outcome": outcome,
+        "time_column": order, "ordered_by": order if ordered else "file order", "order": order_kind,
+        "undated_records": int(undated or 0) if ordered else 0,
+        "units_without_dated_records": int(no_dated or 0) if ordered else 0,
         "n_source_rows": int(info["n_rows"]), "n_units": int(n_units),
-        "single_record_units": int(single), "varying": varying,
-        "combined_numeric": len(numeric_cols),
+        "single_record_units": int(single), "varying": [c for c in others if kinds[c]["varied"]
+                                                        and not numeric[c]],
+        "combined_numeric": sum(1 for c in others if numeric[c]),
+        "constant_columns": sum(1 for c in others if kinds[c]["kind"] == "constant"),
+        "columns": listed,
     }
 
 
@@ -994,9 +1618,13 @@ def working_stage(ctx: StageContext) -> Bundle:
 
 
 __all__ = [
-    "ROW_MAP", "SAMPLE_COLUMN", "TABLE", "StructureError", "aggregation_plan", "combine_sql",
-    "effective_repeat_kind", "label_column", "orientation_reading", "oriented_stage",
-    "outcome_rule_problem", "rank_units", "repair_expressions", "row_map", "source_sql",
-    "structure_stage", "table_info", "table_path", "time_column", "transpose", "turn_check",
-    "working_paths", "working_stage", "working_store",
+    "CODE_LEVELS", "COMBINE_RULES", "FEATURES", "ROW_MAP", "SAMPLE_COLUMN", "TABLE",
+    "StructureError", "aggregation_plan", "column_kinds", "column_rule", "combine_sql",
+    "declared_date_formats", "declared_levels", "effective_repeat_kind", "feature_names",
+    "frame_time_order", "is_feature_annotation", "label_column", "natural_order", "needs_order",
+    "numeric_features", "order_refusal", "orientation_reading", "oriented_stage",
+    "outcome_rule_problem", "prepare_combine", "rank_units", "read_date_columns",
+    "repair_expressions", "row_map", "source_sql", "structure_stage", "table_info", "table_path",
+    "time_column", "time_order", "transpose", "turn_block", "turn_check", "turn_plan",
+    "turned_corner", "working_paths", "working_stage", "working_store",
 ]

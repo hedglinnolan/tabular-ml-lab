@@ -3,7 +3,8 @@
 * a transposed assay table turned back round holds the same values, and its rows are named by the
   sample identifiers in the header;
 * combining a unit's rows (mean, first, last, change) equals a plain pandas computation of the same
-  thing, on ``dietary_recalls.csv`` and ``clinical_longitudinal.csv``;
+  thing, each column by what it holds (audit MA-14), on ``dietary_recalls.csv`` and
+  ``clinical_longitudinal.csv``;
 * the row map sends every source row to exactly one working row, the one for its unit;
 * every stage after ``working`` reads the working table (a spy on the DataStore);
 * with nothing structural recorded, the working table is the raw file, referenced and not copied.
@@ -129,9 +130,26 @@ def test_the_streamed_reading_is_the_orientation_modules_reading(tmp_path):
 # ── aggregation ───────────────────────────────────────────────────────────────
 
 
+def _kind(df: pd.DataFrame, key: str, c: str, numeric: bool) -> str:
+    """What a column holds, in plain pandas (audit MA-14): constant within every unit; a category
+    (text); a code (whole numbers, at most 10 values, each seen 3 times on average, not 0/1); an
+    amount."""
+    if not (df.groupby(key)[c].nunique() > 1).any():
+        return "constant"
+    if not numeric:
+        return "category"
+    x = df[c].dropna().astype(float)
+    whole = bool((x == np.floor(x)).all())
+    indicator = bool(x.isin([0.0, 1.0]).all())
+    if whole and not indicator and x.nunique() <= 10 and len(x) >= 3 * x.nunique():
+        return "code"
+    return "amount"
+
+
 def reference(oriented: pd.DataFrame, info: dict, *, key: str, method: str, target: str,
-              outcome: str | None, order: str | None, ordering: list[str]) -> pd.DataFrame:
-    """The same combination in plain pandas: a unit's records ordered by time, then file order."""
+              outcome: str | None, order: str | None) -> pd.DataFrame:
+    """The same combination in plain pandas: a unit's dated records ordered by time, then file
+    order; undated ones after them, never first or last; each column by what it holds."""
     dtypes = {c["name"]: c["dtype"] for c in info["columns"]}
     df = oriented.copy()
     df["_rid"] = df.index.to_numpy()
@@ -139,32 +157,54 @@ def reference(oriented: pd.DataFrame, info: dict, *, key: str, method: str, targ
         t = df[order]
         df["_t"] = t if dtypes[order] in NUMERIC or np.issubdtype(t.dtype, np.datetime64) \
             else pd.to_datetime(t, errors="coerce")
-        df = df.sort_values([key, "_t", "_rid"], kind="stable", na_position="last")
     else:
-        df = df.sort_values([key, "_rid"], kind="stable")
+        df["_t"] = df["_rid"]
+    df = df.sort_values([key, "_t", "_rid"], kind="stable", na_position="last")
+    kinds = {c["name"]: _kind(df, key, c["name"], dtypes[c["name"]] in NUMERIC)
+             for c in info["columns"] if c["name"] not in (key, target, order)}
+
+    def mode(g: pd.DataFrame, c: str):
+        counts = g[c].value_counts()
+        top = set(counts[counts == counts.max()].index)
+        return next(v for v in g[c] if v in top)  # ties: the earliest record
+
     rows = []
     for _, g in sorted(df.groupby(key, sort=False), key=lambda kv: kv[1]["_rid"].min()):
-        first, last = g.iloc[0], g.iloc[-1]
+        dated = g[g["_t"].notna()]
+        first = dated.iloc[0] if len(dated) else None
+        last = dated.iloc[-1] if len(dated) else None
+
+        def at(record, c):
+            return np.nan if record is None else record[c]
+
         row = {}
         for c in info["columns"]:
             c = c["name"]
             if c == key:
-                row[c] = first[c]
+                row[c] = g[c].iloc[0]
             elif c == target:
                 values = g[c].dropna()
-                if values.nunique() <= 1:
+                if df.groupby(key)[c].nunique().max() <= 1:
                     row[c] = values.iloc[0] if len(values) else np.nan
                 else:
-                    row[c] = {"mean": values.mean(), "first": values.iloc[0],
-                              "last": values.iloc[-1]}[outcome]
-            elif c in ordering or dtypes[c] not in NUMERIC:
-                row[c] = (last if method == "last" else first)[c]
-            elif method == "mean":
-                row[c] = g[c].mean()
-            elif method == "change":
-                row[c] = (last[c] - first[c]) if len(g) > 1 else np.nan
+                    row[c] = {"mean": values.mean(), "first": at(first, c),
+                              "last": at(last, c)}[outcome]
+            elif c == order:
+                row[c] = at(last if method == "last" else first, c)
             else:
-                row[c] = (last if method == "last" else first)[c]
+                rule = {"constant": "constant", "amount": method}.get(
+                    kinds[c], {"mean": "mode", "change": "first"}.get(method, method))
+                if rule == "constant":
+                    values = g[c].dropna()
+                    row[c] = values.iloc[0] if len(values) else np.nan
+                elif rule == "mean":
+                    row[c] = g[c].mean()
+                elif rule == "mode":
+                    row[c] = mode(g, c)
+                elif rule == "change":
+                    row[c] = (at(last, c) - at(first, c)) if len(dated) > 1 else np.nan
+                else:
+                    row[c] = at(last if rule == "last" else first, c)
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -196,13 +236,13 @@ def test_combining_each_units_rows_equals_pandas(graph, source, key, target, out
     receipt = working.data["aggregation"]
     order = receipt["time_column"]
     assert order == structure["repeats"]["spacing"]["column"]  # the reading's date column orders them
-    ordering = [c for c in (order, structure["repeats"]["replicate_index"]) if c]
+    assert receipt["ordered_by"] == order
     from turbotab.core.datastore import DataStore
 
     with DataStore(run.raw, 1 << 30) as store:
         oriented = store.materialize()
     want = reference(oriented, run.info, key=key, method=method, target=target, outcome=outcome,
-                     order=order, ordering=ordering)
+                     order=order)
     got = table(working)
     assert len(got) == len(want) == receipt["n_units"] and receipt["n_source_rows"] == 600
     assert list(got["__row_id"]) == list(range(len(got)))  # dense over its rows
