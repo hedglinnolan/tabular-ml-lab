@@ -32,6 +32,9 @@ export function Coefficients({ models, purpose, target }: Props) {
   const current = models[Math.min(pick, models.length - 1)]!;
   const coefs = current.coefficients;
   const inference = purpose === "inference";
+  // How the intervals were made (turbotab/core/models/inference.py): "95% intervals …" or, when
+  // none can be reported, "No intervals: …".
+  const how = current.model.inference;
   const domain = forestDomain(coefs);
   const x = scaleLinear().domain(domain).nice().range([10, Math.max(60, w - 10)]);
   const ticks = x.ticks(w < 300 ? 3 : 6);
@@ -103,7 +106,7 @@ export function Coefficients({ models, purpose, target }: Props) {
       </div>
       <p className={s.basis}>
         {inference
-          ? `Change in predicted ${target} per unit of each input, holding the others; 95% confidence intervals.`
+          ? `Change in predicted ${target} per unit of each input, holding the others${how?.refused ? ". " : "; "}${how?.caption ?? "95% confidence intervals."}`
           : `Under prediction the coefficients describe the fitted model; they are not interpreted as effects, so no intervals are drawn.`}
       </p>
     </div>

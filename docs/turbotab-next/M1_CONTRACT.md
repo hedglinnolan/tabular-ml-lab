@@ -85,8 +85,13 @@ the cache.
 - **fit** → `Bundle(data={ task, primary_metric, metric_labels, n_train, n_holdout, models: [{ family, label, cv: {metric: {mean, sd, folds}}, holdout: {metric: value}|null, coefficients: [{feature, estimate, ci_low, ci_high, p}]|null, fit_seconds, concerns }] }, objects={"fitted": ...})`
   CV on training rows with the split's folds; holdout scored once. Regression: R², RMSE, MAE.
   Binary: AUC, Brier, log loss. Multiclass: accuracy, macro-F1, log loss. Coefficients for linear
-  families (CIs via statsmodels when `purpose == "inference"`). Progress per model and fold; honors
-  `cancelled()`.
+  families. Under `purpose == "inference"` their intervals follow how the rows were sampled
+  (`turbotab/core/models/inference.py`, audit WP2): HC3 on independent rows; CR2 with
+  Bell–McCaffrey degrees of freedom whenever an identifier repeats, however the seal was drawn;
+  none below the unit floor (the refusal and its exits are recorded); Firth's penalized likelihood
+  when a column separates a binary outcome. Each coefficient adds `se` and `df`, and each model an
+  `inference` record (estimator, covariance, caption, grouped_by, n_clusters, separated, refused,
+  exits). Progress per model and fold; honors `cancelled()`.
 - **substitution** → `{ donor, recipient, step_kcal, ks, total_kind, estimand|null, note, models: [{ family, label, delta, ci_low|null, ci_high|null, on_support_fraction, stopped_at|null, effect_label }] }`
   `substitution_curve` on ≤ 5,000 training rows, through each fitted pipeline on raw inputs.
 

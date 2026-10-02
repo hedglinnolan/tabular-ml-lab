@@ -5,7 +5,7 @@ document (``ARTIFACT_MODELS``), so the frontend types each artifact by its stage
 """
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -94,6 +94,33 @@ class Coefficient(_Model):
     ci_low: float | None
     ci_high: float | None
     p: float | None
+    se: float | None = None  # the standard error the interval rests on (inference only)
+    # The t reference distribution's degrees of freedom; null for a normal or likelihood-based one.
+    df: float | None = None
+
+
+class InferenceExit(_Model):
+    """A way forward when no interval can be reported, as a refusal's exits are shaped."""
+
+    label: str
+    decision: dict[str, Any] | None = None
+
+
+class Inference(_Model):
+    """How the coefficient table's intervals were made (AUDIT_REPORT §5 WP2;
+    ``turbotab/core/models/inference.py``): the estimator, the covariance, and the clusters."""
+
+    estimator: str  # "ordinary least squares", "Firth-penalized logistic regression", …
+    # HC3 · CR2 (cluster-robust, Bell–McCaffrey df) · model (Wald, from the information) ·
+    # profile (penalized likelihood) · none (refused: ``refused`` says why).
+    covariance: Literal["HC3", "CR2", "model", "profile", "none"]
+    caption: str  # one line naming the covariance, the clusters and the reference distribution
+    grouped_by: str | None = None  # the identifier the intervals are clustered by
+    n_clusters: int | None = None
+    n_missing_ids: int = 0  # rows with no identifier, each counted as a unit of its own
+    separated: list[str] = []  # columns that separate a binary outcome
+    refused: str | None = None  # why no interval or p-value is reported
+    exits: list[InferenceExit] = []
 
 
 class Baseline(_Model):
@@ -122,6 +149,9 @@ class FittedModel(_Model):
     # The primary metric against the baseline's, paired over the same folds, within a stated
     # tolerance (turbotab/core/models/baseline.py). Null only in artifacts from before M2.
     versus_baseline: VersusBaseline | None = None
+    # How the intervals were made, under inference; null under prediction and for families
+    # without an inference table.
+    inference: Inference | None = None
 
 
 class FitArtifact(_Model):
@@ -194,7 +224,7 @@ MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
 }
 
 __all__ = [
-    "BandEstimate", "Baseline", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "DesignModel", "DesignStep", "FitArtifact", "FittedModel",
+    "BandEstimate", "Baseline", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel",
     "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "ShelfArtifact", "ShelfFamily",
     "SubstitutionArtifact", "SubstitutionModel", "SubstitutionPair",
 ]

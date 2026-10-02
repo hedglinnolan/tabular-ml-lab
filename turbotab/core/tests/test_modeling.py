@@ -278,15 +278,20 @@ def test_statsmodels_coefficients_equal_a_direct_fit_on_a_matrix_built_by_hand(t
     for n in nutrients:  # N_adj = N − b (E − mean E), b from OLS of N on E over the training rows
         b = np.cov(d[n], E, ddof=1)[0, 1] / np.var(E, ddof=1)
         matrix[f"{n}_adj"] = d[n] - b * (E - E.mean())
-    direct = sm.OLS(d["glucose"].to_numpy(), sm.add_constant(matrix)).fit()
-    got = _by_feature(fit.data["models"][0]["coefficients"])
+    # Independent rows under inference: HC3 standard errors with t(n − p) (AUDIT_REPORT MA-07).
+    direct = sm.OLS(d["glucose"].to_numpy(), sm.add_constant(matrix)).fit(cov_type="HC3", use_t=True)
+    model = fit.data["models"][0]
+    got = _by_feature(model["coefficients"])
     ci = direct.conf_int(0.05)
     for name in matrix.columns:
         assert got[name]["estimate"] == pytest.approx(direct.params[name], rel=1e-8)
         assert got[name]["ci_low"] == pytest.approx(ci.loc[name, 0], rel=1e-8)
         assert got[name]["ci_high"] == pytest.approx(ci.loc[name, 1], rel=1e-8)
         assert got[name]["p"] == pytest.approx(direct.pvalues[name], rel=1e-6, abs=1e-300)
+        assert got[name]["se"] == pytest.approx(direct.bse[name], rel=1e-8)
+        assert got[name]["df"] == direct.df_resid
     assert got["(intercept)"]["estimate"] == pytest.approx(direct.params["const"], rel=1e-8)
+    assert model["inference"]["covariance"] == "HC3"
 
 
 def test_repeated_rows_get_cluster_robust_intervals_by_the_identifier(tmp_path):
@@ -298,20 +303,29 @@ def test_repeated_rows_get_cluster_robust_intervals_by_the_identifier(tmp_path):
     roles = {"age": "covariate", "kcal": "energy", "fat_total": "exposure", "carb": "exposure"}
     st = mf.state(roles=roles, energy_adjustment=mf.energy("standard", ["fat_total", "carb"]),
                   purpose="inference", models=["linear"])
+    from scipy import stats
+
+    from turbotab.core.tests.acceptance.references import cr2_by_definition
+
     _, fit = run(st, paths, split)
     train_ids, _, _ = train_arrays(split)
     d = frame.loc[train_ids]
     X = sm.add_constant(d[["age", "kcal", "fat_total", "carb"]])
-    direct = sm.OLS(d["glucose"].to_numpy(), X).fit(
-        cov_type="cluster", cov_kwds={"groups": pd.factorize(d["SEQN"])[0]})
+    direct = sm.OLS(d["glucose"].to_numpy(), X).fit()
+    # CR2 with Bell–McCaffrey df (AUDIT_REPORT MA-06), from the definition written out.
+    V, df = cr2_by_definition(X.to_numpy(), np.asarray(direct.resid), pd.factorize(d["SEQN"])[0])
     model = fit.data["models"][0]
     got = _by_feature(model["coefficients"])
-    ci = direct.conf_int(0.05)
-    for name in ("age", "kcal", "fat_total", "carb"):
+    for j, name in enumerate(X.columns):
+        if name == "const":
+            continue
+        se, q = np.sqrt(V[j, j]), stats.t.ppf(0.975, df[j])
         assert got[name]["estimate"] == pytest.approx(direct.params[name], rel=1e-8)
-        assert got[name]["ci_low"] == pytest.approx(ci.loc[name, 0], rel=1e-8)
-        assert got[name]["ci_high"] == pytest.approx(ci.loc[name, 1], rel=1e-8)
-    assert any("cluster-robust by SEQN" in c for c in model["concerns"])
+        assert got[name]["ci_low"] == pytest.approx(direct.params[name] - q * se, rel=1e-8)
+        assert got[name]["ci_high"] == pytest.approx(direct.params[name] + q * se, rel=1e-8)
+        assert got[name]["df"] == pytest.approx(df[j], rel=1e-8)
+    assert any("cluster-robust by `SEQN`" in c for c in model["concerns"])
+    assert model["inference"]["covariance"] == "CR2" and model["inference"]["grouped_by"] == "SEQN"
 
 
 def test_logistic_inference_coefficients_equal_a_direct_logit(table):

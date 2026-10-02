@@ -165,7 +165,9 @@ export function Results({ pid, view, data }: Props) {
                     title: `${linear[0]!.model.label}: coefficients of the exposures`,
                     caption:
                       view.state.purpose === "inference"
-                        ? "Squares: estimates; lines: 95% confidence intervals."
+                        ? linear[0]!.model.inference?.refused
+                          ? `Squares: estimates. ${linear[0]!.model.inference.caption}`
+                          : `Squares: estimates; lines: ${linear[0]!.model.inference?.caption ?? "95% confidence intervals."}`
                         : "Squares: estimates of the fitted prediction model, not interpreted as effects.",
                     provenance: plain(recorded),
                   })

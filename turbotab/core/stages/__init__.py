@@ -119,7 +119,7 @@ def build_graph() -> Graph:
                   ("roles", "energy_adjustment", "missing", "models", "purpose"), design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
-            Stage("fit", 3, ("working", "design", "split", "target_info"),
+            Stage("fit", 4, ("working", "design", "split", "target_info"),
                   ("models", "purpose", "task", "event"), fit_stage, heavy=True,
                   requires=("models",),
                   label="Fitting the models"),
