@@ -193,16 +193,21 @@ class FittedModel(_Model):
 
 class Selection(_Model):
     """What choosing among families on cross-validation costs (``models/selection.py``): the best
-    family's CV score flatters it, by about ``optimism`` (Tibshirani & Tibshirani 2009)."""
+    family's CV score flatters it, by about ``optimism``, estimated by bootstrap bias-corrected
+    cross-validation over the families' out-of-fold predictions (Tsamardinos et al. 2018)."""
 
     metric: str
     families: list[str]
     best: str  # the family with the best cross-validated score
     cv: float  # its cross-validated score
-    optimism: float  # how much that score overstates its performance, in the score's units
-    optimism_se: float | None
-    corrected: float  # the score with the optimism taken off
-    folds: int
+    # How much that score overstates the chosen family's performance, in the score's units (positive
+    # flatters): ``cv`` less ``corrected`` for a score where higher is better.
+    optimism: float
+    corrected: float  # the performance expected on new rows once the choice is accounted for
+    corrected_low: float  # its 95% percentile interval over the resamples
+    corrected_high: float
+    replicates: int  # resamples of the out-of-fold predictions
+    wins: dict[str, int]  # how often each family was the one chosen on a resample
     method: str
     text: str
 

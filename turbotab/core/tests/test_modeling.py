@@ -365,11 +365,13 @@ def test_statsmodels_coefficients_equal_a_direct_fit_on_a_matrix_built_by_hand(t
     st = mf.state(roles=roles, energy_adjustment=mf.energy("residual", nutrients),
                   purpose="inference", models=["linear"])
     _, fit = run(st, paths, split)
-    train_ids, _, _ = train_arrays(split)
-    d = frame.loc[train_ids]
+    # Under inference the table is estimated from every analyzed row, held-out ones included, with
+    # every step refit on them (BLUEPRINT §12 ruling 3; AUDIT_REPORT §5 WP8).
+    every = split.frames["assignment"]["row_id"].to_numpy()
+    d = frame.loc[every]
     matrix = pd.DataFrame({"gender_male": (d["gender"] == "male").astype(float), "age": d["age"]})
     E = d["kcal"]
-    for n in nutrients:  # N_adj = N − b (E − mean E), b from OLS of N on E over the training rows
+    for n in nutrients:  # N_adj = N − b (E − mean E), b from OLS of N on E over those rows
         b = np.cov(d[n], E, ddof=1)[0, 1] / np.var(E, ddof=1)
         matrix[f"{n}_adj"] = d[n] - b * (E - E.mean())
     # Independent rows under inference: HC3 standard errors with t(n − p) (AUDIT_REPORT MA-07).
@@ -386,6 +388,8 @@ def test_statsmodels_coefficients_equal_a_direct_fit_on_a_matrix_built_by_hand(t
         assert got[name]["df"] == direct.df_resid
     assert got["(intercept)"]["estimate"] == pytest.approx(direct.params["const"], rel=1e-8)
     assert model["inference"]["covariance"] == "HC3"
+    assert model["coefficients_n"] == model["inference"]["n_rows"] == len(every)
+    assert model["inference"]["rows"] == "all"
 
 
 def test_repeated_rows_get_cluster_robust_intervals_by_the_identifier(tmp_path):
@@ -402,8 +406,7 @@ def test_repeated_rows_get_cluster_robust_intervals_by_the_identifier(tmp_path):
     from turbotab.core.tests.acceptance.references import cr2_by_definition
 
     _, fit = run(st, paths, split)
-    train_ids, _, _ = train_arrays(split)
-    d = frame.loc[train_ids]
+    d = frame.loc[split.frames["assignment"]["row_id"].to_numpy()]  # every analyzed row (inference)
     X = sm.add_constant(d[["age", "kcal", "fat_total", "carb"]])
     direct = sm.OLS(d["glucose"].to_numpy(), X).fit()
     # CR2 with Bell–McCaffrey df (AUDIT_REPORT MA-06), from the definition written out.
@@ -432,19 +435,28 @@ def test_logistic_inference_coefficients_equal_a_direct_logit(table):
                   purpose="inference", models=["linear"])
     _, fit = run(st, paths, split, "binary", "glucose_high")
     train_ids, _, _ = train_arrays(split)
-    d = frame.loc[train_ids]
-    direct = sm.Logit((d["glucose_high"] == "normal").astype(float),
-                      sm.add_constant(d[["age", "kcal", "fat_total", "carb"]])).fit(disp=0)
+    columns = ["age", "kcal", "fat_total", "carb"]
+
+    def logit(rows):
+        d = frame.loc[rows]
+        return sm.Logit((d["glucose_high"] == "normal").astype(float),
+                        sm.add_constant(d[columns])).fit(disp=0)
+
+    # The table: every analyzed row under inference (BLUEPRINT §12 ruling 3; AUDIT_REPORT §5 WP8).
+    direct = logit(split.frames["assignment"]["row_id"].to_numpy())
     got = _by_feature(fit.data["models"][0]["coefficients"])
     ci = direct.conf_int(0.05)
     for name in ("age", "kcal", "fat_total", "carb"):
         assert got[name]["estimate"] == pytest.approx(direct.params[name], rel=1e-6)
         assert got[name]["ci_low"] == pytest.approx(ci.loc[name, 0], rel=1e-6)
         assert got[name]["ci_high"] == pytest.approx(ci.loc[name, 1], rel=1e-6)
-    # The unpenalized sklearn fit that makes the predictions agrees with the statsmodels table.
+        # On the odds-ratio scale too: exp(β) and exp of the interval's ends (ME-07).
+        assert got[name]["ratio"] == pytest.approx(np.exp(direct.params[name]), rel=1e-6)
+        assert got[name]["ratio_low"] == pytest.approx(np.exp(ci.loc[name, 0]), rel=1e-6)
+    # The unpenalized sklearn fit that makes the predictions, on the training rows, agrees with a
+    # Logit on those rows.
     model = fit.objects["fitted"]["linear"][-1]
-    np.testing.assert_allclose(model.coef_[0], direct.params[["age", "kcal", "fat_total", "carb"]],
-                               rtol=1e-4)
+    np.testing.assert_allclose(model.coef_[0], logit(train_ids).params[columns], rtol=1e-4)
 
 
 def test_elastic_net_coefficients_are_per_unit_with_the_scaling_undone(table):

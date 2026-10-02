@@ -462,7 +462,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.models.metrics import (CV_DEFINITION, LABELS, PRIMARY, cross_validate,
                                               fold_pairs, metric_labels, score)
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
-    from turbotab.core.models.selection import selection_optimism
+    from turbotab.core.models.selection import OutOfFold, selection_optimism
     from turbotab.core.seal import SEALED_SCORES, sealed_scores_frame
 
     state = ctx.state
@@ -544,6 +544,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
     fitted: dict[str, Any] = {}
     sealed: dict[str, Any] = {}  # held-out scores: kept out of the public data (M2_CONTRACT §3)
     results: dict[str, Any] = {}  # each family's cross-validation, for the selection's optimism
+    oof = OutOfFold(task, X, y, pairs)  # …and its out-of-fold predictions (models/selection.py)
     for key in keys:
         family = get_family(key)
         started = time.perf_counter()
@@ -557,7 +558,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            result = cross_validate(task, lambda _k=key: clone(pipelines[_k]), X, y, pairs, fit=fit,
+            result = cross_validate(task, lambda _k=key: clone(pipelines[_k]), X, y, pairs,
+                                    fit=oof.wrap(key, fit) if len(keys) > 1 else fit,
                                     before_fold=before_fold)
             if ctx.cancelled():
                 raise Cancelled()
@@ -630,11 +632,13 @@ def fit_stage(ctx: StageContext) -> Bundle:
             "inference": interval_info,
             "coefficients_n": n_coefficients,
         })
+    # Picking the best of several families by cross-validation flatters it (audit ME-13).
+    if len(results) > 1:
+        ctx.progress(0.995, "Choosing among the families: bootstrapping the out-of-fold predictions")
+    selection = selection_optimism(task, primary, results, oof,
+                                   {m["family"]: m["label"] for m in models}, LABELS[primary])
     ctx.progress(1.0, "Done")
     n_holdout = int((~train).sum())
-    # Picking the best of several families by cross-validation flatters it (audit ME-13).
-    selection = selection_optimism(task, primary, results, {m["family"]: m["label"] for m in models},
-                                   LABELS[primary])
     artifact = FitArtifact(task=task, primary_metric=PRIMARY[task], metric_labels=metric_labels(task),
                            n_train=int(train.sum()), n_holdout=n_holdout, models=models,
                            holdout_sealed=n_holdout > 0, fold_scheme=scheme,

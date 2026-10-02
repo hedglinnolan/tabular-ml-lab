@@ -141,6 +141,8 @@ const fit: FitArtifact = {
       baseline,
       versus_baseline: null,
       inference: null,
+      coefficients_n: null,
+      role: null,
     },
     {
       family: "elastic_net",
@@ -156,6 +158,8 @@ const fit: FitArtifact = {
       baseline,
       versus_baseline: null,
       inference: null,
+      coefficients_n: null,
+      role: null,
     },
     {
       family: "boosted_trees",
@@ -171,6 +175,8 @@ const fit: FitArtifact = {
       baseline,
       versus_baseline: null,
       inference: null,
+      coefficients_n: null,
+      role: null,
     },
   ],
   holdout_sealed: true,
@@ -178,6 +184,9 @@ const fit: FitArtifact = {
   post_seal_decisions: [],
   fold_scheme: "random",
   cv_definition: null,
+  selection: null,
+  final_model: null,
+  final_note: null,
 };
 
 function input(over: Partial<BannerInput> = {}, viewOver: Partial<ProjectView> = {}): BannerInput {

@@ -1158,6 +1158,9 @@ export function fit(
                     : null,
                 se: null,
                 df: null,
+                ratio: null,
+                ratio_low: null,
+                ratio_high: null,
               };
             });
     return {
@@ -1175,6 +1178,8 @@ export function fit(
       },
       versus_baseline: null,
       inference: null,
+      coefficients_n: null,
+      role: null,
     };
   });
   // The fit computes the held-out scores; as on the server (turbotab/core/seal.py), the route
@@ -1194,6 +1199,9 @@ export function fit(
     cv_definition: classification
       ? "Cross-validated scores are the mean over folds; the fold values show the spread."
       : "Cross-validated R², RMSE and MAE pool every out-of-fold prediction; R² is measured against the mean of the rows each fold's model was fit on, as the held-out R² is against the training rows' mean. The fold values show the spread.",
+    selection: null,
+    final_model: null,
+    final_note: null,
   };
 }
 

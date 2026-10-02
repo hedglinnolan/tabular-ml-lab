@@ -527,7 +527,7 @@ export interface components {
              */
             post_seal: boolean;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"];
         };
         /**
          * DeferFinding
@@ -702,7 +702,7 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"]) | null;
         };
         /**
          * FamilyInfo
@@ -1007,13 +1007,38 @@ export interface components {
         /**
          * OpenSeal
          * @description Open the held-out rows: once, at the end. Held-out scores are withheld until then.
+         *
+         *     ``family`` is the final model, declared on cross-validation before any held-out score is seen
+         *     (AUDIT_REPORT §5 WP8, ME-13; ``turbotab/core/models/selection.py``): its held-out score is the
+         *     reported result. Required when several families are fitted; with one, the opening declares it.
+         *     Null only in records from before the rule.
          */
-        OpenSeal: {
+        "OpenSeal-Input": {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             kind: "open_seal";
+            /** Family */
+            family?: string | null;
+        };
+        /**
+         * OpenSeal
+         * @description Open the held-out rows: once, at the end. Held-out scores are withheld until then.
+         *
+         *     ``family`` is the final model, declared on cross-validation before any held-out score is seen
+         *     (AUDIT_REPORT §5 WP8, ME-13; ``turbotab/core/models/selection.py``): its held-out score is the
+         *     reported result. Required when several families are fitted; with one, the opening declares it.
+         *     Null only in records from before the rule.
+         */
+        "OpenSeal-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "open_seal";
+            /** Family */
+            family: string | null;
         };
         /** PreviewResult */
         PreviewResult: {
@@ -2237,6 +2262,21 @@ export interface components {
              * @default null
              */
             df: number | null;
+            /**
+             * Ratio
+             * @default null
+             */
+            ratio: number | null;
+            /**
+             * Ratio Low
+             * @default null
+             */
+            ratio_low: number | null;
+            /**
+             * Ratio High
+             * @default null
+             */
+            ratio_high: number | null;
         };
         /**
          * CohortArtifact
@@ -2548,6 +2588,18 @@ export interface components {
              * @default null
              */
             cv_definition: string | null;
+            /** @default null */
+            selection: components["schemas"]["Selection"] | null;
+            /**
+             * Final Model
+             * @default null
+             */
+            final_model: string | null;
+            /**
+             * Final Note
+             * @default null
+             */
+            final_note: string | null;
         };
         /** FittedModel */
         FittedModel: {
@@ -2574,6 +2626,16 @@ export interface components {
             versus_baseline: components["schemas"]["VersusBaseline"] | null;
             /** @default null */
             inference: components["schemas"]["Inference"] | null;
+            /**
+             * Coefficients N
+             * @default null
+             */
+            coefficients_n: number | null;
+            /**
+             * Role
+             * @default null
+             */
+            role: ("final" | "secondary") | null;
         };
         /** GrainContradiction */
         GrainContradiction: {
@@ -2650,6 +2712,43 @@ export interface components {
              * @default []
              */
             exits: components["schemas"]["InferenceExit"][];
+            /**
+             * Scale
+             * @default difference
+             * @enum {string}
+             */
+            scale: "difference" | "odds_ratio" | "relative_risk_ratio";
+            /**
+             * Axis
+             * @default linear
+             * @enum {string}
+             */
+            axis: "linear" | "log";
+            /**
+             * Effect
+             * @default null
+             */
+            effect: string | null;
+            /**
+             * Event
+             * @default null
+             */
+            event: string | null;
+            /**
+             * Reference
+             * @default null
+             */
+            reference: string | null;
+            /**
+             * N Rows
+             * @default null
+             */
+            n_rows: number | null;
+            /**
+             * Rows
+             * @default null
+             */
+            rows: ("all" | "training") | null;
         };
         /**
          * InferenceExit
@@ -3070,6 +3169,40 @@ export interface components {
              * @default false
              */
             time_ordered_folds: boolean;
+        };
+        /**
+         * Selection
+         * @description What choosing among families on cross-validation costs (``models/selection.py``): the best
+         *     family's CV score flatters it, by about ``optimism``, estimated by bootstrap bias-corrected
+         *     cross-validation over the families' out-of-fold predictions (Tsamardinos et al. 2018).
+         */
+        Selection: {
+            /** Metric */
+            metric: string;
+            /** Families */
+            families: string[];
+            /** Best */
+            best: string;
+            /** Cv */
+            cv: number;
+            /** Optimism */
+            optimism: number;
+            /** Corrected */
+            corrected: number;
+            /** Corrected Low */
+            corrected_low: number;
+            /** Corrected High */
+            corrected_high: number;
+            /** Replicates */
+            replicates: number;
+            /** Wins */
+            wins: {
+                [key: string]: number;
+            };
+            /** Method */
+            method: string;
+            /** Text */
+            text: string;
         };
         /**
          * ShelfArtifact
@@ -3794,7 +3927,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"];
             };
         };
         responses: {
@@ -3929,7 +4062,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"];
             };
         };
         responses: {
