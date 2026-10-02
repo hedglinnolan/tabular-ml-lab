@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from turbotab.core.consequences import PreviewResult, RowStep  # noqa: F401 - re-exported
+from turbotab.core.consequences import CoachNote, PreviewResult, RowStep  # noqa: F401 - re-exported
 from turbotab.core.decisions import (  # noqa: F401 - re-exported contract models
     Decision,
     DecisionRecord,
@@ -31,13 +31,13 @@ from turbotab.core.decisions import (  # noqa: F401 - re-exported contract model
 )
 from turbotab.core.graph import StageStatus, StatusName  # noqa: F401
 from turbotab.core.interview import InterviewStep  # noqa: F401
+# A finding routes to a question the Router asks, so its route is typed by the Router's keys and
+# widens exactly when the interview does (the teaching also covers the repairs and seal cards).
+from turbotab.core.interview import QuestionKey  # noqa: F401
 from turbotab.core.jobs import JobView  # noqa: F401
 from turbotab.core.repairs import RepairOption  # noqa: F401 - re-exported contract model
 from turbotab.core.seal import Chronology, SealBasis, SealPlan  # noqa: F401 - the seal's shapes
-from turbotab.core.teaching import (  # noqa: F401 - re-exported contract models
-    QuestionKey,
-    TeachingEntry,
-)
+from turbotab.core.teaching import TeachingEntry  # noqa: F401 - re-exported contract model
 
 Mode = Literal["local", "server"]
 SourceKind = Literal["path", "upload"]
@@ -225,6 +225,10 @@ class TargetInfo(Model):
     reason: str
     histogram: Histogram | None
     classes: list[ValueCount] | None
+    # M2 (M2_CONTRACT §6): the outcome's unit (mg/dL…), read from its name or the clinical pack's
+    # analytes; None when neither says. ``unit_source`` is "name" or "pack".
+    unit: str | None = None
+    unit_source: Literal["name", "pack"] | None = None
 
 
 class FindingEvidence(Model):
@@ -387,6 +391,8 @@ class ProposalsArtifact(Model):
     missing: MissingReading
     n_base: int  # the rows every count here is made among (the outcome recorded), all rows as loaded
     basis: str
+    # M2: at most one coach line per decision card, keyed by question ("exclusions", "missing").
+    coach: dict[str, CoachNote] = {}
 
 
 # ── the table the analysis reads (M2_CONTRACT §2; turbotab/core/stages/working.py) ──────────

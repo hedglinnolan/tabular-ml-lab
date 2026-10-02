@@ -20,13 +20,28 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+# The interview's questions, in asking order (M2_CONTRACT §1): what a finding may route to.
 QuestionKey = Literal[
-    "lens", "target", "task", "purpose", "roles", "exclusions", "missing", "split",
-    "energy_adjustment", "models", "substitution",
+    "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
+    "aggregation", "temporal", "roles", "exclusions", "missing", "split", "energy_adjustment",
+    "models", "substitution",
 ]
 QUESTION_KEYS: tuple[str, ...] = (
-    "lens", "target", "task", "purpose", "roles", "exclusions", "missing", "split",
-    "energy_adjustment", "models", "substitution",
+    "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
+    "aggregation", "temporal", "roles", "exclusions", "missing", "split", "energy_adjustment",
+    "models", "substitution",
+)
+# What is taught, in the sequence's order: every question, plus the two cards that are not
+# questions — the repairs offered before the outcome, and opening the seal once at the end.
+TeachingKey = Literal[
+    "lens", "orientation", "repairs", "target", "event", "task", "purpose", "grain",
+    "repeat_kind", "unit", "aggregation", "temporal", "roles", "exclusions", "missing", "split",
+    "energy_adjustment", "models", "substitution", "open_seal",
+]
+TEACHING_KEYS: tuple[str, ...] = (
+    "lens", "orientation", "repairs", "target", "event", "task", "purpose", "grain",
+    "repeat_kind", "unit", "aggregation", "temporal", "roles", "exclusions", "missing", "split",
+    "energy_adjustment", "models", "substitution", "open_seal",
 )
 EvidenceStatus = Literal["SETTLED", "CONVENTION", "DISPUTED"]
 
@@ -40,6 +55,16 @@ BUDGETS: dict[str, int] = {
     "option_label": 4,
     "option_consequence": 16,
     "term_definition": 25,
+}
+
+# Words on text the app composes onto a card or the stage from data (M2_CONTRACT §6): the gate in
+# ``tests/test_word_budgets.py`` holds every fixture under every lens to these.
+COMPOSED_BUDGETS: dict[str, int] = {
+    "card_line": 22,  # a data line on a decision card (the proposals' notes, joined as shown)
+    "option_reason": 20,  # why an option stands as it does: a refusal's cause, a proposal's label
+    "finding_summary": 20,
+    "coach": 12,  # one coach note on a view, or the card's one coach line
+    "preview_note": 30,  # what a preview says beneath its views
 }
 
 
@@ -77,7 +102,7 @@ class Drawer(_Model):
 
 
 class TeachingEntry(_Model):
-    key: QuestionKey
+    key: TeachingKey
     title: str
     question: str
     one_liner: str
@@ -95,13 +120,13 @@ def _entries() -> tuple[TeachingEntry, ...]:
 
     built = tuple(TeachingEntry.model_validate(e) for e in ENTRIES)
     keys = [e.key for e in built]
-    if tuple(keys) != QUESTION_KEYS:
-        raise RuntimeError(f"teaching entries are {keys}, expected {list(QUESTION_KEYS)}")
+    if tuple(keys) != TEACHING_KEYS:
+        raise RuntimeError(f"teaching entries are {keys}, expected {list(TEACHING_KEYS)}")
     return built
 
 
 def entries() -> list[TeachingEntry]:
-    """One entry per question key, in asking order."""
+    """One entry per question key (and the repairs and open-the-seal cards), in asking order."""
     return list(_entries())
 
 
@@ -113,6 +138,7 @@ def entry(key: str) -> TeachingEntry:
 
 
 __all__ = [
-    "BUDGETS", "Drawer", "DrawerSection", "Evidence", "QUESTION_KEYS", "QuestionKey",
-    "TeachingEntry", "TeachingOption", "TeachingTerm", "entries", "entry",
+    "BUDGETS", "COMPOSED_BUDGETS", "Drawer", "DrawerSection", "Evidence", "QUESTION_KEYS",
+    "QuestionKey", "TEACHING_KEYS", "TeachingEntry", "TeachingKey", "TeachingOption",
+    "TeachingTerm", "entries", "entry",
 ]

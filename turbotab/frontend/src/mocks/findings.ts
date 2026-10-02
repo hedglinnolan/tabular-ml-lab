@@ -122,6 +122,8 @@ export function targetInfo(
     reason: detected.reason,
     histogram: numeric ? histogram(col, 24) : null,
     classes: numeric ? null : topValues(col, 12),
+    unit: null,
+    unit_source: null,
   };
 }
 

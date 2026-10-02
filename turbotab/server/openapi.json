@@ -1547,6 +1547,60 @@
         ],
         "title": "CautionExit"
       },
+      "CoachAnchor": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "column",
+              "range",
+              "points",
+              "step"
+            ],
+            "title": "Kind"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Ref"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "ref"
+        ],
+        "title": "CoachAnchor",
+        "description": "What a note points at. ``ref`` by kind: ``column`` — a column name; ``range`` — ``[low,\nhigh]`` on the view's value axis; ``points`` — indices into the view's points (or table rows);\n``step`` — a row-flow step key."
+      },
+      "CoachNote": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "anchor": {
+            "$ref": "#/components/schemas/CoachAnchor"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "anchor"
+        ],
+        "title": "CoachNote"
+      },
       "ColumnSummary": {
         "properties": {
           "name": {
@@ -2004,6 +2058,14 @@
             "type": "array",
             "title": "Emphasis"
           },
+          "coach": {
+            "items": {
+              "$ref": "#/components/schemas/CoachNote"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "title": "Coach"
+          },
           "kind": {
             "type": "string",
             "const": "distribution",
@@ -2049,6 +2111,7 @@
           "title",
           "caption",
           "emphasis",
+          "coach",
           "kind",
           "column",
           "before",
@@ -3157,6 +3220,14 @@
             "type": "array",
             "title": "Emphasis"
           },
+          "coach": {
+            "items": {
+              "$ref": "#/components/schemas/CoachNote"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "title": "Coach"
+          },
           "kind": {
             "type": "string",
             "const": "lineage",
@@ -3190,6 +3261,7 @@
           "title",
           "caption",
           "emphasis",
+          "coach",
           "kind",
           "before",
           "after",
@@ -3939,6 +4011,14 @@
             "type": "array",
             "title": "Emphasis"
           },
+          "coach": {
+            "items": {
+              "$ref": "#/components/schemas/CoachNote"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "title": "Coach"
+          },
           "kind": {
             "type": "string",
             "const": "relationship",
@@ -4027,6 +4107,7 @@
           "title",
           "caption",
           "emphasis",
+          "coach",
           "kind",
           "x_label",
           "y_label_before",
@@ -4131,6 +4212,14 @@
             "type": "array",
             "title": "Emphasis"
           },
+          "coach": {
+            "items": {
+              "$ref": "#/components/schemas/CoachNote"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "title": "Coach"
+          },
           "kind": {
             "type": "string",
             "const": "row_flow",
@@ -4165,6 +4254,7 @@
           "title",
           "caption",
           "emphasis",
+          "coach",
           "kind",
           "before",
           "after",
@@ -5474,6 +5564,14 @@
             "type": "array",
             "title": "Emphasis"
           },
+          "coach": {
+            "items": {
+              "$ref": "#/components/schemas/CoachNote"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "title": "Coach"
+          },
           "kind": {
             "type": "string",
             "const": "table_focus",
@@ -5536,6 +5634,7 @@
           "title",
           "caption",
           "emphasis",
+          "coach",
           "kind",
           "columns_before",
           "columns_after",
@@ -5644,16 +5743,25 @@
             "type": "string",
             "enum": [
               "lens",
+              "orientation",
+              "repairs",
               "target",
+              "event",
               "task",
               "purpose",
+              "grain",
+              "repeat_kind",
+              "unit",
+              "aggregation",
+              "temporal",
               "roles",
               "exclusions",
               "missing",
               "split",
               "energy_adjustment",
               "models",
-              "substitution"
+              "substitution",
+              "open_seal"
             ],
             "title": "Key"
           },
@@ -6771,9 +6879,16 @@
               {
                 "enum": [
                   "lens",
+                  "orientation",
                   "target",
+                  "event",
                   "task",
                   "purpose",
+                  "grain",
+                  "repeat_kind",
+                  "unit",
+                  "aggregation",
+                  "temporal",
                   "roles",
                   "exclusions",
                   "missing",
@@ -7662,6 +7777,14 @@
           "basis": {
             "title": "Basis",
             "type": "string"
+          },
+          "coach": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CoachNote"
+            },
+            "default": {},
+            "title": "Coach",
+            "type": "object"
           }
         },
         "required": [
@@ -7669,7 +7792,8 @@
           "energy",
           "missing",
           "n_base",
-          "basis"
+          "basis",
+          "coach"
         ],
         "title": "ProposalsArtifact",
         "type": "object"
@@ -8825,6 +8949,34 @@
               }
             ],
             "title": "Classes"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unit"
+          },
+          "unit_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "name",
+                  "pack"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unit Source"
           }
         },
         "required": [
@@ -8834,7 +8986,9 @@
           "confidence",
           "reason",
           "histogram",
-          "classes"
+          "classes",
+          "unit",
+          "unit_source"
         ],
         "title": "TargetInfo",
         "type": "object"

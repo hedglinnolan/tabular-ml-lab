@@ -504,6 +504,9 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     ks = [sub.step_kcal * i for i in range(SUBSTITUTION_STEPS + 1)]
     shift = Shift(X, donor=sub.donor, recipient=sub.recipient, kcal_per_unit=kcal_per_unit,
                   nested=nested)
+    from turbotab.core.units import outcome_unit as _unit_of_outcome
+
+    outcome_unit = _unit_of_outcome(target, band_frame[target])[0] if task == "regression" else None
     models = []
     note = None
     skipped = []
@@ -537,7 +540,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
             "family": key, "label": family.label, "delta": curve["delta"],
             "ci_low": None, "ci_high": None,
             "on_support_fraction": curve["on_support_fraction"], "stopped_at": curve["stopped_at"],
-            "effect_label": curve["effect_label"],
+            "effect_label": _in_outcome_unit(curve["effect_label"], outcome_unit),
         }
         if pipelines.get(key) is not None:
             def refit(Xb: pd.DataFrame, yb: Any, _pipe: Any = pipelines[key]) -> Any:
@@ -585,7 +588,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         positive = fitted[keys[0]].classes_[1]
         outcome = f"the predicted probability that {target} is {positive}"
     else:
-        outcome = f"predicted {target}"
+        outcome = f"predicted {target}" + (f" (in {outcome_unit})" if outcome_unit else "")
     estimand = (f"The average change in {outcome} when k kcal move from {sub.donor} to "
                 f"{sub.recipient}, with every other input, total energy included, left as it was.")
     if shift.carried:
@@ -602,6 +605,14 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     )
     ctx.progress(1.0, "Done")
     return artifact.model_dump(mode="json")
+
+
+def _in_outcome_unit(label: str | None, unit: str | None) -> str | None:
+    """``+1.23 per 100 kcal at k = 100`` → ``+1.23 mg/dL per 100 kcal at k = 100``."""
+    if not label or not unit or " per " not in label:
+        return label
+    head, tail = label.split(" per ", 1)
+    return f"{head}{unit} per {tail}" if unit == "%" else f"{head} {unit} per {tail}"
 
 
 __all__ = ["design_stage", "fit_stage", "read_assignment", "row_ids_of", "shelf_stage",
