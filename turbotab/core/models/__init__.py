@@ -23,6 +23,7 @@ from turbotab.core.models.base import (
 from turbotab.core.models import linear  # noqa: F401,E402 - registers
 from turbotab.core.models import elastic_net  # noqa: F401,E402 - registers
 from turbotab.core.models import boosted_trees  # noqa: F401,E402 - registers
+from turbotab.core.models import featurewise  # noqa: F401,E402 - registers (WP11)
 from turbotab.core.models import previews  # noqa: F401,E402 - registers the consequence builders
 # The final model declared at the seal's opening (AUDIT_REPORT §5 WP8): its validator and completion.
 from turbotab.core.models import selection  # noqa: F401,E402 - registers

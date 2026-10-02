@@ -133,6 +133,8 @@ class Coefficient(_Model):
     ratio: float | None = None
     ratio_low: float | None = None
     ratio_high: float | None = None
+    # The Benjamini–Hochberg adjusted p-value across the features a feature-wise family tested.
+    q: float | None = None
 
 
 class InferenceExit(_Model):

@@ -115,6 +115,7 @@ class Linear(FamilyBase):
     )
     needs_scaling = False
     handles_missing = False
+    linear_in_values = True
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         if task == "regression":

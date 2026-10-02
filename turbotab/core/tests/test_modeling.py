@@ -816,7 +816,7 @@ def test_the_shelf_puts_regularized_families_first_when_predictors_outnumber_row
     assert any("60 rows is small for boosted trees" in c for c in trees["concerns"])
     linear = next(f for f in shelf["families"] if f["key"] == "linear")
     assert linear["fit"] == "poor" and linear["concerns"]
-    assert [f["rank"] for f in shelf["families"]] == [1, 2, 3]
+    assert [f["rank"] for f in shelf["families"]] == list(range(1, len(keys) + 1))
 
 
 def test_the_shelf_leads_with_the_linear_model_for_inference_and_trees_for_large_prediction(table):

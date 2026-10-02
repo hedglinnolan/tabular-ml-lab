@@ -1205,6 +1205,7 @@ export function fit(
                 ratio: null,
                 ratio_low: null,
                 ratio_high: null,
+                q: null,
               };
             });
     return {

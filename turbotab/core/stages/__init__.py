@@ -117,14 +117,16 @@ def build_graph() -> Graph:
             Stage("split", 3, ("working", "cohort", "target_info", "structure"),
                   ("split", "roles", "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
-            Stage("shelf", 3, ("working", "cohort", "target_info", "split"),
-                  ("purpose", "task", "roles", "missing", "categorical"), shelf_stage, heavy=True,
+            Stage("shelf", 4, ("working", "cohort", "target_info", "split"),
+                  ("purpose", "task", "roles", "missing", "categorical", "lens", "findings", "event"),
+                  shelf_stage, heavy=True,
                   requires=("roles",), label="Ranking the model families for this table"),
-            # design 3: the estimand and coefficient meanings are read off the matrix, and the
-            # energy-dropped residual's gap reads the outcome and its event (audit WP6).
-            Stage("design", 3, ("working", "split", "target_info"),
+            # design 4: the estimand and coefficient meanings are read off the matrix, and the
+            # energy-dropped residual's gap reads the outcome and its event (audit WP6); an omics
+            # normalization step reads the lens and the findings (audit WP11).
+            Stage("design", 4, ("working", "split", "target_info"),
                   ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical",
-                   "event"),
+                   "event", "lens", "findings"),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),

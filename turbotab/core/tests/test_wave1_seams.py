@@ -319,3 +319,41 @@ def test_a_binary_design_based_table_is_on_the_odds_ratio_scale_and_names_its_do
         assert rows[name]["estimate"] == pytest.approx(beta[j], rel=1e-7)
         assert rows[name]["ratio"] == pytest.approx(np.exp(beta[j]), rel=1e-7)
         assert rows[name]["ratio_low"] == pytest.approx(np.exp(rows[name]["ci_low"]), rel=1e-12)
+
+
+# ── WP11 × WP8: the feature-wise tests under inference ───────────────────────────────────────
+
+
+def test_feature_wise_tests_use_every_analyzed_row_and_its_clusters(tmp_path):
+    """WP11's feature-wise family has its own entry in the fit (it makes no predictions); WP8
+    estimates every inference table from every analyzed row and clusters by the unit that repeats
+    among them. Joined, the feature-wise table must take those rows and those clusters: before the
+    merge fix it took the training rows beside the all-row clusters and could not be computed.
+
+    Reference: statsmodels OLS of the outcome on one exposure and the covariate over every
+    analyzed row (the held-out people included), and CR2 with Bell–McCaffrey degrees of freedom
+    written out from the definition (``references.cr2_by_definition``) by person.
+    """
+    frame = mf.nhanes_like(240, seed=31, repeats=2)
+    paths = mf.ingest_frame(frame, tmp_path)
+    roles = {"SEQN": "identifier", "age": "covariate", "protein": "exposure", "carb": "exposure"}
+    st = mf.state(roles=roles, target="glucose", task="regression", models=["featurewise"],
+                  energy_adjustment=None, purpose="inference")
+    split = mf.split_bundle(np.arange(len(frame)), holdout=0.25, seed=5,
+                            groups=frame["SEQN"].to_numpy(), grouped_by="SEQN")
+    ti = mf.target_info("regression", "glucose")
+    design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
+    fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
+    model = fit.data["models"][0]
+    assert not any("could not be computed" in c for c in model["concerns"]), model["concerns"]
+    assert model["coefficients_n"] == len(frame) and fit.data["n_holdout"] > 0
+    assert model["inference"]["covariance"] == "CR2" and model["inference"]["rows"] == "all"
+
+    X = sm.add_constant(frame[["protein", "age"]].astype(float))
+    ols = sm.OLS(frame["glucose"].to_numpy(float), X).fit()
+    codes = pd.factorize(frame["SEQN"])[0]
+    V, df = ref.cr2_by_definition(X.to_numpy(), np.asarray(ols.resid), codes)
+    row = {r["feature"]: r for r in model["coefficients"]}["protein"]
+    assert row["estimate"] == pytest.approx(ols.params["protein"], rel=1e-8)
+    assert row["se"] == pytest.approx(float(np.sqrt(V[1, 1])), rel=1e-6)
+    assert row["df"] == pytest.approx(df[1], rel=1e-6)

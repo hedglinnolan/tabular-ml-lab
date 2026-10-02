@@ -24,7 +24,12 @@ missing-values answer:
   among its inputs: the pipeline's inputs are the predictors (``DesignSpec.inputs``), and ``y``
   never reaches a transformer.
 
-Step order: impute → energy adjustment → levels → one-hot → scale → model.
+Step order: normalize → impute → energy adjustment → levels → one-hot → scale → model.
+
+Omics values (AUDIT_REPORT §5 WP11): when the ``omics_scale`` finding's normalization is recorded,
+the exposures among its columns are normalized first — log-CPM with TMM factors, or quotient
+normalization and log2 (``turbotab.core.methods.omics``) — fit on each training fold like every
+other step. It runs before imputation, so a missing value is filled on the normalized scale.
 """
 from __future__ import annotations
 
@@ -41,7 +46,7 @@ from turbotab.core.models.base import ModelFamily
 from turbotab.core.models.steps import energy_step
 
 PREDICTOR_ROLES = ("exposure", "covariate", "energy")
-ADJUST_STEPS = ("impute", "energy")  # the steps whose outputs form the lineage's "adjusted" lane
+ADJUST_STEPS = ("normalize", "impute", "energy")  # the steps whose outputs form the lineage's "adjusted" lane
 MANY_LEVELS = 20
 MISSING_LEVEL = "Missing"
 LEVEL_DTYPES = ("boolean", "categorical", "text")
@@ -225,6 +230,9 @@ class DesignSpec:
     roles: dict[str, str] = field(default_factory=dict)
     levels: list[str] = field(default_factory=list)  # predictors whose blanks are a level, "Missing"
     indicators: bool = False  # imputed numbers gain a missing indicator
+    # WP11: the omics normalization the pipeline runs first, ``{method, kind, columns}``, or None
+    normalization: dict[str, Any] | None = None
+    lenses: list[str] = field(default_factory=list)  # the declared lenses (what the steps say)
 
     def energy_adjustment(self) -> EnergyAdjustment | None:
         return EnergyAdjustment(**self.energy) if self.energy else None
@@ -269,6 +277,8 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
     levels = (level_columns(state, present, column_info) if column_info is not None
               else frame_level_columns(state, frame, present))
     impute = missing_strategy(state) == "impute"
+    from turbotab.core.methods.omics import design_normalization
+
     return DesignSpec(
         predictors=predictors,
         inputs=inputs,
@@ -279,6 +289,8 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
         roles={str(k): str(v) for k, v in (state.roles or {}).items()},
         levels=levels,
         indicators=bool(impute and state.missing is not None and state.missing.indicators),
+        normalization=design_normalization(state, inputs),
+        lenses=[str(k) for k in (getattr(state, "lens", None) or [])],
     )
 
 
@@ -297,6 +309,12 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
 
     levels = [c for c in spec.levels if c in spec.predictors and c in spec.inputs]
     steps: list[tuple[str, Any]] = []
+    if spec.normalization:
+        from turbotab.core.methods.omics import normalizer
+
+        step = normalizer(spec.normalization)
+        if step is not None:
+            steps.append(("normalize", step))
     if spec.impute:
         numeric = [c for c in spec.numeric if c not in levels]
         categorical = [c for c in spec.categorical if c not in levels]
@@ -347,7 +365,11 @@ def build_pipeline(spec: DesignSpec, family: ModelFamily, task: Task, purpose: P
     from sklearn.pipeline import Pipeline
 
     steps = family_steps(spec, family)
-    steps.append(("model", family.build(task, purpose, n_rows, n_features)))
+    # A family whose model step depends on the design (which columns it tests) builds from the spec.
+    build_for = getattr(family, "build_for", None)
+    model = (build_for(spec, task, purpose, n_rows, n_features) if build_for is not None
+             else family.build(task, purpose, n_rows, n_features))
+    steps.append(("model", model))
     return Pipeline(steps).set_output(transform="pandas")
 
 
@@ -401,7 +423,12 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
     """``[{key, label, detail}]`` for each step of this family's pipeline, in order."""
     out: list[dict[str, str]] = []
     for name, _ in family_steps(spec, family):
-        if name == "impute":
+        if name == "normalize":
+            from turbotab.core.methods.omics import describe as describe_normalization
+
+            label, detail = describe_normalization(spec.normalization or {}) or ("Normalize", "")
+            out.append({"key": "normalize", "label": label, "detail": detail})
+        elif name == "impute":
             marked = "; each filled number also gets a missing indicator" if spec.indicators else ""
             out.append({"key": "impute", "label": "Fill missing values",
                         "detail": f"Median for numbers, most frequent value for categories, "
@@ -425,8 +452,13 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
                                   f"is the reference."})
         elif name == "scale":
             width = f"all {n_matrix_columns} columns" if n_matrix_columns else "every column"
-            out.append({"key": "scale", "label": "Standardize",
-                        "detail": f"Centers and scales {width} on the training fold."})
+            detail = f"Centers and scales {width} on the training fold."
+            if "metabolomics" in spec.lenses:
+                # F17: a departure from the field's custom is named, with its justification.
+                detail += (" This is autoscaling, to unit variance; Pareto scaling is customary in "
+                           "metabolomics, and van den Berg et al. (2006) found autoscaling performed "
+                           "better in their explorative analysis.")
+            out.append({"key": "scale", "label": "Standardize", "detail": detail})
         else:
             custom = getattr(family, "describe_step", None)
             label, detail = (custom(name) if custom else None) or (

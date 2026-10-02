@@ -136,13 +136,17 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
                           n_features=len(predictors), n_events=n_events, n_classes=n_classes,
                           n_parameters=predictor_parameters(predictors, column_info,
                                                             ctx.state.categorical),
-                          outcome_mean=outcome_mean, outcome_sd=outcome_sd)
+                          outcome_mean=outcome_mean, outcome_sd=outcome_sd,
+                          lenses=tuple(ctx.state.lens or ()))
     ranked = rank(situation)
+    # WP11: raw counts or intensities whose totals track the outcome, on the training rows only
+    assay = _assay_concern(ctx, task, rows if trained else None)
     events = f", {n_events:,} in the rarer class" if n_events is not None else ""
     estimates = _estimates(ctx, task, rows if trained else None, [f for f, _ in ranked])
     artifact = ShelfArtifact(
         families=[
-            ShelfFamily(key=f.key, label=f.label, rank=i + 1, fit=a.fit, concerns=list(a.concerns),
+            ShelfFamily(key=f.key, label=f.label, rank=i + 1, fit=a.fit,
+                        concerns=([assay] if assay else []) + list(a.concerns),
                         inductive_bias=f.inductive_bias,
                         estimate_seconds=estimates[f.key].seconds if estimates.get(f.key) else None,
                         estimate=estimates[f.key].text if estimates.get(f.key) else None)
@@ -170,6 +174,29 @@ def predictor_parameters(predictors: Sequence[str], column_info: Mapping[str, An
         levels = int(getattr(info, "n_unique", 0) or 0)
         total += max(1, levels - 1) if (dtype in CATEGORY_DTYPES or column in codes) else 1
     return total
+
+
+def _assay_concern(ctx: StageContext, task: str, train_ids: Any) -> str | None:
+    """The library-size check (``methods.omics.check_on``) on the training rows: a sentence when the
+    exposures are raw counts or intensities, no normalization is recorded, and their per-sample
+    totals track the outcome. Never reads a held-out row."""
+    from turbotab.core.methods.omics import OMICS_LENSES, check_on
+
+    state = ctx.state
+    if train_ids is None or not len(train_ids) or not state.target:
+        return None
+    if not any(k in OMICS_LENSES for k in state.lens or []):
+        return None
+    exposures = [c for c, r in (state.roles or {}).items() if r == "exposure" and c != state.target]
+    if not exposures:
+        return None
+    with open_store(ctx) as store:
+        present = [c for c in exposures if c in set(store.columns)]
+        frame = store.materialize([*present, state.target], train_ids)
+    frame = frame.loc[frame[state.target].notna()]
+    y = coded_outcome(task, frame[state.target].to_numpy(), state.event)
+    check = check_on(frame[present], state, y, task)
+    return check["sentence"] if check and check["flagged"] else None
 
 
 def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[Any]) -> dict[str, Any]:
@@ -256,6 +283,11 @@ def design_stage(ctx: StageContext) -> Bundle:
             # The gap the energy-dropped residual opens on these training rows (audit ME-03).
             y_train = store.materialize([state.target], train_ids)[state.target]
     spec = design_spec(state, X, predictors, column_info=info)
+    from turbotab.core.methods.omics import design_refusal
+
+    refused = design_refusal(state, X, families)  # WP11: raw omics values into a linear family
+    if refused:
+        raise ValueError(refused)
     numeric_set = set(spec.numeric)  # a set: 20,000 predictors made the list test quadratic
     numeric = [c for c in spec.predictors if c in numeric_set]
     nested = nested_components(X, numeric)  # on training rows: what the substitution will move
@@ -721,6 +753,21 @@ def fit_stage(ctx: StageContext) -> Bundle:
     for key in keys:
         family = get_family(key)
         started = time.perf_counter()
+        if not getattr(family, "predicts", True):
+            # WP11: a family that only tests has no cross-validated or held-out score. Under
+            # inference its table, like every other, is estimated from every analyzed row with the
+            # pipeline refit on them (WP8; BLUEPRINT §12 ruling 3), clustered as they repeat.
+            ctx.progress(share(done), f"{family.label}: tests")
+            all_rows = inference and reports_coefficients(family)
+            tested = (fit_table(clone(pipelines[key])) if all_rows and not same_rows
+                      else fit(clone(pipelines[key]), X, y))
+            X_c, y_c = (X_tab, y_tab) if all_rows else (X, y)
+            unit_c = (None if unit_all is None else unit_all[table_rows]) if all_rows else groups
+            models.append(_tests_only(family, tested, X_c, y_c, task, state, clusters, unit_c,
+                                      baseline, started, rows="all" if all_rows else "training",
+                                      survey=survey, survey_note=survey_note))
+            done += len(pairs) + 2
+            continue
 
         def before_fold(i: int, n: int, _label: str = family.label) -> None:
             nonlocal done
@@ -933,6 +980,51 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
         logging.getLogger(__name__).exception("the average relative effects failed")
         extra = []
     return rows + extra
+
+
+def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, clusters: Any,
+                groups: Any, baseline: dict[str, Any], started: float,
+                rows: str = "training", survey: Any = None,
+                survey_note: str | None = None) -> dict[str, Any]:
+    """The fit artifact's entry for a family that tests and makes no predictions: its table, its
+    concerns, and no score (``cv`` empty, ``holdout`` and ``versus_baseline`` null). ``X`` and
+    ``y`` are the rows the table is estimated from (``rows``: every analyzed row under inference).
+
+    Under a survey design (WP10) the table waits for the survey answer as the linear family's does,
+    and a population answer is stated as not applied: these tests are not design-weighted."""
+    from turbotab.core.models.inference import _on_rows
+    from turbotab.core.models.linear import as_clusters
+
+    concerns = [f"{family.label} tests each exposure and makes no predictions, so it has no "
+                f"cross-validated or held-out score."]
+    coefficients = interval_info = None
+    try:
+        if survey is not None and survey.refusal:
+            from turbotab.core.models.survey import blocked
+
+            table = blocked(survey.refusal, survey.exits)
+        else:
+            table = family.inference(final, X, y, task=task,
+                                     clusters=clusters if clusters is not None else as_clusters(groups),
+                                     event=state.event)
+            if table.info.get("n_rows") is None:
+                table = _on_rows(table, len(X), rows)
+            if survey is not None and survey.answer == "population":
+                concerns.append("Fit without the survey weights: its tests describe these "
+                                "participants, not the surveyed population.")
+            elif survey is not None and survey.concern():
+                concerns.append(survey.concern())
+        coefficients, interval_info = table.rows, table.info
+        concerns.extend(table.concerns)
+    except Exception as exc:  # noqa: BLE001 - a table that cannot be computed is a concern
+        concerns.append(f"The coefficient table could not be computed: {exc}")
+    if survey_note:
+        concerns.append(survey_note)
+    return {"family": family.key, "label": family.label, "cv": {}, "holdout": None,
+            "coefficients": coefficients, "fit_seconds": round(time.perf_counter() - started, 3),
+            "concerns": concerns, "baseline": baseline, "versus_baseline": None,
+            "inference": interval_info,
+            "coefficients_n": len(X) if coefficients is not None else None}
 
 
 # ── substitution ─────────────────────────────────────────────────────────────

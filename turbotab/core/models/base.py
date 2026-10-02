@@ -38,6 +38,7 @@ class Situation:
     n_parameters: int | None = None
     outcome_mean: float | None = None
     outcome_sd: float | None = None
+    lenses: tuple[str, ...] = ()  # the declared lenses (an omics lens changes what is sound)
 
 
 @dataclass(frozen=True)
@@ -89,6 +90,10 @@ class FamilyInfo(BaseModel):
     cautions: list[str]
     needs_scaling: bool
     handles_missing: bool
+    # The purposes the family serves, and whether it predicts (a family that only tests has no
+    # cross-validated score). Read with getattr and these defaults: FamilyBase declares them.
+    purposes: list[Purpose] = ["prediction", "inference"]
+    predicts: bool = True
 
 
 _REGISTRY: dict[str, ModelFamily] = {}
@@ -134,6 +139,8 @@ def info(family: ModelFamily) -> FamilyInfo:
         inductive_bias=family.inductive_bias, strengths=list(family.strengths),
         cautions=list(family.cautions), needs_scaling=family.needs_scaling,
         handles_missing=family.handles_missing,
+        purposes=list(getattr(family, "purposes", ("prediction", "inference"))),
+        predicts=bool(getattr(family, "predicts", True)),
     )
 
 
@@ -158,6 +165,11 @@ class FamilyBase:
     cautions: tuple[str, ...] = ()
     needs_scaling: bool = False
     handles_missing: bool = False
+    purposes: tuple[Purpose, ...] = ("prediction", "inference")  # the purposes it serves
+    predicts: bool = True  # False: it tests and makes no predictions (no cross-validated score)
+    # Its model is a weighted sum of the values as given, so their scale (raw counts or log) is part
+    # of what it assumes; raw omics values wait for a normalization (``methods.omics``).
+    linear_in_values: bool = False
 
     def coefficients(self, pipeline: Any, X: Any, y: Any, *, task: Task,
                      purpose: Purpose | None, groups: Any = None) -> list[dict[str, Any]] | None:

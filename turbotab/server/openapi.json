@@ -2636,6 +2636,26 @@
           "handles_missing": {
             "type": "boolean",
             "title": "Handles Missing"
+          },
+          "purposes": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "prediction",
+                "inference"
+              ]
+            },
+            "type": "array",
+            "title": "Purposes",
+            "default": [
+              "prediction",
+              "inference"
+            ]
+          },
+          "predicts": {
+            "type": "boolean",
+            "title": "Predicts",
+            "default": true
           }
         },
         "type": "object",
@@ -2647,7 +2667,9 @@
           "strengths",
           "cautions",
           "needs_scaling",
-          "handles_missing"
+          "handles_missing",
+          "purposes",
+          "predicts"
         ],
         "title": "FamilyInfo",
         "description": "What ``GET /api/models`` says about one family."
@@ -7632,6 +7654,18 @@
             ],
             "default": null,
             "title": "Ratio High"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Q"
           }
         },
         "required": [
@@ -7645,7 +7679,8 @@
           "meaning",
           "ratio",
           "ratio_low",
-          "ratio_high"
+          "ratio_high",
+          "q"
         ],
         "title": "Coefficient",
         "type": "object"

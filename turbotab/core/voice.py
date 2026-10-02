@@ -813,6 +813,8 @@ def _set_energy_adjustment(d: Any, state: Any, ctx: Any) -> str:
 _FAMILY_LABEL = {
     "elastic_net": "elastic net",
     "boosted_trees": "gradient-boosted trees",
+    # WP11: one least-squares test per exposure, q-values by Benjamini–Hochberg
+    "featurewise": "feature-wise least-squares tests with Benjamini–Hochberg false-discovery control",
 }
 _LINEAR_LABEL = {
     "regression": "linear regression",

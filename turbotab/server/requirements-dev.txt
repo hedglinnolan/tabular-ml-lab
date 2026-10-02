@@ -3,3 +3,4 @@
 lifelines
 samplics
 pmsampsize  # Riley et al.'s sample-size criteria, the authors' Python port (WP8 · sample-size guidance)
+rnanorm==2.2.0

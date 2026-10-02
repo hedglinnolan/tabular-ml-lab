@@ -39,6 +39,7 @@ class ElasticNet(FamilyBase):
     )
     needs_scaling = True
     handles_missing = False
+    linear_in_values = True
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         cv = inner_folds(n_rows)
@@ -82,6 +83,9 @@ class ElasticNet(FamilyBase):
         if s.n_features >= s.n_rows:
             concerns.append(f"{s.n_features:,} predictors for {s.n_rows:,} rows: the predictors it "
                             f"keeps will change from sample to sample.")
+            if s.purpose == "inference":  # AUDIT_REPORT ME-18: the caveat holds at p ≥ n too
+                concerns.append("Penalized coefficients are shrunk and carry no confidence intervals.")
+                return Assessment(2.0, "fair", tuple(concerns))
             return Assessment(4.0, "good", tuple(concerns))
         fit = "good"
         score = 2.5
