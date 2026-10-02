@@ -16,6 +16,7 @@ const StageScreen = lazy(() =>
 const StageLabScreen = lazy(() =>
   import("./screens/StageLabScreen").then((m) => ({ default: m.StageLabScreen })),
 );
+const M2Screen = lazy(() => import("./explore/m2/M2Screen").then((m) => ({ default: m.M2Screen })));
 
 function Routes() {
   const route = useRoute();
@@ -40,6 +41,12 @@ function Routes() {
       return (
         <Suspense fallback={<Header />}>
           <StageLabScreen />
+        </Suspense>
+      );
+    case "m2-lab":
+      return (
+        <Suspense fallback={<Header />}>
+          <M2Screen />
         </Suspense>
       );
     case "missing":

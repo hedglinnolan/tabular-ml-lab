@@ -1,0 +1,1250 @@
+/*
+ * The M2 prototype's views. Tokens only (DESIGN_LANGUAGE §02): --c1 with this choice, --c4 your
+ * data now, ink for held-out rows, --ok a recorded seal, --warn the coach and an exploratory basis.
+ * The app speaks serif, the user acts sans, the data is mono (§03).
+ */
+
+.svg {
+  display: block;
+  overflow: visible;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.tick {
+  font-size: 10px;
+  fill: var(--faint);
+}
+
+.axisLine {
+  stroke: var(--line);
+}
+
+.blank {
+  font-family: var(--sans);
+  font-style: italic;
+  font-size: 0.92em;
+  color: var(--faint);
+}
+
+/* ── the reshape table ────────────────────────────────────────────────────── */
+
+.rt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+}
+
+.rtHead {
+  display: flex;
+  align-items: flex-end;
+  height: 26px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.rtRowHead,
+.rtIdHead,
+.rtColHead {
+  flex: 0 0 auto;
+  padding: 0 8px 5px 0;
+  text-align: right;
+  overflow: hidden;
+}
+
+.rtRowHead {
+  text-align: left;
+  color: var(--faint);
+  padding-left: 6px;
+}
+
+.rtIdHead {
+  text-align: left;
+  color: var(--ink);
+}
+
+.rtColHead {
+  color: var(--ink);
+}
+
+.rtFolding {
+  color: var(--faint);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--ink) 35%, transparent);
+}
+
+.rtSlot {
+  display: block;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.rtBody {
+  position: relative;
+  margin-top: 4px;
+  --rows-h: 0px;
+}
+
+/* The table's extent in this state: a hairline under its last row, so the halving is seen. */
+.rtExtent {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--rows-h) + 2px);
+  height: 1px;
+  background: var(--line);
+}
+
+.rtFrame {
+  position: absolute;
+  left: -5px;
+  right: -5px;
+  top: 0;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--c4) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c4) 30%, transparent);
+  pointer-events: none;
+}
+
+.rtFrameTracked {
+  border: 1.5px solid color-mix(in srgb, var(--ink) 60%, transparent);
+}
+
+.rtGap {
+  position: absolute;
+  left: 6px;
+  right: 0;
+  top: 0;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-style: italic;
+  color: var(--faint);
+}
+
+.rtRow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  --struck: 0;
+  /* Opaque, so a row travelling past another (a stacked export gathering) covers it rather than
+     printing over it; later rows of a unit travel on top. */
+  background: var(--surface);
+  border-radius: 5px;
+}
+
+.rtRow[data-k="1"] {
+  z-index: 2;
+}
+
+.rtRow::before {
+  content: "";
+  position: absolute;
+  inset: 2px 0;
+  border-radius: 5px;
+  opacity: var(--struck);
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--ink) 9%, transparent) 0 2px,
+    transparent 2px 6px
+  );
+  pointer-events: none;
+}
+
+.rtRow[data-tracked]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2.5px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+
+.rtStrike {
+  position: absolute;
+  left: 60px;
+  right: 6px;
+  top: 50%;
+  height: 1px;
+  background: color-mix(in srgb, var(--ink) 55%, transparent);
+  transform-origin: left center;
+  transform: scaleX(var(--struck));
+  pointer-events: none;
+}
+
+.rtRowId,
+.rtId,
+.rtCell {
+  flex: 0 0 auto;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+  overflow: hidden;
+}
+
+.rtRowId {
+  justify-content: flex-start;
+  padding-left: 8px;
+  color: var(--faint);
+  font-size: 10.5px;
+}
+
+.rtId {
+  justify-content: flex-start;
+  color: var(--ink);
+}
+
+.rtRow[data-tracked] .rtId {
+  font-weight: 600;
+}
+
+.rtCell {
+  color: var(--ink);
+  transition: background-color var(--dur-arrive) ease-out;
+}
+
+.rtChanged {
+  background: color-mix(in srgb, var(--c1) 15%, transparent);
+}
+
+.roll {
+  position: relative;
+  display: inline-flex;
+  overflow: hidden;
+  height: 16px;
+  line-height: 16px;
+}
+
+.roll > span {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.rtFoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.rtRest {
+  color: var(--c1);
+  text-align: right;
+}
+
+/* ── the row strip ─────────────────────────────────────────────────────────── */
+
+.strip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding-top: 14px;
+}
+
+.strip canvas {
+  display: block;
+}
+
+.stripCount {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+/* ── the column strip ──────────────────────────────────────────────────────── */
+
+.cs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.csBar {
+  position: relative;
+  flex: 0 1 260px;
+  display: flex;
+  gap: 1px;
+  height: 9px;
+}
+
+.csSeg {
+  position: relative;
+  height: 100%;
+  border-radius: 2px;
+  transition:
+    flex-grow var(--dur-arrive) ease-out,
+    min-width var(--dur-arrive) ease-out,
+    background-color var(--dur-arrive) ease-out;
+}
+
+.csSeg[data-kind="id"] {
+  background: color-mix(in srgb, var(--ink) 70%, transparent);
+}
+
+.csSeg[data-kind="record"] {
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--c4) 75%, transparent) 0 2px,
+    transparent 2px 3px
+  );
+  overflow: hidden;
+}
+
+.csSeg[data-kind="constant"] {
+  background: var(--line);
+}
+
+.csSeg[data-kind="measure"] {
+  background: color-mix(in srgb, var(--c4) 65%, transparent);
+}
+
+.csSeg[data-changing] {
+  background: var(--c1);
+}
+
+.csTick {
+  position: absolute;
+  top: -5px;
+  width: 1.5px;
+  height: 4px;
+  margin-left: -0.75px;
+  background: var(--ink);
+}
+
+.csLabel {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── row flow ──────────────────────────────────────────────────────────────── */
+
+.flow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.flowRow {
+  overflow: hidden;
+}
+
+/* Two lines per step: the label above, the bar at full width below (cards here are narrow). */
+.flowLine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px minmax(64px, auto);
+  grid-template-areas: "label label label" "track count drop";
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 2px;
+  padding: 4px 0 3px;
+}
+
+.flowLine > :nth-child(1) {
+  grid-area: label;
+}
+.flowLine > :nth-child(2) {
+  grid-area: track;
+}
+.flowLine > :nth-child(3) {
+  grid-area: count;
+}
+.flowLine > :nth-child(4) {
+  grid-area: drop;
+}
+
+.flowLabel {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flowTrack {
+  display: flex;
+  height: 11px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.flowKept,
+.flowKeptNow {
+  display: block;
+  height: 100%;
+  background: var(--c4);
+  opacity: 0.7;
+}
+
+.flowKeptNow {
+  background: var(--c1);
+  opacity: 1;
+}
+
+/* Folded into a partner row: a bracketed fold, not the hatch of rows that leave. */
+.flowFolded {
+  display: block;
+  height: 100%;
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--c1) 55%, transparent) 0 1px,
+    transparent 1px 4px
+  );
+  border-left: 1.5px solid var(--c1);
+}
+
+.flowGone {
+  display: block;
+  height: 100%;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--ink) 42%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+.flowCount {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  text-align: right;
+  color: var(--ink);
+}
+
+.flowDrop {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.flowDetail {
+  margin: 0 0 2px;
+  font-family: var(--serif);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* ── energy spread + the coach ─────────────────────────────────────────────── */
+
+.spread {
+  position: relative;
+  min-width: 0;
+}
+
+.barNow {
+  fill: var(--c4);
+  fill-opacity: 0.6;
+}
+
+.barWith {
+  fill: var(--c1);
+  fill-opacity: 0.8;
+}
+
+.whisker line {
+  stroke: var(--ink);
+  stroke-opacity: 0.55;
+  stroke-width: 1.2;
+}
+
+.coachBracket {
+  fill: none;
+  stroke: var(--warn);
+  stroke-width: 1.5;
+}
+
+.coachLeader {
+  fill: none;
+  stroke: var(--warn);
+  stroke-width: 1;
+  stroke-opacity: 0.8;
+}
+
+.coachDot {
+  fill: var(--warn);
+}
+
+.coachNote {
+  position: absolute;
+  top: 0;
+  margin: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  padding: 1px 7px 2px;
+  font-family: var(--serif);
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--warn);
+  background: var(--warn-tint);
+  border: 1px solid var(--warn-line);
+  border-radius: 7px;
+  opacity: 0;
+  transition: opacity var(--dur-arrive) ease-out;
+}
+
+.coachNote[data-shown] {
+  opacity: 1;
+}
+
+.spreadLegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.keyNow,
+.keyWith,
+.keyFeature,
+.keySample {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  margin-left: 8px;
+}
+
+.keyNow:first-child,
+.keyFeature:first-child {
+  margin-left: 0;
+}
+
+.keyNow {
+  background: var(--c4);
+  opacity: 0.7;
+}
+
+.keyWith {
+  background: var(--c1);
+}
+
+.keyFeature {
+  background: var(--c2);
+  border-radius: 50%;
+}
+
+.keySample {
+  background: var(--c3);
+  border-radius: 50%;
+}
+
+.keyAxis {
+  margin-left: auto;
+  color: var(--faint);
+}
+
+/* ── orientation ───────────────────────────────────────────────────────────── */
+
+.tt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ttGrid {
+  position: relative;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+
+.ttCorner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 0 6px 4px;
+  color: var(--faint);
+  font-size: 10.5px;
+}
+
+.ttFeature,
+.ttSample,
+.ttCell {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.ttCell {
+  width: 78px;
+  height: 26px;
+  justify-content: flex-end;
+  padding-right: 9px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.ttCell[data-raw] {
+  justify-content: flex-start;
+  padding-left: 6px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.ttFeature {
+  padding-left: 4px;
+  color: var(--ink);
+  transition: background-color var(--dur-arrive) ease-out;
+  border-radius: 5px;
+}
+
+.ttFeature[data-named] {
+  background: color-mix(in srgb, var(--c1) 13%, transparent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.ttFeature[data-turned] {
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding: 0 9px 6px 0;
+  background: none;
+}
+
+.ttSample {
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding: 0 9px 6px 0;
+  color: var(--muted);
+}
+
+.ttSample[data-turned] {
+  justify-content: flex-start;
+  align-items: center;
+  padding: 0 0 0 4px;
+}
+
+.ttSample[data-tracked] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.ttOutline {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 1.5px solid color-mix(in srgb, var(--ink) 60%, transparent);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.ss {
+  position: relative;
+  min-width: 0;
+}
+
+.laneLabel {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--muted);
+}
+
+.laneValue {
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+
+.dotFeature {
+  fill: var(--c2);
+  fill-opacity: 0.55;
+}
+
+.dotSample {
+  fill: var(--c3);
+  fill-opacity: 0.75;
+}
+
+/* ── the seal fork ─────────────────────────────────────────────────────────── */
+
+.fork {
+  position: relative;
+  min-width: 0;
+}
+
+.fork canvas {
+  display: block;
+}
+
+.forkOverlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  --boxes: 0;
+  --sealed: 0;
+  --boundary: 0;
+}
+
+.laneHead {
+  position: absolute;
+  top: 2px;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.sealBadge {
+  position: absolute;
+  opacity: var(--sealed);
+  transform: scale(calc(0.6 + 0.4 * var(--sealed)));
+  background: var(--surface);
+  border-radius: 50%;
+  line-height: 0;
+}
+
+.axisLabel {
+  position: absolute;
+  bottom: -14px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.axisLabel[data-align="start"] {
+  transform: none;
+}
+
+.axisLabel[data-align="end"] {
+  transform: translateX(-100%);
+}
+
+.basisFact {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.basisLine {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 8px 0 0;
+  opacity: 0;
+  transition: opacity var(--dur-arrive) ease-out;
+}
+
+.basisLine[data-shown] {
+  opacity: 1;
+}
+
+.basisKicker {
+  font-family: var(--sans);
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.basisLine[data-exploratory] .basisKicker {
+  color: var(--warn);
+}
+
+.basisText {
+  font-family: var(--serif);
+  font-size: 14px;
+  color: var(--ink);
+}
+
+/* The glyph: ink for a preview, --ok once recorded, amber for an exploratory basis. */
+[data-seal] {
+  display: block;
+  overflow: visible;
+}
+
+[data-seal] :global(.sealRing) {
+  fill: var(--surface);
+  stroke-width: 1.8;
+}
+
+[data-seal] :global(.sealCore) {
+  stroke: none;
+}
+
+[data-seal] :global(.sealCoreOpen) {
+  fill: none;
+  stroke-width: 1.2;
+  stroke-dasharray: 2 2;
+}
+
+[data-seal] :global(.sealMark) {
+  fill: none;
+  stroke: var(--surface);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+[data-seal] :global(.sealQ) {
+  font-family: var(--serif);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+[data-seal][data-tone="ink"] :global(.sealRing) {
+  stroke: var(--ink);
+}
+[data-seal][data-tone="ink"] :global(.sealCore) {
+  fill: var(--ink);
+}
+[data-seal][data-tone="ok"] :global(.sealRing) {
+  stroke: var(--ok);
+}
+[data-seal][data-tone="ok"] :global(.sealCore) {
+  fill: var(--ok);
+}
+[data-seal][data-tone="warn"] :global(.sealRing) {
+  stroke: var(--warn);
+}
+[data-seal][data-tone="warn"] :global(.sealCoreOpen) {
+  stroke: var(--warn);
+}
+[data-seal][data-tone="warn"] :global(.sealQ) {
+  fill: var(--warn);
+}
+
+.inlineGlyph {
+  display: inline-block !important;
+  vertical-align: -2px;
+  margin-right: 3px;
+}
+
+/* ── results ───────────────────────────────────────────────────────────────── */
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section {
+  padding: 13px 16px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.kicker {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sectionAside {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ok);
+}
+
+.cmpHead,
+.cmpRow,
+.cmpAxis {
+  display: grid;
+  grid-template-columns: minmax(130px, 200px) minmax(0, 1fr) 170px;
+  gap: 14px;
+  align-items: center;
+}
+
+.cmpHead {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  color: var(--muted);
+  padding-bottom: 4px;
+}
+
+.cmpAxisLabel {
+  font-weight: 600;
+}
+
+.cmpNumHead {
+  text-align: right;
+}
+
+.cmpRow {
+  padding: 3px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.cmpName {
+  min-width: 0;
+}
+
+.family {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.concern {
+  display: block;
+  margin: 1px 0 0;
+  font-family: var(--serif);
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--warn);
+}
+
+.cmpPlot {
+  min-width: 0;
+}
+
+.cmpNums {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.cmpHold,
+.cmpHoldPost,
+.cmpSealed {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.cmpHoldPost {
+  color: var(--warn);
+}
+
+.firstOpened {
+  color: var(--muted);
+}
+
+.cmpSealed {
+  color: var(--ok);
+  font-family: var(--sans);
+  font-weight: 600;
+}
+
+.baseLine {
+  stroke: var(--ink);
+  stroke-opacity: 0.45;
+  stroke-dasharray: 2 3;
+}
+
+.baseLabel {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 10.5px;
+  fill: var(--muted);
+}
+
+.interval {
+  stroke: var(--c1);
+  stroke-width: 2;
+}
+
+.dot {
+  fill: var(--c1);
+}
+
+.hollow,
+.hollowPost,
+.hollowFirst {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.hollowPost {
+  stroke: var(--warn);
+  stroke-width: 1.8;
+}
+
+.hollowFirst {
+  stroke: var(--ink);
+  stroke-opacity: 0.45;
+  stroke-dasharray: 2 2;
+}
+
+.legendLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin: 2px 0 0;
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.keyDot,
+.keyHollow,
+.keyHollowFirst,
+.keyBase {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-left: 8px;
+  border-radius: 50%;
+}
+
+.keyDot {
+  margin-left: 0;
+  background: var(--c1);
+}
+
+.keyHollow {
+  border: 1.5px solid var(--ink);
+}
+
+.data-post .keyHollow,
+.results[data-phase="post"] .keyHollow {
+  border-color: var(--warn);
+}
+
+.keyHollowFirst {
+  border: 1.5px dashed color-mix(in srgb, var(--ink) 50%, transparent);
+}
+
+.keyBase {
+  width: 0;
+  height: 11px;
+  border-radius: 0;
+  border-left: 1.5px dashed color-mix(in srgb, var(--ink) 50%, transparent);
+}
+
+.basis {
+  margin: 6px 0 0;
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* The CONSEQUENCE silhouette (§09): a full-width interruption with a heavy rule and larger type.
+   Not the blocker: --stop is reserved for numbers that cannot be trusted, and opening the seal
+   makes no number untrustworthy. It is the one irreversible act in the analysis, so it takes the
+   interruption's shape and its grammar — declarative, then first person. */
+.consequence {
+  position: relative;
+  padding: 16px 20px 16px 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+  overflow: hidden;
+}
+
+.conRule {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--ink);
+}
+
+.conHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 8px;
+}
+
+.conSignal {
+  font-family: var(--serif);
+  font-variant: small-caps;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+
+.conTitle {
+  margin: 0 0 6px;
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+  max-width: 62ch;
+}
+
+.conBody {
+  margin: 0 0 12px;
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  max-width: 64ch;
+}
+
+.conExits {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.conAttest {
+  padding: 7px 14px;
+  border: 1.5px solid var(--accent);
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.conAttest:hover {
+  background: var(--accent-ink);
+}
+
+.conOr {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sealRecorded {
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ok);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.sealRecordedText {
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.postBand {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 14px;
+  border: 1px solid var(--warn-line);
+  border-left: 3px solid var(--warn);
+  border-radius: 10px;
+  background: var(--warn-tint);
+}
+
+.postKicker {
+  font-family: var(--sans);
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--warn);
+}
+
+.postText {
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+:global(:root[data-reduced-motion="true"]) .rtCell,
+:global(:root[data-reduced-motion="true"]) .csSeg,
+:global(:root[data-reduced-motion="true"]) .coachNote,
+:global(:root[data-reduced-motion="true"]) .basisLine,
+:global(:root[data-reduced-motion="true"]) .ttFeature {
+  transition: none;
+}
+
+.rankTick {
+  stroke: var(--ink);
+  stroke-width: 1.2;
+}
+
+.keyTick {
+  display: inline-block;
+  width: 1.5px;
+  height: 10px;
+  margin-left: 8px;
+  background: var(--ink);
+}
+
+.legendGrid {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 7px;
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.legendGrid > .keyNow,
+.legendGrid > .keyWith {
+  margin-left: 0;
+}
+
+.legendAxis {
+  color: var(--faint);
+  text-align: right;
+}
