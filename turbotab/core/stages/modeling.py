@@ -104,15 +104,18 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
         rows = np.intersect1d(rows, assignment.index[assignment["train"]].to_numpy())
         n = int(len(rows))
     n_events = n_classes = None
+    class_counts = None
     if task != "regression" and rows is not None:
         with open_store(ctx) as store:
             y = store.materialize([ctx.state.target], rows)
         counts = y[ctx.state.target].value_counts(dropna=True)
         n_classes = int(len(counts))
+        class_counts = tuple(int(c) for c in counts.to_numpy())
         if task == "binary" and n_classes:
             n_events = int(counts.min())
     situation = Situation(task=task, purpose=ctx.state.purpose, n_rows=n,
-                          n_features=len(predictors), n_events=n_events, n_classes=n_classes)
+                          n_features=len(predictors), n_events=n_events, n_classes=n_classes,
+                          class_counts=class_counts)
     ranked = rank(situation)
     events = f", {n_events:,} in the rarer class" if n_events is not None else ""
     estimates = _estimates(ctx, task, rows if trained else None, [f for f, _ in ranked])
@@ -302,7 +305,7 @@ def _concerns(caught: Sequence[warnings.WarningMessage], n_fits: int) -> list[st
 
 
 BASELINE_LABEL = {"regression": "the outcome's average", "binary": "the class prior",
-                  "multiclass": "the class prior"}
+                  "multiclass": "the class prior", "ordinal": "the level prior"}
 
 
 def baseline_model(task: str) -> Any:
@@ -349,17 +352,28 @@ def baseline_concern(task: str, metric_label: str, model: float | None, base: fl
         return f"Predicts worse than the outcome's average: CV {metric_label} {m}, against {b} for the average."
     if task == "binary":
         return f"Separates the classes worse than the class prior: CV {metric_label} {m}, against {b} for the prior."
+    if task == "ordinal":
+        return (f"Orders the outcome worse than the level prior: CV {metric_label} {m}, against {b} "
+                f"for the prior.")
     return (f"Classifies worse than always guessing the most common class: CV {metric_label} {m}, "
             f"against {b}.")
 
 
-def coded_outcome(task: str | None, y: Any, event: str | None) -> Any:
+def coded_outcome(task: str | None, y: Any, event: str | None,
+                  order: Sequence[Any] | None = None) -> Any:
     """A binary outcome coded 1 for the level the user named as the event (``set_event``), else 0.
 
     The event is never guessed (M2_CONTRACT §1), and its methods sentence says that level was
     coded 1; the models, their metrics and coefficients must then be about that level, not about
     whichever level sorts last. Unchanged when there is no event or it is not a level here.
+
+    An ordinal outcome becomes the codes 0…K − 1 of its order (``order``, the declared one; numbers
+    by value), so every family and metric reads the levels in that order (WP12a).
     """
+    if task == "ordinal":
+        from turbotab.core.models.ordinal import ordinal_outcome
+
+        return ordinal_outcome(y, order)[0]
     if task != "binary" or event is None:
         return y
     from turbotab.core.stages.rows import _level_key
@@ -419,7 +433,14 @@ def fit_stage(ctx: StageContext) -> Bundle:
     if y_all.isna().any():
         raise ValueError(f"{int(y_all.isna().sum()):,} analysis rows have no {target}; the cohort "
                          f"should have left them out.")
-    y_all = pd.Series(coded_outcome(task, y_all.to_numpy(), state.event), index=y_all.index)
+    levels = None
+    if task == "ordinal":  # codes in the declared order; the names label the cut-points
+        from turbotab.core.models.ordinal import ordinal_outcome
+
+        codes, levels = ordinal_outcome(y_all.to_numpy(), state.outcome_order, column=target)
+        y_all = pd.Series(codes, index=y_all.index)
+    else:
+        y_all = pd.Series(coded_outcome(task, y_all.to_numpy(), state.event), index=y_all.index)
     X, y = frame.loc[train, spec.inputs], y_all[train].to_numpy()
     X_hold, y_hold = frame.loc[~train, spec.inputs], y_all[~train].to_numpy()
     folds = assignment.loc[train, "fold"].to_numpy().astype(int)
@@ -473,17 +494,26 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 raise Cancelled()
             ctx.progress(share(done), f"{family.label}: refitting on all training rows")
             final = fit(clone(pipelines[key]), X, y)
+            if levels is not None:
+                final[-1].level_names_ = list(levels)
             done += 1
             # R² on the held-out rows is measured against the training rows' mean.
             holdout = score(task, final, X_hold, y_hold, reference=reference) if len(y_hold) else None
             ctx.progress(share(done), f"{family.label}: coefficients")
             concerns: list[str] = []
             interval_info = None
+            form_tests: list[dict[str, Any]] = []
             try:
                 if clusters is not None and hasattr(family, "inference"):
                     table = family.inference(final, X, y, task=task, clusters=clusters)
                     coefficients, interval_info = table.rows, table.info
                     concerns.extend(table.concerns)
+                    # A spline's tests of association and of nonlinearity; quintiles' trend.
+                    from turbotab.core.methods.exposure_form import exposure_tests
+
+                    form_tests, form_concerns = exposure_tests(family, final, X, y, task=task,
+                                                               clusters=clusters, table=table)
+                    concerns.extend(form_concerns)
                 else:
                     coefficients = family.coefficients(final, X, y, task=task,
                                                        purpose=state.purpose, groups=groups)
@@ -521,13 +551,14 @@ def fit_stage(ctx: StageContext) -> Bundle:
             "baseline": baseline,
             "versus_baseline": versus.model_dump(mode="json"),
             "inference": interval_info,
+            "exposure_tests": form_tests,
         })
     ctx.progress(1.0, "Done")
     n_holdout = int((~train).sum())
     artifact = FitArtifact(task=task, primary_metric=PRIMARY[task], metric_labels=metric_labels(task),
                            n_train=int(train.sum()), n_holdout=n_holdout, models=models,
                            holdout_sealed=n_holdout > 0, fold_scheme=scheme,
-                           cv_definition=CV_DEFINITION[task])
+                           cv_definition=CV_DEFINITION[task], levels=levels)
     frames = {SEALED_SCORES: sealed_scores_frame(models, sealed)} if n_holdout else {}
     return Bundle(data=artifact.model_dump(mode="json"), frames=frames,
                   objects={"fitted": fitted, "grouped_by": grouped_by})
@@ -568,8 +599,13 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     from turbotab.core.models.artifacts import SubstitutionArtifact
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
 
+    from turbotab.core.methods.percent_energy import PercentEnergyShift, is_percent_of_energy
+
     sub = ctx.state.substitution
     n_boot = int(getattr(sub, "n_boot", 0) or 0)
+    scale = getattr(sub, "scale", "kcal") or "kcal"
+    percent = [c for c in (sub.donor, sub.recipient)
+               if scale == "percent_energy" and is_percent_of_energy(c)]
     fit, design = ctx.inputs["fit"], ctx.inputs["design"]
     spec = DesignSpec.from_dict(design.objects["spec"])
     nested = dict(design.objects.get("nested") or {})
@@ -578,7 +614,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         if column not in spec.inputs:
             raise ValueError(f"{column} is not one of the model's predictors, so energy cannot be "
                              f"moved through it.")
-    readings = {c: energy_factor(c) for c in (sub.donor, sub.recipient)}
+    readings = {c: energy_factor(c) for c in (sub.donor, sub.recipient) if c not in percent}
     for c, reading in readings.items():
         if reading.factor is None:
             raise ValueError(f"{c} carries no energy in a known unit: {reading.reason}.")
@@ -599,10 +635,17 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     X_fit = fit_frame[spec.inputs]
     curve_rows = X_fit.index.get_indexer(pd.Index(train_ids))
     X = X_fit.iloc[curve_rows]
-    ks = [sub.step_kcal * i for i in range(SUBSTITUTION_STEPS + 1)]
+    step = float(sub.step_percent) if scale == "percent_energy" else float(sub.step_kcal)
+    ks = [step * i for i in range(SUBSTITUTION_STEPS + 1)]
     total_energy = _total_energy_column(ctx.state, X, (sub.donor, sub.recipient))
-    shift = Shift(X, donor=sub.donor, recipient=sub.recipient, kcal_per_unit=kcal_per_unit,
-                  nested=nested, total=total_energy)
+    if scale == "percent_energy":
+        # k percent of each row's own total energy (audit B24, D19): isocaloric on every row.
+        shift = PercentEnergyShift(X, donor=sub.donor, recipient=sub.recipient,
+                                   kcal_per_unit=kcal_per_unit, percent=percent, nested=nested,
+                                   total=total_energy)
+    else:
+        shift = Shift(X, donor=sub.donor, recipient=sub.recipient, kcal_per_unit=kcal_per_unit,
+                      nested=nested, total=total_energy)
     from turbotab.core.units import outcome_unit as _unit_of_outcome
 
     outcome_unit = _unit_of_outcome(target, fit_frame[target])[0] if task == "regression" else None
@@ -613,9 +656,10 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     fitted = fit.objects["fitted"]
     pipelines = design.objects["pipelines"]
     keys = [m["family"] for m in fit.data["models"] if m["family"] in fitted]
-    drawable = [k for k in keys if task != "multiclass"]
+    drawable = [k for k in keys if task not in ("multiclass", "ordinal")]
     slot = 0.93 / max(1, len(keys))  # each family's share of the progress bar, in order
-    y_fit = coded_outcome(task, fit_frame[target].to_numpy(), ctx.state.event)
+    y_fit = (coded_outcome(task, fit_frame[target].to_numpy(), ctx.state.event,
+                           order=ctx.state.outcome_order) if drawable else None)
     groups = fit_frame[grouped_by].to_numpy() if grouped_by else None
     # A resample repeats rows. In a refit's inner cross-validation every copy of a row (every row
     # of a unit, when rows repeat) keeps to one fold, or a penalty is tuned on rows scored by
@@ -632,12 +676,13 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         family = get_family(key)
         start = 0.05 + slot * i
         ctx.progress(start, f"{family.label}: moving energy")
-        if task == "multiclass":
+        if task in ("multiclass", "ordinal"):
             skipped.append(family.label)
             continue
         curve = substitution_curve(_predictor(task, fitted[key]), X, donor=sub.donor,
                                    recipient=sub.recipient, kcal_per_unit=kcal_per_unit, ks=ks,
-                                   total_kind="variable", nested=nested, total=total_energy)
+                                   total_kind="variable", nested=nested, total=total_energy,
+                                   scale=scale, shift=shift)
         note = note or curve["note"]
         fixed = curve["fixed_population"]
         if support is None:
@@ -694,7 +739,8 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
             notes.append(f"{c} is read as {reading.role} in grams at {reading.factor:g} kcal/g; its "
                          f"name does not state the unit.")
     if skipped:
-        notes.append("A multiclass outcome has one curve per class, which is not drawn yet.")
+        kind = "An ordinal" if task == "ordinal" else "A multiclass"
+        notes.append(f"{kind} outcome has one curve per level, which is not drawn yet.")
     band = None
     if n_boot and bands:
         first = bands[0][1]
@@ -711,10 +757,12 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         outcome = f"the predicted probability that {target} is {positive}"
     else:
         outcome = f"predicted {target}" + (f" (in {outcome_unit})" if outcome_unit else "")
-    estimand = (f"The average change in {outcome} when k kcal move from {sub.donor} to "
+    moved = ("k percent of each row's own total energy moves" if scale == "percent_energy"
+             else "k kcal move")
+    estimand = (f"The average change in {outcome} when {moved} from {sub.donor} to "
                 f"{sub.recipient}, with every other input, total energy included, left as it was.")
     if shift.carried:
-        estimand = (f"The average change in {outcome} when k kcal move from {sub.donor} to "
+        estimand = (f"The average change in {outcome} when {moved} from {sub.donor} to "
                     f"{sub.recipient}, their parts or totals moving with them and every other "
                     f"input, total energy included, left as it was.")
     artifact = SubstitutionArtifact(
@@ -725,6 +773,8 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         band_estimate=({"n_boot": BAND_BOOT, "seconds": round(estimate, 1)}
                        if not n_boot and drawable and estimate else None),
         support=support,
+        scale=scale,
+        step_percent=float(sub.step_percent) if scale == "percent_energy" else None,
     )
     ctx.progress(1.0, "Done")
     return artifact.model_dump(mode="json")

@@ -115,6 +115,21 @@ class InferenceExit(_Model):
     decision: dict[str, Any] | None = None
 
 
+class BrantColumn(_Model):
+    statistic: float
+    df: int
+    p: float
+
+
+class BrantCheck(_Model):
+    """Brant's (1990) Wald test of the proportional-odds assumption: overall, and per column."""
+
+    statistic: float
+    df: int
+    p: float
+    columns: dict[str, BrantColumn]
+
+
 class Inference(_Model):
     """How the coefficient table's intervals were made (AUDIT_REPORT §5 WP2;
     ``turbotab/core/models/inference.py``): the estimator, the covariance, and the clusters."""
@@ -122,7 +137,8 @@ class Inference(_Model):
     estimator: str  # "ordinary least squares", "Firth-penalized logistic regression", …
     # HC3 · CR2 (cluster-robust, Bell–McCaffrey df) · model (Wald, from the information) ·
     # profile (penalized likelihood) · none (refused: ``refused`` says why).
-    covariance: Literal["HC3", "CR2", "model", "profile", "none"]
+    # CR1 (cluster sandwich, G/(G − 1), on t(G − 1)): the proportional-odds family's.
+    covariance: Literal["HC3", "CR2", "CR1", "model", "profile", "none"]
     caption: str  # one line naming the covariance, the clusters and the reference distribution
     grouped_by: str | None = None  # the identifier the intervals are clustered by
     n_clusters: int | None = None
@@ -130,6 +146,27 @@ class Inference(_Model):
     separated: list[str] = []  # columns that separate a binary outcome
     refused: str | None = None  # why no interval or p-value is reported
     exits: list[InferenceExit] = []
+    brant: BrantCheck | None = None  # the proportional-odds family's check (independent rows)
+
+
+class ExposureTest(_Model):
+    """A test an exposure's form carries under inference (``methods/exposure_form.py``): a
+    spline's overall and nonlinear Wald tests, or quintiles' trend across their medians."""
+
+    column: str
+    form: Literal["spline", "quintiles"]
+    test: Literal["overall", "nonlinear", "trend"]
+    statistic: float | None
+    df_num: int | None
+    df_den: float | None  # the F or t reference's degrees of freedom; null for χ² and z
+    distribution: Literal["F", "chi2", "t", "z"]
+    p: float | None
+    estimate: float | None = None  # trend: the coefficient per unit, scored at quintile medians
+    ci_low: float | None = None
+    ci_high: float | None = None
+    knots: list[float] | None = None  # the spline's knots, learned on the fitting rows
+    medians: list[float] | None = None  # each quintile's median, learned on the fitting rows
+    caption: str
 
 
 class Baseline(_Model):
@@ -162,6 +199,8 @@ class FittedModel(_Model):
     # How the intervals were made, under inference; null under prediction and for families
     # without an inference table.
     inference: Inference | None = None
+    # Under inference, the tests each spline or quintile exposure carries (WP12a).
+    exposure_tests: list[ExposureTest] = []
 
 
 class FitArtifact(_Model):
@@ -183,6 +222,8 @@ class FitArtifact(_Model):
     # "time_ordered" (each fold scored by a model fit on the earlier ones, forward chaining).
     fold_scheme: Literal["random", "time_ordered"] = "random"
     cv_definition: str | None = None  # what a cross-validated score is, in one or two sentences
+    # An ordinal outcome's levels in their order, lowest first: code k is levels[k] (WP12a).
+    levels: list[str] | None = None
 
 
 class SubstitutionModel(_Model):
@@ -253,6 +294,10 @@ class SubstitutionArtifact(_Model):
     band: SubstitutionBand | None = None  # set when the substitution asked for n_boot > 0
     band_estimate: BandEstimate | None = None  # "Add an uncertainty band (about N s)"
     support: SubstitutionSupport | None = None  # the support checks' counts (data, not model)
+    # What k measures (WP12a; audit B24, D19): kcal on every row, or percentage points of each
+    # row's own total energy ("5% of energy from X replaced by Y"; ks then step by step_percent).
+    scale: Literal["kcal", "percent_energy"] = "kcal"
+    step_percent: float | None = None
 
 
 MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
@@ -263,7 +308,7 @@ MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
 }
 
 __all__ = [
-    "BandEstimate", "Baseline", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel",
+    "BandEstimate", "Baseline", "BrantCheck", "BrantColumn", "ExposureTest", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel",
     "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "ShelfArtifact", "ShelfFamily",
     "SubstitutionArtifact", "SubstitutionModel", "SubstitutionPair", "SubstitutionSupport",
 ]

@@ -16,8 +16,9 @@ M1 (docs/turbotab-next/M1_CONTRACT.md):
     cohort       heavy   deps: ingest, target_info            reads target, roles, exclusions, missing, findings; requires target
     split        heavy   deps: cohort, target_info            reads split, roles, task; requires split
     shelf        light   deps: cohort, target_info            reads purpose, task, roles; requires roles
-    design       heavy   deps: split, target_info             reads roles, energy_adjustment, missing, models, purpose; requires models, roles
-    fit          heavy   deps: design, split, target_info     reads models, purpose, task; requires models
+    design       heavy   deps: split, target_info             reads roles, energy_adjustment, missing, models, purpose,
+                                                              exposure_forms; requires models, roles
+    fit          heavy   deps: design, split, target_info     reads models, purpose, task, outcome_order; requires models
     substitution heavy   deps: fit, design                    reads substitution; requires substitution
 
 M2 (docs/turbotab-next/M2_CONTRACT.md §2) — the table the analysis reads:
@@ -116,19 +117,22 @@ def build_graph() -> Graph:
             Stage("split", 3, ("working", "cohort", "target_info", "structure"),
                   ("split", "roles", "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
-            Stage("shelf", 3, ("working", "cohort", "target_info", "split"),
-                  ("purpose", "task", "roles", "missing", "categorical"), shelf_stage, heavy=True,
+            Stage("shelf", 4, ("working", "cohort", "target_info", "split"),
+                  ("purpose", "task", "roles", "missing", "categorical", "outcome_order",
+                   "exposure_forms"), shelf_stage, heavy=True,
                   requires=("roles",), label="Ranking the model families for this table"),
-            Stage("design", 2, ("working", "split", "target_info"),
-                  ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical"),
+            Stage("design", 3, ("working", "split", "target_info"),
+                  ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical",
+                   "exposure_forms"),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
-            Stage("fit", 4, ("working", "design", "split", "target_info"),
-                  ("models", "purpose", "task", "event"), fit_stage, heavy=True,
+            Stage("fit", 5, ("working", "design", "split", "target_info"),
+                  ("models", "purpose", "task", "event", "outcome_order"), fit_stage, heavy=True,
                   requires=("models",),
                   label="Fitting the models"),
-            Stage("substitution", 2, ("working", "fit", "design"), ("substitution", "event"),
+            Stage("substitution", 3, ("working", "fit", "design"),
+                  ("substitution", "event", "outcome_order"),
                   substitution_stage, heavy=True, requires=("substitution",),
                   label="Drawing the substitution curves"),
             # ── M2: the seal (docs/turbotab-next/M2_CONTRACT.md §3) ──

@@ -2,6 +2,8 @@
 
 Regression: R², RMSE, MAE. Binary: AUC, Brier score, log loss (the positive class is the second
 of the sorted classes, as scikit-learn orders them). Multiclass: accuracy, macro-F1, log loss.
+Ordinal (classes are the codes 0…K − 1 of the declared order): Harrell's C, the ranked probability
+score, log loss and the mean absolute error in levels (:func:`ordinal_scores`).
 
 **R² is measured against the training rows' mean** — in every fold, in the pooled estimate and on
 the held-out rows. R² compares the model with the model that predicts without predictors; that
@@ -39,11 +41,14 @@ METRICS: dict[str, tuple[str, ...]] = {
     "regression": ("r2", "rmse", "mae"),
     "binary": ("auc", "brier", "log_loss"),
     "multiclass": ("accuracy", "macro_f1", "log_loss"),
+    "ordinal": ("c_index", "rps", "log_loss", "mae_levels"),
 }
-PRIMARY: dict[str, str] = {"regression": "r2", "binary": "auc", "multiclass": "macro_f1"}
+PRIMARY: dict[str, str] = {"regression": "r2", "binary": "auc", "multiclass": "macro_f1",
+                           "ordinal": "c_index"}
 LABELS: dict[str, str] = {
     "r2": "R²", "rmse": "RMSE", "mae": "MAE", "auc": "AUC", "brier": "Brier score",
     "log_loss": "Log loss", "accuracy": "Accuracy", "macro_f1": "Macro-F1",
+    "c_index": "C (concordance)", "rps": "Ranked probability score", "mae_levels": "MAE (levels)",
 }
 POOLED = ("r2", "rmse", "mae")  # estimated over every out-of-fold prediction, not fold by fold
 CV_DEFINITION = {
@@ -52,6 +57,9 @@ CV_DEFINITION = {
                    "held-out R² is against the training rows' mean. The fold values show the spread."),
     "binary": "Cross-validated scores are the mean over folds; the fold values show the spread.",
     "multiclass": "Cross-validated scores are the mean over folds; the fold values show the spread.",
+    "ordinal": ("Cross-validated scores are the mean over folds; the fold values show the spread. "
+                "C is the share of pairs of rows at different levels whose predicted mean level is "
+                "in the same order (ties count one half)."),
 }
 
 
@@ -88,6 +96,8 @@ def score(task: Task, model: Any, X: Any, y: Any, *, reference: float | None = N
         }
     classes = list(model.classes_)
     proba = model.predict_proba(X)
+    if task == "ordinal":
+        return ordinal_scores(y, proba, classes)
     if task == "binary":
         positive = y == classes[1]
         return {
@@ -100,6 +110,57 @@ def score(task: Task, model: Any, X: Any, y: Any, *, reference: float | None = N
         "accuracy": float(m.accuracy_score(y, pred)),
         "macro_f1": float(m.f1_score(y, pred, average="macro", labels=classes)),
         "log_loss": float(m.log_loss(y, proba, labels=classes)),
+    }
+
+
+def concordance(levels: Any, score: Any) -> float:
+    """Harrell's C for an ordered outcome: over every pair of rows at different levels, the share
+    in which the higher level has the higher score, a tied score counting one half. Each pair is
+    counted once, from its lower row's level; O(K n log n)."""
+    levels = np.asarray(levels)
+    score = np.asarray(score, dtype=float)
+    concordant = 0.0
+    pairs = 0.0
+    for level in np.unique(levels)[:-1]:
+        lower = np.sort(score[levels == level])
+        higher = score[levels > level]
+        below = np.searchsorted(lower, higher, side="left")
+        at_or_below = np.searchsorted(lower, higher, side="right")
+        concordant += float(below.sum() + 0.5 * (at_or_below - below).sum())
+        pairs += float(len(lower) * len(higher))
+    return concordant / pairs if pairs else float("nan")
+
+
+def ordinal_scores(y: Any, proba: Any, classes: Sequence[Any]) -> dict[str, float]:
+    """C, the ranked probability score, log loss and the absolute error in levels.
+
+    ``classes`` are in the outcome's order (the codes of the declared order). The score C ranks is
+    the predicted mean level, Σ k·p_k. The ranked probability score is the mean over rows of
+    (1/(K − 1)) Σ_k (F̂_k − 1{y ≤ k})² over the K − 1 cut-points (Epstein 1969, *J Appl Meteorol*
+    8:985): a proper score that counts how far off in order a forecast is. The error in levels is
+    against the predictive median, the level that minimizes the expected absolute error.
+    """
+    from sklearn import metrics as m
+
+    classes = list(classes)
+    y = np.asarray(y)
+    position = {c: i for i, c in enumerate(classes)}
+    unseen = sorted({str(v) for v in y if v not in position})
+    if unseen:
+        raise ValueError(f"Level {', '.join(unseen)} is not among the levels the model was fit on.")
+    codes = np.array([position[v] for v in y])
+    proba = np.asarray(proba, dtype=float)
+    K = len(classes)
+    expected = proba @ np.arange(K)
+    cumulative = np.cumsum(proba, axis=1)[:, :-1]
+    observed = (codes[:, None] <= np.arange(K - 1)[None, :]).astype(float)
+    rps = float(np.mean(np.sum((cumulative - observed) ** 2, axis=1) / max(K - 1, 1)))
+    median = np.argmax(np.cumsum(proba, axis=1) >= 0.5 - 1e-12, axis=1)
+    return {
+        "c_index": concordance(codes, expected),
+        "rps": rps,
+        "log_loss": float(m.log_loss(y, proba, labels=classes)),
+        "mae_levels": float(np.mean(np.abs(median - codes))),
     }
 
 
@@ -225,5 +286,5 @@ def cross_validate(task: Task, make: Callable[[], Any], X: Any, y: Any,
 
 
 __all__ = ["CV_DEFINITION", "CrossValidated", "FoldPart", "LABELS", "METRICS", "POOLED", "PRIMARY",
-           "cross_validate", "fold_part", "fold_pairs", "metric_labels", "pooled", "r2_against",
-           "score", "summarize"]
+           "concordance", "cross_validate", "fold_part", "fold_pairs", "metric_labels",
+           "ordinal_scores", "pooled", "r2_against", "score", "summarize"]

@@ -353,6 +353,8 @@ _SLOT_SUBJECT = {
     "unit": "the unit of analysis",
     "aggregation": "the combining of each unit's rows",
     "temporal": "the temporal question",
+    "exposure_forms": "the exposure forms",
+    "outcome_order": "the order of the outcome's levels",
 }
 _PLURAL_SUBJECTS = {"roles", "exclusions", "models"}
 
@@ -656,7 +658,7 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
     how = []
     if group:
         how.append(f"keeping each {tick(group)}'s rows together")
-    if task in ("binary", "multiclass") and target and not latest:
+    if task in ("binary", "multiclass", "ordinal") and target and not latest:
         how.append(f"stratified by {tick(target)}")
     manner = " (" + ", ".join([f"seed {tick(d.seed)}", *how]) + ")"
     folds = f"{tick(d.folds)}-fold cross-validation"
@@ -738,11 +740,13 @@ def _set_energy_adjustment(d: Any, state: Any, ctx: Any) -> str:
 _FAMILY_LABEL = {
     "elastic_net": "elastic net",
     "boosted_trees": "gradient-boosted trees",
+    "proportional_odds": "a proportional-odds (cumulative logit) model",
 }
 _LINEAR_LABEL = {
     "regression": "linear regression",
     "binary": "logistic regression",
     "multiclass": "multinomial logistic regression",
+    "ordinal": "multinomial logistic regression, which ignores the levels' order",
 }
 
 
@@ -773,8 +777,14 @@ def _select_models(d: Any, state: Any, ctx: Any) -> str:
 def _set_substitution(d: Any, state: Any, ctx: Any) -> str:
     energy = getattr(getattr(state, "energy_adjustment", None), "energy_column", None)
     fixed = f"with {tick(energy)} held fixed" if energy else "at the same total energy"
-    text = (f"The substitution studied is {tick(d.donor)} replaced by {tick(d.recipient)}, in steps "
-            f"of {tick(number(d.step_kcal))} kcal {fixed}")
+    if getattr(d, "scale", "kcal") == "percent_energy":
+        # "5% of energy from X replaced by Y" (NUTRITION_PACK §05; audit B24, D19)
+        text = (f"The substitution studied is {tick(d.donor)} replaced by {tick(d.recipient)}, in "
+                f"steps of {tick(number(d.step_percent))}% of each participant's own total energy "
+                f"{fixed}")
+    else:
+        text = (f"The substitution studied is {tick(d.donor)} replaced by {tick(d.recipient)}, in "
+                f"steps of {tick(number(d.step_kcal))} kcal {fixed}")
     n_boot = int(getattr(d, "n_boot", 0) or 0)
     if n_boot:
         text += (f"; its band comes from {count(n_boot)} refits of each model on bootstrap "
@@ -847,6 +857,34 @@ def _set_feature_table(d: Any, state: Any, ctx: Any) -> str:
     return (f"For the features-in-rows table, {named}; {listing(d.annotations)} "
             f"{'describes' if n == 1 else 'describe'} the features and {'stays' if n == 1 else 'stay'} "
             f"beside them, and every other column is a sample")
+
+
+@register_sentence("set_exposure_form")
+def _set_exposure_form(d: Any, state: Any, ctx: Any) -> str:
+    """How one predictor entered the models (WP12a; NUTRITION_PACK §07G and §08)."""
+    from turbotab.core.methods.exposure_form import DEFAULT_KNOTS, KNOT_PERCENTILES
+
+    adj = getattr(state, "energy_adjustment", None)
+    adjusted = (adj is not None and _attr(adj, "method") not in (None, "none")
+                and d.column in (_attr(adj, "nutrients") or []))
+    values = "energy-adjusted training values" if adjusted else "training values"
+    if d.form == "linear":
+        return f"{tick(d.column)} entered the models as a straight line"
+    if d.form == "spline":
+        k = d.knots or DEFAULT_KNOTS
+        pct = [f"{100 * p:g}" for p in KNOT_PERCENTILES.get(k, ())]
+        where = (f" at the {', '.join(pct[:-1])} and {pct[-1]} percentiles of its {values} "
+                 f"(Harrell's placement)" if pct else f" placed on its {values}")
+        return (f"{tick(d.column)} entered the models as a restricted cubic spline with {tick(k)} "
+                f"knots{where}; nonlinearity was tested by a Wald test of its nonlinear terms")
+    return (f"{tick(d.column)} entered the models as quintiles of its {values}, the lowest the "
+            f"reference; the p for trend scored each quintile by its median")
+
+
+@register_sentence("set_outcome_order")
+def _set_outcome_order(d: Any, state: Any, ctx: Any) -> str:
+    return (f"The levels of {tick(d.column)} were ordered {' < '.join(tick(v) for v in d.levels)}, "
+            f"lowest first")
 
 
 @register_sentence("set_categorical")

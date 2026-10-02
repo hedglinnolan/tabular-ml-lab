@@ -24,7 +24,12 @@ missing-values answer:
   among its inputs: the pipeline's inputs are the predictors (``DesignSpec.inputs``), and ``y``
   never reaches a transformer.
 
-Step order: impute → energy adjustment → levels → one-hot → scale → model.
+Step order: impute → energy adjustment → exposure form → levels → one-hot → scale → model.
+
+The exposure form (``set_exposure_form``; :class:`~turbotab.core.methods.exposure_form.ExposureForms`)
+turns a numeric predictor into a restricted cubic spline basis or quintile indicators. It runs
+after energy adjustment, so the curve or the fifths are of the energy-adjusted intake, and it is
+fit in the pipeline, so knots and cut points come from the rows each fit sees (audit ME-17).
 """
 from __future__ import annotations
 
@@ -225,6 +230,8 @@ class DesignSpec:
     roles: dict[str, str] = field(default_factory=dict)
     levels: list[str] = field(default_factory=list)  # predictors whose blanks are a level, "Missing"
     indicators: bool = False  # imputed numbers gain a missing indicator
+    # predictor -> {"form": "spline" | "quintiles", "knots": k}: the non-linear forms (WP12a)
+    exposure_forms: dict[str, Any] = field(default_factory=dict)
 
     def energy_adjustment(self) -> EnergyAdjustment | None:
         return EnergyAdjustment(**self.energy) if self.energy else None
@@ -269,6 +276,8 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
     levels = (level_columns(state, present, column_info) if column_info is not None
               else frame_level_columns(state, frame, present))
     impute = missing_strategy(state) == "impute"
+    forms = {str(c): f.model_dump() for c, f in (getattr(state, "exposure_forms", None) or {}).items()
+             if c in present and c in numeric and f.form != "linear"}
     return DesignSpec(
         predictors=predictors,
         inputs=inputs,
@@ -279,6 +288,7 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
         roles={str(k): str(v) for k, v in (state.roles or {}).items()},
         levels=levels,
         indicators=bool(impute and state.missing is not None and state.missing.indicators),
+        exposure_forms=forms,
     )
 
 
@@ -286,7 +296,8 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
 
 
 def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
-    """The steps every family shares: impute → energy adjustment → levels → one-hot.
+    """The steps every family shares: impute → energy adjustment → exposure form → levels →
+    one-hot.
 
     Columns whose blanks are a level skip the imputer and the one-hot step: the levels step
     encodes them, blanks included.
@@ -313,6 +324,10 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
     step = energy_step(spec.energy_adjustment(), spec.predictors)
     if step is not None:
         steps.append(("energy", step))
+    if spec.exposure_forms:
+        from turbotab.core.methods.exposure_form import ExposureForms
+
+        steps.append(("form", ExposureForms(dict(spec.exposure_forms))))
     if levels:
         steps.append(("levels", MissingLevelEncoder(levels)))
     categorical = [c for c in spec.categorical if c in spec.predictors and c not in levels]
@@ -393,6 +408,11 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
             out.append({"key": "impute", "label": "Fill missing values",
                         "detail": f"Median for numbers, most frequent value for categories, "
                                   f"learned within each training fold{marked}."})
+        elif name == "form":
+            from turbotab.core.methods.exposure_form import describe as describe_forms
+
+            out.append({"key": "form", "label": "Exposure form",
+                        "detail": describe_forms(spec.exposure_forms)})
         elif name == "levels":
             cols = [c for c in spec.levels if c in spec.predictors]
             verb = "becomes" if len(cols) == 1 else "become"

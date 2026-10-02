@@ -18,7 +18,11 @@ from pydantic import BaseModel, ConfigDict
 from turbotab.core.decisions import Purpose, Task
 
 Fit = Literal["good", "fair", "poor"]
-TASKS: tuple[Task, ...] = ("regression", "binary", "multiclass")
+TASKS: tuple[Task, ...] = ("regression", "binary", "multiclass", "ordinal")
+# A family that does not declare ``ordered_levels = True`` models an ordinal outcome as unordered
+# classes; on that shelf it says so and ranks a step lower (audit ME-19, RO-10).
+ORDER_BLIND = "Treats the ordered levels as unordered classes, so it ignores their order."
+ORDER_BLIND_COST = 1.0
 INDUCTIVE_BIAS_WORDS = 20
 
 
@@ -32,6 +36,7 @@ class Situation:
     n_features: int
     n_events: int | None = None  # binary: rows in the rarer class
     n_classes: int | None = None
+    class_counts: tuple[int, ...] | None = None  # rows per class (per level, in order, if ordinal)
 
 
 @dataclass(frozen=True)
@@ -133,7 +138,13 @@ def info(family: ModelFamily) -> FamilyInfo:
 def rank(situation: Situation) -> list[tuple[ModelFamily, Assessment]]:
     """Every family that can model the task, best first. The shelf is never shortened."""
     order = {f.key: i for i, f in enumerate(families())}
-    judged = [(f, f.assess(situation)) for f in families(situation.task)]
+    judged = []
+    for family in families(situation.task):
+        judged_one = family.assess(situation)
+        if situation.task == "ordinal" and not getattr(family, "ordered_levels", False):
+            judged_one = Assessment(judged_one.score - ORDER_BLIND_COST, judged_one.fit,
+                                    (ORDER_BLIND, *judged_one.concerns))
+        judged.append((family, judged_one))
     return sorted(judged, key=lambda fa: (-fa[1].score, order[fa[0].key]))
 
 
@@ -197,6 +208,6 @@ def _finite(value: Any) -> float | None:
 
 
 __all__ = [
-    "Assessment", "FamilyBase", "FamilyInfo", "Fit", "ModelFamily", "Situation", "TASKS",
+    "Assessment", "FamilyBase", "FamilyInfo", "Fit", "ModelFamily", "ORDER_BLIND", "Situation", "TASKS",
     "coefficient_rows", "families", "get_family", "info", "rank", "register_family", "unregister_family",
 ]

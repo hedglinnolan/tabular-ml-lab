@@ -152,6 +152,13 @@ class Linear(FamilyBase):
         classes = list(getattr(pipeline[-1], "classes_", [])) or None
         return inference_table(task, model_matrix(pipeline, X), y, classes, clusters)
 
+    def inference_matrix(self, matrix: pd.DataFrame, y: Any, *, task: Task,
+                         classes: Any, clusters: Any) -> Any:
+        """The inference table on a given model matrix (a quintile trend test refits on one)."""
+        from turbotab.core.models.inference import inference_table
+
+        return inference_table(task, matrix, y, classes, clusters)
+
     def assess(self, s: Situation) -> Assessment:
         concerns: list[str] = []
         if s.n_features >= s.n_rows:

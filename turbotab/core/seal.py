@@ -407,7 +407,7 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
     grain = getattr(state, "grain", None)
     named = getattr(grain, "id_column", None) if grain is not None else None
     requested, time_column = temporal_request(state)
-    classify = task in ("binary", "multiclass")
+    classify = task in ("binary", "multiclass", "ordinal")
     target = getattr(state, "target", None)
     wanted = [*identifiers, *([named] if named in columns else [])]
     if classify and target in columns:
@@ -550,10 +550,11 @@ def floor_for(task: str | None) -> SealFloor:
         return SealFloor(unit="events", n=FLOOR, convention=False, source=BINARY_FLOOR_SOURCE,
                          text=f"A held-out score needs at least {FLOOR} events and {FLOOR} "
                               f"non-events to be estimated with useful precision.")
-    if task == "multiclass":
-        return SealFloor(unit="rows in the rarest class", n=FLOOR, convention=True, source=None,
-                         text=f"A convention: at least {FLOOR} held-out rows in the rarest class, "
-                              f"the binary-outcome rule applied to each class.")
+    if task in ("multiclass", "ordinal"):
+        which = "level" if task == "ordinal" else "class"
+        return SealFloor(unit=f"rows in the rarest {which}", n=FLOOR, convention=True, source=None,
+                         text=f"A convention: at least {FLOOR} held-out rows in the rarest {which}, "
+                              f"the binary-outcome rule applied to each {which}.")
     return SealFloor(unit="rows", n=FLOOR, convention=True, source=None,
                      text=f"A convention: at least {FLOOR} held-out rows, by analogy with the "
                           f"{FLOOR}-event rule for binary outcomes.")
@@ -584,6 +585,10 @@ def measure(task: str | None, n: int, counts: Sequence[int] | None = None) -> tu
         what = f"AUC known to about ±{width:.2f}" if width < 0.5 else "too few to measure an AUC"
         return (f"About {rows} held-out rows, {tick(f'{events:,}')} in the rarer class: {what}.",
                 below)
+    if task == "ordinal":  # no closed form for C's precision is claimed; the floor still applies
+        rarest = min((int(c) for c in counts or []), default=0)
+        return (f"About {rows} held-out rows, {tick(f'{rarest:,}')} in the rarest level.",
+                rarest < FLOOR)
     if task == "multiclass":
         rarest = min((int(c) for c in counts or []), default=0)
         width = Z95 * math.sqrt(0.25 / rarest) if rarest else math.inf
@@ -633,11 +638,11 @@ def holdout_options(task: str | None, n_rows: int,
                                      below_floor=bool(h > 0 and below)))
     usual = next(o for o in options if o.holdout == USUAL)
     smallest =min((int(round(USUAL * c)) for c in counts), default=0)
-    if task in ("binary", "multiclass"):
-        which = "rarer class" if task == "binary" else "rarest class"
+    if task in ("binary", "multiclass", "ordinal"):
+        which = {"binary": "rarer class", "ordinal": "rarest level"}.get(task, "rarest class")
         leaves = f"about {tick(f'{smallest:,}')} held-out rows in the {which}"
         floor_words = (f"{FLOOR} events and {FLOOR} non-events" if task == "binary"
-                       else f"{FLOOR} in every class")
+                       else f"{FLOOR} in every {'level' if task == 'ordinal' else 'class'}")
     else:
         leaves = f"about {tick(f'{usual.n_holdout:,}')} held-out rows"
         floor_words = f"{FLOOR} rows"
@@ -672,7 +677,7 @@ def plan(state: Any, universe: Any, store: Any, task: str | None,
     analyzed = universe if analyzed is None else np.asarray(analyzed, dtype=np.int64)
     draw = seal_inputs(state, universe, store, task, holdout=USUAL, seed=0, structure=structure)
     counts: list[int] = []
-    if task in ("binary", "multiclass") and getattr(state, "target", None):
+    if task in ("binary", "multiclass", "ordinal") and getattr(state, "target", None):
         frame = store.materialize([state.target], analyzed)
         counts = class_counts(frame[state.target].to_numpy(dtype=object))
     options, cv_first, reason = holdout_options(task, int(len(analyzed)), counts)

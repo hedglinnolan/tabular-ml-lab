@@ -287,8 +287,8 @@ TASK = {
     "one_liner": "The task decides which models apply and how they are scored.",
     "why": "A quantity is regression, scored by R², RMSE and MAE. Two classes are binary, scored "
            "by AUC, Brier score and log loss. Several unordered classes are multiclass. An ordered "
-           "score, such as a 1–5 rating, fits none of these well: regression assumes equal gaps, "
-           "and classification discards the order.",
+           "score, such as a 1–5 rating, is ordinal: regression would assume equal gaps, and "
+           "classification would discard the order.",
     "consumer": "The model shelf, the split's stratification and every metric read it.",
     "options": [
         option("regression", "Regression",
@@ -299,6 +299,8 @@ TASK = {
         option("multiclass", "Multiclass",
                "Several unordered classes; models predict each class's probability, scored by "
                "accuracy."),
+        option("ordinal", "Ordinal",
+               "Ordered levels, such as a 1–5 rating; a proportional-odds model keeps their order."),
     ],
     "terms": [
         term("regression", "A model of a quantity: it predicts a number, and its errors are "
@@ -312,8 +314,7 @@ TASK = {
         section("Ordered outcomes",
                 "For an ordinal outcome, a cumulative link (proportional odds) model uses the full "
                 "ordering and handles ties; a linear model on the score, or a split into "
-                "responders and non-responders, does not. This version fits no ordinal model, so "
-                "say which approximation you chose.",
+                "responders and non-responders, does not.",
                 "SETTLED", CLIN_B6),
         section("Scores built from many items",
                 "A multi-item scale score with many categories and no floor or ceiling is often "

@@ -132,8 +132,8 @@ def no_better_concern(task: str, metric_label: str, versus: VersusBaseline,
     if versus.verdict != "no_better" or model is None or base is None or versus.gain is None:
         return None
     m, b = fmt(model, base)
-    against = {"regression": "the outcome's average", "binary": "the class prior"}.get(
-        task, "always guessing the most common class")
+    against = {"regression": "the outcome's average", "binary": "the class prior",
+               "ordinal": "the level prior"}.get(task, "always guessing the most common class")
     if versus.ci_low is None or versus.ci_high is None:
         return f"Not shown to beat {against}: CV {metric_label} {m} against {b}, from one fold."
     if versus.se == 0 and versus.gain == 0:  # e.g. a penalty that removed every predictor

@@ -139,7 +139,8 @@ def estimate_fits(store: Any, state: Any, task: str, train_ids: Any, families: S
     if not len(frame):
         return out
     X = frame[sampled]
-    y = coded_outcome(task, frame[target].to_numpy(), getattr(state, "event", None))
+    y = coded_outcome(task, frame[target].to_numpy(), getattr(state, "event", None),
+                      order=getattr(state, "outcome_order", None))
     spec = design_spec(state, X, sampled, energy=None)  # adjusting energy costs next to nothing
     for family in families:
         if callable(cancelled) and cancelled():
