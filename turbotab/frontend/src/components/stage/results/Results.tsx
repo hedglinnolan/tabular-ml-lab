@@ -195,7 +195,7 @@ export function Results({ pid, view, data }: Props) {
                 build={() =>
                   curvesFigure(sub, target, {
                     title: `Moving energy from ${sub.donor} to ${sub.recipient}`,
-                    caption: `${sub.estimand ?? ""} ${hasBand(sub) ? `Shaded bands: 95% intervals from ${nBoot || "bootstrap"} refits per family.` : ""} Hatched: where the models disagree.`,
+                    caption: `${sub.estimand ?? ""} ${hasBand(sub) ? (sub.band?.caption ?? `Shaded bands: 95% intervals from ${nBoot || "bootstrap"} refits per family.`) : ""} Hatched: where the models disagree.`,
                     provenance: plain(`${energyProvenance(view, data.design)} ${sub.basis}`),
                   })
                 }
@@ -225,8 +225,8 @@ export function Results({ pid, view, data }: Props) {
           <div className={s.bandRow}>
               {hasBand(sub) ? (
                 <p className={s.bandNote}>
-                  Bands: 95% intervals from {nBoot || "bootstrap"} refits of each family on{" "}
-                  {(sub.band?.n_rows ?? BAND_ROWS).toLocaleString("en-US")} training rows.
+                  {sub.band?.caption ??
+                    `Bands: 95% intervals from ${nBoot || "bootstrap"} refits of each family on ${(sub.band?.n_rows ?? BAND_ROWS).toLocaleString("en-US")} training rows.`}
                 </p>
               ) : subBusy && nBoot > 0 ? (
                 <p className={s.bandNote} role="status">

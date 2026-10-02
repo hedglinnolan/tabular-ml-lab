@@ -268,6 +268,12 @@ Nolan called the best he has seen.
    single fitted model it has zero width for linear models, and a zero-width band reads as
    certainty. `SetSubstitution` gains `n_boot: int = 0`. When it is > 0, the substitution stage refits
    each family on bootstrap resamples of ≤ 2,000 training rows, reports progress, and honors cancel.
+   *Superseded by the audit's WP5 (2026-10-02, MA-12):* a 2,000-row refit made the band about twice
+   too wide at 10,000 rows. Each refit now resamples every training row (whole units when rows
+   repeat) up to 10,000 rows; past that it draws 10,000 and the band is rescaled by √(m/n). The
+   default band is the curve ± 1.96 standard errors of 200 refits; 1,000 or more give a
+   percentile band. A family's band needs 90% of its refits to succeed, and the caption states
+   the rows, the refits and how many succeeded.
    The Results offer "Add an uncertainty band (about N s)", with N measured.
 
 ## 13 · Results (the stage's `live` view once fitted)

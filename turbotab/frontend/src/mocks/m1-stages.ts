@@ -1182,12 +1182,20 @@ export function substitution(
     band: banded
       ? {
           n_boot: spec.n_boot,
-          n_rows: Math.min(2000, f.n_train),
+          n_rows: f.n_train,
           grouped_by: null,
           seconds: 39.5,
           failed: 0,
+          n_units: f.n_train,
+          resample_units: f.n_train,
+          scale: 1,
+          interval: spec.n_boot >= 1000 ? "percentile" : "normal",
+          level: 0.95,
+          min_ok_share: 0.9,
+          caption: `Shaded bands: 95% intervals from ${spec.n_boot} refits of each model on bootstrap resamples of all ${fmt(f.n_train)} training rows (mock).`,
         }
       : null,
+    support: null,
     band_estimate: banded ? null : { n_boot: 50, seconds: 40 },
     donor: spec.donor,
     recipient: spec.recipient,
@@ -1211,6 +1219,10 @@ export function substitution(
         on_support_fraction: ks.map((k) => Math.max(0.44, 1 - k / 1070)),
         stopped_at: ks[ks.length - 1]!,
         effect_label: `${b >= 0 ? "+" : "−"}${Math.abs(b).toFixed(2)} per ${fmt(spec.step_kcal)} kcal at k = ${fmt(spec.step_kcal)}`,
+        fixed_delta: delta,
+        fixed_ci_low: null,
+        fixed_ci_high: null,
+        band_ok: banded ? spec.n_boot : null,
       };
     }),
   };

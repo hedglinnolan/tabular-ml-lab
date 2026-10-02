@@ -27,8 +27,13 @@ from turbotab.core.stages.data import open_store
 
 SUBSTITUTION_ROWS = 5_000
 SUBSTITUTION_STEPS = 10  # ks = 0, step, …, 10 × step
-BAND_ROWS = 2_000  # each bootstrap refit of the band draws from at most this many training rows
-BAND_BOOT = 50  # the band the Results offer, and the one band_estimate times
+# Each refit of the band resamples every training row (the ordinary bootstrap) up to this many
+# rows; on more, it draws this many and the band is rescaled to the full sample (m-out-of-n,
+# ``refit_band``). A bound on the cost of a refit, not on what the band describes.
+BAND_ROWS = 10_000
+# The band the Results offer, and the one band_estimate times: the curve ± 1.96 standard errors
+# of 200 refits (a percentile band needs 1,000; ``methods.substitution.PERCENTILE_MIN_REFITS``).
+BAND_BOOT = 200
 MAX_PAIRS = 60
 TRAIN = ("train", "training")
 
@@ -507,15 +512,24 @@ def _predictor(task: str, pipeline: Any) -> Any:
 def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     """Move k kcal from the donor to the recipient and follow each fitted model's prediction.
 
-    The curve averages over at most 5,000 training rows. With ``n_boot > 0`` each family is also
-    refit on that many bootstrap resamples of at most 2,000 training rows, and the band is the
-    spread of the refits' curves (:func:`~turbotab.core.methods.substitution.refit_band`). Without
-    one, a single refit per family is timed, so the offer of a band can say what it costs.
+    The curve averages over at most 5,000 training rows; its support checks amounts and, when the
+    total-energy column is a model input, each moved nutrient's share of energy. With
+    ``n_boot > 0`` each family is also refit on that many bootstrap resamples of the rows it was
+    fit on (whole units when rows repeat; resamples of every training row up to ``BAND_ROWS``,
+    rescaled beyond), and the band is drawn from the refits' curves
+    (:func:`~turbotab.core.methods.substitution.refit_band`). Without one, a single refit per
+    family is timed, so the offer of a band can say what it costs.
     """
     from sklearn.base import clone
 
     from turbotab.core.methods.energy import energy_factor
-    from turbotab.core.methods.substitution import Shift, refit_band, substitution_curve
+    from turbotab.core.methods.substitution import (
+        MIN_REFIT_SHARE,
+        PERCENTILE_MIN_REFITS,
+        Shift,
+        refit_band,
+        substitution_curve,
+    )
     from turbotab.core.models import get_family
     from turbotab.core.models.artifacts import SubstitutionArtifact
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
@@ -540,36 +554,41 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     train_ids = all_train
     if len(train_ids) > SUBSTITUTION_ROWS:
         train_ids = np.sort(np.random.default_rng(0).choice(train_ids, SUBSTITUTION_ROWS, replace=False))
-    band_ids = train_ids
-    if len(band_ids) > BAND_ROWS:
-        band_ids = np.sort(np.random.default_rng(1).choice(band_ids, BAND_ROWS, replace=False))
     target = ctx.state.target
     grouped_by = (fit.objects or {}).get("grouped_by")
     ctx.progress(0.02, "Reading training rows")
     extra = [target] + ([grouped_by] if grouped_by and grouped_by not in spec.inputs
                         and grouped_by != target else [])
     with open_store(ctx) as store:
-        X = modeling_frame(store, spec.inputs, train_ids)
-        band_frame = modeling_frame(store, [*spec.inputs, *extra], band_ids)
+        # Every row the models were fit on: the band's refits resample them all.
+        fit_frame = modeling_frame(store, [*spec.inputs, *extra], all_train)
+    X_fit = fit_frame[spec.inputs]
+    curve_rows = X_fit.index.get_indexer(pd.Index(train_ids))
+    X = X_fit.iloc[curve_rows]
     ks = [sub.step_kcal * i for i in range(SUBSTITUTION_STEPS + 1)]
+    total_energy = _total_energy_column(ctx.state, X, (sub.donor, sub.recipient))
     shift = Shift(X, donor=sub.donor, recipient=sub.recipient, kcal_per_unit=kcal_per_unit,
-                  nested=nested)
+                  nested=nested, total=total_energy)
     from turbotab.core.units import outcome_unit as _unit_of_outcome
 
-    outcome_unit = _unit_of_outcome(target, band_frame[target])[0] if task == "regression" else None
+    outcome_unit = _unit_of_outcome(target, fit_frame[target])[0] if task == "regression" else None
     models = []
     note = None
+    support = None
     skipped = []
     fitted = fit.objects["fitted"]
     pipelines = design.objects["pipelines"]
     keys = [m["family"] for m in fit.data["models"] if m["family"] in fitted]
     drawable = [k for k in keys if task != "multiclass"]
     slot = 0.93 / max(1, len(keys))  # each family's share of the progress bar, in order
-    X_band = band_frame[spec.inputs]
-    y_band = coded_outcome(task, band_frame[target].to_numpy(), ctx.state.event)
-    groups = band_frame[grouped_by].to_numpy() if grouped_by else None
-    # Each unit of a refit's resample keeps one inner fold (its rows keep their row-id index).
-    group_of = pd.Series(groups, index=X_band.index) if groups is not None else None
+    y_fit = coded_outcome(task, fit_frame[target].to_numpy(), ctx.state.event)
+    groups = fit_frame[grouped_by].to_numpy() if grouped_by else None
+    # A resample repeats rows. In a refit's inner cross-validation every copy of a row (every row
+    # of a unit, when rows repeat) keeps to one fold, or a penalty is tuned on rows scored by
+    # their own copies (the row-id index travels with the resample).
+    group_of = pd.Series(groups, index=X_fit.index) if groups is not None else None
+    interval = "percentile" if n_boot >= PERCENTILE_MIN_REFITS else "normal"
+    bands: list[tuple[str, dict[str, Any]]] = []
     band_seconds = 0.0
     band_failed = 0
     estimate = 0.0
@@ -584,38 +603,52 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
             continue
         curve = substitution_curve(_predictor(task, fitted[key]), X, donor=sub.donor,
                                    recipient=sub.recipient, kcal_per_unit=kcal_per_unit, ks=ks,
-                                   total_kind="variable", nested=nested)
+                                   total_kind="variable", nested=nested, total=total_energy)
         note = note or curve["note"]
+        fixed = curve["fixed_population"]
+        if support is None:
+            support = {"total": curve["total"], "n_rows": curve["n_rows"],
+                       "not_recorded": curve["n_not_recorded"], "off_amount": curve["n_off_amount"],
+                       "off_share": curve["n_off_share"], "fixed_rows": fixed["n_rows"],
+                       "fixed_through": fixed["through"]}
         entry = {
             "family": key, "label": family.label, "delta": curve["delta"],
             "ci_low": None, "ci_high": None,
             "on_support_fraction": curve["on_support_fraction"], "stopped_at": curve["stopped_at"],
             "effect_label": _in_outcome_unit(curve["effect_label"], outcome_unit),
+            "fixed_delta": fixed["delta"], "fixed_ci_low": None, "fixed_ci_high": None,
+            "band_ok": None,
         }
         if pipelines.get(key) is not None:
-            def refit(Xb: pd.DataFrame, yb: Any, _pipe: Any = pipelines[key]) -> Any:
+            def refit(Xb: pd.DataFrame, yb: Any, _pipe: Any = pipelines[key],
+                      _full: Any = fitted[key]) -> Any:
                 from turbotab.core.models.inner_cv import with_grouped_inner_cv
 
-                inner = group_of.loc[Xb.index].to_numpy() if group_of is not None else None
+                inner = (group_of.loc[Xb.index].to_numpy() if group_of is not None
+                         else Xb.index.to_numpy())
+                pipe = with_grouped_inner_cv(pinned_to_full_fit(clone(_pipe), _full), inner)
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    return _predictor(task, with_grouped_inner_cv(clone(_pipe), inner).fit(Xb, yb))
+                    return _predictor(task, pipe.fit(Xb, yb))
 
+            common = dict(shift=shift, ks=ks, live=curve["live"], groups=groups, random_state=0,
+                          center=curve["delta"], fixed_center=fixed["delta"],
+                          curve_rows=curve_rows, max_rows=BAND_ROWS, interval=interval)
             if n_boot:
                 def progress(done: int, total: int, _lo: float = start + 0.1 * slot,
                              _w: float = 0.9 * slot, _label: str = family.label) -> None:
                     ctx.progress(_lo + _w * done / total, f"{_label}: refit {done} of {total}")
 
-                band = refit_band(refit, X_band, y_band, shift=shift, ks=ks, live=curve["live"],
-                                  n_boot=n_boot, groups=groups, random_state=0,
-                                  center=curve["delta"], progress=progress)
-                entry["ci_low"], entry["ci_high"] = band["ci_low"], band["ci_high"]
+                band = refit_band(refit, X_fit, y_fit, n_boot=n_boot, progress=progress, **common)
+                entry.update(ci_low=band["ci_low"], ci_high=band["ci_high"],
+                             fixed_ci_low=band["fixed_ci_low"], fixed_ci_high=band["fixed_ci_high"],
+                             band_ok=band["n_ok"])
+                bands.append((family.label, band))
                 band_seconds += band["seconds"]
                 band_failed += band["failed"]
             else:
                 ctx.progress(start + 0.5 * slot, f"{family.label}: timing one refit for the band")
-                timed = refit_band(refit, X_band, y_band, shift=shift, ks=ks, live=curve["live"],
-                                   n_boot=1, groups=groups, random_state=0)
+                timed = refit_band(refit, X_fit, y_fit, n_boot=1, **common)
                 estimate += timed["seconds"] * BAND_BOOT
         models.append(entry)
     notes = [note] if note else []
@@ -626,14 +659,15 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     if skipped:
         notes.append("A multiclass outcome has one curve per class, which is not drawn yet.")
     band = None
-    if n_boot and models:
-        unit = f", resampling whole {grouped_by} units" if grouped_by else ""
-        fewer = (f"; each refit sees {len(band_ids):,} of the {len(all_train):,} training rows, so "
-                 f"the band errs wide" if len(band_ids) < len(all_train) else "")
-        notes.append(f"The band spans the middle 95% of {n_boot} refits of each model on "
-                     f"bootstrap resamples of training rows{unit}, drawn around the curve{fewer}.")
-        band = {"n_boot": n_boot, "n_rows": int(len(band_ids)), "grouped_by": grouped_by,
-                "seconds": round(band_seconds, 3), "failed": band_failed}
+    if n_boot and bands:
+        first = bands[0][1]
+        caption = _band_caption(n_boot, interval, first, len(X_fit), grouped_by, bands)
+        notes.append(caption.replace("Shaded bands: ", "The shaded bands are ", 1))
+        band = {"n_boot": n_boot, "n_rows": int(len(X_fit)), "grouped_by": grouped_by,
+                "seconds": round(band_seconds, 3), "failed": band_failed,
+                "n_units": first["n_units"], "resample_units": first["resample_size"],
+                "scale": first["scale"], "interval": interval, "level": first["level"],
+                "min_ok_share": MIN_REFIT_SHARE, "caption": caption}
     if task == "binary" and keys:
         # the event the user named was coded 1 (``coded_outcome``); else the level sorting last
         positive = ctx.state.event if ctx.state.event is not None else fitted[keys[0]].classes_[1]
@@ -653,9 +687,80 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         carried=list(shift.carried), band=band,
         band_estimate=({"n_boot": BAND_BOOT, "seconds": round(estimate, 1)}
                        if not n_boot and drawable and estimate else None),
+        support=support,
     )
     ctx.progress(1.0, "Done")
     return artifact.model_dump(mode="json")
+
+
+def pinned_to_full_fit(pipeline: Any, full: Any) -> Any:
+    """``pipeline`` (unfitted) with its model step's size-dependent choices pinned to the full fit's.
+
+    A band's refit must be the estimator the curve came from. scikit-learn's histogram gradient
+    boosting stops early by itself only above 10,000 rows (``early_stopping="auto"``), so a refit
+    on a resample of 10,000 rows of a model fit on more would boost to the end while the model it
+    stands for stopped early (on noise, 10,001 rows stopped at 23 trees; 10,000 rows ran all 100).
+    The full fit's resolved choice (``do_early_stopping_``) is pinned. Returns ``pipeline``.
+    """
+    steps = getattr(full, "steps", None)
+    if not steps:
+        return pipeline
+    name, model = pipeline.steps[-1]
+    resolved = getattr(steps[-1][1], "do_early_stopping_", None)
+    if resolved is not None and model.get_params(deep=False).get("early_stopping") == "auto":
+        pipeline.set_params(**{f"{name}__early_stopping": bool(resolved)})
+    return pipeline
+
+
+def _total_energy_column(state: Any, X: pd.DataFrame, moved: Sequence[str]) -> str | None:
+    """The total-energy column the support takes shares of: the energy adjustment's, else the one
+    column with the energy role; None when no numeric one is among the model's inputs."""
+    adj = state.energy_adjustment
+    named = [adj.energy_column] if adj is not None and adj.energy_column else []
+    if not named:
+        named = [c for c, role in (state.roles or {}).items() if role == "energy"]
+    named = [c for c in named if c in X.columns and c not in moved
+             and pd.api.types.is_numeric_dtype(X[c])]
+    if len(named) != 1:
+        return None
+    energy = X[named[0]].to_numpy(dtype=float, na_value=np.nan)
+    return named[0] if bool((np.isfinite(energy) & (energy > 0)).any()) else None
+
+
+def _band_caption(n_boot: int, interval: str, first: Mapping[str, Any], n_rows: int,
+                  grouped_by: str | None, bands: Sequence[tuple[str, Mapping[str, Any]]]) -> str:
+    """The saved figure's caption for the band: how it was drawn, on how many rows, from how many
+    refits, and how many of each family's succeeded."""
+    from statistics import NormalDist
+
+    level = f"{first['level']:.0%}"
+    if interval == "normal":
+        z = NormalDist().inv_cdf(0.5 + first["level"] / 2.0)
+        how = (f"{level} intervals, each curve ± {z:.2f} bootstrap standard errors from {n_boot:,} "
+               f"refits of its model")
+    else:
+        how = (f"{level} percentile intervals of {n_boot:,} refits of each model, placed around "
+               f"its curve")
+    n_units, m, scale = first["n_units"], first["resample_size"], first["scale"]
+    if grouped_by:
+        drawn = (f"whole {grouped_by} units ({n_units:,} units, {n_rows:,} training rows)"
+                 if m == n_units else f"{m:,} of the {n_units:,} {grouped_by} units "
+                 f"({n_rows:,} training rows)")
+    else:
+        drawn = (f"all {n_rows:,} training rows" if m == n_units
+                 else f"{m:,} of the {n_rows:,} training rows")
+    where = f"on bootstrap resamples of {drawn}"
+    if m < n_units:
+        where += (f", the spread rescaled by √({m:,}/{n_units:,}) = {scale:.3f} to the full sample "
+                  f"(which assumes the curve's error shrinks with the square root of its sample)")
+    ok = ", ".join(f"{label} {b['n_ok']:,} of {n_boot:,}" for label, b in bands)
+    text = f"Shaded bands: {how}, {where}. Refits that succeeded: {ok}."
+    refused = [label for label, b in bands if b["refused"]]
+    if refused:
+        names = refused[0] if len(refused) == 1 else ", ".join(refused[:-1]) + " and " + refused[-1]
+        text += (f" No band for {names}: a band needs at least {first['min_ok_share']:.0%} of its "
+                 f"refits to succeed.")
+    return text
 
 
 def _in_outcome_unit(label: str | None, unit: str | None) -> str | None:
@@ -666,5 +771,5 @@ def _in_outcome_unit(label: str | None, unit: str | None) -> str | None:
     return f"{head}{unit} per {tail}" if unit == "%" else f"{head} {unit} per {tail}"
 
 
-__all__ = ["design_stage", "fit_stage", "read_assignment", "row_ids_of", "shelf_stage",
-           "substitution_pairs", "substitution_stage"]
+__all__ = ["design_stage", "fit_stage", "pinned_to_full_fit", "read_assignment", "row_ids_of",
+           "shelf_stage", "substitution_pairs", "substitution_stage"]
