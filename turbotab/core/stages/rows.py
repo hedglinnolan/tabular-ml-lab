@@ -468,6 +468,10 @@ def rule_parts(frame: Any, rule: Any) -> tuple[Any, Any, Any]:
     import pandas as pd
 
     rule = _as_rule(rule)
+    if _is_goldberg(rule):  # EI:BMR against the Goldberg cut-offs (methods/misreporting.py)
+        from turbotab.core.methods.misreporting import parts
+
+        return parts(frame, rule)
     values = pd.to_numeric(frame[rule.column], errors="coerce").astype(float)
     low = pd.Series(np.nan if rule.low is None else float(rule.low), index=frame.index, dtype=float)
     high = pd.Series(np.nan if rule.high is None else float(rule.high), index=frame.index, dtype=float)
@@ -500,15 +504,44 @@ def rule_keep(frame: Any, rule: Any) -> Any:
 
 
 def _as_rule(rule: Any) -> Any:
-    from turbotab.core.decisions import ExclusionRule
+    from turbotab.core.decisions import as_rule
 
-    return rule if isinstance(rule, ExclusionRule) else ExclusionRule.model_validate(rule)
+    return as_rule(rule)
+
+
+def _is_goldberg(rule: Any) -> bool:
+    return getattr(rule, "kind", "range") == "goldberg"
+
+
+def rule_lines(rule: Any) -> tuple[str, str | None, str, str]:
+    """The labels and reasons of a rule's own lines before its step: ``(not recorded label, not
+    screened label or None, not recorded reason, not screened reason)``."""
+    if _is_goldberg(rule):
+        from turbotab.core.methods.misreporting import EQUATIONS
+
+        inputs = [f"`{c}`" for c in rule.reads()]
+        listed = ", ".join(inputs[:-1]) + f" or {inputs[-1]}" if len(inputs) > 1 else inputs[0]
+        eq = EQUATIONS[rule.equation].label
+        return (f"{listed} not recorded",
+                f"Not screened: no {eq} BMR or PAL for their age, sex or activity",
+                "a value the Goldberg screen needs is missing, so it cannot confirm the row",
+                "the BMR equation or the PAL has no value for the row")
+    col = f"`{rule.column}`"
+    by = f"`{rule.by.column}`" if rule.by is not None else None
+    return (f"{col} not recorded",
+            f"{col} not screened: no range for its {by}" if by is not None else None,
+            f"no value for {col}, so the rule cannot confirm the row",
+            f"its {by} is missing or has no range of its own")
 
 
 def rule_label(rule: Any) -> str:
     """What the rows a rule keeps are: true of every one of them (``or not recorded`` when the
     rule keeps the rows it cannot confirm)."""
     rule = _as_rule(rule)
+    if _is_goldberg(rule):
+        from turbotab.core.methods.misreporting import label
+
+        return label(rule)
     col = f"`{rule.column}`"
     if rule.by is not None:
         text = f"{col} within its range for each `{rule.by.column}`"
@@ -585,14 +618,13 @@ def cohort_flow(
         # label and a line of its own say so.
         rule = _as_rule(rule)
         recorded, screened, inside = rule_parts(frame, rule)
-        col, by = f"`{rule.column}`", (f"`{rule.by.column}`" if rule.by is not None else None)
         unknown = keep & ~recorded
         unscreened = keep & recorded & ~screened
-        lines = [(f"exclusion:{i}:not_recorded", f"{col} not recorded", unknown,
-                  f"no value for {col}, so the rule cannot confirm the row")]
-        if by is not None:
-            lines.append((f"exclusion:{i}:not_screened", f"{col} not screened: no range for its {by}",
-                          unscreened, f"its {by} is missing or has no range of its own"))
+        unrecorded_label, unscreened_label, unrecorded_why, unscreened_why = rule_lines(rule)
+        lines = [(f"exclusion:{i}:not_recorded", unrecorded_label, unknown, unrecorded_why)]
+        if unscreened_label is not None:
+            lines.append((f"exclusion:{i}:not_screened", unscreened_label, unscreened,
+                          unscreened_why))
         for key, label, rows, reason in lines:
             n_rows = int(rows.sum())
             if not n_rows:
@@ -650,9 +682,7 @@ def cohort_inputs(state: Any, ingest: Mapping[str, Any]) -> tuple[list[str], lis
     preds = predictors(state.roles, order, drop=left_out(state))
     needed = [state.target] if state.target is not None else []
     for rule in [*(state.exclusions or []), *repair_rules(state)]:
-        needed.append(rule.column)
-        if rule.by is not None:
-            needed.append(rule.by.column)
+        needed.extend(_as_rule(rule).reads())
     with_missing = _columns_with_missing(ingest)
     levels = set(level_columns(state, preds, {str(c["name"]): c for c in ingest.get("columns", [])}))
     gappy = ([c for c in preds if c in with_missing and c not in levels]

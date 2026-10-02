@@ -260,6 +260,16 @@ def representative_decisions():
                           step_percent=5),
         # WP12: a time-to-event outcome's follow-up
         d.SetFollowUp(column="hba1c", time_column="followup_years", entry_column="enrolled_years"),
+        # WP12 (audit §5): the Goldberg screen as the primary, every row and a fixed screen beside it
+        d.SetSensitivity(analyses=[
+            d.SensitivityAnalysis(label="Every row", rules=[]),
+            d.SensitivityAnalysis(label="500–5,000 kcal", rules=[rule]),
+            d.SensitivityAnalysis(label="Goldberg", rules=[d.GoldbergRule(
+                column="energy_kcal", days=2, sex="sex", female=["F"], male=["M"], age="age",
+                weight="weight_kg", equation="schofield", pal=1.55,
+                reason="implausible energy reports")]),
+        ]),
+        d.SetMeasurementError(method="regression_calibration", exposures=["protein_g"]),
     ]
 
 

@@ -409,6 +409,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetFollowUp-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSensitivity-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMeasurementError-Input"
                   }
                 ],
                 "discriminator": {
@@ -442,7 +448,9 @@
                     "set_survey": "#/components/schemas/SetSurvey-Input",
                     "set_exposure_form": "#/components/schemas/SetExposureForm-Input",
                     "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
-                    "set_follow_up": "#/components/schemas/SetFollowUp-Input"
+                    "set_follow_up": "#/components/schemas/SetFollowUp-Input",
+                    "set_sensitivity": "#/components/schemas/SetSensitivity-Input",
+                    "set_measurement_error": "#/components/schemas/SetMeasurementError-Input"
                   }
                 },
                 "title": "Decision"
@@ -729,6 +737,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetFollowUp-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSensitivity-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMeasurementError-Input"
                   }
                 ],
                 "discriminator": {
@@ -762,7 +776,9 @@
                     "set_survey": "#/components/schemas/SetSurvey-Input",
                     "set_exposure_form": "#/components/schemas/SetExposureForm-Input",
                     "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
-                    "set_follow_up": "#/components/schemas/SetFollowUp-Input"
+                    "set_follow_up": "#/components/schemas/SetFollowUp-Input",
+                    "set_sensitivity": "#/components/schemas/SetSensitivity-Input",
+                    "set_measurement_error": "#/components/schemas/SetMeasurementError-Input"
                   }
                 },
                 "title": "Decision"
@@ -1955,6 +1971,12 @@
               },
               {
                 "$ref": "#/components/schemas/SetFollowUp-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetSensitivity-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetMeasurementError-Output"
               }
             ],
             "title": "Decision",
@@ -1977,12 +1999,14 @@
                 "set_follow_up": "#/components/schemas/SetFollowUp-Output",
                 "set_grain": "#/components/schemas/SetGrain-Output",
                 "set_lens": "#/components/schemas/SetLens",
+                "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
                 "set_missing": "#/components/schemas/SetMissing-Output",
                 "set_orientation": "#/components/schemas/SetOrientation",
                 "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
                 "set_purpose": "#/components/schemas/SetPurpose",
                 "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                 "set_roles": "#/components/schemas/SetRoles",
+                "set_sensitivity": "#/components/schemas/SetSensitivity-Output",
                 "set_split": "#/components/schemas/SetSplit-Output",
                 "set_substitution": "#/components/schemas/SetSubstitution-Output",
                 "set_survey": "#/components/schemas/SetSurvey-Output",
@@ -2586,6 +2610,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetFollowUp-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSensitivity-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMeasurementError-Output"
                   }
                 ],
                 "discriminator": {
@@ -2607,12 +2637,14 @@
                     "set_follow_up": "#/components/schemas/SetFollowUp-Output",
                     "set_grain": "#/components/schemas/SetGrain-Output",
                     "set_lens": "#/components/schemas/SetLens",
+                    "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
                     "set_missing": "#/components/schemas/SetMissing-Output",
                     "set_orientation": "#/components/schemas/SetOrientation",
                     "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
                     "set_purpose": "#/components/schemas/SetPurpose",
                     "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                     "set_roles": "#/components/schemas/SetRoles",
+                    "set_sensitivity": "#/components/schemas/SetSensitivity-Output",
                     "set_split": "#/components/schemas/SetSplit-Output",
                     "set_substitution": "#/components/schemas/SetSubstitution-Output",
                     "set_survey": "#/components/schemas/SetSurvey-Output",
@@ -3003,6 +3035,395 @@
         ],
         "title": "FsListing"
       },
+      "GoldbergRule-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "goldberg",
+            "title": "Kind",
+            "default": "goldberg"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "energy_unit": {
+            "type": "string",
+            "enum": [
+              "kcal",
+              "kj"
+            ],
+            "title": "Energy Unit",
+            "default": "kcal"
+          },
+          "days": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          },
+          "days_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Column"
+          },
+          "sex": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Sex"
+          },
+          "female": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Female"
+          },
+          "male": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Male"
+          },
+          "age": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Age"
+          },
+          "weight": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Weight"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "height_unit": {
+            "type": "string",
+            "enum": [
+              "cm",
+              "m"
+            ],
+            "title": "Height Unit",
+            "default": "cm"
+          },
+          "equation": {
+            "type": "string",
+            "enum": [
+              "schofield",
+              "schofield_height",
+              "henry",
+              "henry_height",
+              "mifflin"
+            ],
+            "title": "Equation"
+          },
+          "pal": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 3.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pal"
+          },
+          "pal_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelValues"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exclude": {
+            "type": "string",
+            "enum": [
+              "both",
+              "under",
+              "over"
+            ],
+            "title": "Exclude",
+            "default": "both"
+          },
+          "cv_wei": {
+            "type": "number",
+            "maximum": 100.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cv Wei",
+            "default": 23.0
+          },
+          "cv_wb": {
+            "type": "number",
+            "maximum": 100.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cv Wb",
+            "default": 8.5
+          },
+          "cv_tp": {
+            "type": "number",
+            "maximum": 100.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cv Tp",
+            "default": 15.0
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "missing": {
+            "type": "string",
+            "enum": [
+              "exclude",
+              "keep"
+            ],
+            "title": "Missing",
+            "default": "exclude"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "sex",
+          "age",
+          "weight",
+          "equation",
+          "reason"
+        ],
+        "title": "GoldbergRule",
+        "description": "Keep rows whose reported energy intake over estimated BMR lies within the Goldberg cut-offs\n(Goldberg et al. 1991, revised by Black 2000): ``PAL × exp(±2 S / 100)`` at n = 1, with\n``S = √(CV²_wEI / d + CV²_wB + CV²_tP)``. Every input is stated: the BMR equation, the PAL (one\nvalue, or one per level of an activity column), and the days of intake the energy averages."
+      },
+      "GoldbergRule-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "goldberg",
+            "title": "Kind",
+            "default": "goldberg"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "energy_unit": {
+            "type": "string",
+            "enum": [
+              "kcal",
+              "kj"
+            ],
+            "title": "Energy Unit",
+            "default": "kcal"
+          },
+          "days": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          },
+          "days_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Column"
+          },
+          "sex": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Sex"
+          },
+          "female": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Female"
+          },
+          "male": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Male"
+          },
+          "age": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Age"
+          },
+          "weight": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Weight"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "height_unit": {
+            "type": "string",
+            "enum": [
+              "cm",
+              "m"
+            ],
+            "title": "Height Unit",
+            "default": "cm"
+          },
+          "equation": {
+            "type": "string",
+            "enum": [
+              "schofield",
+              "schofield_height",
+              "henry",
+              "henry_height",
+              "mifflin"
+            ],
+            "title": "Equation"
+          },
+          "pal": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 3.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pal"
+          },
+          "pal_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelValues"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exclude": {
+            "type": "string",
+            "enum": [
+              "both",
+              "under",
+              "over"
+            ],
+            "title": "Exclude",
+            "default": "both"
+          },
+          "cv_wei": {
+            "type": "number",
+            "maximum": 100.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cv Wei",
+            "default": 23.0
+          },
+          "cv_wb": {
+            "type": "number",
+            "maximum": 100.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cv Wb",
+            "default": 8.5
+          },
+          "cv_tp": {
+            "type": "number",
+            "maximum": 100.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cv Tp",
+            "default": 15.0
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "missing": {
+            "type": "string",
+            "enum": [
+              "exclude",
+              "keep"
+            ],
+            "title": "Missing",
+            "default": "exclude"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "energy_unit",
+          "days",
+          "days_column",
+          "sex",
+          "female",
+          "male",
+          "age",
+          "weight",
+          "height",
+          "height_unit",
+          "equation",
+          "pal",
+          "pal_by",
+          "exclude",
+          "cv_wei",
+          "cv_wb",
+          "cv_tp",
+          "reason",
+          "missing"
+        ],
+        "title": "GoldbergRule",
+        "description": "Keep rows whose reported energy intake over estimated BMR lies within the Goldberg cut-offs\n(Goldberg et al. 1991, revised by Black 2000): ``PAL × exp(±2 S / 100)`` at n = 1, with\n``S = √(CV²_wEI / d + CV²_wB + CV²_tP)``. Every input is stated: the BMR equation, the PAL (one\nvalue, or one per level of an activity column), and the days of intake the energy averages."
+      },
       "GrainSpec": {
         "properties": {
           "grain": {
@@ -3312,6 +3733,31 @@
         ],
         "title": "JobView"
       },
+      "LevelValues": {
+        "properties": {
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "values": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "values"
+        ],
+        "title": "LevelValues",
+        "description": "A number per level of another column (a PAL per activity category)."
+      },
       "Lineage": {
         "properties": {
           "nodes": {
@@ -3575,6 +4021,40 @@
         ],
         "title": "Mark",
         "description": "A labeled value on a distribution's axis, e.g. an exclusion cut-off (\"500 kcal\")."
+      },
+      "MeasurementErrorSpec": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "regression_calibration"
+            ],
+            "title": "Method"
+          },
+          "exposures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exposures"
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 50.0,
+            "title": "N Boot",
+            "default": 200
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "method",
+          "exposures",
+          "n_boot"
+        ],
+        "title": "MeasurementErrorSpec"
       },
       "MissingSpec": {
         "properties": {
@@ -3857,7 +4337,14 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/ExclusionRule-Output"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ExclusionRule-Output"
+                    },
+                    {
+                      "$ref": "#/components/schemas/GoldbergRule-Output"
+                    }
+                  ]
                 },
                 "type": "array"
               },
@@ -4088,6 +4575,30 @@
                 "type": "null"
               }
             ]
+          },
+          "sensitivity": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SensitivityAnalysis-Output"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sensitivity"
+          },
+          "measurement_error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MeasurementErrorSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -4117,7 +4628,9 @@
           "survey",
           "exposure_forms",
           "outcome_order",
-          "follow_up"
+          "follow_up",
+          "sensitivity",
+          "measurement_error"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -4955,6 +5468,67 @@
         ],
         "title": "SelectModels"
       },
+      "SensitivityAnalysis-Input": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Label"
+          },
+          "rules": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ExclusionRule-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/GoldbergRule-Input"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Rules"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "title": "SensitivityAnalysis",
+        "description": "One analysis beside the primary: the same model on the rows these rules keep instead."
+      },
+      "SensitivityAnalysis-Output": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Label"
+          },
+          "rules": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ExclusionRule-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/GoldbergRule-Output"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Rules"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "rules"
+        ],
+        "title": "SensitivityAnalysis",
+        "description": "One analysis beside the primary: the same model on the rows these rules keep instead."
+      },
       "SetAggregation-Input": {
         "properties": {
           "kind": {
@@ -5269,7 +5843,14 @@
           },
           "rules": {
             "items": {
-              "$ref": "#/components/schemas/ExclusionRule-Input"
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ExclusionRule-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/GoldbergRule-Input"
+                }
+              ]
             },
             "type": "array",
             "title": "Rules"
@@ -5294,7 +5875,14 @@
           },
           "rules": {
             "items": {
-              "$ref": "#/components/schemas/ExclusionRule-Output"
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ExclusionRule-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/GoldbergRule-Output"
+                }
+              ]
             },
             "type": "array",
             "title": "Rules"
@@ -5673,6 +6261,88 @@
         ],
         "title": "SetLens"
       },
+      "SetMeasurementError-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_measurement_error",
+            "title": "Kind",
+            "default": "set_measurement_error"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "regression_calibration"
+            ],
+            "title": "Method"
+          },
+          "exposures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exposures"
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 50.0,
+            "title": "N Boot",
+            "default": 200
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "method"
+        ],
+        "title": "SetMeasurementError",
+        "description": "Whether energy-adjusted exposures are corrected for day-to-day error in the recalls\n(univariate regression calibration; audit IN-22, Freedman et al. 2011)."
+      },
+      "SetMeasurementError-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_measurement_error",
+            "title": "Kind",
+            "default": "set_measurement_error"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "regression_calibration"
+            ],
+            "title": "Method"
+          },
+          "exposures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exposures"
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 50.0,
+            "title": "N Boot",
+            "default": 200
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "method",
+          "exposures",
+          "n_boot"
+        ],
+        "title": "SetMeasurementError",
+        "description": "Whether energy-adjusted exposures are corrected for day-to-day error in the recalls\n(univariate regression calibration; audit IN-22, Freedman et al. 2011)."
+      },
       "SetMissing-Input": {
         "properties": {
           "kind": {
@@ -5990,6 +6660,56 @@
         ],
         "title": "SetRoles",
         "description": "The confirmed reading of every column except the outcome."
+      },
+      "SetSensitivity-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_sensitivity",
+            "title": "Kind",
+            "default": "set_sensitivity"
+          },
+          "analyses": {
+            "items": {
+              "$ref": "#/components/schemas/SensitivityAnalysis-Input"
+            },
+            "type": "array",
+            "title": "Analyses"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "analyses"
+        ],
+        "title": "SetSensitivity",
+        "description": "Analyses beside the primary, each on the rows its own exclusion rules keep (audit ME-16).\n\nBanna et al. 2017: \"analyses in the total sample without exclusion of participants should\nalso be conducted and reported\". An empty list is the answer \"no sensitivity analysis\"."
+      },
+      "SetSensitivity-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_sensitivity",
+            "title": "Kind",
+            "default": "set_sensitivity"
+          },
+          "analyses": {
+            "items": {
+              "$ref": "#/components/schemas/SensitivityAnalysis-Output"
+            },
+            "type": "array",
+            "title": "Analyses"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "analyses"
+        ],
+        "title": "SetSensitivity",
+        "description": "Analyses beside the primary, each on the rows its own exclusion rules keep (audit ME-16).\n\nBanna et al. 2017: \"analyses in the total sample without exclusion of participants should\nalso be conducted and reported\". An empty list is the answer \"no sensitivity analysis\"."
       },
       "SetSplit-Input": {
         "properties": {
@@ -7738,6 +8458,232 @@
         "title": "BrantColumn",
         "type": "object"
       },
+      "CalibratedExposure": {
+        "additionalProperties": false,
+        "description": "One energy-adjusted exposure: its uncorrected and its calibrated coefficient.",
+        "properties": {
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "operation": {
+            "title": "Operation",
+            "type": "string"
+          },
+          "naive": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Naive"
+          },
+          "naive_ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Naive Ci Low"
+          },
+          "naive_ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Naive Ci High"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "P"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Estimate"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          },
+          "attenuation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Attenuation"
+          },
+          "attenuation_se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Attenuation Se"
+          },
+          "within_variance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Within Variance"
+          },
+          "between_variance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Between Variance"
+          },
+          "n_persons": {
+            "default": 0,
+            "title": "N Persons",
+            "type": "integer"
+          },
+          "n_repeat": {
+            "default": 0,
+            "title": "N Repeat",
+            "type": "integer"
+          },
+          "recalls": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Recalls",
+            "type": "object"
+          },
+          "n_boot": {
+            "default": 0,
+            "title": "N Boot",
+            "type": "integer"
+          },
+          "n_boot_ok": {
+            "default": 0,
+            "title": "N Boot Ok",
+            "type": "integer"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refused"
+          }
+        },
+        "required": [
+          "feature",
+          "source",
+          "operation",
+          "naive",
+          "naive_ci_low",
+          "naive_ci_high",
+          "p",
+          "estimate",
+          "se",
+          "ci_low",
+          "ci_high",
+          "attenuation",
+          "attenuation_se",
+          "within_variance",
+          "between_variance",
+          "n_persons",
+          "n_repeat",
+          "recalls",
+          "n_boot",
+          "n_boot_ok",
+          "refused"
+        ],
+        "title": "CalibratedExposure",
+        "type": "object"
+      },
       "Calibration": {
         "additionalProperties": false,
         "description": "Calibration of one set of predictions: in the large, its slope, and its smoothed curve.",
@@ -7842,6 +8788,118 @@
           "concern"
         ],
         "title": "Calibration",
+        "type": "object"
+      },
+      "CalibrationArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "enum": [
+              "none",
+              "regression_calibration"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "inference",
+              "prediction"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "applies": {
+            "title": "Applies",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Family"
+          },
+          "rows": {
+            "const": "all eligible rows",
+            "default": "all eligible rows",
+            "title": "Rows",
+            "type": "string"
+          },
+          "n_persons": {
+            "default": 0,
+            "title": "N Persons",
+            "type": "integer"
+          },
+          "recalls": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Recalls",
+            "type": "object"
+          },
+          "exposures": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CalibratedExposure"
+            },
+            "title": "Exposures",
+            "type": "array"
+          },
+          "assumptions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          },
+          "methods": {
+            "title": "Methods",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "purpose",
+          "applies",
+          "reason",
+          "family",
+          "rows",
+          "n_persons",
+          "recalls",
+          "exposures",
+          "assumptions",
+          "concerns",
+          "methods"
+        ],
+        "title": "CalibrationArtifact",
         "type": "object"
       },
       "CategoricalProposal": {
@@ -8700,7 +9758,15 @@
             "type": "string"
           },
           "rule": {
-            "$ref": "#/components/schemas/ExclusionRule"
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExclusionRule"
+              },
+              {
+                "$ref": "#/components/schemas/GoldbergRule"
+              }
+            ],
+            "title": "Rule"
           },
           "label": {
             "title": "Label",
@@ -9697,6 +10763,213 @@
           "exposure_tests"
         ],
         "title": "FittedModel",
+        "type": "object"
+      },
+      "GoldbergRule": {
+        "additionalProperties": false,
+        "description": "Keep rows whose reported energy intake over estimated BMR lies within the Goldberg cut-offs\n(Goldberg et al. 1991, revised by Black 2000): ``PAL × exp(±2 S / 100)`` at n = 1, with\n``S = √(CV²_wEI / d + CV²_wB + CV²_tP)``. Every input is stated: the BMR equation, the PAL (one\nvalue, or one per level of an activity column), and the days of intake the energy averages.",
+        "properties": {
+          "kind": {
+            "const": "goldberg",
+            "default": "goldberg",
+            "title": "Kind",
+            "type": "string"
+          },
+          "column": {
+            "minLength": 1,
+            "title": "Column",
+            "type": "string"
+          },
+          "energy_unit": {
+            "default": "kcal",
+            "enum": [
+              "kcal",
+              "kj"
+            ],
+            "title": "Energy Unit",
+            "type": "string"
+          },
+          "days": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Days"
+          },
+          "days_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Days Column"
+          },
+          "sex": {
+            "minLength": 1,
+            "title": "Sex",
+            "type": "string"
+          },
+          "female": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Female",
+            "type": "array"
+          },
+          "male": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Male",
+            "type": "array"
+          },
+          "age": {
+            "minLength": 1,
+            "title": "Age",
+            "type": "string"
+          },
+          "weight": {
+            "minLength": 1,
+            "title": "Weight",
+            "type": "string"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Height"
+          },
+          "height_unit": {
+            "default": "cm",
+            "enum": [
+              "cm",
+              "m"
+            ],
+            "title": "Height Unit",
+            "type": "string"
+          },
+          "equation": {
+            "enum": [
+              "schofield",
+              "schofield_height",
+              "henry",
+              "henry_height",
+              "mifflin"
+            ],
+            "title": "Equation",
+            "type": "string"
+          },
+          "pal": {
+            "anyOf": [
+              {
+                "maximum": 3.0,
+                "minimum": 1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pal"
+          },
+          "pal_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelValues"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "exclude": {
+            "default": "both",
+            "enum": [
+              "both",
+              "under",
+              "over"
+            ],
+            "title": "Exclude",
+            "type": "string"
+          },
+          "cv_wei": {
+            "default": 23.0,
+            "exclusiveMinimum": 0,
+            "maximum": 100,
+            "title": "Cv Wei",
+            "type": "number"
+          },
+          "cv_wb": {
+            "default": 8.5,
+            "exclusiveMinimum": 0,
+            "maximum": 100,
+            "title": "Cv Wb",
+            "type": "number"
+          },
+          "cv_tp": {
+            "default": 15.0,
+            "exclusiveMinimum": 0,
+            "maximum": 100,
+            "title": "Cv Tp",
+            "type": "number"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "missing": {
+            "default": "exclude",
+            "enum": [
+              "exclude",
+              "keep"
+            ],
+            "title": "Missing",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "column",
+          "energy_unit",
+          "days",
+          "days_column",
+          "sex",
+          "female",
+          "male",
+          "age",
+          "weight",
+          "height",
+          "height_unit",
+          "equation",
+          "pal",
+          "pal_by",
+          "exclude",
+          "cv_wei",
+          "cv_wb",
+          "cv_tp",
+          "reason",
+          "missing"
+        ],
+        "title": "GoldbergRule",
         "type": "object"
       },
       "GrainContradiction": {
@@ -11737,6 +13010,285 @@
           "text"
         ],
         "title": "Selection",
+        "type": "object"
+      },
+      "SensitivityArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "enum": [
+              "inference",
+              "prediction"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "rows": {
+            "enum": [
+              "all eligible rows",
+              "eligible rows outside the held-out set"
+            ],
+            "title": "Rows",
+            "type": "string"
+          },
+          "analyses": {
+            "items": {
+              "$ref": "#/components/schemas/SensitivityRow"
+            },
+            "title": "Analyses",
+            "type": "array"
+          },
+          "exposures": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exposures",
+            "type": "array"
+          },
+          "families": {
+            "items": {
+              "$ref": "#/components/schemas/SensitivityFamily"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "changes": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/SensitivityChange"
+              },
+              "type": "array"
+            },
+            "title": "Changes",
+            "type": "object"
+          },
+          "concerns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          },
+          "methods": {
+            "title": "Methods",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "rows",
+          "analyses",
+          "exposures",
+          "families",
+          "changes",
+          "concerns",
+          "methods"
+        ],
+        "title": "SensitivityArtifact",
+        "type": "object"
+      },
+      "SensitivityChange": {
+        "additionalProperties": false,
+        "description": "How an exposure's estimate moves across the analyses, against the primary's.",
+        "properties": {
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "primary": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary"
+          },
+          "lowest": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lowest"
+          },
+          "highest": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest"
+          },
+          "sign_changes": {
+            "title": "Sign Changes",
+            "type": "boolean"
+          },
+          "excludes_zero": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Excludes Zero",
+            "type": "array"
+          }
+        },
+        "required": [
+          "feature",
+          "primary",
+          "lowest",
+          "highest",
+          "sign_changes",
+          "excludes_zero"
+        ],
+        "title": "SensitivityChange",
+        "type": "object"
+      },
+      "SensitivityFamily": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "fits": {
+            "items": {
+              "$ref": "#/components/schemas/SensitivityFit"
+            },
+            "title": "Fits",
+            "type": "array"
+          }
+        },
+        "required": [
+          "family",
+          "label",
+          "fits"
+        ],
+        "title": "SensitivityFamily",
+        "type": "object"
+      },
+      "SensitivityFit": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "coefficients": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Coefficient"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coefficients"
+          },
+          "inference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Inference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "label",
+          "n_rows",
+          "coefficients",
+          "inference",
+          "concerns"
+        ],
+        "title": "SensitivityFit",
+        "type": "object"
+      },
+      "SensitivityRow": {
+        "additionalProperties": false,
+        "description": "One analysis: its rules (as the participant flow labels them) and the rows they keep.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "primary": {
+            "title": "Primary",
+            "type": "boolean"
+          },
+          "added": {
+            "title": "Added",
+            "type": "boolean"
+          },
+          "rules": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refused"
+          }
+        },
+        "required": [
+          "label",
+          "primary",
+          "added",
+          "rules",
+          "n_rows",
+          "refused"
+        ],
+        "title": "SensitivityRow",
         "type": "object"
       },
       "ShelfArtifact": {

@@ -716,3 +716,58 @@ def test_the_bootstrap_optimism_of_a_mixed_model_refits_a_mixed_model_on_each_re
 
         gaps.append(r2(y[take], X[take] @ beta) - r2(y, X @ beta))
     assert optimism["estimates"]["r2"]["optimism"] == pytest.approx(float(np.mean(gaps)), abs=2e-4)
+
+
+# ── WP12c × WP10 × WP8: sensitivity analyses of a surveyed population ────────────────────────
+
+
+def test_sensitivity_analyses_of_a_surveyed_population_are_design_based_domains(tmp_path_factory):
+    """WP12c refits the primary's model on each sensitivity analysis's rows; under WP10's
+    "surveyed population" answer the primary is design-based over every analyzed row (WP8). Joined,
+    each analysis is a domain of the one design: estimated with the weights on its own rows, its
+    variance over every stratum and PSU of the design (NHANES Analytic Guidelines 2011–2016
+    §3.2.3), and the primary's estimate is the fit's. Before the merge fix the sensitivity analyses
+    were unweighted HC3 fits beside a design-based primary.
+
+    Reference: survey-weighted least squares with R survey's linearized variance written out from
+    the definition (``survey_references.wls_by_definition``) with the rows outside the analysis
+    weighted zero, on t(PSUs − strata holding analysis rows) (``design_df_by_definition``).
+    """
+    from turbotab.core.tests.acceptance import survey_references as sref
+    from turbotab.core.tests.acceptance import test_wp10_survey_design as w10
+    from turbotab.server.tests.conftest import make_client, wait_for
+
+    folder = tmp_path_factory.mktemp("seam_survey_sensitivity")
+    path = w10.informative_tables(folder)["F5"]
+    frame = pd.read_csv(path)
+    rule = {"kind": "range", "column": "DR1TKCAL", "low": 1500, "high": 2700,
+            "reason": "a narrower energy range"}
+    with make_client(folder / "home", "local", 2, "http://127.0.0.1") as client:
+        pid = w10.open_project(client, path, "LBXCRP", "inference", w10.DIET_ROLES)
+        w10.accepted(client, pid, w10.survey_options(client, pid)[0]["decision"])
+        w10.accepted(client, pid, {"kind": "set_exclusions", "rules": []})
+        w10.accepted(client, pid, {"kind": "set_missing", "strategy": "complete_case"})
+        w10.accepted(client, pid, {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5})
+        w10.accepted(client, pid, {"kind": "select_models", "models": ["linear"]})
+        w10.accepted(client, pid, {"kind": "set_sensitivity",
+                                   "analyses": [{"label": "1,500–2,700 kcal", "rules": [rule]}]})
+        wait_for(client, pid, {"fit": "fresh", "sensitivity": "fresh"}, timeout=240)
+        sensitivity = client.get(f"/api/projects/{pid}/stages/sensitivity").json()["artifact"]
+        primary_fit = w10.linear_model(client, pid)
+
+    fits = sensitivity["families"][0]["fits"]
+    assert [f["label"] for f in fits] == ["Primary", "1,500–2,700 kcal"]
+    Xc = np.column_stack([np.ones(len(frame)), frame[["DR1TKCAL", "DR1TFIBE"]].to_numpy(float)])
+    y, w = frame["LBXCRP"].to_numpy(float), frame["WTDRD1"].to_numpy(float)
+    every = np.ones(len(frame), bool)
+    narrower = ((frame["DR1TKCAL"] >= 1500) & (frame["DR1TKCAL"] <= 2700)).to_numpy()
+    for fit_, domain in zip(fits, (every, narrower)):
+        assert fit_["n_rows"] == int(domain.sum()) and fit_["inference"]["covariance"] == "design"
+        beta, V = sref.wls_by_definition(Xc, y, w, frame["SDMVSTRA"], frame["SDMVPSU"], domain)
+        df = sref.design_df_by_definition(frame["SDMVSTRA"], frame["SDMVPSU"], domain)
+        got = next(r for r in fit_["coefficients"] if r["feature"] == "DR1TFIBE")
+        assert got["estimate"] == pytest.approx(beta[2], rel=1e-9)
+        assert got["se"] == pytest.approx(float(np.sqrt(V[2, 2])), rel=1e-9)
+        assert got["df"] == df
+    primary = next(r for r in fits[0]["coefficients"] if r["feature"] == "DR1TFIBE")
+    assert primary["estimate"] == pytest.approx(w10.row(primary_fit, "DR1TFIBE")["estimate"], rel=1e-12)

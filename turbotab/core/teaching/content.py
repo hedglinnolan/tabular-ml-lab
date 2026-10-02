@@ -523,7 +523,9 @@ AGGREGATION = {
         section("When the mean is not adequate",
                 "Prevalence or percentile claims about usual intake, episodically consumed foods "
                 "with many zero days, and exposure coefficients that must be unbiased in "
-                "magnitude all need usual-intake modeling, which this version does not fit.",
+                "magnitude all need more than a mean. This version corrects energy-adjusted "
+                "exposure coefficients by regression calibration from the repeated recalls; it "
+                "fits no usual-intake distribution.",
                 "SETTLED", NUT03),
         section("Cumulative averages over follow-up",
                 "With repeated questionnaires, the cohort standard is the cumulative average up "
@@ -708,6 +710,9 @@ EXCLUSIONS = {
                "Anyone outside 500–5,000 kcal a day is excluded, whatever their sex."),
         option("sex_neutral_500_3500", "500–3,500 kcal a day",
                "Anyone outside 500–3,500 kcal a day is excluded; stricter, so it removes more."),
+        option("goldberg_schofield", "Goldberg, energy over BMR",
+               "Energy over estimated BMR outside the cut-offs for a stated PAL and recall days "
+               "is excluded."),
         option("custom", "Your own range",
                "Rows outside a range you set on a numeric column, never the outcome, are excluded."),
     ],
@@ -719,8 +724,8 @@ EXCLUSIONS = {
         term("under-reporting", "Reporting less than was eaten. It is systematic, concentrated in "
                                 "people with higher BMI and in weight-conscious participants."),
         term("Goldberg cut-off", "A screen comparing reported energy with estimated basal "
-                                 "metabolic rate; the field's standard for misreporting, not "
-                                 "offered in this version."),
+                                 "metabolic rate, within limits that widen as recall days fall; "
+                                 "the field's standard for misreporting."),
     ],
     "drawer": {"sections": [
         section("Each criterion its own box",

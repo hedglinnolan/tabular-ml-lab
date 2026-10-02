@@ -58,7 +58,11 @@ export type EvidenceBadge = S["Evidence"];
 
 export type Role = S["RoleProposal"]["proposed"];
 export type EnergyMethod = Extract<Decision, { kind: "set_energy_adjustment" }>["method"];
-export type ExclusionRule = Extract<Decision, { kind: "set_exclusions" }>["rules"][number];
+/** Any eligibility rule: a range, or the Goldberg screen (WP12). */
+export type EligibilityRule = Extract<Decision, { kind: "set_exclusions" }>["rules"][number];
+/** A range rule on one column (optionally per level of another). */
+export type ExclusionRule = Exclude<EligibilityRule, { kind: "goldberg" }>;
+export const isRangeRule = (rule: EligibilityRule): rule is ExclusionRule => rule.kind !== "goldberg";
 /** §12.4: `drop_columns` leaves the mostly-blank columns out before the strategy applies. */
 export type SetMissing = Extract<Decision, { kind: "set_missing" }>;
 export type MissingSpec = S["MissingSpec"];

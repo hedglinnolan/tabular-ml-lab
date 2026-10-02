@@ -220,13 +220,15 @@ def exclusions_coach(decision: Any, views: list, ctx: PreviewContext) -> None:
         return
     cut = _first(views, "distribution")
     flow = _first(views, "row_flow")
-    rule_columns = {r.column for r in rules} | {r.by.column for r in rules if r.by is not None}
+    rule_columns = {c for r in rules for c in r.reads()}
     bmi = next((c for c in ctx.datastore.columns if _BMI.search(str(c)) and c != target
                 and c not in rule_columns), None)
     frame = _read(ctx, [*rule_columns, target, bmi])
     base = _measured(frame, target)
     if cut is not None and cut.column != target:  # the outcome's values are withheld here
-        rule = next((r for r in rules if r.column == cut.column), None)
+        # The cut view draws a range rule's bounds; a Goldberg screen's cut-offs are per person.
+        rule = next((r for r in rules if r.column == cut.column
+                     and getattr(r, "kind", "range") == "range"), None)
         if rule is not None:
             below, above = _below_above(frame, rule, base)
             lows, highs = _bounds(rule)

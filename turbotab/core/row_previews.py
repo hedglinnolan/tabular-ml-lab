@@ -143,8 +143,10 @@ def exclusions_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     # Never the outcome's own distribution (audit RO-01): a rule on it is refused, and one recorded
     # before that refusal existed still draws no histogram of the outcome here.
     rules = list(decision.rules) or list(state.exclusions or [])
+    # A range rule's cut is drawn on its column; a Goldberg screen's cut-offs differ per person,
+    # so it shows in the row flow only.
     shown = [i for i, r in enumerate(rules)
-             if r.column != state.target and (r.by is None or r.by.column != state.target)]
+             if getattr(r, "kind", "range") == "range" and state.target not in r.reads()]
     if shown:
         # One count per rule in rule order, its not-recorded and not-screened lines included.
         drops = rule_drops(after if decision.rules else before)

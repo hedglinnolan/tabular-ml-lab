@@ -36,7 +36,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any, Callable, Iterable, Literal, Mapping, Sequence, Union
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
+from pydantic import (AwareDatetime, BaseModel, ConfigDict, Discriminator, Field, Tag, TypeAdapter,
+                      field_validator, model_validator)
 
 try:  # POSIX only; on Windows the in-process lock is the whole of it.
     import fcntl
@@ -150,6 +151,109 @@ class ExclusionRule(_Value):
     # out on a line of its own, "`age` not recorded"; "keep" keeps it and the step says so.
     missing: Literal["exclude", "keep"] = "exclude"
 
+    def reads(self) -> list[str]:
+        """Every column the rule reads (the outcome guard refuses a rule that reads the outcome)."""
+        return [self.column] + ([self.by.column] if self.by is not None else [])
+
+
+# WP12 (audit ME-16): the Goldberg screen. The arithmetic and its sources are in
+# turbotab/core/methods/misreporting.py; this is the shape the answer records.
+BmrEquation = Literal["schofield", "schofield_height", "henry", "henry_height", "mifflin"]
+
+
+class LevelValues(_Value):
+    """A number per level of another column (a PAL per activity category)."""
+
+    column: str = Field(min_length=1)
+    values: dict[str, float] = Field(min_length=1)
+
+
+class GoldbergRule(_Value):
+    """Keep rows whose reported energy intake over estimated BMR lies within the Goldberg cut-offs
+    (Goldberg et al. 1991, revised by Black 2000): ``PAL × exp(±2 S / 100)`` at n = 1, with
+    ``S = √(CV²_wEI / d + CV²_wB + CV²_tP)``. Every input is stated: the BMR equation, the PAL (one
+    value, or one per level of an activity column), and the days of intake the energy averages."""
+
+    kind: Literal["goldberg"] = "goldberg"
+    column: str = Field(min_length=1)  # reported energy intake, a mean over ``days`` days
+    energy_unit: Literal["kcal", "kj"] = "kcal"
+    days: float | None = Field(default=None, ge=1)
+    days_column: str | None = None  # each row's own number of days, when they differ
+    sex: str = Field(min_length=1)
+    female: list[str] = Field(default_factory=list)  # levels of ``sex`` read as female
+    male: list[str] = Field(default_factory=list)
+    age: str = Field(min_length=1)  # years
+    weight: str = Field(min_length=1)  # kg
+    height: str | None = None
+    height_unit: Literal["cm", "m"] = "cm"
+    equation: BmrEquation
+    pal: float | None = Field(default=None, ge=1.0, le=3.0)
+    pal_by: LevelValues | None = None
+    exclude: Literal["both", "under", "over"] = "both"  # which reporters leave
+    cv_wei: float = Field(default=23.0, gt=0, le=100)  # Black 2000's values
+    cv_wb: float = Field(default=8.5, gt=0, le=100)
+    cv_tp: float = Field(default=15.0, gt=0, le=100)
+    reason: str = Field(min_length=1)
+    missing: Literal["exclude", "keep"] = "exclude"
+
+    @model_validator(mode="after")
+    def _stated(self) -> "GoldbergRule":
+        if self.pal is None and self.pal_by is None:
+            raise ValueError("a Goldberg screen needs a PAL: one value, or one per activity level")
+        if self.days is None and not self.days_column:
+            raise ValueError("a Goldberg screen needs the days of intake the energy averages")
+        if not self.female and not self.male:
+            raise ValueError("say which levels of the sex column are female and which are male")
+        if set(map(str, self.female)) & set(map(str, self.male)):
+            raise ValueError("a level cannot be both female and male")
+        if self.equation in ("schofield_height", "henry_height", "mifflin") and not self.height:
+            raise ValueError(f"the {self.equation} equation needs a height column")
+        if self.pal_by is not None and any(not 1.0 <= v <= 3.0 for v in self.pal_by.values.values()):
+            raise ValueError("a PAL is total over basal expenditure, between 1.0 and 3.0")
+        return self
+
+    def reads(self) -> list[str]:
+        from turbotab.core.methods.misreporting import rule_columns
+
+        return rule_columns(self)
+
+
+def _rule_kind(value: Any) -> str:
+    """A rule's kind; a rule written before the Goldberg screen existed is a range."""
+    if isinstance(value, Mapping):
+        return str(value.get("kind") or "range")
+    return str(getattr(value, "kind", None) or "range")
+
+
+EligibilityRule = Annotated[
+    Union[Annotated[ExclusionRule, Tag("range")], Annotated[GoldbergRule, Tag("goldberg")]],
+    Discriminator(_rule_kind),
+]
+RULE_ADAPTER: TypeAdapter[Any] = TypeAdapter(EligibilityRule)
+
+
+def as_rule(value: Any) -> "ExclusionRule | GoldbergRule":
+    """An eligibility rule from a model or its JSON form."""
+    if isinstance(value, (ExclusionRule, GoldbergRule)):
+        return value
+    return RULE_ADAPTER.validate_python(value)
+
+
+class SensitivityAnalysis(_Value):
+    """One analysis beside the primary: the same model on the rows these rules keep instead."""
+
+    label: str = Field(min_length=1)
+    rules: list[EligibilityRule] = Field(default_factory=list)  # [] keeps every row
+
+
+MeasurementErrorMethod = Literal["none", "regression_calibration"]
+
+
+class MeasurementErrorSpec(_Value):
+    method: MeasurementErrorMethod
+    exposures: list[str] = Field(default_factory=list)  # [] = every energy-adjusted exposure
+    n_boot: int = Field(default=200, ge=50, le=2000)
+
 
 class EnergyAdjustment(_Value):
     method: EnergyMethod
@@ -250,7 +354,43 @@ class SetExclusions(_DecisionModel):
     """Row exclusions; an empty list is the answer "keep every row"."""
 
     kind: Literal["set_exclusions"] = "set_exclusions"
-    rules: list[ExclusionRule]
+    rules: list[EligibilityRule]
+
+
+class SetSensitivity(_DecisionModel):
+    """Analyses beside the primary, each on the rows its own exclusion rules keep (audit ME-16).
+
+    Banna et al. 2017: "analyses in the total sample without exclusion of participants should
+    also be conducted and reported". An empty list is the answer "no sensitivity analysis".
+    """
+
+    kind: Literal["set_sensitivity"] = "set_sensitivity"
+    analyses: list[SensitivityAnalysis]
+
+    @field_validator("analyses")
+    @classmethod
+    def _unique(cls, value: list[SensitivityAnalysis]) -> list[SensitivityAnalysis]:
+        labels = [a.label for a in value]
+        if len(set(labels)) != len(labels):
+            raise ValueError("each sensitivity analysis needs a label of its own")
+        return value
+
+
+class SetMeasurementError(_DecisionModel):
+    """Whether energy-adjusted exposures are corrected for day-to-day error in the recalls
+    (univariate regression calibration; audit IN-22, Freedman et al. 2011)."""
+
+    kind: Literal["set_measurement_error"] = "set_measurement_error"
+    method: MeasurementErrorMethod
+    exposures: list[str] = Field(default_factory=list)
+    n_boot: int = Field(default=200, ge=50, le=2000)
+
+    @field_validator("exposures")
+    @classmethod
+    def _unique(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("each exposure may be named only once")
+        return value
 
 
 class SetMissing(_DecisionModel):
@@ -596,6 +736,7 @@ Decision = Annotated[
         OpenSeal, ApplyRepair, DeferFinding, DismissFinding,
         SetFeatureTable, SetCategorical, SetSurvey,
         SetExposureForm, SetOutcomeOrder, SetFollowUp,
+        SetSensitivity, SetMeasurementError,
     ],
     Field(discriminator="kind"),
 ]
@@ -641,7 +782,7 @@ class ProjectState(BaseModel):
     purpose: Purpose | None = None
     roles: dict[str, Role] | None = None
     energy_adjustment: EnergyAdjustment | None = None
-    exclusions: list[ExclusionRule] | None = None
+    exclusions: list[EligibilityRule] | None = None
     missing: MissingSpec | None = None
     split: SplitSpec | None = None
     models: list[str] | None = None
@@ -666,6 +807,9 @@ class ProjectState(BaseModel):
     outcome_order: list[str] | None = None  # holds while its column is the target
     # WP12: a time-to-event outcome's follow-up (holds while its column is the target)
     follow_up: FollowUpSpec | None = None
+    # WP12 (audit §5): methods a reviewer expects
+    sensitivity: list[SensitivityAnalysis] | None = None  # analyses beside the primary's rows
+    measurement_error: MeasurementErrorSpec | None = None  # regression calibration, or none
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -928,6 +1072,9 @@ register_kind(SetOutcomeOrder, "outcome_order", value=lambda d: list(d.levels),
 register_kind(SetFollowUp, "follow_up",
               value=lambda d: FollowUpSpec(time_column=d.time_column, entry_column=d.entry_column),
               holds=lambda d, slots: slots.get("target") == d.column)
+register_kind(SetSensitivity, "sensitivity")
+register_kind(SetMeasurementError, "measurement_error",
+              value=lambda d: MeasurementErrorSpec(**d.model_dump(exclude={"kind"})))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
@@ -1114,10 +1261,29 @@ def _rule_without(decision: SetExclusions, index: int) -> SetExclusions:
     return SetExclusions(rules=[r for i, r in enumerate(decision.rules) if i != index])
 
 
+def _goldberg_reads_numbers(rule: GoldbergRule, ctx: Any, drop: Mapping[str, Any]) -> None:
+    """A Goldberg screen's columns exist, and the ones it does arithmetic on are numbers."""
+    columns = _columns_of(ctx)
+    for name in rule.reads():
+        if columns is not None and (name not in columns or name == ROW_ID):
+            raise Refusal("unknown_column", f"This dataset has no column named `{name}`.", exits=[drop])
+    numbers = [rule.column, rule.age, rule.weight, *([rule.height] if rule.height else []),
+               *([rule.days_column] if rule.days_column else [])]
+    for name in numbers:
+        info = _info(ctx, name)
+        if info is not None and info.get("dtype") not in NUMERIC_DTYPES:
+            raise Refusal("not_numeric",
+                          f"`{name}` is {info.get('dtype')}, not numbers, so the Goldberg screen "
+                          f"cannot compute with it.", exits=[drop])
+
+
 def _exclusions_are_ranges_on_numbers(decision: SetExclusions, ctx: Any) -> None:
     columns = _columns_of(ctx)
     for i, rule in enumerate(decision.rules):
         drop = {"label": f"Drop the rule on `{rule.column}`", "decision": _rule_without(decision, i)}
+        if isinstance(rule, GoldbergRule):
+            _goldberg_reads_numbers(rule, ctx, drop)
+            continue
         for name in [rule.column] + ([rule.by.column] if rule.by is not None else []):
             if columns is not None and (name not in columns or name == ROW_ID):
                 raise Refusal("unknown_column", f"This dataset has no column named `{name}`.", exits=[drop])
@@ -1161,9 +1327,10 @@ OUTCOME_RULE = ("Keeping rows by their outcome selects on the value being explai
                 "the estimates, and no one whose outcome is still unknown could be screened by it.")
 
 
-def _on_the_outcome(rule: ExclusionRule, target: str) -> bool:
-    """The rule reads the outcome: as its column, or as the column its ranges are set by."""
-    return rule.column == target or (rule.by is not None and rule.by.column == target)
+def _on_the_outcome(rule: Any, target: str) -> bool:
+    """The rule reads the outcome: as its column, as the column its ranges are set by, or (a
+    Goldberg screen) as any input of the screen, such as the body weight its BMR reads."""
+    return target in as_rule(rule).reads()
 
 
 def _records_in(ctx: Any) -> list["DecisionRecord"] | None:
@@ -1843,6 +2010,55 @@ def _form_fits_the_column(decision: SetExposureForm, ctx: Any) -> None:
             exits=[linear])
 
 
+# ── WP12: sensitivity analyses and measurement error ─────────────────────────
+
+
+def _sensitivity_rules_are_eligibility_rules(decision: SetSensitivity, ctx: Any) -> None:
+    """Each analysis's rules pass the checks the primary's do: real numeric columns, bounds that
+    keep something, and never the outcome (RO-01 holds for a sensitivity analysis too)."""
+    for i, analysis in enumerate(decision.analyses):
+        rest = SetSensitivity(analyses=[a for j, a in enumerate(decision.analyses) if j != i])
+        probe = SetExclusions(rules=list(analysis.rules))
+        try:
+            _exclusions_leave_the_outcome_alone(probe, ctx)
+            _exclusions_are_ranges_on_numbers(probe, ctx)
+        except Refusal as refused:
+            raise Refusal(refused.code, f"In “{analysis.label}”: {refused.message}",
+                          exits=[{"label": f"Leave out “{analysis.label}”", "decision": rest}]) from None
+
+
+def _calibrated_exposures_are_columns(decision: SetMeasurementError, ctx: Any) -> None:
+    columns = _columns_of(ctx)
+    if columns is None or not decision.exposures:
+        return
+    unknown = [c for c in decision.exposures if c not in columns or c == ROW_ID]
+    if unknown:
+        rest = [c for c in decision.exposures if c not in unknown]
+        raise Refusal(
+            "unknown_column", f"This dataset has no column named {_and(unknown)}.",
+            exits=[{"label": "Calibrate every energy-adjusted exposure",
+                    "decision": decision.model_copy(update={"exposures": rest})}])
+
+
+def _calibration_is_for_inference(decision: SetMeasurementError, ctx: Any) -> None:
+    """Regression calibration corrects a coefficient; under prediction the model is used on recalls
+    measured the same way, so there is nothing to correct (audit IN-22: right for prediction)."""
+    state = _state(ctx)
+    if decision.method == "none" or state is None or state.purpose != "prediction":
+        return
+    raise Refusal(
+        "not_for_prediction",
+        "Under prediction the model is used on recalls measured the same way as these, so its "
+        "predictions need no correction; regression calibration corrects an exposure's coefficient, "
+        "which is an inference question.",
+        exits=[{"label": "Keep the recalls' mean uncorrected",
+                "decision": SetMeasurementError(method="none")},
+               {"label": "Change the purpose to inference", "decision": None}])
+
+
+register_validator("set_sensitivity", _sensitivity_rules_are_eligibility_rules)
+register_validator("set_measurement_error", _calibrated_exposures_are_columns)
+register_validator("set_measurement_error", _calibration_is_for_inference)
 register_validator("set_task", _task_fits_the_outcome)
 register_validator("set_outcome_order", _order_names_the_outcome)
 register_validator("set_exposure_form", _form_fits_the_column)

@@ -82,7 +82,15 @@ def rule_excludes(frame: pd.DataFrame, rule: Any) -> pd.Series:
     range, and any other row by ``low``/``high``. A missing value is never removed by a range:
     missing values are the missing-data question's, not an exclusion's.
     """
-    rule = rule if isinstance(rule, ExclusionRule) else ExclusionRule.model_validate(rule)
+    from turbotab.core.decisions import as_rule
+
+    rule = as_rule(rule)
+    if getattr(rule, "kind", "range") == "goldberg":
+        # Judged outside its cut-offs; a row it cannot screen is never removed here either.
+        from turbotab.core.methods.misreporting import screen
+
+        s = screen(frame, rule)
+        return (s["screened"] & ~s["inside"]).astype(bool)
     values = pd.to_numeric(frame[rule.column], errors="coerce")
     low = pd.Series(np.nan if rule.low is None else float(rule.low), index=frame.index)
     high = pd.Series(np.nan if rule.high is None else float(rule.high), index=frame.index)
@@ -364,6 +372,82 @@ def exclusion_proposals(frame: pd.DataFrame, *, energy: str, unit: str, sex: str
     return out
 
 
+# ── the Goldberg screen (audit ME-16) ────────────────────────────────────────
+# Read only from exact names, each corroborated by its values' scale: a recognizer that reads a
+# substring sends birth weight or a survey weight to body weight (audit IN-01, IN-10).
+_AGE_NAMES = {"age", "age_years", "age_yrs", "age_yr", "ageyears", "ridageyr"}
+_WEIGHT_NAMES = {"weight", "weight_kg", "wt_kg", "body_weight", "body_weight_kg", "bodyweight",
+                 "bmxwt"}
+_HEIGHT_NAMES = {"height", "height_cm", "ht_cm", "stature", "stature_cm", "bmxht", "height_m"}
+GOLDBERG_PAL = 1.55  # Black 2000: "not necessarily the value of choice"; shown, never chosen
+GOLDBERG_EVIDENCE = {
+    "status": "CONVENTION",
+    "source": "Black 2000, Int J Obes 24:1119 (Goldberg cut-offs for EI:BMR)",
+}
+
+
+def _named(info: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame, names: set[str],
+           roles: Mapping[str, str], lo: float, hi: float) -> str | None:
+    """The column whose whole name is one of ``names`` and whose median is within [lo, hi]."""
+    for c in info:
+        if str(c).lower() not in names or c not in frame.columns:
+            continue
+        if roles.get(c) in ("identifier", "flag", "design", "excluded"):
+            continue
+        values = pd.to_numeric(frame[c], errors="coerce")
+        median = values.median()
+        if values.notna().sum() and lo <= float(median) <= hi:
+            return str(c)
+    return None
+
+
+def body_columns(info: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame,
+                 roles: Mapping[str, str]) -> dict[str, Any]:
+    """Age (years), weight (kg) and height (cm or m) columns, when their names and values agree."""
+    age = _named(info, frame, _AGE_NAMES, roles, 10, 100)
+    weight = _named(info, frame, _WEIGHT_NAMES, roles, 25, 200)
+    height = _named(info, frame, _HEIGHT_NAMES, roles, 100, 230)
+    unit = "cm"
+    if height is None:
+        height, unit = _named(info, frame, _HEIGHT_NAMES, roles, 1.0, 2.3), "m"
+    return {"age": age, "weight": weight, "height": height, "height_unit": unit}
+
+
+def goldberg_proposal(frame: pd.DataFrame, info: Mapping[str, Mapping[str, Any]], *, energy: str,
+                      unit: str, sex: str | None, sex_levels: Mapping[str, str],
+                      roles: Mapping[str, str], target: str | None,
+                      base: pd.Series, days: float = 1.0,
+                      days_note: str | None = None) -> dict[str, Any] | None:
+    """The Goldberg screen with Schofield's BMR, offered with its count when the columns are read.
+
+    PAL 1.55 and the days of intake each row's energy averages (``recall_days``: one, unless the
+    working table averaged each person's recalls) are stated in the label; a rule that would read
+    the outcome (weight as the outcome) is not offered (audit RO-01).
+    """
+    from turbotab.core.decisions import GoldbergRule
+
+    body = body_columns(info, frame, roles)
+    if sex is None or body["age"] is None or body["weight"] is None:
+        return None
+    height = body["height"]
+    rule = GoldbergRule(
+        column=energy, energy_unit="kj" if unit == "kj" else "kcal", days=days, sex=sex,
+        female=[k for k, v in sex_levels.items() if v == "female"],
+        male=[k for k, v in sex_levels.items() if v == "male"],
+        age=body["age"], weight=body["weight"], height=height, height_unit=body["height_unit"],
+        equation="schofield_height" if height else "schofield", pal=GOLDBERG_PAL,
+        reason="implausible energy reports (Goldberg cut-offs, Black 2000)")
+    if target is not None and target in rule.reads():
+        return None
+    affected = int((rule_excludes(frame, rule) & base).sum())
+    eq = "weight and height" if height else "weight"
+    n_days = f"{days:g} {'day' if days == 1 else 'days'}"
+    label = (f"Goldberg: energy over Schofield BMR ({eq}) outside the 95% cut-offs for PAL "
+             f"{GOLDBERG_PAL} and {n_days} of intake" + (f" ({days_note})" if days_note else ""))
+    return {"key": "goldberg_schofield", "rule": rule.model_dump(mode="json"), "label": label,
+            "affected": affected, "evidence": dict(GOLDBERG_EVIDENCE)}
+
+
 def _marked(text: str, columns: Iterable[str]) -> str:
     """Wrap this table's column names in backticks, longest first, whole words only."""
     for c in sorted(set(columns), key=len, reverse=True):
@@ -507,12 +591,14 @@ def missing_reading(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]],
 def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *,
                     lens: Sequence[str] | None, target: str | None,
                     roles: Mapping[str, str] | None = None,
-                    purpose: str | None = None) -> dict[str, Any]:
+                    purpose: str | None = None,
+                    days: tuple[float, str | None] = (1.0, None)) -> dict[str, Any]:
     """The proposals artifact from a frame holding (at least) the columns it reads.
 
     ``columns`` are the ingest's column records (``name``, ``dtype``, ``n_unique``,
     ``n_missing``); ``roles`` the confirmed roles, else the proposed ones, else empty;
-    ``purpose`` the declared purpose, which orders the energy methods by soundness.
+    ``purpose`` the declared purpose, which orders the energy methods by soundness; ``days`` the
+    recall days each row's energy averages, with a note when they differ (``recall_days``).
     """
     from turbotab.core.voice import tick
 
@@ -543,6 +629,11 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
         if energy != target:  # an eligibility rule never reads the outcome (audit RO-01)
             exclusions = exclusion_proposals(frame, energy=energy, unit=unit, sex=sex,
                                              sex_levels=sex_levels, base=base)
+            goldberg = goldberg_proposal(frame, info, energy=energy, unit=unit, sex=sex,
+                                         sex_levels=sex_levels, roles=roles, target=target,
+                                         base=base, days=days[0], days_note=days[1])
+            if goldberg is not None:
+                exclusions.append(goldberg)
     reading = None
     if energy is not None or nutrients:
         reading = energy_reading(frame, info, roles, energy=energy, nutrients=nutrients, sex=sex,
@@ -568,7 +659,8 @@ def needed_columns(columns: Sequence[Mapping[str, Any]], *, target: str | None,
     energy = energy_column(info, roles)
     nutrients = nutrient_candidates(info, roles, energy=energy, target=target)
     sexes = [c for c in info if c.lower() in _SEX_NAMES or {"sex", "gender"} & set(_tokens(c))]
-    wanted = [energy, target, *sexes, *nutrients]
+    body = [c for c in info if str(c).lower() in _AGE_NAMES | _WEIGHT_NAMES | _HEIGHT_NAMES]
+    wanted = [energy, target, *sexes, *nutrients, *body]
     return list(dict.fromkeys(c for c in wanted if c and c in info))
 
 
@@ -604,7 +696,7 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
         survey = _survey_proposal(state, store)
     ctx.progress(0.6, "Counting what each exclusion rule would remove")
     out = build_proposals(frame, columns, lens=state.lens, target=target, roles=roles,
-                          purpose=state.purpose)
+                          purpose=state.purpose, days=recall_days(ctx.inputs.get("working")))
     out["survey"] = survey
     return out
 
@@ -616,10 +708,31 @@ def _survey_proposal(state: Any, store: Any) -> dict[str, Any] | None:
     return proposal(state, store) if state.roles is not None else None
 
 
+def recall_days(working: Any) -> tuple[float, str | None]:
+    """How many recalls each analysis row's values average: one, unless the working table combined
+    each person's rows by the mean, then the number of rows each person had. When that number
+    differs between people the smallest is used (the Goldberg limits widen as days fall, so no one
+    is held to a narrower limit than their own) and the note says so (NUTRITION_PACK §02: a
+    multi-day cut-off on fewer days over-excludes)."""
+    from turbotab.core.stages.working import row_map
+
+    data = getattr(working, "data", None) or {}
+    aggregation = data.get("aggregation") or {}
+    if aggregation.get("method") != "mean":
+        return 1.0, None
+    counts = row_map(working).groupby("row_id").size()
+    if counts.empty:
+        return 1.0, None
+    fewest, most = int(counts.min()), int(counts.max())
+    if fewest == most:
+        return float(fewest), None
+    return float(fewest), f"the fewest recalls anyone has; others have up to {most}"
+
+
 __all__ = [
     "ENERGY_EVIDENCE", "EXCLUSION_EVIDENCE", "build_proposals", "energy_bearing", "energy_column",
     "exclusion_proposals", "gappy_predictors", "level_key", "missing_reading", "needed_columns",
     "nested_reason",
-    "nutrient_candidates", "partition_check", "proposals_stage",
+    "nutrient_candidates", "partition_check", "proposals_stage", "recall_days",
     "roles_from", "rule_excludes", "sex_column", "strata_candidates",
 ]

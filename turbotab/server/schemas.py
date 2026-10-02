@@ -20,9 +20,11 @@ from turbotab.core.consequences import CoachNote, PreviewResult, RowStep  # noqa
 from turbotab.core.decisions import (  # noqa: F401 - re-exported contract models
     Decision,
     DecisionRecord,
+    EligibilityRule,
     EnergyMethod,
     ExclusionRule,
     FindingDisposition,
+    GoldbergRule,
     Lens,
     ProjectState,
     Purpose,
@@ -342,7 +344,7 @@ class ExclusionProposal(Model):
     """One of the pack's exclusion rules, with the rows it would remove. Never pre-selected."""
 
     key: str
-    rule: ExclusionRule
+    rule: EligibilityRule  # a range, or the Goldberg screen (WP12)
     label: str
     affected: int
     evidence: FindingEvidence
@@ -677,3 +679,10 @@ ARTIFACT_MODELS: dict[str, type[BaseModel]] = {
 from turbotab.core.models.artifacts import MODELING_ARTIFACTS  # noqa: E402
 
 ARTIFACT_MODELS.update(MODELING_ARTIFACTS)
+
+# WP12 (AUDIT_REPORT §5): the primary analysis beside its sensitivity analyses, and regression
+# calibration of energy-adjusted intakes. Defined beside their stages.
+from turbotab.core.stages.calibration import CalibrationArtifact  # noqa: E402
+from turbotab.core.stages.sensitivity import SensitivityArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"sensitivity": SensitivityArtifact, "calibration": CalibrationArtifact})
