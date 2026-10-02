@@ -387,3 +387,28 @@ A leash is **too tight** when it hides or refuses a defensible choice, or lectur
 researcher knows best. It is **too loose** when it offers an unsound choice without saying so, or
 stays silent where errors are likely. Audits grade every decision as too tight, right, or too loose.
 
+
+## 12 · Methodology rulings after the ground-up audit (Nolan, 2026-10-02)
+
+The audit (`audit/AUDIT_REPORT.md`) found the engine internally consistent but not yet
+publication-safe: 23 critical and 54 major problems. Nolan accepted all of the orchestrator's
+recommendations on the four questions it raised:
+
+1. **The residual method keeps total energy in the outcome model by default.** The energy-dropped form
+   stays available, but each form is labeled with its own estimand (McCullough & Byrd 2023).
+2. **The all-components model ranks first for substitution questions under inference** (Tomova et al.
+   2022). Under prediction, the app says plainly that the energy-model choice matters little.
+3. **The seal is purpose-scoped.** Inference estimates from all eligible rows, with honest intervals;
+   a holdout is a prediction concept. Prediction keeps "sealed once, opened once". This supersedes the
+   unscoped §3 of M2_CONTRACT.
+4. **The outcome in imputation depends on purpose.** Inference uses multiple imputation with the
+   outcome (and energy) in the imputation model, pooled by Rubin's rules (Moons 2006; Sterne 2009;
+   Sisk 2023). Prediction imputes in-fold without the outcome, so the fitted pipeline can be deployed.
+   This supersedes the unscoped "never" in the lockbox constitution §07.
+
+**Fixing order** (Nolan: "let's work our way upwards"): math (WP1–WP5), then methods (WP6–WP12),
+then intelligence (WP13–WP15), then routing (WP16–WP18). Each layer passes an independent
+verification of its acceptance tests before the next one starts. One exception, taken by the
+orchestrator: the two one-validator guards RO-01 (refuse eligibility rules on the outcome) and RO-02
+(refuse outcome repairs after the split) run with the math layer, because each one stops a published
+wrong number.
