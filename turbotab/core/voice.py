@@ -353,6 +353,7 @@ _SLOT_SUBJECT = {
     "unit": "the unit of analysis",
     "aggregation": "the combining of each unit's rows",
     "temporal": "the temporal question",
+    "survey": "the survey answer",
 }
 _PLURAL_SUBJECTS = {"roles", "exclusions", "models"}
 
@@ -406,6 +407,10 @@ def _slot_value(slot: str, value: Any) -> str | None:
         return f"by their {_AGGREGATE_NOUN.get(_attr(value, 'method'), tick(_attr(value, 'method')))}"
     if slot == "temporal":
         return "temporal" if _attr(value, "temporal") else "not temporal"
+    if slot == "survey":
+        if _attr(value, "estimand") == "sample":
+            return "these participants, unweighted"
+        return f"the surveyed population, weighted by {tick(_attr(value, 'weight'))}"
     return None
 
 
@@ -599,7 +604,17 @@ def _set_exclusions(d: Any, state: Any, ctx: Any) -> str:
     text = "; ".join(clauses)
     if counts is not None and len(counts) > 1:
         text += f", {count(sum(counts))} in all"
-    return text
+    return text + _domain_clause(state)
+
+
+def _domain_clause(state: Any) -> str:
+    """Under a population survey design, rows leave the estimate and stay in the variance
+    (audit ME-06; NHANES Analytic Guidelines 2011–2016 §3.2.3): said where rows are excluded."""
+    survey = getattr(state, "survey", None)
+    if survey is None or getattr(survey, "estimand", None) != "population":
+        return ""
+    return ("; under the survey design they leave the estimate but keep their strata and PSUs in "
+            "the variance (a domain analysis)")
 
 
 # set_missing
@@ -624,8 +639,9 @@ def _set_missing(d: Any, state: Any, ctx: Any) -> str:
             if kept == before:
                 text = (f"{first}a complete-case analysis was applied: no row is missing "
                         f"{other}, so all {count(before)} rows remain")
-            else:
-                text += f": {count(kept)} of {count(before)} rows remain"
+                return text[0].upper() + text[1:]
+            text += f": {count(kept)} of {count(before)} rows remain"
+        text += _domain_clause(state)
         return text[0].upper() + text[1:]
     others = "the other predictors' missing values" if dropped or levels else "missing predictor values"
     text = (f"{first}{others} were imputed, learned from training rows only; no row was dropped "
@@ -1004,6 +1020,63 @@ def _open_seal(d: Any, state: Any, ctx: Any) -> str:
             f"change is marked as made after the seal was opened")
 
 
+# set_survey (audit §5 WP10)
+
+
+def _design_counts(d: Any, ctx: Any) -> tuple[int, int, int] | None:
+    """PSUs (nested in strata), strata, and strata with a single PSU, read from the table."""
+    store = _get(ctx, "datastore")
+    if store is None or not d.psu or not d.strata:
+        return None
+    try:
+        frame = store.materialize([d.strata, d.psu], None).dropna()
+    except Exception:  # noqa: BLE001 - a sentence says less rather than fail
+        return None
+    per = frame.groupby(d.strata)[d.psu].nunique()
+    return int(per.sum()), int(len(per)), int((per == 1).sum())
+
+
+@register_sentence("set_survey")
+def _set_survey(d: Any, state: Any, ctx: Any) -> str:
+    from turbotab.core.survey import ATTESTATION, reading_of
+
+    if d.estimand == "sample":
+        reading = reading_of(state)
+        named = [*reading.weights, *reading.strata, *reading.psu]
+        unused = (f"; {listing(named, limit=6)} {plural(len(named), 'was', 'were')} recorded and "
+                  f"not used") if named else ""
+        return (f"The estimates describe these participants, not the surveyed population: "
+                f"{ATTESTATION}{unused}")
+    if d.cycle and d.four_year_weight:
+        weight = (f"weighted by {tick(d.four_year_weight)} on the 1999–2002 rows (doubled, then "
+                  f"divided by the number of cycles pooled in {tick(d.cycle)}) and by "
+                  f"{tick(d.weight)} on the others (divided by the same number), as NCHS directs "
+                  f"for 1999–2000")
+    elif d.cycle:
+        weight = (f"weighted by {tick(d.weight)} divided by the number of cycles pooled in "
+                  f"{tick(d.cycle)}")
+    else:
+        weight = f"weighted by {tick(d.weight)}"
+    if d.strata and d.psu:
+        counts = _design_counts(d, ctx)
+        shape = f" ({count(counts[0])} PSUs in {count(counts[1])} strata)" if counts else ""
+        over = f"over {tick(d.psu)} nested within {tick(d.strata)}{shape}"
+        if counts and counts[2]:
+            over += (f"; {count(counts[2])} {plural(counts[2], 'stratum', 'strata')} with a single "
+                     f"PSU {plural(counts[2], 'was', 'were')} centered at the mean of all PSU totals")
+    elif d.psu:
+        over = f"over {tick(d.psu)} with no strata, as recorded"
+    else:
+        units = ("each row, or each unit's rows where units repeat, taken as a sampling unit of "
+                 "its own")
+        within = f"within {tick(d.strata)}" if d.strata else "with no strata"
+        over = f"{within} and no PSU column, {units}, as recorded"
+    return (f"The estimates describe the surveyed population: rows were {weight}, and standard "
+            f"errors were estimated by Taylor series linearization {over}, first-stage units taken "
+            f"as sampled with replacement, with t intervals on the PSUs minus the strata that hold "
+            f"the analysis rows; a restriction keeps every row in the design (a domain analysis)")
+
+
 # ── M2: findings, answered (M2_CONTRACT §4) ──────────────────────────────────
 
 _QUESTION_NAME = {
@@ -1019,6 +1092,7 @@ _QUESTION_NAME = {
     "aggregation": "the question of how rows are combined",
     "temporal": "the temporal question",
     "roles": "the column roles",
+    "survey": "the survey question",
     "exclusions": "the eligibility question",
     "missing": "the missing-values question",
     "split": "the held-out rows question",

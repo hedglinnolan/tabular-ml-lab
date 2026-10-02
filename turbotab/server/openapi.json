@@ -397,6 +397,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetCategorical"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSurvey-Input"
                   }
                 ],
                 "discriminator": {
@@ -426,7 +429,8 @@
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Input",
                     "set_feature_table": "#/components/schemas/SetFeatureTable-Input",
-                    "set_categorical": "#/components/schemas/SetCategorical"
+                    "set_categorical": "#/components/schemas/SetCategorical",
+                    "set_survey": "#/components/schemas/SetSurvey-Input"
                   }
                 },
                 "title": "Decision"
@@ -701,6 +705,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetCategorical"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSurvey-Input"
                   }
                 ],
                 "discriminator": {
@@ -730,7 +737,8 @@
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Input",
                     "set_feature_table": "#/components/schemas/SetFeatureTable-Input",
-                    "set_categorical": "#/components/schemas/SetCategorical"
+                    "set_categorical": "#/components/schemas/SetCategorical",
+                    "set_survey": "#/components/schemas/SetSurvey-Input"
                   }
                 },
                 "title": "Decision"
@@ -1911,6 +1919,9 @@
               },
               {
                 "$ref": "#/components/schemas/SetCategorical"
+              },
+              {
+                "$ref": "#/components/schemas/SetSurvey-Output"
               }
             ],
             "title": "Decision",
@@ -1938,6 +1949,7 @@
                 "set_roles": "#/components/schemas/SetRoles",
                 "set_split": "#/components/schemas/SetSplit-Output",
                 "set_substitution": "#/components/schemas/SetSubstitution-Output",
+                "set_survey": "#/components/schemas/SetSurvey-Output",
                 "set_target": "#/components/schemas/SetTarget",
                 "set_task": "#/components/schemas/SetTask",
                 "set_temporal": "#/components/schemas/SetTemporal-Output",
@@ -2524,6 +2536,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetCategorical"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSurvey-Output"
                   }
                 ],
                 "discriminator": {
@@ -2550,6 +2565,7 @@
                     "set_roles": "#/components/schemas/SetRoles",
                     "set_split": "#/components/schemas/SetSplit-Output",
                     "set_substitution": "#/components/schemas/SetSubstitution-Output",
+                    "set_survey": "#/components/schemas/SetSurvey-Output",
                     "set_target": "#/components/schemas/SetTarget",
                     "set_task": "#/components/schemas/SetTask",
                     "set_temporal": "#/components/schemas/SetTemporal-Output",
@@ -3011,6 +3027,7 @@
               "aggregation",
               "temporal",
               "roles",
+              "survey",
               "exclusions",
               "missing",
               "split",
@@ -3846,6 +3863,16 @@
               }
             ],
             "title": "Categorical"
+          },
+          "survey": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SurveySpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -3871,7 +3898,8 @@
           "seal_opened",
           "findings",
           "feature_table",
-          "categorical"
+          "categorical",
+          "survey"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -5693,6 +5721,184 @@
         "title": "SetSubstitution",
         "description": "The substitution to draw; ``n_boot > 0`` adds a band from that many bootstrap refits."
       },
+      "SetSurvey-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_survey",
+            "title": "Kind",
+            "default": "set_survey"
+          },
+          "estimand": {
+            "type": "string",
+            "enum": [
+              "population",
+              "sample"
+            ],
+            "title": "Estimand"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          },
+          "strata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strata"
+          },
+          "psu": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Psu"
+          },
+          "cycle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle"
+          },
+          "four_year_weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Four Year Weight"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "estimand"
+        ],
+        "title": "SetSurvey",
+        "description": "Whose estimate it is under a survey design (``SurveySpec``)."
+      },
+      "SetSurvey-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_survey",
+            "title": "Kind",
+            "default": "set_survey"
+          },
+          "estimand": {
+            "type": "string",
+            "enum": [
+              "population",
+              "sample"
+            ],
+            "title": "Estimand"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          },
+          "strata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strata"
+          },
+          "psu": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Psu"
+          },
+          "cycle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle"
+          },
+          "four_year_weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Four Year Weight"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "estimand",
+          "weight",
+          "strata",
+          "psu",
+          "cycle",
+          "four_year_weight",
+          "acknowledged"
+        ],
+        "title": "SetSurvey",
+        "description": "Whose estimate it is under a survey design (``SurveySpec``)."
+      },
       "SetTarget": {
         "properties": {
           "kind": {
@@ -6071,6 +6277,91 @@
         ],
         "title": "SubstitutionSpec"
       },
+      "SurveySpec": {
+        "properties": {
+          "estimand": {
+            "type": "string",
+            "enum": [
+              "population",
+              "sample"
+            ],
+            "title": "Estimand"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          },
+          "strata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strata"
+          },
+          "psu": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Psu"
+          },
+          "cycle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle"
+          },
+          "four_year_weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Four Year Weight"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "estimand",
+          "weight",
+          "strata",
+          "psu",
+          "cycle",
+          "four_year_weight",
+          "acknowledged"
+        ],
+        "title": "SurveySpec",
+        "description": "The survey answer: the surveyed population (design-based, ``weight`` and the design named),\nor these participants (unweighted, recorded as such; ``turbotab/core/methods/survey.py``)."
+      },
       "TableFocusView": {
         "properties": {
           "title": {
@@ -6279,6 +6570,7 @@
               "aggregation",
               "temporal",
               "roles",
+              "survey",
               "exclusions",
               "missing",
               "split",
@@ -7588,6 +7880,7 @@
                   "aggregation",
                   "temporal",
                   "roles",
+                  "survey",
                   "exclusions",
                   "missing",
                   "split",
@@ -8035,6 +8328,7 @@
               "CR2",
               "model",
               "profile",
+              "design",
               "none"
             ],
             "title": "Covariance",
@@ -8100,6 +8394,17 @@
             },
             "title": "Exits",
             "type": "array"
+          },
+          "survey": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SurveyInference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -8111,7 +8416,8 @@
           "n_missing_ids",
           "separated",
           "refused",
-          "exits"
+          "exits",
+          "survey"
         ],
         "title": "Inference",
         "type": "object"
@@ -8684,6 +8990,17 @@
             "default": {},
             "title": "Coach",
             "type": "object"
+          },
+          "survey": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SurveyProposal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -8692,7 +9009,8 @@
           "missing",
           "n_base",
           "basis",
-          "coach"
+          "coach",
+          "survey"
         ],
         "title": "ProposalsArtifact",
         "type": "object"
@@ -10145,6 +10463,251 @@
           "fixed_through"
         ],
         "title": "SubstitutionSupport",
+        "type": "object"
+      },
+      "SurveyInference": {
+        "additionalProperties": false,
+        "description": "The survey design a design-based table rests on (AUDIT_REPORT §5 WP10;\n``turbotab/core/models/survey.py``): what weighted it, its PSUs and strata, the domain.",
+        "properties": {
+          "weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          },
+          "strata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strata"
+          },
+          "psu": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Psu"
+          },
+          "weight_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Weight Note"
+          },
+          "psu_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Psu Note"
+          },
+          "n_design": {
+            "title": "N Design",
+            "type": "integer"
+          },
+          "n_domain": {
+            "title": "N Domain",
+            "type": "integer"
+          },
+          "n_psu": {
+            "title": "N Psu",
+            "type": "integer"
+          },
+          "n_strata": {
+            "title": "N Strata",
+            "type": "integer"
+          },
+          "domain_psu": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Domain Psu"
+          },
+          "domain_strata": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Domain Strata"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Df"
+          },
+          "lonely_strata": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Lonely Strata",
+            "type": "array"
+          },
+          "lonely_method": {
+            "default": "centered",
+            "title": "Lonely Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "weight",
+          "strata",
+          "psu",
+          "weight_note",
+          "psu_note",
+          "n_design",
+          "n_domain",
+          "n_psu",
+          "n_strata",
+          "domain_psu",
+          "domain_strata",
+          "df",
+          "lonely_strata",
+          "lonely_method"
+        ],
+        "title": "SurveyInference",
+        "type": "object"
+      },
+      "SurveyOption": {
+        "description": "One answer the survey question offers, and the ``set_survey`` it records (audit §5 WP10).",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "consequence": {
+            "title": "Consequence",
+            "type": "string"
+          },
+          "decision": {
+            "additionalProperties": true,
+            "title": "Decision",
+            "type": "object"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "consequence",
+          "decision"
+        ],
+        "title": "SurveyOption",
+        "type": "object"
+      },
+      "SurveyProposal": {
+        "description": "What the survey question offers on this table: the design the column names read as, the\ncycles a cycle column pools, and one option per recognized weight plus \"these participants\".",
+        "properties": {
+          "weights": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Weights",
+            "type": "array"
+          },
+          "strata": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Strata",
+            "type": "array"
+          },
+          "psu": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Psu",
+            "type": "array"
+          },
+          "cycle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle"
+          },
+          "cycles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Cycles",
+            "type": "array"
+          },
+          "four_year": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Four Year",
+            "type": "object"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/SurveyOption"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "weights",
+          "strata",
+          "psu",
+          "cycle",
+          "cycles",
+          "four_year",
+          "options"
+        ],
+        "title": "SurveyProposal",
         "type": "object"
       },
       "TargetInfo": {

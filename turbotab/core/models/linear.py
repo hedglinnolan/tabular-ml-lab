@@ -125,7 +125,8 @@ class Linear(FamilyBase):
             label, detail = "Ordinary least squares", "Fits the straight-line effect of every column."
             if purpose == "inference":
                 detail += (" Intervals use HC3 robust standard errors, or CR2 cluster-robust ones "
-                           "when a unit's rows repeat.")
+                           "when a unit's rows repeat, or Taylor linearization over a survey "
+                           "design.")
         else:
             label = "Logistic regression"
             detail = "Fits the log-odds effect of every column, without a penalty."
@@ -144,12 +145,21 @@ class Linear(FamilyBase):
                                     classes=classes if classes and len(classes) > 2 else None)
         return self.inference(pipeline, X, y, task=task, clusters=as_clusters(groups)).rows
 
-    def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any) -> Any:
+    def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
+                  survey: Any = None) -> Any:
         """The inference table (:class:`~turbotab.core.models.inference.InferenceTable`): rows,
-        how their intervals were made, and the concerns to state, on the matrix the model saw."""
+        how their intervals were made, and the concerns to state, on the matrix the model saw.
+
+        With ``survey`` (a :class:`~turbotab.core.models.survey.SurveyDesign`, the "surveyed
+        population" answer) the table is design-based: weighted, with Taylor-linearized intervals
+        over the design's strata and PSUs, ``X``'s rows its domain (audit §5 WP10)."""
+        classes = list(getattr(pipeline[-1], "classes_", [])) or None
+        if survey is not None:
+            from turbotab.core.models.survey import survey_table
+
+            return survey_table(task, model_matrix(pipeline, X), y, classes, survey)
         from turbotab.core.models.inference import inference_table
 
-        classes = list(getattr(pipeline[-1], "classes_", [])) or None
         return inference_table(task, model_matrix(pipeline, X), y, classes, clusters)
 
     def assess(self, s: Situation) -> Assessment:

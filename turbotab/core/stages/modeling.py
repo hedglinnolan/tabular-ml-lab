@@ -368,6 +368,33 @@ def coded_outcome(task: str | None, y: Any, event: str | None) -> Any:
     return hit.astype(int) if hit.any() else y
 
 
+UNWEIGHTED_SCORES = ("Scores are unweighted: they describe these rows, not the population the survey "
+                     "weights stand for.")
+
+
+def _survey(ctx: StageContext, clusters: Any) -> tuple[Any, str | None]:
+    """The survey answer as this fit applies it (``turbotab.core.methods.survey.for_fit``), and
+    the note every model carries under prediction when the table has survey weights.
+
+    Under inference: None without a design; else the design ("surveyed population"), the
+    "these participants" answer, or a refusal while the question is unanswered. A design without a
+    PSU column takes the unit the intervals cluster by as its sampling unit.
+    """
+    from turbotab.core.survey import reading_of
+
+    state = ctx.state
+    present = reading_of(state).present
+    if state.purpose != "inference":
+        return None, (UNWEIGHTED_SCORES if present else None)
+    if state.survey is None and not present:
+        return None, None
+    from turbotab.core.methods.survey import for_fit
+
+    unit = clusters.column if clusters is not None and clusters.clustered else None
+    with open_store(ctx) as store:
+        return for_fit(state, store, unit), None
+
+
 def fit_stage(ctx: StageContext) -> Bundle:
     """Cross-validate each pipeline on the split's folds, then refit on all training rows.
 
@@ -432,6 +459,9 @@ def fit_stage(ctx: StageContext) -> Bundle:
         # the unit, but no unit repeats, so clustering by it changes nothing and "its rows repeat"
         # would be false.
         groups, grouped_by = None, None
+    # Under a survey design (audit §5 WP10, ME-06): whose estimate the table is. The design is read
+    # over every row of the working table, so rows outside the analysis stay in its variance.
+    survey, survey_note = _survey(ctx, clusters)
 
     def fit(model: Any, X_fit: Any, y_fit: Any, rows: Any = None) -> Any:
         """Fit a pipeline on these training rows, its inner splits drawn as the folds are."""
@@ -481,9 +511,27 @@ def fit_stage(ctx: StageContext) -> Bundle:
             interval_info = None
             try:
                 if clusters is not None and hasattr(family, "inference"):
-                    table = family.inference(final, X, y, task=task, clusters=clusters)
+                    if survey is not None and survey.refusal:
+                        from turbotab.core.models.survey import blocked
+
+                        table = blocked(survey.refusal, survey.exits)
+                    elif survey is not None and survey.design is not None:
+                        # Every analysis row is the domain: a holdout is a prediction concept
+                        # (BLUEPRINT §12 ruling 3), and NCHS estimates over every eligible row.
+                        table = family.inference(final, frame[spec.inputs], y_all.to_numpy(),
+                                                 task=task, clusters=clusters,
+                                                 survey=survey.design)
+                    else:
+                        table = family.inference(final, X, y, task=task, clusters=clusters)
                     coefficients, interval_info = table.rows, table.info
                     concerns.extend(table.concerns)
+                    if survey is not None and survey.concern():
+                        concerns.insert(0, survey.concern())
+                elif survey is not None and survey.answer == "population":
+                    coefficients = family.coefficients(final, X, y, task=task,
+                                                       purpose=state.purpose, groups=groups)
+                    concerns.append("Fit without the survey weights: its scores and coefficients "
+                                    "describe these participants, not the surveyed population.")
                 else:
                     coefficients = family.coefficients(final, X, y, task=task,
                                                        purpose=state.purpose, groups=groups)
@@ -508,6 +556,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
                                                    baseline["value"], _two)
         if worse or tie:
             concerns.insert(0, worse or tie)
+        if survey_note:
+            concerns.append(survey_note)
         fitted[key] = final
         sealed[key] = holdout
         models.append({

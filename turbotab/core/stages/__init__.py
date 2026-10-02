@@ -17,7 +17,7 @@ M1 (docs/turbotab-next/M1_CONTRACT.md):
     split        heavy   deps: cohort, target_info            reads split, roles, task; requires split
     shelf        light   deps: cohort, target_info            reads purpose, task, roles; requires roles
     design       heavy   deps: split, target_info             reads roles, energy_adjustment, missing, models, purpose; requires models, roles
-    fit          heavy   deps: design, split, target_info     reads models, purpose, task; requires models
+    fit          heavy   deps: design, split, target_info     reads models, purpose, task, survey; requires models
     substitution heavy   deps: fit, design                    reads substitution; requires substitution
 
 M2 (docs/turbotab-next/M2_CONTRACT.md §2) — the table the analysis reads:
@@ -125,7 +125,7 @@ def build_graph() -> Graph:
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
             Stage("fit", 4, ("working", "design", "split", "target_info"),
-                  ("models", "purpose", "task", "event"), fit_stage, heavy=True,
+                  ("models", "purpose", "task", "event", "survey"), fit_stage, heavy=True,
                   requires=("models",),
                   label="Fitting the models"),
             Stage("substitution", 2, ("working", "fit", "design"), ("substitution", "event"),

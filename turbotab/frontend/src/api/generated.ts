@@ -527,7 +527,7 @@ export interface components {
              */
             post_seal: boolean;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"];
         };
         /**
          * DeferFinding
@@ -702,7 +702,7 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"]) | null;
         };
         /**
          * FamilyInfo
@@ -855,7 +855,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "lens" | "orientation" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal";
+            key: "lens" | "orientation" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "survey" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal";
             /**
              * Status
              * @enum {string}
@@ -1071,6 +1071,7 @@ export interface components {
             feature_table: components["schemas"]["FeatureTableSpec"] | null;
             /** Categorical */
             categorical: string[] | null;
+            survey: components["schemas"]["SurveySpec"] | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -1782,6 +1783,68 @@ export interface components {
              */
             n_boot: number;
         };
+        /**
+         * SetSurvey
+         * @description Whose estimate it is under a survey design (``SurveySpec``).
+         */
+        "SetSurvey-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_survey";
+            /**
+             * Estimand
+             * @enum {string}
+             */
+            estimand: "population" | "sample";
+            /** Weight */
+            weight?: string | null;
+            /** Strata */
+            strata?: string | null;
+            /** Psu */
+            psu?: string | null;
+            /** Cycle */
+            cycle?: string | null;
+            /** Four Year Weight */
+            four_year_weight?: string | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /**
+         * SetSurvey
+         * @description Whose estimate it is under a survey design (``SurveySpec``).
+         */
+        "SetSurvey-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_survey";
+            /**
+             * Estimand
+             * @enum {string}
+             */
+            estimand: "population" | "sample";
+            /** Weight */
+            weight: string | null;
+            /** Strata */
+            strata: string | null;
+            /** Psu */
+            psu: string | null;
+            /** Cycle */
+            cycle: string | null;
+            /** Four Year Weight */
+            four_year_weight: string | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
         /** SetTarget */
         SetTarget: {
             /**
@@ -1938,6 +2001,33 @@ export interface components {
             n_boot: number;
         };
         /**
+         * SurveySpec
+         * @description The survey answer: the surveyed population (design-based, ``weight`` and the design named),
+         *     or these participants (unweighted, recorded as such; ``turbotab/core/methods/survey.py``).
+         */
+        SurveySpec: {
+            /**
+             * Estimand
+             * @enum {string}
+             */
+            estimand: "population" | "sample";
+            /** Weight */
+            weight: string | null;
+            /** Strata */
+            strata: string | null;
+            /** Psu */
+            psu: string | null;
+            /** Cycle */
+            cycle: string | null;
+            /** Four Year Weight */
+            four_year_weight: string | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /**
          * TableFocusView
          * @description The working table narrowed to the columns this choice touches (≤ 12 shown, ≤ 8 rows).
          */
@@ -2010,7 +2100,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "lens" | "orientation" | "repairs" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal";
+            key: "lens" | "orientation" | "repairs" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "survey" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal";
             /** Title */
             title: string;
             /** Question */
@@ -2465,7 +2555,7 @@ export interface components {
             /** Summary */
             summary: string;
             /** Routes To */
-            routes_to: ("lens" | "orientation" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal") | null;
+            routes_to: ("lens" | "orientation" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "survey" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal") | null;
             /** Lever Label */
             lever_label: string | null;
             /** Group */
@@ -2617,7 +2707,7 @@ export interface components {
              * Covariance
              * @enum {string}
              */
-            covariance: "HC3" | "CR2" | "model" | "profile" | "none";
+            covariance: "HC3" | "CR2" | "model" | "profile" | "design" | "none";
             /** Caption */
             caption: string;
             /**
@@ -2650,6 +2740,8 @@ export interface components {
              * @default []
              */
             exits: components["schemas"]["InferenceExit"][];
+            /** @default null */
+            survey: components["schemas"]["SurveyInference"] | null;
         };
         /**
          * InferenceExit
@@ -2885,6 +2977,8 @@ export interface components {
             coach: {
                 [key: string]: components["schemas"]["CoachNote"];
             };
+            /** @default null */
+            survey: components["schemas"]["SurveyProposal"] | null;
         };
         /** Repair */
         Repair: {
@@ -3359,6 +3453,101 @@ export interface components {
             fixed_through: number | null;
         };
         /**
+         * SurveyInference
+         * @description The survey design a design-based table rests on (AUDIT_REPORT §5 WP10;
+         *     ``turbotab/core/models/survey.py``): what weighted it, its PSUs and strata, the domain.
+         */
+        SurveyInference: {
+            /** Weight */
+            weight: string | null;
+            /** Strata */
+            strata: string | null;
+            /** Psu */
+            psu: string | null;
+            /**
+             * Weight Note
+             * @default null
+             */
+            weight_note: string | null;
+            /**
+             * Psu Note
+             * @default null
+             */
+            psu_note: string | null;
+            /** N Design */
+            n_design: number;
+            /** N Domain */
+            n_domain: number;
+            /** N Psu */
+            n_psu: number;
+            /** N Strata */
+            n_strata: number;
+            /**
+             * Domain Psu
+             * @default null
+             */
+            domain_psu: number | null;
+            /**
+             * Domain Strata
+             * @default null
+             */
+            domain_strata: number | null;
+            /**
+             * Df
+             * @default null
+             */
+            df: number | null;
+            /**
+             * Lonely Strata
+             * @default []
+             */
+            lonely_strata: string[];
+            /**
+             * Lonely Method
+             * @default centered
+             */
+            lonely_method: string;
+        };
+        /**
+         * SurveyOption
+         * @description One answer the survey question offers, and the ``set_survey`` it records (audit §5 WP10).
+         */
+        SurveyOption: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Consequence */
+            consequence: string;
+            /** Decision */
+            decision: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * SurveyProposal
+         * @description What the survey question offers on this table: the design the column names read as, the
+         *     cycles a cycle column pools, and one option per recognized weight plus "these participants".
+         */
+        SurveyProposal: {
+            /** Weights */
+            weights: string[];
+            /** Strata */
+            strata: string[];
+            /** Psu */
+            psu: string[];
+            /** Cycle */
+            cycle: string | null;
+            /** Cycles */
+            cycles: string[];
+            /** Four Year */
+            four_year: {
+                [key: string]: string;
+            };
+            /** Options */
+            options: components["schemas"]["SurveyOption"][];
+        };
+        /**
          * TargetInfo
          * @description The ``target_info`` artifact.
          */
@@ -3794,7 +3983,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"];
             };
         };
         responses: {
@@ -3929,7 +4118,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"];
             };
         };
         responses: {

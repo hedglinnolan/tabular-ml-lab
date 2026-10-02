@@ -400,6 +400,28 @@ class MissingReading(Model):
     leave_out: LeaveOut | None
 
 
+class SurveyOption(Model):
+    """One answer the survey question offers, and the ``set_survey`` it records (audit §5 WP10)."""
+
+    key: str  # "population:<weight>" or "sample"
+    label: str
+    consequence: str
+    decision: dict[str, Any]
+
+
+class SurveyProposal(Model):
+    """What the survey question offers on this table: the design the column names read as, the
+    cycles a cycle column pools, and one option per recognized weight plus "these participants"."""
+
+    weights: list[str]
+    strata: list[str]
+    psu: list[str]
+    cycle: str | None  # a cycle column holding more than one cycle
+    cycles: list[str]
+    four_year: dict[str, str]  # 2-year weight -> its 1999–2002 four-year weight
+    options: list[SurveyOption]
+
+
 class ProposalsArtifact(Model):
     """The ``proposals`` artifact: offered for the exclusions, missing-values and energy questions."""
 
@@ -410,6 +432,8 @@ class ProposalsArtifact(Model):
     basis: str
     # M2: at most one coach line per decision card, keyed by question ("exclusions", "missing").
     coach: dict[str, CoachNote] = {}
+    # WP10: the survey question's options, when a column reads as a survey weight.
+    survey: SurveyProposal | None = None
 
 
 # ── the table the analysis reads (M2_CONTRACT §2; turbotab/core/stages/working.py) ──────────

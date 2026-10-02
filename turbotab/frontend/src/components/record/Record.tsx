@@ -46,6 +46,7 @@ import {
   MissingAsk,
   ModelsAsk,
   SubstitutionAsk,
+  SurveyAsk,
 } from "./ask/ChoiceQuestions";
 import type { AskProps } from "./ask/common";
 import { LensAsk, PurposeAsk, TargetAsk, TaskAsk } from "./ask/FactQuestions";
@@ -86,6 +87,7 @@ export const SUBJECT: Record<QuestionKey, string> = {
   aggregation: "how rows are combined",
   temporal: "temporal prediction",
   roles: "the column roles",
+  survey: "the survey answer",
   exclusions: "the eligibility",
   missing: "the missing values",
   split: "the seal",
@@ -580,6 +582,14 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
       case "substitution":
         return (
           <SubstitutionAsk {...p} pairs={design?.artifact?.substitution_pairs.length ?? null} />
+        );
+      case "survey":
+        return (
+          <SurveyAsk
+            {...p}
+            proposal={proposals?.artifact?.survey ?? undefined}
+            current={state.survey}
+          />
         );
     }
   };

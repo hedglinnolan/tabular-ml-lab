@@ -37,6 +37,7 @@ export const GRAMMAR: Record<QuestionKey, Grammar> = {
   aggregation: "choice",
   temporal: "fact",
   roles: "fact",
+  survey: "choice",
   exclusions: "choice",
   missing: "choice",
   split: "choice",

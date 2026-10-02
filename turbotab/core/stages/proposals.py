@@ -586,8 +586,18 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
     with open_store(ctx) as store:  # no column wanted still reads the row ids, so N is right
         ctx.progress(0.2, "Reading the energy, nutrient and blank columns")
         frame = store.materialize(wanted)
+        survey = _survey_proposal(state, store)
     ctx.progress(0.6, "Counting what each exclusion rule would remove")
-    return build_proposals(frame, columns, lens=state.lens, target=target, roles=roles)
+    out = build_proposals(frame, columns, lens=state.lens, target=target, roles=roles)
+    out["survey"] = survey
+    return out
+
+
+def _survey_proposal(state: Any, store: Any) -> dict[str, Any] | None:
+    """The survey question's options on this table (audit §5 WP10), read with the roles."""
+    from turbotab.core.methods.survey import proposal
+
+    return proposal(state, store) if state.roles is not None else None
 
 
 __all__ = [

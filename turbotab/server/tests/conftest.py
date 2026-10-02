@@ -108,6 +108,9 @@ def usual_answer(client: TestClient, pid: str, key: str, view: dict) -> dict:
     if key == "roles":
         columns = _artifact(client, pid, "roles").get("columns") or []
         return {"kind": "set_roles", "roles": {c["column"]: c["proposed"] for c in columns}}
+    if key == "survey":  # the first weight the proposals offer (audit §5 WP10)
+        offered = (_artifact(client, pid, "proposals").get("survey") or {}).get("options") or []
+        return offered[0]["decision"] if offered else {"kind": "set_survey", "estimand": "sample"}
     if key == "exclusions":
         return {"kind": "set_exclusions", "rules": []}
     if key == "missing":

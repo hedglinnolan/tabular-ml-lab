@@ -611,12 +611,16 @@ ROLES = {
                 "NHANES oversamples some age, race and income groups on purpose. Without its "
                 "weights, means are biased toward the oversampled groups; without strata and PSUs, "
                 "standard errors are too small. Dietary analyses use `WTDRD1` for day 1 or "
-                "`WTDR2D` for both days, not the examination weight `WTMEC2YR`. This version "
-                "records design columns but does not yet weight its estimates.",
+                "`WTDR2D` for both days, not the examination weight `WTMEC2YR`. Under inference "
+                "the survey question then asks whether the estimates describe the surveyed "
+                "population (weighted, with design-based intervals) or these participants.",
                 "SETTLED", NUT01),
         section("Pooled cycles",
-                "Combining NHANES cycles means dividing the two-year weights by the number of "
-                "cycles combined and confirming the same dietary method applies across them.",
+                "Combining NHANES cycles from 2001–2002 on means dividing the two-year weights by "
+                "the number of cycles combined. 1999–2000 is the exception: its two-year weights "
+                "and 2001–2002's rest on different censuses, so the 1999–2002 rows take the "
+                "four-year weight, doubled, before the division (NHANES Analytic Guidelines "
+                "2011–2016 §3.1.3–3.1.4). Confirm the same dietary method applies across cycles.",
                 "SETTLED", NUT01),
         section("Units decide everything downstream",
                 "1 kcal = 4.184 kJ, and a column ending `_pct_kcal` is a share of energy, not an "
@@ -625,6 +629,58 @@ ROLES = {
                 "SETTLED", NUT01),
     ]},
     "evidence": None,
+}
+
+SURVEY = {
+    "key": "survey",
+    "title": "Whose estimate it is",
+    "question": "Should the estimates describe the surveyed population, or these participants?",
+    "one_liner": "The population answer weights each row and takes intervals from the strata and "
+                 "PSUs; the other is unweighted, and says so.",
+    "why": "A survey oversamples some groups on purpose, so an unweighted estimate describes the "
+           "sample, not the population, and can even change sign. Rows sampled in the same PSU "
+           "resemble each other, so intervals that ignore the design are too narrow. Restricting "
+           "the analysis keeps every row in the design, as a domain.",
+    "consumer": "The coefficient table, its intervals, the eligibility rows and the methods "
+                "section read it.",
+    "options": [
+        option("population", "Surveyed population",
+               "Weighted estimates with Taylor-linearized intervals over the strata and PSUs."),
+        option("sample", "These participants",
+               "Unweighted; the methods state a sample-only estimand whose intervals ignore the "
+               "design."),
+    ],
+    "terms": [
+        term("PSU", "Primary sampling unit: the cluster, such as a county, drawn first; people "
+                    "from one PSU resemble each other."),
+        term("domain", "The rows an analysis is about. The others stay in the survey design, so "
+                       "the variance still sees every stratum and PSU."),
+        term("Taylor linearization", "The design-based variance of an estimate, from how much the "
+                                     "PSU totals of its scores vary within each stratum."),
+        ESTIMAND,
+    ],
+    "drawer": {"sections": [
+        section("Why the design matters",
+                "Without the weights, estimates are biased toward the oversampled groups; without "
+                "strata and PSUs, standard errors are too small because clustering within PSUs is "
+                "ignored. NCHS states that variance estimates computed under a simple-random-sample "
+                "assumption are generally too low for NHANES.",
+                "SETTLED", NUT01),
+        section("Restrict by domain, never by deleting rows",
+                "To restrict to a subgroup, keep every row and mark the subgroup (`subset()` on a "
+                "`svydesign` object, `DOMAIN` in SAS). Deleting rows drops PSUs and strata from the "
+                "variance and gives wrong standard errors. Degrees of freedom are the PSUs minus "
+                "the strata that hold the subgroup (NHANES Analytic Guidelines 2011–2016 "
+                "§3.2.3).",
+                "SETTLED", NUT01),
+        section("A stratum with one PSU",
+                "Taylor linearization estimates a stratum's variance from the spread between its "
+                "PSUs, and one PSU has none. TurboTab centers such a stratum at the mean of all PSU "
+                "totals (R's lonely.psu \"adjust\", Stata's singleunit(centered)), which is "
+                "conservative, and names the stratum.",
+                "SETTLED", NUT01),
+    ]},
+    "evidence": ev("SETTLED", NUT01),
 }
 
 EXCLUSIONS = {
@@ -1040,5 +1096,5 @@ OPEN_SEAL = {
 }
 
 ENTRIES = [LENS, ORIENTATION, REPAIRS, TARGET, EVENT, TASK, PURPOSE, GRAIN, REPEAT_KIND, UNIT,
-           AGGREGATION, TEMPORAL, ROLES, EXCLUSIONS, MISSING, SPLIT, ENERGY_ADJUSTMENT, MODELS,
-           SUBSTITUTION, OPEN_SEAL]
+           AGGREGATION, TEMPORAL, ROLES, SURVEY, EXCLUSIONS, MISSING, SPLIT, ENERGY_ADJUSTMENT,
+           MODELS, SUBSTITUTION, OPEN_SEAL]
