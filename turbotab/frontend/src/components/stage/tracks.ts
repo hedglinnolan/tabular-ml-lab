@@ -22,6 +22,7 @@ import type {
   TableFocusView,
 } from "../../api/m1-stage-types";
 import { fmtInt, fmtR } from "./format";
+import { phasesOf } from "./seal/forkPlan";
 
 // ── states ───────────────────────────────────────────────────────────────────
 
@@ -152,6 +153,15 @@ function tableStates(v: TableFocusView): TableState[] {
 }
 
 function rowFlowStates(v: RowFlowView): RowFlowState[] {
+  if (v.seal) {
+    // The seal's own storyboard (the draw's steps): the flow forks once the rows are partitioned.
+    const { phases, labels } = phasesOf(v.seal);
+    const fork = phases.indexOf("split");
+    return phases.map((_, i) => ({
+      label: i === 0 ? NOW_LABEL : i === phases.length - 1 ? WITH_LABEL : labels[i]!,
+      steps: fork >= 0 && i >= fork ? v.after : v.before,
+    }));
+  }
   return [
     { label: NOW_LABEL, steps: v.before },
     ...v.story.map((f) => ({ label: f.label, steps: f.steps })),
@@ -171,6 +181,7 @@ const sameHist = (a: HistogramData, b: HistogramData) =>
 
 function isStill(v: ConsequenceView): boolean {
   if (v.story.length) return false;
+  if (v.kind === "row_flow" && v.seal) return false;
   switch (v.kind) {
     case "relationship":
       return v.y_label_before === v.y_label_after && samePairs(v.points_before, v.points_after);

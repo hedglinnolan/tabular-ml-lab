@@ -12,6 +12,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
 import type { DistributionView, Mark } from "../../../api/m1-stage-types";
 import { useTransitions } from "../../../motion/prefs";
+import { CoachLayer } from "../coach/CoachLayer";
+import { bandHeight, notesFor, type Span } from "../coach/place";
 import { clean, fmtInt, fmtTick } from "../format";
 import {
   clipTail,
@@ -100,11 +102,16 @@ export function Distribution({ track, globalLast, compact = false }: Props) {
     );
   }, [states, runs]);
 
+  // The coach's band sits above the picture (M2_CONTRACT §6); a narrow thumbnail draws no notes.
+  const notes = useMemo(() => notesFor(view.coach, compact, w), [view.coach, compact, w]);
+  // A thumbnail wide enough to carry notes is laid out like a primary card (room for its labels).
+  const small = compact && !notes.length;
+  const band = bandHeight(notes.length);
   const geo = useMemo(() => {
     if (w < 80 || h < 60) return null;
-    const pad = compact
+    const pad = small
       ? { l: 10, r: 10, t: 34, b: 22 }
-      : { l: 14, r: 14, t: marks.some((m) => m.group) ? 58 : 44, b: 24 };
+      : { l: 14, r: 14, t: band + (marks.some((m) => m.group) ? 58 : 44), b: 24 };
     const box = { x0: pad.l, x1: w - pad.r, y0: pad.t, y1: h - pad.b };
     const byRun = new Map<number, RunGeo>();
     for (const run of new Set(runs)) {
@@ -123,7 +130,7 @@ export function Distribution({ track, globalLast, compact = false }: Props) {
       });
     }
     return { box, byRun };
-  }, [w, h, compact, states, runs, clips, marks]);
+  }, [w, h, small, states, runs, clips, marks, band]);
 
   /** Each state in pixels: four numbers per bar, then the hatch over the first state. */
   const pix = useMemo(() => {
@@ -235,6 +242,20 @@ export function Distribution({ track, globalLast, compact = false }: Props) {
   const rg = geo?.byRun.get(run);
   const clip = clips[shown]!;
   const showMarks = run === runs[0];
+  // A note about a stretch of the axis brackets it under the bars; one about the column points at
+  // the picture as a whole. Ranges are on the first state's axis (the cut is drawn there).
+  const axis = geo?.byRun.get(runs[0]!);
+  const spans: (Span | null)[] = notes.map((n) => {
+    if (!geo || !axis) return null;
+    const { box } = geo;
+    if (n.anchor.kind === "range" && Array.isArray(n.anchor.ref) && n.anchor.ref.length >= 2) {
+      const [lo, hi] = n.anchor.ref as number[];
+      const x0 = Math.max(box.x0, Math.min(box.x1, axis.x(Math.max(lo!, axis.x.domain()[0]!))));
+      const x1 = Math.max(box.x0, Math.min(box.x1, axis.x(Math.min(hi!, axis.x.domain()[1]!))));
+      return { x0, x1, y: box.y1 + 1, mark: "bracket" };
+    }
+    return null;
+  });
 
   return (
     <div className={s.distWrap} data-view="distribution" data-state={shown}>
@@ -259,7 +280,7 @@ export function Distribution({ track, globalLast, compact = false }: Props) {
               <motion.text
                 key={state.label}
                 x={geo.box.x0}
-                y={compact ? 12 : 15}
+                y={(small ? 12 : 15) + band}
                 className={shown === 0 ? s.stackLabelNow : s.stackLabelWith}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -283,7 +304,7 @@ export function Distribution({ track, globalLast, compact = false }: Props) {
                 exit={{ opacity: 0 }}
                 transition={t.arrive}
               >
-                <XTicks x={rg.x} box={geo.box} count={compact ? 4 : 7} />
+                <XTicks x={rg.x} box={geo.box} count={small ? 4 : 7} />
               </motion.g>
             </AnimatePresence>
             {showMarks
@@ -292,8 +313,8 @@ export function Distribution({ track, globalLast, compact = false }: Props) {
                   const mx = rg.x(m.value);
                   if (mx < geo.box.x0 - 1 || mx > geo.box.x1 + 1) return null;
                   const name = m.group ? `${GROUP_NAME[m.group] ?? m.group} ` : "";
-                  const label = compact ? `${name}${fmtInt(m.value)}` : `${name}${m.label}`;
-                  const ly = (compact ? 22 : 34) + row * (compact ? 10 : 13);
+                  const label = small ? `${name}${fmtInt(m.value)}` : `${name}${m.label}`;
+                  const ly = (small ? 22 : 34) + band + row * (small ? 10 : 13);
                   return (
                     <g key={`${m.group}|${m.value}`} className={markClass(m)}>
                       <line x1={mx} x2={mx} y1={ly + 3} y2={geo.box.y1} className={s.markLine} />
@@ -306,8 +327,9 @@ export function Distribution({ track, globalLast, compact = false }: Props) {
               : null}
           </svg>
         ) : null}
+        {notes.length && geo ? <CoachLayer notes={notes} spans={spans} width={w} /> : null}
       </div>
-      {clip.over > 0 && !compact ? (
+      {clip.over > 0 && !small ? (
         <p className={s.overflow}>
           Not drawn: {fmtInt(clip.over)} {clip.over === 1 ? "row" : "rows"} from {fmtTick(clip.hi)} to{" "}
           {fmtTick(clip.max)}, past the 99.5th percentile.

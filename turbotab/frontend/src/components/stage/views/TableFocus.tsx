@@ -8,11 +8,15 @@
  * or its tint. Cells show a real state's values only, tinted where the choice changes them, keyed
  * by (row, column); rows that leave whole are struck through.
  */
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import type { TableFocusView } from "../../../api/m1-stage-types";
+import type { CoachNote } from "../../../api/m2-stage-types";
 import { useTransitions } from "../../../motion/prefs";
+import { CoachLayer } from "../coach/CoachLayer";
+import { bandHeight, notesFor, type Span } from "../coach/place";
 import { cellFormatter, fmtInt } from "../format";
+import { useSize } from "./geometry";
 import { localPos, type TableState, type Track } from "../tracks";
 import { usePlayerStore, usePlayerUi } from "../usePlayer";
 import s from "./views.module.css";
@@ -64,6 +68,51 @@ export function identities(before: string[], after: string[]): Map<string, strin
   return out;
 }
 
+/** Each note's span on the drawn table: a column's header, or the first of the rows it names. */
+function measureSpans(root: HTMLDivElement, notes: CoachNote[]): (Span | null)[] {
+  const box = root.getBoundingClientRect();
+  return notes.map((n): Span | null => {
+    if (n.anchor.kind === "column" && typeof n.anchor.ref === "string") {
+      const th = root.querySelector<HTMLElement>(`th[data-col="${CSS.escape(n.anchor.ref)}"]`);
+      if (!th) return null;
+      const r = th.getBoundingClientRect();
+      if (r.right < box.left || r.left > box.right) return null; // scrolled out of view
+      return { x0: r.left - box.left + 4, x1: r.right - box.left - 4, y: r.top - box.top + 3, mark: "none" };
+    }
+    if (n.anchor.kind === "points" && Array.isArray(n.anchor.ref)) {
+      const rows = n.anchor.ref
+        .map((i) => root.querySelector<HTMLElement>(`tbody tr[data-index="${Number(i)}"] th`))
+        .filter((el): el is HTMLElement => !!el);
+      if (!rows.length) return null;
+      const r = rows[0]!.getBoundingClientRect();
+      return { x0: r.left - box.left + 2, x1: r.left - box.left + 2, y: r.top - box.top + r.height / 2, mark: "tick" };
+    }
+    return null;
+  });
+}
+
+/**
+ * The coach's spans on a table, measured from the drawn cells so a note's leader lands on what it
+ * is about; measured on the next frame, once the cells are laid out, and again when they change.
+ */
+function useTableSpans(
+  notes: CoachNote[],
+  wrap: React.RefObject<HTMLDivElement | null>,
+  width: number,
+  layoutKey: string,
+): (Span | null)[] {
+  const [spans, setSpans] = useState<(Span | null)[]>([]);
+  useLayoutEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const root = wrap.current;
+      const next = root && notes.length ? measureSpans(root, notes) : [];
+      setSpans((cur) => (JSON.stringify(cur) === JSON.stringify(next) ? cur : next));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [notes, wrap, width, layoutKey]);
+  return spans;
+}
+
 export function TableFocus({ view, state, showChanges, compact = false }: Props) {
   const t = useTransitions();
   const before = view.columns_before.length ? view.columns_before : view.columns_after;
@@ -95,9 +144,14 @@ export function TableFocus({ view, state, showChanges, compact = false }: Props)
   );
   const shownCols = cols.length;
   const rest = Math.max(0, view.n_affected_columns - shownCols);
+  // The coach's band sits above the table (M2_CONTRACT §6); a narrow thumbnail draws no notes.
+  const [wrap, { w }] = useSize<HTMLDivElement>();
+  const notes = notesFor(view.coach, compact, w);
+  const band = bandHeight(notes.length);
+  const spans = useTableSpans(notes, wrap, w, `${cols.join("|")}:${rowIds.join(",")}`);
 
   return (
-    <div className={s.tableWrap} data-view="table_focus">
+    <div className={s.tableWrap} data-view="table_focus" ref={wrap} style={band ? { paddingTop: band } : undefined}>
       <div className={s.tableScroll}>
         <table className={compact ? s.tableCompact : s.table}>
           <thead>
@@ -110,6 +164,7 @@ export function TableFocus({ view, state, showChanges, compact = false }: Props)
                 return (
                   <th
                     key={id}
+                    data-col={c ?? id}
                     scope="col"
                     className={c === undefined ? `${s.colHead} ${s.colGone}` : s.colHead}
                     title={c ?? id}
@@ -135,8 +190,8 @@ export function TableFocus({ view, state, showChanges, compact = false }: Props)
             </tr>
           </thead>
           <tbody>
-            {rowIds.map((id) => (
-              <tr key={id} className={state.gone ? s.rowGone : undefined}>
+            {rowIds.map((id, index) => (
+              <tr key={id} className={state.gone ? s.rowGone : undefined} data-index={index}>
                 <th scope="row" className={s.rowId}>
                   {id}
                   {state.gone ? <span className={s.leaves}>leaves</span> : null}
@@ -173,6 +228,7 @@ export function TableFocus({ view, state, showChanges, compact = false }: Props)
           <span className={s.tableRest}>no value changes</span>
         ) : null}
       </div>
+      {notes.length ? <CoachLayer notes={notes} spans={spans} width={w} /> : null}
     </div>
   );
 }

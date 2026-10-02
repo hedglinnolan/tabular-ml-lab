@@ -10,6 +10,7 @@ import { dietaryRecalls, genomicsWide, type MockDataset } from "./datasets";
 import { MockServer, type EventType } from "./db";
 import { m1RecordHandlers } from "./m1-record";
 import { m1StageHandlers } from "./m1-stage";
+import { m2StageHandlers } from "./m2-stage";
 import { datasetAt, listDir } from "./fs";
 import { columnSummary, findColumn, histogram, isNumericDtype } from "./stats";
 
@@ -46,6 +47,7 @@ async function datasetFromUpload(file: File): Promise<MockDataset> {
 
 export function makeHandlers(server: MockServer): HttpHandler[] {
   return [
+    ...m2StageHandlers(), // the M2 stage lab's projects (M2 part 2); literal paths, so first
     // M1 + M2: the Router, teaching, sentences, findings and repairs, the M1 and M2 stages. Each
     // answers only for projects it knows, so the stage lab project falls through to its own.
     ...m1RecordHandlers(server),

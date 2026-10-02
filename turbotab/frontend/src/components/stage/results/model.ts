@@ -12,6 +12,7 @@ import type {
   SubstitutionModel,
 } from "../../../api/m1-stage-types";
 import { fmtInt, fmtNum } from "../format";
+import { shownHoldout, type SealPhase } from "../seal/phase";
 
 /** Fitted models in the shelf's order (judgment is order, never absence). */
 export function inShelfOrder(fit: FitArtifact, shelf: ShelfArtifact | null): FittedModel[] {
@@ -41,13 +42,23 @@ export interface Comparison {
 
 const LOWER_BETTER = new Set(["rmse", "mae", "brier", "log_loss", "logloss"]);
 
-export function comparisonOf(fit: FitArtifact, shelf: ShelfArtifact | null, metric = fit.primary_metric): Comparison {
+/**
+ * The comparison the Results draw. Held-out scores are read only in a phase that may show them
+ * (`seal/phase.ts`): before the seal is opened every row's held-out score is null, whatever the
+ * artifact holds, so no picture, number, tooltip or saved figure can imply one.
+ */
+export function comparisonOf(
+  fit: FitArtifact,
+  shelf: ShelfArtifact | null,
+  metric = fit.primary_metric,
+  phase: SealPhase = "sealed",
+): Comparison {
   const rows = inShelfOrder(fit, shelf).map((m) => ({
     family: m.family,
     label: m.label,
     mean: m.cv[metric]?.mean ?? null,
     sd: m.cv[metric]?.sd ?? null,
-    holdout: m.holdout?.[metric] ?? null,
+    holdout: shownHoldout(phase, m.holdout?.[metric]),
     concerns: m.concerns,
   }));
   const base =
@@ -73,13 +84,13 @@ export function comparisonOf(fit: FitArtifact, shelf: ShelfArtifact | null, metr
   };
 }
 
-/** "5-fold cross-validation on 2,294 training rows; 570 held-out rows scored once." */
-export function metricBasis(fit: FitArtifact, split: SplitArtifact | null): string {
+/** "5-fold cross-validation on 2,294 training rows; 570 held-out rows sealed" (or "scored once"). */
+export function metricBasis(fit: FitArtifact, split: SplitArtifact | null, phase: SealPhase = "sealed"): string {
   const folds = split?.folds ?? null;
   const cv = `${folds ? `${folds}-fold ` : ""}cross-validation on ${fmtInt(fit.n_train)} training rows`;
   const grouped = split?.grouped_by ? `, grouped by \`${split.grouped_by}\`` : "";
   const hold = fit.n_holdout
-    ? `; ${fmtInt(fit.n_holdout)} held-out rows scored once`
+    ? `; ${fmtInt(fit.n_holdout)} held-out rows ${phase === "opened" || phase === "post_seal" ? "scored once" : "sealed"}`
     : "; no rows held out";
   return `Mean ± SD over ${cv}${grouped}${hold}.`;
 }

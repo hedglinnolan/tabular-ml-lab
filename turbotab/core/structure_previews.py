@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import Any
 
 from turbotab.core.consequences import (
+    DistributionView,
     FrameRow,
     PreviewContext,
     RowFlowView,
@@ -33,6 +34,10 @@ from turbotab.core.consequences import (
 
 SHOWN_UNITS = 2
 SHOWN_NUMBERS = 4
+# The reshape shows up to this many units, as long as their records fit a table_focus (≤ 8 rows),
+# so rows can be seen meeting their partners (M2_CONTRACT §11).
+RESHAPE_UNITS = 4
+RESHAPE_ROWS = 8
 _METHOD_WORDS = {
     "mean": "are averaged",
     "first": "keep the first record",
@@ -112,10 +117,16 @@ def _reshape(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> Table
     q = _ident(key)
     con = duckdb.connect()
     try:
-        picked = [r[0] for r in con.execute(
-            f"SELECT CAST({q} AS VARCHAR) AS u FROM read_parquet({_lit(source)}) "
+        candidates = con.execute(
+            f"SELECT CAST({q} AS VARCHAR) AS u, count(*) AS n FROM read_parquet({_lit(source)}) "
             f"WHERE {q} IS NOT NULL GROUP BY u HAVING count(*) > 1 ORDER BY min({ROW_ID}) "
-            f"LIMIT {SHOWN_UNITS}").fetchall()]
+            f"LIMIT {RESHAPE_UNITS}").fetchall()
+        picked, rows_shown = [], 0
+        for u, n in candidates:
+            if len(picked) >= SHOWN_UNITS and rows_shown + int(n) > RESHAPE_ROWS:
+                break
+            picked.append(u)
+            rows_shown += int(n)
         if not picked:
             return None
         chosen = ", ".join(_lit(u) for u in picked)
@@ -137,17 +148,25 @@ def _reshape(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> Table
     rows: list[TableRow] = []
     changed: list[tuple[int, str]] = []
     record_frames: list[FrameRow] = []
+    label_of = {int(u): str(json_safe(v)) for u, v in zip(records[_UNIT], records[key])}
     for i, record in records.iterrows():
         rid = int(record[ROW_ID])
         before = {c: json_safe(record[c]) for c in shown}
         after = {c: json_safe(combined.iloc[int(unit_of[i])][c]) for c in shown}
         rows.append(TableRow(row_id=rid, before=before, after=after))
-        record_frames.append(FrameRow(row_id=rid, values=before))
+        record_frames.append(FrameRow(row_id=rid, values=before, unit=label_of[int(record[_UNIT])],
+                                      sources=[rid]))
         changed += [(rid, c) for c in shown if before[c] != after[c]]
-    first_rows = records.groupby(_UNIT)[ROW_ID].min().to_numpy()
-    combined_frames = [FrameRow(row_id=int(first_rows[j]), values={c: json_safe(combined.iloc[j][c])
-                                                                   for c in shown})
-                       for j in range(len(combined))]
+    # The row map, made visible: a combined row stands for all of its unit's records; a kept one
+    # (first, last) is that record, so it keeps the record's identity (M2_CONTRACT §11).
+    combined_frames: list[FrameRow] = []
+    for j, (u, group) in enumerate(records.groupby(_UNIT, sort=True)):
+        ids = [int(x) for x in group.sort_values(_K)[ROW_ID]]
+        if decision.method in ("first", "last"):
+            ids = [ids[0] if decision.method == "first" else ids[-1]]
+        combined_frames.append(FrameRow(row_id=ids[0] if len(ids) == 1 else min(ids),
+                                        values={c: json_safe(combined.iloc[j][c]) for c in shown},
+                                        unit=label_of[int(u)], sources=sorted(ids)))
     words = _METHOD_WORDS[decision.method]
     kept = "last" if decision.method == "last" else "first"
     return TableFocusView(
@@ -159,6 +178,109 @@ def _reshape(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> Table
                TableFrame(label="Combined into one row each", columns=shown, rows=combined_frames)])
 
 
+# The spread of one column, record by record and unit by unit (the /lab/m2 bar): what combining
+# does to the values the model will see. Only columns that vary within a unit are candidates, and
+# only the first few numeric ones, so a wide table costs what a narrow one does.
+SPREAD_CANDIDATES = 12
+_SPREAD_WORDS = {"mean": "mean", "first": "first record", "last": "last record"}
+
+
+def _spread(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> DistributionView | None:
+    """Each record's value against each unit's combined value, on one axis.
+
+    Never the outcome (eligibility has not been asked yet; constitution §04), never an identifier
+    or the time column. The column is the one whose within-unit share of the variance is largest:
+    the one combining changes most. Read over every row, and the basis says so.
+    """
+    import numpy as np
+    import pandas as pd
+
+    from turbotab.core.consequences import CAPTION_WORDS, TITLE_WORDS, _histogram_pair, clip_words
+    from turbotab.core.decisions import AggregationSpec
+    from turbotab.core.stages.working import NUMERIC, ROW_ID, _bundle_table, _ident, aggregation_plan
+    from turbotab.core.stages.working import repair_expressions, source_sql
+
+    if decision.method not in _SPREAD_WORDS:
+        return None  # last minus first is a change, on another axis than the records
+    oriented = ctx.artifact("oriented")
+    info = _data(oriented)
+    names = [str(c["name"]) for c in info["columns"]]
+    dtypes = {str(c["name"]): str(c["dtype"]) for c in info["columns"]}
+    state = ctx.state.model_copy(update={"aggregation": AggregationSpec(
+        method=decision.method, outcome=decision.outcome)})
+    plan = aggregation_plan(state, set(names), facts["structure"])
+    if plan is None:
+        return None
+    key, order = plan["id_column"], plan["time_column"]
+    roles = state.roles or {}
+    structure = facts["structure"]
+    # Not a measurement: the unit, its dates and visit or replicate indices, identifiers, the outcome.
+    skip = {key, order, state.target, *(structure.get("time_columns") or []),
+            (structure.get("repeats") or {}).get("replicate_index"),
+            *(c for c, r in roles.items() if r in ("identifier", "ignore"))}
+    candidates = [c for c in names if dtypes.get(c) in NUMERIC and c not in skip][:SPREAD_CANDIDATES]
+    if not candidates:
+        return None
+    import duckdb
+
+    repairs = repair_expressions(_data(ctx.artifact("findings")), state.findings)
+    wanted = list(dict.fromkeys([key, *([order] if order else []), *candidates]))
+    con = duckdb.connect()
+    try:
+        src = source_sql(_bundle_table(oriented), names, repairs)
+        frame = con.execute(f"SELECT {', '.join(_ident(c) for c in wanted)}, {ROW_ID} FROM {src} "
+                            f"ORDER BY {ROW_ID}").df()
+    finally:
+        con.close()
+    # A unit is the rows sharing the id; a row with no id is a unit of its own (as `working` does).
+    unit = frame[key].astype(object).where(frame[key].notna(),
+                                           "__row_" + frame[ROW_ID].astype(str))
+    best, share = None, 0.0
+    for c in candidates:
+        v = pd.to_numeric(frame[c], errors="coerce")
+        total = float(v.var(ddof=0)) if v.notna().sum() > 1 else 0.0
+        if not total or not np.isfinite(total):
+            continue
+        within = float((v - v.groupby(unit).transform("mean")).pow(2).mean()) / total
+        if within > share + 1e-12:
+            best, share = c, within
+    if best is None or share < 0.01:
+        return None  # nothing varies within a unit: combining changes no value's spread
+    if "dietary" in (state.lens or []):
+        # The dietary lens reads total energy first (plausibility, adjustment): its spread, when
+        # combining changes it, is the one the user is about to reason with.
+        from turbotab.core.stages.proposals import energy_column
+
+        energy = energy_column({str(c["name"]): c for c in info["columns"]}, roles)
+        if energy in candidates:
+            v = pd.to_numeric(frame[energy], errors="coerce")
+            if float((v - v.groupby(unit).transform("mean")).pow(2).mean()) > 0.01 * float(v.var(ddof=0)):
+                best = energy
+    values = pd.to_numeric(frame[best], errors="coerce")
+    if decision.method == "mean":
+        combined = values.groupby(unit, sort=False).mean()
+    else:
+        # The method's order: the time column (missing last), then file order.
+        ranked = pd.DataFrame({"u": unit, "v": values, "r": frame[ROW_ID]})
+        if order:
+            ranked["t"] = frame[order]
+            ranked = ranked.sort_values(["t", "r"], na_position="last", kind="stable")
+        # The kept record is that record, blank or not (nth, unlike first(), skips no blank).
+        combined = ranked.groupby("u", sort=False)["v"].nth(0 if decision.method == "first" else -1)
+    before, after = _histogram_pair(values.to_numpy(), combined.to_numpy())
+    n_rows, n_units = int(len(values)), int(len(combined))
+    ctx.read["counted"] = n_rows
+    noun = _SPREAD_WORDS[decision.method]
+    sd0, sd1 = float(values.std()), float(combined.std())
+    caption = (f"`{n_rows:,}` records become `{n_units:,}` values of `{best}`, one per `{key}`: "
+               f"SD `{sd0:,.3g}` → `{sd1:,.3g}`.")
+    return DistributionView(
+        title=clip_words(f"`{best}` per record and per {key}", TITLE_WORDS),
+        caption=clip_words(caption, CAPTION_WORDS),
+        emphasis=[best], column=best, before=before, after=after,
+        before_label="Each record", after_label=f"Each {key}'s {noun}")
+
+
 def aggregation_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     flow = _flow(ctx, True)
     if flow is None:
@@ -167,6 +289,9 @@ def aggregation_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     reshape = _reshape(decision, ctx, flow[1])
     if reshape is not None:
         views.insert(0, reshape)
+    spread = _spread(decision, ctx, flow[1])
+    if spread is not None:
+        views.append(spread)
     return views
 
 
@@ -176,6 +301,10 @@ def aggregation_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 
 SHOWN_COLUMNS = 5
 SHOWN_ROWS = 4
+# The turn shows the table's corner at a table_focus's limits (≤ 8 rows either way round), so the
+# picture reads as a table turning rather than a few cells (M2_CONTRACT §11, the /lab/m2 bar).
+TURN_FEATURES = 8
+TURN_SAMPLES = 8
 
 
 def _oriented_source(ctx: PreviewContext) -> tuple[Any, Any] | None:
@@ -326,12 +455,12 @@ def orientation_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                             caption=clip_words(f"The `{n_rows:,}` rows stay as they are, one per "
                                                f"sample.", CAPTION_WORDS),
                             before=[loaded], after=[loaded])]
-    label, samples = names[0], names[1:SHOWN_COLUMNS]
+    label, samples = names[0], names[1:1 + TURN_SAMPLES]
     con = duckdb.connect()
     try:
         corner = con.execute(
             f"SELECT {ROW_ID}, {', '.join(_ident(c) for c in [label, *samples])} "
-            f"FROM read_parquet({_lit(str(source))}) ORDER BY {ROW_ID} LIMIT {SHOWN_ROWS}").df()
+            f"FROM read_parquet({_lit(str(source))}) ORDER BY {ROW_ID} LIMIT {TURN_FEATURES}").df()
     finally:
         con.close()
     features = [str(v) for v in corner[label]]

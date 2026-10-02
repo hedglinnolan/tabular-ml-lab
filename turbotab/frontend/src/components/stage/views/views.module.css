@@ -334,14 +334,15 @@
 
 .flowLine {
   display: grid;
-  grid-template-columns: minmax(150px, 230px) minmax(0, 1fr) 70px 70px;
+  /* The last column fits "300 folded in" as well as "−300" (every row's grid is the same). */
+  grid-template-columns: minmax(150px, 230px) minmax(0, 1fr) 70px 104px;
   align-items: center;
   gap: 12px;
   padding: 7px 0;
 }
 
 .flowCompact .flowLine {
-  grid-template-columns: minmax(120px, 176px) minmax(0, 1fr) 58px 64px;
+  grid-template-columns: minmax(120px, 176px) minmax(0, 1fr) 58px 100px;
   gap: 10px;
   padding: 4px 0;
 }
@@ -403,6 +404,18 @@
   );
 }
 
+/* Folded into a partner row (one row per unit): a bracketed fold, not the hatch of rows that leave. */
+.flowFolded {
+  display: block;
+  height: 100%;
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--c1) 55%, transparent) 0 1px,
+    transparent 1px 4px
+  );
+  border-left: 1.5px solid var(--c1);
+}
+
 .flowCount {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
@@ -447,6 +460,7 @@
 /* ── table focus ──────────────────────────────────────────────────────────── */
 
 .tableWrap {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;

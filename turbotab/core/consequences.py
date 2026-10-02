@@ -129,6 +129,11 @@ class LineageFrame(_Model):
 class FrameRow(_Model):
     row_id: int
     values: dict[str, Any]
+    # A reshape's row map, made visible (M2_CONTRACT §11): the unit this row belongs to, and the
+    # rows of the table as loaded that it stands for (one for a record or a kept record; all of a
+    # unit's records for a combined row). Empty on a frame that changes no row's identity.
+    unit: str | None = None
+    sources: list[int] = Field(default_factory=list)
 
 
 class TableFrame(_Model):
@@ -177,11 +182,41 @@ class _View(_Model):
     coach: list[CoachNote] = Field(default_factory=list, max_length=MAX_COACH)
 
 
+class SealCells(_Model):
+    """The seal drawn one cell per row (M2_CONTRACT §3, §11): which side each row falls on and which
+    unit it belongs to, so the basis is a picture. Whole units, in file order, up to
+    :data:`SEAL_CELLS` rows; the counts are over every row the seal is drawn from. No outcome value
+    is carried: only row identity, the draw, and (chronological) each unit's last time."""
+
+    state: Literal["grouped", "one_row_per_unit", "abandoned", "undetermined"]
+    label: str  # the basis label: "grouped by `participant_id`" · "undetermined" · …
+    exploratory: bool  # abandoned or undetermined: never drawn as a clean lock
+    column: str | None  # the unit column (grouped), or the column that repeats (abandoned)
+    chronological: bool
+    time_column: str | None
+    boundary: str | None  # the earliest last observation among the held-out units
+    time_start: str | None  # the first and last times on the axis (chronological)
+    time_end: str | None
+    n_rows: int  # rows the seal is drawn from (every row with the outcome measured)
+    n_holdout: int
+    n_units: int | None  # units in all (None: no unit is known)
+    n_holdout_units: int | None
+    straddle: int | None  # units with rows on both sides (None: not known, the basis undetermined)
+    evidence: str | None  # undetermined: what a repeating identifier suggests, without claiming it
+    hold: list[int]  # per drawn row: 1 held out, 0 trains
+    unit: list[int] | None  # per drawn row: its unit, as an index into the drawn units
+    unit_time: list[float] | None  # per drawn unit: its last observation, 0 … 1 along the axis
+
+
+SEAL_CELLS = 600
+
+
 class RowFlowView(_View):
     kind: Literal["row_flow"] = "row_flow"
     before: list[RowStep]
     after: list[RowStep]
     story: list[RowFlowFrame] = Field(default_factory=list)
+    seal: SealCells | None = None  # the split's preview: the rows drawn as cells on their sides
 
 
 class LineageView(_View):
@@ -870,7 +905,7 @@ __all__ = [
     "DistributionFrame", "DistributionView", "FitLine", "FrameRow", "HistogramData", "Lineage",
     "LineageFrame", "LineageLink", "LineageNode", "LineageView", "Mark", "PreviewContext",
     "PreviewResult", "RelationshipFrame", "RelationshipView", "RowFlowFrame", "RowFlowView",
-    "RowStep", "TableFocusView", "TableFrame", "TableRow",
+    "RowStep", "SEAL_CELLS", "SealCells", "TableFocusView", "TableFrame", "TableRow",
     "clip_words", "diff_views", "fmt_count", "fmt_value", "lineage_of", "plan",
     "register_consequence", "register_transform", "words",
 ]

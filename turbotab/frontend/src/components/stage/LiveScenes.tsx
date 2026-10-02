@@ -21,6 +21,7 @@ import { StageRetry } from "../StageRetry";
 import { DesignWarnings } from "./DesignWarnings";
 import { fmtInt, plain } from "./format";
 import { Results, type ResultsData } from "./results/Results";
+import { LiveSeal } from "./seal/LiveSeal";
 import { Shelf } from "./results/Shelf";
 import { figureSvg, lineagePanel, rowFlowPanel } from "./save/journal";
 import { SaveMenu } from "./save/SaveMenu";
@@ -102,7 +103,7 @@ function RowsCard({ view, data, full }: { view: ProjectView; data: LiveData; ful
       label="Rows"
       action={<StageRetry pid={data.pid} status={retry} />}
     >
-      <section className={full ? s.liveFull : s.liveCard} data-card="rows">
+      <section className={full ? s.liveFull : s.liveCard} data-card="rows" data-purpose="live_rows">
         <header className={s.cardHead}>
           <h3 className={s.kicker}>Rows</h3>
           <span className={s.cardChip}>{fmtInt(last.n)} rows</span>
@@ -127,6 +128,7 @@ function RowsCard({ view, data, full }: { view: ProjectView; data: LiveData; ful
           openAfter={openAfter}
           openLabel={open ? `${open.key.replace(/_/g, " ")}: the open question acts here` : undefined}
         />
+        {data.split ? <LiveSeal split={data.split} /> : null}
         {full ? <Provenance text={provenance} /> : null}
       </section>
     </StaleVeil>
@@ -159,7 +161,7 @@ function ColumnsCard({ view, data, full }: { view: ProjectView; data: LiveData; 
   const matrix = data.design?.matrix;
   if (!lineage.nodes.length) {
     return (
-      <section className={full ? s.liveFull : s.liveCard} data-card="lineage">
+      <section className={full ? s.liveFull : s.liveCard} data-card="lineage" data-purpose="live_columns">
         <header className={s.cardHead}>
           <h3 className={s.kicker}>Columns</h3>
         </header>
@@ -176,7 +178,7 @@ function ColumnsCard({ view, data, full }: { view: ProjectView; data: LiveData; 
       label="Columns"
       action={<StageRetry pid={data.pid} status={view.stages.design} />}
     >
-      <section className={full ? s.liveFull : s.liveCard} data-card="lineage">
+      <section className={full ? s.liveFull : s.liveCard} data-card="lineage" data-purpose="live_columns">
         <header className={s.cardHead}>
           <h3 className={s.kicker}>Columns</h3>
           <span className={s.cardChip}>
@@ -232,7 +234,7 @@ export function NowScene({ view, data }: { view: ProjectView; data: LiveData }) 
     <div className={s.liveStack}>
       <RowsCard view={view} data={data} full={false} />
       <ColumnsCard view={view} data={data} full={false} />
-      <section className={s.liveCard} data-card="results">
+      <section className={s.liveCard} data-card="results" data-purpose="live_results">
         <header className={s.cardHead}>
           <h3 className={s.kicker}>Results</h3>
         </header>

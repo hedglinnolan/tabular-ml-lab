@@ -1,0 +1,317 @@
+/*
+ * The reshape table and the orientation turn (lifted from /lab/m2). Tokens only (DESIGN_LANGUAGE
+ * §02): --c1 with this choice, --c4 your data now; data is mono (§03).
+ */
+
+.rt {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+}
+
+.scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 6px;
+}
+
+.rtHead {
+  display: flex;
+  align-items: flex-end;
+  height: 26px;
+  width: max-content;
+  min-width: 100%;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.rtRowHead,
+.rtIdHead,
+.rtColHead {
+  flex: 0 0 auto;
+  padding: 0 8px 5px 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rtRowHead {
+  text-align: left;
+  color: var(--faint);
+  padding-left: 6px;
+}
+
+.rtIdHead {
+  text-align: left;
+  color: var(--ink);
+}
+
+.rtColHead {
+  color: var(--ink);
+}
+
+.rtBody {
+  position: relative;
+  margin-top: 4px;
+  width: max-content;
+  min-width: 100%;
+  --rows-h: 0px;
+}
+
+/* The table's extent in this state: a hairline under its last row, so the halving is seen. */
+.rtExtent {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--rows-h) + 2px);
+  height: 1px;
+  background: var(--line);
+}
+
+.rtFrame {
+  position: absolute;
+  left: -5px;
+  right: -5px;
+  top: 0;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--c4) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c4) 30%, transparent);
+  pointer-events: none;
+}
+
+.rtGap {
+  position: absolute;
+  left: 6px;
+  right: 0;
+  top: 0;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-style: italic;
+  color: var(--faint);
+}
+
+.rtRow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  --struck: 0;
+  /* Opaque, so a row travelling past another (a stacked export gathering) covers it. */
+  background: var(--surface);
+  border-radius: 5px;
+}
+
+.rtRow[data-k="1"] {
+  z-index: 2;
+}
+
+.rtRow::before {
+  content: "";
+  position: absolute;
+  inset: 2px 0;
+  border-radius: 5px;
+  opacity: var(--struck);
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--ink) 9%, transparent) 0 2px,
+    transparent 2px 6px
+  );
+  pointer-events: none;
+}
+
+.rtStrike {
+  position: absolute;
+  left: 60px;
+  right: 6px;
+  top: 50%;
+  height: 1px;
+  background: color-mix(in srgb, var(--ink) 55%, transparent);
+  transform-origin: left center;
+  transform: scaleX(var(--struck));
+  pointer-events: none;
+}
+
+.rtRowId,
+.rtId,
+.rtCell {
+  flex: 0 0 auto;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+  overflow: hidden;
+}
+
+.rtRowId {
+  justify-content: flex-start;
+  padding-left: 8px;
+  color: var(--faint);
+  font-size: 10.5px;
+}
+
+.rtId {
+  justify-content: flex-start;
+  color: var(--ink);
+}
+
+.rtCell {
+  color: var(--ink);
+  transition: background-color var(--dur-arrive) ease-out;
+}
+
+.rtChanged {
+  background: color-mix(in srgb, var(--c1) 15%, transparent);
+}
+
+.blank {
+  font-family: var(--sans);
+  font-style: italic;
+  font-size: 0.92em;
+  color: var(--faint);
+}
+
+.roll {
+  position: relative;
+  display: inline-flex;
+  overflow: hidden;
+  height: 16px;
+  line-height: 16px;
+}
+
+.roll > span {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.rtFoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.rtRest {
+  color: var(--c1);
+  text-align: right;
+}
+
+/* ── the orientation turn ──────────────────────────────────────────────────── */
+
+.tt {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ttScroll {
+  overflow: auto;
+}
+
+.ttGrid {
+  position: relative;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+
+.ttCorner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 0 6px 4px;
+  color: var(--faint);
+  font-size: 10.5px;
+}
+
+.ttFeature,
+.ttSample,
+.ttCell {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.ttCell {
+  height: 26px;
+  justify-content: flex-end;
+  padding-right: 9px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.ttFeature {
+  padding-left: 4px;
+  color: var(--ink);
+  transition: background-color var(--dur-arrive) ease-out;
+  border-radius: 5px;
+}
+
+.ttFeature[data-named] {
+  background: color-mix(in srgb, var(--c1) 13%, transparent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.ttFeature[data-turned] {
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding: 0 9px 6px 0;
+  background: none;
+}
+
+.ttSample {
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding: 0 9px 6px 0;
+  color: var(--muted);
+}
+
+.ttSample[data-turned] {
+  justify-content: flex-start;
+  align-items: center;
+  padding: 0 0 0 4px;
+}
+
+.ttSample[data-tracked] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.ttOutline {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 1.5px solid color-mix(in srgb, var(--ink) 60%, transparent);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+:global(:root[data-reduced-motion="true"]) .rtCell,
+:global(:root[data-reduced-motion="true"]) .ttFeature {
+  transition: none;
+}

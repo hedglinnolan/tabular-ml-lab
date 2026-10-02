@@ -2,9 +2,12 @@
 column summaries, the previews and the Router all read one row per person."""
 from __future__ import annotations
 
+import numpy as np
+import pandas as pd
+
 from turbotab.core.consequences import CAPTION_WORDS, FRAME_WORDS, TITLE_WORDS, words
 from turbotab.server import schemas
-from turbotab.server.tests.conftest import open_by_path, prepare, wait_for
+from turbotab.server.tests.conftest import SAMPLES, open_by_path, prepare, wait_for
 
 
 def decide(client, pid, decision, status=200):
@@ -55,16 +58,40 @@ def test_combining_a_persons_recalls_reaches_the_table_the_previews_and_the_rout
 
     # the reshape, on two people: their recalls, then the one row each becomes
     views = preview(client, pid, {"kind": "set_aggregation", "method": "mean"})["views"]
-    assert [v["kind"] for v in views] == ["table_focus", "row_flow"]
+    assert [v["kind"] for v in views] == ["table_focus", "row_flow", "distribution"]
+    # the spread: every recall, then every person's mean, of total energy (the dietary lens)
+    spread = views[2]
+    raw = pd.read_csv(SAMPLES / "dietary_recalls.csv")
+    col = spread["column"]
+    assert col == "energy_kcal"  # never the outcome (§04), an identifier or a visit index
+    means = raw.groupby("participant_id")[col].mean()
+    edges = np.asarray(spread["after"]["edges"])
+    assert spread["after"]["counts"] == np.histogram(means, edges)[0].tolist()
+    assert spread["before"]["counts"] == np.histogram(raw[col].dropna(), edges)[0].tolist()
     reshape = views[0]
     assert [f["label"] for f in reshape["story"]] == ["Each participant_id's records",
                                                      "Combined into one row each"]
     first = {r["row_id"]: r for r in reshape["rows"]}
     assert first[0]["before"]["energy_kcal"] == 3063.0 and first[1]["before"]["energy_kcal"] == 1913.0
     assert first[0]["after"]["energy_kcal"] == first[1]["after"]["energy_kcal"] == 2488.0
-    assert [r["values"]["participant_id"] for r in reshape["story"][1]["rows"]] == ["P001", "P002"]
-    last = preview(client, pid, {"kind": "set_aggregation", "method": "last"})["views"][0]
+    people = ["P001", "P002", "P003", "P004"]  # four people's 8 recalls: a table_focus's 8 rows
+    assert [r["values"]["participant_id"] for r in reshape["story"][1]["rows"]] == people
+    # the row map, made visible: each record is its unit's; a combined row stands for its records
+    records, combined = reshape["story"]
+    assert [(r["unit"], r["sources"]) for r in records["rows"]] == [
+        (p, [2 * i + k]) for i, p in enumerate(people) for k in (0, 1)]
+    assert [(r["unit"], r["sources"]) for r in combined["rows"]] == [
+        (p, [2 * i, 2 * i + 1]) for i, p in enumerate(people)]
+    lasts = preview(client, pid, {"kind": "set_aggregation", "method": "last"})["views"]
+    kept = raw.sort_values(["recall_date"], kind="stable").groupby("participant_id")[col].last()
+    edges = np.asarray(lasts[2]["after"]["edges"])
+    assert lasts[2]["after"]["counts"] == np.histogram(kept, edges)[0].tolist()  # each one's last recall
+    last = lasts[0]
     assert {r["row_id"]: r for r in last["rows"]}[0]["after"]["energy_kcal"] == 1913.0
+    # a kept record keeps its own identity: the last recall is that recall, not its unit's first row
+    assert [(r["row_id"], r["sources"]) for r in last["story"][1]["rows"]] == [
+        (2 * i + 1, [2 * i + 1]) for i in range(4)]
+    assert last["story"][1]["rows"][0]["values"]["energy_kcal"] == 1913.0
     assert client.get(f"/api/projects/{pid}").json()["state"]["aggregation"] is None  # nothing recorded
 
     decide(client, pid, {"kind": "set_aggregation", "method": "mean"})
