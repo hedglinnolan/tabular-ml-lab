@@ -24,12 +24,19 @@ from sklearn.metrics import (
 from sklearn.model_selection import PredefinedSplit, cross_validate
 
 from turbotab.core.consequences import Lineage
+from turbotab.core.decisions import SubstitutionSpec
 from turbotab.core.jobs import Cancelled
 from turbotab.core.methods.energy import EnergyAdjuster
 from turbotab.core.models import families, get_family
 from turbotab.core.models.artifacts import DesignArtifact, FitArtifact, ShelfArtifact, SubstitutionArtifact
 from turbotab.core.models.steps import StratifiedEnergyAdjuster
-from turbotab.core.stages.modeling import design_stage, fit_stage, shelf_stage, substitution_stage
+from turbotab.core.stages.modeling import (
+    BAND_BOOT,
+    design_stage,
+    fit_stage,
+    shelf_stage,
+    substitution_stage,
+)
 from turbotab.core.tests import modeling_fixtures as mf
 
 REPO = Path(__file__).resolve().parents[3]
@@ -616,7 +623,7 @@ def test_substitution_names_its_assumptions_and_skips_nothing_it_can_draw(table)
     assert "Total energy was held fixed by assumption" in sub["note"]
     # No band unless one is asked for (M1_CONTRACT §12.7); its cost is measured and offered.
     assert all(m["ci_low"] is None and m["ci_high"] is None for m in sub["models"])
-    assert sub["band"] is None and sub["band_estimate"]["n_boot"] == 50
+    assert sub["band"] is None and sub["band_estimate"]["n_boot"] == BAND_BOOT
     assert sub["band_estimate"]["seconds"] > 0
     assert "fat_sat, fat_mon and fat_poly are parts of fat_total" in sub["note"]
     assert set(sub["carried"]) == {"fat_sat", "fat_mon", "fat_poly", "sugar"}
@@ -624,6 +631,98 @@ def test_substitution_names_its_assumptions_and_skips_nothing_it_can_draw(table)
     # Sugar carries energy (carbohydrate, 4 kcal/g) and is part of carb: never paired with it.
     assert not any({p["donor"], p["recipient"]} == {"sugar", "carb"}
                    for p in design.data["substitution_pairs"])
+
+
+def test_a_band_refit_is_the_estimator_the_curve_came_from():
+    """Boosted trees stop early by themselves only above 10,000 rows. A refit on a resample of
+    10,000 rows keeps the full fit's resolved choice, whichever it was."""
+    from sklearn.ensemble import HistGradientBoostingRegressor
+    from sklearn.linear_model import LinearRegression
+    from sklearn.pipeline import Pipeline
+
+    from turbotab.core.stages.modeling import pinned_to_full_fit
+
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(10_001, 3))
+    y = X[:, 0] + rng.normal(size=10_001)
+    design = Pipeline([("model", HistGradientBoostingRegressor(random_state=0))])
+    big = clone(design).fit(X, y)
+    assert big[-1].do_early_stopping_
+    refit = pinned_to_full_fit(clone(design), big).fit(X[:10_000], y[:10_000])
+    assert refit[-1].get_params()["early_stopping"] is True and refit[-1].do_early_stopping_
+    unpinned = clone(design).fit(X[:10_000], y[:10_000])
+    assert not unpinned[-1].do_early_stopping_  # what the refit was before the pin
+    small = clone(design).fit(X[:500], y[:500])
+    assert pinned_to_full_fit(clone(design), small)[-1].get_params()["early_stopping"] is False
+    linear = Pipeline([("model", LinearRegression())])
+    assert "early_stopping" not in pinned_to_full_fit(clone(linear), clone(linear).fit(X, y))[-1].get_params()
+
+
+def test_a_pinned_band_refit_stops_early_on_whole_rows(monkeypatch):
+    """The band's refit pins the full fit's early stopping (WP5) and fits through
+    ``inner_cv.fit_pipeline`` (WP4), so a refit on a 10,000-row bootstrap resample of a larger fit
+    stops early, and its early-stopping rows are drawn by row id: no row's copies are on both
+    sides of the validation split."""
+    from sklearn.ensemble import HistGradientBoostingRegressor
+    from sklearn.pipeline import Pipeline
+
+    from turbotab.core.models import inner_cv
+    from turbotab.core.stages.modeling import pinned_to_full_fit
+
+    rng = np.random.default_rng(0)
+    X = pd.DataFrame(rng.normal(size=(12_000, 3)), columns=list("abc"))
+    y = rng.normal(size=12_000)
+    design = Pipeline([("model", HistGradientBoostingRegressor(random_state=0))])
+    full = inner_cv.fit_pipeline(clone(design), X, y)
+    assert full[-1].do_early_stopping_
+    rows = np.sort(rng.choice(len(X), 10_000, replace=True))
+    Xb, yb = X.iloc[rows], y[rows]
+    seen = []
+    real = inner_cv.validation_rows
+
+    def spy(share, **kwargs):
+        mask = real(share, **kwargs)
+        seen.append((np.asarray(kwargs["groups"]), mask))
+        return mask
+
+    monkeypatch.setattr(inner_cv, "validation_rows", spy)
+    refit = inner_cv.fit_pipeline(pinned_to_full_fit(clone(design), full), Xb, yb,
+                                  groups=Xb.index.to_numpy())
+    assert refit[-1].do_early_stopping_ and refit[-1].n_iter_ < refit[-1].max_iter
+    (groups, held), = seen
+    assert pd.Series(groups).duplicated().any()  # the resample repeats rows
+    assert not set(groups[held]) & set(groups[~held])
+
+
+def test_a_band_refit_keeps_every_copy_of_a_row_in_one_inner_fold(table, monkeypatch):
+    """A bootstrap resample repeats rows, and elastic net tunes its penalty by an inner
+    cross-validation. With a row's copies on both sides of an inner split, the penalty is scored
+    on rows it was fit on, which favors too little shrinkage. Each refit's inner folds are grouped
+    by row id (by unit when rows repeat), through ``inner_cv.fit_pipeline``, which draws every
+    inner split (``with_inner_cv``)."""
+    from turbotab.core.models import inner_cv
+
+    frame, paths = table
+    split = mf.split_bundle(np.arange(len(frame)))
+    st = mf.state(energy_adjustment=mf.energy("residual"), models=["elastic_net"],
+                  substitution=SubstitutionSpec(donor="fat_total", recipient="carb", step_kcal=100.0,
+                                                n_boot=3))
+    design, fit = run(st, paths, split)
+    seen = []
+    real = inner_cv.with_inner_cv
+
+    def spy(pipeline, **kwargs):
+        out = real(pipeline, **kwargs)
+        seen.append((np.asarray(kwargs["groups"]), out.steps[-1][1].get_params()["cv"]))
+        return out
+
+    monkeypatch.setattr(inner_cv, "with_inner_cv", spy)
+    sub = substitution_stage(mf.context(st, {"design": design, "fit": fit}, paths))
+    assert sub["band"]["n_boot"] == 3 and len(seen) == 3
+    for groups, splits in seen:
+        assert len(np.unique(groups)) < len(groups)  # the resample repeats rows
+        for train, test in splits:
+            assert not set(groups[train]) & set(groups[test])
 
 
 # ── stratified residuals ─────────────────────────────────────────────────────

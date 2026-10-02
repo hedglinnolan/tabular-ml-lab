@@ -188,22 +188,46 @@ class FitArtifact(_Model):
 class SubstitutionModel(_Model):
     family: str
     label: str
-    delta: list[float | None]
+    delta: list[float | None]  # each k over its own on-support rows
     ci_low: list[float | None] | None
     ci_high: list[float | None] | None
     on_support_fraction: list[float]
     stopped_at: float | None
     effect_label: str | None
+    # The same curve over one fixed population: the rows on support at every k the curve reached.
+    fixed_delta: list[float | None] = []
+    fixed_ci_low: list[float | None] | None = None
+    fixed_ci_high: list[float | None] | None = None
+    band_ok: int | None = None  # refits of this family's band that succeeded
+
+
+class SubstitutionSupport(_Model):
+    """Which rows each k averages over, and how many each support check left out (per k)."""
+
+    total: str | None  # the total-energy column shares are taken of; None: composition unchecked
+    n_rows: int  # rows the curve averages over before any check
+    not_recorded: int  # donor, recipient or total energy not recorded: off support at every k
+    off_amount: list[int]  # a shifted amount outside its observed range or below 0
+    off_share: list[int]  # further rows: a shifted share of energy outside its observed range
+    fixed_rows: int  # the fixed population: rows on support at every k the curve reached
+    fixed_through: float | None  # the largest k the fixed population is on support through
 
 
 class SubstitutionBand(_Model):
     """How the band was made: refits of every family on bootstrap resamples of training rows."""
 
     n_boot: int
-    n_rows: int  # training rows each resample is drawn from (at most 2,000)
+    n_rows: int  # training rows the resamples are drawn from: every row the models were fit on
     grouped_by: str | None  # resampled by this identifier's units, when rows repeat
     seconds: float
     failed: int  # refits that could not be made (a resample with one class), left out
+    n_units: int | None = None  # units resampled: rows, or whole grouped_by units
+    resample_units: int | None = None  # units each refit draws; fewer than n_units: rescaled
+    scale: float | None = None  # sqrt(resample_units / n_units), 1 for the ordinary bootstrap
+    interval: Literal["normal", "percentile"] | None = None
+    level: float | None = None
+    min_ok_share: float | None = None  # a family's band needs this share of its refits to succeed
+    caption: str | None = None  # the saved figure's: rows, refits, how many succeeded
 
 
 class BandEstimate(_Model):
@@ -228,6 +252,7 @@ class SubstitutionArtifact(_Model):
     carried: list[str] = []  # parts or totals that moved with the donor or the recipient
     band: SubstitutionBand | None = None  # set when the substitution asked for n_boot > 0
     band_estimate: BandEstimate | None = None  # "Add an uncertainty band (about N s)"
+    support: SubstitutionSupport | None = None  # the support checks' counts (data, not model)
 
 
 MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
@@ -240,5 +265,5 @@ MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
 __all__ = [
     "BandEstimate", "Baseline", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel",
     "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "ShelfArtifact", "ShelfFamily",
-    "SubstitutionArtifact", "SubstitutionModel", "SubstitutionPair",
+    "SubstitutionArtifact", "SubstitutionModel", "SubstitutionPair", "SubstitutionSupport",
 ]

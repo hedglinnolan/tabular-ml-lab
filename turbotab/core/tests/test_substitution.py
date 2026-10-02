@@ -293,20 +293,28 @@ def test_the_refit_band_has_width_for_a_linear_model_and_holds_the_curve():
     assert again["ci_low"] == band["ci_low"] and band["n_ok"] == 60 and band["failed"] == 0
 
 
-def test_the_refit_band_is_the_percentile_interval_of_the_refits_coefficient_gaps():
+def test_the_refit_band_is_the_percentile_or_normal_interval_of_the_refits_coefficient_gaps():
     df = composition(n=300, seed=11)
     X, y = df.drop(columns="y"), df["y"].to_numpy()
     shift = Shift(X, donor="fat_kcal", recipient="carb_kcal", kcal_per_unit=KCAL)
     ks = [0.0, 10.0]  # small enough that every row stays on support
-    band = refit_band(_refit, X, y, shift=shift, ks=ks, live=[True, True], n_boot=40, random_state=5)
     rng = np.random.default_rng(5)
     gaps = []
     for _ in range(40):  # the same resamples, drawn by hand
         idx = rng.integers(0, len(X), size=len(X))
         coef = dict(zip(X.columns, LinearRegression().fit(X.iloc[idx], y[idx]).coef_))
         gaps.append(10.0 * (coef["carb_kcal"] - coef["fat_kcal"]))
+    band = refit_band(_refit, X, y, shift=shift, ks=ks, live=[True, True], n_boot=40, random_state=5,
+                      interval="percentile")
+    assert band["interval"] == "percentile" and band["scale"] == 1.0
     assert band["ci_low"][1] == pytest.approx(np.percentile(gaps, 2.5), rel=1e-9)
     assert band["ci_high"][1] == pytest.approx(np.percentile(gaps, 97.5), rel=1e-9)
+    # 40 refits are too few for percentile endpoints, so "auto" gives the normal interval.
+    auto = refit_band(_refit, X, y, shift=shift, ks=ks, live=[True, True], n_boot=40, random_state=5)
+    half = 1.959963984540054 * np.std(gaps, ddof=1)
+    assert auto["interval"] == "normal"
+    assert auto["ci_low"][1] == pytest.approx(np.mean(gaps) - half, rel=1e-9)
+    assert auto["ci_high"][1] == pytest.approx(np.mean(gaps) + half, rel=1e-9)
 
 
 def test_the_refit_band_stops_when_its_progress_says_stop():
@@ -347,6 +355,57 @@ def test_a_grouped_band_resamples_whole_units():
     for idx in seen:  # every unit drawn comes with all three of its rows
         counts = pd.Series(groups[idx]).value_counts()
         assert (counts % 3 == 0).all()
+
+
+def test_a_row_with_no_unit_recorded_is_a_unit_of_its_own_in_the_band():
+    df = composition(n=60, seed=14)
+    X, y = df.drop(columns="y"), df["y"].to_numpy()
+    groups = np.repeat(np.arange(20), 3).astype(object)
+    groups[-6:] = None  # six rows whose identifier is missing
+    shift = Shift(X, donor="fat_kcal", recipient="carb_kcal", kcal_per_unit=KCAL)
+    drawn = []
+
+    def fit(Xb, yb):
+        drawn.append(Xb.index.to_numpy())
+        return _refit(Xb, yb)
+
+    band = refit_band(fit, X, y, shift=shift, ks=[0, 50], live=[True, True], n_boot=40, groups=groups)
+    assert band["n_units"] == 18 + 6  # 18 whole units, and each blank row alone
+    rows = np.concatenate(drawn)
+    assert set(range(54, 60)) <= set(rows.tolist())  # the blank rows are resampled, one at a time
+    for idx in drawn:  # a recorded unit's three rows still come together (rows 3u, 3u+1, 3u+2)
+        counts = pd.Series(idx[idx < 54] // 3).value_counts()
+        assert (counts % 3 == 0).all()
+        assert len(idx) == 3 * int((idx < 54).sum() // 3) + int((idx >= 54).sum())
+
+
+def test_a_band_from_fewer_units_than_there_are_is_rescaled_to_all_of_them():
+    df = composition(n=400, seed=15)
+    X, y = df.drop(columns="y"), df["y"].to_numpy()
+    model = LinearRegression().fit(X, y)
+    curve = substitution_curve(model.predict, X, donor="fat_kcal", recipient="carb_kcal",
+                               kcal_per_unit=KCAL, ks=[0, 50])
+    shift = Shift(X, donor="fat_kcal", recipient="carb_kcal", kcal_per_unit=KCAL)
+    groups = np.repeat(np.arange(100), 4)
+    sizes = []
+
+    def fit(Xb, yb):
+        sizes.append(len(Xb))
+        return _refit(Xb, yb)
+
+    band = refit_band(fit, X, y, shift=shift, ks=[0, 50], live=[True, True], n_boot=10,
+                      groups=groups, max_rows=100, center=curve["delta"])
+    # 100 rows of 400 is a quarter: 25 of the 100 units, and the spread times sqrt(25 / 100)
+    assert band["n_units"] == 100 and band["resample_size"] == 25 and band["scale"] == 0.5
+    assert set(sizes) == {100}
+    full = refit_band(_refit, X, y, shift=shift, ks=[0, 50], live=[True, True], n_boot=10,
+                      groups=groups, max_rows=400)
+    assert full["resample_size"] == 100 and full["scale"] == 1.0
+    with pytest.raises(ValueError, match="needs the curve's own deltas"):
+        refit_band(_refit, X, y, shift=shift, ks=[0, 50], live=[True, True], n_boot=10, max_rows=100)
+    with pytest.raises(ValueError, match="not both"):
+        refit_band(_refit, X, y, shift=shift, ks=[0, 50], live=[True, True], n_boot=10,
+                   max_rows=100, resample_size=50, center=curve["delta"])
 
 
 # ── through the energy-adjustment pipeline ──────────────────────────────────

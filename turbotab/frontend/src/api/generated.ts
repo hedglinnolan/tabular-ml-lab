@@ -3238,6 +3238,8 @@ export interface components {
             band: components["schemas"]["SubstitutionBand"] | null;
             /** @default null */
             band_estimate: components["schemas"]["BandEstimate"] | null;
+            /** @default null */
+            support: components["schemas"]["SubstitutionSupport"] | null;
         };
         /**
          * SubstitutionBand
@@ -3254,6 +3256,41 @@ export interface components {
             seconds: number;
             /** Failed */
             failed: number;
+            /**
+             * N Units
+             * @default null
+             */
+            n_units: number | null;
+            /**
+             * Resample Units
+             * @default null
+             */
+            resample_units: number | null;
+            /**
+             * Scale
+             * @default null
+             */
+            scale: number | null;
+            /**
+             * Interval
+             * @default null
+             */
+            interval: ("normal" | "percentile") | null;
+            /**
+             * Level
+             * @default null
+             */
+            level: number | null;
+            /**
+             * Min Ok Share
+             * @default null
+             */
+            min_ok_share: number | null;
+            /**
+             * Caption
+             * @default null
+             */
+            caption: string | null;
         };
         /** SubstitutionModel */
         SubstitutionModel: {
@@ -3273,6 +3310,26 @@ export interface components {
             stopped_at: number | null;
             /** Effect Label */
             effect_label: string | null;
+            /**
+             * Fixed Delta
+             * @default []
+             */
+            fixed_delta: (number | null)[];
+            /**
+             * Fixed Ci Low
+             * @default null
+             */
+            fixed_ci_low: (number | null)[] | null;
+            /**
+             * Fixed Ci High
+             * @default null
+             */
+            fixed_ci_high: (number | null)[] | null;
+            /**
+             * Band Ok
+             * @default null
+             */
+            band_ok: number | null;
         };
         /** SubstitutionPair */
         SubstitutionPair: {
@@ -3280,6 +3337,26 @@ export interface components {
             donor: string;
             /** Recipient */
             recipient: string;
+        };
+        /**
+         * SubstitutionSupport
+         * @description Which rows each k averages over, and how many each support check left out (per k).
+         */
+        SubstitutionSupport: {
+            /** Total */
+            total: string | null;
+            /** N Rows */
+            n_rows: number;
+            /** Not Recorded */
+            not_recorded: number;
+            /** Off Amount */
+            off_amount: number[];
+            /** Off Share */
+            off_share: number[];
+            /** Fixed Rows */
+            fixed_rows: number;
+            /** Fixed Through */
+            fixed_through: number | null;
         };
         /**
          * TargetInfo

@@ -5633,7 +5633,7 @@
           },
           "n_boot": {
             "type": "integer",
-            "maximum": 500.0,
+            "maximum": 2000.0,
             "minimum": 0.0,
             "title": "N Boot",
             "default": 0
@@ -5675,7 +5675,7 @@
           },
           "n_boot": {
             "type": "integer",
-            "maximum": 500.0,
+            "maximum": 2000.0,
             "minimum": 0.0,
             "title": "N Boot",
             "default": 0
@@ -6055,7 +6055,7 @@
           },
           "n_boot": {
             "type": "integer",
-            "maximum": 500.0,
+            "maximum": 2000.0,
             "minimum": 0.0,
             "title": "N Boot",
             "default": 0
@@ -9710,6 +9710,17 @@
               }
             ],
             "default": null
+          },
+          "support": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionSupport"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -9724,7 +9735,8 @@
           "models",
           "carried",
           "band",
-          "band_estimate"
+          "band_estimate",
+          "support"
         ],
         "title": "SubstitutionArtifact",
         "type": "object"
@@ -9759,6 +9771,94 @@
           "failed": {
             "title": "Failed",
             "type": "integer"
+          },
+          "n_units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Units"
+          },
+          "resample_units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Resample Units"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scale"
+          },
+          "interval": {
+            "anyOf": [
+              {
+                "enum": [
+                  "normal",
+                  "percentile"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Interval"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Level"
+          },
+          "min_ok_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Min Ok Share"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Caption"
           }
         },
         "required": [
@@ -9766,7 +9866,14 @@
           "n_rows",
           "grouped_by",
           "seconds",
-          "failed"
+          "failed",
+          "n_units",
+          "resample_units",
+          "scale",
+          "interval",
+          "level",
+          "min_ok_share",
+          "caption"
         ],
         "title": "SubstitutionBand",
         "type": "object"
@@ -9866,6 +9973,77 @@
               }
             ],
             "title": "Effect Label"
+          },
+          "fixed_delta": {
+            "default": [],
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Fixed Delta",
+            "type": "array"
+          },
+          "fixed_ci_low": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Fixed Ci Low"
+          },
+          "fixed_ci_high": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Fixed Ci High"
+          },
+          "band_ok": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Band Ok"
           }
         },
         "required": [
@@ -9876,7 +10054,11 @@
           "ci_high",
           "on_support_fraction",
           "stopped_at",
-          "effect_label"
+          "effect_label",
+          "fixed_delta",
+          "fixed_ci_low",
+          "fixed_ci_high",
+          "band_ok"
         ],
         "title": "SubstitutionModel",
         "type": "object"
@@ -9898,6 +10080,71 @@
           "recipient"
         ],
         "title": "SubstitutionPair",
+        "type": "object"
+      },
+      "SubstitutionSupport": {
+        "additionalProperties": false,
+        "description": "Which rows each k averages over, and how many each support check left out (per k).",
+        "properties": {
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "not_recorded": {
+            "title": "Not Recorded",
+            "type": "integer"
+          },
+          "off_amount": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Off Amount",
+            "type": "array"
+          },
+          "off_share": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Off Share",
+            "type": "array"
+          },
+          "fixed_rows": {
+            "title": "Fixed Rows",
+            "type": "integer"
+          },
+          "fixed_through": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Through"
+          }
+        },
+        "required": [
+          "total",
+          "n_rows",
+          "not_recorded",
+          "off_amount",
+          "off_share",
+          "fixed_rows",
+          "fixed_through"
+        ],
+        "title": "SubstitutionSupport",
         "type": "object"
       },
       "TargetInfo": {

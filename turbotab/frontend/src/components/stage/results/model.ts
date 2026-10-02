@@ -199,15 +199,15 @@ export function curveDomain(sub: SubstitutionArtifact): [number, number] {
   return [lo - pad, hi + pad];
 }
 
-/** The refits a requested band uses when the server names none (M1_CONTRACT §12.7). */
-export const BAND_BOOT = 50;
-/** Each refit sees at most this many training rows (§12.7). */
-export const BAND_ROWS = 2_000;
+/** The refits a requested band uses when the server names none (the server's BAND_BOOT). */
+export const BAND_BOOT = 200;
+/** Each refit resamples at most this many training rows; beyond, the band is rescaled (BAND_ROWS). */
+export const BAND_ROWS = 10_000;
 
 /**
  * The band the Results offer: the server's own measurement (it times one refit per family when
  * no band is asked for, and reports the band's refits and seconds). Without one, an estimate from
- * the measured fit times: each family's time per fit scaled to ≤ 2,000 rows, times the refits,
+ * the measured fit times: each family's time per fit scaled to ≤ 10,000 rows, times the refits,
  * doubled for the curve each refit draws.
  */
 export function bandOffer(sub: SubstitutionArtifact, fit: FitArtifact, folds: number): { nBoot: number; seconds: number } {

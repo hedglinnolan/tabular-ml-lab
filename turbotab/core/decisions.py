@@ -166,7 +166,8 @@ class SplitSpec(_Value):
         return value
 
 
-MAX_BOOT = 500
+# A percentile band needs 1,000 to 2,000 refits (Carpenter & Bithell 2000, Stat Med 19:1141).
+MAX_BOOT = 2000
 
 
 class SubstitutionSpec(_Value):

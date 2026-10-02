@@ -336,7 +336,7 @@ class DemoProject {
         state.substitution = { donor: d.donor, recipient: d.recipient, step_kcal: d.step_kcal ?? 100, ...(nBoot ? { n_boot: nBoot } : {}) } as never;
         if (nBoot) this.bandPairs.add(`${d.donor}>${d.recipient}`);
         sentence = nBoot
-          ? `An uncertainty band was added: each family was refit on \`${nBoot}\` bootstrap resamples of up to \`2,000\` training rows.`
+          ? `An uncertainty band was added: each family was refit on \`${nBoot}\` bootstrap resamples of the training rows.`
           : `Energy is moved from \`${d.donor}\` to \`${d.recipient}\` in steps of \`${d.step_kcal ?? 100}\` kcal.`;
         downstream = ["substitution"];
         ms = nBoot ? 3200 : 600;
@@ -428,7 +428,20 @@ class DemoProject {
     }));
     art.carried = art.carried ?? [];
     art.band = banded
-      ? { n_boot: band.n_boot, n_rows: band.rows, grouped_by: null, seconds: band.seconds, failed: 0 }
+      ? {
+          n_boot: band.n_boot,
+          n_rows: band.rows,
+          grouped_by: null,
+          seconds: band.seconds,
+          failed: 0,
+          n_units: band.rows,
+          resample_units: band.rows,
+          scale: 1,
+          interval: band.n_boot >= 1000 ? "percentile" : "normal",
+          level: 0.95,
+          min_ok_share: 0.9,
+          caption: `Shaded bands: 95% intervals from ${band.n_boot} refits of each model on bootstrap resamples of ${band.rows.toLocaleString("en-US")} training rows (mock).`,
+        }
       : null;
     art.band_estimate = banded ? null : { n_boot: band.n_boot, seconds: band.seconds };
     if (nBoot > 0 && !banded) art.note = `${art.note} (The mock holds a refit band for fat_total → carb only.)`;

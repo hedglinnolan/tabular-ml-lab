@@ -23,7 +23,7 @@ from turbotab.core.methods.nesting import nested_components
 from turbotab.core.methods.substitution import Shift
 from turbotab.core.models.artifacts import FitArtifact, SubstitutionArtifact
 from turbotab.core.stages.data import profile_stage
-from turbotab.core.stages.modeling import design_stage, fit_stage, substitution_stage
+from turbotab.core.stages.modeling import BAND_ROWS, design_stage, fit_stage, substitution_stage
 from turbotab.core.stages.proposals import proposals_stage
 from turbotab.core.stages.rows import PREDICTOR_ROLES, compute_cohort, roles_stage
 from turbotab.core.tests import modeling_fixtures as mf
@@ -246,10 +246,18 @@ def test_the_band_on_nhanes_comes_from_refits_has_width_and_holds_the_curve(nhan
             assert low < delta < high
             widths.append(high - low)
     assert widths and min(widths) > 0
-    assert sub["band"] == {"n_boot": 50, "n_rows": 2_000, "grouped_by": None,
-                           "seconds": sub["band"]["seconds"], "failed": 0}
+    # Every training row is resampled; past BAND_ROWS a refit draws that many and the band is
+    # rescaled to the full sample (audit MA-12: 2,000-row refits made the band about 2x too wide).
+    n_train = len(design.frames["training"])
+    band = sub["band"]
+    assert {k: band[k] for k in ("n_boot", "n_rows", "grouped_by", "failed", "n_units",
+                                 "resample_units", "interval")} == {
+        "n_boot": 50, "n_rows": n_train, "grouped_by": None, "failed": 0, "n_units": n_train,
+        "resample_units": min(n_train, BAND_ROWS), "interval": "normal"}
+    assert band["scale"] == pytest.approx(np.sqrt(min(n_train, BAND_ROWS) / n_train))
+    assert "Refits that succeeded: Linear model 50 of 50." in band["caption"]
     assert sub["band_estimate"] is None
-    assert "refits of each model on bootstrap resamples" in sub["note"]
+    assert "refits of its model, on bootstrap resamples" in sub["note"]
     assert "Linear model: refit 50 of 50" in [m for _, m in progress]
     assert [f for f, _ in progress] == sorted(f for f, _ in progress)
     assert sub["carried"] == ["fat_sat", "fat_mon", "fat_poly", "sugar"]
