@@ -1,0 +1,3280 @@
+{
+ "audit": "TurboTab Next validation audit",
+ "date": "2026-10-02",
+ "commit_audited": "bf3db6c",
+ "report": "AUDIT_REPORT.md",
+ "verdict_key": {
+  "confirmed": "an independent skeptic reproduced the finding and its severity",
+  "confirmed-different-severity": "reproduced, with the severity in severity_final",
+  "not-retested": "minor finding no skeptic re-tested; not established"
+ },
+ "summary": {
+  "raw_findings": 170,
+  "retested": 122,
+  "verdicts": {
+   "confirmed": 113,
+   "not-retested": 48,
+   "confirmed-different-severity": 9
+  },
+  "raw_final_severity": {
+   "critical": 36,
+   "major": 81,
+   "minor": 53
+  },
+  "dedup_critical_major": 77,
+  "dedup_by_layer_and_severity": {
+   "math": {
+    "critical": 5,
+    "major": 14
+   },
+   "methods": {
+    "critical": 9,
+    "major": 10
+   },
+   "intelligence": {
+    "critical": 5,
+    "major": 21
+   },
+   "routing": {
+    "critical": 4,
+    "major": 9
+   }
+  },
+  "confirmed_minor_dedup": 4
+ },
+ "clusters": [
+  {
+   "id": "MA-01",
+   "layer": "math",
+   "severity": "critical",
+   "title": "Repeated rows analyzed as independent when the seal could not group them",
+   "work_package": "WP2",
+   "members": [
+    "A1",
+    "E1"
+   ]
+  },
+  {
+   "id": "MA-02",
+   "layer": "math",
+   "severity": "critical",
+   "title": "Within-sex energy residual manufactures an exposure effect",
+   "work_package": "WP3",
+   "members": [
+    "B1"
+   ]
+  },
+  {
+   "id": "MA-03",
+   "layer": "math",
+   "severity": "critical",
+   "title": "Combining a person's rows uses the wrong order, and the receipt says otherwise",
+   "work_package": "WP1",
+   "members": [
+    "B11",
+    "C2",
+    "C8"
+   ]
+  },
+  {
+   "id": "MA-04",
+   "layer": "math",
+   "severity": "critical",
+   "title": "Turning a feature-by-sample table makes annotation columns into participants",
+   "work_package": "WP1",
+   "members": [
+    "C1"
+   ]
+  },
+  {
+   "id": "MA-05",
+   "layer": "math",
+   "severity": "critical",
+   "title": "Ambiguous dates read day-first without a word",
+   "work_package": "WP1",
+   "members": [
+    "C3"
+   ]
+  },
+  {
+   "id": "MA-06",
+   "layer": "math",
+   "severity": "major",
+   "title": "Cluster-robust intervals use normal critical values from as few as 8 clusters",
+   "work_package": "WP2",
+   "members": [
+    "A3",
+    "E5"
+   ]
+  },
+  {
+   "id": "MA-07",
+   "layer": "math",
+   "severity": "major",
+   "title": "OLS inference offers only homoskedastic standard errors",
+   "work_package": "WP2",
+   "members": [
+    "A4"
+   ]
+  },
+  {
+   "id": "MA-08",
+   "layer": "math",
+   "severity": "major",
+   "title": "Separated logistic fits print a huge log-odds with p = 1.0",
+   "work_package": "WP2",
+   "members": [
+    "A14"
+   ]
+  },
+  {
+   "id": "MA-09",
+   "layer": "math",
+   "severity": "major",
+   "title": "Cross-validated R² averaged per fold, biased low in small studies",
+   "work_package": "WP4",
+   "members": [
+    "A2"
+   ]
+  },
+  {
+   "id": "MA-10",
+   "layer": "math",
+   "severity": "major",
+   "title": "'Better than baseline' says yes on 25-31% of noise datasets",
+   "work_package": "WP4",
+   "members": [
+    "A6"
+   ]
+  },
+  {
+   "id": "MA-11",
+   "layer": "math",
+   "severity": "major",
+   "title": "Chronological holdout, but CV folds and tuning shuffle time",
+   "work_package": "WP4",
+   "members": [
+    "A8"
+   ]
+  },
+  {
+   "id": "MA-12",
+   "layer": "math",
+   "severity": "major",
+   "title": "Substitution '95%' band is the wrong width",
+   "work_package": "WP5",
+   "members": [
+    "A5"
+   ]
+  },
+  {
+   "id": "MA-13",
+   "layer": "math",
+   "severity": "major",
+   "title": "Substitution support checks columns, not the diet the swap creates",
+   "work_package": "WP5",
+   "members": [
+    "B10"
+   ]
+  },
+  {
+   "id": "MA-14",
+   "layer": "math",
+   "severity": "major",
+   "title": "Combining rows applies one rule to every numeric column",
+   "work_package": "WP1",
+   "members": [
+    "B12",
+    "C7"
+   ]
+  },
+  {
+   "id": "MA-15",
+   "layer": "math",
+   "severity": "major",
+   "title": "Integer-coded categories enter as one straight line",
+   "work_package": "WP1",
+   "members": [
+    "B14"
+   ]
+  },
+  {
+   "id": "MA-16",
+   "layer": "math",
+   "severity": "major",
+   "title": "SAS '.', decimal commas and '<LOD' turn numbers into text with no repair",
+   "work_package": "WP1",
+   "members": [
+    "C5"
+   ]
+  },
+  {
+   "id": "MA-17",
+   "layer": "math",
+   "severity": "major",
+   "title": "Excel and CSV disagree about what is missing",
+   "work_package": "WP1",
+   "members": [
+    "C6"
+   ]
+  },
+  {
+   "id": "MA-18",
+   "layer": "math",
+   "severity": "major",
+   "title": "One infinite value stops the analysis",
+   "work_package": "WP1",
+   "members": [
+    "C10"
+   ]
+  },
+  {
+   "id": "MA-19",
+   "layer": "math",
+   "severity": "major",
+   "title": "Flow steps keep unknowns under a label that says they qualified",
+   "work_package": "WP1",
+   "members": [
+    "C11"
+   ]
+  },
+  {
+   "id": "ME-01",
+   "layer": "methods",
+   "severity": "critical",
+   "title": "Missing values: one median fill whatever the purpose; no MI",
+   "work_package": "WP7",
+   "members": [
+    "A13",
+    "B4",
+    "D11",
+    "E2",
+    "G3",
+    "I7"
+   ]
+  },
+  {
+   "id": "ME-02",
+   "layer": "methods",
+   "severity": "critical",
+   "title": "'No energy adjustment' is the standard model, labeled absolute intake",
+   "work_package": "WP6",
+   "members": [
+    "B2",
+    "D1",
+    "G1"
+   ]
+  },
+  {
+   "id": "ME-03",
+   "layer": "methods",
+   "severity": "critical",
+   "title": "Residual method drops energy but claims the standard model's estimand",
+   "work_package": "WP6",
+   "members": [
+    "B6",
+    "B7",
+    "D2",
+    "G2"
+   ]
+  },
+  {
+   "id": "ME-04",
+   "layer": "methods",
+   "severity": "critical",
+   "title": "Several energy nutrients: swap for the omitted source labeled average of all others",
+   "work_package": "WP6",
+   "members": [
+    "B3"
+   ]
+  },
+  {
+   "id": "ME-05",
+   "layer": "methods",
+   "severity": "critical",
+   "title": "Substitution curves never check every energy source is in the model",
+   "work_package": "WP6",
+   "members": [
+    "D5"
+   ]
+  },
+  {
+   "id": "ME-06",
+   "layer": "methods",
+   "severity": "critical",
+   "title": "Survey design ignored under inference with no concern",
+   "work_package": "WP10",
+   "members": [
+    "D6",
+    "E10",
+    "G13",
+    "I4"
+   ]
+  },
+  {
+   "id": "ME-07",
+   "layer": "methods",
+   "severity": "critical",
+   "title": "Log-odds captioned 'change in predicted outcome'; no odds ratios",
+   "work_package": "WP8",
+   "members": [
+    "E4"
+   ]
+  },
+  {
+   "id": "ME-08",
+   "layer": "methods",
+   "severity": "critical",
+   "title": "No detection-limit-aware option; zeros taken at face value",
+   "work_package": "WP7",
+   "members": [
+    "F1",
+    "F11"
+   ]
+  },
+  {
+   "id": "ME-09",
+   "layer": "methods",
+   "severity": "critical",
+   "title": "Raw counts and intensities modeled without normalization",
+   "work_package": "WP11",
+   "members": [
+    "F2"
+   ]
+  },
+  {
+   "id": "ME-10",
+   "layer": "methods",
+   "severity": "major",
+   "title": "No calibration, no performance intervals, 'best' by AUC",
+   "work_package": "WP9",
+   "members": [
+    "A10",
+    "E9",
+    "G11"
+   ]
+  },
+  {
+   "id": "ME-11",
+   "layer": "methods",
+   "severity": "major",
+   "title": "Internal validation stops at one k-fold run or a random split",
+   "work_package": "WP9",
+   "members": [
+    "A11",
+    "E8",
+    "G10",
+    "I14"
+   ]
+  },
+  {
+   "id": "ME-12",
+   "layer": "methods",
+   "severity": "major",
+   "title": "Inference holds out 20% and fits coefficients on training rows only",
+   "work_package": "WP8",
+   "members": [
+    "A12",
+    "E6"
+   ]
+  },
+  {
+   "id": "ME-13",
+   "layer": "methods",
+   "severity": "major",
+   "title": "Three families opened together with no declared final model",
+   "work_package": "WP8",
+   "members": [
+    "A7"
+   ]
+  },
+  {
+   "id": "ME-14",
+   "layer": "methods",
+   "severity": "major",
+   "title": "All-components model unnamed; relative effect never computed",
+   "work_package": "WP6",
+   "members": [
+    "D3"
+   ]
+  },
+  {
+   "id": "ME-15",
+   "layer": "methods",
+   "severity": "major",
+   "title": "A total beside its parts silently changes its meaning",
+   "work_package": "WP6",
+   "members": [
+    "D7"
+   ]
+  },
+  {
+   "id": "ME-16",
+   "layer": "methods",
+   "severity": "major",
+   "title": "No Goldberg screen; no with/without-exclusion sensitivity analysis",
+   "work_package": "WP12",
+   "members": [
+    "D9"
+   ]
+  },
+  {
+   "id": "ME-17",
+   "layer": "methods",
+   "severity": "major",
+   "title": "Exposure-response straight-line only",
+   "work_package": "WP12",
+   "members": [
+    "D13"
+   ]
+  },
+  {
+   "id": "ME-18",
+   "layer": "methods",
+   "severity": "major",
+   "title": "Omics inference has no sound family, and the shelf hides it",
+   "work_package": "WP11",
+   "members": [
+    "F6"
+   ]
+  },
+  {
+   "id": "ME-19",
+   "layer": "methods",
+   "severity": "major",
+   "title": "No ordinal model; no scale scoring or reliability",
+   "work_package": "WP12",
+   "members": [
+    "F13"
+   ]
+  },
+  {
+   "id": "IN-01",
+   "layer": "intelligence",
+   "severity": "critical",
+   "title": "Nutrient recognizer reads substrings (fat mass, CRP, fibrinogen, fatty fish)",
+   "work_package": "WP13",
+   "members": [
+    "B5",
+    "H3"
+   ]
+  },
+  {
+   "id": "IN-02",
+   "layer": "intelligence",
+   "severity": "critical",
+   "title": "'Design' role swallows trial arms, conditions, batch and site",
+   "work_package": "WP13",
+   "members": [
+    "F5",
+    "H4"
+   ]
+  },
+  {
+   "id": "IN-03",
+   "layer": "intelligence",
+   "severity": "critical",
+   "title": "Survey code detector flags top answers of 6- and 7-point scales",
+   "work_package": "WP14",
+   "members": [
+    "F3",
+    "H1"
+   ]
+  },
+  {
+   "id": "IN-04",
+   "layer": "intelligence",
+   "severity": "critical",
+   "title": "Structural code detector flags real clinical extremes",
+   "work_package": "WP14",
+   "members": [
+    "H2"
+   ]
+  },
+  {
+   "id": "IN-05",
+   "layer": "intelligence",
+   "severity": "critical",
+   "title": "Outcome unit guessed, uncorrectable, written into estimands",
+   "work_package": "WP13",
+   "members": [
+    "C4"
+   ]
+  },
+  {
+   "id": "IN-06",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Identifier recognition inconsistent; measurements offered as IDs",
+   "work_package": "WP13",
+   "members": [
+    "H5",
+    "I13"
+   ]
+  },
+  {
+   "id": "IN-07",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "kJ read as kcal; implausible-intake count ignores the unit finding",
+   "work_package": "WP13",
+   "members": [
+    "D10",
+    "H9"
+   ]
+  },
+  {
+   "id": "IN-08",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Standard nutrient names missed (fat subtypes, DR2TKCAL, INFOODS)",
+   "work_package": "WP13",
+   "members": [
+    "B13",
+    "H10"
+   ]
+  },
+  {
+   "id": "IN-09",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Plausibility bands unsourced, adult-only, applied to dietary energy",
+   "work_package": "WP14",
+   "members": [
+    "H6",
+    "H7"
+   ]
+  },
+  {
+   "id": "IN-10",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Rates become 'time'; birth weight becomes 'sampling weight'",
+   "work_package": "WP13",
+   "members": [
+    "H16"
+   ]
+  },
+  {
+   "id": "IN-11",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Orientation from shape alone; log-scale tables never asked",
+   "work_package": "WP14",
+   "members": [
+    "F4",
+    "H13"
+   ]
+  },
+  {
+   "id": "IN-12",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Repeats vs time points from spacing; bare visit index stated as repeats",
+   "work_package": "WP14",
+   "members": [
+    "H14",
+    "I9"
+   ]
+  },
+  {
+   "id": "IN-13",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Lens hints misroute; contradiction check unwired",
+   "work_package": "WP14",
+   "members": [
+    "H11"
+   ]
+  },
+  {
+   "id": "IN-14",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Genomics card silent on log2-TPM and log-CPM",
+   "work_package": "WP14",
+   "members": [
+    "H12"
+   ]
+  },
+  {
+   "id": "IN-15",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Single-cell modeled as bulk",
+   "work_package": "WP14",
+   "members": [
+    "F12"
+   ]
+  },
+  {
+   "id": "IN-16",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Instrument recognizer misses PHQ-9, GAD-7, 0-10, 6-point",
+   "work_package": "WP14",
+   "members": [
+    "H17"
+   ]
+  },
+  {
+   "id": "IN-17",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Drift detector fires on drift-free small studies",
+   "work_package": "WP14",
+   "members": [
+    "F8"
+   ]
+  },
+  {
+   "id": "IN-18",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "One concentrated sample makes 300 metabolites look like 40",
+   "work_package": "WP14",
+   "members": [
+    "F9"
+   ]
+  },
+  {
+   "id": "IN-19",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Weight advice ignores fasting-subsample weights",
+   "work_package": "WP13",
+   "members": [
+    "H15"
+   ]
+  },
+  {
+   "id": "IN-20",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "'Adjustment not in dispute'; energy-related outcomes undetected",
+   "work_package": "WP15",
+   "members": [
+    "D18",
+    "G5"
+   ]
+  },
+  {
+   "id": "IN-21",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Density plus energy presented as clean composition",
+   "work_package": "WP15",
+   "members": [
+    "B9",
+    "G6"
+   ]
+  },
+  {
+   "id": "IN-22",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "'Unbiased in direction' false; no measurement-error caveat",
+   "work_package": "WP15",
+   "members": [
+    "D12",
+    "G9"
+   ]
+  },
+  {
+   "id": "IN-23",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "TNTC taught as failure, not right-censoring",
+   "work_package": "WP15",
+   "members": [
+    "G8"
+   ]
+  },
+  {
+   "id": "IN-24",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "'Scored on later data' false at the row level",
+   "work_package": "WP15",
+   "members": [
+    "A9"
+   ]
+  },
+  {
+   "id": "IN-25",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Lineage figure shows operations that did not happen",
+   "work_package": "WP15",
+   "members": [
+    "B15"
+   ]
+  },
+  {
+   "id": "IN-26",
+   "layer": "intelligence",
+   "severity": "major",
+   "title": "Survey pack mixes λ and √λ",
+   "work_package": "WP15",
+   "members": [
+    "F10"
+   ]
+  },
+  {
+   "id": "RO-01",
+   "layer": "routing",
+   "severity": "critical",
+   "title": "Eligibility rule on the outcome accepted; preview draws the outcome",
+   "work_package": "WP16",
+   "members": [
+    "I1"
+   ]
+  },
+  {
+   "id": "RO-02",
+   "layer": "routing",
+   "severity": "critical",
+   "title": "Outcome repairs after the split re-draw the held-out rows",
+   "work_package": "WP16",
+   "members": [
+    "I2"
+   ]
+  },
+  {
+   "id": "RO-03",
+   "layer": "routing",
+   "severity": "critical",
+   "title": "Censored follow-up never recognized",
+   "work_package": "WP17",
+   "members": [
+    "I3"
+   ]
+  },
+  {
+   "id": "RO-04",
+   "layer": "routing",
+   "severity": "critical",
+   "title": "Inference never asks exposure, estimand or adjustment set",
+   "work_package": "WP17",
+   "members": [
+    "E3",
+    "I8"
+   ]
+  },
+  {
+   "id": "RO-05",
+   "layer": "routing",
+   "severity": "major",
+   "title": "After opening, new held-out scores served; opened score not kept",
+   "work_package": "WP16",
+   "members": [
+    "I11"
+   ]
+  },
+  {
+   "id": "RO-06",
+   "layer": "routing",
+   "severity": "major",
+   "title": "Purpose barely routes; no customary/sound labels",
+   "work_package": "WP17",
+   "members": [
+    "G7",
+    "I6"
+   ]
+  },
+  {
+   "id": "RO-07",
+   "layer": "routing",
+   "severity": "major",
+   "title": "Energy menu puts residual first whatever the purpose",
+   "work_package": "WP17",
+   "members": [
+    "B8",
+    "D4"
+   ]
+  },
+  {
+   "id": "RO-08",
+   "layer": "routing",
+   "severity": "major",
+   "title": "Clustering above the person never asked",
+   "work_package": "WP17",
+   "members": [
+    "I5"
+   ]
+  },
+  {
+   "id": "RO-09",
+   "layer": "routing",
+   "severity": "major",
+   "title": "Predictors summarized after the outcome accepted",
+   "work_package": "WP18",
+   "members": [
+    "I12"
+   ]
+  },
+  {
+   "id": "RO-10",
+   "layer": "routing",
+   "severity": "major",
+   "title": "Outcome type skipped as fact when it is a choice",
+   "work_package": "WP18",
+   "members": [
+    "I10"
+   ]
+  },
+  {
+   "id": "RO-11",
+   "layer": "routing",
+   "severity": "major",
+   "title": "No 'not sure' lens",
+   "work_package": "WP18",
+   "members": [
+    "I15"
+   ]
+  },
+  {
+   "id": "RO-12",
+   "layer": "routing",
+   "severity": "major",
+   "title": "p-values live while the inference plan changes",
+   "work_package": "WP16",
+   "members": [
+    "E7"
+   ]
+  },
+  {
+   "id": "RO-13",
+   "layer": "routing",
+   "severity": "major",
+   "title": "Pooled QC: critical finding, no lever, false text",
+   "work_package": "WP18",
+   "members": [
+    "F7"
+   ]
+  },
+  {
+   "id": "MI-01",
+   "layer": "math",
+   "severity": "minor",
+   "title": "Histogram sawtooth; two implementations disagree",
+   "work_package": "WP14",
+   "members": [
+    "C9"
+   ]
+  },
+  {
+   "id": "MI-02",
+   "layer": "intelligence",
+   "severity": "minor",
+   "title": "Willett 800-4,200 attribution",
+   "work_package": "WP15",
+   "members": [
+    "D8",
+    "G4"
+   ]
+  },
+  {
+   "id": "MI-03",
+   "layer": "intelligence",
+   "severity": "minor",
+   "title": "Coach 'mostly' at r ≥ 0.3",
+   "work_package": "WP15",
+   "members": [
+    "G12"
+   ]
+  },
+  {
+   "id": "MI-04",
+   "layer": "intelligence",
+   "severity": "minor",
+   "title": "DBP 0 called entry error",
+   "work_package": "WP14",
+   "members": [
+    "H8"
+   ]
+  }
+ ],
+ "findings": [
+  {
+   "id": "A1",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "Inference CIs treat repeated rows as independent when the seal's basis is abandoned or undetermined",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "MA-01",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "A2",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "CV R² is the average of per-fold R² against each test fold's mean (biased low at small n); holdout R² uses the holdout mean",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-09",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "A3",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "Cluster-robust intervals use normal critical values, not t(G−1); grouping allowed from 8 clusters",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-06",
+   "related": null,
+   "skeptic_note": "Floor lives in utils/test_lockbox.py:70; close to critical at G = 8-12."
+  },
+  {
+   "id": "A4",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "OLS inference intervals are homoskedastic only; no robust option or check",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-07",
+   "related": null,
+   "skeptic_note": "Long & Ervin read only via secondary sources; rests on reproduced simulation."
+  },
+  {
+   "id": "A5",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "Substitution 95% band mis-sized: 2,000-row subsample too wide at large N, B = 50 under-covers at small N",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-12",
+   "related": null,
+   "skeptic_note": "Skeptic's single dataset ratio 1.96 (2.24 expected); coverage confirmed."
+  },
+  {
+   "id": "A6",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "'Better than baseline' fires in about 30% of no-signal binary datasets",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-10",
+   "related": null,
+   "skeptic_note": "Three-family 42% figure not re-run."
+  },
+  {
+   "id": "A7",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "Three families compared on the same folds and all holdouts revealed at once; no declared final model",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-13",
+   "related": null,
+   "skeptic_note": "Optimism modest with three families; each family's own score unbiased."
+  },
+  {
+   "id": "A8",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "With a chronological holdout, CV folds and inner CV are random in time",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-11",
+   "related": null,
+   "skeptic_note": "Families ranked the same in skeptic toy; random internal + temporal external is the TRIPOD paradigm."
+  },
+  {
+   "id": "A9",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "Chronological methods sentence says 'scored on later data', but most held-out rows can predate training rows",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-24",
+   "related": null,
+   "skeptic_note": "Share is 56-71% depending on visit spread."
+  },
+  {
+   "id": "A10",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "methods",
+   "title": "No calibration and no confidence intervals for any performance estimate",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-10",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "A11",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "methods",
+   "title": "No repeated CV and no bootstrap optimism correction",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-11",
+   "related": null,
+   "skeptic_note": "The app does run k-fold CV (partial mitigation)."
+  },
+  {
+   "id": "A12",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "routing",
+   "title": "Under inference the split still recommends a 20% holdout and coefficients use training rows only",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-12",
+   "related": null,
+   "skeptic_note": "Disclosed only in a step detail (linear.py:125)."
+  },
+  {
+   "id": "A13",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "methods",
+   "title": "Inference CIs computed on single median-imputed data",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-01",
+   "related": null,
+   "skeptic_note": "Skeptic coverage 0.892 (auditor 0.850)."
+  },
+  {
+   "id": "A14",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "Separation in unpenalized logistic regression prints a huge log-odds with p = 1.0",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-08",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "A15",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "Ungrouped elastic-net inner CV is unshuffled, so the penalty depends on file row order",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP4",
+   "skeptic_note": null
+  },
+  {
+   "id": "A16",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "Boosted trees' early-stopping validation split is by row, not by unit (above 10,000 rows)",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "MA-11",
+   "skeptic_note": null
+  },
+  {
+   "id": "A17",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "Chronological holdout drops fold stratification; rare-event folds can have no events",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "MA-11",
+   "skeptic_note": null
+  },
+  {
+   "id": "A18",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "Missing identifiers become one giant cluster in the CI computation",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "MA-01",
+   "skeptic_note": null
+  },
+  {
+   "id": "A19",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "Seal plan's holdout-R² precision formula overstates the SE about 2×",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP4",
+   "skeptic_note": null
+  },
+  {
+   "id": "A20",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "math",
+   "title": "Fit-time estimate scales linearly in columns; OLS grows about as p²",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP4",
+   "skeptic_note": null
+  },
+  {
+   "id": "A21",
+   "area": "A",
+   "area_name": "math: scoring, splits, seal",
+   "layer_auditor": "intelligence",
+   "title": "EPV ≥ 10 rule applied under prediction, where it is not an appropriate criterion",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP8",
+   "skeptic_note": null
+  },
+  {
+   "id": "B1",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "math",
+   "title": "Stratified residual adds each stratum's own constant and drops the strata column, creating a spurious exposure effect",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "MA-02",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "B2",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "methods",
+   "title": "'No energy adjustment' with an energy-role column fits the standard model but labels it absolute intake",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-02",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "B3",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "methods",
+   "title": "Several energy-bearing nutrients: leave-one-out model labeled 'average of all other sources'",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-04",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "B4",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "methods",
+   "title": "Imputation is single median, energy-blind, runs before energy adjustment, offered under inference without concern",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-01",
+   "related": null,
+   "skeptic_note": "Reported SE not smaller than empirical SD; the defect is bias, not an understated SE."
+  },
+  {
+   "id": "B5",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "math",
+   "title": "Name-pattern Atwater factors give 9 kcal/g to food groups, body composition and scores",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "IN-01",
+   "related": null,
+   "skeptic_note": "Unit note at modeling.py:622-625; set_substitution validator refuses non-exposures; more false positives found."
+  },
+  {
+   "id": "B6",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "math",
+   "title": "Log residual with E dropped is a rescaled density but labeled the same substitution as standard",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-03",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "B7",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "methods",
+   "title": "Residual drops E: 'identical coefficient and p-value' false; SEs inflate",
+   "severity_auditor": "major",
+   "verdict": "confirmed-different-severity",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-03",
+   "related": null,
+   "skeptic_note": "Raised to critical: with energy-correlated covariates the point estimate is biased under an equivalence claim."
+  },
+  {
+   "id": "B8",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "routing",
+   "title": "Energy menu ordered by custom; residual first under prediction; all-components missing",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "RO-07",
+   "related": null,
+   "skeptic_note": "'All-components missing' overstated: partition over every component is that model, unnamed. UI tag says 'usual'. Also feeds ME-14."
+  },
+  {
+   "id": "B9",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "methods",
+   "title": "Multivariable density shown with no caveats though the cited source calls it biased",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-21",
+   "related": null,
+   "skeptic_note": "'none' also carries no caveat."
+  },
+  {
+   "id": "B10",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "methods",
+   "title": "Substitution support mask checks marginal grams, not the composition the swap creates",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-13",
+   "related": null,
+   "skeptic_note": "Scholbeck arXiv v1 is 2022; 2024 is the journal version."
+  },
+  {
+   "id": "B11",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "math",
+   "title": "Aggregation ordering falls back to file order for text time columns while the receipt says it ordered by them",
+   "severity_auditor": "major",
+   "verdict": "confirmed-different-severity",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "MA-03",
+   "related": null,
+   "skeptic_note": "Raised to critical: change scores came out wrong-signed."
+  },
+  {
+   "id": "B12",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "methods",
+   "title": "'Change' differences every numeric column, including time-invariant covariates; outcome left as a level",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-14",
+   "related": null,
+   "skeptic_note": "ANCOVA-as-default recommendation contested (Lord's paradox); not verified."
+  },
+  {
+   "id": "B13",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "math",
+   "title": "SFA/MUFA/PUFA and NHANES DR1T* fat and sugar codes get no Atwater factor; refusal reason false",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-08",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "B14",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "methods",
+   "title": "Integer-coded nominal covariates enter as a single slope; no categorical declaration",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-15",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "B15",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "math",
+   "title": "Lineage figure misstates operations",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-25",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "B16",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "methods",
+   "title": "Refit band computed from successful refits but labeled with the number attempted",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "MA-12",
+   "skeptic_note": null
+  },
+  {
+   "id": "B17",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "methods",
+   "title": "Rows each substitution AME averages over shift with k",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "MA-13",
+   "skeptic_note": null
+  },
+  {
+   "id": "B18",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "math",
+   "title": "Sentinel SQL crashes on text columns; codes applied after unit conversion",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP1",
+   "skeptic_note": null
+  },
+  {
+   "id": "B19",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "math",
+   "title": "Partitioning fiber beside carbohydrate-by-difference double-counts fiber energy",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "ME-04",
+   "skeptic_note": null
+  },
+  {
+   "id": "B20",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "math",
+   "title": "A stratum gets its own residual regression from as few as 3 rows",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "MA-02",
+   "skeptic_note": null
+  },
+  {
+   "id": "B21",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "math",
+   "title": "A covariate read as the replicate index is exempt from aggregation and from the receipt",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP1",
+   "skeptic_note": null
+  },
+  {
+   "id": "B22",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "math",
+   "title": "'Mean' allowed for 0/1 outcomes; 'first' defined differently for outcome and predictors",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP1",
+   "skeptic_note": null
+  },
+  {
+   "id": "B23",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "math",
+   "title": "Missing-level columns decided from every row including held-out; unseen blanks become the reference level",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "ME-01",
+   "skeptic_note": null
+  },
+  {
+   "id": "B24",
+   "area": "B",
+   "area_name": "math: transforms (energy, substitution, aggregation, repairs)",
+   "layer_auditor": "methods",
+   "title": "%-of-energy exposures cannot be substituted",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP12",
+   "skeptic_note": null
+  },
+  {
+   "id": "C1",
+   "area": "C",
+   "area_name": "math: data (ingest, reshaping, counts)",
+   "layer_auditor": "math",
+   "title": "Transposing a feature table turns annotation columns into samples; numeric feature IDs lost; preview differs from stage",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "MA-04",
+   "related": null,
+   "skeptic_note": "In the m/z-RT case the preview shows them as sample IDs; reading was undetermined so the user declared the turn."
+  },
+  {
+   "id": "C2",
+   "area": "C",
+   "area_name": "math: data (ingest, reshaping, counts)",
+   "layer_auditor": "math",
+   "title": "Combining rows orders by file order when the time column is not ISO, while the receipt says otherwise",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "MA-03",
+   "related": null,
+   "skeptic_note": "Worse than reported: the structure stage proposes the text date as the time column."
+  },
+  {
+   "id": "C3",
+   "area": "C",
+   "area_name": "math: data (ingest, reshaping, counts)",
+   "layer_auditor": "math",
+   "title": "Ambiguous dates read day-first silently; month-coarsened US dates all become January",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "MA-05",
+   "related": null,
+   "skeptic_note": "Limited to all-ambiguous columns; downstream repeats reading also changes."
+  },
+  {
+   "id": "C4",
+   "area": "C",
+   "area_name": "math: data (ingest, reshaping, counts)",
+   "layer_auditor": "math",
+   "title": "Outcome unit guessed from name and magnitude, cannot be corrected, written into estimand sentences",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "IN-05",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "C5",
+   "area": "C",
+   "area_name": "math: data (ingest, reshaping, counts)",
+   "layer_auditor": "math",
+   "title": "Non-plain numeric spellings turn numeric columns into text; no repair exists",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-16",
+   "related": null,
+   "skeptic_note": "A leading space parses; a trailing space does not."
+  },
+  {
+   "id": "C6",
+   "area": "C",
+   "area_name": "math: data (ingest, reshaping, counts)",
+   "layer_auditor": "math",
+   "title": "Excel and CSV read 'None' and other tokens differently",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-17",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "C7",
+   "area": "C",
+   "area_name": "math: data (ingest, reshaping, counts)",
+   "layer_auditor": "math",
+   "title": "Averaging rows per unit averages integer-coded categories; receipt silent",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-14",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "C8",
+   "area": "C",
+   "area_name": "math: data (ingest, reshaping, counts)",
+   "layer_auditor": "math",
+   "title": "A record with a missing time sorts last, so 'last' and 'change' use undated records",
+   "severity_auditor": "major",
+   "verdict": "confirmed-different-severity",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "MA-03",
+   "related": null,
+   "skeptic_note": "Raised to critical: same class as C2."
+  },
+  {
+   "id": "C9",
+   "area": "C",
+   "area_name": "math: data (ingest, reshaping, counts)",
+   "layer_auditor": "math",
+   "title": "Histograms of discretized data show sawtooth and empty bins; two implementations disagree",
+   "severity_auditor": "major",
+   "verdict": "confirmed-different-severity",
+   "severity_final": "minor",
+   "independently_retested": true,
+   "dedup_id": "MI-01",
+   "related": null,
+   "skeptic_note": "Lowered to minor: counts feed only pictures."
+  },
+  {
+   "id": "C10",
+   "area": "C",
+   "area_name": "math: data (ingest, reshaping, counts)",
+   "layer_auditor": "math",
+   "title": "One infinite value crashes the summaries and the profile stage",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-18",
+   "related": null,
+   "skeptic_note": "Blocks modeling with no exit."
+  },
+  {
+   "id": "C11",
+   "area": "C",
+   "area_name": "math: data (ingest, reshaping, counts)",
+   "layer_auditor": "math",
+   "title": "Exclusion steps keep rows whose value is missing under a label that says they qualified",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-19",
+   "related": null,
+   "skeptic_note": "Borders on critical."
+  },
+  {
+   "id": "C12",
+   "area": "C",
+   "area_name": "math: data (ingest, reshaping, counts)",
+   "layer_auditor": "math",
+   "title": "Group keys merge '007', '07' and '7'",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP1",
+   "skeptic_note": null
+  },
+  {
+   "id": "C13",
+   "area": "C",
+   "area_name": "math: data (ingest, reshaping, counts)",
+   "layer_auditor": "math",
+   "title": "Relationship-change screen mean-fills NaN, attenuating r",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "C14",
+   "area": "C",
+   "area_name": "math: data (ingest, reshaping, counts)",
+   "layer_auditor": "math",
+   "title": "Precision loss on very large integers; engines differ in last digits",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP1",
+   "skeptic_note": null
+  },
+  {
+   "id": "D1",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "methods",
+   "title": "'No adjustment' keeps energy in the model while every label says absolute intake",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-02",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "D2",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "methods",
+   "title": "Residual drops energy but claims the standard model's substitution; with covariates it diverges, sometimes in sign",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-03",
+   "related": null,
+   "skeptic_note": "'Mathematically identical' (Tomova abstract) and 'algebraically identical' (discussion) both appear."
+  },
+  {
+   "id": "D3",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "methods",
+   "title": "All-components model missing as a named option",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-14",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "D4",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "routing",
+   "title": "Usual energy method and order ignore purpose; residual first for prediction",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "RO-07",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "D5",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "methods",
+   "title": "Substitution curves never check that every energy source is in the model",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-05",
+   "related": null,
+   "skeptic_note": "Mechanism is confounding through the 'other' composite."
+  },
+  {
+   "id": "D6",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "methods",
+   "title": "NHANES design columns detected then ignored; inference unweighted with no methods statement",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-06",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "D7",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "methods",
+   "title": "A total beside its parts changes what the total's coefficient means; never said",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-15",
+   "related": null,
+   "skeptic_note": "Case for critical under inference."
+  },
+  {
+   "id": "D8",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "intelligence",
+   "title": "'Willett, by sex' uses 800-4,200 for men and cites NHS for men",
+   "severity_auditor": "major",
+   "verdict": "confirmed-different-severity",
+   "severity_final": "minor",
+   "independently_retested": true,
+   "dedup_id": "MI-02",
+   "related": null,
+   "skeptic_note": "Lowered to minor: HPFS rule from Willett's group; numbers printed; custom rule possible."
+  },
+  {
+   "id": "D9",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "methods",
+   "title": "No Goldberg screen and no with/without-exclusion sensitivity analysis",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-16",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "D10",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "intelligence",
+   "title": "Unlabeled kJ energy without macronutrients read as kcal; coach blames over-reporting",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-07",
+   "related": null,
+   "skeptic_note": "Gap is the no-macronutrient path."
+  },
+  {
+   "id": "D11",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "methods",
+   "title": "Median imputation before energy adjustment breaks the nutrient-energy relationship",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-01",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "D12",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "intelligence",
+   "title": "Measurement error unhandled; 'unbiased in direction' overstated",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-22",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "D13",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "methods",
+   "title": "No quintile or spline option",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-17",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "D14",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "routing",
+   "title": "Log-scale residual cannot be chosen in the UI",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "ME-03",
+   "skeptic_note": null
+  },
+  {
+   "id": "D15",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "intelligence",
+   "title": "Strata offered for density; methods sentence claims stratification that does nothing",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "IN-25",
+   "skeptic_note": null
+  },
+  {
+   "id": "D16",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "math",
+   "title": "Sex-specific screen keeps rows with missing or unrecognized sex",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "MA-19",
+   "skeptic_note": null
+  },
+  {
+   "id": "D17",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "intelligence",
+   "title": "Multivariable density gets no caveat (confirmed via B9 and G6)",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "IN-21",
+   "skeptic_note": null
+  },
+  {
+   "id": "D18",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "intelligence",
+   "title": "Energy-related outcomes not detected; energy finding says adjustment is 'not in dispute'",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-20",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "D19",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "methods",
+   "title": "%-energy substitution and compositional models not offered",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP12",
+   "skeptic_note": null
+  },
+  {
+   "id": "D20",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "intelligence",
+   "title": "Pooled-cycle guidance omits the 1999-2002 exception",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "ME-06",
+   "skeptic_note": null
+  },
+  {
+   "id": "D21",
+   "area": "D",
+   "area_name": "methods: nutrition",
+   "layer_auditor": "methods",
+   "title": "Recalls averaged regardless of how many each person has",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "E1",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "methods",
+   "title": "Inference on repeated rows silently uses i.i.d. SEs when grouping is abandoned or undetermined",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "MA-01",
+   "related": null,
+   "skeptic_note": "basis.column still names the repeating column; only the grouping handed on is None."
+  },
+  {
+   "id": "E2",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "methods",
+   "title": "Under inference 'Impute' is median single imputation without the outcome; MI absent",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-01",
+   "related": null,
+   "skeptic_note": "Groenwold: indicator valid for baseline covariates in RCTs."
+  },
+  {
+   "id": "E3",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "intelligence",
+   "title": "Inference never asks for exposure, estimand or adjustment set; defaults adjust for mediators",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "RO-04",
+   "related": null,
+   "skeptic_note": "Forest plot hides covariates; skeptic also found the 'none' mislabel (ME-02)."
+  },
+  {
+   "id": "E4",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "methods",
+   "title": "Logistic and multinomial coefficients are log-odds labeled 'change in predicted'; no odds ratios",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-07",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "E5",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "methods",
+   "title": "Cluster-robust intervals use normal critical values with no few-cluster correction",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "MA-06",
+   "related": null,
+   "skeptic_note": "Even t(G−1) under-covers at G ≤ 12."
+  },
+  {
+   "id": "E6",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "methods",
+   "title": "Inference coefficients estimated on training rows only; seal question ignores purpose",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-12",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "E7",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "methods",
+   "title": "No analysis-plan lock for inference; p-values live while the plan changes",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "RO-12",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "E8",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "methods",
+   "title": "No bootstrap optimism or repeated CV; no performance CIs; holdout leads without naming the tension",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-11",
+   "related": null,
+   "skeptic_note": "TRIPOD+AI does not prescribe methods. Interval part also in ME-10."
+  },
+  {
+   "id": "E9",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "methods",
+   "title": "Calibration never computed; binary ranked by AUC, multiclass by macro-F1",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-10",
+   "related": null,
+   "skeptic_note": "Brier and log loss partly reflect calibration."
+  },
+  {
+   "id": "E10",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "methods",
+   "title": "Inference CIs ignore survey design with no concern on the table",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-06",
+   "related": null,
+   "skeptic_note": "Unweighted can be defensible if stratification is only on exogenous regressors."
+  },
+  {
+   "id": "E11",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "math",
+   "title": "Held-out R² precision formula overstates imprecision 2-8×",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP4",
+   "skeptic_note": null
+  },
+  {
+   "id": "E12",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "methods",
+   "title": "'n < 10·p unstable' unsupported for OLS; no Firth option",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "MA-08",
+   "skeptic_note": null
+  },
+  {
+   "id": "E13",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "methods",
+   "title": "Temporal and grouped structure not carried into tuning folds; early stopping splits rows at random",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "MA-11",
+   "skeptic_note": null
+  },
+  {
+   "id": "E14",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "methods",
+   "title": "Complete-case row loss under inference unflagged; 'blanks as a level' recommended regardless of purpose",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "ME-01",
+   "skeptic_note": null
+  },
+  {
+   "id": "E15",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "methods",
+   "title": "SMOTE and class weighting never shown, so the blueprint's own example tension is absent",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP9",
+   "skeptic_note": null
+  },
+  {
+   "id": "E16",
+   "area": "E",
+   "area_name": "methods: validation and inference",
+   "layer_auditor": "methods",
+   "title": "No internal-external (leave-one-cluster-out) validation",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP9",
+   "skeptic_note": null
+  },
+  {
+   "id": "F1",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "methods",
+   "title": "No LOD-aware option for non-detects; MZmine zeros treated as true zeros",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-08",
+   "related": null,
+   "skeptic_note": "'Silently' overstated (a warning exists); raw-scale bias direction not general."
+  },
+  {
+   "id": "F2",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "methods",
+   "title": "Raw counts and intensities enter linear models with no normalization or log; depth alone gives AUC 0.83",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-09",
+   "related": null,
+   "skeptic_note": "Skeptic got AUC 1.0 on every fold."
+  },
+  {
+   "id": "F3",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "methods",
+   "title": "Survey sentinel detector calls the top answers of 6- and 7-point scales missing codes",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "IN-03",
+   "related": null,
+   "skeptic_note": "Also flags 0 on a 0-5 scale."
+  },
+  {
+   "id": "F4",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "methods",
+   "title": "Orientation reading shape-only; undetermined question not applicable and cannot be reopened",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-11",
+   "related": null,
+   "skeptic_note": "Transposition part also in MA-04."
+  },
+  {
+   "id": "F5",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "methods",
+   "title": "Batch and run order proposed as 'Survey design' and dropped whatever the purpose",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-02",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "F6",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "methods",
+   "title": "Omics inference has no sound family; elastic net loses its caveat at p ≥ n; no FDR path",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-18",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "F7",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "methods",
+   "title": "Pooled QC rows: critical finding, no lever, false reassurance",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "RO-13",
+   "related": null,
+   "skeptic_note": "Numeric rule keyed by the class column might work via API; untested."
+  },
+  {
+   "id": "F8",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "methods",
+   "title": "Run-order drift detector fires on drift-free data at small n",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-17",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "F9",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "methods",
+   "title": "Redundancy count uses Pearson on raw intensities; one sample collapses 300 features to about 40",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-18",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "F10",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "math",
+   "title": "Survey pack attenuation guidance mixes λ and √λ",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-26",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "F11",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "methods",
+   "title": "Pack's planned QRILC default rests on value-recovery benchmarks; outcome-blind draws attenuate associations",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-08",
+   "related": null,
+   "skeptic_note": "Wei includes one downstream metric; code already prefers half-minimum."
+  },
+  {
+   "id": "F12",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "methods",
+   "title": "Single-cell refusal never reaches Next; single-cell modeled as bulk",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-15",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "F13",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "methods",
+   "title": "No ordinal outcome model; no scale scoring, reverse coding or reliability",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-19",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "F14",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "intelligence",
+   "title": "Genomics low counts get a 'Treat as missing' repair whose summary says they are counts",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "ME-01",
+   "skeptic_note": null
+  },
+  {
+   "id": "F15",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "intelligence",
+   "title": "Pack citations wrong in detail (Nygaard, Zindler, Eekhout)",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP15",
+   "skeptic_note": null
+  },
+  {
+   "id": "F16",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "methods",
+   "title": "Genomics data-type thresholds fitted to synthetic siblings",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "IN-14",
+   "skeptic_note": null
+  },
+  {
+   "id": "F17",
+   "area": "F",
+   "area_name": "methods: omics and survey",
+   "layer_auditor": "intelligence",
+   "title": "Departures from metabolomics convention (autoscaling, no log) never named",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP11",
+   "skeptic_note": null
+  },
+  {
+   "id": "G1",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "methods",
+   "title": "'No energy adjustment' keeps total energy in the model; every label says absolute intake",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-02",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "G2",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "'Willett residual' drops energy but is labeled 'same substitution as standard'",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-03",
+   "related": null,
+   "skeptic_note": "packs.py:2938-2945 does not literally say 'same substitution'; content.py:823 does."
+  },
+  {
+   "id": "G3",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "methods",
+   "title": "Imputation is single median for both purposes; methods sentence never names it; SETTLED claims purpose-blind",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-01",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "G4",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "'Willett, by sex' 800-4,200 attribution",
+   "severity_auditor": "major",
+   "verdict": "confirmed-different-severity",
+   "severity_final": "minor",
+   "independently_retested": true,
+   "dedup_id": "MI-02",
+   "related": null,
+   "skeptic_note": "Lowered to minor."
+  },
+  {
+   "id": "G5",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "Energy finding says adjustment 'not in dispute', contradicting the source and the app's own DISPUTED card",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-20",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "G6",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "Density plus energy presented as clean composition; all-components never named",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-21",
+   "related": null,
+   "skeptic_note": "All-components part also in ME-14."
+  },
+  {
+   "id": "G7",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "routing",
+   "title": "North star 5 unimplemented: no customary/sound labels; cards ordered by custom",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "RO-06",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "G8",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "TNTC taught as a measurement failure; it is right-censored",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-23",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "G9",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "'Unbiased in direction' overstates classical-error theory for multi-nutrient models",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-22",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "G10",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "Unsourced 50-row threshold; repeated CV and bootstrap not offered",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-11",
+   "related": null,
+   "skeptic_note": "Threshold too low by 2-4×, not an order of magnitude."
+  },
+  {
+   "id": "G11",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "Calibration taught as SETTLED but never computed; best model by AUC alone",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-10",
+   "related": null,
+   "skeptic_note": "The banner names the metric (partial mitigation)."
+  },
+  {
+   "id": "G12",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "Coach says 'mostly how much people eat' at |r| ≥ 0.3",
+   "severity_auditor": "major",
+   "verdict": "confirmed-different-severity",
+   "severity_final": "minor",
+   "independently_retested": true,
+   "dedup_id": "MI-03",
+   "related": null,
+   "skeptic_note": "Lowered to minor: true r printed alongside."
+  },
+  {
+   "id": "G13",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "With NHANES design columns present, inference runs unweighted with SRS SEs and no pushed concern",
+   "severity_auditor": "major",
+   "verdict": "confirmed-different-severity",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-06",
+   "related": null,
+   "skeptic_note": "Raised to critical."
+  },
+  {
+   "id": "G14",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "Unsupported SETTLED superlative about the flow diagram",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP15",
+   "skeptic_note": null
+  },
+  {
+   "id": "G15",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "'14 of 24 pairs' is about Goldberg, not fixed-kcal screens",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP15",
+   "skeptic_note": null
+  },
+  {
+   "id": "G16",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "Option text contradicts code (multiclass metric; trees and missing values)",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP15",
+   "skeptic_note": null
+  },
+  {
+   "id": "G17",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "Log residual not producible in UI; log-case methods sentence misstates the add-back",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "ME-03",
+   "skeptic_note": null
+  },
+  {
+   "id": "G18",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "Same claim badged SETTLED and CONVENTION in different cards",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP15",
+   "skeptic_note": null
+  },
+  {
+   "id": "G19",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "Polychoric badged SETTLED; item-rest calls for polyserial",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP15",
+   "skeptic_note": null
+  },
+  {
+   "id": "G20",
+   "area": "G",
+   "area_name": "intelligence: claims",
+   "layer_auditor": "intelligence",
+   "title": "Pooled-cycle rule omits 1999-2002 exception; review uncited",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "ME-06",
+   "skeptic_note": null
+  },
+  {
+   "id": "H1",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Survey sentinel detector reads top categories of 6-point and skewed 7-point scales as codes",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "IN-03",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "H2",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Structural sentinel detector flags clean clinical measurements at 2-15% per column",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "IN-04",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "H3",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Nutrient recognizer matches substrings: body composition, serum labs and drugs become nutrients",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "IN-01",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "H4",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Treatment, arm, condition, phenotype, fasting become 'design: acquisition column' and leave the model",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "IN-02",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "H5",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Three identifier recognizers disagree; common IDs missed; site IDs as identifiers corrupt the seal",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-06",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "H6",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Dietary energy treated as a clinical physiology variable; contradictory instructions",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-09",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "H7",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Plausibility bands are unsourced demo defaults, adult-only",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-09",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "H8",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Diastolic BP of 0 called 'almost certainly entry errors'",
+   "severity_auditor": "major",
+   "verdict": "confirmed-different-severity",
+   "severity_final": "minor",
+   "independently_retested": true,
+   "dedup_id": "MI-04",
+   "related": null,
+   "skeptic_note": "Lowered to minor: 'physiologically impossible' defensible; only 'entry error' wrong."
+  },
+  {
+   "id": "H9",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Implausible-intake finding applies kcal cut-offs to a kJ column",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-07",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "H10",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Exact-alias energy recognition misses DR2TKCAL, INFOODS; half the NHANES nutrients become covariates",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-08",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "H11",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Lens suggestion misroutes omics, surveys and clinical tables to metabolomics; contradiction check unwired",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-13",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "H12",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Genomics data-type card silent on log2-TPM and log-CPM",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-14",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "H13",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Orientation never asks about log-scale or scaled feature-major tables",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-11",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "H14",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Repeats versus time points read from spacing",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-12",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "H15",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Survey-weight guidance always says WTDRD1, even with fasting-subsample analytes",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-19",
+   "related": null,
+   "skeptic_note": "Whether the weight is ever pre-selected into an estimate was not traced."
+  },
+  {
+   "id": "H16",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Rate exposures become 'time'; birth weight becomes 'sampling weight'",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-10",
+   "related": null,
+   "skeptic_note": "'met' to covariate alone would be minor."
+  },
+  {
+   "id": "H17",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Instrument recognizer misses PHQ-9, GAD-7, 6-point, 0-10, 9-point",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-16",
+   "related": null,
+   "skeptic_note": "9-point hedonic was not silent: misread as 1-7 with 8 and 9 flagged."
+  },
+  {
+   "id": "H18",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "Atwater 'mixed units' verdict tests ratio spread, not drift, at critical wording",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP14",
+   "skeptic_note": null
+  },
+  {
+   "id": "H19",
+   "area": "H",
+   "area_name": "intelligence: detectors and recognizers",
+   "layer_auditor": "intelligence",
+   "title": "One issue produces a pile of critical cards; stratum 999 read two ways",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP14",
+   "skeptic_note": null
+  },
+  {
+   "id": "I1",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "Eligibility rule on the outcome accepted silently; preview shows the outcome histogram",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "RO-01",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "I2",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "Any change to the outcome-measured universe after the seal silently re-draws held-out rows",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "RO-02",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "I3",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "Time-to-event structure never asked; censored cohort modeled as binary",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "RO-03",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "I4",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "Survey design recorded but never routed; unweighted inference; eligibility deletes rows",
+   "severity_auditor": "critical",
+   "verdict": "confirmed",
+   "severity_final": "critical",
+   "independently_retested": true,
+   "dedup_id": "ME-06",
+   "related": null,
+   "skeptic_note": "survey_weights warning fires and routes to roles; answering roles marks it answered."
+  },
+  {
+   "id": "I5",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "Clustering above the person never asked; site defaults to design",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "RO-08",
+   "related": null,
+   "skeptic_note": "Role-default part also in IN-02."
+  },
+  {
+   "id": "I6",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "Declared purpose barely changes routing; holdout leads under inference; indicators pass; single imputation offered",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "RO-06",
+   "related": null,
+   "skeptic_note": "Holdout part in ME-12; indicator part in ME-01."
+  },
+  {
+   "id": "I7",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "intelligence",
+   "title": "Outcome-in-imputation rule stated two opposite, purpose-blind ways",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-01",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "I8",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "No exposure-of-interest or confounder question under inference; Table 2 fallacy",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "RO-04",
+   "related": null,
+   "skeptic_note": "Partly overstated: roles separate exposure and covariate; the forest plot shows exposures only."
+  },
+  {
+   "id": "I9",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "A bare visit index is stated as repeats; mean recommended; temporal question skipped",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-12",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "I10",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "Task skipped at high confidence for ordered text and skewed biomarkers",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "RO-10",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "I11",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "After opening, held-out set can be re-drawn and new scores served",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "RO-05",
+   "related": null,
+   "skeptic_note": "Marking exists (amber band, post_seal flags); at-opening scores still not stored."
+  },
+  {
+   "id": "I12",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "Aggregation accepts predictors summarized after the outcome",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "RO-09",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "I13",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "Grain suggestions offer clinical measurements as unit identifiers",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "IN-06",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "I14",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "Split leads with a single 20% holdout; bootstrap absent; tension unnamed",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "ME-11",
+   "related": null,
+   "skeptic_note": "CV-only is on the menu (last); PROBAST item is 4.8."
+  },
+  {
+   "id": "I15",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "Lens question has no 'something else / not sure'",
+   "severity_auditor": "major",
+   "verdict": "confirmed",
+   "severity_final": "major",
+   "independently_retested": true,
+   "dedup_id": "RO-11",
+   "related": null,
+   "skeptic_note": null
+  },
+  {
+   "id": "I16",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "Outcome-distribution withholding at eligibility is cosmetic",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "RO-01",
+   "skeptic_note": null
+  },
+  {
+   "id": "I17",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "Temporal question's gate reason false for one-row-per-person data; wording promises forecasting",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP17",
+   "skeptic_note": null
+  },
+  {
+   "id": "I18",
+   "area": "I",
+   "area_name": "routing",
+   "layer_auditor": "routing",
+   "title": "Multiply-imputed implicates (NHANES DXA) have no route",
+   "severity_auditor": "minor",
+   "verdict": "not-retested",
+   "severity_final": "minor",
+   "independently_retested": false,
+   "dedup_id": null,
+   "related": "WP18",
+   "skeptic_note": null
+  }
+ ]
+}
