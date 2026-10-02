@@ -29,7 +29,7 @@ import type {
   TargetInfoArtifact,
 } from "../api/schema";
 import { fold, type MockProject, type MockServer } from "./db";
-import teachingJson from "./m1-teaching.json";
+import teachingJson from "./m2-teaching.json";
 import { nhanesLike } from "./m1-nhanes";
 import { route } from "./m1-router";
 import {
@@ -45,6 +45,7 @@ import {
   type CohortRows,
 } from "./m1-stages";
 import { sentenceFor, validateM1, voiceFindings } from "./m1-voice";
+import { FEATURE_MAJOR_NAME, effectiveGrain, m2Mock, metabolomicsFeatureMajor } from "./m2-record";
 
 type M1Stage = keyof M1StageArtifacts;
 
@@ -179,7 +180,19 @@ export function m1RecordHandlers(server: MockServer): HttpHandler[] {
   const projects = new Map<string, M1Project>();
   let jobSeq = 0;
 
-  server.sentenceFor = (p, d) => sentenceFor(p.source, d, fold(p.records), p.records);
+  const m2 = m2Mock(fold);
+  server.sentenceFor = (p, d) =>
+    m2.sentence(p, d, fold(p.records), d.kind === "open_seal" ? heldOut(p) : null) ??
+    sentenceFor(p.source, d, fold(p.records), p.records);
+  /** The drawn split's held-out rows: what opening the seal scores. */
+  const heldOut = (p: MockProject): number | null => {
+    const m = projects.get(p.summary.id);
+    const key = m?.latest.split;
+    const split = key
+      ? (m!.artifacts.get(`split@${key}`) as { n_holdout: number } | undefined)
+      : undefined;
+    return split?.n_holdout ?? null;
+  };
 
   const blank = (stage: M1Stage): StageStatus => ({
     stage,
@@ -288,7 +301,8 @@ export function m1RecordHandlers(server: MockServer): HttpHandler[] {
         const roles =
           (artifactOf(m, "roles", keys.roles) as RolesArtifact | undefined) ??
           rolesArtifact(ds, state);
-        return split(ds, state, c, roles, task);
+        // The grain in force: a stated grain (a unique identifier) is the seal's basis too.
+        return split(ds, { ...state, grain: effectiveGrain(p, state) }, c, roles, task);
       }
       case "shelf":
         return shelf(state, artifactOf(m, "cohort", keys.cohort)!, task);
@@ -485,14 +499,24 @@ export function m1RecordHandlers(server: MockServer): HttpHandler[] {
     const p = server.get(pid);
     const m = ensure(pid);
     if (!v || !p || !m) return null;
-    const stages = { ...v.stages, ...m.stages };
-    const interview: InterviewStep[] = route(
-      v.state,
+    const stages = { ...v.stages, ...m.stages, ...m2.statuses(p) };
+    // M2 (m2-record.ts): the grain stated by a unique identifier counts as answered for what
+    // follows it; then the seal's opening and the findings held for each question.
+    const interview: InterviewStep[] = m2.route(
+      p,
+      route(
+        m2.routingState(p, v.state),
+        stages,
+        targetInfoOf(p),
+        v.decisions,
+        DEPS,
+        energyBearing,
+        {
+          featureMajor:
+            p.source.name === FEATURE_MAJOR_NAME && p.source.columns[0]?.name === "feature_id",
+        },
+      ),
       stages,
-      targetInfoOf(p),
-      v.decisions,
-      DEPS,
-      energyBearing,
     );
     return { ...v, stages, interview };
   }
@@ -519,11 +543,35 @@ export function m1RecordHandlers(server: MockServer): HttpHandler[] {
     };
   }
 
-  // The NHANES-shaped table the M1 journey runs on, newest in the Recent list.
+  // M2: a metabolomics table exported features-in-rows (the orientation question fires on it),
+  // then the NHANES-shaped table the M1 journey runs on, newest in the Recent list.
+  server.createProject(metabolomicsFeatureMajor(), "path", {
+    instant: true,
+    createdAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+  });
   server.createProject(nhanesLike(), "upload", { instant: true });
+
+  /** The working table's row count the seal plan counts from: the latest cohort's, else all. */
+  const analyzed = (pid: string, p: MockProject): number => {
+    const m = projects.get(pid);
+    const key = m?.latest.cohort;
+    const c = key
+      ? (m!.artifacts.get(`cohort@${key}`) as { n_final: number } | undefined)
+      : undefined;
+    return c?.n_final ?? p.source.nRows;
+  };
 
   return [
     http.get("/api/teaching", () => HttpResponse.json(TEACHING)),
+
+    // A repair's preview (M2 §4): the changed cells and the column's distribution. Anything else
+    // falls through to the stage mock's captured previews.
+    http.post("/api/projects/:pid/preview", async ({ params, request }) => {
+      const p = server.get(String(params.pid));
+      if (!p) return undefined;
+      const out = m2.preview(p, (await request.clone().json()) as Decision);
+      return out ? HttpResponse.json(out) : undefined;
+    }),
 
     http.get("/api/projects/:pid", ({ params }) => {
       const v = view(String(params.pid));
@@ -535,30 +583,60 @@ export function m1RecordHandlers(server: MockServer): HttpHandler[] {
       const p = server.get(pid);
       if (!p) return undefined;
       const decision = (await request.clone().json()) as Decision;
-      const refusal = validateM1(p.source, decision, fold(p.records));
+      const m = ensure(pid);
+      const refusal =
+        m2.validate(p, decision, { ...p.stages, ...(m?.stages ?? {}) }) ??
+        validateM1(p.source, decision, fold(p.records));
       if (refusal) return HttpResponse.json(refusal, { status: 409 });
-      ensure(pid);
+      // A turned table replaces the one every stage reads before the decision recomputes them.
+      m2.beforeDecision(p, decision);
       const out = server.decide(pid, decision);
       if ("error" in out) return HttpResponse.json(out, { status: 409 });
       reconcile(pid);
+      m2.reconcile(pid, p, (type, data) => server.emit(pid, type, data));
       return HttpResponse.json(view(pid));
     }),
 
     http.get("/api/projects/:pid/stages/:stage", ({ params }) => {
       const pid = String(params.pid);
       const stage = String(params.stage) as AnyStageName;
+      const p = server.get(pid);
       if (isM1(stage)) {
         const result = stageResult(pid, stage);
+        if (result && p && stage === "fit" && result.artifact) {
+          // The held-out scores are computed and withheld until the seal is opened (M2 §3).
+          const state = fold(p.records);
+          const fit = result.artifact as M1StageArtifacts["fit"];
+          if (!state.seal_opened) {
+            result.artifact = {
+              ...fit,
+              holdout_sealed: true,
+              models: fit.models.map((x) => ({ ...x, holdout: null })),
+            };
+          }
+        }
         return result ? HttpResponse.json(result) : undefined;
       }
       if (stage === "findings") {
-        const p = server.get(pid);
         const result = server.stageResult(pid, "findings");
         if (!p || !result?.artifact) return undefined;
-        return HttpResponse.json({
-          ...result,
-          artifact: voiceFindings(p.source, result.artifact as FindingsArtifact, fold(p.records)),
+        const voiced = voiceFindings(
+          p.source,
+          result.artifact as FindingsArtifact,
+          fold(p.records),
+        );
+        return HttpResponse.json({ ...result, artifact: m2.findings(p, voiced) });
+      }
+      if (p && (stage === "oriented" || stage === "structure" || stage === "seal_plan")) {
+        const st = m2.statuses(p)[stage];
+        if (!st) return undefined;
+        const ti = targetInfoOf(p);
+        const state = fold(p.records);
+        const artifact = m2.artifact(p, stage, {
+          task: state.task ?? ti?.task ?? null,
+          nAnalyzed: analyzed(pid, p),
         });
+        return HttpResponse.json({ stage, key: st.key, fresh: true, status: "fresh", artifact });
       }
       return undefined;
     }),

@@ -1,0 +1,1384 @@
+[
+  {
+    "key": "lens",
+    "title": "What kind of data this is",
+    "question": "What kind of measurements are in this table?",
+    "one_liner": "Pick all that apply. It changes what TurboTab checks and suggests, never what you can do.",
+    "why": "Each field reads a table its own way: an assay has more columns than rows, a recall file repeats each person, a lab column can hold two units. A lens runs that field's checks and puts its usual choices first. It never hides a column, a model or an option.",
+    "consumer": "The findings, the column roles and the order of every suggestion read it.",
+    "options": [
+      {
+        "value": "dietary",
+        "label": "Dietary intake",
+        "consequence": "Checks energy units and implausible intakes; offers energy adjustment and substitution curves."
+      },
+      {
+        "value": "clinical",
+        "label": "Clinical measurements and labs",
+        "consequence": "Separates impossible values from abnormal ones; checks units and censored results."
+      },
+      {
+        "value": "metabolomics",
+        "label": "Metabolomics or proteomics",
+        "consequence": "Looks for QC injections, run order, drift and values below detection."
+      },
+      {
+        "value": "genomics",
+        "label": "Genomics or transcriptomics",
+        "consequence": "Reads what the values are, counts or normalized, and plans for few samples."
+      },
+      {
+        "value": "survey",
+        "label": "Survey or questionnaire instruments",
+        "consequence": "Finds shared response scales and codes outside them, such as 9 for no answer."
+      }
+    ],
+    "terms": [
+      {
+        "term": "lens",
+        "definition": "A field's way of reading a table: which checks run and which choices are offered first. Several can apply at once."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Dietary intake",
+          "body": "Total energy is a strong determinant of every nutrient's intake, so nutrient associations are confounded by it; energy adjustment is the field's methodological signature. The dietary pack also checks energy units by the Atwater reconstruction (4·protein + 4·carbohydrate + 9·fat + 7·alcohol) and offers the implausible-intake screens.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#04 · Energy adjustment — the methodological signature"
+          }
+        },
+        {
+          "heading": "Clinical measurements and labs",
+          "body": "A reference interval holds the central 95% of healthy people by construction and is for annotation only. Plausibility bounds flag values no living patient could have. The two are different categories, and no generic outlier rule tells them apart; the bounds themselves are institution-specific.",
+          "evidence": {
+            "status": "CONVENTION",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A1.2 · Reference ranges vs physiological plausibility"
+          }
+        },
+        {
+          "heading": "Metabolomics and proteomics",
+          "body": "Values below detection are usually filled with half the feature's minimum, the de-facto default. It is widely used and statistically criticized: it collapses every missing value to one point, deflating variance.",
+          "evidence": {
+            "status": "CONVENTION",
+            "source": "research/METABOLOMICS_PACK.md#03 · Missing data"
+          }
+        },
+        {
+          "heading": "Genomics and transcriptomics",
+          "body": "With more features than samples, an unpenalized model is degenerate rather than merely overfit: infinitely many coefficient vectors fit the data exactly. Regularization is mandatory.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/GENOMICS_PACK.md#08 · Modeling at p >> n"
+          }
+        },
+        {
+          "heading": "Survey instruments",
+          "body": "Whether a Likert item is ordinal or interval is genuinely disputed. Run the other treatment as a sensitivity analysis; if the conclusion holds under both, the dispute is moot for your paper.",
+          "evidence": {
+            "status": "DISPUTED",
+            "source": "research/CLINICAL_SURVEY_PACK.md#B4 · Ordinal vs interval"
+          }
+        }
+      ]
+    },
+    "evidence": null
+  },
+  {
+    "key": "orientation",
+    "title": "Which way round the table is",
+    "question": "Which way round is this table?",
+    "one_liner": "Assay exports come both ways; if the columns are samples, every check reads across the wrong axis.",
+    "why": "In a table of samples, columns are analytes and differ by orders of magnitude while rows barely differ; here it reads the other way. A transposed table does not fail: it runs cleanly and means nothing. Turning it changes what a row is, so it is settled before anything is diagnosed or sealed.",
+    "consumer": "The structural diagnosis, the findings, the outcome list and every later question read the turned table.",
+    "options": [
+      {
+        "value": "sample_major",
+        "label": "Rows are samples",
+        "consequence": "The table stays as supplied; the record notes it was checked."
+      },
+      {
+        "value": "feature_major",
+        "label": "Rows are features",
+        "consequence": "The table is turned: each sample becomes a row and each feature a column."
+      }
+    ],
+    "terms": [
+      {
+        "term": "feature-major",
+        "definition": "Features such as metabolites or genes in rows and samples in columns: the transpose of what modeling expects."
+      },
+      {
+        "term": "transposed",
+        "definition": "Turned around, so that the rows become columns and the columns become rows."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Exports come both ways",
+          "body": "Vendor exports from XCMS, MZmine, MS-DIAL and similar tools are overwhelmingly features in rows; MetaboAnalyst's own table is samples in rows. A tool must never guess silently: it presents the reading with its evidence and asks.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/METABOLOMICS_PACK.md#01 · Import and structure"
+          }
+        },
+        {
+          "heading": "Genes in rows is the convention",
+          "body": "An expression matrix is stored with genes in rows and samples in columns, the inverse of what the rest of the app assumes. An undetected transpose does not error; it produces a PCA of genes labeled as samples.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/GENOMICS_PACK.md#01 · Import and structure"
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "status": "SETTLED",
+      "source": "research/METABOLOMICS_PACK.md#01 · Import and structure"
+    }
+  },
+  {
+    "key": "repairs",
+    "title": "Repairs before the outcome",
+    "question": "Should this be repaired before anything is counted?",
+    "one_liner": "A repair fixes how a value is written, row by row; it previews on your rows first and is recorded.",
+    "why": "A sentinel code such as 9 on a 1–5 item is a missing answer, not a strong opinion; a value impossible in a living patient is an entry error. Repairs that look only at their own row run on the table now. Anything learned from many rows waits for the training folds.",
+    "consumer": "The working table, the findings, the outcome list and every count downstream read the repaired values.",
+    "options": [
+      {
+        "value": "apply",
+        "label": "Apply the repair",
+        "consequence": "The changed cells are written into the working table and listed in the record."
+      },
+      {
+        "value": "defer",
+        "label": "Ask me later",
+        "consequence": "The finding waits inside the question it belongs to, checked and attributed."
+      },
+      {
+        "value": "dismiss",
+        "label": "Dismiss it",
+        "consequence": "Nothing changes; the record keeps that it was seen and set aside."
+      }
+    ],
+    "terms": [
+      {
+        "term": "sentinel code",
+        "definition": "A number standing for an answer that is not a value, such as 9 for don't know or 999 for not measured."
+      },
+      {
+        "term": "row-local",
+        "definition": "Computed from one row's own cells, so it leaks nothing about other rows and can run before the seal."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Sentinel codes",
+          "body": "In a 1–5 item, a 9 is not extremely agree; it is don't know or refused. Sentinels must be recoded, never automatically: some legitimate scales do run 0–9.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/CLINICAL_SURVEY_PACK.md#B1.1 · Detecting Likert blocks"
+          }
+        },
+        {
+          "heading": "Impossible is not abnormal",
+          "body": "Plausibility bounds flag values no living patient could have; a reference interval holds the central 95% of healthy people and is for annotation only. The bounds themselves are institution-specific.",
+          "evidence": {
+            "status": "CONVENTION",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A1.2 · Reference ranges vs physiological plausibility"
+          }
+        },
+        {
+          "heading": "Failures are not values",
+          "body": "TNTC and QNS are measurement failures, not censoring at a detection limit: treat them as missing, not as extreme values.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A1.3 · Lab value formats and censored values"
+          }
+        }
+      ]
+    },
+    "evidence": null
+  },
+  {
+    "key": "target",
+    "title": "The outcome",
+    "question": "Which column is the outcome you want to explain or predict?",
+    "one_liner": "Everything downstream is built around it: who is counted, how rows are split, and what the models learn.",
+    "why": "Rows without the outcome leave the analysis first, so the outcome sets the first count in the participant flow. It also decides the task, the metrics and which findings apply. When the outcome is itself energy-related, such as weight, BMI or diabetes, adjusting for reported energy needs extra care.",
+    "consumer": "Task detection, the participant flow, the split and every model read it.",
+    "options": [],
+    "terms": [
+      {
+        "term": "outcome",
+        "definition": "The column a model learns to predict or explain; also called the target or the dependent variable."
+      },
+      {
+        "term": "participant flow",
+        "definition": "The count of rows at each step, from the file to the analysis, with the reason each step removed rows."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "When the outcome is energy-related",
+          "body": "Total energy is plausibly on the causal path from diet composition to adiposity, and adiposity causes under-reporting of energy. Conditioning on reported energy can then be over-adjustment and collider bias at once. Present adjusted and unadjusted models and flag it as a limitation; the pack does not pick a side.",
+          "evidence": {
+            "status": "DISPUTED",
+            "source": "research/NUTRITION_PACK.md#04 · Energy adjustment — the methodological signature"
+          }
+        },
+        {
+          "heading": "Which N",
+          "body": "A participant-flow diagram with every dietary exclusion itemized, each box carrying an n and a reason, is the single most-checked figure in a nutrition methods review. The outcome sets its first step.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#02 · Implausible intake exclusions"
+          }
+        }
+      ]
+    },
+    "evidence": null
+  },
+  {
+    "key": "event",
+    "title": "The event",
+    "question": "Which level of the outcome is the event?",
+    "one_liner": "Models predict the event's probability; whether that is death or survival is your research question.",
+    "why": "A two-level outcome needs one level coded 1, and nothing in the file says which: alive or dead has no correct default. The event fixes the meaning of every predicted probability, odds ratio and calibration curve, and the methods section names it.",
+    "consumer": "The models, the sign of every coefficient, the calibration and each predicted probability read it.",
+    "options": [],
+    "terms": [
+      {
+        "term": "event",
+        "definition": "The outcome level a binary model predicts the probability of, coded 1."
+      },
+      {
+        "term": "reference level",
+        "definition": "The outcome level coded 0; odds ratios compare the event against it."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Probabilities, not just ranks",
+          "body": "Rank models on calibration and clinical utility, not on AUC alone: two models with identical AUC can differ enormously in whether their probabilities of the event are usable.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A5.1 · Calibration first"
+          }
+        },
+        {
+          "heading": "A rare event is not a problem to resample away",
+          "body": "Undersampling, oversampling and SMOTE overestimate the probability of the minority class without improving discrimination. A rare event's real problem is small-sample overfitting, answered by penalization and sample size.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A5.2 · Class imbalance"
+          }
+        }
+      ]
+    },
+    "evidence": null
+  },
+  {
+    "key": "task",
+    "title": "The kind of outcome",
+    "question": "What kind of outcome is this column?",
+    "one_liner": "The task decides which models apply and how they are scored.",
+    "why": "A quantity is regression, scored by R², RMSE and MAE. Two classes are binary, scored by AUC, Brier score and log loss. Several unordered classes are multiclass. An ordered score, such as a 1–5 rating, fits none of these well: regression assumes equal gaps, and classification discards the order.",
+    "consumer": "The model shelf, the split's stratification and every metric read it.",
+    "options": [
+      {
+        "value": "regression",
+        "label": "Regression",
+        "consequence": "The outcome is a quantity; models predict its value, scored by R² and RMSE."
+      },
+      {
+        "value": "binary",
+        "label": "Binary",
+        "consequence": "Two classes; models predict the probability of one, scored by AUC and Brier score."
+      },
+      {
+        "value": "multiclass",
+        "label": "Multiclass",
+        "consequence": "Several unordered classes; models predict each class's probability, scored by accuracy."
+      }
+    ],
+    "terms": [
+      {
+        "term": "regression",
+        "definition": "A model of a quantity: it predicts a number, and its errors are distances from the true value."
+      },
+      {
+        "term": "classification",
+        "definition": "A model of classes: it predicts the probability that a row belongs to each one."
+      },
+      {
+        "term": "ordinal outcome",
+        "definition": "Classes with an order but no fixed spacing, such as a 1–5 rating; best modeled by a cumulative link model."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Ordered outcomes",
+          "body": "For an ordinal outcome, a cumulative link (proportional odds) model uses the full ordering and handles ties; a linear model on the score, or a split into responders and non-responders, does not. This version fits no ordinal model, so say which approximation you chose.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/CLINICAL_SURVEY_PACK.md#B6 · Modeling"
+          }
+        },
+        {
+          "heading": "Scores built from many items",
+          "body": "A multi-item scale score with many categories and no floor or ceiling is often analyzed as a quantity; whether that is safe is disputed. Run the other treatment as a sensitivity analysis.",
+          "evidence": {
+            "status": "DISPUTED",
+            "source": "research/CLINICAL_SURVEY_PACK.md#B4 · Ordinal vs interval"
+          }
+        }
+      ]
+    },
+    "evidence": null
+  },
+  {
+    "key": "purpose",
+    "title": "Prediction or inference",
+    "question": "Is this analysis for prediction or for inference?",
+    "one_liner": "Prediction is judged on rows the model never saw; inference on estimates and their uncertainty.",
+    "why": "The two lead to different models, different checks and a different methods section. Some advice even flips: a missing-value indicator is legitimate for prediction and biased for inference. Inference reports coefficients with confidence intervals; prediction reports performance on held-out rows and leaves coefficients uninterpreted.",
+    "consumer": "The model shelf's order, the coefficient intervals and the Results read it.",
+    "options": [
+      {
+        "value": "prediction",
+        "label": "Prediction",
+        "consequence": "Models are ranked by performance on rows they never saw; coefficients are not interpreted."
+      },
+      {
+        "value": "inference",
+        "label": "Inference",
+        "consequence": "Linear models report coefficients with confidence intervals; the shelf favors reportable models."
+      }
+    ],
+    "terms": [
+      {
+        "term": "prediction",
+        "definition": "Estimating the outcome for new people as accurately as possible, judged on rows the model never saw."
+      },
+      {
+        "term": "inference",
+        "definition": "Estimating how the outcome relates to an exposure, with the uncertainty of that estimate."
+      },
+      {
+        "term": "estimand",
+        "definition": "The exact quantity an analysis estimates, stated in words; two methods with different estimands answer different questions."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "The advice that flips",
+          "body": "For prediction, a missing-value indicator is legitimate and often improves performance, because the same indicator is observable when the model is used. For inference it gives biased estimates; multiple imputation or a principled model of the missingness is required.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A2 · Missing data"
+          }
+        },
+        {
+          "heading": "Hygiene for prediction",
+          "body": "Split by participant, not by row, and fit everything learned from data — energy-adjustment residuals, scaling, imputation — inside the training fold only.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#08 · Feature selection and modeling"
+          }
+        }
+      ]
+    },
+    "evidence": null
+  },
+  {
+    "key": "grain",
+    "title": "Whether people repeat",
+    "question": "Can one person appear in more than one row?",
+    "one_liner": "You know this and the file only hints at it; the held-out rows cannot be drawn correctly without it.",
+    "why": "If one person's rows land on both sides of the split, the model is scored on people it has already seen, and every score is inflated. A column that repeats is a suggestion, never the answer: the app checks your answer against the data and says so when they disagree.",
+    "consumer": "The seal's grouping, the repeats and unit questions, and every cross-validation fold read it.",
+    "options": [
+      {
+        "value": "one_row_per_unit",
+        "label": "One row each",
+        "consequence": "Each row is a different person; the split may draw rows freely."
+      },
+      {
+        "value": "repeated",
+        "label": "People repeat",
+        "consequence": "Rows sharing an identifier stay together; the next questions ask what repeats."
+      }
+    ],
+    "terms": [
+      {
+        "term": "grouped split",
+        "definition": "A split that keeps all of one participant's rows on the same side, so repeat measurements cannot leak across."
+      },
+      {
+        "term": "grain",
+        "definition": "What one row of the table is: one person, one visit, one recall or one sample."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Split by participant",
+          "body": "With repeated recalls, a row-level split puts one person's days on both sides and inflates every score. Split by participant, not by row.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#08 · Feature selection and modeling"
+          }
+        },
+        {
+          "heading": "What repeats can look like",
+          "body": "Duplicate participant identifiers mean repeated measures; look for the occasion too, such as a day, visit or recall number, or a date. Twin columns such as `DR1TKCAL` and `DR2TKCAL` are the same structure in wide form.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#01 · Import and structural recognition"
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "status": "SETTLED",
+      "source": "research/NUTRITION_PACK.md#08 · Feature selection and modeling"
+    }
+  },
+  {
+    "key": "repeat_kind",
+    "title": "What repeats",
+    "question": "Are these repeats or different time points?",
+    "one_liner": "Replicates of one quantity can be averaged; time points carry change that averaging would erase.",
+    "why": "Two recalls days apart measure one usual diet twice, so their mean reduces day-to-day error. Clinic visits months apart measure a person changing, so the order is the signal. Dates with no visit structure suggest repeats; a visit label or spaced dates suggest time points. Where the evidence is thin, this is asked.",
+    "consumer": "The aggregation menu, its recommended default and the temporal question read it.",
+    "options": [
+      {
+        "value": "repeats",
+        "label": "Repeats",
+        "consequence": "Repeated measurements of one quantity, such as two recalls; averaging is offered first."
+      },
+      {
+        "value": "time_points",
+        "label": "Time points",
+        "consequence": "Different moments in time; averaging is not offered first, and order matters."
+      }
+    ],
+    "terms": [
+      {
+        "term": "replicate",
+        "definition": "A repeated measurement of the same quantity under the same conditions, such as a second recall of usual diet."
+      },
+      {
+        "term": "time point",
+        "definition": "A measurement at a distinct moment, such as a visit, where change between moments is part of the data."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Why two recalls exist",
+          "body": "A single 24-hour recall measures one day, not usual diet. Two or more non-consecutive recalls separate day-to-day variation from real differences between people; with one recall that separation is impossible.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#03 · Repeated recalls and measurement error"
+          }
+        },
+        {
+          "heading": "Consecutive days are not independent",
+          "body": "Recalls on consecutive days have correlated errors, so within-person variation is underestimated and the data look more reliable than they are. NHANES uses non-consecutive days by design.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#03 · Repeated recalls and measurement error"
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "status": "SETTLED",
+      "source": "research/NUTRITION_PACK.md#03 · Repeated recalls and measurement error"
+    }
+  },
+  {
+    "key": "unit",
+    "title": "One row in the analysis",
+    "question": "When you analyze this, what is one row?",
+    "one_liner": "People appear more than once; that leaves two honest options, and they lead to different analyses.",
+    "why": "One row per person combines each person's records, and the next question asks how. One row per record keeps them as they are, and the split keeps each person's records on one side. There is no default: guessing here is how the leak this check exists to prevent begins.",
+    "consumer": "The aggregation question, the working table, the participant flow and the seal read it.",
+    "options": [
+      {
+        "value": "unit",
+        "label": "One row per person",
+        "consequence": "Each person's records are combined into one row; the next question asks how."
+      },
+      {
+        "value": "row",
+        "label": "One row per record",
+        "consequence": "Records stay as they are; held-out people never appear in training."
+      }
+    ],
+    "terms": [
+      {
+        "term": "grouped split",
+        "definition": "A split that keeps all of one participant's rows on the same side, so repeat measurements cannot leak across."
+      },
+      {
+        "term": "unit of analysis",
+        "definition": "What one row of the modeled table stands for: a person, or one of their records."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Leakage across a person's rows",
+          "body": "If a person contributes several recalls, rows from the same person must never be split across training and test folds; anything estimated from the data, such as a residual energy adjustment, is fit inside the training fold.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#03 · Repeated recalls and measurement error"
+          }
+        }
+      ]
+    },
+    "evidence": null
+  },
+  {
+    "key": "aggregation",
+    "title": "Combining each person's rows",
+    "question": "How should each person's rows be combined?",
+    "one_liner": "The right summary depends on what repeats: averaging replicates reduces error, averaging time points destroys the signal.",
+    "why": "For repeated recalls, the mean is an acceptable exposure for ranking people: still attenuated, but unbiased in direction. For visits, choose the baseline, the last visit or the change by what the study asks. When the outcome itself varies within a person, say which value is the outcome.",
+    "consumer": "The working table, the participant flow, the seal and every model read the combined rows.",
+    "options": [
+      {
+        "value": "mean",
+        "label": "Mean",
+        "consequence": "Each person's rows are averaged; replicates' day-to-day error shrinks."
+      },
+      {
+        "value": "first",
+        "label": "First (baseline)",
+        "consequence": "Each person keeps their first row, such as the baseline visit."
+      },
+      {
+        "value": "last",
+        "label": "Last",
+        "consequence": "Each person keeps their most recent row."
+      },
+      {
+        "value": "change",
+        "label": "Change from baseline",
+        "consequence": "Each measurement becomes the last value minus the first: change over time."
+      }
+    ],
+    "terms": [
+      {
+        "term": "attenuation",
+        "definition": "The shrinking of an association toward zero because the exposure is measured with error; averaging more days reduces it."
+      },
+      {
+        "term": "usual intake",
+        "definition": "A person's long-run average intake, which single days only estimate; modeling it properly is more than a mean."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "When the mean is adequate",
+          "body": "To rank people for regression, classification or a predictive model, the mean of the available recalls is an acceptable exposure: attenuated, but unbiased in direction under classical error, and what most cohort analyses use.",
+          "evidence": {
+            "status": "CONVENTION",
+            "source": "research/NUTRITION_PACK.md#03 · Repeated recalls and measurement error"
+          }
+        },
+        {
+          "heading": "When the mean is not adequate",
+          "body": "Prevalence or percentile claims about usual intake, episodically consumed foods with many zero days, and exposure coefficients that must be unbiased in magnitude all need usual-intake modeling, which this version does not fit.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#03 · Repeated recalls and measurement error"
+          }
+        },
+        {
+          "heading": "Cumulative averages over follow-up",
+          "body": "With repeated questionnaires, the cohort standard is the cumulative average up to each event; if diet changes because of preclinical disease, a lag is conventional.",
+          "evidence": {
+            "status": "CONVENTION",
+            "source": "research/NUTRITION_PACK.md#03 · Repeated recalls and measurement error"
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "status": "CONVENTION",
+      "source": "research/NUTRITION_PACK.md#03 · Repeated recalls and measurement error"
+    }
+  },
+  {
+    "key": "temporal",
+    "title": "Predicting forward in time",
+    "question": "Are you predicting something later from measurements taken earlier?",
+    "one_liner": "A random split is optimistic when the task looks forward; the held-out rows should then be the latest.",
+    "why": "With visits kept as rows, a random split lets the model learn from a person's later visits and be scored on their earlier ones. Validation in time, holding out the latest rows, is a distinct check from validation on random rows, and reporting guidelines treat it so.",
+    "consumer": "The seal: chronological when yes, grouped by person either way.",
+    "options": [
+      {
+        "value": "true",
+        "label": "Yes, later from earlier",
+        "consequence": "The held-out rows are the latest, and each person's rows stay together."
+      },
+      {
+        "value": "false",
+        "label": "No",
+        "consequence": "The held-out rows are drawn at random, each person's rows kept together."
+      }
+    ],
+    "terms": [
+      {
+        "term": "grouped split",
+        "definition": "A split that keeps all of one participant's rows on the same side, so repeat measurements cannot leak across."
+      },
+      {
+        "term": "chronological split",
+        "definition": "A split that holds out the latest rows by date, so models are scored only on what came after their training data."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Split by participant",
+          "body": "Split by participant, not by row, and fit everything learned from data inside the training fold only.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#08 · Feature selection and modeling"
+          }
+        },
+        {
+          "heading": "Resample the whole pipeline",
+          "body": "Internal validation must resample the entire modeling pipeline: imputation, transformation, selection and tuning.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A5.5 · Modeling practice"
+          }
+        }
+      ]
+    },
+    "evidence": null
+  },
+  {
+    "key": "roles",
+    "title": "What each column is",
+    "question": "What role does each column play in the analysis?",
+    "one_liner": "Only exposures, covariates and the energy column can become predictors; every other role stays out of the models.",
+    "why": "An identifier names a person and cannot generalize. Survey weights and design columns describe how people were sampled, and a flag such as `imputed_weight` describes how a value was filled. None of them measures the participant, so each stays out of the predictors while the record keeps it.",
+    "consumer": "The participant flow, the split's grouping, energy adjustment and the model matrix read it.",
+    "options": [
+      {
+        "value": "identifier",
+        "label": "Identifier",
+        "consequence": "Names a participant; never a predictor, and keeps a person's rows together in the split."
+      },
+      {
+        "value": "exposure",
+        "label": "Exposure",
+        "consequence": "What you are studying; a predictor, and energy adjustment applies to its nutrients."
+      },
+      {
+        "value": "energy",
+        "label": "Energy",
+        "consequence": "Total energy intake; energy adjustment is computed against it and decides whether it stays."
+      },
+      {
+        "value": "covariate",
+        "label": "Covariate",
+        "consequence": "Adjusted for, such as age or sex; enters the models beside the exposures."
+      },
+      {
+        "value": "design",
+        "label": "Survey design",
+        "consequence": "A survey weight, stratum or cluster; kept out of the predictors."
+      },
+      {
+        "value": "flag",
+        "label": "Flag",
+        "consequence": "Marks another column's values, such as imputed ones; kept out of the predictors."
+      },
+      {
+        "value": "time",
+        "label": "Time",
+        "consequence": "When a row was measured, such as a cycle or visit; kept out of the predictors."
+      },
+      {
+        "value": "excluded",
+        "label": "Excluded",
+        "consequence": "Left out of the analysis; the record keeps the column and the reason."
+      }
+    ],
+    "terms": [
+      {
+        "term": "exposure",
+        "definition": "The variable whose relationship with the outcome the study is about, such as a nutrient intake."
+      },
+      {
+        "term": "covariate",
+        "definition": "A variable adjusted for so that the exposure's estimate is not confounded by it, such as age or sex."
+      },
+      {
+        "term": "identifier",
+        "definition": "A column that names a row or a person rather than measuring anything; a value that appears once cannot generalize."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Survey design columns",
+          "body": "NHANES oversamples some age, race and income groups on purpose. Without its weights, means are biased toward the oversampled groups; without strata and PSUs, standard errors are too small. Dietary analyses use `WTDRD1` for day 1 or `WTDR2D` for both days, not the examination weight `WTMEC2YR`. This version records design columns but does not yet weight its estimates.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#01 · Import and structural recognition"
+          }
+        },
+        {
+          "heading": "Pooled cycles",
+          "body": "Combining NHANES cycles means dividing the two-year weights by the number of cycles combined and confirming the same dietary method applies across them.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#01 · Import and structural recognition"
+          }
+        },
+        {
+          "heading": "Units decide everything downstream",
+          "body": "1 kcal = 4.184 kJ, and a column ending `_pct_kcal` is a share of energy, not an amount. Every implausibility screen, energy adjustment and substitution is a function of total energy, so a unit error there reaches every result.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#01 · Import and structural recognition"
+          }
+        }
+      ]
+    },
+    "evidence": null
+  },
+  {
+    "key": "exclusions",
+    "title": "Who the study is about",
+    "question": "Is your study restricted to part of this data?",
+    "one_liner": "A restriction comes from your research question, so the outcome's distribution is not shown here.",
+    "why": "A criterion such as an age range changes N and is reported in the participant flow before any rows are sealed. A cut chosen by looking at the outcome is data-driven selection, its own bias. Implausible-intake screens are offered with the rows each removes; under-reporting concentrates in higher BMI, so many analyses keep everyone.",
+    "consumer": "The participant flow, the seal and every model's rows read it.",
+    "options": [
+      {
+        "value": "none",
+        "label": "Keep every row",
+        "consequence": "No row is excluded; the record states that no exclusion was applied."
+      },
+      {
+        "value": "willett_by_sex",
+        "label": "Willett, by sex",
+        "consequence": "Women outside 500–3,500 and men outside 800–4,200 kcal a day are excluded."
+      },
+      {
+        "value": "sex_neutral_500_5000",
+        "label": "500–5,000 kcal a day",
+        "consequence": "Anyone outside 500–5,000 kcal a day is excluded, whatever their sex."
+      },
+      {
+        "value": "sex_neutral_500_3500",
+        "label": "500–3,500 kcal a day",
+        "consequence": "Anyone outside 500–3,500 kcal a day is excluded; stricter, so it removes more."
+      },
+      {
+        "value": "custom",
+        "label": "Your own range",
+        "consequence": "Rows outside a range you set on any numeric column are excluded."
+      }
+    ],
+    "terms": [
+      {
+        "term": "eligibility criterion",
+        "definition": "Who the study is about, such as an age range: applied to every row before the seal and reported with its count."
+      },
+      {
+        "term": "implausible intake",
+        "definition": "A reported day's energy intake too low or too high to be a real diet, usually a reporting error."
+      },
+      {
+        "term": "under-reporting",
+        "definition": "Reporting less than was eaten. It is systematic, concentrated in people with higher BMI and in weight-conscious participants."
+      },
+      {
+        "term": "Goldberg cut-off",
+        "definition": "A screen comparing reported energy with estimated basal metabolic rate; the field's standard for misreporting, not offered in this version."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Each criterion its own box",
+          "body": "Track the rows through every filter, each eligibility criterion separately, with its reason and its count. A single excluded box tells a reader nothing about who is missing from the model's population.",
+          "evidence": {
+            "status": "CONVENTION",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A4.1 · Participant flow diagram"
+          }
+        },
+        {
+          "heading": "The screens in circulation",
+          "body": "Willett and the Nurses' Health Study use 500–3,500 kcal a day for women and 800–4,200 for men. Variants use 4,000 or 5,000 as men's upper bound, or a sex-neutral 500–5,000 or 500–3,500. The conventions genuinely differ across literatures, so show how N moves with the choice.",
+          "evidence": {
+            "status": "CONVENTION",
+            "source": "research/NUTRITION_PACK.md#02 · Implausible intake exclusions"
+          }
+        },
+        {
+          "heading": "What exclusion does not fix",
+          "body": "Excluding misreporters reduces bias in diet–outcome associations but does not remove it; in one evaluation only 14 of 24 nutrition–outcome pairs improved. That exclusion is insufficient is settled; whether to exclude at all is disputed.",
+          "evidence": {
+            "status": "DISPUTED",
+            "source": "research/NUTRITION_PACK.md#02 · Implausible intake exclusions"
+          }
+        },
+        {
+          "heading": "A common default",
+          "body": "Drop only unreliable recalls and impossible values, run the primary analysis on the full sample with energy adjustment, and present the misreporter-excluded analysis as a prespecified sensitivity analysis. A reviewer in an obesity journal may expect exclusion.",
+          "evidence": {
+            "status": "CONVENTION",
+            "source": "research/NUTRITION_PACK.md#02 · Implausible intake exclusions"
+          }
+        },
+        {
+          "heading": "Who is excluded",
+          "body": "Under-reporting is concentrated in people with higher BMI, so excluding under-reporters when the outcome is adiposity removes a non-random slice of exactly the population studied. Report the excluded group's characteristics.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#02 · Implausible intake exclusions"
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "status": "CONVENTION",
+      "source": "research/NUTRITION_PACK.md#02 · Implausible intake exclusions"
+    }
+  },
+  {
+    "key": "missing",
+    "title": "Missing predictor values",
+    "question": "How should rows with missing predictor values be handled?",
+    "one_liner": "Dropping incomplete rows can shrink and skew the sample; filling values keeps rows but adds an assumption.",
+    "why": "Complete cases keep only rows with every predictor measured, which can remove a large, non-random share: a predictor blank for 70% of people drops 70% of rows. Imputation keeps every row by filling values learned from training rows, assuming the blanks resemble what was observed. A blank can also mean the question was not asked.",
+    "consumer": "The participant flow, each model's pipeline and the banner's row counts read it.",
+    "options": [
+      {
+        "value": "complete_case",
+        "label": "Complete cases",
+        "consequence": "Rows missing any predictor are dropped; the participant flow shows how many."
+      },
+      {
+        "value": "impute",
+        "label": "Impute",
+        "consequence": "Missing predictor values are filled in, learned from training rows only; every row stays."
+      }
+    ],
+    "terms": [
+      {
+        "term": "complete cases",
+        "definition": "Analyzing only rows with every variable measured; it can bias estimates when who is missing depends on the outcome."
+      },
+      {
+        "term": "imputation",
+        "definition": "Filling a missing value with an estimate learned from observed rows; a single fill understates the uncertainty."
+      },
+      {
+        "term": "missing at random",
+        "definition": "Missingness that the observed columns explain; the assumption standard multiple imputation relies on."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Blanks often mean something",
+          "body": "On a food-frequency questionnaire a blank frequently means never, especially among older participants. That missingness is not at random, and standard multiple imputation assumes it is: an improvement, not a solution.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#06 · Missing data"
+          }
+        },
+        {
+          "heading": "A zero is not a blank",
+          "body": "A zero on a 24-hour recall is a zero for that day, not a person who never eats the food.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#06 · Missing data"
+          }
+        },
+        {
+          "heading": "Filling with the mean or median",
+          "body": "Mean or median filling understates variance and distorts the distribution; the clinical pack calls it indefensible in a manuscript.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A2 · Missing data"
+          }
+        },
+        {
+          "heading": "The outcome belongs in the imputation model",
+          "body": "Imputing with the outcome left out of the imputation model biases associations toward the null.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A2 · Missing data"
+          }
+        }
+      ]
+    },
+    "evidence": null
+  },
+  {
+    "key": "split",
+    "title": "The seal: held-out rows",
+    "question": "How many rows should be sealed for one final, untouched score?",
+    "one_liner": "Sealed rows are scored once, when you open the seal at the end; every choice is tuned by cross-validation on the rest.",
+    "why": "A model scored on the rows it was tuned on grades its own homework. The seal states its basis: grouped by an identifier, repeats found but not grouped, or undetermined, which is labeled exploratory. A small holdout measures little, so with few rows cross-validation alone comes first.",
+    "consumer": "The participant flow, every model's cross-validation and the held-out score read it.",
+    "options": [
+      {
+        "value": "0",
+        "label": "Cross-validation only",
+        "consequence": "No rows are sealed; every score comes from cross-validation on all rows."
+      },
+      {
+        "value": "0.1",
+        "label": "Hold out 10%",
+        "consequence": "One row in ten is sealed for the final score; more rows train."
+      },
+      {
+        "value": "0.2",
+        "label": "Hold out 20%",
+        "consequence": "One row in five is sealed for the final score."
+      },
+      {
+        "value": "0.3",
+        "label": "Hold out 30%",
+        "consequence": "Nearly a third is sealed: a steadier final score, fewer rows to train."
+      }
+    ],
+    "terms": [
+      {
+        "term": "holdout",
+        "definition": "Rows set aside before any modeling and scored once, at the end; the closest thing to new data you have."
+      },
+      {
+        "term": "seal",
+        "definition": "The line between the held-out rows and the rest: drawn before modeling, opened once, its basis stated."
+      },
+      {
+        "term": "cross-validation",
+        "definition": "Splitting the training rows into folds, fitting on all but one and scoring on the one left out, in turn."
+      },
+      {
+        "term": "fold",
+        "definition": "One of the equal parts cross-validation splits the training rows into; each is scored by a model that never saw it."
+      },
+      {
+        "term": "grouped split",
+        "definition": "A split that keeps all of one participant's rows on the same side, so repeat measurements cannot leak across."
+      },
+      {
+        "term": "seed",
+        "definition": "The number that fixes the random draw, so the same split can be drawn again."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Split by participant",
+          "body": "With repeated recalls, a row-level split puts one person's days on both sides and inflates every score. Split by participant, not by row.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#08 · Feature selection and modeling"
+          }
+        },
+        {
+          "heading": "Everything learned stays inside the fold",
+          "body": "Everything supervised — feature ranking, selection, thresholds, tuning — happens inside the training fold. Selecting features on all samples can report near-zero error when no signal exists at all.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/GENOMICS_PACK.md#08 · Modeling at p >> n"
+          }
+        },
+        {
+          "heading": "A single split is weak",
+          "body": "Internal validation should resample the whole pipeline. Bootstrap optimism correction or repeated cross-validation is preferred; a single train/test split is the weakest option at typical clinical sample sizes.",
+          "evidence": {
+            "status": "CONVENTION",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A5.5 · Modeling practice"
+          }
+        },
+        {
+          "heading": "Small samples",
+          "body": "Below about 50 rows, a single 5-fold estimate has a standard error large enough that a 0.05 AUC difference is noise. Repeat the cross-validation and report the spread.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/GENOMICS_PACK.md#08 · Modeling at p >> n"
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "status": "CONVENTION",
+      "source": "research/CLINICAL_SURVEY_PACK.md#A5.5 · Modeling practice"
+    }
+  },
+  {
+    "key": "energy_adjustment",
+    "title": "Energy adjustment",
+    "question": "How should nutrient intakes be adjusted for total energy?",
+    "one_liner": "People who eat more eat more of everything; each method answers a different question about a nutrient.",
+    "why": "Total energy confounds every nutrient association, and the errors in reported nutrients and energy move together. Each method has its own estimand: the standard and residual methods ask about swapping calories between sources at fixed total energy, and partition asks about adding calories. Choose by the question; compare methods as a sensitivity analysis.",
+    "consumer": "Each model's pipeline, the column lineage, the coefficients and the substitution curves read it.",
+    "options": [
+      {
+        "value": "none",
+        "label": "No adjustment",
+        "consequence": "Absolute intake: a nutrient's effect stays mixed with how much people eat overall."
+      },
+      {
+        "value": "standard",
+        "label": "Standard model",
+        "consequence": "Energy stays in the model: more of the nutrient in place of other calories."
+      },
+      {
+        "value": "residual",
+        "label": "Residual method",
+        "consequence": "Each nutrient's residual on energy: the same substitution, in the nutrient's own units."
+      },
+      {
+        "value": "density_multivariate",
+        "label": "Density plus energy",
+        "consequence": "Nutrient per calorie, with total energy as its own term: diet composition."
+      },
+      {
+        "value": "density",
+        "label": "Density alone",
+        "consequence": "Nutrient per calorie, energy dropped: a rescaled effect whose meaning is obscure."
+      },
+      {
+        "value": "partition",
+        "label": "Energy partition",
+        "consequence": "Calories from the nutrient and from everything else: adding calories, not substituting."
+      }
+    ],
+    "terms": [
+      {
+        "term": "estimand",
+        "definition": "The exact quantity an analysis estimates, stated in words; two methods with different estimands answer different questions."
+      },
+      {
+        "term": "residual method",
+        "definition": "Replacing a nutrient by its residual from a regression on total energy, re-centered at its mean, so it no longer tracks energy."
+      },
+      {
+        "term": "substitution",
+        "definition": "More of one energy source in place of others at the same total energy; what an energy-adjusted coefficient describes."
+      },
+      {
+        "term": "nutrient density",
+        "definition": "A nutrient's amount per unit of energy, such as grams per 1,000 kcal."
+      },
+      {
+        "term": "energy partition",
+        "definition": "Splitting total energy into calories from the nutrient and calories from everything else, each its own term."
+      },
+      {
+        "term": "nested",
+        "definition": "Part of another column's total, such as `fat_sat` within `fat_total`: a partition would count it twice, and a substitution moves it with its total."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Why adjust at all",
+          "body": "Total energy drives nutrient intake through body size, activity and reporting scale; the hypothesis is usually about composition, not quantity; and correlated reporting errors in nutrients and energy partly cancel once energy is accounted for.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#04 · Energy adjustment — the methodological signature"
+          }
+        },
+        {
+          "heading": "Residual and standard: when they agree",
+          "body": "The pack calls the two mathematically equivalent, and it holds in two cases. With total energy also in the model, swapping a nutrient for its residual only reparametrizes it, so the coefficient is identical, covariates or not. With no other covariates, the residual alone gives the standard model's coefficient too. The residual method here takes energy out of the model, so with covariates the two agree only when no covariate correlates with energy.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#04 · Energy adjustment — the methodological signature"
+          }
+        },
+        {
+          "heading": "What the coefficient means",
+          "body": "An energy-adjusted coefficient is a substitution estimate: more of this nutrient and correspondingly less of everything else, at the same total intake — not the effect of simply eating more of it.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#04 · Energy adjustment — the methodological signature"
+          }
+        },
+        {
+          "heading": "The biases they share",
+          "body": "Standard and residual models are biased even without confounding (composite variable bias), and all four models only partly account for confounding by common dietary causes; each evaluates a different estimand (Tomova et al. 2022, AJCN).",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#04 · Energy adjustment — the methodological signature"
+          }
+        },
+        {
+          "heading": "The field's default",
+          "body": "The Willett residual method, computed within the final analytic sample and within sex, on log-transformed intakes, with the predicted nutrient at the mean energy added back. It is the field default, but not uncontested.",
+          "evidence": {
+            "status": "CONVENTION",
+            "source": "research/NUTRITION_PACK.md#04 · Energy adjustment — the methodological signature"
+          }
+        },
+        {
+          "heading": "When the outcome is BMI or adiposity",
+          "body": "Energy may be on the causal path and a collider at once. Present adjusted and unadjusted models and flag it in the limitations; the pack does not pick a side.",
+          "evidence": {
+            "status": "DISPUTED",
+            "source": "research/NUTRITION_PACK.md#04 · Energy adjustment — the methodological signature"
+          }
+        },
+        {
+          "heading": "Fit inside the folds",
+          "body": "The nutrient-on-energy regression is learned from data, so it is fit on training rows only; fitting it on all rows before cross-validation leaks the held-out rows into every fold.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#08 · Feature selection and modeling"
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "status": "CONVENTION",
+      "source": "research/NUTRITION_PACK.md#04 · Energy adjustment — the methodological signature"
+    }
+  },
+  {
+    "key": "models",
+    "title": "Model families",
+    "question": "Which model families should be fit and compared?",
+    "one_liner": "Each family brings its own assumptions about how nutrients relate to the outcome; fitting several shows what depends on them.",
+    "why": "A linear model assumes straight-line, additive effects and gives coefficients you can report. An elastic net shrinks correlated nutrients together, which suits diets where nutrients travel in foods. Boosted trees find curves and interactions but give no coefficients. In one comparison of 30,000 models, the algorithm mattered less than the endpoint and the analyst.",
+    "consumer": "The fit, the Results and the substitution curves read it.",
+    "options": [
+      {
+        "value": "linear",
+        "label": "Linear model",
+        "consequence": "OLS or logistic regression: one reportable coefficient per predictor, with intervals for inference."
+      },
+      {
+        "value": "elastic_net",
+        "label": "Elastic net",
+        "consequence": "A penalized linear model: shrinks correlated nutrients together, tuned inside training folds."
+      },
+      {
+        "value": "boosted_trees",
+        "label": "Boosted trees",
+        "consequence": "Many shallow trees: finds curves and interactions and handles missing values; no coefficients."
+      }
+    ],
+    "terms": [
+      {
+        "term": "inductive bias",
+        "definition": "What a model assumes before it sees data, such as straight lines or interactions; it decides what the model can find."
+      },
+      {
+        "term": "penalization",
+        "definition": "Shrinking coefficients toward zero to trade a little bias for less variance; essential when predictors are many or correlated."
+      },
+      {
+        "term": "calibration",
+        "definition": "Whether predicted probabilities match observed frequencies; two models with the same AUC can differ greatly in it."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Collinearity is the biology",
+          "body": "Nutrients travel together in foods. Automatic selection among correlated nutrients picks one marker of a shared source, not a cause; report how often each is selected across resamples rather than a single set.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#08 · Feature selection and modeling"
+          }
+        },
+        {
+          "heading": "The algorithm is rarely the lever",
+          "body": "In MAQC-II, across more than 30,000 models from 36 teams, performance depended mainly on the endpoint and the team's proficiency, and different algorithms performed similarly. Whether tree ensembles beat penalized linear models is disputed.",
+          "evidence": {
+            "status": "DISPUTED",
+            "source": "research/GENOMICS_PACK.md#08 · Modeling at p >> n"
+          }
+        },
+        {
+          "heading": "More features than samples",
+          "body": "When predictors outnumber rows, an unpenalized model is degenerate and regularization is mandatory; the elastic net is the standard choice if one must be named.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/GENOMICS_PACK.md#08 · Modeling at p >> n"
+          }
+        },
+        {
+          "heading": "Calibrate the trees",
+          "body": "Rank models on calibration as well as discrimination. Boosted trees often produce miscalibrated probabilities: report the calibration curve, or recalibrate on held-out data, never on training rows.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A5.1 · Calibration first"
+          }
+        },
+        {
+          "heading": "Avoid stepwise selection",
+          "body": "Stepwise selection produces unstable variable sets, biased coefficients and intervals with the wrong coverage; prefer prespecification or penalization.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A5.5 · Modeling practice"
+          }
+        }
+      ]
+    },
+    "evidence": null
+  },
+  {
+    "key": "substitution",
+    "title": "Substitution curves",
+    "question": "Which nutrient's calories should replace which, and in what steps?",
+    "one_liner": "A substitution curve shows the predicted outcome as calories move from one nutrient to another at fixed total energy.",
+    "why": "Energy-adjusted effects are substitutions, so name what replaces what. The curve moves calories from the donor to the recipient through each fitted model, only as far as your data hold people with such diets. Both nutrients must carry energy; grams and servings do not make an isocaloric swap.",
+    "consumer": "The substitution stage draws one curve per fitted model family.",
+    "options": [
+      {
+        "value": "50",
+        "label": "50 kcal steps",
+        "consequence": "Finer steps; the curve's labeled effect is a 50 kcal swap."
+      },
+      {
+        "value": "100",
+        "label": "100 kcal steps",
+        "consequence": "The curve's labeled effect is swapping 100 kcal from donor to recipient."
+      },
+      {
+        "value": "200",
+        "label": "200 kcal steps",
+        "consequence": "Coarser steps; the curve's labeled effect is a 200 kcal swap."
+      }
+    ],
+    "terms": [
+      {
+        "term": "donor",
+        "definition": "The nutrient whose calories are taken away in a substitution."
+      },
+      {
+        "term": "recipient",
+        "definition": "The nutrient that receives those calories, so total energy stays the same."
+      },
+      {
+        "term": "isocaloric",
+        "definition": "At the same total energy. A substitution is isocaloric only when both parts are measured in calories."
+      },
+      {
+        "term": "support",
+        "definition": "The range of diets actually present in your data; a curve beyond it is extrapolation, so the curve stops there."
+      },
+      {
+        "term": "nested",
+        "definition": "Part of another column's total, such as `fat_sat` within `fat_total`: a partition would count it twice, and a substitution moves it with its total."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "Adjusting for energy is not enough",
+          "body": "Adjusting for total energy does not by itself make a substitution isocaloric. The components must be measured and analyzed in calories; in grams or servings, the substitution reported is not the one intended.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#05 · Compositional structure and substitution modeling"
+          }
+        },
+        {
+          "heading": "Parts of a whole",
+          "body": "When shares of energy sum to 100%, one part is determined by the others, and a coefficient on percent energy from fat has no meaning until you say what the fat replaced.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#05 · Compositional structure and substitution modeling"
+          }
+        },
+        {
+          "heading": "Three legitimate designs",
+          "body": "A leave-one-out model (every component but one, plus total energy, in kcal), compositional log-ratios, or an explicit difference of coefficients. The first and last are conventions; log-ratios are emerging and less familiar to reviewers.",
+          "evidence": {
+            "status": "CONVENTION",
+            "source": "research/NUTRITION_PACK.md#05 · Compositional structure and substitution modeling"
+          }
+        },
+        {
+          "heading": "Validated inputs",
+          "body": "A review of 100 substitution studies found 53% used unvalidated food-frequency variables; where validation was reported, correlations with reference methods ranged from 0.12 to 0.77.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/NUTRITION_PACK.md#05 · Compositional structure and substitution modeling"
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "status": "SETTLED",
+      "source": "research/NUTRITION_PACK.md#05 · Compositional structure and substitution modeling"
+    }
+  },
+  {
+    "key": "open_seal",
+    "title": "Opening the seal",
+    "question": "Open the held-out rows and score the models once?",
+    "one_liner": "The held-out scores exist but are withheld until now; opening the seal fixes them in the record.",
+    "why": "Held-out rows give one honest number only if nothing was tuned against them. Once opened, the scores stay in the record. A later change still refits every model, but its sentence and the manuscript mark it as made after the seal was opened.",
+    "consumer": "The Results, the manuscript's performance table and the mark on any later change read it.",
+    "options": [
+      {
+        "value": "open",
+        "label": "Open the seal",
+        "consequence": "Each model is scored once on the held-out rows; those scores are fixed."
+      },
+      {
+        "value": "keep",
+        "label": "Keep it sealed",
+        "consequence": "The Results stay on cross-validation; the held-out rows stay unread."
+      }
+    ],
+    "terms": [
+      {
+        "term": "post-seal",
+        "definition": "A change made after the held-out scores were seen; the record and the manuscript mark it so."
+      }
+    ],
+    "drawer": {
+      "sections": [
+        {
+          "heading": "What to report from the held-out rows",
+          "body": "Discrimination ranks and calibration measures magnitude; you need both. Report the C-statistic with its interval, the calibration intercept and slope, the calibration curve and the Brier score.",
+          "evidence": {
+            "status": "SETTLED",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A5.3 · Discrimination vs calibration"
+          }
+        },
+        {
+          "heading": "The whole pipeline, validated",
+          "body": "Internal validation must resample the entire modeling pipeline, imputation and tuning included. A single train and test split is the weakest option at typical clinical sample sizes.",
+          "evidence": {
+            "status": "CONVENTION",
+            "source": "research/CLINICAL_SURVEY_PACK.md#A5.5 · Modeling practice"
+          }
+        }
+      ]
+    },
+    "evidence": null
+  }
+]

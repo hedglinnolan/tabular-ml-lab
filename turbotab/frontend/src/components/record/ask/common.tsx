@@ -22,6 +22,10 @@ export interface AskProps {
     onArrived: () => void;
     onOpenDrawer: () => void;
     reopened: boolean;
+    /** At most one coach line per card (M2_CONTRACT §10). */
+    coach?: ReactNode;
+    /** Findings held for this question, resurfacing inside it (M2_CONTRACT §4). */
+    resurfaced?: ReactNode;
   };
 }
 

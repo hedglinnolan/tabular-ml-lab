@@ -58,6 +58,8 @@ interface Props {
   answerAt?: { key: string; node: ReactNode } | null;
   label: string;
   testId?: string;
+  /** The key hints under the list (off where a list sits inside a card that has its own). */
+  hint?: boolean;
 }
 
 function previewOf(item: OptionItem): StageFocus | null {
@@ -84,6 +86,7 @@ export function Options({
   answerAt = null,
   label,
   testId,
+  hint = true,
 }: Props) {
   const base = useId();
   const refs = useRef<(HTMLLIElement | null)[]>([]);
@@ -126,7 +129,6 @@ export function Options({
     if (action === "escape") reset();
     else if (action === "toggle") onToggle?.(item.key);
     else if (!pending) onRecord(item); // multi: the chosen set, or the shown option if none is
-
   };
 
   return (
@@ -229,20 +231,22 @@ export function Options({
           ];
         })}
       </ul>
-      <p className={cx(s.keys)} aria-hidden="true">
-        <kbd>↑</kbd>
-        <kbd>↓</kbd> preview{" "}
-        {mode === "multi" ? (
-          <>
-            <kbd>Space</kbd> choose <kbd>Enter</kbd> record
-          </>
-        ) : (
-          <>
-            <kbd>Enter</kbd> record
-          </>
-        )}{" "}
-        <kbd>Esc</kbd> your data now
-      </p>
+      {hint ? (
+        <p className={cx(s.keys)} aria-hidden="true">
+          <kbd>↑</kbd>
+          <kbd>↓</kbd> preview{" "}
+          {mode === "multi" ? (
+            <>
+              <kbd>Space</kbd> choose <kbd>Enter</kbd> record
+            </>
+          ) : (
+            <>
+              <kbd>Enter</kbd> record
+            </>
+          )}{" "}
+          <kbd>Esc</kbd> your data now
+        </p>
+      ) : null}
     </>
   );
 }

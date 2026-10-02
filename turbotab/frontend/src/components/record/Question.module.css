@@ -160,3 +160,27 @@
 .body {
   min-width: 0;
 }
+
+/* The coach's one line on a card (M2_CONTRACT §6, §10): amber, data-grounded, never choosing. */
+.coach {
+  margin: -4px 0 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--warn);
+  max-width: 62ch;
+}
+
+.coach::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  transform: translateY(-1px);
+}

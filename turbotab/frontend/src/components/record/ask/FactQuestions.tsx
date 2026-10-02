@@ -199,8 +199,14 @@ export function TaskAsk({
       }
       data={
         <>
-          TurboTab read <V>{info.column}</V> with <V>{info.confidence}</V> confidence.{" "}
-          <Prose text={info.reason} />
+          TurboTab read <V>{info.column}</V>
+          {/* Outcome units wherever the outcome's values are spoken of (M2_CONTRACT §6, §10). */}
+          {info.unit ? (
+            <>
+              , in <V>{info.unit}</V>,
+            </>
+          ) : null}{" "}
+          with <V>{info.confidence}</V> confidence. <Prose text={info.reason} />
           {info.confidence !== "high"
             ? " That is not certain enough to assume, so it is asked."
             : ""}

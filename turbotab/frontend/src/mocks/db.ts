@@ -663,7 +663,12 @@ function valueOf(d: Decision): ProjectState[Slot] {
     case "select_models":
       return d.models;
     case "set_substitution":
-      return { donor: d.donor, recipient: d.recipient, step_kcal: d.step_kcal ?? 100, n_boot: d.n_boot ?? 0 };
+      return {
+        donor: d.donor,
+        recipient: d.recipient,
+        step_kcal: d.step_kcal ?? 100,
+        n_boot: d.n_boot ?? 0,
+      };
     // M2 kinds: the mock records them without modeling their effect (M2's mock work).
     case "set_orientation":
       return d.orientation;
@@ -686,6 +691,29 @@ function valueOf(d: Decision): ProjectState[Slot] {
       return null;
     case "revert":
       return null;
+  }
+}
+
+type FindingKind = Extract<
+  Decision,
+  { kind: "apply_repair" | "defer_finding" | "dismiss_finding" }
+>;
+
+/** What a finding decision writes for its finding (turbotab/core/decisions.py, the findings slot). */
+function disposition(d: FindingKind): NonNullable<ProjectState["findings"]>[string] {
+  switch (d.kind) {
+    case "apply_repair":
+      return {
+        action: "applied",
+        option: d.option,
+        params: d.params ?? {},
+        to: null,
+        reason: null,
+      };
+    case "defer_finding":
+      return { action: "deferred", option: null, params: {}, to: d.to, reason: null };
+    case "dismiss_finding":
+      return { action: "dismissed", option: null, params: {}, to: null, reason: d.reason ?? null };
   }
 }
 
@@ -730,6 +758,11 @@ export function fold(records: DecisionRecord[]): ProjectState {
     }
     const slot = slotOf(d)!;
     before.set(r.id, { slot, prior: state[slot] });
+    if (d.kind === "apply_repair" || d.kind === "defer_finding" || d.kind === "dismiss_finding") {
+      // A keyed slot: one disposition per finding, the latest write winning (M2_CONTRACT §4).
+      state.findings = { ...(state.findings ?? {}), [d.finding_id]: disposition(d) };
+      continue;
+    }
     (state as Record<Slot, unknown>)[slot] =
       d.kind === "set_task" ? new Map(state.task).set(d.column, d.task as Task) : valueOf(d);
   }

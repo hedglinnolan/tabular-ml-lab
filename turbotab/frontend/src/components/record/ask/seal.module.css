@@ -1,0 +1,147 @@
+/* The CONSEQUENCE silhouette (DESIGN_LANGUAGE §09), lifted from the M2 prototype's open-once card:
+   a full-width interruption with a heavy rule and larger type. Not the blocker: --stop is reserved
+   for numbers that cannot be trusted, and opening the seal makes no number untrustworthy. It is the
+   one irreversible act in the analysis, so it takes the interruption's shape and its grammar —
+   declarative, then first person. */
+
+.consequence {
+  position: relative;
+  padding: 16px 20px 16px 24px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+  overflow: hidden;
+}
+
+.rule {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--ink);
+}
+
+.consequence[data-now] .rule {
+  background: var(--accent);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 8px;
+}
+
+.signal {
+  font-family: var(--serif);
+  font-variant: small-caps;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+
+.title {
+  margin: 0 0 6px;
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+  max-width: 62ch;
+  text-wrap: balance;
+  outline: none;
+}
+
+.title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.body {
+  margin: 0 0 12px;
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  max-width: 64ch;
+}
+
+.why {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.whyText {
+  margin: -4px 0 12px;
+  padding: 10px 13px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.55;
+  max-width: 62ch;
+}
+
+.exits {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.attest {
+  padding: 7px 14px;
+  border: 1.5px solid var(--accent);
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.attest:hover:not(:disabled) {
+  background: var(--accent-ink);
+}
+
+.attest:disabled {
+  opacity: 0.5;
+}
+
+.or {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* A decision made after the seal was opened (M2_CONTRACT §3): said on its sentence, in amber. */
+.postTag {
+  font-family: var(--sans);
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--warn);
+  border: 1px solid var(--warn-line);
+  background: var(--warn-tint);
+  border-radius: 6px;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.metaSeal {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}

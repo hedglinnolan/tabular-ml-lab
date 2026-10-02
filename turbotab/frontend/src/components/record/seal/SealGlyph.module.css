@@ -1,0 +1,63 @@
+/* The seal's glyph (lifted from the M2 prototype): ink for a preview, --ok once recorded,
+   the coach's amber for an exploratory basis. Tokens only (§02). */
+
+.glyph {
+  display: inline-block;
+  flex: 0 0 auto;
+  overflow: visible;
+  vertical-align: -3px;
+}
+
+.ring {
+  fill: var(--surface);
+  stroke-width: 1.8;
+}
+
+.core {
+  stroke: none;
+}
+
+.coreOpen {
+  fill: none;
+  stroke-width: 1.2;
+  stroke-dasharray: 2 2;
+}
+
+.mark {
+  fill: none;
+  stroke: var(--surface);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.q {
+  font-family: var(--serif);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.glyph[data-tone="ink"] .ring {
+  stroke: var(--ink);
+}
+
+.glyph[data-tone="ink"] .core {
+  fill: var(--ink);
+}
+
+.glyph[data-tone="ok"] .ring {
+  stroke: var(--ok);
+}
+
+.glyph[data-tone="ok"] .core {
+  fill: var(--ok);
+}
+
+.glyph[data-tone="warn"] .ring,
+.glyph[data-tone="warn"] .coreOpen {
+  stroke: var(--warn);
+}
+
+.glyph[data-tone="warn"] .q {
+  fill: var(--warn);
+}
