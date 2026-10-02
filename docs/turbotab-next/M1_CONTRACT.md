@@ -67,6 +67,12 @@ the cache.
   covariates (age, sex, gender, BMI, race, education, income…), excluded (free text, constants).
 - **proposals** → `{ exclusions: [{ rule: ExclusionRule, label, affected: int, evidence: {status, source} }], energy: { energy_column|null, nutrients: string[], strata_candidates: string[], applicability: {method: {ok, reason}}, usual: string|null, usual_evidence: {status, source}|null }|null }`
   Pack-sourced (NUTRITION_PACK §02 for implausible intake, §04 for energy). Offered, never pre-selected.
+  `energy.ranking: { purpose|null, order: method[], line|null }` (audit WP6; BLUEPRINT §12 ruling 2)
+  orders the eight methods (`none`, `standard`, `residual` with total energy kept,
+  `residual_energy_dropped`, `density_multivariate`, `density`, `partition`, `all_components`) by
+  soundness for the declared purpose, applicable ones first; `usual` stays the field's customary
+  method. Under inference `all_components` leads and `line` states its dispute and precision cost;
+  under prediction `line` says the choice matters little among models that keep total energy.
 - **cohort** → `Bundle(data={ steps: RowStep[], n_final, predictors: string[] }, frames={"rows": row_id, "measured": row_id})`
   Steps: `loaded` → `outcome_measured` → one step per exclusion rule → `complete_cases` (only when
   `missing == "complete_case"`). Predictors = columns with role exposure, covariate or energy.
@@ -79,9 +85,13 @@ the cache.
 - **shelf** → `{ families: [{ key, label, rank, fit: "good"|"fair"|"poor", concerns: string[], inductive_bias }] }`
   Every family that can model the task, ordered; concerns stated (n, p, events), never hidden.
 - **design** → `Bundle(data={ lineage: Lineage, matrix: {n_rows, n_cols}, models: [{ family, label, steps: [{key, label, detail}] }], estimand: string|null, substitution_pairs: [{donor, recipient}], warnings: string[] }, objects={"pipelines": ...})`
-  Step order: impute (if `impute`) → EnergyAdjuster (if method ≠ none) → one-hot → scale (families
-  that need it) → model. Lineage lanes raw → adjusted → matrix; wide tables collapse role groups
-  into count nodes (`collapsed: true`).
+  Step order: impute (if `impute`) → EnergyAdjuster (whenever energy adjustment is answered; under
+  `none` it takes every energy-role column out of the model, audit ME-02) → one-hot → scale
+  (families that need it) → model. Lineage lanes raw → adjusted → matrix; wide tables collapse role
+  groups into count nodes (`collapsed: true`). The label equals the model fitted (audit WP6):
+  `estimand`, `energy_form` (the energy model the matrix holds) and `terms` (each matrix column's
+  meaning: the energy sources a swap is "in place of", a total beside its parts as the remainder)
+  are read off the matrix by `methods.energy.describe_model`, never from the method's name.
 - **fit** → `Bundle(data={ task, primary_metric, metric_labels, n_train, n_holdout, models: [{ family, label, cv: {metric: {mean, sd, folds}}, holdout: {metric: value}|null, coefficients: [{feature, estimate, ci_low, ci_high, p}]|null, fit_seconds, concerns }] }, objects={"fitted": ...})`
   CV on training rows with the split's folds; holdout scored once. Regression: R², RMSE, MAE.
   Binary: AUC, Brier, log loss. Multiclass: accuracy, macro-F1, log loss. Coefficients for linear
@@ -91,9 +101,15 @@ the cache.
   none below the unit floor (the refusal and its exits are recorded); Firth's penalized likelihood
   when a column separates a binary outcome. Each coefficient adds `se` and `df`, and each model an
   `inference` record (estimator, covariance, caption, grouped_by, n_clusters, separated, refused,
-  exits). Progress per model and fold; honors `cancelled()`.
+  exits). Each coefficient row carries `meaning` (the design's `terms`); under `all_components`
+  each nutrient adds a `<nutrient>_relative` row, its average relative effect (Tomova et al. 2022),
+  with the family's own interval under inference. Progress per model and fold; honors
+  `cancelled()`.
 - **substitution** → `{ donor, recipient, step_kcal, ks, total_kind, estimand|null, note, models: [{ family, label, delta, ci_low|null, ci_high|null, on_support_fraction, stopped_at|null, effect_label }] }`
   `substitution_curve` on ≤ 5,000 training rows, through each fitted pipeline on raw inputs.
+  `omitted_energy` names the energy sources the model leaves to total energy's composite and their
+  mean share of it (audit ME-05); under inference a swap above 5% is refused with its exits (add
+  the sources, or keep it with `acknowledged`, recorded in the methods sentence).
 
 ## 4 · Consequence previews
 

@@ -809,12 +809,18 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         outcome = f"the predicted probability that {target} is {positive}"
     else:
         outcome = f"predicted {target}" + (f" (in {outcome_unit})" if outcome_unit else "")
+    # Whether total energy is an input the model sees is read off the design (audit WP6: the
+    # label equals the model fitted); without it, only the swap's own arithmetic holds it fixed.
+    energy_out = (design.data or {}).get("energy_form") in ("none", "residual_energy_dropped",
+                                                            "density")
+    others = ("every other input left as it was (total energy is not in this model; only the swap "
+              "itself keeps it fixed)" if energy_out else
+              "every other input, total energy included, left as it was")
     estimand = (f"The average change in {outcome} when k kcal move from {sub.donor} to "
-                f"{sub.recipient}, with every other input, total energy included, left as it was.")
+                f"{sub.recipient}, with {others}.")
     if shift.carried:
         estimand = (f"The average change in {outcome} when k kcal move from {sub.donor} to "
-                    f"{sub.recipient}, their parts or totals moving with them and every other "
-                    f"input, total energy included, left as it was.")
+                    f"{sub.recipient}, their parts or totals moving with them and {others}.")
     artifact = SubstitutionArtifact(
         donor=sub.donor, recipient=sub.recipient, step_kcal=float(sub.step_kcal),
         ks=[float(k) for k in ks], total_kind="variable", estimand=estimand, note=" ".join(notes),

@@ -360,6 +360,16 @@ class NotAdjusted(Model):
     reason: str
 
 
+class EnergyRanking(Model):
+    """The energy methods in order of soundness for the declared purpose, applicable ones first
+    (audit WP6; BLUEPRINT §12 ruling 2): the all-components model first under inference, the
+    energy-keeping models first under prediction. ``line`` names the tension with custom."""
+
+    purpose: Purpose | None
+    order: list[EnergyMethod]
+    line: str | None
+
+
 class EnergyReading(Model):
     """What the energy-adjustment question can offer on this table (NUTRITION_PACK §04)."""
 
@@ -367,8 +377,9 @@ class EnergyReading(Model):
     nutrients: list[str]
     strata_candidates: list[str]
     applicability: dict[str, MethodVerdict]
-    usual: EnergyMethod | None
+    usual: EnergyMethod | None  # the customary method (the field's), whatever the purpose
     usual_evidence: FindingEvidence | None
+    ranking: EnergyRanking | None = None
     r_with_energy: dict[str, float]
     notes: list[str]
     not_adjusted: list[NotAdjusted]

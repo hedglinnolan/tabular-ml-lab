@@ -143,9 +143,11 @@ const METHOD_SHORT: Record<EnergyMethod, string | null> = {
   none: null,
   standard: "standard",
   residual: "residual",
+  residual_energy_dropped: "residual, energy dropped",
   density_multivariate: "density + energy",
   density: "density",
   partition: "partition",
+  all_components: "all components",
 };
 
 const FAMILY_SHORT: Record<string, string> = {

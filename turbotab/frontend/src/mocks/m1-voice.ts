@@ -52,9 +52,11 @@ const METHOD_NAME: Record<EnergyMethod, string> = {
   none: "no adjustment",
   standard: "standard multivariate model",
   residual: "residual method",
+  residual_energy_dropped: "residual method",
   density_multivariate: "multivariate nutrient density model",
   density: "nutrient density model",
   partition: "energy partition model",
+  all_components: "all-components model",
 };
 
 const ROLE_GROUP: Record<Role, [string, string]> = {
@@ -305,10 +307,12 @@ const refuse = (code: string, message: string, exits: Exit[] = []): Refusal => (
 const METHOD_LABEL: Record<EnergyMethod, string> = {
   none: "No energy adjustment",
   standard: "Standard (multivariate) model",
-  residual: "Willett residual model",
+  residual: "Willett residual model, total energy kept",
+  residual_energy_dropped: "Willett residual model, total energy left out",
   density_multivariate: "Multivariate nutrient density model",
   density: "Nutrient density alone",
   partition: "Energy partition model",
+  all_components: "All-components model",
 };
 
 const FAMILIES = ["linear", "elastic_net", "boosted_trees"];

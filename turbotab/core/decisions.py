@@ -1040,6 +1040,16 @@ def _revert_leaves_no_rule_on_the_outcome(decision: "Revert", ctx: Any) -> None:
 
 
 def _energy_adjustment_fits_the_roles(decision: SetEnergyAdjustment, ctx: Any) -> None:
+    if decision.log_transform and decision.method not in ("residual", "residual_energy_dropped"):
+        # The log variant is a residual method's (its own estimand, audit WP6); any other method
+        # would fail at the design, after the answer was recorded.
+        raise Refusal(
+            "log_needs_residual",
+            "Logging nutrient and energy applies to the residual methods only.",
+            exits=[{"label": "Without the log",
+                    "decision": SetEnergyAdjustment(**{**decision.model_dump(exclude={"kind"}),
+                                                       "log_transform": False})}],
+        )
     if decision.method == "none":
         return
     state = _state(ctx)

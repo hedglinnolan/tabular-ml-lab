@@ -12,7 +12,7 @@ and so does every worker process that runs a heavy stage.
 M1 (docs/turbotab-next/M1_CONTRACT.md):
 
     roles        heavy   deps: ingest, profile                reads lens, target
-    proposals    light   deps: ingest, profile, roles         reads lens, roles, target
+    proposals    light   deps: ingest, profile, roles         reads lens, roles, target, purpose
     cohort       heavy   deps: ingest, target_info            reads target, roles, exclusions, missing, findings; requires target
     split        heavy   deps: cohort, target_info            reads split, roles, task; requires split
     shelf        light   deps: cohort, target_info            reads purpose, task, roles; requires roles
@@ -108,7 +108,8 @@ def build_graph() -> Graph:
             # ── M1 (each reads the working table) ──
             Stage("roles", 1, ("working",), ("lens", "target"), roles_stage,
                   heavy=True, label="Reading what each column is"),
-            Stage("proposals", 1, ("working", "roles"), ("lens", "roles", "target"),
+            # proposals 2: the declared purpose orders the energy methods by soundness (audit WP6).
+            Stage("proposals", 2, ("working", "roles"), ("lens", "roles", "target", "purpose"),
                   proposals_stage, label="Looking up what the field usually does"),
             Stage("cohort", 1, ("working", "target_info"),
                   ("target", "roles", "exclusions", "missing", "findings"), cohort_stage,

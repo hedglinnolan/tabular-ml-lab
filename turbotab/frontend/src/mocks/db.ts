@@ -672,6 +672,7 @@ function valueOf(d: Decision): ProjectState[Slot] {
         recipient: d.recipient,
         step_kcal: d.step_kcal ?? 100,
         n_boot: d.n_boot ?? 0,
+        acknowledged: d.acknowledged ?? false,
       };
     // M2 kinds: the mock records them without modeling their effect (M2's mock work).
     case "set_orientation":

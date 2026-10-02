@@ -135,9 +135,15 @@ def test_the_split_names_its_seed_grouping_and_stratification():
 def test_the_residual_sentence_says_where_it_was_fit():
     text = voice.sentence_for(d.SetEnergyAdjustment(method="residual", energy_column="kcal",
                                                     nutrients=["protein", "fat_total"], strata="gender"))
-    assert text == ("Energy was adjusted by the residual method: `protein` and `fat_total` were "
+    assert text == ("Energy was adjusted by the residual method with total energy kept in the "
+                    "outcome model (the Willett–Stampfer variant): `protein` and `fat_total` were "
                     "each regressed on `kcal` within levels of `gender` on training rows and "
-                    "replaced by the residual plus the nutrient's mean over all training rows.")
+                    "replaced by the residual plus the nutrient's mean over all training rows, and "
+                    "`kcal` enters the models beside the adjusted values.")
+    dropped = voice.sentence_for(d.SetEnergyAdjustment(
+        method="residual_energy_dropped", energy_column="kcal", nutrients=["protein"]))
+    assert "total energy left out of the outcome model" in dropped
+    assert "`kcal` then left the models" in dropped
 
 
 # ── the task reason ──────────────────────────────────────────────────────────

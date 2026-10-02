@@ -742,12 +742,19 @@ def _set_energy_adjustment(d: Any, state: Any, ctx: Any) -> str:
             how = (f"regressed on {energy}{where} on training rows and replaced by the residual "
                    f"plus {mean}")
         if d.method == "residual":
+            # The log variant rescales each row by its own energy, so its coefficient is per unit
+            # of the rescaled nutrient and not the standard model's (its own estimand, audit ME-03).
+            tail = (", so a coefficient is per unit of the rescaled nutrient at fixed energy, not "
+                    "the standard model's" if d.log_transform else "")
             return (f"Energy was adjusted by the {name} with total energy kept in the outcome model "
                     f"(the Willett–Stampfer variant): {who} {how}, and {energy} enters the models "
-                    f"beside the adjusted values")
+                    f"beside the adjusted values{tail}")
+        tail = ("so a coefficient reads like a rescaled nutrient density's, not the standard model's"
+                if d.log_transform else
+                "so a coefficient equals the standard model's only when no other covariate "
+                "correlates with energy")
         return (f"Energy was adjusted by the {name} with total energy left out of the outcome "
-                f"model: {who} {how}, and {energy} then left the models, so a coefficient equals "
-                f"the standard model's only when no other covariate correlates with energy")
+                f"model: {who} {how}, and {energy} then left the models, {tail}")
     if d.method == "standard":
         who = nutrients or "the nutrients"
         return (f"Energy was adjusted by the {name}: {energy} enters the models beside {who}, so "

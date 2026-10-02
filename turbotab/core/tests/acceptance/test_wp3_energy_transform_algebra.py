@@ -170,24 +170,32 @@ def test_1_the_within_sex_residual_finds_no_effect_on_the_null_fixture():
     assert abs(estimates.mean()) < 3 * mc_se, (estimates.mean(), mc_se)
 
 
-def test_1_the_null_holds_with_sex_in_the_model_too():
+@pytest.mark.parametrize("method", ["residual_energy_dropped", "residual"])
+def test_1_the_null_holds_with_sex_in_the_model_too(method):
     """The fix must not depend on the strata column being out of the model: with sex a
     predictor (a covariate), the same fixture gives the same fat_g_adj coefficient as the
     reference OLS ``y ~ fat_within_sex_residual + age + sex`` from statsmodels, and it is null.
 
     Its p is the reported one: independent rows under inference get HC3 standard errors on
     t(n − p) since WP2 (MA-01), so the reference p is HC3's, from the definition (``_hc3_p``). The
-    classical p is null too."""
+    classical p is null too.
+
+    Both forms of the residual method (WP6, BLUEPRINT §12 ruling 1): this test was written when the
+    residual step dropped total energy, and that form (``residual_energy_dropped``) is held to the
+    original reference unchanged. The default form keeps total energy in the outcome model, so its
+    reference adds the energy term: ``y ~ residual + energy + age + sex``."""
     frame, y, male = _null_fixture(11)
-    state = _state(roles={**ROLES, "sex": "covariate"})
+    adjustment = STRATIFIED.model_copy(update={"method": method})
+    state = _state(roles={**ROLES, "sex": "covariate"}, energy_adjustment=adjustment)
     family = get_family("linear")
     predictors = model_predictors(state)
     assert "sex" in predictors
-    X = frame[input_columns(predictors, STRATIFIED)]
+    X = frame[input_columns(predictors, adjustment)]
     spec = design_spec(state, X, predictors)
     fitted = build_pipeline(spec, family, "regression", "inference", len(X), len(predictors)).fit(X, y)
     rows = family.coefficients(fitted, X, y, task="regression", purpose="inference")
     ours = next(r for r in rows if r["feature"] == "fat_g_adj")
+    assert ("energy_kcal" in model_matrix(fitted, X).columns) == (method == "residual")
 
     fat, energy = frame["fat_g"].to_numpy(), frame["energy_kcal"].to_numpy()
     residual = np.empty_like(fat)
@@ -196,6 +204,8 @@ def test_1_the_null_holds_with_sex_in_the_model_too():
         slope, intercept = np.polyfit(energy[m], fat[m], 1)
         residual[m] = fat[m] - (intercept + slope * energy[m])
     exog = pd.DataFrame({"r": residual, "age": frame["age"], "male": male})
+    if method == "residual":
+        exog["energy"] = energy
     reference, p_classical = _ols_p(y, exog, "r")
     hc3_estimate, p = _hc3_p(y, exog, "r")
     assert hc3_estimate == pytest.approx(reference, rel=1e-9, abs=1e-12)

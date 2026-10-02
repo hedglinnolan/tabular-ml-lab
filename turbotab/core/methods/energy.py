@@ -1386,8 +1386,8 @@ def _omitted(sources: Sequence[str]) -> List[str]:
     return [s for s in ENERGY_SOURCES if s not in sources] + ["other"]
 
 
-def _in_place_of(sources: Sequence[str], omitted: Sequence[str]) -> str:
-    if len(sources) < 2:
+def _in_place_of(named: bool, omitted: Sequence[str]) -> str:
+    if not named:
         return "in place of the average of all other energy sources"
     return f"in place of {_and([*omitted[:-1], 'other energy'])}"
 
@@ -1478,16 +1478,24 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
     present = [(t, _matrix_name(t.column, form, adjusted, E)) for t in terms]
     present = [(t, m) for t, m in present if m in in_matrix]
     raw_present = {t.column for t, _ in present}
-    sources = list(dict.fromkeys(t.source for t, _ in present if t.source in ENERGY_SOURCES))
-    omitted = _omitted(sources)
     groups: Dict[str, List[str]] = {}
     for child, parent in dict(nested or {}).items():
         if child in raw_present and parent in raw_present:
             groups.setdefault(parent, []).append(child)
+    children = {c for kids in groups.values() for c in kids}
+    # The main sources first (protein, carbohydrate, fat, alcohol), then any other energy-bearing
+    # source the model holds (fiber at 2 kcal/g): each is "in the model" and not left to "other".
+    held = list(dict.fromkeys(t.source for t, _ in present))
+    sources = [s for s in ENERGY_SOURCES if s in held] + [s for s in held if s not in ENERGY_SOURCES]
+    omitted = _omitted(sources)
 
-    swap = _in_place_of(sources, omitted)
-    named = len(sources) >= 2
-    clause = (f"with {_and(sources)} all in the model, each coefficient is a substitution in place "
+    # Two energy-bearing terms that are not one another's parts: each coefficient is then a swap
+    # for the sources left out of the model, not for the average of all the others (ME-04).
+    named = len([t for t, _ in present if t.column not in children]) >= 2
+    swap = _in_place_of(named, omitted)
+    who = (_and(sources) if len(sources) >= 2 else
+           _and([t.column for t, _ in present if t.column not in children]))
+    clause = (f"with {who} all in the model, each coefficient is a substitution in place "
               f"of the energy sources not in the model: {', '.join(omitted)}." if named else "")
     if log:
         text = LOG_ESTIMAND[form]
@@ -1518,10 +1526,10 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
         if form == "all_components":
             text += (" Each nutrient's average relative effect is reported beside its "
                      "coefficient, per unit of the nutrient.")
-    for parent, children in groups.items():
+    for parent, kids in groups.items():
         source = next((t.source for t, _ in present if t.column == parent), parent)
-        text += (f" {parent} sits beside its own parts {_and(children)}, so its coefficient is "
-                 f"the remaining {source} (holding {', '.join(children)} fixed): the {source} in "
+        text += (f" {parent} sits beside its own parts {_and(kids)}, so its coefficient is "
+                 f"the remaining {source} (holding {', '.join(kids)} fixed): the {source} in "
                  f"none of them, not total {source}.")
 
     meanings: Dict[str, str] = {}

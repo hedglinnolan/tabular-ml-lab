@@ -361,6 +361,7 @@ def test_statsmodels_coefficients_equal_a_direct_fit_on_a_matrix_built_by_hand(t
     for n in nutrients:  # N_adj = N − b (E − mean E), b from OLS of N on E over the training rows
         b = np.cov(d[n], E, ddof=1)[0, 1] / np.var(E, ddof=1)
         matrix[f"{n}_adj"] = d[n] - b * (E - E.mean())
+    matrix["kcal"] = E  # the residual method keeps total energy in the outcome model (ruling 1)
     # Independent rows under inference: HC3 standard errors with t(n − p) (AUDIT_REPORT MA-07).
     direct = sm.OLS(d["glucose"].to_numpy(), sm.add_constant(matrix)).fit(cov_type="HC3", use_t=True)
     model = fit.data["models"][0]
@@ -422,18 +423,20 @@ def test_logistic_inference_coefficients_equal_a_direct_logit(table):
     _, fit = run(st, paths, split, "binary", "glucose_high")
     train_ids, _, _ = train_arrays(split)
     d = frame.loc[train_ids]
+    # No energy adjustment: total energy is not in the model (audit ME-02), so Y ~ N + C.
+    columns = ["age", "fat_total", "carb"]
     direct = sm.Logit((d["glucose_high"] == "normal").astype(float),
-                      sm.add_constant(d[["age", "kcal", "fat_total", "carb"]])).fit(disp=0)
+                      sm.add_constant(d[columns])).fit(disp=0)
     got = _by_feature(fit.data["models"][0]["coefficients"])
+    assert "kcal" not in got
     ci = direct.conf_int(0.05)
-    for name in ("age", "kcal", "fat_total", "carb"):
+    for name in columns:
         assert got[name]["estimate"] == pytest.approx(direct.params[name], rel=1e-6)
         assert got[name]["ci_low"] == pytest.approx(ci.loc[name, 0], rel=1e-6)
         assert got[name]["ci_high"] == pytest.approx(ci.loc[name, 1], rel=1e-6)
     # The unpenalized sklearn fit that makes the predictions agrees with the statsmodels table.
     model = fit.objects["fitted"]["linear"][-1]
-    np.testing.assert_allclose(model.coef_[0], direct.params[["age", "kcal", "fat_total", "carb"]],
-                               rtol=1e-4)
+    np.testing.assert_allclose(model.coef_[0], direct.params[columns], rtol=1e-4)
 
 
 def test_elastic_net_coefficients_are_per_unit_with_the_scaling_undone(table):
@@ -491,9 +494,14 @@ def test_lineage_is_correct_for_each_energy_method_on_the_nhanes_columns(table, 
         assert _links_into(lineage, f"adj:{c}") == {(f"raw:{c}", "kept")}
         assert adjusted[c].formula is None
     if method in ("none", "standard"):
-        for c in (*NUTRIENTS3, "kcal"):
+        for c in NUTRIENTS3:
             assert _links_into(lineage, f"adj:{c}") == {(f"raw:{c}", "kept")}
             assert c in matrix
+        if method == "standard":
+            assert _links_into(lineage, "adj:kcal") == {("raw:kcal", "kept")} and "kcal" in matrix
+        else:  # no energy adjustment: total energy leaves the model (audit ME-02)
+            assert "kcal" not in adjusted and "kcal" not in matrix
+            assert design.data["energy_form"] == "none"
         return
     if method == "residual":
         outputs = {n: f"{n}_adj" for n in NUTRIENTS3}
@@ -510,8 +518,8 @@ def test_lineage_is_correct_for_each_energy_method_on_the_nhanes_columns(table, 
         assert adjusted[out].formula
         expected = {(f"raw:{n}", op)} if method == "partition" else {(f"raw:{n}", op), ("raw:kcal", op)}
         assert _links_into(lineage, f"adj:{out}") == expected
-    if method == "residual":
-        assert "kcal" not in adjusted and "kcal" not in matrix
+    if method == "residual":  # total energy stays in the outcome model beside them (ruling 1)
+        assert _links_into(lineage, "adj:kcal") == {("raw:kcal", "kept")} and "kcal" in matrix
         assert "OLS on" in adjusted["protein_adj"].formula
     elif method == "density":
         assert "kcal" not in matrix

@@ -104,19 +104,23 @@ def test_residual_log_refuses_zeros_rather_than_padding_them():
 
 
 def test_residual_and_standard_models_give_the_same_nutrient_coefficient():
-    """Frisch-Waugh-Lovell: coef of N in Y ~ N + E equals coef of N_adj in Y ~ N_adj."""
+    """Y ~ N_adj + E reparametrizes Y ~ N + E, so the residual method with energy kept gives the
+    standard coefficient; without energy and without covariates, Frisch-Waugh-Lovell gives it too."""
     df = diet(800, seed=3)
     y = df["y"].to_numpy()
     out = EnergyAdjuster("residual", "energy_kcal", ["protein_g"]).fit_transform(df)
     standard = ols([df["protein_g"], df["energy_kcal"]], y)[1]
-    residual = ols([out["protein_g_adj"]], y)[1]
-    assert residual == pytest.approx(standard, rel=1e-8, abs=1e-12)
+    kept = ols([out["protein_g_adj"], out["energy_kcal"]], y)[1]
+    assert kept == pytest.approx(standard, rel=1e-8, abs=1e-12)
+    dropped = EnergyAdjuster("residual_energy_dropped", "energy_kcal", ["protein_g"]).fit_transform(df)
+    assert "energy_kcal" not in dropped.columns
+    assert ols([dropped["protein_g_adj"]], y)[1] == pytest.approx(standard, rel=1e-8, abs=1e-12)
     # The same through a Pipeline, where the step feeds an sklearn model.
     pipe = Pipeline([("energy", EnergyAdjuster("residual", "energy_kcal", ["protein_g"])),
                      ("model", LinearRegression())]).set_output(transform="pandas")
     pipe.fit(df[["energy_kcal", "protein_g"]], y)
-    assert list(pipe[:-1].get_feature_names_out()) == ["protein_g_adj"]
-    assert pipe[-1].coef_[0] == pytest.approx(standard, rel=1e-8)
+    assert list(pipe[:-1].get_feature_names_out()) == ["energy_kcal", "protein_g_adj"]
+    assert pipe[-1].coef_[1] == pytest.approx(standard, rel=1e-8)
 
 
 def test_residual_missing_values_stay_missing_and_are_left_out_of_the_fit():
@@ -161,11 +165,23 @@ def test_density_refuses_zero_energy():
         EnergyAdjuster("density", "energy_kcal", ["fat_g"]).fit(df)
 
 
-@pytest.mark.parametrize("method", ["none", "standard"])
-def test_none_and_standard_leave_every_column_as_it_was(method):
+def test_standard_leaves_every_column_as_it_was():
     df = diet()
-    out = EnergyAdjuster(method, "energy_kcal", NUTRIENTS).fit_transform(df)
+    out = EnergyAdjuster("standard", "energy_kcal", NUTRIENTS).fit_transform(df)
     pd.testing.assert_frame_equal(out, df)
+
+
+def test_none_takes_total_energy_out_and_leaves_every_other_column_as_it_was():
+    """No energy adjustment means total energy is not in the model (audit ME-02)."""
+    df = diet()
+    step = EnergyAdjuster("none", "energy_kcal", NUTRIENTS)
+    out = step.fit_transform(df)
+    pd.testing.assert_frame_equal(out, df.drop(columns="energy_kcal"))
+    assert step.dropped_columns_ == ["energy_kcal"]
+    # Further energy-role columns leave with it.
+    both = df.assign(energy_kj=df["energy_kcal"] * 4.184)
+    out = EnergyAdjuster("none", "energy_kcal", [], leave_out=["energy_kj"]).fit_transform(both)
+    pd.testing.assert_frame_equal(out, df.drop(columns="energy_kcal"))
 
 
 # ── partition ────────────────────────────────────────────────────────────────
@@ -250,7 +266,7 @@ def test_an_energy_share_is_not_adjusted_for_energy_again():
 
 
 def test_log_transform_belongs_to_the_residual_method():
-    with pytest.raises(ValueError, match="residual method only"):
+    with pytest.raises(ValueError, match="residual methods only"):
         EnergyAdjuster("density", "energy_kcal", ["fat_g"], log_transform=True).fit(diet())
 
 
@@ -294,7 +310,8 @@ def test_inside_cross_validation_fit_sees_only_training_fold_rows():
 @pytest.mark.parametrize("method", METHODS)
 def test_every_method_names_its_outputs_lineage_and_estimand(method):
     df = diet()
-    nutrients = ["fat_g", "carbohydrate_g"]
+    # The all-components model needs every main energy source as its own term.
+    nutrients = NUTRIENTS if method == "all_components" else ["fat_g", "carbohydrate_g"]
     step = EnergyAdjuster(method, "energy_kcal", nutrients).set_output(transform="pandas")
     out = step.fit_transform(df)
     assert list(out.columns) == list(step.get_feature_names_out())
@@ -312,8 +329,12 @@ def test_every_method_names_its_outputs_lineage_and_estimand(method):
 
 def test_estimands_name_the_pack_s_distinctions():
     kinds = {m: describe_method(m)["kind"] for m in METHODS}
+    # Tomova et al. 2022: the multivariable density model's coefficient is "an obscure quantity".
     assert kinds == {"none": "absolute", "standard": "substitution", "residual": "substitution",
-                     "density_multivariate": "composition", "density": "obscure", "partition": "addition"}
+                     "residual_energy_dropped": "substitution only without energy-correlated "
+                                                "covariates",
+                     "density_multivariate": "obscure", "density": "obscure", "partition": "addition",
+                     "all_components": "addition and relative effect"}
     assert "substitution" in EnergyAdjuster("standard").estimand()
     assert "addition" in EnergyAdjuster("partition").estimand()
     assert "obscure" in EnergyAdjuster("density").estimand()
@@ -330,7 +351,9 @@ def test_residual_lineage_reports_the_fitted_numbers():
     assert params["constant_added"] == pytest.approx(df["protein_g"].mean())
     assert abs(params["r_after"]) < 1e-8 and 0 < params["r2"] < 1
     assert params["r2"] == pytest.approx(params["r_before"] ** 2)
-    assert step.dropped_columns_ == ["energy_kcal"]
+    assert step.dropped_columns_ == []  # total energy stays in the outcome model (ruling 1)
+    dropped = EnergyAdjuster("residual_energy_dropped", "energy_kcal", ["protein_g"]).fit(df)
+    assert dropped.dropped_columns_ == ["energy_kcal"]
 
 
 def test_transform_refuses_a_frame_with_different_columns():

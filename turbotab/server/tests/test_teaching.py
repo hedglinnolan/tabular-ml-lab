@@ -12,7 +12,8 @@ def test_teaching_answers_one_entry_per_question(client):
     assert [e["key"] for e in entries] == list(TEACHING_KEYS)
     energy = next(e for e in entries if e["key"] == "energy_adjustment")
     assert {o["value"] for o in energy["options"]} == {
-        "none", "standard", "residual", "density_multivariate", "density", "partition"}
+        "none", "standard", "residual", "residual_energy_dropped", "density_multivariate", "density",
+        "partition", "all_components"}
     assert energy["evidence"]["status"] == "CONVENTION"
     assert all(s["evidence"]["source"].startswith("research/") for s in energy["drawer"]["sections"])
 

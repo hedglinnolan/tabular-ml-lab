@@ -518,8 +518,9 @@ def restate_energy(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: F
     finding["why_it_matters"] = (
         "People who eat more of everything eat more of anything, so every nutrient association is "
         "confounded by total intake; that adjustment is needed is not in dispute. Which method to "
-        "use is a convention: the standard and residual methods estimate the same substitution, "
-        "and the residual method's advantages are practical, not inferential.")
+        "use is a convention: with total energy kept in the model the standard and residual "
+        "methods estimate the same substitution, and the residual method's advantages are "
+        "practical, not inferential.")
 
 
 # ── the app's own findings ───────────────────────────────────────────────────

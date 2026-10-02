@@ -383,8 +383,9 @@ def partition_check(frame: pd.DataFrame, energy: str, nutrients: Sequence[str]) 
 
 def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]],
                    roles: Mapping[str, str], *, energy: str | None, nutrients: list[str],
-                   sex: str | None, target: str | None) -> dict[str, Any]:
-    from turbotab.core.methods.energy import applicable_methods
+                   sex: str | None, target: str | None,
+                   purpose: str | None = None) -> dict[str, Any]:
+    from turbotab.core.methods.energy import applicable_methods, rank_methods
     from turbotab.core.voice import finish
 
     from turbotab.core.methods.nesting import nested_components
@@ -398,12 +399,23 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
             present = [n for n in nutrients if n in frame.columns]
             nested = nested_reason(nested_components(frame, present), nutrients)
             verdicts["partition"] = {"ok": False, "reason": nested or refused["reason"]}
+            # The all-components model is a partition over every source: it refuses alike.
+            if verdicts.get("all_components", {}).get("ok"):
+                reason = str(nested or refused["reason"]).replace(
+                    "a partition would", "the all-components model would", 1)
+                verdicts["all_components"] = {"ok": False, "reason": reason}
     applicability = {}
     for m, v in verdicts.items():
         reason = finish(_marked(str(v["reason"]), columns))
         applicability[m] = {"ok": bool(v["ok"]),
                             "reason": reason if v["ok"] else option_reason(reason)}
     usual = next((m for m in (USUAL_METHOD, "standard") if applicability.get(m, {}).get("ok")), None)
+    # Soundness for the declared purpose orders the methods, beside the customary one (north star
+    # 5; BLUEPRINT §12 ruling 2): under inference the all-components model first, with the dispute
+    # and its precision cost in one line; under prediction a line that the choice matters little.
+    ranked = rank_methods(purpose, applicability)
+    ranking = {"purpose": purpose if purpose in ("inference", "prediction") else None,
+               "order": ranked["order"], "line": ranked["line"]}
     r_with_energy: dict[str, float] = {}
     if energy and energy in frame.columns:
         e = pd.to_numeric(frame[energy], errors="coerce")
@@ -420,6 +432,7 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
         "applicability": applicability,
         "usual": usual,
         "usual_evidence": dict(ENERGY_EVIDENCE) if usual else None,
+        "ranking": ranking,
         "r_with_energy": r_with_energy,
         # The nested-parts note that ran ~70 words above the options is folded into the
         # partition option's reason and the "nested" term card; notes stay for data lines that
@@ -493,11 +506,13 @@ def missing_reading(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]],
 
 def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *,
                     lens: Sequence[str] | None, target: str | None,
-                    roles: Mapping[str, str] | None = None) -> dict[str, Any]:
+                    roles: Mapping[str, str] | None = None,
+                    purpose: str | None = None) -> dict[str, Any]:
     """The proposals artifact from a frame holding (at least) the columns it reads.
 
     ``columns`` are the ingest's column records (``name``, ``dtype``, ``n_unique``,
-    ``n_missing``); ``roles`` the confirmed roles, else the proposed ones, else empty.
+    ``n_missing``); ``roles`` the confirmed roles, else the proposed ones, else empty;
+    ``purpose`` the declared purpose, which orders the energy methods by soundness.
     """
     from turbotab.core.voice import tick
 
@@ -531,7 +546,7 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     reading = None
     if energy is not None or nutrients:
         reading = energy_reading(frame, info, roles, energy=energy, nutrients=nutrients, sex=sex,
-                                 target=target)
+                                 target=target, purpose=purpose)
     return {"exclusions": exclusions, "energy": reading, "missing": missing, "n_base": n_base,
             "coach": _card_lines(frame, target=target, energy=energy, unit=unit, missing=missing),
             "basis": basis}
@@ -587,7 +602,8 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
         ctx.progress(0.2, "Reading the energy, nutrient and blank columns")
         frame = store.materialize(wanted)
     ctx.progress(0.6, "Counting what each exclusion rule would remove")
-    return build_proposals(frame, columns, lens=state.lens, target=target, roles=roles)
+    return build_proposals(frame, columns, lens=state.lens, target=target, roles=roles,
+                           purpose=state.purpose)
 
 
 __all__ = [
