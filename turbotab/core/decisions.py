@@ -1562,8 +1562,25 @@ def _calibrated_exposures_are_columns(decision: SetMeasurementError, ctx: Any) -
                     "decision": decision.model_copy(update={"exposures": rest})}])
 
 
+def _calibration_is_for_inference(decision: SetMeasurementError, ctx: Any) -> None:
+    """Regression calibration corrects a coefficient; under prediction the model is used on recalls
+    measured the same way, so there is nothing to correct (audit IN-22: right for prediction)."""
+    state = _state(ctx)
+    if decision.method == "none" or state is None or state.purpose != "prediction":
+        return
+    raise Refusal(
+        "not_for_prediction",
+        "Under prediction the model is used on recalls measured the same way as these, so its "
+        "predictions need no correction; regression calibration corrects an exposure's coefficient, "
+        "which is an inference question.",
+        exits=[{"label": "Keep the recalls' mean uncorrected",
+                "decision": SetMeasurementError(method="none")},
+               {"label": "Change the purpose to inference", "decision": None}])
+
+
 register_validator("set_sensitivity", _sensitivity_rules_are_eligibility_rules)
 register_validator("set_measurement_error", _calibrated_exposures_are_columns)
+register_validator("set_measurement_error", _calibration_is_for_inference)
 register_validator("set_task", _task_fits_the_outcome)
 register_validator("set_roles", _roles_name_real_columns)
 register_validator("set_feature_table", _feature_table_names_the_files_columns)

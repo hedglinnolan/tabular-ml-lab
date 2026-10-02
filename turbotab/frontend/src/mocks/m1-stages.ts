@@ -23,6 +23,7 @@ import type {
   SplitArtifact,
   SubstitutionArtifact,
 } from "../api/m1-types";
+import { isRangeRule } from "../api/m1-types";
 import type { DecisionRecord, Lens, ProjectState, Scalar, Task } from "../api/schema";
 import type { MockColumn, MockDataset } from "./datasets";
 import { findColumn, isNumericDtype, nMissing, nUnique } from "./stats";
@@ -594,7 +595,8 @@ export function cohort(
     decision_id: targetRec?.id ?? null,
   });
   const exRec = [...records].reverse().find((r) => r.decision.kind === "set_exclusions");
-  for (const rule of state.exclusions ?? []) {
+  // The mock models range rules only; a Goldberg screen (WP12) is the real server's.
+  for (const rule of (state.exclusions ?? []).filter(isRangeRule)) {
     let d = 0;
     for (let i = 0; i < ds.nRows; i++) {
       if (rows[i] && ruleExcludes(ds, rule, i)) {

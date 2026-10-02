@@ -527,7 +527,7 @@ export interface components {
              */
             post_seal: boolean;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"];
         };
         /**
          * DeferFinding
@@ -702,7 +702,7 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"]) | null;
         };
         /**
          * FamilyInfo
@@ -793,6 +793,170 @@ export interface components {
             parent: string | null;
             /** Entries */
             entries: components["schemas"]["FsEntry"][];
+        };
+        /**
+         * GoldbergRule
+         * @description Keep rows whose reported energy intake over estimated BMR lies within the Goldberg cut-offs
+         *     (Goldberg et al. 1991, revised by Black 2000): ``PAL × exp(±2 S / 100)`` at n = 1, with
+         *     ``S = √(CV²_wEI / d + CV²_wB + CV²_tP)``. Every input is stated: the BMR equation, the PAL (one
+         *     value, or one per level of an activity column), and the days of intake the energy averages.
+         */
+        "GoldbergRule-Input": {
+            /**
+             * Kind
+             * @default goldberg
+             * @constant
+             */
+            kind: "goldberg";
+            /** Column */
+            column: string;
+            /**
+             * Energy Unit
+             * @default kcal
+             * @enum {string}
+             */
+            energy_unit: "kcal" | "kj";
+            /** Days */
+            days?: number | null;
+            /** Days Column */
+            days_column?: string | null;
+            /** Sex */
+            sex: string;
+            /** Female */
+            female?: string[];
+            /** Male */
+            male?: string[];
+            /** Age */
+            age: string;
+            /** Weight */
+            weight: string;
+            /** Height */
+            height?: string | null;
+            /**
+             * Height Unit
+             * @default cm
+             * @enum {string}
+             */
+            height_unit: "cm" | "m";
+            /**
+             * Equation
+             * @enum {string}
+             */
+            equation: "schofield" | "schofield_height" | "henry" | "henry_height" | "mifflin";
+            /** Pal */
+            pal?: number | null;
+            pal_by?: components["schemas"]["LevelValues"] | null;
+            /**
+             * Exclude
+             * @default both
+             * @enum {string}
+             */
+            exclude: "both" | "under" | "over";
+            /**
+             * Cv Wei
+             * @default 23
+             */
+            cv_wei: number;
+            /**
+             * Cv Wb
+             * @default 8.5
+             */
+            cv_wb: number;
+            /**
+             * Cv Tp
+             * @default 15
+             */
+            cv_tp: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Missing
+             * @default exclude
+             * @enum {string}
+             */
+            missing: "exclude" | "keep";
+        };
+        /**
+         * GoldbergRule
+         * @description Keep rows whose reported energy intake over estimated BMR lies within the Goldberg cut-offs
+         *     (Goldberg et al. 1991, revised by Black 2000): ``PAL × exp(±2 S / 100)`` at n = 1, with
+         *     ``S = √(CV²_wEI / d + CV²_wB + CV²_tP)``. Every input is stated: the BMR equation, the PAL (one
+         *     value, or one per level of an activity column), and the days of intake the energy averages.
+         */
+        "GoldbergRule-Output": {
+            /**
+             * Kind
+             * @default goldberg
+             * @constant
+             */
+            kind: "goldberg";
+            /** Column */
+            column: string;
+            /**
+             * Energy Unit
+             * @default kcal
+             * @enum {string}
+             */
+            energy_unit: "kcal" | "kj";
+            /** Days */
+            days: number | null;
+            /** Days Column */
+            days_column: string | null;
+            /** Sex */
+            sex: string;
+            /** Female */
+            female: string[];
+            /** Male */
+            male: string[];
+            /** Age */
+            age: string;
+            /** Weight */
+            weight: string;
+            /** Height */
+            height: string | null;
+            /**
+             * Height Unit
+             * @default cm
+             * @enum {string}
+             */
+            height_unit: "cm" | "m";
+            /**
+             * Equation
+             * @enum {string}
+             */
+            equation: "schofield" | "schofield_height" | "henry" | "henry_height" | "mifflin";
+            /** Pal */
+            pal: number | null;
+            pal_by: components["schemas"]["LevelValues"] | null;
+            /**
+             * Exclude
+             * @default both
+             * @enum {string}
+             */
+            exclude: "both" | "under" | "over";
+            /**
+             * Cv Wei
+             * @default 23
+             */
+            cv_wei: number;
+            /**
+             * Cv Wb
+             * @default 8.5
+             */
+            cv_wb: number;
+            /**
+             * Cv Tp
+             * @default 15
+             */
+            cv_tp: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Missing
+             * @default exclude
+             * @enum {string}
+             */
+            missing: "exclude" | "keep";
         };
         /** GrainSpec */
         GrainSpec: {
@@ -896,6 +1060,18 @@ export interface components {
             /** Error */
             error: string | null;
         };
+        /**
+         * LevelValues
+         * @description A number per level of another column (a PAL per activity category).
+         */
+        LevelValues: {
+            /** Column */
+            column: string;
+            /** Values */
+            values: {
+                [key: string]: number;
+            };
+        };
         /** Lineage */
         Lineage: {
             /** Nodes */
@@ -980,6 +1156,21 @@ export interface components {
             /** Group */
             group: string | null;
         };
+        /** MeasurementErrorSpec */
+        MeasurementErrorSpec: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "none" | "regression_calibration";
+            /** Exposures */
+            exposures: string[];
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
+        };
         /**
          * MissingSpec
          * @description The missing-values answer: columns left out of the predictors, then a strategy for the rest.
@@ -1046,7 +1237,7 @@ export interface components {
             } | null;
             energy_adjustment: components["schemas"]["EnergyAdjustment"] | null;
             /** Exclusions */
-            exclusions: components["schemas"]["ExclusionRule-Output"][] | null;
+            exclusions: (components["schemas"]["ExclusionRule-Output"] | components["schemas"]["GoldbergRule-Output"])[] | null;
             missing: components["schemas"]["MissingSpec"] | null;
             split: components["schemas"]["SplitSpec"] | null;
             /** Models */
@@ -1071,6 +1262,9 @@ export interface components {
             feature_table: components["schemas"]["FeatureTableSpec"] | null;
             /** Categorical */
             categorical: string[] | null;
+            /** Sensitivity */
+            sensitivity: components["schemas"]["SensitivityAnalysis-Output"][] | null;
+            measurement_error: components["schemas"]["MeasurementErrorSpec"] | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -1327,6 +1521,26 @@ export interface components {
             /** Models */
             models: string[];
         };
+        /**
+         * SensitivityAnalysis
+         * @description One analysis beside the primary: the same model on the rows these rules keep instead.
+         */
+        "SensitivityAnalysis-Input": {
+            /** Label */
+            label: string;
+            /** Rules */
+            rules?: (components["schemas"]["ExclusionRule-Input"] | components["schemas"]["GoldbergRule-Input"])[];
+        };
+        /**
+         * SensitivityAnalysis
+         * @description One analysis beside the primary: the same model on the rows these rules keep instead.
+         */
+        "SensitivityAnalysis-Output": {
+            /** Label */
+            label: string;
+            /** Rules */
+            rules: (components["schemas"]["ExclusionRule-Output"] | components["schemas"]["GoldbergRule-Output"])[];
+        };
         /** SetAggregation */
         "SetAggregation-Input": {
             /**
@@ -1453,7 +1667,7 @@ export interface components {
              */
             kind: "set_exclusions";
             /** Rules */
-            rules: components["schemas"]["ExclusionRule-Input"][];
+            rules: (components["schemas"]["ExclusionRule-Input"] | components["schemas"]["GoldbergRule-Input"])[];
         };
         /**
          * SetExclusions
@@ -1466,7 +1680,7 @@ export interface components {
              */
             kind: "set_exclusions";
             /** Rules */
-            rules: components["schemas"]["ExclusionRule-Output"][];
+            rules: (components["schemas"]["ExclusionRule-Output"] | components["schemas"]["GoldbergRule-Output"])[];
         };
         /**
          * SetFeatureTable
@@ -1549,6 +1763,54 @@ export interface components {
             kind: "set_lens";
             /** Lenses */
             lenses: ("metabolomics" | "genomics" | "dietary" | "clinical" | "survey")[];
+        };
+        /**
+         * SetMeasurementError
+         * @description Whether energy-adjusted exposures are corrected for day-to-day error in the recalls
+         *     (univariate regression calibration; audit IN-22, Freedman et al. 2011).
+         */
+        "SetMeasurementError-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_measurement_error";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "none" | "regression_calibration";
+            /** Exposures */
+            exposures?: string[];
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
+        };
+        /**
+         * SetMeasurementError
+         * @description Whether energy-adjusted exposures are corrected for day-to-day error in the recalls
+         *     (univariate regression calibration; audit IN-22, Freedman et al. 2011).
+         */
+        "SetMeasurementError-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_measurement_error";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "none" | "regression_calibration";
+            /** Exposures */
+            exposures: string[];
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
         };
         /**
          * SetMissing
@@ -1691,6 +1953,38 @@ export interface components {
             roles: {
                 [key: string]: "identifier" | "exposure" | "energy" | "covariate" | "design" | "flag" | "time" | "excluded";
             };
+        };
+        /**
+         * SetSensitivity
+         * @description Analyses beside the primary, each on the rows its own exclusion rules keep (audit ME-16).
+         *
+         *     Banna et al. 2017: "analyses in the total sample without exclusion of participants should
+         *     also be conducted and reported". An empty list is the answer "no sensitivity analysis".
+         */
+        "SetSensitivity-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_sensitivity";
+            /** Analyses */
+            analyses: components["schemas"]["SensitivityAnalysis-Input"][];
+        };
+        /**
+         * SetSensitivity
+         * @description Analyses beside the primary, each on the rows its own exclusion rules keep (audit ME-16).
+         *
+         *     Banna et al. 2017: "analyses in the total sample without exclusion of participants should
+         *     also be conducted and reported". An empty list is the answer "no sensitivity analysis".
+         */
+        "SetSensitivity-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_sensitivity";
+            /** Analyses */
+            analyses: components["schemas"]["SensitivityAnalysis-Output"][];
         };
         /** SetSplit */
         "SetSplit-Input": {
@@ -2181,6 +2475,167 @@ export interface components {
             label: string;
         };
         /**
+         * CalibratedExposure
+         * @description One energy-adjusted exposure: its uncorrected and its calibrated coefficient.
+         */
+        CalibratedExposure: {
+            /** Feature */
+            feature: string;
+            /** Source */
+            source: string;
+            /** Operation */
+            operation: string;
+            /** Naive */
+            naive: number | null;
+            /**
+             * Naive Ci Low
+             * @default null
+             */
+            naive_ci_low: number | null;
+            /**
+             * Naive Ci High
+             * @default null
+             */
+            naive_ci_high: number | null;
+            /**
+             * P
+             * @default null
+             */
+            p: number | null;
+            /**
+             * Estimate
+             * @default null
+             */
+            estimate: number | null;
+            /**
+             * Se
+             * @default null
+             */
+            se: number | null;
+            /**
+             * Ci Low
+             * @default null
+             */
+            ci_low: number | null;
+            /**
+             * Ci High
+             * @default null
+             */
+            ci_high: number | null;
+            /**
+             * Attenuation
+             * @default null
+             */
+            attenuation: number | null;
+            /**
+             * Attenuation Se
+             * @default null
+             */
+            attenuation_se: number | null;
+            /**
+             * Within Variance
+             * @default null
+             */
+            within_variance: number | null;
+            /**
+             * Between Variance
+             * @default null
+             */
+            between_variance: number | null;
+            /**
+             * N Persons
+             * @default 0
+             */
+            n_persons: number;
+            /**
+             * N Repeat
+             * @default 0
+             */
+            n_repeat: number;
+            /**
+             * Recalls
+             * @default {}
+             */
+            recalls: {
+                [key: string]: number;
+            };
+            /**
+             * N Boot
+             * @default 0
+             */
+            n_boot: number;
+            /**
+             * N Boot Ok
+             * @default 0
+             */
+            n_boot_ok: number;
+            /**
+             * Refused
+             * @default null
+             */
+            refused: string | null;
+        };
+        /** CalibrationArtifact */
+        CalibrationArtifact: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "none" | "regression_calibration";
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "inference" | "prediction";
+            /** Applies */
+            applies: boolean;
+            /**
+             * Reason
+             * @default null
+             */
+            reason: string | null;
+            /**
+             * Family
+             * @default null
+             */
+            family: string | null;
+            /**
+             * Rows
+             * @default all eligible rows
+             * @constant
+             */
+            rows: "all eligible rows";
+            /**
+             * N Persons
+             * @default 0
+             */
+            n_persons: number;
+            /**
+             * Recalls
+             * @default {}
+             */
+            recalls: {
+                [key: string]: number;
+            };
+            /**
+             * Exposures
+             * @default []
+             */
+            exposures: components["schemas"]["CalibratedExposure"][];
+            /**
+             * Assumptions
+             * @default []
+             */
+            assumptions: string[];
+            /**
+             * Concerns
+             * @default []
+             */
+            concerns: string[];
+            /** Methods */
+            methods: string;
+        };
+        /**
          * CategoricalProposal
          * @description A predictor whose numbers may be codes for groups (``set_categorical`` declares it).
          */
@@ -2399,7 +2854,8 @@ export interface components {
         ExclusionProposal: {
             /** Key */
             key: string;
-            rule: components["schemas"]["ExclusionRule"];
+            /** Rule */
+            rule: components["schemas"]["ExclusionRule"] | components["schemas"]["GoldbergRule"];
             /** Label */
             label: string;
             /** Affected */
@@ -2574,6 +3030,101 @@ export interface components {
             versus_baseline: components["schemas"]["VersusBaseline"] | null;
             /** @default null */
             inference: components["schemas"]["Inference"] | null;
+        };
+        /**
+         * GoldbergRule
+         * @description Keep rows whose reported energy intake over estimated BMR lies within the Goldberg cut-offs
+         *     (Goldberg et al. 1991, revised by Black 2000): ``PAL × exp(±2 S / 100)`` at n = 1, with
+         *     ``S = √(CV²_wEI / d + CV²_wB + CV²_tP)``. Every input is stated: the BMR equation, the PAL (one
+         *     value, or one per level of an activity column), and the days of intake the energy averages.
+         */
+        GoldbergRule: {
+            /**
+             * Kind
+             * @default goldberg
+             * @constant
+             */
+            kind: "goldberg";
+            /** Column */
+            column: string;
+            /**
+             * Energy Unit
+             * @default kcal
+             * @enum {string}
+             */
+            energy_unit: "kcal" | "kj";
+            /**
+             * Days
+             * @default null
+             */
+            days: number | null;
+            /**
+             * Days Column
+             * @default null
+             */
+            days_column: string | null;
+            /** Sex */
+            sex: string;
+            /** Female */
+            female: string[];
+            /** Male */
+            male: string[];
+            /** Age */
+            age: string;
+            /** Weight */
+            weight: string;
+            /**
+             * Height
+             * @default null
+             */
+            height: string | null;
+            /**
+             * Height Unit
+             * @default cm
+             * @enum {string}
+             */
+            height_unit: "cm" | "m";
+            /**
+             * Equation
+             * @enum {string}
+             */
+            equation: "schofield" | "schofield_height" | "henry" | "henry_height" | "mifflin";
+            /**
+             * Pal
+             * @default null
+             */
+            pal: number | null;
+            /** @default null */
+            pal_by: components["schemas"]["LevelValues"] | null;
+            /**
+             * Exclude
+             * @default both
+             * @enum {string}
+             */
+            exclude: "both" | "under" | "over";
+            /**
+             * Cv Wei
+             * @default 23
+             */
+            cv_wei: number;
+            /**
+             * Cv Wb
+             * @default 8.5
+             */
+            cv_wb: number;
+            /**
+             * Cv Tp
+             * @default 15
+             */
+            cv_tp: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Missing
+             * @default exclude
+             * @enum {string}
+             */
+            missing: "exclude" | "keep";
         };
         /** GrainContradiction */
         GrainContradiction: {
@@ -3070,6 +3621,97 @@ export interface components {
              * @default false
              */
             time_ordered_folds: boolean;
+        };
+        /** SensitivityArtifact */
+        SensitivityArtifact: {
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "inference" | "prediction";
+            /**
+             * Rows
+             * @enum {string}
+             */
+            rows: "all eligible rows" | "eligible rows outside the held-out set";
+            /** Analyses */
+            analyses: components["schemas"]["SensitivityRow"][];
+            /** Exposures */
+            exposures: string[];
+            /** Families */
+            families: components["schemas"]["SensitivityFamily"][];
+            /** Changes */
+            changes: {
+                [key: string]: components["schemas"]["SensitivityChange"][];
+            };
+            /** Concerns */
+            concerns: string[];
+            /** Methods */
+            methods: string;
+        };
+        /**
+         * SensitivityChange
+         * @description How an exposure's estimate moves across the analyses, against the primary's.
+         */
+        SensitivityChange: {
+            /** Feature */
+            feature: string;
+            /** Primary */
+            primary: number | null;
+            /** Lowest */
+            lowest: number | null;
+            /** Highest */
+            highest: number | null;
+            /** Sign Changes */
+            sign_changes: boolean;
+            /** Excludes Zero */
+            excludes_zero: (boolean | null)[];
+        };
+        /** SensitivityFamily */
+        SensitivityFamily: {
+            /** Family */
+            family: string;
+            /** Label */
+            label: string;
+            /** Fits */
+            fits: components["schemas"]["SensitivityFit"][];
+        };
+        /** SensitivityFit */
+        SensitivityFit: {
+            /** Label */
+            label: string;
+            /** N Rows */
+            n_rows: number;
+            /** Coefficients */
+            coefficients: components["schemas"]["Coefficient"][] | null;
+            /** @default null */
+            inference: components["schemas"]["Inference"] | null;
+            /**
+             * Concerns
+             * @default []
+             */
+            concerns: string[];
+        };
+        /**
+         * SensitivityRow
+         * @description One analysis: its rules (as the participant flow labels them) and the rows they keep.
+         */
+        SensitivityRow: {
+            /** Label */
+            label: string;
+            /** Primary */
+            primary: boolean;
+            /** Added */
+            added: boolean;
+            /** Rules */
+            rules: string[];
+            /** N Rows */
+            n_rows: number;
+            /**
+             * Refused
+             * @default null
+             */
+            refused: string | null;
         };
         /**
          * ShelfArtifact
@@ -3794,7 +4436,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"];
             };
         };
         responses: {
@@ -3929,7 +4571,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"];
             };
         };
         responses: {

@@ -11,8 +11,10 @@ every row, the every-row analysis is added, and the artifact says it was added a
 
 **Rows, by purpose** (BLUEPRINT §12 ruling 3): under inference every analysis is estimated on all the
 rows its rules keep, held-out rows included, with the intervals the fit stage makes (HC3, or CR2 by
-the unit when one repeats; ``models/inference.py``). Under prediction only training rows are used, so
-the seal holds, and a concern says what an exclusion means for a prediction model: the people it
+the unit when one repeats; ``models/inference.py``). Under prediction no analysis reads a sealed row
+(the split's ``sealed`` frame: every row drawn to be held out, including rows the primary's rules
+exclude), so the seal holds; an analysis that relaxes the primary's rules gains the excluded rows
+that were never drawn. A concern says what an exclusion means for a prediction model: the people it
 leaves out are still in the population the model will be used on.
 
 **The model** is the design's own pipeline, refit per analysis (every step, energy adjustment and
@@ -84,7 +86,7 @@ class SensitivityChange(_Model):
 
 class SensitivityArtifact(_Model):
     purpose: Literal["inference", "prediction"]
-    rows: Literal["all eligible rows", "training rows"]
+    rows: Literal["all eligible rows", "eligible rows outside the held-out set"]
     analyses: list[SensitivityRow]
     exposures: list[str]  # the model-matrix columns that came from exposure columns
     families: list[SensitivityFamily]
@@ -109,6 +111,19 @@ def analyses_of(state: Any) -> list[dict[str, Any]]:
     if primary and not any(not a.rules for a in named):
         out.append({"label": EVERY_ROW, "rules": [], "primary": False, "added": True})
     return out
+
+
+def sealed_rows(split: Any) -> np.ndarray:
+    """Every row drawn to be held out (the split's ``sealed`` frame), in or out of the cohort; for
+    a split artifact without that frame, its held-out rows."""
+    from turbotab.core.stages.modeling import read_assignment
+
+    frames = getattr(split, "frames", None) or {}
+    sealed = frames.get("sealed")
+    if sealed is not None:
+        return np.asarray(sealed["row_id"], dtype=np.int64)
+    assignment = read_assignment(split)
+    return assignment.index[~assignment["train"]].to_numpy(dtype=np.int64)
 
 
 def rows_of(store: Any, state: Any, ingest: Mapping[str, Any], rules: Sequence[Any]) -> np.ndarray:
@@ -218,7 +233,7 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.models.inference import cluster_columns
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
     from turbotab.core.stages.data import open_store
-    from turbotab.core.stages.modeling import _task, coded_outcome, read_assignment
+    from turbotab.core.stages.modeling import _task, coded_outcome
     from turbotab.core.stages.working import table_info
 
     state = ctx.state
@@ -230,8 +245,7 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
     pipelines = design.objects["pipelines"]
     families = [get_family(k) for k in (state.models or []) if k in pipelines]
     analyses = analyses_of(state)
-    assignment = read_assignment(ctx.inputs["split"])
-    training = assignment.index[assignment["train"]].to_numpy()
+    sealed = sealed_rows(ctx.inputs["split"])
     ingest = table_info(ctx)
 
     ctx.progress(0.05, "Counting the rows each analysis keeps")
@@ -244,7 +258,7 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
                 rows_by.append(None)
                 continue
             kept = rows_of(store, state, ingest, a["rules"])
-            rows_by.append(kept if inference else np.intersect1d(kept, training))
+            rows_by.append(kept if inference else np.setdiff1d(kept, sealed))
         every = np.unique(np.concatenate([r for r in rows_by if r is not None] or [np.empty(0, np.int64)]))
         columns = list(dict.fromkeys([*spec.inputs, target, *unit_columns,
                                       *[c for a in analyses for r in a["rules"] for c in r.reads()]]))
@@ -288,13 +302,13 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
 
     if not inference:
         concerns.append("Under prediction, people a screen leaves out are still among those the "
-                        "model will be used on; these fits use the training rows only.")
+                        "model will be used on; these fits read no held-out row.")
     weight = _weight_concern(state, analyses, frame, target)
     if weight:
         concerns.append(weight)
     if any(a["added"] for a in analyses):
         concerns.append(f"The every-row analysis was added because the primary excludes rows. {BANNA}")
-    rows_word = "all eligible rows" if inference else "training rows"
+    rows_word = "all eligible rows" if inference else "eligible rows outside the held-out set"
     artifact = SensitivityArtifact(
         purpose="inference" if inference else "prediction",
         rows=rows_word,
@@ -324,5 +338,6 @@ SENSITIVITY_READS = ("sensitivity", "exclusions", "target", "roles", "missing", 
 __all__ = [
     "BANNA", "EVERY_ROW", "SENSITIVITY_READS", "SensitivityArtifact", "SensitivityChange",
     "SensitivityFamily", "SensitivityFit", "SensitivityRow", "analyses_of", "changes_for",
-    "exposure_features", "fit_on_rows", "methods_sentence", "rows_of", "sensitivity_stage",
+    "exposure_features", "fit_on_rows", "methods_sentence", "rows_of", "sealed_rows",
+    "sensitivity_stage",
 ]

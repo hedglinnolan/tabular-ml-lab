@@ -38,6 +38,19 @@ so it waits for the split; ``fit`` keeps its held-out scores out of its public d
 
     seal_plan    light   deps: working, cohort, target_info, structure   reads roles, task + the seal's; requires target
 
+WP12 (AUDIT_REPORT §5, methods a reviewer expects):
+
+    sensitivity  heavy   deps: working, design, split, target_info          reads sensitivity, exclusions + the
+                                                                             cohort's and fit's; requires sensitivity, models
+    calibration  heavy   deps: oriented, findings, structure, working,      reads measurement_error, energy_adjustment,
+                               cohort, design, target_info                   aggregation, purpose …; requires measurement_error, models
+
+    ``sensitivity`` refits each chosen family on the rows each analysis's exclusion rules keep (the
+    primary beside every-row and any other screen; Banna et al. 2017). ``calibration`` corrects
+    energy-adjusted exposures for day-to-day error in the recalls each person's row averages
+    (univariate regression calibration; Freedman et al. 2011): it reads the oriented table's rows
+    behind each working row through the working table's row map.
+
 M2 part 2 (M2_CONTRACT.md §12): ``split`` and ``seal_plan`` also depend on ``structure``, whose
 ``grain.stated`` is the grain when the Router states it rather than asks (a unique person
 identifier); the seal needs a grain, answered or stated. ``shelf`` is heavy: it times one fit of
@@ -56,6 +69,8 @@ from turbotab.core.stages.modeling import design_stage, fit_stage, shelf_stage, 
 from turbotab.core.stages.proposals import proposals_stage
 from turbotab.core.stages.rows import cohort_stage, roles_stage, split_stage
 from turbotab.core.stages.seal import SEAL_READS, seal_plan_stage
+from turbotab.core.stages.calibration import CALIBRATION_READS, calibration_stage
+from turbotab.core.stages.sensitivity import SENSITIVITY_READS, sensitivity_stage
 from turbotab.core.stages.target import target_info_stage
 from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
 
@@ -135,6 +150,16 @@ def build_graph() -> Graph:
             Stage("seal_plan", 2, ("working", "cohort", "target_info", "structure"),
                   ("roles", "task", *SEAL_READS), seal_plan_stage, requires=("target",),
                   label="Reading what a held-out set can measure"),
+            # ── WP12: methods a reviewer expects (AUDIT_REPORT §5) ──
+            Stage("sensitivity", 1, ("working", "design", "split", "target_info"),
+                  SENSITIVITY_READS, sensitivity_stage, heavy=True,
+                  requires=("sensitivity", "models"),
+                  label="Refitting the model on each analysis's rows"),
+            Stage("calibration", 1,
+                  ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
+                  CALIBRATION_READS, calibration_stage, heavy=True,
+                  requires=("measurement_error", "models"),
+                  label="Correcting energy-adjusted intakes for day-to-day error"),
         ]
     )
 

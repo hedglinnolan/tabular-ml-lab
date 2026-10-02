@@ -85,6 +85,10 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "feature_table";
     case "set_categorical":
       return "categorical";
+    case "set_sensitivity":
+      return "sensitivity";
+    case "set_measurement_error":
+      return "measurement_error";
     case "revert": {
       const undone = records.find((r) => r.id === d.decision_id);
       return undone ? slotOf(undone.decision, records) : null;

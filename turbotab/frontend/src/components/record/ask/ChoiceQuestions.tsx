@@ -9,6 +9,7 @@ import { useRef, useState, type FormEvent } from "react";
 import type {
   EnergyMethod,
   EnergyReading,
+  EligibilityRule,
   ExclusionRule,
   MissingColumn,
   ProposalsArtifact,
@@ -44,7 +45,7 @@ export function ExclusionsAsk({
   ...p
 }: AskProps & {
   proposals: ProposalsArtifact | undefined;
-  current: ExclusionRule[] | null;
+  current: EligibilityRule[] | null;
   numericColumns: string[];
 }) {
   const offered = proposals?.exclusions ?? [];
@@ -72,7 +73,7 @@ export function ExclusionsAsk({
       }
     : null;
 
-  const matches = (rules: ExclusionRule[]) =>
+  const matches = (rules: EligibilityRule[]) =>
     current !== null && current.length === rules.length && same(current, rules);
   let recordedKey: string | null = null;
   if (current !== null) {

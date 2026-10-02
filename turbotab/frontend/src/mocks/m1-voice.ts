@@ -5,6 +5,7 @@
  * turbotab/core/stages/finding_words.py). Backticks mark data; the client renders chips.
  */
 import type { EnergyMethod, Role } from "../api/m1-types";
+import { isRangeRule } from "../api/m1-types";
 import type {
   Decision,
   DecisionRecord,
@@ -164,7 +165,8 @@ export function sentenceFor(
         return !col || !(v === null || v === undefined || v === "");
       });
       const removed = new Uint8Array(ds.nRows);
-      const clauses = d.rules.map((rule) => {
+      // The mock words range rules only; a Goldberg screen (WP12) is the real server's.
+      const clauses = d.rules.filter(isRangeRule).map((rule) => {
         let n = 0;
         for (let i = 0; i < ds.nRows; i++) {
           if (measured[i] && !removed[i] && ruleExcludes(ds, rule, i)) {
@@ -347,7 +349,7 @@ export function validateM1(ds: MockDataset, d: Decision, state: ProjectState): R
       return null;
     }
     case "set_exclusions": {
-      for (const rule of d.rules) {
+      for (const rule of d.rules.filter(isRangeRule)) {
         const col = findColumn(ds, rule.column);
         if (!col || !isNumericDtype(col.dtype)) {
           return refuse(
