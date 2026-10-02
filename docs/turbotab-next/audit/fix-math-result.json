@@ -1,0 +1,1078 @@
+{
+ "done": [
+  {
+   "package": "WP1 \u00b7 Data identity: values mean what the file says, and reshaping keeps rows and order honest",
+   "branch": "fix/wp1-data-identity",
+   "commit": "b033c72",
+   "summary": "All nine WP1 acceptance tests are permanent pytests in turbotab/core/tests/acceptance/test_wp1_data_identity.py: 26 tests, all passing. The full suite (`turbotab/core turbotab/server`) has 854 passed, and the frontend check (tsc, eslint, 152 vitest) is green.\n\nWhat changed:\n- **Dates (MA-05).** A shared date reader is new (turbotab/core/dates.py). At ingest, a date column that reads the same month-first and day-first stays text, with a warning. A new `ambiguous_dates` finding shows three example rows under each reading and offers month-first or day-first as a repair. The structure stage now reads that answer, so after \"month first\" the quarterly visits read 91 days apart, exactly like the ISO copy.\n- **Combining order (MA-03).** Records are ordered by numbers, by dates (including text like \"Mar 3, 2021\"), or by a declared order of text levels (`RepeatSpec.levels`). Undated records are never first or last and are counted in the receipt. If the time column cannot order the records, the answer is refused with exits, and the stage refuses too as a backstop. `ordered_by` now says \"file order\" whenever the named column ordered nothing.\n- **Per-column combining (MA-14, B21, B22).** Each column is combined by what it holds: a constant keeps its value, a code takes its most frequent value (or its baseline under change), an amount follows the method. The receipt lists every column that varied, with its rule, and a column's rule can be overridden. First and last now mean the value at that record for the outcome too. Averaging a two-level outcome is refused.\n- **Turning a feature table (MA-04).** Columns are split into the label, feature annotations (m/z, RT, IDs; kept in `features.parquet`) and samples. Numeric gene IDs stay feature names. A column that does not move with the samples is refused, with a `set_feature_table` exit. The orientation and aggregation previews now call the stage's own functions.\n- **Categorical declaration (MA-15).** A `set_categorical` decision makes a column enter as indicators. The roles stage proposes it for whole-number columns with 3\u201310 values and for known NHANES coded variables.\n- **Spellings and infinities (MA-16, MA-18, B18).** New repair families: text read as numbers (every unparsed spelling named with its count), a separate below-detection-limit family, infinite values, and date reading. Codes are now blanked before the kJ conversion and are compared safely on text columns.\n- **Ingest (MA-17, C14).** Unambiguous decimal commas are read as numbers. Integers past 2**53 that would be read as doubles stay text. Excel uses the CSV reader's missing-value tokens. Summaries are computed over finite values, with infinities counted in a new `n_infinite` field.\n- **Flow counts (MA-19, D16).** A row with no value, or one a by-sex screen cannot screen, leaves on its own line by default (`ExclusionRule.missing`). The range line now counts only rows in range.\n- **Group keys (C12).** \"007\", \"07\" and \"7\" are kept apart.",
+   "acceptance": [
+    {
+     "test": "1 \u00b7 Ambiguous dates",
+     "status": "pass",
+     "measured": "Ingest keeps visit_date as VARCHAR; 0 of 2,000 dates changed, against the 1,843 a day-first reading moves. Ingest warns. The ambiguous_dates finding offers month_first/day_first ({formats: {visit_date: '%m/%d/%Y'}}) with 3 example rows under each reading. Answered month-first: median spacing equals the ISO copy's (\u224891 days), the reading and spacing dicts equal the ISO copy's, and the working table's dates equal the ISO dates.",
+     "reference": "1,843 non-January dates differ between the readings; each example's two readings match pandas; median gap between a person's visits in the ISO copy, 89\u201393 days.",
+     "how_reference_was_computed": "pandas to_datetime with explicit formats '%m/%d/%Y' and '%d/%m/%Y' on the source text; per-person median diff of the ISO dates parsed with '%Y-%m-%d'; the ISO copy run through the same structure stage as the comparison reading.",
+     "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+    },
+    {
+     "test": "2 \u00b7 Ordering when combining",
+     "status": "pass",
+     "measured": "Visit labels month_12/baseline/month_6: refused (Refusal code cannot_order, message 'Declare the order of the levels\u2026', exit set_repeat_kind with levels [baseline, month_6, month_12]); the working stage raises the same. Once declared, LDL change is +2.0 for all 30 persons. 'Mar 3, 2021' dates: participant A's weight change is \u221210. Undated middle visit: last = 74.0 with outcome 132, change = \u22126.0, receipt undated_records = 4. Under the mean, labels ordered nothing and ordered_by = 'file order'; declared, ordered_by = 'visit'.",
+     "reference": "+2.0 per person; A: \u221210; P00: last 74.0 / 132, change \u22126.0; 4 undated records.",
+     "how_reference_was_computed": "pandas: labels mapped to their order, then last minus first per person; text dates parsed with '%b %d, %Y', undated dropped and sorted; ISO dates parsed with '%Y-%m-%d', dated records only.",
+     "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+    },
+    {
+     "test": "3 \u00b7 Turning a feature table",
+     "status": "pass",
+     "measured": "metabolite/hmdb/mz/rt/S1\u2026S12 \u2192 exactly 12 sample rows, all 60 features float64; features.parquet = [feature, hmdb, mz, rt]. Entrez matrix: feature names are the Entrez IDs as text. MZmine: label 'row ID', annotations ['row m/z', 'row retention time'], none of them a sample. The preview's turned corner equals the stage's table cell for cell. An unnamed mass column is refused (not_a_sample) with a set_feature_table exit.",
+     "reference": "The sample block transposed by pandas; the Entrez counts indexed by gene ID and transposed.",
+     "how_reference_was_computed": "pandas set_index(label).T on the source frame, compared with exact array equality.",
+     "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+    },
+    {
+     "test": "4 \u00b7 Per-column combining",
+     "status": "pass",
+     "measured": "Under change, sex_code keeps each person's value (never 0). Under mean, smoking_cat is each person's mode (values within {1,2,3}, never 1.67). The receipt lists exactly smoking_cat (mode), day_of_week (mode) and weight_kg (mean); constant_columns = 1. A per-column override (weight_kg: first) gives the baseline value and is marked chosen.",
+     "reference": "Per-person first sex_code; per-person mode with ties to the earliest dated record; the varying numeric columns.",
+     "how_reference_was_computed": "pandas groupby: first(); value_counts with earliest tie; nunique() > 1 per person.",
+     "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+    },
+    {
+     "test": "5 \u00b7 Categorical declaration",
+     "status": "pass",
+     "measured": "Undeclared, RIDRETH3 is numeric (one slope). Declared, it becomes 5 indicator columns whose values equal the reference exactly. The roles stage proposes RIDRETH3 and DMDEDUC2 (high), region_code (medium), and not the continuous columns.",
+     "reference": "5 indicators for 6 levels; levels counted per column.",
+     "how_reference_was_computed": "pd.get_dummies(drop_first=True); pandas nunique.",
+     "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+    },
+    {
+     "test": "6 \u00b7 Spellings",
+     "status": "pass",
+     "measured": "After the read_numbers repair, the 3%-'.' columns (age, kcal, bmi) are float64 and equal the reference exactly. The finding detail and the option sentence name '.', '#DIV/0!' (2) and 'n.d.' (1), each with its count. A ';'-separated decimal-comma file materializes exactly equal to the dot copy (numeric dtype). '<0.2' gets its own below_detection__crp finding (family below_detection, not text_numbers), and the half-limit repair gives 0.1. The SAS source quote is in the docstring.",
+     "reference": "pd.to_numeric(errors='coerce') of the source; value_counts of the unparseable spellings; pandas read_csv of the dot copy; '<0.2' replaced by 0.1.",
+     "how_reference_was_computed": "pandas on the source text, independent of the SQL repair.",
+     "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+    },
+    {
+     "test": "7 \u00b7 Parity",
+     "status": "pass",
+     "measured": "Per-column n_missing is identical between the CSV and the xlsx copy over all 10 NULL_TOKENS (each missing) and 5 non-tokens ('None', '-nan', '1.#IND', '#NA', 'none'), each kept as an answer in both.",
+     "reference": "A column is missing iff its value is in NULL_TOKENS.",
+     "how_reference_was_computed": "The token list itself (the spec), compared across both readers' ColumnInfo.",
+     "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+    },
+    {
+     "test": "8 \u00b7 Infinite values",
+     "status": "pass",
+     "measured": "The profile completes. DuckDB and Arrow summaries both have n_infinite = 1 and n = 500, with mean/std/min/max/quartiles over the finite values. The two paths agree: counts exactly, statistics to 1e-12 relative. The infinite_values finding offers set_missing; applied, that one cell becomes NaN and the rest are unchanged.",
+     "reference": "numpy mean, std(ddof=1), min, max and quantiles over the finite values; np.where(isinf, nan, x).",
+     "how_reference_was_computed": "numpy on the source column, with pytest.approx at rel 1e-12.",
+     "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+    },
+    {
+     "test": "9 \u00b7 Flow counts",
+     "status": "pass",
+     "measured": "'`age` not recorded' drops every row missing age; '`age` within `20`\u2013`80`' counts only rows with age in range. Kept rows have no missing age or kcal. With missing='keep', the label adds 'or not recorded' and a ', `n` kept' line appears. The by-sex screen's 'not screened' line drops rows whose sex is missing or unrecognized; no 9,000 kcal row is kept. The STROBE 13(a) quote is in the docstring.",
+     "reference": "isna counts; between(20, 80) counts; rows with sex not in {F, M}; rows inside their sex's range.",
+     "how_reference_was_computed": "pandas on the fixture frames.",
+     "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+    }
+   ],
+   "closed_findings": [
+    "MA-03",
+    "MA-04",
+    "MA-05",
+    "MA-14",
+    "MA-15",
+    "MA-16",
+    "MA-17",
+    "MA-18",
+    "MA-19",
+    "C12",
+    "C14",
+    "B18",
+    "B21",
+    "B22",
+    "D16"
+   ],
+   "tests": {
+    "command": "TURBOTAB_WORKERS=2 OMP_NUM_THREADS=2 /Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest turbotab/core turbotab/server -q; cd turbotab/frontend && npm ci && npm run check",
+    "passed": true,
+    "detail": "854 passed in turbotab/core and turbotab/server, including the 26 acceptance tests and the committed-OpenAPI drift test. Frontend: tsc on both projects, eslint, and vitest 23 files / 152 tests all pass. All six pre-commit gates passed at commit."
+   },
+   "deviations": [
+    "Test 1's count: this fixture (C/t13, seed 0) has 1,843 dates that a day-first reading moves (every non-January date), not the 1,840 in \u00a75. The audit itself reports 1,840\u20131,843 across its two fixtures. The test asserts the independently counted 1,843.",
+    "Test 1, 'asks': ingest keeps the column as text and warns. The question itself is the ambiguous_dates finding, with month-first/day-first repair options in the existing repairs UI. For its answer to reach the repeats reading, the structure stage now reads the `findings` slot, so it reruns after any applied repair (stage graph: structure v4, working v2, oriented v2).",
+    "Test 8, 'the Arrow and DuckDB paths agree': counts agree exactly; statistics agree to 1e-12 relative, not bit for bit (summation order moves the last digit, about 1e-16). The existing parity standard was 1e-9. The 'engines differ in last digits' part of C14 is therefore not removed; its precision-loss and browser-rounding parts are fixed.",
+    "Test 6, '<LOD' family: it offers only row-local substitutions (half the limit, limit over \u221a2). The censoring-aware and flag-plus-value options are ME-08's, in WP7. If only the text-numbers repair is applied, the below-limit values become blank, and its consequence says so.",
+    "MA-14 recommendation beyond the acceptance test: 'keep baseline values beside a change' is not done (ANCOVA versus change is a contested ruling, \u00a77.3). A per-column override (`AggregationSpec.columns`) is offered instead. Codes are recognized from the data (whole numbers, \u226410 levels, each seen ~3 times, not 0/1), because roles come after combining. So a covariate recorded at every visit, such as age, is still differenced under 'change' unless overridden; the receipt lists it.",
+    "Behavior changes for existing projects: ExclusionRule.missing defaults to 'exclude', so recorded exclusion rules now leave out rows with no value, and their sentences say 'or not recorded'. First/last outcomes are now the value at that record, never carried from another visit, and the receipt counts units with a blank outcome. Both are intended by MA-19 and B22.",
+    "Shared files touched, each minimally: decisions.py (SetFeatureTable, SetCategorical, ExclusionRule.missing, RepeatSpec/SetRepeatKind.levels, AggregationSpec/SetAggregation.columns, validators); sequence.py (aggregation refused when the time column cannot order); repairs.py (4 new families, B18 order and TRY_CAST, impossible-value rules keep blanks); stages/findings.py (own findings, plus dropping the legacy numeric_as_text/text_missing card for a covered column); models/pipeline.py (declared categoricals one-hot); stages/__init__.py (read lists); structure_previews.py and row_previews.py (previews call the stage's functions; per-rule drops); voice.py (exclusion and aggregation sentences stay true; sentences for the 2 new kinds); server/service.py (per-rule counts); server/schemas.py, openapi.json, frontend generated.ts.",
+    "Frontend edits forced by the generated types (presentation itself unchanged): new required fields filled with the server's defaults in ChoiceQuestions.tsx, SequenceQuestions.tsx, sentences.tsx (slotOf cases), mocks (db, m1-stages, m2-record, stats) and events.test.ts. No UI control exists yet for set_feature_table, set_categorical, a declared level order, per-column combining rules, or an exclusion rule's missing='keep'. They are reachable through the API and through refusal exits.",
+    "units.py is unchanged: none of WP1's acceptance tests reads outcome units (IN-05 and IN-07 belong to WP13).",
+    "Branch base: the worktree had been created from main, so I branched fix/wp1-data-identity from turbotab-next (88d22aa) and committed there."
+   ],
+   "inbox": [
+    "Frontend controls (presentation, when it resumes): declare a feature table's label and annotations; declare categorical columns (the roles artifact's `categorical` proposals); declare a time column's level order (the refusal already proposes one); set a column's own combining rule; and an exclusion rule's keep/exclude for unrecorded values.",
+    "seal.py's chronological draw parses text time columns with pandas format='mixed'. An unanswered ambiguous date column would be read month-first there. It should go through turbotab/core/dates.py (WP16).",
+    "Roles-aware combining (covariates kept at baseline under 'change') once roles can be answered before combining (routing, WP17/WP18).",
+    "WP7: a censored (detection-aware) option and a flag-plus-value option for the below_detection family. Also, models.pipeline.level_columns does not yet treat declared categoricals as level columns under missing_category.",
+    "Legacy pack code (energy correlations) emits a RuntimeWarning on a column holding inf and computes a NaN correlation. It should use finite values (WP14/WP15).",
+    "json_safe now sends integers past 2**53 as exact strings (window and sample values); summary statistics stay numbers. Any frontend code that formats those values as numbers should accept a string."
+   ]
+  },
+  {
+   "package": "WP2 \u00b7 Intervals that match how the data were sampled",
+   "branch": "worktree-wf_e4f6ae8a-38e-2",
+   "commit": "5c03efe",
+   "summary": "Under inference, the linear family's coefficient table now gets its intervals from a new module, /Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_e4f6ae8a-38e-2/turbotab/core/models/inference.py.\n\n(1) Which rows belong together is decided from the grain answer, the identifier roles and the analysis rows themselves, not from how the seal grouped them. So \"I don't know\" (undetermined) and \"one row each\" while an ID repeats (abandoned) are both clustered by that ID, and a concern says why. A missing ID counts as a unit of its own, exactly as the split maps it (closes A18).\n\n(2) When rows repeat, the intervals use CR2 standard errors with Bell\u2013McCaffrey Satterthwaite degrees of freedom. One engine serves OLS, logistic and multinomial models, and it never builds an n_g \u00d7 n_g matrix. Below the seal's 8-unit floor, the table keeps the estimates and reports no interval or p-value. The refusal and its exits are recorded: combine each unit's rows into one, or a mixed model or GEE (not yet available). A concern names G whenever G < 30. If the degrees of freedom would cost too much to compute, the intervals fall back to t(G\u22121) and the caption says so.\n\n(3) Independent OLS rows get HC3 standard errors on t(n\u2212p). A Breusch\u2013Pagan (Koenker) check says so when the spread is not constant and that changes the standard errors by at least 10%.\n\n(4) Separation in a logistic model is found by linear programming (Konis), the separating column is named, and the table becomes Firth's penalized fit with profile-likelihood intervals and likelihood-ratio p-values. With repeated rows as well, it keeps the Firth estimates and refuses intervals.\n\nThe API gains Coefficient.se and Coefficient.df, and FittedModel.inference (estimator, covariance, caption, clusters, refusal, exits). The Results show the caption, and the fit stage version went from 3 to 4.\n\nBefore I built on the CR2 engine, I checked it independently. It matches the definition written out with n\u00d7n matrices to 1e-15, statsmodels' HC2 for one-row clusters, the Imbens\u2013Koles\u00e1r closed form exactly (both SE and df), and statsmodels' own clustered sandwich for OLS, logistic and multinomial. I also used a calibration simulation to choose the method: CR2 with these degrees of freedom held type-I error at 0.030\u20130.062 for G = 6\u201320. On the same data, the app's old normal-based intervals gave 0.09\u20130.25, and CR1 with t(G\u22121) still gave 0.07\u20130.16. The acceptance tests are in /Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_e4f6ae8a-38e-2/turbotab/core/tests/acceptance/test_wp2_intervals.py, and the independent reference computations are in references.py next to it.",
+   "acceptance": [
+    {
+     "test": "1 \u00b7 Repeated rows (300 \u00d7 3, null, inference, grain undetermined and abandoned)",
+     "status": "pass",
+     "measured": "Reported 95% coverage 0.939 (undetermined) and 0.939 (abandoned) over 1,000 replicates, each run through the real split, design and fit stages. The split's basis was undetermined or abandoned with grouped_by None, and the fit clustered by pid with CR2.",
+     "reference": "Plain OLS 0.83\u20130.84 (measured here 0.849); clustered 0.947\u20130.948 (CR1 with t(G\u22121), measured here 0.937). Bound: at least 0.93.",
+     "how_reference_was_computed": "statsmodels OLS, nonrobust and cluster with use_t, fit on the same training rows taken from the split's assignment.",
+     "file": "turbotab/core/tests/acceptance/test_wp2_intervals.py"
+    },
+    {
+     "test": "2 \u00b7 Few units (6 \u00d7 40 null-sodium server scenario)",
+     "status": "pass",
+     "measured": "Through the real server (TestClient with workers): the basis is abandoned, inference.covariance is 'none' with n_clusters 6, and every coefficient's CI and p are null while the estimates are kept. The refusal cites 6 units against the floor of 8, and the exits are 'Combine each `participant_id`'s rows into one\u2026' and 'A random-intercept mixed model or GEE (not yet in TurboTab)'. The refusal also appears in the concerns.",
+     "reference": "Random-intercept p = 0.852 (target 0.85). Independent-row OLS, the old silent number, p = 4.1e-14.",
+     "how_reference_was_computed": "statsmodels MixedLM and OLS formulas on the same 240 rows (E/scenA.py data, seed 11).",
+     "file": "turbotab/core/tests/acceptance/test_wp2_intervals.py"
+    },
+    {
+     "test": "3 \u00b7 Small-G correction (G = 10 use_t; type-I at G = 12 \u2264 0.07; concern names G < 30)",
+     "status": "deviated",
+     "measured": "G = 10 (5 against 5 clusters, cluster-level exposure): df 8.0, half-width/SE 2.306 (t(8)), which is wider than t(9)'s 2.262. The SE equals the Neyman variance of the cluster means, and the caption reads '95% intervals cluster-robust (CR2) by `pid`, G = 10 clusters, on t with Bell\u2013McCaffrey degrees of freedom.' On an unbalanced G = 10 design, every row's SE, df, CI and p equal the definition written out (to 1e-9). Type-I at G = 12: OLS 0.038 (1,000 replicates), logistic 0.032 (600), multinomial 0.037 (400). A concern names G at G = 12 and 29 and not at 30. Past the compute budget, the df are t(G\u22121) and the caption says so.",
+     "reference": "t(9) quantile 2.262 (the package's minimum). With normal critical values: 0.10\u20130.20 (measured 0.133, 0.120 and 0.122). Imbens\u2013Koles\u00e1r closed-form df K_BM(5,5) = 8.",
+     "how_reference_was_computed": "scipy t quantiles; the Imbens & Koles\u00e1r 2016 closed form; the CR2 definition written out with n\u00d7n matrices (references.cr2_by_definition); statsmodels' clustered fits with the normal reference on the same replicates; statsmodels' clustered and HC0 sandwiches to check the logistic and multinomial working models. Cameron & Miller 2015 quoted in the docstring.",
+     "file": "turbotab/core/tests/acceptance/test_wp2_intervals.py"
+    },
+    {
+     "test": "4 \u00b7 Heteroskedasticity (lognormal intake, error SD \u221d intake, n = 200)",
+     "status": "pass",
+     "measured": "Reported coverage 0.933 over 4,000 replicates. Caption: '95% intervals from HC3 heteroskedasticity-robust standard errors, on t(198)'. The SEs equal the HC3 formula to 1e-9. The check spoke on 499 of 500 heteroskedastic fixtures and 5 of 500 clean ones, spoke on the seeded heteroskedastic fixture, and stayed silent on the seeded clean one.",
+     "reference": "Classical 0.61 (measured 0.607); HC3 0.93 (statsmodels HC3 measured 0.932). Bound: at least 0.92.",
+     "how_reference_was_computed": "statsmodels OLS nonrobust and HC3 on the same replicates; MacKinnon\u2013White HC3 written out; Koenker's studentized Breusch\u2013Pagan statistic computed by hand (n\u00b7R\u00b2).",
+     "file": "turbotab/core/tests/acceptance/test_wp2_intervals.py"
+    },
+    {
+     "test": "5 \u00b7 Separation (8% exposure, every exposed row an event)",
+     "status": "pass",
+     "measured": "On all 20 audit seeds: the table names `exposed` (and not age) as separating the outcome, the estimator is Firth, the exposed row has a finite estimate (0 to 10) and a profile-likelihood interval rather than a Wald one, and there are no Singular-matrix failures. Firth estimates match an independent optimizer (rtol 1e-5). In the 2\u00d72 case, Firth equals the Haldane +\u00bd log odds ratio (1e-9). Profile bounds and p-values match the definition recomputed with a generic optimizer (1e-5). Must-not-fire: 0 of 50 non-separated datasets flagged, and their Wald CIs equal statsmodels'. Separation with clustering keeps the Firth estimates and refuses intervals. The real fit stage reports separated == ['exposed'].",
+     "reference": "The old Wald row was meaningless (log-odds over 15 with p over 0.9, or a singular matrix) in 20 of 20 seeds.",
+     "how_reference_was_computed": "statsmodels Logit (the old path); scipy BFGS plus Nelder\u2013Mead on the penalized log-likelihood; Haldane's 2\u00d72 formula; brentq on the generic-optimizer profile.",
+     "file": "turbotab/core/tests/acceptance/test_wp2_intervals.py"
+    },
+    {
+     "test": "6 \u00b7 Missing identifiers (A18)",
+     "status": "pass",
+     "measured": "With 12 of 180 pids missing: n_clusters 72 = 60 named + 12 alone, n_missing 12. The cluster codes are a one-to-one match with the split's groups (seal.seal_inputs). The fit's caption reads '12 rows with no `pid` counted as units of their own'.",
+     "reference": "72 units counted by hand (nunique + number missing). The old factorize mapping gave 61, with every missing row in one giant cluster.",
+     "how_reference_was_computed": "pandas nunique plus a missing count, and the split's own groups from seal_inputs on the real store.",
+     "file": "turbotab/core/tests/acceptance/test_wp2_intervals.py"
+    }
+   ],
+   "closed_findings": [
+    "MA-01",
+    "MA-06",
+    "MA-07",
+    "MA-08",
+    "A18"
+   ],
+   "tests": {
+    "command": "TURBOTAB_WORKERS=2 OMP_NUM_THREADS=2 /Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest turbotab/core turbotab/server -q",
+    "passed": true,
+    "detail": "847 passed in 146.78s, on the final code before commit. The WP2 acceptance file alone takes about 54s; its longest test is the 2 \u00d7 1,000-replicate real-stage Monte Carlo (about 25s). Frontend: npm ci then npm run check passed (tsc, eslint, 152 vitest tests including the generated-types drift check). The pre-commit gates were all green."
+   },
+   "deviations": [
+    "Test 3, first part: the package asks that at G = 10 the half-width over SE equal t(9) = 2.262 with the caption 'cluster-robust, G = 10, t(9)'. The engine instead uses CR2 with Bell\u2013McCaffrey degrees of freedom at every G. That is the method the package's own recommendation names below 30\u201350 clusters, and the one Cameron & Miller call 'the best methods use the CR2VE and T(v*)'. Their 'at a minimum \u2026 T(G \u2212 1)' is the floor, not the target. Evidence: in my calibration CR1 with t(G\u22121) still rejected 0.10\u20130.12 at G = 8\u201312 (the skeptic measured 0.12\u20130.15), while CR2 with these df gave 0.036\u20130.062. The test asserts the nearest honest version: use_t holds, half-width/SE equals the t quantile at each row's reported df, and at G = 10 (5 against 5 clusters) that df is 8 from the Imbens\u2013Koles\u00e1r closed form, giving 2.306 \u2265 2.262. The caption names CR2, G = 10 and Bell\u2013McCaffrey. t(G\u22121) appears only as a stated fallback when the df computation would exceed its cost budget, and that path is tested too.",
+    "Test 1 runs 1,000 replicates instead of 400. This is stricter: at 400 replicates (Monte Carlo SE 0.011) even statsmodels' clustered reference landed at 0.930, so the 0.93 bound barely told the two apart. Measured 0.939 against a reference of 0.937.",
+    "The worktree was created from main (f5e935c), not turbotab-next. Because it was clean, I reset the worktree branch to turbotab-next (88d22aa) before starting, so the commit sits directly on 88d22aa.",
+    "Files outside the models directory that I touched, each kept small. turbotab/core/stages/modeling.py: about 20 lines in fit_stage's coefficient block \u2014 it reads the candidate unit columns, resolves the clusters once, calls family.inference(), and stores model['inference']; the old cluster concern was removed. turbotab/core/stages/__init__.py: fit stage version 3 \u2192 4, so cached fits with the old z-based intervals are recomputed. turbotab/core/models/artifacts.py: new optional fields. turbotab/server/openapi.json and turbotab/frontend/src/api/generated.ts were regenerated. Frontend mocks (m1-stages.ts) and derive.test.ts got the new required fields set to null. Coefficients.tsx and Results.tsx: one caption expression each, so the on-screen line and the saved figure name the covariance. docs/turbotab-next/M1_CONTRACT.md: the fit artifact description. Expect merge conflicts with other packages that touch fit_stage or the API schema (WP4 in particular); openapi.json and generated.ts should be regenerated rather than hand-merged.",
+    "The exits have no attached decision ('decision': null): unit and aggregation changes are refused once the seal is drawn, and the mixed-model or GEE exit points to WP12. Turning these into executable decisions belongs to the routing packages.",
+    "Intervals are still computed on the training rows. Ruling 3 (inference estimates from all eligible rows) is ME-12, which is WP8, not this package.",
+    "Separation detection covers binary outcomes only. Multinomial separation is not detected. Firth combined with clustered rows refuses intervals, because there is no standard sound interval for that combination.",
+    "The covariance is chosen by the engine and stated in the caption. There is no user decision offering classical, HC3, CR1 with t(G\u22121), CR2, or a wild cluster bootstrap with 'customary' and 'sound' labels (north star 5). That is a routing change, listed in the inbox."
+   ],
+   "inbox": [
+    "Routing (WP17/18): an interval-covariance decision under inference (classical, HC3, CR1 with t(G\u22121) as the Stata custom, CR2 with Bell\u2013McCaffrey df, wild cluster bootstrap), each labeled 'customary in' and 'sound for' per north star 5, ranked by soundness, defaulting to what inference.py chooses today.",
+    "Routing: make the refusal exits executable \u2014 combine each unit's rows (the unit and aggregation path, which needs the re-seal exit) and name the unit column (the grain question).",
+    "WP12: once a random-intercept mixed model or GEE exists, the 'mixed model' exit becomes real. Then revisit the 8-unit floor: CR2 with Bell\u2013McCaffrey df measured near nominal even at G = 6 (0.030\u20130.046) on balanced and moderately unbalanced designs, so the floor is a leash choice shared with the seal, not a mathematical necessity.",
+    "WP8 / ruling 3: once inference fits on all eligible rows rather than training rows, resolve_clusters and inference_table need no change; they take whatever rows the fit hands them.",
+    "RO-08: resolve_clusters prefers the grain's named column, then the repeating identifier with the fewest units. Clusters above the person (site, household, batch) still need the routing question.",
+    "Multinomial separation detection, and Firth or penalized alternatives for multiclass outcomes.",
+    "ME-07 (WP8): the Results line still says 'Change in predicted \u2026 per unit' for logistic log-odds. The caption now names the covariance, but the scale label is WP8's."
+   ]
+  },
+  {
+   "package": "WP3 \u00b7 Energy-transform algebra",
+   "branch": "worktree-wf_e4f6ae8a-38e-3",
+   "commit": "6c1a900",
+   "summary": "The within-sex energy residual no longer creates a nutrient effect out of sex. Before the fix, the stratified residual fitted N ~ E within each level and added back that level's own mean nutrient, so the adjusted nutrient carried the difference between levels. When sex was not a predictor, a nutrient with no effect reached p = 2.9e-106, with r(fat_adj, sex) = 0.58. That baseline was reproduced on HEAD with the skeptic's B-skeptic/s1_strata.py.\n\nThe adjustment within level s is now N_adj = N \u2212 b_s(E \u2212 \u0112_s) \u2212 N\u0304_s + N\u0302(cohort mean E). Every level gets the same constant, as NUTRITION_PACK line 446 says. On the fitting rows, N_adj is therefore uncorrelated with energy and with the strata column, both pooled and within levels, whether or not the strata column is a predictor. On the skeptic's fixture the p-value is now 0.28 and r is 0.000. Over 1,000 null replicates through the app's own path (design_spec \u2192 build_pipeline \u2192 Linear.coefficients), p > 0.05 in 98.6% of replicates (99.0% of the first 200). The largest |r(fat_adj, sex)| is 1.7e-15, and the mean estimate is \u22120.42 Monte Carlo SE from 0.\n\nOther changes:\n- StratifiedEnergyAdjuster now lives in turbotab/core/methods/energy.py; models/steps.py re-exports it.\n- A level with fewer than 30 fitting rows (the old floor was 3), or with constant energy, uses the pooled slope but stays centered on its own means.\n- Rows with a blank strata value form their own level.\n- A row from a level not seen in fit uses the pooled regression.\n- The lineage formula and params report:\n  - pooled r(N_adj, E), and r(N_adj, E) within each level;\n  - pooled r(N_adj, strata), as the correlation ratio \u03b7;\n  - r with each level's indicator;\n  - each level's slope and row count;\n  - which levels fall back to the pooled slope.\n- The design warnings name the levels that fall back.\n- NUTRITION_PACK line 480 now agrees with line 446, and the correction is recorded inline.\n- With strata, the methods sentence says the added mean is over all training rows.\n- The preview's residual story subtracts the single constant.\n- The design stage is now version 2, so fits cached under the old algebra are not served as fresh.\n\nAcceptance tests are in turbotab/core/tests/acceptance/test_wp3_energy_transform_algebra.py: 6 tests, about 5.5 s. Each reference comes from an independent source: numpy polyfit, scipy pearsonr, statsmodels OLS, or the analytic null. I also mutated the code to check the tests catch failures:\n- Restoring per-level constants fails tests 1, 3 and 4. Through the app path, that mutation gives share(p > 0.05) = 0.0, max |r| = 0.62 and mean b = 0.103.\n- A reporter that always prints zero fails test 2.\n- A floor of 3 fails tests 2 and 4.",
+   "acceptance": [
+    {
+     "test": "WP3.1 \u00b7 null fixture: within-sex residual with sex not a predictor gives p > 0.05 in \u226595% of 200 replicates and pooled |r(fat_adj, sex)| < 0.05",
+     "status": "pass",
+     "measured": "Share of p > 0.05: 0.990 over the spec's first 200 replicates and 0.986 over all 1,000. Max |r(fat_adj, sex)| = 1.66e-15 on the model matrix. Mean estimate \u22126.4e-05 (MC SE 1.5e-04, \u22120.42 SE); smallest p over 1,000 = 0.0081. Skeptic's s1_strata.py: p = 0.28 and r = 0.000, against 2.93e-106 and 0.580 at HEAD before the fix. A second test puts sex in the model as a covariate: the fat_g_adj estimate and p equal statsmodels OLS on independently computed within-sex residuals, and p > 0.05.",
+     "reference": "A valid test rejects at most 5% under the null, so the share of p > 0.05 is at least 0.95. Here the expected share is about 0.99, because the omitted sex effect inflates the residual variance and makes the test conservative. |r| < 0.05. Mean estimate within 3 MC SE of 0. Positive control: the old per-level-constant algebra gives p < 1e-50 and |r| > 0.5 on replicate 0.",
+     "how_reference_was_computed": "The null and the r bound are analytic. Algebra reference on replicate 0: numpy polyfit per sex, plus the cohort mean fat_g, matches the app's fat_g_adj to atol 1e-9. The positive control is the old algebra computed independently with numpy and fitted with statsmodels OLS. The sex-in-model reference is statsmodels OLS of y on numpy residuals, age and sex.",
+     "file": "turbotab/core/tests/acceptance/test_wp3_energy_transform_algebra.py"
+    },
+    {
+     "test": "WP3.2 \u00b7 per-level and pooled r(N_adj, E) and r(N_adj, strata) are reported in the lineage",
+     "status": "pass",
+     "measured": "Fixture: levels F and M of 500 rows, X of 12 rows (on the pooled slope) and 2 blank rows. Every reported value matches its independent computation within 1e-9, for both the linear and log variants: pooled r(N_adj, E), pooled \u03b7, and per-level within r and indicator r. The values are not all zero. Linear: pooled r(N_adj, E) = \u22120.002 and X within r = \u22120.250. Log: pooled r = \u22120.045 and \u03b7 = 0.018. The blank level's within r (2 rows) is reported as undefined. The design stage's lineage node formula carries the pooled and per-level values.",
+     "reference": "scipy.stats.pearsonr on the transformed values (pooled, within each level, and against each level's indicator). \u03b7 = sqrt(R\u00b2) of statsmodels OLS of N_adj ~ level dummies.",
+     "how_reference_was_computed": "Recomputed from the adjusted output with scipy and statsmodels, without using the reporter's helpers. The formula text is read from design_stage's DesignArtifact lineage node adj:fat_g_adj.",
+     "file": "turbotab/core/tests/acceptance/test_wp3_energy_transform_algebra.py"
+    },
+    {
+     "test": "WP3.3 \u00b7 NUTRITION_PACK line 480 corrected to agree with line 446 ('at the cohort mean energy')",
+     "status": "pass",
+     "measured": "The \u00a704 methods-sentence generator now reads 'adding the predicted intake at the cohort mean energy (1,950 kcal/d) to the residuals'. Its quoted sentence no longer contains 'sex-specific'. The line 446 coaching text is unchanged. The stratified step's constant equals the predicted nutrient at the cohort mean energy (rel 1e-12, linear and log), and every level's mean adjusted value equals that constant.",
+     "reference": "Source check, quoted in the docstring. NUTRITION_PACK line 446: 'with the predicted nutrient at the cohort mean energy added back'. Code check: N_hat at mean E from an OLS of N on E over all rows (log N on log E for the log variant).",
+     "how_reference_was_computed": "The pack text is parsed from the file. The constant is statsmodels OLS .predict at the mean regressor over all rows.",
+     "file": "turbotab/core/tests/acceptance/test_wp3_energy_transform_algebra.py"
+    },
+    {
+     "test": "WP3.4 \u00b7 a stratum under a stated minimum (30) falls back to the pooled slope, and the lineage says so",
+     "status": "pass",
+     "measured": "MIN_LEVEL_ROWS = 30. Level X (29 rows) uses the pooled slope, centered on its own means, and its values match the reference to 1e-9. Level Y (30 rows) gets its own slope. A level unseen at transform uses the pooled regression. params.pooled_slope_levels = ['X']. The design-stage lineage formula reads 'X the pooled slope b = \u2026 on its own means (29 rows; fewer than 30 fitting rows)'. The design warnings name level X and do not name Y.",
+     "reference": "numpy polyfit over all rows for the pooled slope and over Y alone for Y's slope. Expected values: N \u2212 b(E \u2212 \u0112_level) \u2212 N\u0304_level + N\u0304.",
+     "how_reference_was_computed": "numpy polyfit, with the formula applied independently in the test.",
+     "file": "turbotab/core/tests/acceptance/test_wp3_energy_transform_algebra.py"
+    }
+   ],
+   "closed_findings": [
+    "MA-02",
+    "B20"
+   ],
+   "tests": {
+    "command": "/Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest turbotab/core turbotab/server -q",
+    "passed": true,
+    "detail": "829 passed in 111 s, with OMP_NUM_THREADS=2 and TURBOTAB_WORKERS=2, run on the committed tree. The baseline before my changes was 823 passed. The difference is the 6 new acceptance tests. The pre-commit gates passed, and --no-verify was not used."
+   },
+   "deviations": [
+    "The worktree was created from main, not turbotab-next. Before any work I reset my own clean worktree branch to turbotab-next (88d22aa), so the commit sits on turbotab-next.",
+    "WP3.1 runs 1,000 replicates instead of 200. The bound is asserted on the spec's first 200 and on all 1,000, so this is stricter than the spec. Evidence for the bound: for an exactly nominal test, '\u226595% of 200' would pass only about half the time (MC SD of the share is 0.015). On this fixture the test is conservative, because the omitted sex effect is in the residual variance, and the measured shares are 0.990 and 0.986. I added an unbiasedness check (mean estimate within 3 MC SE) and a positive control (the old algebra gives p < 1e-50).",
+    "WP3.2 asks for 'per-level r(N_adj, strata)'. Within one level the strata column is constant, so it has no r there. I report, per level, r with that level's indicator over all fitting rows, and pooled, the correlation ratio \u03b7, which equals |point-biserial r| when there are two levels. Correlations are of N_adj as the model sees it. For the log variant they are therefore nonzero, and the report says so.",
+    "Shared-file edits, each kept small: (a) models/steps.py: the class moved to methods/energy.py; it is re-exported and energy_step is unchanged. (b) models/previews.py: the residual storyboard subtracts the single constant, and the now-unused frame argument is gone. (c) models/pipeline.py, one line: warnings_for judges only predictors for missing values. Before, a strata column with blanks that is not a predictor stopped the design under complete cases with the false message 'no missing-values strategy was chosen'. The cohort's complete cases already judge predictors only. (d) stages/modeling.py, 2 lines: _energy_warnings adds the fallback-level notes. (e) stages/__init__.py: design stage version 1 \u2192 2. (f) voice.py: with strata, the residual sentence says 'the nutrient's mean over all training rows'. (g) test_modeling.py: the old test pinned the per-level-constant defect and now asserts the corrected algebra. test_voice.py: one wording change.",
+    "I did not add an option for 'each level's own constant'. With the strata column in the model it gives the same nutrient coefficient, because the per-level offsets are collinear with the strata indicators. Without the strata column it is the MA-02 defect. The single constant is sound in every configuration, so no refusal or validator is needed for a strata column that is not a predictor.",
+    "MIN_LEVEL_ROWS = 30 is the audit's proposed floor. It is stated in the code docstring, but no primary source backs it.",
+    "The repro scripts B/exp3_strata.py and B-skeptic/s1_strata.py read the removed attribute by_level_ (it is now levels_). s1 prints its main numbers before reaching that attribute."
+   ],
+   "inbox": [
+    "WP7 (missing data by purpose): under the impute strategy, the most-frequent imputer fills blanks in a strata column that is not a predictor, because it is in spec.categorical. Blank-sex rows then join the modal sex's residual regression. Under complete cases they are now a '(blank)' level of their own. WP7 should decide which rule applies to strata inputs.",
+    "WP6 (Ruling 1, residual keeps energy): the stratified adjuster still drops E as the pooled residual does. Its N_adj is orthogonal to E within every level, so keeping E in the outcome model will not change the WP3 null result. The WP3 acceptance tests do not assume that E is dropped.",
+    "WP15 (claims): claims-ledger #73 is still open: the residual methods sentence does not say that energy leaves the model, and in the log case the added mean is a geometric mean. The pack's \u00a704 table and the methods sentence still say the residual is 'the same substitution as the standard model' (ME-03, WP6).",
+    "Frontend: the mock voice (turbotab/frontend/src/mocks/m1-voice.ts) and the captured mock fixtures (m1/m2-stage-fixture.json) still have the old residual sentence and lineage text when strata are set. I left them unchanged because presentation is paused and they are mocks, not the app.",
+    "D15 (stratifying a density method does nothing) is not part of WP3. pipeline.warnings_for already says strata apply to the residual method only.",
+    "WP17 (purpose routes the questions): proposals.strata_candidates still offers sex when sex has no role. That is now sound, so the coach could say that the strata column does not need to be a predictor."
+   ]
+  },
+  {
+   "package": "WP4 \u00b7 Scoring estimators",
+   "branch": "worktree-wf_e4f6ae8a-38e-4 (one commit on top of turbotab-next 88d22aa; the worktree had been created from main f5e935c with no work, so its branch was first reset to turbotab-next)",
+   "commit": "026e18c9e3db4285e5832dd112e5c3b0f1376be7",
+   "summary": "WP4 is fixed. All five \u00a75 acceptance tests, plus tests for the minors A16 and A20, are permanent pytests in turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py (16 tests, about 25 s), and they pass. The full core and server suites pass (839 tests), and the frontend check passes (tsc, eslint, 152 vitest tests). Each measured value was printed and checked against its reference, and each fixture was confirmed to still reproduce the audit's defect under the old behavior.\n\n**MA-09, pooled R\u00b2.** R\u00b2 is now measured against the training rows' mean everywhere: in each fold, in the pooled estimate and on the held-out rows (models/metrics.py). Cross-validated R\u00b2, RMSE and MAE are pooled over every out-of-fold prediction (Hawinkel et al. 2024's pooling estimator); classification scores stay the mean over folds.\n- On the audit's fixture at n = 100, 500 replicates, the reported CV R\u00b2 averages 0.1433 against the analytic target 0.1345. Today's per-fold average reads 0.061.\n- The API gains MetricSummary.estimate and .estimator, FitArtifact.cv_definition and fold_scheme. The methods sentence defines the estimator for regression.\n\n**MA-10, the baseline verdict.** \"Better\" now needs the gain's 95% interval, corrected for folds sharing training rows (Nadeau & Bengio 2003), to lie above zero, and the gain to reach 0.01.\n- On 300 null binary datasets the \"better\" rate is 0.023 at n = 150 and 0.017 at n = 400. Today's rule on the same data fires 0.30 and 0.28.\n- A positive control is still called better in 0.98 of datasets (population AUC 0.74).\n- The gain carries se, ci_low, ci_high and df. A model that does not clear the bar gets a concern sentence with the interval; one that scores the same as the baseline in every fold gets its own plain sentence.\n\n**MA-11 and A17, time-ordered folds.** With temporal = yes the folds forward-chain by whole unit over the seal's own time ranking (new models/folds.py, seal.time_order). Cuts move so every block, including the first training block, holds every class. Fold stratification is decided on its own, not inherited from how the holdout was drawn.\n- Elastic net's inner CV and boosted trees' early-stopping rows follow the same scheme, through one function, inner_cv.fit_pipeline.\n- The methods sentence says \"time-ordered folds\", and the split note and preview caption say it too.\n\n**A15, order independence.** Without groups or time, inner folds are keyed by a hash of each row's contents. The audit's fixture (1,000 rows in random order, and the same rows sorted by the outcome), run through the real design and fit stages, chooses the identical penalty, 0.0354, from both files. Plain ElasticNetCV(cv=5) chooses 0.0233 and 0.0004.\n\n**A16.** Boosted trees above 10,000 rows stop early on whole units: the latest units when time-ordered, stratified by class for classifiers, and the same units in any row order.\n\n**A19/E11, seal plan precision.** The plan's held-out R\u00b2 precision is 2\u00b7\u221aR\u00b2\u00b7(1 \u2212 R\u00b2)/\u221an at an assumed R\u00b2 of 0.2, stated in the precision note. It is within 2.5% of the simulated SD at n = 100 and 0.1% at n = 500; the old formula was 1.93\u20131.98\u00d7 too wide.\n\n**A20.** Least-squares and Newton-Cholesky fit-time estimates now scale as n\u00b7p\u00b7min(n, p). Time-ordered folds count as k/2 + 1 whole-table fits.\n\nOne server test changed for a reason worth knowing. The held-out-score leak detector flagged an R\u00b2 of exactly 0.0. That is an elastic net that removed every predictor: predicting its training mean, it scores exactly 0 against the training mean on any rows. The test now skips that value only for a family whose public CV R\u00b2 folds are all exactly 0, which proves it is not a leak.",
+   "acceptance": [
+    {
+     "test": "\u00a75 WP4 test 1 \u00b7 Pooled R\u00b2 (CV part)",
+     "status": "pass",
+     "measured": "Mean reported CV R\u00b2 0.1433 over 500 replicates (MC SE 0.0038); |diff| 0.0088 \u2264 0.02. On the same fixture today's per-fold average is 0.061.",
+     "reference": "Target 0.1345 (audit's simulated 0.13\u20130.14); Hawinkel's estimand, with the null model's error including 1 + 1/m, is 0.1452.",
+     "how_reference_was_computed": "Analytic: 1 \u2212 \u03c3\u00b2(1 + 1/m)(m \u2212 2)/(m \u2212 p \u2212 2)/Var(Y) with m = 80, p = 5, \u03c3\u00b2 = 1, Var Y = 1.25 (the expected prediction error of OLS with Gaussian predictors, from E[S\u207b\u00b9] of a Wishart). Today's estimator is recomputed with plain sklearn LinearRegression and r2_score on the same folds. Hawinkel source text is quoted in the docstring.",
+     "file": "turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py::test_1_pooled_cv_r2_matches_the_out_of_sample_target_at_n_100"
+    },
+    {
+     "test": "\u00a75 WP4 test 1 \u00b7 Pooled R\u00b2 (the holdout R\u00b2 uses the training mean)",
+     "status": "pass",
+     "measured": "Simulation (240 training rows, 60 held out, 2,000 replicates): the app's held-out R\u00b2 averages within 0.01 of the target, while the holdout-mean version sits more than 0.015 below it. Through the real fit stage, the sealed held-out R\u00b2 equals the numpy training-mean formula to 1e-12. The methods sentence states the definition.",
+     "reference": "Analytic target 0.1794 (audit: 0.175 with the training mean against 0.155\u20130.157 with the holdout mean, target 0.18).",
+     "how_reference_was_computed": "The same analytic OLS prediction-error formula with m = 240. The stage value is compared with 1 \u2212 \u03a3(y \u2212 \u0177)\u00b2/\u03a3(y \u2212 \u0233_train)\u00b2 computed in numpy from the fitted pipeline's predictions.",
+     "file": "turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py::test_1b_\u2026 and ::test_1c_\u2026"
+    },
+    {
+     "test": "\u00a75 WP4 test 2 \u00b7 Baseline test",
+     "status": "pass",
+     "measured": "'Better' on 0.023 (n = 150) and 0.017 (n = 400) of 300 null binary datasets each. Today's rule on the same per-fold AUCs gives 0.303 and 0.280. Every gain carries a 95% interval. Power control: 0.98 'better' at population AUC 0.74.",
+     "reference": "\u2264 0.07 (nominal 5% plus Monte Carlo slack; MC SE at 5% is 0.0126). The verdict actually tests at one-sided 2.5%.",
+     "how_reference_was_computed": "Bound from the spec. For every dataset the interval is recomputed independently with scipy.stats.t and the Nadeau\u2013Bengio variance (1/K + n\u2082/n\u2081)\u00b7s\u00b2. Today's rule (gain > max(0.01, SD/\u221aK)) is recomputed from the same per-fold AUCs to show the fixture still reproduces the defect.",
+     "file": "turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py::test_2_\u2026 [150, 400] and ::test_2b_\u2026"
+    },
+    {
+     "test": "\u00a75 WP4 test 3 \u00b7 Time-ordered folds",
+     "status": "pass",
+     "measured": "Clinical sample through the real stages: fold_scheme is time_ordered, and per-fold ranges of subjects' last visits are ordered. Fit j trains only on blocks before j (spied on the logistic fits). Every elastic-net inner split forward-chains by whole subject in all 6 fits. The methods sentence contains 'time-ordered folds' only when temporal = yes. On the 4%-event fixture (200 datasets) no fold is ever event-free, and random folds beside an externally drawn holdout are stratified. The rare-event fit scores every fold.",
+     "reference": "The ordering is checked against each subject's last visit read from the raw CSV. Plain shuffled 5-fold leaves an event-free fold in 40.5% of the same datasets (audit: 34%).",
+     "how_reference_was_computed": "pandas over the raw CSV for last visits; sklearn KFold(shuffle) on the same training rows for the event-free share.",
+     "file": "turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py::test_3a_\u2026 through ::test_3e_\u2026"
+    },
+    {
+     "test": "\u00a75 WP4 test 4 \u00b7 Order independence",
+     "status": "pass",
+     "measured": "Through the real design and fit stages, the elastic net chooses alpha 0.03540008981806283 and l1_ratio 1.0 from both the random-order file and the file sorted by y. Asserted equal to rel 1e-9; observed identical.",
+     "reference": "Today's inner CV (plain sklearn ElasticNetCV(cv=5)) chooses 0.0233 and 0.0004, more than 10\u00d7 apart (audit: 0.0299 and 0.0004).",
+     "how_reference_was_computed": "scikit-learn StandardScaler plus ElasticNetCV(cv=5, the app's L1 ratios) fit directly on both file orders.",
+     "file": "turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py::test_4_\u2026"
+    },
+    {
+     "test": "\u00a75 WP4 test 5 \u00b7 Planning precision",
+     "status": "pass",
+     "measured": "The plan's SE is 0.0716 at n = 100 and 0.0320 at n = 500, \u22122.5% and \u22120.1% from the simulated SD. The stated text reads \u00b10.14 and \u00b10.06. The old formula was 1.93\u00d7 and 1.98\u00d7 too large.",
+     "reference": "Simulated SD of the held-out R\u00b2 is 0.0734 (n = 100) and 0.0320 (n = 500); bound \u00b120%.",
+     "how_reference_was_computed": "numpy simulation, 4,000 holdouts: a calibrated model with population R\u00b2 0.2 is scored on n fresh rows against the mean of 4n training rows. The stated half-width is parsed from seal.measure's text.",
+     "file": "turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py::test_5_\u2026 [100, 500]"
+    },
+    {
+     "test": "Minor A16 \u00b7 early stopping by unit (no \u00a75 test; added)",
+     "status": "pass",
+     "measured": "At 12,000 rows (3,000 people \u00d7 4) the validation set holds 300 whole people with no overlap with training. The same people are chosen after shuffling the rows. When time-ordered, it is exactly the latest 300 people.",
+     "reference": "A 10% split of positions, as scikit-learn draws it, puts more than half of the held-aside people on both sides.",
+     "how_reference_was_computed": "sklearn train_test_split on positions.",
+     "file": "turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py::test_a16_\u2026"
+    },
+    {
+     "test": "Minor A20 \u00b7 fit-time scaling (no \u00a75 test; added)",
+     "status": "pass",
+     "measured": "fit_cost ratios: n\u00b7p\u00b7min(n,p) for LinearRegression and Newton-Cholesky logistic; n\u00b7p for ElasticNetCV and HGBT. full_fits for time-ordered folds is k/2 + 1.",
+     "reference": "Arithmetic written out in the test. Measured scaling in scratch: about \u00d73 per doubling of columns for OLS and Newton-Cholesky, \u00d72 for boosted trees.",
+     "how_reference_was_computed": "Closed-form arithmetic. Timing was a one-off scratch measurement, not asserted, because timing ratios are flaky.",
+     "file": "turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py::test_a20_\u2026"
+    }
+   ],
+   "closed_findings": [
+    "MA-09",
+    "MA-10",
+    "MA-11",
+    "A15",
+    "A16",
+    "A17",
+    "A19",
+    "E11",
+    "A20"
+   ],
+   "tests": {
+    "command": "TURBOTAB_WORKERS=2 OMP_NUM_THREADS=2 /Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest turbotab/core turbotab/server -q; cd turbotab/frontend && npm ci && npm run check",
+    "passed": true,
+    "detail": "839 passed in 128.65 s, including the 16 WP4 acceptance tests. Frontend: tsc, eslint and vitest 152/152 pass. Pre-commit gates passed with TURBOTAB_PYTHON set; --no-verify was not used. Legacy suites were not run.\n\nExisting tests updated because they pinned old behavior:\n- test_modeling's cross_validate comparison now recomputes training-mean R\u00b2 and the pooled estimate in numpy, and wraps the fit in inner_cv.fit_pipeline.\n- test_live_journey_fixes: the regression baseline's pooled R\u00b2 is 0 by construction.\n- test_seal: the new precision formula and the new concern wording.\n- server test_seal_api's leak detector now skips an R\u00b2 of exactly 0 only for a family whose public CV R\u00b2 folds are all 0."
+   },
+   "deviations": [
+    "Test 2 is stricter than the audit recommended. 'Better' requires the two-sided 95% interval to clear zero (a one-sided 2.5% test), not a one-sided 5% test, so the verdict never disagrees with the interval shown. Measured null rate is 0.017\u20130.023, power 0.98 at AUC 0.74.",
+    "Test 3, 'fold stratification decided independently': contiguous time blocks cannot be stratified. Instead the cuts move so every block, including the first training block, holds every class, with a note when the events are too few for k folds. Random folds beside a holdout drawn elsewhere are now stratified on their own.",
+    "Test 4: the outer folds and the outer CV R\u00b2 still depend on file order, because the split is keyed by row id, which is file position: on the two files, CV R\u00b2 is 0.302 against 0.288. The penalty fit on the same rows is identical. The binary elastic net (saga) chooses the same C and L1 ratio across orders, but its coefficients differ by about 3e-4 because saga's solve is stochastic.",
+    "Test 1 recommendation, SE: the pooled R\u00b2's standard error (Hawinkel's nested-CV SE) is not implemented. ME-10 / WP9 names it, and a naive SE would be anti-conservative. The tooltip definition is not added because presentation is paused; the API now carries cv_definition and the methods sentence defines the estimator.",
+    "Test 5 assumes R\u00b2 = 0.2, stated in PRECISION_NOTE as the AUC's 0.75 is. At R\u00b2 = 0.4 the true SE is about 2\u00d7 the stated one.",
+    "A20 is applied only to LinearRegression and Newton-Cholesky logistic. A scratch timing also showed elastic net growing about \u00d73 per doubling of columns at 200\u2013800 columns; it was left on the documented one-pass-per-cell rule (see inbox).",
+    "Shared files touched, kept small:\n- stages/modeling.py: fit_stage's CV loop now calls metrics.cross_validate, baseline.compare and inner_cv.fit_pipeline; one line in the substitution band's refit; _estimates passes the fold scheme.\n- stages/rows.py: draw_split takes order; _assign_folds forward-chains; fold stratification decoupled; split_note.\n- seal.py: time_order, SealDraw.order, SealPlan.time_ordered_folds, r2_se.\n- voice.py: the set_split sentence.\n- row_previews.py: a caption.\n- teaching/content.py: the temporal question's consumer and option text, because the folds now read that answer.\n- models/boosted_trees.py: its describe text.\n- server/schemas.py: three SplitArtifact fields.\n- Regenerated openapi.json and generated.ts.\n- Frontend: model.ts and derive.ts read estimate ?? mean; mocks and the derive test fixture updated.\n- server/tests/test_seal_api.py: the leak detector."
+   ],
+   "inbox": [
+    "WP9 (ME-10, ME-11): give the pooled CV R\u00b2 an SE (Hawinkel/oosse uses Bates et al.'s nested CV). Repeated k-fold with the corrected resampled t would give the baseline test more power than one 5-fold run.",
+    "The 'worse than baseline' verdict is still a point estimate (gain < 0, M1's rule). A slightly negative but indistinguishable gain is called 'worse'.",
+    "Cost estimate: elastic net measured about \u00d72.7\u20133.3 per doubling of columns at 200\u2013800 columns (6,000 rows), yet is still scaled by cells. Worth a proper timing study before trusting wide-table estimates.",
+    "Substitution band refits (bootstrap resamples) use grouped or content-keyed inner folds but not time order. Fine for a bootstrap, but say so if WP5 reworks the band.",
+    "IN-24 / WP15: the temporal set_split sentence still says models are 'scored on later data than they learned from'. Untouched here.",
+    "The Results caption '{estimate} \u00b1 {sd} over folds' centers the per-fold SD on the pooled estimate. When presentation resumes, show cv_definition in the tooltip and consider an interval instead.",
+    "src/mocks/m2-stage-fixture.json is a captured fixture and still holds the old boosted-trees description and old scores. Re-capture it with docs/turbotab-next/m2/stage/capture_stage_fixture.py.",
+    "inner_cv.with_grouped_inner_cv is kept only for back-compat (one test and the audit's repro scripts). The engine now calls fit_pipeline everywhere."
+   ]
+  },
+  {
+   "package": "WP5 \u00b7 Substitution band and support",
+   "branch": "worktree-wf_e4f6ae8a-38e-5",
+   "commit": "2104204",
+   "summary": "WP5 is fixed, committed (2104204, on turbotab-next 88d22aa), and all four \u00a75 acceptance tests pass. The worktree branch had been cut from main, so I reset it to turbotab-next (it had no changes) before starting.\n\nThe band (MA-12). Each refit used to draw from one fixed 2,000-row subsample, and the band was the percentiles of 50 refits. Now each refit resamples every row the model was fit on, keeping a person's rows together when rows repeat, up to BAND_ROWS = 10,000. Above that, a refit draws 10,000 rows and the spread is scaled by \u221a(m/n) (an m-out-of-n bootstrap; Bickel, G\u00f6tze & van Zwet 1997). This holds for both the model fit and the averaging over the curve's rows, which are a subset of the training rows.\n- The default band is the curve \u00b1 1.96 standard errors of 200 refits (Efron & Tibshirani: a standard error rarely needs more than 200).\n- With 1,000 refits or more the band uses percentiles of the refits (Carpenter & Bithell 2000). MAX_BOOT rises from 500 to 2,000 so that can be requested.\n- On the real NHANES export the default band is estimated at about 175 s for three families. The old 50 refits on 2,000 rows took about 25 s.\n\nThe refits (B16 and three related problems I found).\n- A family's band is drawn only if at least 90% of its refits succeed (a stated convention).\n- The server writes the band's caption: rows used, refits, how they were resampled, and how many succeeded per family. The saved figure and the on-screen note now show it word for word.\n- Rows with a missing ID were never drawn into a resample; each is now its own unit.\n- In an elastic-net refit, copies of the same row could land on both sides of an internal tuning split. They now stay together.\n- A boosted-trees refit now keeps the full fit's early-stopping choice. scikit-learn turns early stopping on only above 10,000 rows, so 10,000-row refits of a larger fit had run all 100 trees (vs 23 with early stopping, measured on 10,001 noise rows).\n\nThe support (MA-13, B17).\n- When the total-energy column is a model input, a row also drops out at a given k if a moved nutrient's share of energy leaves the range observed for that share. The curve reports, at every k, how many rows each check removed.\n- A fixed-population curve (the same rows at every k the curve reached) now comes with each model, along with its own band.\n\nLimit found on real data. On NHANES the share check removes 0 extra rows at every k (at most 1 after excluding intakes outside 500\u20135,000 kcal). Real recall days cover almost the whole range: fat 0.000\u20130.704 of energy, carbohydrate 0.062\u20130.989. In the raw export, the near-zero kcal row (5.4\u00d710\u207b\u2077\u2079) produces a fat share of 9.0. So min\u2013max support is driven by outliers, for amounts and shares alike. A joint density or distance check is the stronger fix, but it needs a threshold ruling; it is in the inbox.\n\nTests: the core and server suites pass (838 tests, 127 s), `npm run check` passes (tsc, eslint, 152 vitest tests), and all six pre-commit gates pass. Two existing tests that pinned the old constants (50 refits, 2,000 rows) were updated, and the one that pinned the percentile interval at 40 refits now checks both intervals. The new acceptance tests are in /Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_e4f6ae8a-38e-5/turbotab/core/tests/acceptance/test_wp5_substitution_band.py.",
+   "acceptance": [
+    {
+     "test": "1 \u00b7 Band half-width at N = 10,000 within 15% of analytic (auditor's fixture, every row resampled)",
+     "status": "pass",
+     "measured": "0.0418 (ratio 1.006); before the fix 0.0841 (ratio 2.02)",
+     "reference": "0.0415",
+     "how_reference_was_computed": "1.96 \u00d7 statsmodels OLS standard error of the contrast 100\u00b7(\u03b2_carb/4 \u2212 \u03b2_fat/9) on the same 10,000 rows (A/r4_band.py fixture, seed 42); measured through ingest, design, fit and the substitution stage with the default 200 refits",
+     "file": "turbotab/core/tests/acceptance/test_wp5_substitution_band.py"
+    },
+    {
+     "test": "1 \u00b7 Band half-width at N = 10,000 within 15% of analytic (skeptic's fixture, every row resampled)",
+     "status": "pass",
+     "measured": "0.0448 (ratio 1.013); before the fix 0.0867 (ratio 1.96)",
+     "reference": "0.0442",
+     "how_reference_was_computed": "1.96 \u00d7 statsmodels OLS standard error of the same contrast (A-skeptic/s5_band.py fixture, seed 42)",
+     "file": "turbotab/core/tests/acceptance/test_wp5_substitution_band.py"
+    },
+    {
+     "test": "1 \u00b7 Same test on the defect's own setting: 2,000-row refits, now rescaled (both fixtures)",
+     "status": "pass",
+     "measured": "0.0407 (ratio 0.979) and 0.0463 (ratio 1.047); without the \u221a(2,000/10,000) rescaling the spread is more than 1.8\u00d7 the analytic width, so the bound discriminates",
+     "reference": "0.0415 and 0.0442",
+     "how_reference_was_computed": "statsmodels OLS covariance, as above; BAND_ROWS monkeypatched to 2,000 so the stage takes the rescaled path",
+     "file": "turbotab/core/tests/acceptance/test_wp5_substitution_band.py"
+    },
+    {
+     "test": "2 \u00b7 Band coverage at N = 1,500 over 300 datasets \u2265 0.93",
+     "status": "pass",
+     "measured": "0.933 (280/300) with the default band (200 refits, normal interval); on the same datasets the exact t interval covers 0.943 and the pre-fix band (50 refits, percentile) 0.907",
+     "reference": "\u2265 0.93; the truth is 100\u00b7(0.01/4 \u2212 0.02/9) = 0.0278",
+     "how_reference_was_computed": "The truth is the data-generating contrast of the skeptic's fixture (A-skeptic/s5_band.py, seeds 5000\u20135299). The paired reference is the exact t interval from statsmodels OLS on the same datasets. The positive control is the pre-fix band on the same datasets.",
+     "file": "turbotab/core/tests/acceptance/test_wp5_substitution_band.py"
+    },
+    {
+     "test": "3 \u00b7 The saved caption states rows used, B and successful refits",
+     "status": "pass",
+     "measured": "Caption: 'Shaded bands: 95% intervals, each curve \u00b1 1.96 bootstrap standard errors from 30 refits of its model, on bootstrap resamples of all 1,500 training rows. Refits that succeeded: Linear model 30 of 30, Elastic net 30 of 30.' The SaveMenu figure in Results.tsx reads sub.band?.caption.",
+     "reference": "Rows, refits and per-family successes appear in the caption",
+     "how_reference_was_computed": "A stage run with linear and elastic net, 30 refits; a source check of the curvesFigure caption expression in Results.tsx, quoted in the test docstring",
+     "file": "turbotab/core/tests/acceptance/test_wp5_substitution_band.py"
+    },
+    {
+     "test": "3 \u00b7 A band needs a stated minimum share of successful refits",
+     "status": "pass",
+     "measured": "45 of 50 succeed: band drawn. 44 of 50: no band, with the reason '44 of 50 refits succeeded; a band needs at least 90% of them'. Through the stage, with every fifth refit failing: band_ok 24, no band, and the caption says 'No band for Linear model: a band needs at least 90% of its refits to succeed.'",
+     "reference": "MIN_REFIT_SHARE = 0.9 (a stated convention)",
+     "how_reference_was_computed": "Failures injected by count, so the share of successes is known exactly",
+     "file": "turbotab/core/tests/acceptance/test_wp5_substitution_band.py"
+    },
+    {
+     "test": "4 \u00b7 At k = 300, rows whose shifted share of energy leaves the observed range are excluded, counted per check",
+     "status": "pass",
+     "measured": "Skeptic's fixture: 1,398 rows removed by the share check, 791 by the amount check, 2,811 kept. Auditor's fixture: 743 removed by the share check (its 621 counted the fat share alone; 122 more have a carbohydrate share above the maximum), 1,127 by the amount check. The kept-row mask equals the hand-computed one exactly, and the counts match the hand counts at every k.",
+     "reference": "The audit's counts (621 and 1,398 rows counted as on support at k = 300), reproduced by hand in the test",
+     "how_reference_was_computed": "numpy: shares = kcal from the nutrient \u00f7 total energy; observed ranges taken from the same rows; fixtures B/exp5_support.py and B-skeptic/s10_support.py",
+     "file": "turbotab/core/tests/acceptance/test_wp5_substitution_band.py"
+    },
+    {
+     "test": "4 \u00b7 A fixed-population curve is available (method and stage)",
+     "status": "pass",
+     "measured": "fixed_population.delta equals the hand mean over rows on support at every live k (rel 1e-12). On exp5's tree-like surface it differs from the per-k curve by more than 0.01. The stage artifact carries support counts (off_share = 1,398 at k = 300) and fixed_delta for every model.",
+     "reference": "Mean change in prediction over the intersection of hand-computed support masks",
+     "how_reference_was_computed": "numpy, with the support masks computed by hand",
+     "file": "turbotab/core/tests/acceptance/test_wp5_substitution_band.py"
+    }
+   ],
+   "closed_findings": [
+    "MA-12",
+    "MA-13",
+    "B16",
+    "B17"
+   ],
+   "tests": {
+    "command": "OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2 /Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest turbotab/core turbotab/server -q",
+    "passed": true,
+    "detail": "838 passed in 127 s, including the 11 WP5 acceptance tests (18.5 s; test 2 takes 11.5 s). npm run check passed (tsc, eslint, 152 vitest tests). All six pre-commit gates passed on commit 2104204. Legacy suites were not run."
+   },
+   "deviations": [
+    "Test 2 margin: the default band scores 0.933 (280/300) against the 0.93 bound, one dataset over. With 300 datasets the coverage estimate has a standard error of about 0.013, so even an exact interval misses 0.93 on some seed sets. On the auditor's fixture, seeds 5000\u20135299, statsmodels' exact t interval covers only 0.920. Over 600 fresh datasets of that fixture, the band and the exact interval both cover 0.943. I kept the bound as written on the skeptic's seeds (the audit's '300 datasets' fixture) and added two checks: the band must be within 0.02 of the exact interval on the same datasets, and the pre-fix band must miss 0.93 (it scores 0.907).",
+    "Test 2 refits use a numpy least-squares fit rather than the full scikit-learn pipeline, so 300 \u00d7 250 refits run in about 11 s. It is the same estimator; the code under test (refit_band with the stage's default settings) is called unchanged. Test 1 runs the full stage end to end.",
+    "Shared files, changed only as far as the fix needed: decisions.py (MAX_BOOT 500 \u2192 2,000), artifacts.py (new SubstitutionSupport model and new optional fields on SubstitutionModel and SubstitutionBand), server/openapi.json and frontend generated.ts (regenerated), Results.tsx (two expressions now use band.caption, with the old text as fallback), results/model.ts (BAND_BOOT and BAND_ROWS mirrors), the two dev mocks (new fields), M1_CONTRACT \u00a712.7 (a superseded note), and test_modeling.py / test_live_journey_fixes.py / test_substitution.py (updated where they pinned the old constants).",
+    "Behavior change: the composition check makes some curves stop at a smaller k (exp5 now stops at 400 kcal, where 37.4% of rows stay in range, instead of continuing at 59.6%). Rows with no recorded total energy are now outside the support at every k.",
+    "The fixed-population curve and its band are in the API but not drawn; presentation is paused."
+   ],
+   "inbox": [
+    "Support on real data: on the NHANES export the new share-of-energy check removes 0 extra rows at every k (at most 1 after a 500\u20135,000 kcal exclusion). Observed shares cover almost the whole range: fat 0.000\u20130.704 of energy, carbohydrate 0.062\u20130.989, and the raw export's kcal = 5.4e-79 row gives a fat share of 9.0. Min\u2013max support, for amounts and shares alike, is driven by outliers. A joint check (for example k-nearest-neighbor distance or Mahalanobis distance in log-ratio coordinates; Scholbeck et al. App. A.2) would bind, but it needs a ruling on its threshold.",
+    "INBOX.md line 126 ('Band precision: \u2026 scale the 2,000-row refit band to the full training size') is done by WP5 and can be removed.",
+    "INBOX.md line 127 (boosted-trees refits lose early stopping) is done by WP5 (pinned_to_full_fit) and can be removed.",
+    "INBOX.md line 132 (band cost on NHANES) changes: the default band is now 200 refits on full-size or 10,000-row resamples, estimated at about 175 s for three families on NHANES. Parallel refits would help; the measured estimate is shown before the user commits.",
+    "Presentation (paused): the Results could offer the fixed-population curve, a 1,000-refit 'publication' band (percentile interval), and the per-k support counts (support.off_amount / off_share) as the reason a curve stops.",
+    "The m-out-of-n rescaling above 10,000 rows assumes the curve's error shrinks with \u221an; the caption says so. For boosted trees on very large N, a rate check (Bertail, Politis & Romano 1999) or full-size refits would remove that assumption."
+   ]
+  },
+  {
+   "package": "GUARDS \u00b7 WP16 acceptance tests 1 and 2 (RO-01, RO-02), taken early with the math layer",
+   "branch": "worktree-wf_e4f6ae8a-38e-6 (based on turbotab-next 88d22aa)",
+   "commit": "f61ce8f",
+   "summary": "Both seal guards are in place and tested through the real server. All 9 new acceptance tests pass, and all 9 fail when run against the unchanged code (88d22aa), so they detect the defects.\n\nRO-02, the guard after the split: once rows are held out (holdout > 0), any answer that would change what the held-out draw reads is refused with a 409 `sealed`, and the last exit is always the re-seal (a revert of the split decision). That covers a new outcome, a different task, a chronological split request, a repair that rewrites the outcome, the unit column or the time column, withdrawing such a repair (defer or dismiss), and a revert that undoes any of these. For a set-to-missing repair on the outcome, the first exit is \"Exclude those rows instead\": it takes the impossible-value rows out of the analysis and moves no held-out row. A repair to a predictor is still accepted.\n\nThe Router now does the impossibility and code repairs before the split. The split question waits for the findings stage. Drawing the split is refused (409 `settle_first`) while a finding whose repair would rewrite a column the draw reads has not been repaired or kept. The exits are the finding's own repairs and \"Keep the values as they are\", which records a dismissal.\n\nRO-01, eligibility on the outcome: any eligibility rule on the outcome is refused under both purposes (409 `rule_on_outcome`). This includes a range set by the outcome's own levels, choosing as the outcome a column that already has a rule, and a revert that would put a rule on the outcome. The exits are: drop the rule, the impossible-values or code repairs for the outcome (only those that would be accepted now), and \"restrict by a variable measured before the outcome\". The exclusions preview never draws the outcome's histogram, even for a rule recorded before this guard existed.\n\nMeasured on the audit's own table, replayed draw for draw (verified equal to the auditors' generated CSV): 0 of 200 held-out rows moved, compared as sets from the split's parquet on disk. Before this guard the same repair would have moved 130 rows; I recomputed that independently with scikit-learn, and it matches the audit's 119\u2013130.\n\nCode is in turbotab/core/seal.py and turbotab/core/decisions.py. Small edits to shared files are listed under deviations. Test file: /Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_e4f6ae8a-38e-6/turbotab/core/tests/acceptance/test_wp16_seal_guards.py",
+   "acceptance": [
+    {
+     "test": "WP16 #1 Membership by identity: after the split, setting three impossible outcome values to missing moves 0 held-out rows (today 119\u2013130)",
+     "status": "pass",
+     "measured": "Under prediction and under inference, the set-to-missing repair on sbp (sbp and bmi together, or sbp alone) after split and fit is refused: 409 `sealed`, exits [exclude_rows instead, revert of the split decision]. 0 of 200 held-out rows moved across both refused attempts. After taking the 'exclude those rows' exit (accepted), 0 moved, and the 3 impossible-sbp rows are gone from the assignment. A predictor-only repair (bmi) is accepted with 0 moved. Counterfactual, recomputed independently: an unguarded redraw would move 130.",
+     "reference": "0 held-out rows move; the unguarded redraw moves 119\u2013130 (audit)",
+     "how_reference_was_computed": "0 is analytic: a refused decision records nothing, and an exclusion never changes the measured-outcome universe the draw is made over. It is measured by reading frames/sealed.parquet from disk before and after and comparing the sets. The 130 comes from scikit-learn train_test_split(test_size=0.2, random_state=0) on the sorted row ids, with and without the 3 rows. The same path first reproduces the app's own 200 held-out rows exactly (asserted).",
+     "file": "turbotab/core/tests/acceptance/test_wp16_seal_guards.py::test_after_the_split_outcome_repairs_move_no_held_out_row"
+    },
+    {
+     "test": "WP16 #1 Membership by identity: set_target and set_task after the split are refused with the re-seal exit",
+     "status": "pass",
+     "measured": "set_target(age) after the split: 409 `sealed`, with exactly one exit, the revert of the split decision. Reverting the earlier set_target is also refused (409 `sealed`). On a 5-level numeric outcome, set_task to the other task: 409 `sealed`, last exit is the re-seal. The same task again is accepted and the held-out rows are unchanged. Taking the exit works: after revert, set_task and set_split, the new 160 held-out rows differ from the old set, which is what the guard stops from happening silently. Unit level: set_temporal and a code repair on the unit column are refused too, and with cross-validation only (holdout 0) nothing is refused.",
+     "reference": "409 with a re-seal exit; held-out set unchanged",
+     "how_reference_was_computed": "The expected outcome is the refusal contract. Held-out sets are read from sealed.parquet on disk; the re-seal exit is checked against the decision id of the split as listed in the decision log.",
+     "file": "turbotab/core/tests/acceptance/test_wp16_seal_guards.py::test_set_task_after_the_split_waits_for_a_reseal; ::test_every_answer_the_draw_reads_waits_for_a_reseal"
+    },
+    {
+     "test": "WP16 #1 Membership by identity: the Router orders the impossibility and code repairs before the split",
+     "status": "pass",
+     "measured": "route(): while findings are running, the split step is 'waiting' with 'findings' in waiting_on. Audit sbp table: set_split gives 409 `settle_first` naming `sbp`, with exits [set_missing, exclude_rows, dismiss_finding] (the predictor-only 'unusable' option is left out). After set_missing, the split is accepted and drawn over the 997 rows that still have an outcome: 200 held out, none of them the 3 repaired rows. survey_sentinels.csv with outcome item_14: 409 `settle_first` naming `item_14`, and the repair exit sets code 9 to missing.",
+     "reference": "split refused until outcome repairs are settled; seal drawn on the repaired values",
+     "how_reference_was_computed": "The expected order comes from the audit recommendation and ROADMAP \u00a701 (the impossibility pass before the seal). The repaired values and the held-out rows are read from the working table and from sealed.parquet.",
+     "file": "turbotab/core/tests/acceptance/test_wp16_seal_guards.py::test_the_router_orders_impossibility_and_code_repairs_before_the_split"
+    },
+    {
+     "test": "WP16 #2 Outcome eligibility: bmi 18.5\u201330 with bmi as the outcome is refused (409) with exits, under both purposes",
+     "status": "pass",
+     "measured": "Inference and prediction: POST /decisions and POST /preview both return 409 `rule_on_outcome`. Exits: [set_exclusions with rules [] (drop the rule), apply_repair set_missing and apply_repair exclude_rows for bmi's impossible values, label-only 'Restrict by a variable measured before the outcome']. A mixed request (age and bmi rules) keeps the age rule in its exit. A rule whose range is set by bmi's levels is refused. Setting the outcome to a column that already has a rule, and a revert that would put a rule on the outcome, are both refused with 409 `rule_on_outcome`. Stakes, by independent OLS: fiber slope on the full table \u22120.257 (true \u22120.25), after the bmi 18.5\u201330 rule \u22120.092.",
+     "reference": "409 with exits under both purposes; audit's truncated slope \u22120.092 (\u22120.104, \u22120.080) against the true \u22120.25",
+     "how_reference_was_computed": "The expected outcome is the refusal contract. The bias is recomputed with numpy.linalg.lstsq (bmi ~ fiber + age) on the replayed audit table, with and without the rule.",
+     "file": "turbotab/core/tests/acceptance/test_wp16_seal_guards.py::test_an_eligibility_rule_on_the_outcome_is_refused_under_both_purposes; ::test_a_rule_cannot_become_a_rule_on_the_outcome"
+    },
+    {
+     "test": "WP16 #2 Outcome eligibility: the exclusions preview no longer draws the outcome's histogram",
+     "status": "pass",
+     "measured": "The preview of the outcome rule returns 409, so no views are produced. The preview of an age rule returns 200, with an age distribution view and no view whose column is bmi. With a pre-guard bmi rule planted directly in the log (as an older project would hold it), previews of rules [] and [age] draw no bmi view (before the fix, the planted rule drew 'Where the cut falls on `bmi`').",
+     "reference": "no preview view whose column is the outcome",
+     "how_reference_was_computed": "Each served view's `column` field is inspected; the legacy state is produced by appending to the decision log directly, which skips the validator.",
+     "file": "turbotab/core/tests/acceptance/test_wp16_seal_guards.py::test_the_exclusions_preview_never_draws_the_outcome"
+    }
+   ],
+   "closed_findings": [
+    "RO-01 (I1): an eligibility rule on the outcome is refused under both purposes, with exits; the exclusions preview never draws the outcome",
+    "RO-02 (I2): after the split, outcome repairs and set_target/set_task are refused with the re-seal exit (outcome repairs also get the exclude-rows exit, which moves no row); the Router settles outcome repairs before the split"
+   ],
+   "tests": {
+    "command": "TURBOTAB_WORKERS=2 OMP_NUM_THREADS=2 /Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest turbotab/core turbotab/server -q",
+    "passed": true,
+    "detail": "832 passed in 113 s (baseline before changes: 823 passed; plus 9 new acceptance tests). Run against an archive of the unchanged code (88d22aa), the 9 new tests all fail, so they detect the defects. The acceptance file passed 3 repeated runs, about 5.5 s each. The pre-commit gates passed; --no-verify was not used. The frontend was not touched, so npm was not run."
+   },
+   "deviations": [
+    "Branch: the harness created this worktree's branch at main (f5e935c), not turbotab-next. It had no commits, so I reset it to turbotab-next (88d22aa) before any work. The commit f61ce8f sits on worktree-wf_e4f6ae8a-38e-6 directly on top of 88d22aa.",
+    "RO-02 refuses rather than making membership a function of row identity. Following BLUEPRINT \u00a712 ('RO-02 (refuse outcome repairs after the split)'), set-to-missing on the outcome after the split is refused, not applied. Acceptance #1's '0 held-out rows move' is measured on that path (the refused attempts) and on the offered 'exclude those rows' exit, which removes the same 3 rows from the analysis. The audit's first recommendation is not implemented: membership is still a permutation over the rows with the outcome measured. So the recorded re-seal path (revert the split, repair, draw again) re-permutes about 130 rows, and the seal and methods sentence do not yet say 're-sealed after fits were seen'. That remains for WP16 proper.",
+    "The guard covers more than the decisions acceptance #1 names, because they are the same defect: set_temporal; defer or dismiss when it withdraws an applied repair; reverts that undo any of these; and repairs to the grain's unit column and to the time column of a chronological draw, not only the outcome. It applies only when the split holds rows out (holdout > 0); with cross-validation only nothing is held out, so nothing is refused. set_event, exclusions and the missing-values answer are unaffected, because they never move a held-out row.",
+    "Router ordering is scoped to findings whose values repair would rewrite a column the draw reads. Predictor findings do not hold back the split, since repairing them later moves no row. I added 'findings' to the split question's needs in turbotab/core/interview.py. If set_split arrives through the API while findings are still computing, the validator cannot check; the post-split guard catches it afterwards.",
+    "RO-01 is refused under both purposes, as acceptance #2 requires. The audit also suggests, as optional ('may'), a block-and-record route with an attestation for disease-definition restrictions under inference; that is not offered.",
+    "Small edits to shared files: turbotab/core/repairs.py (new option_columns helper and findings_of alias; matching_answer no longer counts an outcome-only finding as answered by the exclusions question, which can no longer act on it). turbotab/core/row_previews.py (the preview skips outcome rules when choosing what to draw, keeping the step index aligned). turbotab/core/stages/proposals.py (no energy cut-off proposals when energy is the outcome, so no proposal is ever refused). turbotab/core/teaching/content.py (custom-range option now reads 'on a numeric column, never the outcome', 15 words). docs/turbotab/ROADMAP.md \u00a704 (the question is now 'does your research question restrict who is studied?', as the audit recommends). docs/turbotab-next/M2_CONTRACT.md \u00a73 (one bullet naming the new guard). New empty turbotab/core/tests/acceptance/__init__.py; other packages adding the same empty file merge cleanly.",
+    "Test fixtures: the audit's sbp and bmi tables are replayed from I-skeptic/mkfx.py with the same random stream, and verified equal to the auditors' generated CSVs. The sbp table has one extra predictor column (bmi, from its own seed 16, two impossible values) so the test can show a predictor repair passing the guard; the audit's 1,000 rows and sbp values are unchanged. The set_task case needs an outcome that fits two tasks, so it uses a generated 5-level numeric outcome. The code-repair case uses sample_data/survey_sentinels.csv with item_14 as the outcome."
+   ],
+   "inbox": [
+    "[WP16] Make held-out membership a function of row identity (a hash of seed and row or unit id over the oriented table), so that a recorded re-seal after an outcome repair no longer re-permutes about 130 rows. State 're-sealed after fits were seen' in the seal and the methods sentence. Noticed implementing RO-02 (turbotab/core/stages/rows.py draw_split).",
+    "[WP18/RO-10] target_info proposes multiclass for a 69-value integer `age` on the bmi fixture, and set_task then refuses multiclass for more than 20 classes, so the test harness's usual answer fails. The skip and the explicit answer disagree about the 20-class rule (noticed writing test_a_rule_cannot_become_a_rule_on_the_outcome).",
+    "[WP16/I16] The outcome's distribution is still shown at the outcome question two steps before eligibility, so withholding it at the exclusions question is cosmetic.",
+    "[Frontend] The fallback string in ChoiceQuestions.tsx:108 still says 'any numeric column' (the served teaching text is updated; the picker already leaves out the outcome). The new refusal codes `rule_on_outcome` and `settle_first` render through the generic refusal path; check they read well in the Record.",
+    "[WP16] When set_split arrives through the API while the findings stage is still computing, it is not checked for unsettled outcome findings. Consider refusing with 'findings not ready', as apply_repair already does.",
+    "[WP16 #3/RO-05] A new seed or holdout after the split (before opening) is still accepted as an explicit re-draw, with no 'drawn again after fits were seen' statement."
+   ]
+  }
+ ],
+ "missing": [],
+ "integrated": {
+  "package": "INTEGRATION",
+  "branch": "turbotab-next",
+  "commit": "1042e1b315d87e683d74e37ceb1467b249843e3f",
+  "summary": "The six math-layer packages are merged into turbotab-next with --no-ff, in order: WP1 (2e8b5c8), WP2 (7872293), WP3 (277de2d), WP4 (ed405b1), WP5 (8ec8f1f) and GUARDS (1042e1b). I ran the full suite after each merge: 854, 878, 884, 900, 916 and 925 passed.\n\nThe final tree passes everything:\n- `pytest turbotab/core turbotab/server`: 925 passed.\n- `pytest turbotab/core/tests/acceptance -q -v`: 92 passed in 88.6 s.\n- `npm ci` then `npm run check`: tsc, eslint and 152 vitest tests all pass.\n- All six pre-commit gates pass.\n\nRegenerating `openapi.json` and `generated.ts` changed nothing (byte-identical to the merged copies), so no frontend edit was needed. Nothing was pushed; the branch is 12 commits ahead of origin.\n\n**Conflicts, resolved by keeping both sides' intent:**\n- `stages/__init__.py`: the design stage is version 2 (WP3) and also reads `categorical` (WP1).\n- `rows.py` `draw_split`: groups are keyed by WP1's exact-identifier key, `_group_key` (C12), and WP4's time order is carried along.\n- `modeling.py` `fit_stage` imports: WP4's pooled CV, `compare` and `fit_pipeline`, plus WP2's `cluster_columns` and `resolve_clusters`.\n- `modeling.py` band refit: it pins the full fit's early-stopping choice (WP5), then fits through WP4's `fit_pipeline`, grouped by each resampled row. So a row's bootstrap copies stay together in elastic net's inner folds and also in boosted trees' early-stopping rows. Before, sklearn drew those rows by position.\n- `seal.py` `__all__`: the union of both sides.\n- `row_previews.py`: rules on the outcome are skipped (GUARDS), and the rest are ranked by WP1's per-rule counts, which include the not-recorded lines.\n\n**Packages that merged cleanly but broke each other, fixed in the merge commits:**\n- WP3's sex-in-the-model test pinned the classical OLS p-value. Since WP2, the app reports HC3 for independent rows, so the test's reference p is now HC3 on t(n \u2212 p), written out from the formula in numpy and scipy (WP2's engine calls statsmodels, so that would not be independent). Ours is 0.29604 against a reference of 0.29604; the classical p is 0.295, also null.\n- WP5's test that each refit keeps a row's copies in one inner fold watched the old call, `with_grouped_inner_cv`. It now watches `with_inner_cv`, which `fit_pipeline` calls.\n- I added a test, `test_a_pinned_band_refit_stops_early_on_whole_rows`, for the combined refit path: it stops at 10 of 100 iterations, and none of 2,462 repeated rows is on both sides of the early-stopping split.\n- GUARDS' RO-01 exit test expected a rule without WP1's new `ExclusionRule.missing` field; the expected value now includes `missing: 'exclude'`.\n\nI re-measured every acceptance value on the merged tree. WP3.1's shares are unchanged under HC3 p-values (0.990 of the first 200, 0.986 of all 1,000).",
+  "acceptance": [
+   {
+    "test": "WP1.1 Ambiguous dates",
+    "status": "pass",
+    "measured": "Of 2,000 US dates, 1,843 would move under a day-first reading, and 0 were changed. The column is kept as text (VARCHAR) with a warning. The ambiguous_dates finding shows 3 example rows under each reading and offers month-first (%m/%d/%Y) and day-first (%d/%m/%Y) as repairs. After 'month first', the median visit spacing is 91 days, and the repeats reading and spacing equal the ISO copy's.",
+    "reference": "never silently changes 1,840 dates; about 91 days, matching the ISO copy",
+    "how_reference_was_computed": "pandas to_datetime with explicit %m/%d/%Y and %d/%m/%Y formats counts the dates whose reading differs (1,843 on this fixture; the audit gives 1,840\u20131,843 across its two fixtures). The spacing comes from the ISO copy of the same file through the same structure stage.",
+    "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+   },
+   {
+    "test": "WP1.2 Ordering when combining",
+    "status": "pass",
+    "measured": "Text visit labels are refused with code cannot_order ('Declare the order of the levels'). Once the order is declared, the LDL change is +2.0 for every unit. With text dates ('Mar 3, 2021'), A's weight change is \u221210.0 (B \u22122.0, C \u22128.0), and the receipt counts 1 undated record. With an undated middle visit, 'last' gives weight 74.0 and sbp 132, the change is \u22126.0, and the receipt counts 4 undated records. ordered_by reads 'file order' when the named column ordered nothing.",
+    "reference": "+2.0 (not \u22121.0); \u221210 (not +5); 74.0 and 132; \u22126.0; undated records counted",
+    "how_reference_was_computed": "pandas groupby over rows sorted by hand: by the declared level order, by pd.to_datetime of the text dates, or with undated rows dropped.",
+    "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+   },
+   {
+    "test": "WP1.3 Turning a feature table",
+    "status": "pass",
+    "measured": "The metabolomics export becomes exactly 12 sample rows (not 14), with hmdb, mz and rt kept in features.parquet. A numeric Entrez-ID matrix keeps its IDs as feature names (label_column entrez_id). MZmine's 'row ID', 'row m/z' and 'row retention time' are never samples (80 samples). The preview equals the stage output cell for cell. A column that does not move with the samples is refused (not_a_sample) with a set_feature_table exit.",
+    "reference": "12 sample rows; annotations kept; gene IDs as names; MZmine columns never samples; preview equals stage",
+    "how_reference_was_computed": "A pandas transpose of the sample block, built by hand from the fixture.",
+    "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+   },
+   {
+    "test": "WP1.4 Per-column combining",
+    "status": "pass",
+    "measured": "Under 'change', sex_code keeps its baseline value (never 0). smoking_cat is combined by mode and is always a real level, never 1.67. The receipt lists every varying column with its rule: smoking_cat mode, day_of_week mode, weight_kg mean, plus 1 constant column. A per-column override (weight_kg: first) is honored.",
+    "reference": "baseline sex code kept; mode, not 1.67; every varying column listed",
+    "how_reference_was_computed": "pandas groupby per participant: first, mode or mean by hand.",
+    "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+   },
+   {
+    "test": "WP1.5 Categorical declaration",
+    "status": "pass",
+    "measured": "Declared categorical, RIDRETH3 enters as 5 indicator columns (RIDRETH3_2, _3, _4, _6, _7), equal to the independent dummies. The declaration is proposed for RIDRETH3 and DMDEDUC2 (high confidence) and for region_code (medium).",
+    "reference": "five indicator columns; proposed for few-level integer columns and known NHANES coded variables",
+    "how_reference_was_computed": "pandas get_dummies with drop_first.",
+    "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+   },
+   {
+    "test": "WP1.6 Spellings",
+    "status": "pass",
+    "measured": "kcal is read as VARCHAR. The text-numbers repair names every unparsed spelling with its count ('.' 95, '#DIV/0!' 2, 'n.d.' 1), and after it the column equals the numeric reference exactly. The ';'-separated decimal-comma file gives the same numbers as its dot-decimal copy. '<0.2' falls into a separate below_detection family (38 values).",
+    "reference": "parses after repair, every unparsed value counted and named; decimal-comma equals dot-decimal; '<LOD' its own family. Source check: SAS 'By default, SAS replaces a missing numeric value with a period' (quoted in the docstring)",
+    "how_reference_was_computed": "pandas to_numeric on the clean generator values, and a dot-decimal CSV of the same frame.",
+    "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+   },
+   {
+    "test": "WP1.7 Parity",
+    "status": "pass",
+    "measured": "CSV and xlsx give identical missing counts per column over all 10 NULL_TOKENS. The answers 'None', '-nan', '1.#IND', '#NA' and 'none' are kept as values in both.",
+    "reference": "identical per-column missing counts across the whole NULL_TOKENS list",
+    "how_reference_was_computed": "Each token written into its own column; expected count 1 (token) or 0 (answer), set by construction.",
+    "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+   },
+   {
+    "test": "WP1.8 Infinite values",
+    "status": "pass",
+    "measured": "The profile completes. n_infinite = 1, and the summary is over the 499 finite values (mean 41.7303). The infinite_values finding counts '1 cell', and set-missing yields the finite column. The DuckDB and Arrow paths agree on counts exactly and on statistics to 1e-12 relative.",
+    "reference": "summary over finite values; finding plus set-missing; Arrow and DuckDB agree",
+    "how_reference_was_computed": "numpy statistics over np.isfinite values.",
+    "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+   },
+   {
+    "test": "WP1.9 Flow counts",
+    "status": "pass",
+    "measured": "'`age` not recorded' drops 209 rows, and 'age within 20\u201380' then counts n = 600, exactly the rows in range. With missing='keep', the label reads '\u2026, or not recorded' and drops 0. The by-sex energy screen reports 59 rows it could not screen.",
+    "reference": "range step counts only in-range rows; a separate 'not recorded: n' line; unscreened rows reported. Source check: STROBE 13(a) (quoted in the docstring)",
+    "how_reference_was_computed": "pandas isna and between counts (209 missing, 600 in range); isin(['F','M']) for the unscreened rows.",
+    "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+   },
+   {
+    "test": "WP2.1 Repeated rows",
+    "status": "pass",
+    "measured": "Coverage of the reported 95% intervals is 0.939 over 1,000 replicates, under both grain 'I don't know' (undetermined) and 'one row each' with a repeating ID (abandoned). Plain OLS on the same data covers 0.849. A concern says why the intervals cluster against the answer.",
+    "reference": "\u2265 0.93 (audit: plain OLS 0.83\u20130.84, clustered 0.947\u20130.948)",
+    "how_reference_was_computed": "statsmodels OLS with a cluster-robust covariance (CR1, t(G\u22121)) on the same replicates: 0.937.",
+    "file": "turbotab/core/tests/acceptance/test_wp2_intervals.py"
+   },
+   {
+    "test": "WP2.2 Few units",
+    "status": "pass",
+    "measured": "In the 6 \u00d7 40 sodium scenario, the sodium row keeps its estimate (0.00622), and ci_low, ci_high, p, se and df are all null. Exits: combine to one row per person, and a mixed model or GEE.",
+    "reference": "no silent p = 4e-14; refusal with exits (random-intercept p = 0.85)",
+    "how_reference_was_computed": "statsmodels MixedLM random-intercept p = 0.852; independent-row OLS p = 4.1e-14.",
+    "file": "turbotab/core/tests/acceptance/test_wp2_intervals.py"
+   },
+   {
+    "test": "WP2.3 Small-G correction",
+    "status": "deviated",
+    "measured": "At G = 10 (5 against 5 clusters), use_t holds: df = 8 and half-width/SE = t0.975(8) = 2.306, with SE equal to the Neyman form (1.1525). The caption names CR2, G = 10 and Bell\u2013McCaffrey. Type-I error at G = 12: regression 0.038 (1,000 reps), binary 0.032 (600), multinomial 0.0375 (400). With z the rates are 0.133, 0.120 and 0.1225. A concern names G at G = 12 and G = 29, not at 30. CR2 equals its n\u00d7n definition. Past the cost budget, the df fall back to t(G\u22121) and say so.",
+    "reference": "half-width/SE = t(9) = 2.262 with caption 't(9)'; type-I \u2264 0.07 at G = 12; a concern whenever G < 30. Source check: Cameron & Miller 2015 (quoted)",
+    "how_reference_was_computed": "The Imbens\u2013Koles\u00e1r closed-form df (references.py), the CR2 definition written out with n\u00d7n matrices, scipy t quantiles, and the statsmodels clustered sandwich.",
+    "file": "turbotab/core/tests/acceptance/test_wp2_intervals.py"
+   },
+   {
+    "test": "WP2.4 Heteroskedasticity",
+    "status": "pass",
+    "measured": "HC3 coverage 0.9335 over 4,000 replicates at n = 200; classical 0.607. The caption names HC3. The spread check spoke on 499 of 500 heteroskedastic fixtures and 5 of 500 clean ones. HC3 equals its definition.",
+    "reference": "HC3 \u2265 0.92 (audit: classical 0.61, HC3 0.93)",
+    "how_reference_was_computed": "statsmodels HC3 (z) on the same replicates: 0.932. The HC3 formula is written out in numpy.",
+    "file": "turbotab/core/tests/acceptance/test_wp2_intervals.py"
+   },
+   {
+    "test": "WP2.5 Separation",
+    "status": "pass",
+    "measured": "Separation is named along with its column. The Wald row is replaced by Firth's fit, with a finite exposure estimate of 4.88 log-odds, a profile-likelihood interval and a likelihood-ratio p. The check does not fire on non-separated data. With repeated rows as well, the Firth estimate is kept and no interval is given. The fit stage reports it.",
+    "reference": "concern names the column; Wald suppressed; finite Firth estimate",
+    "how_reference_was_computed": "A Konis linear-programming check; Firth's estimate equals the Haldane-corrected 2\u00d72 log-odds; the profile interval follows its definition with a \u03c7\u00b2(1)/2 cut of 1.9207; statsmodels Logit for the non-separated case.",
+    "file": "turbotab/core/tests/acceptance/test_wp2_intervals.py"
+   },
+   {
+    "test": "WP2.6 Missing identifiers",
+    "status": "pass",
+    "measured": "72 clusters: 60 IDs, plus 12 rows with a missing ID, each its own unit, exactly as the split maps them.",
+    "reference": "one unit per missing-ID row, matching the split",
+    "how_reference_was_computed": "Counted by hand from the fixture (60 people plus 12 IDs removed) and compared with the seal's draw mapping.",
+    "file": "turbotab/core/tests/acceptance/test_wp2_intervals.py"
+   },
+   {
+    "test": "WP3.1 Null fixture, within-sex residual",
+    "status": "pass",
+    "measured": "p > 0.05 in 0.990 of the first 200 and 0.986 of all 1,000 replicates; the app's p is now HC3. The largest pooled |r(fat_adj, sex)| is 1.66e-15. The mean estimate is \u22126.4e-5 (MC SE 1.5e-4, z = \u22120.42). A positive control under the old algebra gives p = 3.1e-95. With sex in the model, the estimate equals the reference and p = 0.2960 (HC3; classical 0.2951).",
+    "reference": "\u2265 95% of 200 with p > 0.05; |r| < 0.05 (audit: p 1e-106 to 1e-209, r 0.56\u20130.58)",
+    "how_reference_was_computed": "The analytic null; numpy polyfit residuals per sex; statsmodels OLS for the estimate. For sex in the model, the HC3 p is written out from the formula in numpy and scipy (changed at integration).",
+    "file": "turbotab/core/tests/acceptance/test_wp3_energy_transform_algebra.py"
+   },
+   {
+    "test": "WP3.2 Per-level and pooled correlations in the lineage",
+    "status": "deviated",
+    "measured": "The lineage reports pooled r(N_adj, E) = \u22120.0023 and \u03b7(N_adj, strata) = 1.7e-15 for the linear variant, and \u22120.045 and 0.018 for the log variant. Each level reports r with its indicator and its row count, and all equal the independent computation.",
+    "reference": "per-level and pooled r(N_adj, E) and r(N_adj, strata) reported",
+    "how_reference_was_computed": "scipy pearsonr and a numpy correlation ratio. A per-level r(N_adj, strata) is undefined, because strata is constant within a level, so each level reports r with its indicator instead (WP3's deviation).",
+    "file": "turbotab/core/tests/acceptance/test_wp3_energy_transform_algebra.py"
+   },
+   {
+    "test": "WP3.3 NUTRITION_PACK line 480",
+    "status": "pass",
+    "measured": "The pack's line 480 now agrees with line 446 ('at the cohort mean energy'). The adjuster adds the predicted intake at the cohort mean energy (log scale 4.2788).",
+    "reference": "line 480 agrees with line 446",
+    "how_reference_was_computed": "A source check of the pack text, plus statsmodels OLS of N on E evaluated at mean E.",
+    "file": "turbotab/core/tests/acceptance/test_wp3_energy_transform_algebra.py"
+   },
+   {
+    "test": "WP3.4 Small-stratum floor",
+    "status": "pass",
+    "measured": "Level Y, below the 30-row floor, uses the pooled slope 0.03673 (its own would be 0.05117), stays centered on its own means, and the lineage and warnings say so. A level never seen in the fit uses the pooled regression.",
+    "reference": "falls back to the pooled slope below a stated minimum (30), and the lineage says so",
+    "how_reference_was_computed": "numpy polyfit, pooled and per level.",
+    "file": "turbotab/core/tests/acceptance/test_wp3_energy_transform_algebra.py"
+   },
+   {
+    "test": "WP4.1 Pooled R\u00b2",
+    "status": "pass",
+    "measured": "At n = 100, p = 5, 500 replicates, the reported CV R\u00b2 averages 0.1433 (MC SE 0.0038) against a target of 0.1345 (+0.009). Holdout R\u00b2 against the training mean averages 0.1755 against 0.1794 (2,000 reps). The stage's sealed holdout R\u00b2 is 0.11230, equal to the independent value.",
+    "reference": "within 0.02 of 0.13\u20130.14 (today 0.05); holdout uses the training mean. Source check: Hawinkel et al. 2024 (quoted)",
+    "how_reference_was_computed": "The analytic expected out-of-sample R\u00b2 of OLS, and sklearn LinearRegression with R\u00b2 computed by hand against the training mean.",
+    "file": "turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py"
+   },
+   {
+    "test": "WP4.2 Baseline test",
+    "status": "pass",
+    "measured": "On 300 null binary datasets, the 'better' rate is 0.023 at n = 150 and 0.017 at n = 400; the old rule gives 0.303 and 0.280. Power at a true AUC of 0.74 is 0.983. The gain carries se, ci_low, ci_high and df.",
+    "reference": "\u2264 0.07 (today 0.25\u20130.31); gain reported with an interval",
+    "how_reference_was_computed": "The analytic null (a 5% bound), and the Nadeau\u2013Bengio corrected t written out by hand.",
+    "file": "turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py"
+   },
+   {
+    "test": "WP4.3 Time-ordered folds",
+    "status": "pass",
+    "measured": "Folds forward-chain by whole unit, with ordered time ranges. Elastic net's inner CV receives the same splitter. The methods sentence says 'time-ordered folds'. On the rare-event fixture, time-ordered folds left 0 of 200 replicates with an event-free fold; plain k-fold left 81 of 200.",
+    "reference": "ordered fold time ranges; same inner splitter; 'time-ordered folds'; no event-free folds",
+    "how_reference_was_computed": "Fold time ranges and event counts per fold, computed with pandas from the assignment, against plain sklearn KFold.",
+    "file": "turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py"
+   },
+   {
+    "test": "WP4.4 Order independence",
+    "status": "pass",
+    "measured": "The same 1,000 rows, in random order and sorted by the outcome, choose the same penalty: \u03b1 = 0.03540 with L1 ratio 1.0 in both. Plain ElasticNetCV(cv=5) chooses 0.0233 and 0.00035.",
+    "reference": "the same penalty from both orders (today 0.0299 against 0.0004)",
+    "how_reference_was_computed": "sklearn ElasticNetCV(cv=5) on both orders, showing the fixture still exhibits A15.",
+    "file": "turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py"
+   },
+   {
+    "test": "WP4.5 Planning precision",
+    "status": "pass",
+    "measured": "The stated holdout-R\u00b2 SE is 0.0714 against a simulated SD of 0.0734 at n = 100 (\u22122.7%), and 0.0306 against 0.0320 at n = 500 (\u22124.4%). The old formula gave 0.141 and 0.063.",
+    "reference": "within 20% of the simulated SD at an assumed R\u00b2 of 0.2",
+    "how_reference_was_computed": "A Monte Carlo of 4,000 holdouts per n, plus the exact large-sample form 2\u221a\u03c1(1\u2212\u03c1)/\u221an (0.0716, 0.032).",
+    "file": "turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py"
+   },
+   {
+    "test": "WP5.1 Band half-width at N = 10,000",
+    "status": "pass",
+    "measured": "Every row resampled: half-width 0.04179 against analytic 0.04153 on the auditor's fixture (+0.6%), and 0.04479 against 0.04421 on the skeptic's (+1.3%). Rescaled from 2,000-row resamples: 0.04066 (\u22122.1%) and 0.04631 (+4.7%).",
+    "reference": "within 15% of the analytic 0.042\u20130.044 (today 0.087\u20130.106)",
+    "how_reference_was_computed": "The analytic OLS standard error of the linear substitution contrast \u00d7 1.96.",
+    "file": "turbotab/core/tests/acceptance/test_wp5_substitution_band.py"
+   },
+   {
+    "test": "WP5.2 Band coverage at N = 1,500",
+    "status": "pass",
+    "measured": "The default band covers the truth in 280 of 300 datasets (0.933). The exact t interval covers 0.943 on the same data, and the pre-fix band 0.907.",
+    "reference": "\u2265 0.93 (today 0.89\u20130.91 at B = 50)",
+    "how_reference_was_computed": "The statsmodels exact t interval on the same 300 datasets, and the known true contrast (0.02778).",
+    "file": "turbotab/core/tests/acceptance/test_wp5_substitution_band.py"
+   },
+   {
+    "test": "WP5.3 Caption and minimum share of successful refits",
+    "status": "pass",
+    "measured": "The saved caption states the rows used, B, how rows were resampled and successful refits per family. A family's band is drawn only if at least 90% of its refits succeed, and the caption says so.",
+    "reference": "caption states rows, B and successes; a stated minimum share",
+    "how_reference_was_computed": "A regex match on the saved caption, and refit failures injected with monkeypatch.",
+    "file": "turbotab/core/tests/acceptance/test_wp5_substitution_band.py"
+   },
+   {
+    "test": "WP5.4 Share-of-energy support and the fixed-population curve",
+    "status": "pass",
+    "measured": "At k = 300 kcal, the share check removes 743 rows on the auditor's fixture and 1,398 on the skeptic's, beyond the amount check. The old method counted 621 such rows as on-support. Counts per check are reported at every k, and each row falls under exactly one check or is kept. A fixed-population curve averages the same rows at every k.",
+    "reference": "rows whose shifted share leaves the observed range are excluded (today 621\u20131,398 counted on-support), with counts per check",
+    "how_reference_was_computed": "numpy by hand: share = kcal from the nutrient / total kcal, checked against each share's observed min and max.",
+    "file": "turbotab/core/tests/acceptance/test_wp5_substitution_band.py"
+   },
+   {
+    "test": "WP16.1 Membership by identity (seal guard RO-02)",
+    "status": "pass",
+    "measured": "0 of 200 held-out rows moved under both purposes; the same repair would have moved 130. set_target, set_task and other draw-reading answers after the split are refused with 409 'sealed', and the last exit is the re-seal. The Router offers set_missing, exclude_rows and dismiss_finding before the split. A predictor repair is still accepted.",
+    "reference": "0 held-out rows move (today 119\u2013130); refused with the re-seal exit; repairs ordered before the split",
+    "how_reference_was_computed": "The held-out row sets compared from the split's parquet on disk. The 130 was recomputed with sklearn by replaying the draw over the post-repair universe.",
+    "file": "turbotab/core/tests/acceptance/test_wp16_seal_guards.py"
+   },
+   {
+    "test": "WP16.2 Outcome eligibility (RO-01)",
+    "status": "pass",
+    "measured": "'bmi 18.5\u201330' with bmi as the outcome is refused with 409 rule_on_outcome under both inference and prediction, from the decision and from its preview. The exits are: drop the rule (keeping any baseline rule, with missing='exclude'), set_missing, exclude_rows, and restrict by a variable measured before the outcome. The exclusions preview never draws the outcome.",
+    "reference": "409 with exits under both purposes; no histogram of the outcome",
+    "how_reference_was_computed": "An OLS fiber slope on the full table recovers the true \u22120.25 within 0.02; on the 2,537 truncated rows it is biased toward zero by more than 0.1.",
+    "file": "turbotab/core/tests/acceptance/test_wp16_seal_guards.py"
+   },
+   {
+    "test": "WP1 minors C12, C14, B18, B21/B22",
+    "status": "pass",
+    "measured": "C12: '007', '07' and '7' are 3 units (6 groups in the fixture). C14: integers past 2^53 stay exact text. B18: codes are blanked before the kJ conversion, and on text. B21/B22: no column is exempt; a first-visit blank is not filled (5 blank sbp); averaging a binary outcome is refused.",
+    "reference": "as findings C12, C14, B18, B21 and B22 describe",
+    "how_reference_was_computed": "Literal expected values, set by construction.",
+    "file": "turbotab/core/tests/acceptance/test_wp1_data_identity.py"
+   },
+   {
+    "test": "WP4 minors A16, A20",
+    "status": "pass",
+    "measured": "A16: above 10,000 rows, boosted trees stop early on whole units (1,200 validation rows of 12,000), the latest units when time-ordered. A20: the least-squares fit-time estimate scales as n\u00b7p\u00b7min(n, p), a ratio of 2,000.",
+    "reference": "whole-unit validation rows; n\u00b7p\u00b7min(n, p) scaling",
+    "how_reference_was_computed": "A unit ranking by hand, and the analytic ratio.",
+    "file": "turbotab/core/tests/acceptance/test_wp4_scoring_estimators.py"
+   },
+   {
+    "test": "Integration WP4\u00d7WP5: pinned band refit (new, not in \u00a75)",
+    "status": "pass",
+    "measured": "A refit on a 10,000-row bootstrap resample of a 12,000-row fit stops early (10 of 100 iterations). None of 2,462 repeated rows is on both sides of the validation split.",
+    "reference": "it stops early exactly when the full fit did, and no row's copies straddle the early-stopping split",
+    "how_reference_was_computed": "The full fit's do_early_stopping_ flag, and set intersection of resampled row ids across the validation mask.",
+    "file": "turbotab/core/tests/test_modeling.py"
+   }
+  ],
+  "closed_findings": [
+   "MA-01",
+   "MA-02",
+   "MA-03",
+   "MA-04",
+   "MA-05",
+   "MA-06",
+   "MA-07",
+   "MA-08",
+   "MA-09",
+   "MA-10",
+   "MA-11",
+   "MA-12",
+   "MA-13",
+   "MA-14 (except 'keep baseline values beside a change'; a per-column override is offered instead)",
+   "MA-15",
+   "MA-16",
+   "MA-17",
+   "MA-18",
+   "MA-19",
+   "RO-01",
+   "RO-02 (by refusal, per BLUEPRINT \u00a712; membership by identity and the 're-sealed after fits were seen' statement remain for WP16)",
+   "A15",
+   "A16",
+   "A17",
+   "A18",
+   "A19/E11",
+   "A20",
+   "B16",
+   "B17",
+   "B18",
+   "B20",
+   "B21",
+   "B22",
+   "C12",
+   "C14 (precision loss and browser rounding fixed; the engines still differ in the last digit, about 1e-16)",
+   "D16"
+  ],
+  "tests": {
+   "command": "/Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest turbotab/core turbotab/server -q; /Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest turbotab/core/tests/acceptance -q -v; (turbotab/frontend) npm ci && npm run check; .githooks/pre-commit",
+   "passed": true,
+   "detail": "All runs used TURBOTAB_WORKERS=2 and OMP_NUM_THREADS=2.\n- Core and server suites: 925 passed in 216.6 s on HEAD 1042e1b. After each merge: 854, 878, 884 (one cross-package failure, fixed), 900, 916, 923 (two failures, fixed), then 925.\n- Acceptance suite: 92 passed in 88.6 s. Measured values were captured by a scratch pytest plugin that records each test's local variables at return (sys.monitoring; not committed).\n- Frontend: tsc, eslint and 152 vitest tests pass.\n- All six pre-commit gates pass on HEAD.\n- openapi.json and generated.ts regenerate byte-identical.\n- Legacy suites were not run."
+  },
+  "deviations": [
+   "Cross-package semantic fix (WP2\u00d7WP3): test_wp3 'the null holds with sex in the model too' compared the app's p with classical OLS. After WP2, the app reports HC3 on t(n\u2212p) for independent rows. The reference p is now HC3, written out from its definition in numpy and scipy (statsmodels would not be independent of WP2's engine). The classical p is still asserted null, and the estimate check is unchanged.",
+   "Cross-package code merge (WP4\u00d7WP5): the band refit uses pinned_to_full_fit (WP5) and then inner_cv.fit_pipeline (WP4), not WP5's with_grouped_inner_cv plus pipe.fit. Boosted trees' early-stopping rows in a refit are therefore drawn by resampled row or unit too. WP5's spy test was retargeted to with_inner_cv, and a new test pins the combined path.",
+   "Cross-package test fix (WP1\u00d7GUARDS): the RO-01 exit's kept age rule now serializes WP1's ExclusionRule.missing ('exclude'). The expected dict gained that field; the guard's behavior is unchanged.",
+   "row_previews: GUARDS' choice of which rule to draw used a dict keyed by rule index, so under WP1's flow only the last line per rule counted. It now ranks by WP1's rule_drops, which sums the not-recorded, not-screened and range lines. Every rule emits its range step, so positions equal rule indices.",
+   "The clean WP1 and WP2 merge commits did not trigger the pre-commit hook (git runs it only when a conflicted merge is concluded). The later merge commits ran all six gates, and I ran the hook on the final HEAD; all pass. --no-verify was never used.",
+   "The acceptance statuses marked 'deviated' (WP2.3, WP3.2) carry the packages' own documented deviations: CR2 with Bell\u2013McCaffrey df in place of t(G\u22121), and indicator r with \u03b7 in place of an undefined per-level r. Neither was changed at integration.",
+   "Nothing was pushed. turbotab-next is 12 commits ahead of origin/turbotab-next."
+  ],
+  "inbox": [
+   "Pre-existing, found while integrating: seal._units_by_time (chronological holdout and WP4's time-ordered folds) keys units with str(g), while the split uses rows._group_key (C12). 7 and 7.0 are one unit in the split but two in the time ranking. Every missing-ID row joins one 'nan' unit in the time ranking, while WP2 counts each as its own unit. One shared key function would close this.",
+   "From WP2: the covariance is chosen by the engine. There is no user decision offering classical, HC3, CR1/t(G\u22121), CR2 or wild cluster bootstrap with 'customary' and 'sound' labels (North star 5). Intervals are still on training rows only (ruling 3, ME-12/WP8). Multinomial separation is not detected.",
+   "From WP4: the pooled R\u00b2's nested-CV SE is not implemented (ME-10/WP9). The outer folds and outer CV R\u00b2 still depend on file order through row-id keys (0.302 against 0.288). Elastic net's fit-time estimate is left on the one-pass-per-cell rule.",
+   "From WP5: the min\u2013max support is driven by outliers on real NHANES; a joint density or distance support check needs a threshold ruling. The fixed-population curve is in the API but not drawn.",
+   "From WP1: there is no UI control yet for set_feature_table, set_categorical, a declared level order, per-column combining rules, or an exclusion rule's missing='keep'. They are reachable through the API and refusal exits. Under 'change', a covariate recorded every visit, such as age, is differenced unless overridden.",
+   "From GUARDS: membership by identity and the 're-sealed after fits were seen' statement remain for WP16 proper. The optional attested block-and-record route for disease-definition restrictions is not offered."
+  ]
+ },
+ "verification": {
+  "verdicts": [
+   {
+    "package": "WP1",
+    "test": "1 \u00b7 Ambiguous dates",
+    "verdict": "closed",
+    "reasoning": "I read test_wp1_data_identity.py tests 1 and 1b. Their references are pandas parses with explicit %m/%d/%Y and %d/%m/%Y formats and an ISO-copy median gap, not engine output. I re-ran it through my own server (port 8918, fresh TURBOTAB_HOME, 2 workers) on new fixtures: 2,000 coarsened US dates (seed 5) and 160 people \u00d7 3 quarterly US-format visits (seed 21). The 2,000-date column stayed VARCHAR with a 'month-first and day-first' ingest warning, and 0 of 2,000 values changed (pandas: 1,810 would move under day-first). An ambiguous_dates finding appeared with exactly three examples under each reading. After applying its month_first option, the structure reading equalled the ISO copy's (time_points, median 92 days; my pandas reference on the ISO text: 92)."
+   },
+   {
+    "package": "WP1",
+    "test": "2 \u00b7 Ordering when combining",
+    "verdict": "closed",
+    "reasoning": "The tests' references are pandas sorts by a mapped label order, an explicit '%b %d, %Y' parse, and dated records only. My server fixture had 40 people with month_12/baseline/month_6 shuffled per person. With the structure stage fresh, set_aggregation(change) got 409 cannot_order, 'Declare the order of the levels', and an exit offering baseline, month_6, month_12. Once declared, every LDL change equalled pandas last-minus-first (+4.0, max abs diff 0), and the receipt read ordered_by=visit, order='declared levels'. My graph fixtures confirmed first/last/change exclude undated records and count them. Caveat (minor): posted while the aggregation question was still 'waiting' on the structure stage, the decision was accepted without this validator. The working stage then errored with the same StructureError, so no file-order number was produced."
+   },
+   {
+    "package": "WP1",
+    "test": "3 \u00b7 Turning a feature table",
+    "verdict": "closed",
+    "reasoning": "The tests' references are pandas transposes of the sample block, and the preview is compared cell by cell with the stage output. I re-ran through the real stage graph on my own fixtures. A compound/kegg/mz/rt export with 9 samples turned into exactly 9 sample rows, with features and values identical to pandas .T, and kegg, mz and rt kept as annotations in the features file. A numeric gene_id matrix (60 random IDs, 7 samples) kept the IDs as feature names, with no row_N renaming and label_column=gene_id. The MZmine case and the preview-equals-stage check pass in the suite."
+   },
+   {
+    "package": "WP1",
+    "test": "4 \u00b7 Per-column combining",
+    "verdict": "closed",
+    "reasoning": "The tests' references are plain pandas groupbys, including a first-seen mode. On my 50-person \u00d7 4-visit fixture, under 'change' the constant sex_code kept its values (1 and 2, never 0) and the smoking code got rule 'first'. Under 'mean' smoking was combined by mode (always a level from {1,2,3}, never fractional) and weight equalled the pandas mean. The receipt listed every varying numeric column with its rule, plus constant_columns=1. Residual, outside the test: a covariate that varies within a person (age at each visit) still becomes elapsed time under 'change'. The receipt shows this and a per-column rule can override it. Whole-number count columns with \u226410 levels, each seen about 3 or more times, are treated as codes (mode under 'mean')."
+   },
+   {
+    "package": "WP1",
+    "test": "5 \u00b7 Categorical declaration",
+    "verdict": "closed",
+    "reasoning": "The test's reference is pd.get_dummies with the first level dropped. I checked the user-facing fit through my server: RIDRETH3 drawn from {1,2,3,4,6,7}, glucose dependent on it. The roles stage proposed RIDRETH3 as categorical (high confidence, 'An NHANES coded variable'). After set_categorical, the inference coefficient table had exactly five indicator rows, RIDRETH3_2/3/4/6/7. Each estimate equalled statsmodels' smf.ols('glucose ~ C(RIDRETH3) + age') to every printed digit."
+   },
+   {
+    "package": "WP1",
+    "test": "6 \u00b7 Spellings",
+    "verdict": "closed",
+    "reasoning": "The tests quote the SAS source and use pandas to_numeric(errors='coerce') as the reference. On my server fixture (1,500 rows, 4% '.' in age, 2% '.' plus 'NA.' in kcal, 8% '<0.3' in crp), age and kcal ingested as VARCHAR. text_numbers findings named every spelling with counts ('`.` (`34`), `NA.` (`3`)'). After read_numbers, the working table equalled pandas' coercion exactly (float64). '<0.3' produced a separate below_detection__crp finding with half_limit and limit_root2 options. My own ';'-separated decimal-comma file read to numbers identical to its dot-decimal copy (pandas reference)."
+   },
+   {
+    "package": "WP1",
+    "test": "7 \u00b7 CSV/Excel parity",
+    "verdict": "closed",
+    "reasoning": "The test asserts parity over the app's own NULL_TOKENS, as the spec says to. As an independent list I used 23 spellings: pandas' default NA strings plus 'None', 'none', 'NONE', '.', 'Missing'. I saved them as CSV and xlsx and ingested both through my server. Missing counts agreed column for column, with zero disagreements. 'None' stayed an answer in both (0 missing)."
+   },
+   {
+    "package": "WP1",
+    "test": "8 \u00b7 Infinite values",
+    "verdict": "closed",
+    "reasoning": "The test's reference is numpy over the finite values. Through my server (fiber_per_1000 with two zero-kcal days), the profile completed. The served summary reported n_infinite=2, and its mean, SD, min and max matched numpy over the finite values to about 1e-15. An infinite_values finding said '`2` cells \u2026 are infinite' and offered set_missing. On my own frame with +inf, \u2212inf and NaN, the DuckDB and Arrow summaries agreed with each other and with numpy (type-7 quartiles) to a relative error of 1.3e-15, and both counted 3 infinities."
+   },
+   {
+    "package": "WP1",
+    "test": "9 \u00b7 Flow counts",
+    "verdict": "closed",
+    "reasoning": "The test quotes STROBE 13(a) and uses pandas counts as the reference. My own cohort_flow fixture had 2,000 rows with 25% of age missing and the rule age 18\u201365. It produced a separate step, '`age` not recorded', dropping 465 (pandas: 465), and '`age` within `18`\u2013`65`' with n=827 (pandas: 827). The by-sex screen (D16) on my fixture reported '`kcal` not screened: no range for its `sex`' dropping 66 (pandas: 66). It kept 892, equal to the pandas count, and no 9,500 kcal day survived."
+   },
+   {
+    "package": "WP2",
+    "test": "1 \u00b7 Repeated rows",
+    "verdict": "closed",
+    "reasoning": "The test's references are statsmodels OLS and CR1 on the same rows, against the analytic truth of 0. I re-ran 400 replicates per grain through the real stage graph (GraphRun, holdout 0, my own seeds, 'participant_id'). Coverage was 0.9625 for grain unknown (basis undetermined) and 0.935 for one-row-each (basis abandoned), against plain OLS at 0.82 (MC SE 0.011). On 40 replicates each, the app's SE and df equalled my own CR2/Bell\u2013McCaffrey implementation (scipy sqrtm, eigenvalues of the n\u00d7n form) to 1e-9. Default-role server run: participant_id proposed as identifier, CR2, SE equal to mine. Residual, user-facing: names the role proposer misses ('pid', 'patient', 'eid' come out as 'exposure', an IN-06 gap) get HC3, not clustering. That happens even though structure.grain.suggested names the column. The concern then says 'no identifier repeats' (server: SE 0.0345 against 0.0489 under CR2)."
+   },
+   {
+    "package": "WP2",
+    "test": "2 \u00b7 Few units",
+    "verdict": "closed",
+    "reasoning": "The test drives the real server and uses statsmodels MixedLM as the reference. I rebuilt the E/scenA.py 6\u00d740 null-sodium fixture and drove my own uvicorn server. The seal basis was abandoned. Inference covariance was 'none' with n_clusters=6, and the refusal cited the 8-unit floor. Every coefficient row had p, ci_low and ci_high null. The exits were 'Combine each `participant_id`'s rows into one' and 'A random-intercept mixed model or GEE (not yet in TurboTab)'. References on the same rows: MixedLM p=0.852, naive OLS p=4.1e-14."
+   },
+   {
+    "package": "WP2",
+    "test": "3 \u00b7 Small-G correction",
+    "verdict": "closed",
+    "reasoning": "Documented deviation: the engine uses CR2 with Bell\u2013McCaffrey (BM) df instead of a literal t(9). That is the audit's own recommendation and Cameron & Miller's 'best methods use the CR2VE and T(v*)'. My independent CR2/BM code matched the engine's SE, df, CI and p to 7e-13 on 60 random unbalanced designs. BM df never exceeded G\u22121 there, and at most 1.00004\u00d7(G\u22121) over 200 adversarial designs. So the intervals are never materially narrower than t(G\u22121); at G=10 the half-width/SE was 2.80 against t(9)=2.262. My own MC (unbalanced 5\u201335 rows per cluster, heteroskedastic, G=12) gave type-I 0.057 (OLS, 1,500 reps) and 0.053 (logistic, 800 reps), against CR1-z at 0.137 and 0.115. A 'G = \u2026' concern appears below 30. Minor: the caption names CR2, G and 'Bell\u2013McCaffrey degrees of freedom' but not the df number, which is per row."
+   },
+   {
+    "package": "WP2",
+    "test": "4 \u00b7 Heteroskedasticity",
+    "verdict": "closed",
+    "reasoning": "The tests' references are statsmodels' classical and HC3 fits and a hand-computed Koenker Breusch\u2013Pagan. My own MC at n=200, null slope, lognormal intake, 2,000 reps: with SD proportional to intake, app coverage 0.9275 (\u22650.92) against classical 0.61. With variance proportional to intake, 0.937 against 0.80. The app's SE equalled my hand-written HC3 to 1e-9, and the caption reads 'HC3 \u2026 on t(n\u2212p)'. The residual-spread concern fired on 394/400 heteroskedastic fits and 1/400 homoskedastic ones."
+   },
+   {
+    "package": "WP2",
+    "test": "5 \u00b7 Separation",
+    "verdict": "closed",
+    "reasoning": "The tests' references are a generic-optimizer Firth fit and Haldane's closed form. On the audit's 20 seeds (A-skeptic/s14b fixture), the separated column was named on all 20 and the table was Firth's. Estimates agreed with my own L-BFGS Firth to 2.5e-7 and p to 2e-8. On three seeds my optimizer's lower bound differed by up to 0.025. Checking with a robust profile maximizer showed the app's bound gives 2\u00d7drop=3.841459 exactly, so the app was right and my optimizer was off. Through my server, the exposure row read Firth 5.366 (mine 5.366038) with a profile CI and a likelihood-ratio p, and the concern named `exposed`; maximum-likelihood Logit would have printed 31.2 with p\u22481.0."
+   },
+   {
+    "package": "WP2",
+    "test": "6 \u00b7 Missing identifiers",
+    "verdict": "closed",
+    "reasoning": "The test counts units by hand and checks a bijection with the split's mapping, which the spec requires. On my graph fixture (40 people \u00d7 4 rows, 20 IDs blanked), the app reported n_clusters=60 (mine: 40+20=60), matching the split's 60 groups. Its CR2 SE and df equalled my implementation with each blank as its own unit (0.0938249 and 25.6243). The shared-code mapping gives a different SE (0.0961). The caption says '20 rows with no `participant_id` counted as units of their own'."
+   },
+   {
+    "package": "WP3",
+    "test": "1 \u00b7 Within-sex residual null fixture",
+    "verdict": "closed",
+    "reasoning": "The test's references are the analytic null and numpy polyfit, with a positive control. I ran 400 replicates through the real graph (GraphRun) on my own variant: 45% male, different energy and fat distributions, sex excluded. p>0.05 in 100% of replicates (min 0.051), max |r(fat_adj, sex)| 3.9e-15, mean estimate \u22125e-6 (MC SE 2e-4). The app's estimate equalled OLS on my own within-sex-residual-plus-cohort-mean algebra to 1e-15. The audit's B-skeptic/s1_strata.py run on the fixed code: p=0.28 (was 1e-106), r=0.000 (was 0.56)."
+   },
+   {
+    "package": "WP3",
+    "test": "2 \u00b7 Pooled and per-level correlations in the lineage",
+    "verdict": "closed",
+    "reasoning": "The test's references are scipy pearsonr and a statsmodels correlation ratio. On my own fixture (levels of 600, 450, 29 and 30 rows plus blanks), I computed adjusted values by my own polyfit. Pooled r(adj, E) was \u22120.043, \u03b7 0.000, and within-level r were 0.000/0.000/\u22120.839/0.000/\u22120.888. The design-stage lineage formula printed exactly these values for pooled and every level."
+   },
+   {
+    "package": "WP3",
+    "test": "3 \u00b7 Pack line 480",
+    "verdict": "closed",
+    "reasoning": "I read docs/turbotab/research/NUTRITION_PACK.md directly. The coaching line now ends 'with the predicted nutrient at the cohort mean energy added back'. The methods-sentence generator at line 480 now reads 'adding the predicted intake at the cohort mean energy (1,950 kcal/d)'. The old 'sex-specific mean energy' wording is kept only as a dated correction note."
+   },
+   {
+    "package": "WP3",
+    "test": "4 \u00b7 Stratum floor of 30",
+    "verdict": "closed",
+    "reasoning": "The test's reference is polyfit. On my fixture, level C (29 rows) used the pooled slope 0.03888 on its own means, and so did the 4 blank rows. Level D (30 rows) got its own slope 0.05872. The lineage reads 'C the pooled slope \u2026 (29 rows; fewer than 30 fitting rows)' and the design warnings name levels C and (blank). The fit's fat_g_adj estimate equalled OLS on my own reconstruction (0.00710990)."
+   },
+   {
+    "package": "WP4",
+    "test": "1 \u00b7 Pooled CV R\u00b2",
+    "verdict": "closed",
+    "reasoning": "The test's reference is an analytic E[MSE] target (0.1345), plus sklearn per-fold R\u00b2 for the old estimator. I ran 300 replicates through the real fit stage (GraphRun, n=100, p=5, population R\u00b2 0.2, my own seeds). Mean reported CV R\u00b2 was 0.140 (MC SE 0.005), and every estimator field said 'pooled'. My simulated targets, from refitting on 80 rows and scoring 200k fresh rows: 0.134 against Var(Y) and 0.142 against the training mean, both within 0.02. The stage's methods sentence defines R\u00b2 against the training mean. The audit's A/r3_r2.py, re-run, gives the same target, 0.133."
+   },
+   {
+    "package": "WP4",
+    "test": "2 \u00b7 Better than baseline",
+    "verdict": "closed",
+    "reasoning": "The test recomputes Nadeau\u2013Bengio intervals independently. My own null MC through the real fit stage (p=8, prevalence 0.25, 300 datasets each) called 'better' 0.023 at n=150 and 0.023 at n=400, both \u22640.07. Every verdict carried a CI. Power at log-odds 0.8 with n=400 was 0.89. The audit's A-skeptic/s6_vb.py on the fixed code: 0.037/0.037/0.020/0.013 (was 0.25\u20130.31)."
+   },
+   {
+    "package": "WP4",
+    "test": "3 \u00b7 Time-ordered folds",
+    "verdict": "closed",
+    "reasoning": "I shuffled the file rows of clinical_longitudinal.csv and drove my server with temporal=yes. The split and fit both reported time_ordered. No subject spanned folds or sides, the 6 fold blocks were ordered by each subject's last visit (from pandas on the CSV), and the holdout was the latest. Each model scored 5 folds. An elastic-net spy on the shuffled file: 30 inner splits, none with a subject on both sides, none training on later subjects. My own 4%-event draws (300): 0 event-free time-ordered folds, against 100/300 for a shuffled KFold. Caveat (minor): the recorded set_split sentence reads the seal_plan only if fresh. Posted 0.6 s after set_temporal it was stored as 'A random 20% \u2026 5-fold cross-validation' though the draw was chronological. NEEDS['split'] lacks seal_plan and the UI's SealAsk has a no-plan fallback. With seal_plan fresh, the sentence correctly says 'time-ordered folds'."
+   },
+   {
+    "package": "WP4",
+    "test": "4 \u00b7 Order independence",
+    "verdict": "closed",
+    "reasoning": "The test is a metamorphic check (the same rows in another order) with sklearn ElasticNetCV as a positive control. On my own fixture (1,200 rows, 15 predictors) in three file orders (random, sorted by y, sorted by z0), the real fit stage chose identical penalties: alpha 0.0187396 and l1 1.0 for regression, C 0.193070 for binary. Separately, the back-transformed elastic-net coefficients reproduced the decision function to 7e-15 (regression) and 1.5e-14 (binary)."
+   },
+   {
+    "package": "WP4",
+    "test": "5 \u00b7 Planning precision",
+    "verdict": "closed",
+    "reasoning": "The test's reference is a numpy simulation with a true-signal model. Through my server, the seal plan stated \u00b10.14 for 100 held-out rows and \u00b10.06 for 500. My own simulation instead fit OLS (p=5) on 4n rows and scored n fresh rows against the training mean, 3,000 reps. 1.96\u00d7SD was 0.145 at n=100 and 0.063 at n=500, within 4% of the stated widths. The old \u221a(2/n) gave 0.277 and 0.124."
+   },
+   {
+    "package": "WP5",
+    "test": "1 \u00b7 Band half-width at N = 10,000",
+    "verdict": "closed",
+    "reasoning": "The test's reference is statsmodels' OLS covariance of the 100-kcal contrast. On my own 10,000-row fixture through my server (B=200), the band half-width was 0.04666 against an analytic 1.96\u00b7SE of 0.04549, a ratio of 1.026. The curve equals the OLS contrast to 1e-15, and every row was resampled (scale 1). For the m-out-of-n path I used N=30,000 through the stage: refits on 10,000 rows rescaled by \u221a(1/3) gave a ratio of 0.92. The audit's s5_band.py prints 1.40 only because it emulates the old stage (refits on the 5,000 curve rows, no rescale), so it does not apply."
+   },
+   {
+    "package": "WP5",
+    "test": "2 \u00b7 Coverage at N = 1,500",
+    "verdict": "closed",
+    "reasoning": "The test measures coverage with refit_band and its own OLS refit. I measured it through the real substitution stage (GraphRun, default B=200, the app's own refits) over 300 of my own datasets (skeptic DGP, seeds 6000+). Band coverage was 0.937 (MC SE 0.013), against 0.943 for the exact t interval on the same datasets: at least 0.93 and within 0.02 of exact."
+   },
+   {
+    "package": "WP5",
+    "test": "3 \u00b7 Caption and minimum successful refits",
+    "verdict": "closed",
+    "reasoning": "Through my server and the stage: 'Shaded bands: 95% intervals, each curve \u00b1 1.96 bootstrap standard errors from 200 refits of its model, on bootstrap resamples of all 10,000 training rows. Refits that succeeded: Linear model 200 of 200.' At N=30,000 the caption states the 10,000-of-30,000 resample and the \u221a rescale. The test injects failures by count: 45 of 50 succeeding draws a band, 44 of 50 is refused with a stated 90% minimum. Results.tsx passes sub.band.caption into the saved figure."
+   },
+   {
+    "package": "WP5",
+    "test": "4 \u00b7 Support by share of energy, fixed-population curve",
+    "verdict": "closed",
+    "reasoning": "The test's reference is numpy share-of-energy counts. On my server's 10,000-row band fixture, I recounted on the curve's 5,000 rows: at k=300, off_amount 909 and off_share 306 equal the app's support counts. The fixed-population rows through k=400 were 2,840 (mine: 2,840), and the note mentions share of energy. The audit's B-skeptic/s10_support.py reproduces the 1,398 composition-off rows that the acceptance test now shows excluded."
+   },
+   {
+    "package": "WP16 (guards)",
+    "test": "1 \u00b7 Membership by identity",
+    "verdict": "closed",
+    "reasoning": "The test reads held-out rows from parquet on disk and uses sklearn train_test_split as the reference. I used my own 1,200-row sbp fixture with four impossible values, driven through my server under both purposes. set_split first returned 409 settle_first with exits set_missing, exclude_rows and keep. After the split and fit, setting the outcome's values to missing returned 409 sealed, with exits 'Exclude those rows instead' and a Re-seal revert. Held-out rows were unchanged, and after exclude_rows 0 held-out rows moved (sets read from sealed.parquet). set_target after the split returned 409 sealed. On a 4-level outcome, set_task to the other task returned 409 sealed with the re-seal exit; the same task again returned 200, and the held-out rows stayed identical."
+   },
+   {
+    "package": "WP16 (guards)",
+    "test": "2 \u00b7 Outcome eligibility",
+    "verdict": "closed",
+    "reasoning": "The test drives the server and uses numpy OLS to show the bias. On my own 3,000-row bmi fixture under both purposes, 'bmi 18.5\u201330' with bmi as the outcome was refused, both as a decision and as a preview (409 rule_on_outcome). The exits were: drop the rule, impossible-bmi set_missing or exclude_rows, and restrict by a pre-outcome variable. A fiber rule ranged by bmi level was also refused. An age rule was accepted, and its preview's views named only [None, 'age'], never bmi."
+   }
+  ],
+  "regressions": [],
+  "summary": "All 30 acceptance tests of WP1\u2013WP5 and the two seal guards are closed, and none is unsound. Every permanent test asserts the reference or bound \u00a75 states. Each expected value comes from a separate path (pandas or numpy, statsmodels, sklearn, scipy, closed forms, or truth fixed by the data-generating process), and the tests that deviate from the spec say so in their docstrings. The suites pass: 92 acceptance tests in 86 s, and 833 more in turbotab/core plus turbotab/server in 128 s. I did not commit; all scratch work is under /private/tmp/turbotab-fix/verify/.\n\nHow I reproduced the numbers: my own uvicorn servers on ports 8917\u20138923, each with a fresh TURBOTAB_HOME and 2 workers, plus the real stage graph (GraphRun), on new fixtures and seeds. References were my own implementations in /private/tmp/turbotab-fix/verify/indep.py: CR2 via sqrtm, Bell\u2013McCaffrey df via eigenvalues, and Firth via L-BFGS. I also re-ran several of the audit's repro scripts. Headline numbers:\n- Repeated-rows coverage: 0.9625 and 0.935, against OLS 0.82.\n- 6\u00d740 case: intervals refused; mixed-model p 0.852, naive p 4e-14.\n- G=12 type-I error: 0.057 and 0.053.\n- HC3 coverage: 0.9275, against classical 0.61.\n- Within-sex residual null: p>0.05 in 400/400 replicates.\n- Pooled R\u00b2: 0.140 against a target of 0.134\u20130.142.\n- 'Better than baseline' on null data: 0.023.\n- Band ratio: 1.026, and coverage 0.937 through the stage.\n- Guards: 0 held-out rows moved; outcome rules refused.\n\n\u00a76 regression re-check found nothing broken: AUC with the declared event and flip invariance (against an exact maximum-likelihood reference), baseline AUC 0.5, grouped and stratified, deterministic splits, elastic-net back-transform, multinomial row alignment with CR2, Hanley\u2013McNeil 0.0564, energy-residual identities, the refusal of log residuals on zeros, Atwater 4/4/9/7/2, nested substitution arithmetic, aggregation basics with continuous values, ZIP/FIPS and a leading zero at row 35,000 staying text, Excel '001' staying text, 1.5 million-row row identity, and the flow step excluding \u00b1inf.\n\nResiduals worth a ticket (none fails an acceptance test):\n1. MA-01 on the default path depends on the role proposer (IN-06). An ID named 'pid', 'patient' or 'eid' is proposed as an exposure, so intervals fall back to HC3 even though structure.grain.suggested names that column. The concern then says 'no identifier repeats'. A fix: resolve_clusters could also read the structure's suggested repeating column.\n2. The set_split methods sentence reads seal_plan only when it is fresh. NEEDS['split'] is ('findings',) and the UI's SealAsk has a fallback when there is no plan. An answer recorded 0.6 s after set_temporal was stored as 'A random 20% \u2026 5-fold cross-validation' although the draw was chronological with time-ordered folds.\n3. Validators that need a fresh artifact are skipped when a question still 'waiting' is answered through the API. For cannot_order the working stage still raised the same refusal, so no wrong number was produced.\n4. MA-14 leftovers: under 'change', a covariate that varies within a person (age) becomes elapsed time. Whole-number count columns with \u226410 levels are treated as codes (mode under 'mean'). The receipt lists both.\n5. A data-layer bug from before the fixes (present at bf3db6c, so not a regression), found by accident: DataStore.histogram aliases its bin column as `b` and groups by b (turbotab/core/datastore.py:1750\u20131751). Any table with a column literally named 'b' makes the target_info stage fail with a DuckDB BinderException, blocking the analysis. Minimal repro: /private/tmp/turbotab-fix/verify/hist_b.py.\n\nEvidence is under /private/tmp/turbotab-fix/verify/out/: wp2/report.json, wp1/report.json, wp16/report.json, wp45/report.json, wp2b/report.json, the wp*_mc logs, and sound_list.json."
+ },
+ "repair": null
+}
