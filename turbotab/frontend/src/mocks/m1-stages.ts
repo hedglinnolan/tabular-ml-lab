@@ -792,7 +792,8 @@ type FamilyKey = keyof typeof FAMILY;
 
 export function familyLabel(key: string, task: Task | null): string {
   const f = FAMILY[key as FamilyKey];
-  return f ? f.label[task ?? "regression"] : key;
+  if (!f || task === "time_to_event") return key; // the mock fits no time-to-event family
+  return f.label[task ?? "regression"];
 }
 
 /** Seconds per million cells of the model matrix, five folds and a final fit (mock rates). */

@@ -5,6 +5,11 @@ of the sorted classes, as scikit-learn orders them). Multiclass: accuracy, macro
 Ordinal (classes are the codes 0…K − 1 of the declared order): Harrell's C, the ranked probability
 score, log loss and the mean absolute error in levels (:func:`ordinal_scores`).
 
+Time to event: Harrell's concordance index of the model's risk score
+(:func:`turbotab.core.models.survival.concordance`; Harrell et al. 1996, *Stat Med* 15:361), the
+time-to-event analogue of the AUC, with the outcome a structured array of event, time and entry
+(``survival.survival_outcome``). Pairs are ordered by follow-up time, not by entry.
+
 **R² is measured against the training rows' mean** — in every fold, in the pooled estimate and on
 the held-out rows. R² compares the model with the model that predicts without predictors; that
 model is the mean of the rows it was fit on, so its error on new rows is measured against that mean,
@@ -56,16 +61,17 @@ METRICS: dict[str, tuple[str, ...]] = {
     "binary": ("auc", "brier", "log_loss"),
     "multiclass": ("log_loss", "accuracy", "macro_f1"),
     "ordinal": ("c_index", "rps", "log_loss", "mae_levels"),
+    "time_to_event": ("c_index",),
 }
 # Log loss is a proper scoring rule; macro-F1 is not (audit ME-10). An ordered outcome is ranked on
-# its concordance (WP12a).
+# its concordance (WP12a), and so is a time-to-event outcome, by Harrell's C of its risk (WP12b).
 PRIMARY: dict[str, str] = {"regression": "r2", "binary": "auc", "multiclass": "log_loss",
-                           "ordinal": "c_index"}
+                           "ordinal": "c_index", "time_to_event": "c_index"}
 LOWER_IS_BETTER = frozenset({"rmse", "mae", "brier", "log_loss", "rps", "mae_levels"})
 LABELS: dict[str, str] = {
     "r2": "R²", "rmse": "RMSE", "mae": "MAE", "auc": "AUC", "brier": "Brier score",
     "log_loss": "Log loss", "accuracy": "Accuracy", "macro_f1": "Macro-F1",
-    "c_index": "C (concordance)", "rps": "Ranked probability score", "mae_levels": "MAE (levels)",
+    "c_index": "C-index", "rps": "Ranked probability score", "mae_levels": "MAE (levels)",
 }
 POOLED = ("r2", "rmse", "mae")  # estimated over every out-of-fold prediction, not fold by fold
 CV_DEFINITION = {
@@ -77,6 +83,9 @@ CV_DEFINITION = {
     "ordinal": ("Cross-validated scores are the mean over folds; the fold values show the spread. "
                 "C is the share of pairs of rows at different levels whose predicted mean level is "
                 "in the same order (ties count one half)."),
+    "time_to_event": ("Cross-validated scores are the mean over folds of Harrell's C, the share of "
+                      "comparable pairs whose order of events the risk score gets right; the fold "
+                      "values show the spread."),
 }
 SE_DEFINITION = ("Each standard error counts which rows were scored, with each fold's model as "
                  "fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models "
@@ -109,6 +118,10 @@ def score(task: Task, model: Any, X: Any, y: Any, *, reference: float | None = N
     from sklearn import metrics as m
 
     y = np.asarray(y)
+    if task == "time_to_event":
+        from turbotab.core.models.survival import concordance
+
+        return {"c_index": concordance(y["time"], y["event"], model.predict(X))}
     if task == "regression":
         pred = model.predict(X)
         r2 = (float(m.r2_score(y, pred)) if reference is None
@@ -404,11 +417,20 @@ def _rows(data: Any, mask: np.ndarray) -> Any:
     return np.asarray(data)[mask]
 
 
+CLASSIFIED = ("binary", "multiclass", "ordinal")  # tasks whose models predict class probabilities
+
+
 def predict(task: Task, model: Any, X: Any) -> np.ndarray:
-    """ŷ for regression; the class-probability matrix (columns in ``model.classes_``) otherwise."""
-    if task == "regression":
+    """ŷ for regression, the risk score for a time-to-event outcome (WP12b), and the
+    class-probability matrix (columns in ``model.classes_``) otherwise."""
+    if task in ("regression", "time_to_event"):
         return np.asarray(model.predict(X), dtype=float)
     return np.asarray(model.predict_proba(X), dtype=float)
+
+
+def classes_of(task: Task, model: Any) -> list[Any] | None:
+    """A fitted model's classes when the task has them; None for a number or a time to event."""
+    return list(model.classes_) if task in CLASSIFIED else None
 
 
 def cross_validate(task: Task, make: Callable[[], Any], X: Any, y: Any,
@@ -440,7 +462,7 @@ def cross_validate(task: Task, make: Callable[[], Any], X: Any, y: Any,
             out.parts.append(fold_part(model, X_test, y_test, reference))
         out.sizes.append((int(fit_rows.sum()), int(test_rows.sum())))
         if keep_predictions:
-            classes = None if task == "regression" else list(model.classes_)
+            classes = classes_of(task, model)
             out.predictions.append(FoldPrediction(
                 rows=np.flatnonzero(test_rows), y=y_test, prediction=predict(task, model, X_test),
                 reference=reference, classes=classes))
@@ -448,7 +470,8 @@ def cross_validate(task: Task, make: Callable[[], Any], X: Any, y: Any,
 
 
 __all__ = ["CV_DEFINITION", "CrossValidated", "FoldPart", "FoldPrediction", "LABELS",
-           "LOWER_IS_BETTER", "METRICS", "POOLED", "PRIMARY", "SE_DEFINITION", "concordance",
+           "CLASSIFIED", "LOWER_IS_BETTER", "METRICS", "POOLED", "PRIMARY", "SE_DEFINITION",
+           "classes_of", "concordance",
            "cross_validate", "fold_part", "fold_pairs", "higher_is_better", "metric_labels",
            "ordinal_scores", "pooled", "predict", "r2_against", "repeated_pairs", "score",
            "summarize"]

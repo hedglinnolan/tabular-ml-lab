@@ -564,3 +564,155 @@ def test_under_a_surveyed_population_the_trend_is_design_based(tmp_path):
     se = float(np.sqrt(V[3, 3]))
     assert trend["p"] == pytest.approx(2 * stats.t.sf(abs(beta[3] / se), df), rel=1e-6)
     assert trend["df_den"] == df
+
+
+# ── WP12b × WP8 × WP9: Cox, the mixed model ──────────────────────────────────────────────────
+
+
+def _wp12b_stages(frame: pd.DataFrame, st: Any, predictors: list[str], task: str,
+                  folder: Path) -> tuple[Any, Any, Any]:
+    """The real split, design and fit stages over these rows (as WP12b's acceptance tests run them)."""
+    from turbotab.core.stages.rows import split_stage
+
+    paths = mf.ingest_frame(frame, folder)
+    ids = np.arange(len(frame))
+    ti = mf.target_info(task, st.target)
+    split = split_stage(mf.context(st, {"cohort": mf.cohort_bundle(ids, predictors),
+                                        "target_info": ti}, paths))
+    design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
+    fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
+    return split, design, fit
+
+
+def test_a_cox_table_with_a_holdout_is_estimated_from_every_analyzed_row(tmp_path):
+    """WP12b's Cox model under WP8's inference contract, with a holdout drawn: the table is
+    estimated from every analyzed row, and WP9's sealed held-out detail is written without an
+    interval it cannot compute for a C-index (and without calibration).
+
+    Reference: lifelines ``CoxPHFitter`` (Efron ties) on every analyzed row, held-out ones
+    included, estimates and standard errors to 10⁻⁶ relative.
+    """
+    from turbotab.core.decisions import FollowUpSpec, GrainSpec, ProjectState
+    from turbotab.core.seal import SEALED_DETAIL, details_by_family
+    from turbotab.core.tests.acceptance.test_wp12b_cox_mixed_gee import (
+        _lifelines,
+        _staggered_entry_cohort,
+    )
+
+    frame = _staggered_entry_cohort().iloc[:1200].reset_index(drop=True)
+    st = ProjectState(lens=["clinical"], target="cvd_event", task="time_to_event",
+                      purpose="inference", missing="complete_case",
+                      roles={"participant_id": "identifier", "fiber_g": "exposure",
+                             "age": "covariate", "followup_years": "time"},
+                      split=SplitSpec(holdout=0.2, seed=0, folds=5), models=["cox"],
+                      grain=GrainSpec(grain="one_row_per_unit"),
+                      follow_up=FollowUpSpec(time_column="followup_years"))
+    _, _, fit = _wp12b_stages(frame, st, ["fiber_g", "age"], "time_to_event", tmp_path)
+    assert fit.data["n_holdout"] > 0
+    model = fit.data["models"][0]
+    assert model["coefficients_n"] == len(frame) and model["inference"]["rows"] == "all"
+    reference = _lifelines(frame, "followup_years", "cvd_event", ["fiber_g", "age"])
+    rows = {r["feature"]: r for r in model["coefficients"]}
+    for name in ("fiber_g", "age"):
+        assert rows[name]["estimate"] == pytest.approx(reference.params_[name], rel=1e-6)
+        assert rows[name]["se"] == pytest.approx(reference.standard_errors_[name], rel=1e-6)
+    detail = details_by_family(fit.frames[SEALED_DETAIL])["cox"]
+    assert detail["intervals"] == {} and detail["calibration"] is None
+
+
+def test_a_mixed_model_table_with_a_holdout_uses_every_analyzed_row_and_its_units(tmp_path):
+    """WP12b's random-intercept model is told each row's unit; WP8 refits the table on every
+    analyzed row. Joined, the table's fit is told the units of every analyzed row (before the merge
+    fix the units were indexed by the training rows alone).
+
+    Reference: statsmodels ``MixedLM`` by REML on every analyzed row, the fixed effects to 10⁻⁴
+    relative (statsmodels' numerical optimum)."""
+    import warnings
+
+    from turbotab.core.decisions import GrainSpec, ProjectState
+
+    rng = np.random.default_rng(61)
+    units, per = 30, 8
+    pid = np.repeat(np.arange(units) + 5001, per)
+    sodium = np.repeat(rng.normal(0, 1, units), per) + rng.normal(0, 0.5, units * per)
+    age = np.repeat(rng.integers(30, 70, units), per).astype(float)
+    sbp = (110 + 2.0 * sodium + 0.2 * age + np.repeat(rng.normal(0, 4, units), per)
+           + rng.normal(0, 2, units * per))
+    frame = pd.DataFrame({"participant_id": pid, "sodium": sodium, "age": age, "sbp": sbp})
+    st = ProjectState(lens=["clinical"], target="sbp", task="regression", purpose="inference",
+                      roles={"participant_id": "identifier", "sodium": "exposure", "age": "covariate"},
+                      missing="complete_case", split=SplitSpec(holdout=0.2, seed=1, folds=5),
+                      models=["mixed"], grain=GrainSpec(grain="repeated", id_column="participant_id"))
+    _, _, fit = _wp12b_stages(frame, st, ["sodium", "age"], "regression", tmp_path)
+    assert fit.data["n_holdout"] > 0
+    model = fit.data["models"][0]
+    assert not any("could not be computed" in c for c in model["concerns"]), model["concerns"]
+    assert model["coefficients_n"] == len(frame)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        reference = sm.MixedLM(frame["sbp"].to_numpy(float),
+                               sm.add_constant(frame[["sodium", "age"]].astype(float)),
+                               groups=frame["participant_id"]).fit(reml=True)
+    rows = {r["feature"]: r for r in model["coefficients"]}
+    for name in ("sodium", "age"):
+        assert rows[name]["estimate"] == pytest.approx(reference.fe_params[name], rel=1e-4)
+
+
+def test_the_bootstrap_optimism_of_a_mixed_model_refits_a_mixed_model_on_each_resample(tmp_path):
+    """WP9's bootstrap optimism correction refits the pipeline on each resample of whole units;
+    WP12b's mixed model needs each row's unit, and the k-th copy of a unit is a unit of its own.
+    Before the merge fix the resample fits were told no units and silently fit least squares.
+
+    Reference: the resamples replayed as WP9's ``optimism_bootstrap`` documents them
+    (``numpy.random.default_rng(seed).integers(0, G, G)`` over the units in order of first
+    appearance), each fit by statsmodels ``MixedLM`` (REML, every copy of a unit its own group);
+    the optimism of R² is the mean over resamples of R² on the resample less R² on the training
+    rows, each against the resample's mean."""
+    import warnings
+
+    from turbotab.core.decisions import GrainSpec, ProjectState
+    from turbotab.core.stages.modeling import read_assignment
+
+    rng = np.random.default_rng(62)
+    units, per = 12, 20  # enough units for the split to group by them (the seal's floor is 8)
+    pid = np.repeat(np.arange(units) + 7001, per)
+    sodium = np.repeat(rng.normal(0, 1, units), per) + rng.normal(0, 0.4, units * per)
+    age = np.repeat(rng.integers(30, 70, units), per).astype(float)
+    sbp = (110 + 2.0 * sodium + 0.1 * age + np.repeat(rng.normal(0, 3, units), per)
+           + rng.normal(0, 2, units * per))
+    frame = pd.DataFrame({"participant_id": pid, "sodium_mg": sodium * 500 + 3000, "age": age,
+                          "sbp": sbp})
+    n_boot = 20
+    st = ProjectState(lens=["clinical"], target="sbp", task="regression", purpose="prediction",
+                      roles={"participant_id": "identifier", "sodium_mg": "exposure",
+                             "age": "covariate"}, missing="complete_case",
+                      split=SplitSpec(holdout=0.0, seed=3, folds=5, validation="bootstrap",
+                                      n_boot=n_boot),
+                      models=["mixed"], grain=GrainSpec(grain="repeated", id_column="participant_id"))
+    split, _, fit = _wp12b_stages(frame, st, ["sodium_mg", "age"], "regression", tmp_path)
+    optimism = fit.data["models"][0]["optimism"]
+    assert optimism is not None and optimism["refused"] is None
+    assert optimism["n_ok"] == n_boot and optimism["resampled"] == "participant_id units"
+
+    rows = read_assignment(split).index.to_numpy()
+    X = sm.add_constant(frame.loc[rows, ["sodium_mg", "age"]].astype(float)).to_numpy()
+    y = frame.loc[rows, "sbp"].to_numpy(float)
+    labels = frame.loc[rows, "participant_id"].astype(str).to_numpy()
+    codes = pd.factorize(labels)[0]
+    rows_of = [np.flatnonzero(codes == u) for u in range(codes.max() + 1)]
+    draws = np.random.default_rng(3)
+    gaps = []
+    for _ in range(n_boot):
+        draw = draws.integers(0, len(rows_of), len(rows_of))
+        take = np.concatenate([rows_of[u] for u in draw])
+        copies = np.concatenate([np.full(len(rows_of[u]), k) for k, u in enumerate(draw)])
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            beta = sm.MixedLM(y[take], X[take], groups=copies).fit(reml=True).fe_params
+        ref = float(y[take].mean())
+
+        def r2(yy: np.ndarray, pred: np.ndarray) -> float:
+            return 1 - float(((yy - pred) ** 2).sum()) / float(((yy - ref) ** 2).sum())
+
+        gaps.append(r2(y[take], X[take] @ beta) - r2(y, X @ beta))
+    assert optimism["estimates"]["r2"]["optimism"] == pytest.approx(float(np.mean(gaps)), abs=2e-4)

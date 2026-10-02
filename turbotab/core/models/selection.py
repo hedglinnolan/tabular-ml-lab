@@ -92,7 +92,8 @@ class OutOfFold:
             self.scored |= np.asarray(test_rows, dtype=bool)
             if task == "regression":
                 self.reference[test_rows] = float(np.mean(self.y[fit_rows].astype(float)))
-        self.classes: list[Any] = [] if task == "regression" else np.unique(self.y).tolist()
+        self.classes: list[Any] = ([] if task in ("regression", "time_to_event")
+                                   else np.unique(self.y).tolist())
         self.predictions: dict[str, np.ndarray] = {}
 
     def wrap(self, key: str, fit: Callable[..., Any]) -> Callable[..., Any]:
@@ -119,7 +120,7 @@ class OutOfFold:
         """Store ``fitted``'s predictions for the rows ``test_rows`` marks."""
         X_test = _rows(self.X, test_rows)
         n = len(self.y)
-        if self.task == "regression":
+        if self.task in ("regression", "time_to_event"):
             out = self.predictions.setdefault(key, np.full(n, np.nan))
             out[test_rows] = np.asarray(fitted.predict(X_test), dtype=float)
             return
@@ -176,6 +177,12 @@ def pooled_score(task: str, metric: str, y: np.ndarray, pred: np.ndarray, refere
         if metric == "log_loss":
             return float(m.log_loss(positive, p, labels=[False, True]))
         raise KeyError(metric)
+    if task == "time_to_event":  # WP12b: Harrell's C of the pooled risk scores
+        from turbotab.core.models.survival import concordance
+
+        if metric != "c_index":
+            raise KeyError(metric)
+        return float(concordance(y["time"], y["event"], pred))
     if task == "ordinal":  # WP12a: the ordered outcome's scores, on the pooled predictions
         from turbotab.core.models.metrics import ordinal_scores
 

@@ -527,7 +527,7 @@ export interface components {
              */
             post_seal: boolean;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"];
         };
         /**
          * DeferFinding
@@ -702,7 +702,7 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"]) | null;
         };
         /**
          * ExposureFormSpec
@@ -728,7 +728,7 @@ export interface components {
             /** Label */
             label: string;
             /** Tasks */
-            tasks: ("regression" | "binary" | "multiclass" | "ordinal")[];
+            tasks: ("regression" | "binary" | "multiclass" | "ordinal" | "time_to_event")[];
             /** Inductive Bias */
             inductive_bias: string;
             /** Strengths */
@@ -787,6 +787,18 @@ export interface components {
             slope: number;
             /** Intercept */
             intercept: number;
+        };
+        /**
+         * FollowUpSpec
+         * @description How long each row of a time-to-event outcome was observed (WP12,
+         *     ``turbotab/core/models/survival.py``): at risk from ``entry`` (0 when not named) to ``time``,
+         *     when the event happened or follow-up ended without it, both on one time scale.
+         */
+        FollowUpSpec: {
+            /** Time Column */
+            time_column: string;
+            /** Entry Column */
+            entry_column: string | null;
         };
         /** FrameRow */
         FrameRow: {
@@ -1089,7 +1101,7 @@ export interface components {
             /** Target */
             target: string | null;
             /** Task */
-            task: ("regression" | "binary" | "multiclass" | "ordinal") | null;
+            task: ("regression" | "binary" | "multiclass" | "ordinal" | "time_to_event") | null;
             /** Purpose */
             purpose: ("prediction" | "inference") | null;
             /** Roles */
@@ -1130,6 +1142,7 @@ export interface components {
             } | null;
             /** Outcome Order */
             outcome_order: string[] | null;
+            follow_up: components["schemas"]["FollowUpSpec"] | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -1599,6 +1612,40 @@ export interface components {
             /** Annotations */
             annotations: string[];
         };
+        /**
+         * SetFollowUp
+         * @description The follow-up of a time-to-event outcome. Stands only while ``column`` is the target.
+         */
+        "SetFollowUp-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_follow_up";
+            /** Column */
+            column: string;
+            /** Time Column */
+            time_column: string;
+            /** Entry Column */
+            entry_column?: string | null;
+        };
+        /**
+         * SetFollowUp
+         * @description The follow-up of a time-to-event outcome. Stands only while ``column`` is the target.
+         */
+        "SetFollowUp-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_follow_up";
+            /** Column */
+            column: string;
+            /** Time Column */
+            time_column: string;
+            /** Entry Column */
+            entry_column: string | null;
+        };
         /** SetGrain */
         "SetGrain-Input": {
             /**
@@ -2055,7 +2102,7 @@ export interface components {
              * Task
              * @enum {string}
              */
-            task: "regression" | "binary" | "multiclass" | "ordinal";
+            task: "regression" | "binary" | "multiclass" | "ordinal" | "time_to_event";
         };
         /** SetTemporal */
         "SetTemporal-Input": {
@@ -3055,7 +3102,7 @@ export interface components {
              * Task
              * @enum {string}
              */
-            task: "regression" | "binary" | "multiclass" | "ordinal";
+            task: "regression" | "binary" | "multiclass" | "ordinal" | "time_to_event";
             /** Primary Metric */
             primary_metric: string;
             /** Metric Labels */
@@ -3251,7 +3298,7 @@ export interface components {
              * Covariance
              * @enum {string}
              */
-            covariance: "HC3" | "CR2" | "CR1" | "model" | "profile" | "design" | "none";
+            covariance: "HC3" | "CR2" | "CR1" | "CR0" | "model" | "profile" | "design" | "none";
             /** Caption */
             caption: string;
             /**
@@ -4369,12 +4416,12 @@ export interface components {
              * Task
              * @enum {string}
              */
-            task: "regression" | "binary" | "multiclass" | "ordinal";
+            task: "regression" | "binary" | "multiclass" | "ordinal" | "time_to_event";
             /**
              * Detected Task
              * @enum {string}
              */
-            detected_task: "regression" | "binary" | "multiclass" | "ordinal";
+            detected_task: "regression" | "binary" | "multiclass" | "ordinal" | "time_to_event";
             /**
              * Confidence
              * @enum {string}
@@ -4840,7 +4887,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"];
             };
         };
         responses: {
@@ -4975,7 +5022,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"];
             };
         };
         responses: {

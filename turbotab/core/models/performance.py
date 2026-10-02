@@ -293,6 +293,8 @@ def score_intervals(task: str, y: Any, prediction: Any, *, classes: Sequence[Any
     """
     y = np.asarray(y)
     n = len(y)
+    if task == "time_to_event":
+        return {}  # no interval for a held-out C-index is computed here (WP12b's outcome)
     codes = unit_codes(groups, n)
     method = _method(codes, unit)
     if task == "regression":

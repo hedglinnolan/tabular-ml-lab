@@ -406,6 +406,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetOutcomeOrder"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetFollowUp-Input"
                   }
                 ],
                 "discriminator": {
@@ -438,7 +441,8 @@
                     "set_categorical": "#/components/schemas/SetCategorical",
                     "set_survey": "#/components/schemas/SetSurvey-Input",
                     "set_exposure_form": "#/components/schemas/SetExposureForm-Input",
-                    "set_outcome_order": "#/components/schemas/SetOutcomeOrder"
+                    "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
+                    "set_follow_up": "#/components/schemas/SetFollowUp-Input"
                   }
                 },
                 "title": "Decision"
@@ -722,6 +726,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetOutcomeOrder"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetFollowUp-Input"
                   }
                 ],
                 "discriminator": {
@@ -754,7 +761,8 @@
                     "set_categorical": "#/components/schemas/SetCategorical",
                     "set_survey": "#/components/schemas/SetSurvey-Input",
                     "set_exposure_form": "#/components/schemas/SetExposureForm-Input",
-                    "set_outcome_order": "#/components/schemas/SetOutcomeOrder"
+                    "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
+                    "set_follow_up": "#/components/schemas/SetFollowUp-Input"
                   }
                 },
                 "title": "Decision"
@@ -1944,6 +1952,9 @@
               },
               {
                 "$ref": "#/components/schemas/SetOutcomeOrder"
+              },
+              {
+                "$ref": "#/components/schemas/SetFollowUp-Output"
               }
             ],
             "title": "Decision",
@@ -1963,6 +1974,7 @@
                 "set_exclusions": "#/components/schemas/SetExclusions-Output",
                 "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
                 "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
+                "set_follow_up": "#/components/schemas/SetFollowUp-Output",
                 "set_grain": "#/components/schemas/SetGrain-Output",
                 "set_lens": "#/components/schemas/SetLens",
                 "set_missing": "#/components/schemas/SetMissing-Output",
@@ -2571,6 +2583,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetOutcomeOrder"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetFollowUp-Output"
                   }
                 ],
                 "discriminator": {
@@ -2589,6 +2604,7 @@
                     "set_exclusions": "#/components/schemas/SetExclusions-Output",
                     "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
                     "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
+                    "set_follow_up": "#/components/schemas/SetFollowUp-Output",
                     "set_grain": "#/components/schemas/SetGrain-Output",
                     "set_lens": "#/components/schemas/SetLens",
                     "set_missing": "#/components/schemas/SetMissing-Output",
@@ -2672,7 +2688,8 @@
                 "regression",
                 "binary",
                 "multiclass",
-                "ordinal"
+                "ordinal",
+                "time_to_event"
               ]
             },
             "type": "array",
@@ -2850,6 +2867,33 @@
           "intercept"
         ],
         "title": "FitLine"
+      },
+      "FollowUpSpec": {
+        "properties": {
+          "time_column": {
+            "type": "string",
+            "title": "Time Column"
+          },
+          "entry_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "time_column",
+          "entry_column"
+        ],
+        "title": "FollowUpSpec",
+        "description": "How long each row of a time-to-event outcome was observed (WP12,\n``turbotab/core/models/survival.py``): at risk from ``entry`` (0 when not named) to ``time``,\nwhen the event happened or follow-up ended without it, both on one time scale."
       },
       "FrameRow": {
         "properties": {
@@ -3750,7 +3794,8 @@
                   "regression",
                   "binary",
                   "multiclass",
-                  "ordinal"
+                  "ordinal",
+                  "time_to_event"
                 ]
               },
               {
@@ -4033,6 +4078,16 @@
               }
             ],
             "title": "Outcome Order"
+          },
+          "follow_up": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FollowUpSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -4061,7 +4116,8 @@
           "categorical",
           "survey",
           "exposure_forms",
-          "outcome_order"
+          "outcome_order",
+          "follow_up"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -5418,6 +5474,87 @@
         "title": "SetFeatureTable",
         "description": "How a features-in-rows table reads: the column naming the features, and the columns that\ndescribe them (m/z, retention time, IDs). Turning it makes every other column a sample."
       },
+      "SetFollowUp-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_follow_up",
+            "title": "Kind",
+            "default": "set_follow_up"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "time_column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Time Column"
+          },
+          "entry_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "time_column"
+        ],
+        "title": "SetFollowUp",
+        "description": "The follow-up of a time-to-event outcome. Stands only while ``column`` is the target."
+      },
+      "SetFollowUp-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_follow_up",
+            "title": "Kind",
+            "default": "set_follow_up"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "time_column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Time Column"
+          },
+          "entry_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "time_column",
+          "entry_column"
+        ],
+        "title": "SetFollowUp",
+        "description": "The follow-up of a time-to-event outcome. Stands only while ``column`` is the target."
+      },
       "SetGrain-Input": {
         "properties": {
           "kind": {
@@ -6352,7 +6489,8 @@
               "regression",
               "binary",
               "multiclass",
-              "ordinal"
+              "ordinal",
+              "time_to_event"
             ],
             "title": "Task"
           }
@@ -9148,7 +9286,8 @@
               "regression",
               "binary",
               "multiclass",
-              "ordinal"
+              "ordinal",
+              "time_to_event"
             ],
             "title": "Task",
             "type": "string"
@@ -9705,6 +9844,7 @@
               "HC3",
               "CR2",
               "CR1",
+              "CR0",
               "model",
               "profile",
               "design",
@@ -12788,7 +12928,8 @@
               "regression",
               "binary",
               "multiclass",
-              "ordinal"
+              "ordinal",
+              "time_to_event"
             ],
             "title": "Task",
             "type": "string"
@@ -12798,7 +12939,8 @@
               "regression",
               "binary",
               "multiclass",
-              "ordinal"
+              "ordinal",
+              "time_to_event"
             ],
             "title": "Detected Task",
             "type": "string"

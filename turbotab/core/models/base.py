@@ -18,9 +18,12 @@ from pydantic import BaseModel, ConfigDict
 from turbotab.core.decisions import Purpose, Task
 
 Fit = Literal["good", "fair", "poor"]
-TASKS: tuple[Task, ...] = ("regression", "binary", "multiclass", "ordinal")
-# A family that does not declare ``ordered_levels = True`` models an ordinal outcome as unordered
-# classes; on that shelf it says so and ranks a step lower (audit ME-19, RO-10).
+TASKS: tuple[Task, ...] = ("regression", "binary", "multiclass", "ordinal", "time_to_event")
+# What a family models unless it says otherwise: an ordered outcome is modeled as unordered
+# classes by a family that does not declare ``ordered_levels = True`` (on that shelf it says so and
+# ranks a step lower: audit ME-19, RO-10); a time-to-event outcome is an event with its follow-up,
+# which a family takes only by declaring it (``survival.Cox``).
+DEFAULT_TASKS: tuple[Task, ...] = ("regression", "binary", "multiclass", "ordinal")
 ORDER_BLIND = "Treats the ordered levels as unordered classes, so it ignores their order."
 ORDER_BLIND_COST = 1.0
 INDUCTIVE_BIAS_WORDS = 20
@@ -34,7 +37,7 @@ class Situation:
     purpose: Purpose | None
     n_rows: int
     n_features: int
-    n_events: int | None = None  # binary: rows in the rarer class
+    n_events: int | None = None  # binary: rows in the rarer class; time to event: rows with the event
     n_classes: int | None = None
     # Candidate predictor parameters (a category with k levels is k − 1 of them), which sample-size
     # criteria count; None: one per predictor. The outcome's mean and SD on the rows ranked
@@ -44,6 +47,9 @@ class Situation:
     outcome_sd: float | None = None
     lenses: tuple[str, ...] = ()  # the declared lenses (an omics lens changes what is sound)
     class_counts: tuple[int, ...] | None = None  # rows per class or level
+    # Units when an identifier repeats in these rows (``inference.resolve_clusters``); None when
+    # every row is a unit of its own, or nothing says which rows belong together.
+    n_units: int | None = None
 
 
 @dataclass(frozen=True)
@@ -159,7 +165,15 @@ def rank(situation: Situation) -> list[tuple[ModelFamily, Assessment]]:
             judged_one = Assessment(judged_one.score - ORDER_BLIND_COST, judged_one.fit,
                                     (ORDER_BLIND, *judged_one.concerns))
         judged.append((family, judged_one))
-    return sorted(judged, key=lambda fa: (-fa[1].score, order[fa[0].key]))
+
+    def place(fa: tuple[ModelFamily, Assessment]) -> tuple[float, bool, int]:
+        # Under prediction, a family that makes no predictions (WP11's feature-wise tests) goes
+        # after every family that does and scores as well: it has nothing to offer the purpose.
+        family, judged_one = fa
+        silent = situation.purpose == "prediction" and not getattr(family, "predicts", True)
+        return (-judged_one.score, silent, order[family.key])
+
+    return sorted(judged, key=place)
 
 
 # ── shared helpers for families ──────────────────────────────────────────────
@@ -170,7 +184,7 @@ class FamilyBase:
 
     key: str = ""
     label: str = ""
-    tasks: tuple[Task, ...] = TASKS
+    tasks: tuple[Task, ...] = DEFAULT_TASKS
     inductive_bias: str = ""
     strengths: tuple[str, ...] = ()
     cautions: tuple[str, ...] = ()
@@ -234,7 +248,7 @@ def _finite(value: Any) -> float | None:
 
 
 __all__ = [
-    "Assessment", "FamilyBase", "FamilyInfo", "Fit", "ModelFamily", "ORDER_BLIND", "Situation", "TASKS",
-    "coefficient_rows", "families", "get_family", "info", "rank", "register_family",
-    "reports_coefficients", "unregister_family",
+    "Assessment", "DEFAULT_TASKS", "FamilyBase", "FamilyInfo", "Fit", "ModelFamily", "ORDER_BLIND",
+    "Situation", "TASKS", "coefficient_rows", "families", "get_family", "info", "rank",
+    "register_family", "reports_coefficients", "unregister_family",
 ]

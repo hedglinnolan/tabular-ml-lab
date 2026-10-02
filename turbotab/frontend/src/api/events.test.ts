@@ -72,6 +72,7 @@ function view(): ProjectView {
       survey: null,
       exposure_forms: null,
       outcome_order: null,
+      follow_up: null,
     },
     decisions: [record(1)],
     stages: {

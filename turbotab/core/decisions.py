@@ -48,7 +48,8 @@ log = logging.getLogger(__name__)
 Lens = Literal["metabolomics", "genomics", "dietary", "clinical", "survey"]
 # "ordinal": ordered levels (a 1–5 rating, none < mild < severe), modeled by a cumulative-link
 # family that keeps the order (audit ME-19, RO-10). The order is declared, never inferred.
-Task = Literal["regression", "binary", "multiclass", "ordinal"]
+# time_to_event: the outcome column is the event; its follow-up is named by ``set_follow_up``.
+Task = Literal["regression", "binary", "multiclass", "ordinal", "time_to_event"]
 Purpose = Literal["prediction", "inference"]
 
 ROW_ID = "__row_id"  # the stable row identity the datastore adds (BLUEPRINT §2)
@@ -396,6 +397,24 @@ class SetEvent(_DecisionModel):
     level: str = Field(min_length=1)
 
 
+class FollowUpSpec(_Value):
+    """How long each row of a time-to-event outcome was observed (WP12,
+    ``turbotab/core/models/survival.py``): at risk from ``entry`` (0 when not named) to ``time``,
+    when the event happened or follow-up ended without it, both on one time scale."""
+
+    time_column: str
+    entry_column: str | None = None  # staggered or delayed entry: when each row came under observation
+
+
+class SetFollowUp(_DecisionModel):
+    """The follow-up of a time-to-event outcome. Stands only while ``column`` is the target."""
+
+    kind: Literal["set_follow_up"] = "set_follow_up"
+    column: str = Field(min_length=1)
+    time_column: str = Field(min_length=1)
+    entry_column: str | None = None
+
+
 class SetGrain(_DecisionModel):
     kind: Literal["set_grain"] = "set_grain"
     grain: GrainAnswer
@@ -576,7 +595,7 @@ Decision = Annotated[
         SetOrientation, SetEvent, SetGrain, SetRepeatKind, SetUnit, SetAggregation, SetTemporal,
         OpenSeal, ApplyRepair, DeferFinding, DismissFinding,
         SetFeatureTable, SetCategorical, SetSurvey,
-        SetExposureForm, SetOutcomeOrder,
+        SetExposureForm, SetOutcomeOrder, SetFollowUp,
     ],
     Field(discriminator="kind"),
 ]
@@ -645,6 +664,8 @@ class ProjectState(BaseModel):
     # WP12a (audit §5): each formed predictor's form, and an ordinal outcome's declared order
     exposure_forms: dict[str, ExposureFormSpec] | None = None
     outcome_order: list[str] | None = None  # holds while its column is the target
+    # WP12: a time-to-event outcome's follow-up (holds while its column is the target)
+    follow_up: FollowUpSpec | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -904,6 +925,9 @@ register_kind(SetExposureForm, "exposure_forms", key=lambda d: d.column,
               value=lambda d: ExposureFormSpec(form=d.form, knots=d.knots))
 register_kind(SetOutcomeOrder, "outcome_order", value=lambda d: list(d.levels),
               holds=lambda d, slots: slots.get("target") == d.column)
+register_kind(SetFollowUp, "follow_up",
+              value=lambda d: FollowUpSpec(time_column=d.time_column, entry_column=d.entry_column),
+              holds=lambda d, slots: slots.get("target") == d.column)
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
@@ -1006,6 +1030,54 @@ def _task_fits_the_outcome(decision: SetTask, ctx: Any) -> None:
             exits=[e for e in exits if e["decision"].task != "ordinal"]
             or [{"label": "Choose another outcome", "decision": None}],
         )
+    if decision.task == "time_to_event" and n_unique != 2:
+        raise Refusal(
+            "task_mismatch",
+            f"`{decision.column}` has {n_unique:,} distinct values; a time-to-event outcome's "
+            f"column says whether the event happened, so it has exactly 2.",
+            exits=exits or [{"label": "Choose another outcome", "decision": None}],
+        )
+
+
+def _follow_up_belongs_to_the_outcome(decision: SetFollowUp, ctx: Any) -> None:
+    """A follow-up answers for the outcome it names, with numeric columns other than it."""
+    target = _target_of(ctx)
+    if target is not _UNKNOWN:
+        if target is None:
+            raise Refusal("no_target", "Choose the outcome first; the follow-up belongs to it.",
+                          exits=[{"label": "Choose the outcome", "decision": None}])
+        if decision.column != target:
+            raise Refusal(
+                "not_the_target",
+                f"The outcome is `{target}`, not `{decision.column}`; a follow-up answers for the "
+                f"outcome.",
+                exits=[{"label": f"Answer the follow-up question for `{target}`", "decision": None}])
+    named = [decision.time_column] + ([decision.entry_column] if decision.entry_column else [])
+    columns = _columns_of(ctx)
+    if columns is not None:
+        unknown = [c for c in named if c not in columns or c == ROW_ID]
+        if unknown:
+            raise Refusal("unknown_column", f"This dataset has no column named {_and(unknown)}.",
+                          exits=[{"label": "Name one of the dataset's columns", "decision": None}])
+    if decision.column in named:
+        raise Refusal("follow_up_is_the_outcome",
+                      f"`{decision.column}` is the event; the follow-up is another column, the time "
+                      f"each row was observed until.",
+                      exits=[{"label": "Name the follow-up time column", "decision": None}])
+    if decision.entry_column is not None and decision.entry_column == decision.time_column:
+        raise Refusal("entry_is_the_end",
+                      f"`{decision.time_column}` cannot be both where follow-up starts and where it "
+                      f"ends.",
+                      exits=[{"label": "Leave the entry column out",
+                              "decision": SetFollowUp(column=decision.column,
+                                                      time_column=decision.time_column)}])
+    for column in named:
+        info = _info(ctx, column)
+        if info is not None and info.get("dtype") not in NUMERIC_DTYPES:
+            raise Refusal("not_numeric",
+                          f"`{column}` holds {info.get('dtype')} values; a follow-up time is a "
+                          f"number on one time scale.",
+                          exits=[{"label": "Name a numeric time column", "decision": None}])
 
 
 def _roles_name_real_columns(decision: SetRoles, ctx: Any) -> None:
@@ -1400,7 +1472,7 @@ def _models_can_fit_the_task(decision: SelectModels, ctx: Any) -> None:
         able = [m for m in decision.models if m not in unable]
         raise Refusal(
             "model_cannot_fit_task",
-            f"{_and(unable)} cannot model a {task} outcome.",
+            f"{_and(unable)} cannot model a {str(task).replace('_', '-')} outcome.",
             exits=([{"label": "Keep the families that can", "decision": SelectModels(models=able)}]
                    if able else []) + [{"label": "Choose from the shelf", "decision": None}],
         )
@@ -1774,6 +1846,7 @@ def _form_fits_the_column(decision: SetExposureForm, ctx: Any) -> None:
 register_validator("set_task", _task_fits_the_outcome)
 register_validator("set_outcome_order", _order_names_the_outcome)
 register_validator("set_exposure_form", _form_fits_the_column)
+register_validator("set_follow_up", _follow_up_belongs_to_the_outcome)
 register_validator("set_roles", _roles_name_real_columns)
 register_validator("set_feature_table", _feature_table_names_the_files_columns)
 register_validator("set_categorical", _categorical_names_predictors)

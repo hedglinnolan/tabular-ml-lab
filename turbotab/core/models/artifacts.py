@@ -184,11 +184,12 @@ class Inference(_Model):
     ``turbotab/core/models/inference.py``): the estimator, the covariance, and the clusters."""
 
     estimator: str  # "ordinary least squares", "Firth-penalized logistic regression", …
-    # HC3 · CR2 (cluster-robust, Bell–McCaffrey df) · model (Wald, from the information) ·
-    # profile (penalized likelihood) · design (Taylor linearization over a survey design, WP10) ·
-    # none (refused: ``refused`` says why).
+    # HC3 · CR2 (cluster-robust, Bell–McCaffrey df) · CR0 (the Cox model's Lin–Wei cluster
+    # sandwich, on t(G − 1)) · model (Wald from the information, or a mixed model's REML
+    # covariance) · profile (penalized likelihood) · design (Taylor linearization over a survey
+    # design, WP10) · none (refused: ``refused`` says why).
     # CR1 (cluster sandwich, G/(G − 1), on t(G − 1)): the proportional-odds family's.
-    covariance: Literal["HC3", "CR2", "CR1", "model", "profile", "design", "none"]
+    covariance: Literal["HC3", "CR2", "CR1", "CR0", "model", "profile", "design", "none"]
     # One or two lines: the scale (on a ratio scale), the covariance, the clusters, the reference
     # distribution and the rows the table was estimated from.
     caption: str

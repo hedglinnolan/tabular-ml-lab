@@ -58,8 +58,10 @@ _EIG_FLOOR = 1e-10  # 1 − λ below this is a zero eigenvalue of I − H_gg: ps
 
 # CR1: the cluster sandwich with the G/(G − 1) correction, on t(G − 1), for a model with no
 # working linear form here (the proportional-odds family, ``turbotab/core/models/ordinal.py``).
+# CR0 is the Cox model's Lin–Wei cluster sandwich (``survival.py``); "model" includes a mixed
+# model's REML covariance (``repeated.py``).
 # design: Taylor linearization over a survey design (``turbotab/core/models/survey.py``, WP10).
-Covariance = Literal["HC3", "CR2", "CR1", "model", "profile", "design", "none"]
+Covariance = Literal["HC3", "CR2", "CR1", "CR0", "model", "profile", "design", "none"]
 Scale = Literal["difference", "odds_ratio", "relative_risk_ratio"]
 Rows = Literal["all", "training"]
 
@@ -169,21 +171,34 @@ def _combined(state: Any) -> bool:
     return getattr(state, "unit", None) == "unit" and getattr(state, "aggregation", None) is not None
 
 
-def floor_refusal(clusters: Clusters) -> tuple[str, tuple[dict[str, Any], ...]] | None:
-    """Why no interval can be reported for these clusters, and the ways forward; None if one can."""
+def floor_refusal(clusters: Clusters, task: str | None = None) -> tuple[str, tuple[dict[str, Any], ...]] | None:
+    """Why no interval can be reported for these clusters, and the ways forward; None if one can.
+
+    For a quantity (``task`` regression) the random-intercept mixed model is an exit: its
+    variance is model-based, so it does not rest on unit-level residuals (WP12,
+    ``turbotab/core/models/repeated.py``)."""
     if clusters.refusal:
         return clusters.refusal, clusters.exits
     if not clusters.clustered or clusters.n_clusters >= min_clusters():
         return None
     column = clusters.column
+    combine = {"label": f"Combine each `{column}`'s rows into one (the unit question, before the "
+                        f"seal)", "decision": None}
+    if task == "regression":
+        exits = (combine, {"label": "A random-intercept mixed model, whose intervals do not rest "
+                                    "on unit-level residuals",
+                           "decision": {"kind": "select_models", "models": ["mixed"]}})
+    elif task == "time_to_event":  # one survival time per unit: combining rows is no answer
+        exits = ({"label": "A shared-frailty Cox model (not yet in TurboTab)", "decision": None},)
+    else:
+        exits = (combine, {"label": "A random-intercept logistic model (not yet in TurboTab)",
+                           "decision": None})
     return (
         f"`{column}` has {clusters.n_clusters} units, fewer than the {min_clusters()} TurboTab "
         f"requires for cluster-robust intervals: with so few, an interval rests on a handful of "
         f"unit-level residuals and its accuracy depends on how balanced the units are, while one "
         f"that ignores the repetition is far too narrow. No interval or p-value is reported.",
-        ({"label": f"Combine each `{column}`'s rows into one (the unit question, before the seal)",
-          "decision": None},
-         {"label": "A random-intercept mixed model or GEE (not yet in TurboTab)", "decision": None}),
+        exits,
     )
 
 
@@ -561,8 +576,8 @@ def _cluster_concerns(clusters: Clusters) -> list[str]:
     if G < FEW_CLUSTERS:
         out.append(f"Only {G} `{clusters.column}` clusters: the intervals use the CR2 small-sample "
                    f"correction with Bell–McCaffrey degrees of freedom, which Cameron & Miller "
-                   f"(2015) recommend when clusters are few; a random-intercept mixed model (not "
-                   f"yet in TurboTab) is the usual alternative.")
+                   f"(2015) recommend when clusters are few; for a continuous outcome, a "
+                   f"random-intercept mixed model is the usual alternative.")
     return out
 
 
@@ -735,7 +750,7 @@ def _least_squares(names: list[str], exog: pd.DataFrame, y: np.ndarray,
     fit = sm.OLS(y, exog).fit()
     est = np.asarray(fit.params, dtype=float)
     estimator = "ordinary least squares"
-    refusal = floor_refusal(clusters)
+    refusal = floor_refusal(clusters, task="regression")
     if refusal:
         return _refused(names, est, estimator, clusters, *refusal)
     if clusters.clustered:
@@ -774,7 +789,7 @@ def _logistic(names: list[str], exog: pd.DataFrame, y: np.ndarray, clusters: Clu
     fit = sm.Logit(y, exog).fit(disp=0, maxiter=200)
     est = np.asarray(fit.params, dtype=float)
     estimator = "logistic regression (maximum likelihood)"
-    refusal = floor_refusal(clusters)
+    refusal = floor_refusal(clusters, task="binary")
     if refusal:
         return _refused(names, est, estimator, clusters, *refusal)
     if clusters.clustered:
@@ -799,7 +814,7 @@ def _firth_table(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clust
                f"meaningless; the table reports Firth-penalized logistic regression instead "
                f"(Heinze & Schemper 2002).")
     extra = {"separated": separated}
-    refusal = floor_refusal(clusters)
+    refusal = floor_refusal(clusters, task="binary")
     if refusal is None and clusters.clustered:
         refusal = (f"{_and(separated)} {verb} the outcome and the rows repeat by `{clusters.column}`: "
                    f"Firth's profile intervals assume independent rows, so no interval or p-value "
@@ -838,7 +853,7 @@ def _multinomial(names: list[str], exog: pd.DataFrame, y: np.ndarray, classes: l
     labels = [f"{n} [{classes[k + 1] if classes else k + 1}]" for k in range(q) for n in names]
     est = B.ravel(order="F")  # class by class: the order of every vector below
     estimator = "multinomial logistic regression (maximum likelihood)"
-    refusal = floor_refusal(clusters)
+    refusal = floor_refusal(clusters, task="multiclass")
     if refusal:
         return _refused(labels, est, estimator, clusters, *refusal)
     if clusters.clustered:

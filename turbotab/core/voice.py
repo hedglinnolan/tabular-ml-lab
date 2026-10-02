@@ -679,7 +679,8 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
         how.append(f"keeping each {tick(group)}'s rows together")
     # Folds that are a cluster's levels are not stratified; a held-out draw still is.
     by_cluster = getattr(d, "validation", "kfold") == "internal_external" and d.holdout == 0
-    if task in ("binary", "multiclass", "ordinal") and target and not latest and not by_cluster:
+    if (task in ("binary", "multiclass", "ordinal", "time_to_event") and target and not latest
+            and not by_cluster):
         how.append(f"stratified by {tick(target)}")
     manner = " (" + ", ".join([f"seed {tick(d.seed)}", *how]) + ")"
     folds = f"{tick(d.folds)}-fold cross-validation"
@@ -819,6 +820,9 @@ _FAMILY_LABEL = {
     # WP11: one least-squares test per exposure, q-values by Benjamini–Hochberg
     "featurewise": "feature-wise least-squares tests with Benjamini–Hochberg false-discovery control",
     "proportional_odds": "a proportional-odds (cumulative logit) model",
+    "mixed": "a random-intercept mixed model",
+    "gee": "generalized estimating equations",
+    "cox": "Cox proportional hazards",
 }
 _LINEAR_LABEL = {
     "regression": "linear regression",
@@ -1019,6 +1023,16 @@ def _set_event(d: Any, state: Any, ctx: Any) -> str:
     others = [v for v in _levels(ctx, d.column) if level_key(v) != event]
     if 0 < len(others) <= 3:
         text += f"; {listing(others)} {plural(len(others), 'was', 'were')} coded 0"
+    return text
+
+
+@register_sentence("set_follow_up")
+def _set_follow_up(d: Any, state: Any, ctx: Any) -> str:
+    text = (f"{tick(d.column)} was analyzed as a time to event, each row followed until "
+            f"{tick(d.time_column)}, at the event or when follow-up ended without it")
+    if d.entry_column:
+        text += (f"; a row was at risk only after its {tick(d.entry_column)}, on the same time "
+                 f"scale")
     return text
 
 

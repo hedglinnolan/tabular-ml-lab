@@ -26,6 +26,10 @@ export const TASK_TEXT: Record<Task, { label: string; body: string }> = {
     label: "Ordinal",
     body: "The outcome has ordered levels; models predict each level's probability.",
   },
+  time_to_event: {
+    label: "Time to event",
+    body: "The outcome is an event with each row's follow-up; models estimate hazard ratios.",
+  },
 };
 
 export const PURPOSE_TEXT: Record<Purpose, { label: string; body: string; clause: string }> = {
@@ -95,6 +99,8 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "exposure_forms";
     case "set_outcome_order":
       return "outcome_order";
+    case "set_follow_up":
+      return "follow_up";
     case "revert": {
       const undone = records.find((r) => r.id === d.decision_id);
       return undone ? slotOf(undone.decision, records) : null;

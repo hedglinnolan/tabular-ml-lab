@@ -18,7 +18,8 @@ M1 (docs/turbotab-next/M1_CONTRACT.md):
     shelf        light   deps: cohort, target_info            reads purpose, task, roles; requires roles
     design       heavy   deps: split, target_info             reads roles, energy_adjustment, missing, models, purpose, event,
                                                               exposure_forms; requires models, roles
-    fit          heavy   deps: design, split, target_info     reads models, purpose, task, survey, outcome_order; requires models
+    fit          heavy   deps: design, split, target_info     reads models, purpose, task, survey, outcome_order,
+                                                              follow_up; requires models
     substitution heavy   deps: fit, design                    reads substitution; requires substitution
 
 M2 (docs/turbotab-next/M2_CONTRACT.md §2) — the table the analysis reads:
@@ -43,6 +44,10 @@ M2 part 2 (M2_CONTRACT.md §12): ``split`` and ``seal_plan`` also depend on ``st
 ``grain.stated`` is the grain when the Router states it rather than asks (a unique person
 identifier); the seal needs a grain, answered or stated. ``shelf`` is heavy: it times one fit of
 each family on a sample of the training rows, so each family carries ``estimate_seconds``.
+
+Audit WP12 (AUDIT_REPORT §5): a time-to-event outcome's follow-up (``set_follow_up``) is read by
+``design`` (a follow-up column is never a predictor) and ``fit`` (the outcome is the event with
+its follow-up); ``shelf`` and ``seal_plan`` read the event, which they count for such an outcome.
 
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
@@ -118,35 +123,37 @@ def build_graph() -> Graph:
             Stage("split", 3, ("working", "cohort", "target_info", "structure"),
                   ("split", "roles", "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
-            Stage("shelf", 5, ("working", "cohort", "target_info", "split"),
+            Stage("shelf", 6, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", "roles", "missing", "categorical", "lens", "findings", "event",
                    "outcome_order", "exposure_forms"),
                   shelf_stage, heavy=True,
                   requires=("roles",), label="Ranking the model families for this table"),
-            # design 5: the estimand and coefficient meanings are read off the matrix, and the
+            # design 6: the estimand and coefficient meanings are read off the matrix, and the
             # energy-dropped residual's gap reads the outcome and its event (audit WP6); an omics
             # normalization step reads the lens and the findings (audit WP11); each formed
-            # exposure's spline or quintiles (audit WP12a).
-            Stage("design", 5, ("working", "split", "target_info"),
+            # exposure's spline or quintiles (audit WP12a); a follow-up is no predictor (WP12b).
+            Stage("design", 6, ("working", "split", "target_info"),
                   ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical",
-                   "event", "lens", "findings", "exposure_forms"),
+                   "event", "lens", "findings", "exposure_forms", "follow_up"),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
-            # fit 7: the merged fit (WP8's every-row table, WP9's validation, WP10's survey design,
-            # WP11's feature-wise tests, WP12a's ordinal outcome and exposure tests).
-            Stage("fit", 7, ("working", "design", "split", "target_info"),
-                  ("models", "purpose", "task", "event", "survey", "outcome_order"), fit_stage,
-                  heavy=True, requires=("models",),
+            # fit 8: the merged fit (WP8's every-row table, WP9's validation, WP10's survey design,
+            # WP11's feature-wise tests, WP12a's ordinal outcome and exposure tests, WP12b's
+            # follow-up and the families that model the unit).
+            Stage("fit", 8, ("working", "design", "split", "target_info"),
+                  ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up"),
+                  fit_stage, heavy=True, requires=("models",),
                   label="Fitting the models"),
-            # substitution 4: a swap can move a share of energy (WP12a).
-            Stage("substitution", 4, ("working", "fit", "design"),
+            # substitution 5: a swap can move a share of energy (WP12a); a random intercept's band
+            # refits one intercept per resampled unit (WP12b).
+            Stage("substitution", 5, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order"),
                   substitution_stage, heavy=True, requires=("substitution",),
                   label="Drawing the substitution curves"),
             # ── M2: the seal (docs/turbotab-next/M2_CONTRACT.md §3) ──
             Stage("seal_plan", 2, ("working", "cohort", "target_info", "structure"),
-                  ("roles", "task", *SEAL_READS), seal_plan_stage, requires=("target",),
+                  ("roles", "task", "event", *SEAL_READS), seal_plan_stage, requires=("target",),
                   label="Reading what a held-out set can measure"),
         ]
     )
