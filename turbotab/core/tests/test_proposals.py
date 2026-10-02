@@ -8,13 +8,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from turbotab.core.decisions import ExclusionRule, ProjectState, RangeByLevel
+from turbotab.core.decisions import ExclusionRule, GoldbergRule, ProjectState, RangeByLevel
 from turbotab.core.graph import Bundle
 from turbotab.core.stages.proposals import proposals_stage, roles_from, rule_excludes
 from turbotab.core.tests.stage_harness import NHANES, SAMPLES, Ingested
 from turbotab.server.schemas import ProposalsArtifact
 
 KEYS = ["willett_by_sex", "sex_neutral_500_5000", "sex_neutral_500_3500"]
+# WP12: the Goldberg screen is offered beside them when age, weight and sex are read (NHANES).
+NHANES_KEYS = [*KEYS, "goldberg_schofield"]
 
 
 def pandas_counts(df: pd.DataFrame, energy: str, sex: str, women: str, men: str,
@@ -27,6 +29,21 @@ def pandas_counts(df: pd.DataFrame, energy: str, sex: str, women: str, men: str,
         "sex_neutral_500_5000": int((((e < 500) | (e > 5000)) & base).sum()),
         "sex_neutral_500_3500": int((((e < 500) | (e > 3500)) & base).sum()),
     }
+
+
+def goldberg_count(df: pd.DataFrame, base: pd.Series) -> int:
+    """The offered Goldberg screen longhand: Schofield 1985 BMR from weight (kg) and height (m), in
+    MJ/day × 1000/4.184, adults' bands; cut-offs 1.55 × exp(±2 S/100), S = √(23²/1 + 8.5² + 15²)."""
+    w, h, a, male = df["weight"], df["height"] / 100, df["age"], df["gender"] == "male"
+    mj = np.select(
+        [male & (a < 30), male & (a < 60), male, a < 30, a < 60],
+        [0.063 * w - 0.042 * h + 2.953, 0.048 * w - 0.011 * h + 3.670, 0.038 * w + 4.068 * h - 3.491,
+         0.057 * w + 1.184 * h + 0.411, 0.034 * w + 0.006 * h + 3.530],
+        0.033 * w + 1.917 * h + 0.074)
+    ratio = df["kcal"] / (mj * 1000 / 4.184)
+    s = math.sqrt(23 ** 2 / 1 + 8.5 ** 2 + 15 ** 2) / 100
+    outside = (ratio < 1.55 * math.exp(-2 * s)) | (ratio > 1.55 * math.exp(2 * s))
+    return int((outside & base).sum())
 
 
 @pytest.fixture(scope="module")
@@ -49,6 +66,7 @@ def test_the_nhanes_screens_count_what_pandas_counts(nhanes):
     table, artifact = nhanes
     df = pd.read_csv(table.source)
     expected = pandas_counts(df, "kcal", "gender", "female", "male", df["glucose"].notna())
+    expected["goldberg_schofield"] = goldberg_count(df, df["glucose"].notna())
     got = {p["key"]: p["affected"] for p in artifact["exclusions"]}
     assert got == expected
     assert got["sex_neutral_500_5000"] == 501  # the pack finding's own count, on every row
@@ -78,12 +96,19 @@ def test_counts_are_among_rows_with_the_outcome_measured(recalls, tmp_path):
 def test_each_screen_is_offered_with_its_badge_and_none_is_chosen(nhanes):
     _, artifact = nhanes
     ProposalsArtifact.model_validate(artifact)  # the contract's shape
-    assert [p["key"] for p in artifact["exclusions"]] == KEYS
-    for p in artifact["exclusions"]:
+    assert [p["key"] for p in artifact["exclusions"]] == NHANES_KEYS
+    for p in artifact["exclusions"][:len(KEYS)]:
         assert p["evidence"] == {"status": "CONVENTION",
                                  "source": "research/NUTRITION_PACK.md#02 · Implausible intake exclusions"}
         assert set(p) == {"key", "rule", "label", "affected", "evidence"}  # no "selected", no default
         ExclusionRule.model_validate(p["rule"])
+    goldberg = artifact["exclusions"][-1]
+    assert set(goldberg) == {"key", "rule", "label", "affected", "evidence"}
+    assert goldberg["evidence"]["status"] == "CONVENTION" and "Black 2000" in goldberg["evidence"]["source"]
+    rule = GoldbergRule.model_validate(goldberg["rule"])
+    assert (rule.equation, rule.pal, rule.days, rule.weight, rule.height) == (
+        "schofield_height", 1.55, 1.0, "weight", "height")
+    assert "PAL 1.55" in goldberg["label"] and "1 day" in goldberg["label"]  # stated, not assumed
     willett = ExclusionRule.model_validate(artifact["exclusions"][0]["rule"])
     assert willett.by.column == "gender"
     assert willett.by.ranges == {"female": (500.0, 3500.0), "male": (800.0, 4200.0)}

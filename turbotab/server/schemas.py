@@ -20,9 +20,11 @@ from turbotab.core.consequences import CoachNote, PreviewResult, RowStep  # noqa
 from turbotab.core.decisions import (  # noqa: F401 - re-exported contract models
     Decision,
     DecisionRecord,
+    EligibilityRule,
     EnergyMethod,
     ExclusionRule,
     FindingDisposition,
+    GoldbergRule,
     Lens,
     ProjectState,
     Purpose,
@@ -342,7 +344,7 @@ class ExclusionProposal(Model):
     """One of the pack's exclusion rules, with the rows it would remove. Never pre-selected."""
 
     key: str
-    rule: ExclusionRule
+    rule: EligibilityRule  # a range, or the Goldberg screen (WP12)
     label: str
     affected: int
     evidence: FindingEvidence

@@ -515,7 +515,23 @@ def _range_phrase(low: Any, high: Any) -> str:
     return "with no bound"
 
 
+def _goldberg_phrase(rule: Any) -> str:
+    """"`kcal` over Schofield BMR outside the Goldberg cut-offs for PAL `1.55` and `2` days"."""
+    from turbotab.core.methods.misreporting import EQUATIONS
+
+    side = {"both": "outside", "under": "below", "over": "above"}[rule.exclude]
+    pal = (f"a PAL by {tick(rule.pal_by.column)}" if rule.pal_by is not None
+           else f"PAL {tick(number(rule.pal))}")
+    days = (f"the days in {tick(rule.days_column)}" if rule.days_column else
+            f"{tick(number(rule.days))} {'day' if float(rule.days) == 1 else 'days'}")
+    unconfirmed = " or not screened" if rule.missing == "exclude" else ""
+    return (f"{tick(rule.column)} over {EQUATIONS[rule.equation].label} BMR {side} the Goldberg "
+            f"cut-offs for {pal} and {days}{unconfirmed}")
+
+
 def _rule_phrase(rule: Any) -> str:
+    if getattr(rule, "kind", "range") == "goldberg":
+        return _goldberg_phrase(rule)
     column = tick(rule.column)
     # A rule leaves out the rows it cannot confirm unless told to keep them (stages.rows.rule_keep).
     unconfirmed = " or not recorded" if getattr(rule, "missing", "exclude") == "exclude" else ""
@@ -548,9 +564,7 @@ def exclusion_counts(rules: Sequence[Any], state: Any, ctx: Any) -> tuple[list[i
     frame = _get(ctx, "frame")
     columns: set[str] = set()
     for rule in rules:
-        columns.add(rule.column)
-        if rule.by is not None:
-            columns.add(rule.by.column)
+        columns.update(rule.reads())
     target = getattr(state, "target", None)
     try:
         if frame is None:
@@ -857,6 +871,34 @@ def _set_categorical(d: Any, state: Any, ctx: Any) -> str:
     return (f"{listing(d.columns)} {'was' if n == 1 else 'were'} declared "
             f"{'a code' if n == 1 else 'codes'} for categories and entered the models as one "
             f"indicator per level after the first")
+
+
+@register_sentence("set_sensitivity")
+def _set_sensitivity(d: Any, state: Any, ctx: Any) -> str:
+    if not d.analyses:
+        return "No sensitivity analysis was set beside the primary analysis"
+    parts = []
+    for a in d.analyses:
+        if not a.rules:
+            parts.append(f"{tick(a.label)}, keeping every row")
+        else:
+            rules = listing([_rule_phrase(r) for r in a.rules], limit=3, ticked=False)
+            parts.append(f"{tick(a.label)}, excluding rows with {rules}")
+    n = len(d.analyses)
+    return (f"The primary analysis was set beside {count(n)} sensitivity "
+            f"{plural(n, 'analysis', 'analyses')}, each the same model on its own rows: "
+            + "; ".join(parts))
+
+
+@register_sentence("set_measurement_error")
+def _set_measurement_error(d: Any, state: Any, ctx: Any) -> str:
+    if d.method == "none":
+        return ("Energy-adjusted exposures were not corrected for day-to-day error in the "
+                "recalls")
+    which = (f"{listing(d.exposures)}" if d.exposures else "every energy-adjusted exposure")
+    return (f"Univariate regression calibration was applied to {which}, with the day-to-day "
+            f"variance estimated from repeated recalls and intervals from {count(d.n_boot)} "
+            f"bootstrap refits over people")
 
 
 def _levels(ctx: Any, column: str) -> list[str]:
