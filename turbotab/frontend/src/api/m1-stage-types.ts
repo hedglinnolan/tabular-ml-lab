@@ -71,6 +71,8 @@ export function substitutionDecision(
     step_kcal: stepKcal,
     n_boot: Math.max(0, Math.round(nBoot)),
     acknowledged: false,
+    scale: "kcal",
+    step_percent: 5,
   };
   return d;
 }

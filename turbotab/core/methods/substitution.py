@@ -61,6 +61,10 @@ __all__ = ["Shift", "refit_band", "substitution_curve", "PERCENTILE_MIN_REFITS",
            "MIN_REFIT_SHARE"]
 
 TotalKind = Literal["fixed", "variable"]
+Scale = Literal["kcal", "percent_energy"]
+# The amount an effect label is stated per: 100 kcal, or 5% of energy (the field's figure,
+# NUTRITION_PACK §05: "5% of energy from X replaced by Y").
+PER_UNIT: Dict[str, float] = {"kcal": 100.0, "percent_energy": 5.0}
 Interval = Literal["auto", "normal", "percentile"]
 
 # A percentile interval reads its endpoints off the refits' own tails, so it needs many refits:
@@ -289,7 +293,8 @@ def substitution_curve(predict: Callable[[pd.DataFrame], Any], X: pd.DataFrame, 
                        recipient: str, kcal_per_unit: Mapping[str, float], ks: Sequence[float],
                        total_kind: TotalKind = "variable", min_support: float = 0.5,
                        nested: Optional[Mapping[str, str]] = None,
-                       label_k: Optional[float] = None, total: Optional[str] = None) -> Dict[str, Any]:
+                       label_k: Optional[float] = None, total: Optional[str] = None,
+                       scale: Scale = "kcal", shift: Optional[Shift] = None) -> Dict[str, Any]:
     """The average change in prediction when k kcal move from ``donor`` to ``recipient``.
 
     Parameters
@@ -311,6 +316,11 @@ def substitution_curve(predict: Callable[[pd.DataFrame], Any], X: pd.DataFrame, 
     total : the total-energy column of ``X``; with it the support also checks each moved
         column's share of energy (see :class:`Shift`). Without it, composition is not checked
         and the note says so.
+    scale : ``"kcal"`` (k is kcal on every row) or ``"percent_energy"`` (k is percentage points
+        of each row's own total energy; :mod:`turbotab.core.methods.percent_energy`), which
+        sets the effect label's unit ("per 5% of energy") and the k it reports (nearest 5).
+    shift : a prepared :class:`Shift` (a ``PercentEnergyShift`` for the percent scale) used in
+        place of one built from the arguments above.
 
     Returns a dict with ``donor, recipient, ks, delta, on_support_fraction, stopped_at,
     total_kind, effect_label, note`` plus ``live, effect_sentence, label_k, n_on_support,
@@ -321,8 +331,11 @@ def substitution_curve(predict: Callable[[pd.DataFrame], Any], X: pd.DataFrame, 
     ``delta``: the curve over the rows on support at every k the curve reached). ``delta`` is
     ``None`` at and beyond ``stopped_at``. The band, when one is wanted, is :func:`refit_band`'s.
     """
-    shift = Shift(X, donor=donor, recipient=recipient, kcal_per_unit=kcal_per_unit, nested=nested,
-                  total=total)
+    if scale not in ("kcal", "percent_energy"):
+        raise ValueError(f"scale must be 'kcal' or 'percent_energy', not {scale!r}.")
+    if shift is None:
+        shift = Shift(X, donor=donor, recipient=recipient, kcal_per_unit=kcal_per_unit,
+                      nested=nested, total=total)
     if total_kind not in ("fixed", "variable"):
         raise ValueError(f"total_kind must be 'fixed' or 'variable', not {total_kind!r}.")
     if not 0.0 <= float(min_support) <= 1.0:
@@ -366,7 +379,8 @@ def substitution_curve(predict: Callable[[pd.DataFrame], Any], X: pd.DataFrame, 
         for i in range(k_values.size)]
     through = float(k_values[np.flatnonzero(live)[-1]]) if live.any() else None
 
-    chosen = _label_k(k_values, delta, label_k)
+    per = PER_UNIT[scale]
+    chosen = _label_k(k_values, delta, label_k, per)
     ks_out = [float(k) for k in k_values]
     within = ("whose shifted intakes and shares of energy stay within the observed range"
               if shift.total is not None else "whose shifted intakes stay within the observed range")
@@ -376,11 +390,12 @@ def substitution_curve(predict: Callable[[pd.DataFrame], Any], X: pd.DataFrame, 
                            f"energy from {donor} to {recipient}.")
     else:
         value = delta[ks_out.index(chosen)]
-        effect_label = f"{_signed(value * 100.0 / chosen)} per 100 kcal at k = {_plain(chosen)}"
+        effect_label = (f"{_signed(value * per / chosen)} per {_amount(per, scale)} at "
+                        f"k = {_plain(chosen)}")
         share = fractions[ks_out.index(chosen)]
-        effect_sentence = (f"Moving {_plain(chosen)} kcal from {donor} to {recipient} changes the "
-                           f"average prediction by {_signed(value)}, over the {share:.0%} of rows "
-                           f"{within}.")
+        effect_sentence = (f"Moving {_amount(chosen, scale)} from {donor} to {recipient} changes "
+                           f"the average prediction by {_signed(value)}, over the {share:.0%} of "
+                           f"rows {within}.")
 
     return {
         "donor": donor,
@@ -405,7 +420,8 @@ def substitution_curve(predict: Callable[[pd.DataFrame], Any], X: pd.DataFrame, 
         "n_off_share": off_share,
         "fixed_population": {"n_rows": int(fixed.sum()), "through": through, "delta": fixed_delta},
         "note": _note(donor, recipient, total_kind, float(min_support), stopped_at, fractions,
-                      ks_out, shift.note(), shift.total, int(fixed.sum()), through),
+                      ks_out, shift.note(), shift.total, int(fixed.sum()), through, scale),
+        "scale": scale,
     }
 
 
@@ -640,7 +656,8 @@ def _predictions(predict: Callable[[pd.DataFrame], Any], frame: pd.DataFrame) ->
     return values
 
 
-def _label_k(ks: np.ndarray, delta: List[Optional[float]], requested: Optional[float]) -> Optional[float]:
+def _label_k(ks: np.ndarray, delta: List[Optional[float]], requested: Optional[float],
+             per: float = 100.0) -> Optional[float]:
     supported = [float(k) for k, v in zip(ks, delta) if k > 0 and v is not None]
     if requested is not None:
         requested = float(requested)
@@ -649,13 +666,18 @@ def _label_k(ks: np.ndarray, delta: List[Optional[float]], requested: Optional[f
         return requested
     if not supported:
         return None
-    return min(supported, key=lambda k: (abs(k - 100.0), k))
+    return min(supported, key=lambda k: (abs(k - per), k))
+
+
+def _amount(k: float, scale: str) -> str:
+    """``100 kcal`` or ``5% of energy``."""
+    return f"{_plain(k)}% of energy" if scale == "percent_energy" else f"{_plain(k)} kcal"
 
 
 def _note(donor: str, recipient: str, total_kind: str, min_support: float,
           stopped_at: Optional[float], fractions: List[float], ks: List[float],
           carried: Optional[str], total: Optional[str] = None, fixed_rows: int = 0,
-          through: Optional[float] = None) -> str:
+          through: Optional[float] = None, scale: str = "kcal") -> str:
     if total_kind == "variable":
         parts = ["Total energy was held fixed by assumption: intake can rise or fall, so keeping "
                  "the total constant is a modeling choice, not a property of the data."]
@@ -676,12 +698,12 @@ def _note(donor: str, recipient: str, total_kind: str, min_support: float,
         f"not a sourced threshold.")
     if stopped_at is not None:
         share = fractions[ks.index(stopped_at)]
-        parts.append(f"The curve stopped at k = {_plain(stopped_at)} kcal, where {share:.0%} of rows "
-                     f"remained on support.")
+        parts.append(f"The curve stopped at k = {_amount(stopped_at, scale)}, where {share:.0%} of "
+                     f"rows remained on support.")
     if through is not None and through > 0:
         parts.append(f"Each k averages over its own on-support rows, so the rows behind the curve "
                      f"change with k; the fixed-population curve averages over the same {fixed_rows:,} "
-                     f"rows, those on support at every k up to {_plain(through)} kcal.")
+                     f"rows, those on support at every k up to {_amount(through, scale)}.")
     if carried:
         parts.append(carried)
     return " ".join(parts)

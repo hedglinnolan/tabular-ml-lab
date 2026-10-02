@@ -357,3 +357,210 @@ def test_feature_wise_tests_use_every_analyzed_row_and_its_clusters(tmp_path):
     assert row["estimate"] == pytest.approx(ols.params["protein"], rel=1e-8)
     assert row["se"] == pytest.approx(float(np.sqrt(V[1, 1])), rel=1e-6)
     assert row["df"] == pytest.approx(df[1], rel=1e-6)
+
+
+# ── WP12a × WP8 × WP9: an ordered outcome ────────────────────────────────────────────────────
+
+
+def _ordered(n: int, seed: int) -> pd.DataFrame:
+    """Three predictors and a five-level outcome cut from a logistic latent variable."""
+    rng = np.random.default_rng(seed)
+    frame = pd.DataFrame({"age": rng.normal(50, 10, n), "fiber_g": rng.gamma(3, 5, n),
+                          "male": rng.integers(0, 2, n).astype(float)})
+    latent = (0.03 * frame["age"] - 0.05 * frame["fiber_g"] + 0.4 * frame["male"]
+              + rng.logistic(size=n))
+    levels = np.array(["none", "mild", "moderate", "marked", "severe"])
+    frame["grade"] = levels[np.digitize(latent, (0.5, 1.5, 2.5, 3.5))]
+    return frame
+
+
+ORDER = ["none", "mild", "moderate", "marked", "severe"]
+ORDINAL_ROLES = {"age": "covariate", "fiber_g": "exposure", "male": "covariate"}
+
+
+def test_an_ordinal_table_is_on_the_cumulative_odds_ratio_scale_from_every_analyzed_row(tmp_path):
+    """WP12a's proportional-odds family under WP8's inference contract: the table is estimated from
+    every analyzed row (a holdout drawn), and declares its scale, each coefficient carrying its
+    cumulative odds ratio, the cut-points none.
+
+    Reference: statsmodels ``OrderedModel`` (logit) on every analyzed row, the held-out ones
+    included; the ratios are exp of the row's own estimate and interval ends.
+    """
+    import warnings
+
+    from statsmodels.miscmodels.ordinal_model import OrderedModel
+
+    frame = _ordered(700, seed=41)
+    paths = mf.ingest_frame(frame, tmp_path)
+    st = mf.state(roles=ORDINAL_ROLES, target="grade", task="ordinal", purpose="inference",
+                  models=["proportional_odds"], outcome_order=ORDER, energy_adjustment=None,
+                  split=SplitSpec(holdout=0.2, seed=2, folds=5))
+    split = mf.split_bundle(np.arange(len(frame)), holdout=0.2, seed=2)
+    ti = mf.target_info("ordinal", "grade")
+    design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
+    fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
+    model = fit.data["models"][0]
+    assert fit.data["n_holdout"] > 0 and model["coefficients_n"] == len(frame)
+    info = model["inference"]
+    assert info["scale"] == "odds_ratio" and info["axis"] == "log" and info["rows"] == "all"
+    assert "Cumulative odds ratio of a higher level of `grade`" in info["effect"]
+
+    codes = frame["grade"].map({lv: k for k, lv in enumerate(ORDER)}).to_numpy()
+    X = frame[["age", "fiber_g", "male"]]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        reference = OrderedModel(codes, X, distr="logit").fit(method="bfgs", maxiter=20_000,
+                                                              gtol=1e-10, disp=False)
+    rows = {r["feature"]: r for r in model["coefficients"]}
+    for name in ("age", "fiber_g", "male"):
+        assert rows[name]["estimate"] == pytest.approx(reference.params[name], abs=1e-6)
+        assert rows[name]["ratio"] == pytest.approx(np.exp(rows[name]["estimate"]), rel=1e-12)
+        assert rows[name]["ratio_high"] == pytest.approx(np.exp(rows[name]["ci_high"]), rel=1e-12)
+    cuts = [r for f, r in rows.items() if f.startswith("(cut-point")]
+    assert len(cuts) == 4 and all(r["ratio"] is None for r in cuts)
+
+
+def test_choosing_among_families_on_an_ordinal_outcome_bootstraps_its_concordance(tmp_path):
+    """WP8's selection optimism with WP12a's ordered outcome and WP9's repeated k-fold: the
+    families are ranked on C (Harrell's concordance, WP12a's primary), and the bootstrap scores the
+    pooled out-of-fold predictions on C. Before the merge fix the pooled score had no ordinal
+    branch, so fitting two families on an ordered outcome raised.
+
+    Reference: the pooled score the bootstrap uses, checked against lifelines'
+    ``concordance_index`` (an independent implementation of Harrell's C) on the predicted mean
+    level of every row; and the selection's own consistency (best family = highest CV C, the
+    optimism its CV C less the corrected estimate, every resample won by one family).
+    """
+    import warnings
+
+    from lifelines.utils import concordance_index
+
+    from turbotab.core.models.selection import pooled_score
+
+    frame = _ordered(500, seed=42)
+    paths = mf.ingest_frame(frame, tmp_path)
+    st = mf.state(roles=ORDINAL_ROLES, target="grade", task="ordinal", purpose="prediction",
+                  models=["proportional_odds", "linear"], outcome_order=ORDER,
+                  energy_adjustment=None,
+                  split=SplitSpec(holdout=0.0, seed=2, folds=5, validation="repeated_kfold",
+                                  repeats=2))
+    split = mf.split_bundle(np.arange(len(frame)), holdout=0.0, seed=2)
+    split.frames["assignment"]["fold_r1"] = np.random.default_rng(9).permutation(
+        split.frames["assignment"]["fold"].to_numpy())
+    split.data["validation"] = "repeated_kfold"
+    ti = mf.target_info("ordinal", "grade")
+    design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
+    assert fit.data["primary_metric"] == "c_index" and fit.data["repeats"] == 2
+    selection = fit.data["selection"]
+    assert selection is not None and selection["metric"] == "c_index"
+    cv = {m["family"]: m["cv"]["c_index"]["estimate"] for m in fit.data["models"]}
+    assert selection["best"] == max(cv, key=cv.get) and selection["cv"] == max(cv.values())
+    assert selection["optimism"] == pytest.approx(selection["cv"] - selection["corrected"], abs=1e-12)
+    assert sum(selection["wins"].values()) == selection["replicates"]
+
+    rng = np.random.default_rng(3)
+    y = rng.integers(0, 5, 400)
+    proba = rng.dirichlet(np.ones(5), 400) * 0.5 + np.eye(5)[y] * 0.5
+    expected = proba @ np.arange(5)
+    assert pooled_score("ordinal", "c_index", y, proba, np.full(400, np.nan), list(range(5))) == \
+        pytest.approx(concordance_index(y, expected), abs=1e-12)
+
+
+# ── WP12a × WP6 × WP8 × WP10: a formed exposure ──────────────────────────────────────────────
+
+
+def _protein_frame(n: int, seed: int) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    kcal = rng.normal(2100, 450, n)
+    protein = (0.16 + rng.normal(0, 0.03, n)) * kcal / 4
+    age = rng.uniform(20, 80, n)
+    y = 5 + 0.03 * age + 0.002 * kcal + 1.5 * np.log(protein) + rng.normal(0, 1.0, n)
+    return pd.DataFrame({"protein_g": protein, "kcal": kcal, "age": age, "y": y})
+
+
+PROTEIN_ROLES = {"protein_g": "exposure", "kcal": "energy", "age": "covariate"}
+STANDARD = EnergyAdjustment(method="standard", energy_column="kcal", nutrients=["protein_g"])
+
+
+def _quintile_fit(frame: pd.DataFrame, folder: Path, **slots: Any) -> dict[str, Any]:
+    from turbotab.core.decisions import ExposureFormSpec
+
+    paths = mf.ingest_frame(frame, folder)
+    roles = slots.pop("roles", PROTEIN_ROLES)
+    st = mf.state(roles=roles, target="y", task="regression", models=["linear"],
+                  energy_adjustment=STANDARD, purpose="inference",
+                  exposure_forms={"protein_g": ExposureFormSpec(form="quintiles")},
+                  split=SplitSpec(holdout=0.2, seed=6, folds=5), **slots)
+    split = mf.split_bundle(np.arange(len(frame)), holdout=0.2, seed=6)
+    ti = mf.target_info("regression", "y")
+    design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
+    fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
+    return {"design": design.data, "model": fit.data["models"][0], "n_holdout": fit.data["n_holdout"]}
+
+
+def _quintile_score(x: pd.Series) -> pd.Series:
+    group = pd.qcut(x, 5, labels=False)
+    return group.map(x.groupby(group).median()).astype(float)
+
+
+def test_a_quintile_exposure_keeps_its_energy_meaning_and_its_trend_uses_every_row(tmp_path):
+    """WP6 reads each coefficient's meaning off the model matrix; WP12a turns an exposure into
+    quintile indicators, so the column the meaning was read for is gone from the matrix (before
+    the merge fix the design stage failed on it). Each indicator now carries the energy model's
+    meaning, quintile by quintile. WP8 estimates the table, and so the trend test WP12a refits,
+    from every analyzed row.
+
+    Reference: statsmodels OLS with HC3 on every analyzed row (the held-out ones included) of y on
+    total energy, age and protein scored by its quintile's median, the quintiles cut by
+    ``pandas.qcut`` on those rows.
+    """
+    frame = _protein_frame(1000, seed=51)
+    out = _quintile_fit(frame, tmp_path)
+    model = out["model"]
+    assert out["n_holdout"] > 0 and model["coefficients_n"] == len(frame)
+    rows = {r["feature"]: r for r in model["coefficients"]}
+    for g in range(2, 6):
+        meaning = rows[f"protein_g_Q{g}"]["meaning"]
+        assert meaning.endswith(f": quintile {g} against the lowest") and "total energy fixed" in meaning
+
+    X = pd.DataFrame({"kcal": frame["kcal"], "age": frame["age"],
+                      "score": _quintile_score(frame["protein_g"])})
+    reference = sm.OLS(frame["y"].to_numpy(), sm.add_constant(X)).fit(cov_type="HC3", use_t=True)
+    (trend,) = [t for t in model["exposure_tests"] if t["test"] == "trend"]
+    assert trend["estimate"] == pytest.approx(float(reference.params["score"]), rel=1e-8)
+    assert trend["p"] == pytest.approx(float(reference.pvalues["score"]), rel=1e-6, abs=1e-300)
+
+
+def test_under_a_surveyed_population_the_trend_is_design_based(tmp_path):
+    """WP10 makes the table design-based under the population answer; WP12a's quintile trend is a
+    refit of that table, so it is design-based too, on the design's degrees of freedom.
+
+    Reference: survey-weighted least squares with its linearized variance written out from the
+    definition (``survey_references.wls_by_definition``) over every row, on t(PSUs − strata).
+    """
+    from turbotab.core.decisions import SurveySpec
+    from turbotab.core.tests.acceptance import survey_references as sref
+
+    frame = _protein_frame(900, seed=52)
+    rng = np.random.default_rng(53)
+    frame["SDMVSTRA"] = rng.integers(1, 11, len(frame))
+    frame["SDMVPSU"] = rng.integers(1, 3, len(frame))
+    frame["WTMEC2YR"] = np.round(rng.uniform(2000, 15000, len(frame)), 1)
+    roles = {**PROTEIN_ROLES, "SDMVSTRA": "design", "SDMVPSU": "design", "WTMEC2YR": "design"}
+    survey = SurveySpec(estimand="population", weight="WTMEC2YR", strata="SDMVSTRA", psu="SDMVPSU")
+    model = _quintile_fit(frame, tmp_path, roles=roles, survey=survey)["model"]
+    assert model["inference"]["covariance"] == "design"
+
+    X = np.column_stack([np.ones(len(frame)), frame["kcal"], frame["age"],
+                         _quintile_score(frame["protein_g"])])
+    beta, V = sref.wls_by_definition(X, frame["y"].to_numpy(float), frame["WTMEC2YR"].to_numpy(float),
+                                     frame["SDMVSTRA"], frame["SDMVPSU"], np.ones(len(frame), bool))
+    df = sref.design_df_by_definition(frame["SDMVSTRA"], frame["SDMVPSU"], [True] * len(frame))
+    (trend,) = [t for t in model["exposure_tests"] if t["test"] == "trend"]
+    assert trend["estimate"] == pytest.approx(beta[3], rel=1e-8)
+    se = float(np.sqrt(V[3, 3]))
+    assert trend["p"] == pytest.approx(2 * stats.t.sf(abs(beta[3] / se), df), rel=1e-6)
+    assert trend["df_den"] == df

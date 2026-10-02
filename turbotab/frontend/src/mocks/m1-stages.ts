@@ -765,6 +765,7 @@ const FAMILY = {
       regression: "Linear regression",
       binary: "Logistic regression",
       multiclass: "Multinomial logistic regression",
+      ordinal: "Multinomial logistic regression",
     },
     bias: "Straight-line, additive effects; one reportable coefficient per predictor.",
   },
@@ -773,6 +774,7 @@ const FAMILY = {
       regression: "Elastic net",
       binary: "Elastic net (logistic)",
       multiclass: "Elastic net (multinomial)",
+      ordinal: "Elastic net (multinomial)",
     },
     bias: "Linear, with correlated predictors shrunk together toward zero.",
   },
@@ -781,6 +783,7 @@ const FAMILY = {
       regression: "Gradient-boosted trees",
       binary: "Gradient-boosted trees",
       multiclass: "Gradient-boosted trees",
+      ordinal: "Gradient-boosted trees",
     },
     bias: "Steps, curves and interactions found by many shallow trees; no coefficients.",
   },
@@ -1229,6 +1232,7 @@ export function fit(
       holdout_detail: null,
       optimism: null,
       internal_external: null,
+      exposure_tests: [],
     };
   });
   // The fit computes the held-out scores; as on the server (turbotab/core/seal.py), the route
@@ -1258,6 +1262,8 @@ export function fit(
     selection: null,
     final_model: null,
     final_note: null,
+
+    levels: null,
   };
 }
 
@@ -1291,6 +1297,8 @@ export function substitution(
     support: null,
     omitted_energy: null,
     band_estimate: banded ? null : { n_boot: 50, seconds: 40 },
+    scale: "kcal",
+    step_percent: null,
     donor: spec.donor,
     recipient: spec.recipient,
     step_kcal: spec.step_kcal,

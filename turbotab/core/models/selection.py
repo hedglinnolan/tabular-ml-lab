@@ -46,7 +46,7 @@ import numpy as np
 from turbotab.core import decisions
 from turbotab.core.decisions import OpenSeal, Refusal
 
-LOWER_IS_BETTER = frozenset({"rmse", "mae", "brier", "log_loss"})
+from turbotab.core.models.metrics import LOWER_IS_BETTER  # noqa: E402 - one list for every score
 METHOD = "bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018)"
 REPLICATES = 1000  # the paper's B
 LARGE = 10_000  # above this many scored rows, fewer resamples: each costs more, the optimism is small
@@ -176,6 +176,10 @@ def pooled_score(task: str, metric: str, y: np.ndarray, pred: np.ndarray, refere
         if metric == "log_loss":
             return float(m.log_loss(positive, p, labels=[False, True]))
         raise KeyError(metric)
+    if task == "ordinal":  # WP12a: the ordered outcome's scores, on the pooled predictions
+        from turbotab.core.models.metrics import ordinal_scores
+
+        return float(ordinal_scores(y, pred, classes)[metric])
     labels = np.asarray(classes, dtype=object)[np.argmax(pred, axis=1)]
     if metric == "accuracy":
         return float(np.mean(labels == y))

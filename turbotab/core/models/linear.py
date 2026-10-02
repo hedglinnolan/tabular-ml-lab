@@ -171,8 +171,9 @@ class Linear(FamilyBase):
     def inference_matrix(self, matrix: pd.DataFrame, y: Any, *, task: Task, classes: Any,
                          clusters: Any, outcome: Any = None, rows: Any = None,
                          survey: Any = None) -> Any:
-        """The inference table on a given model matrix (the all-components contrasts refit on
-        one): design-based under ``survey`` (WP10), model-based or robust otherwise
+        """The inference table on a given model matrix (the all-components contrasts and a
+        quintile trend test refit on one): design-based under ``survey`` (WP10), model-based or
+        robust otherwise
         (``models/inference.py``), and either way on the outcome's scale (WP8)."""
         from turbotab.core.models.inference import _on_rows, _on_scale, inference_table
 

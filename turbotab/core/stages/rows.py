@@ -1027,7 +1027,7 @@ def split_inputs(state: Any, cohort_rows: Any, store: Any, task: str | None) -> 
     out: dict[str, Any] = {"y": None, "groups": None, "grouped_by": None}
     identifiers = [c for c, r in (state.roles or {}).items() if r == "identifier"]
     columns = list(identifiers)
-    classify = task in ("binary", "multiclass")
+    classify = task in ("binary", "multiclass", "ordinal")
     if classify:
         columns.append(state.target)
     if not columns or not len(ids):

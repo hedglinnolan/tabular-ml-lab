@@ -400,6 +400,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetSurvey-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExposureForm-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOutcomeOrder"
                   }
                 ],
                 "discriminator": {
@@ -430,7 +436,9 @@
                     "dismiss_finding": "#/components/schemas/DismissFinding-Input",
                     "set_feature_table": "#/components/schemas/SetFeatureTable-Input",
                     "set_categorical": "#/components/schemas/SetCategorical",
-                    "set_survey": "#/components/schemas/SetSurvey-Input"
+                    "set_survey": "#/components/schemas/SetSurvey-Input",
+                    "set_exposure_form": "#/components/schemas/SetExposureForm-Input",
+                    "set_outcome_order": "#/components/schemas/SetOutcomeOrder"
                   }
                 },
                 "title": "Decision"
@@ -708,6 +716,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetSurvey-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExposureForm-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOutcomeOrder"
                   }
                 ],
                 "discriminator": {
@@ -738,7 +752,9 @@
                     "dismiss_finding": "#/components/schemas/DismissFinding-Input",
                     "set_feature_table": "#/components/schemas/SetFeatureTable-Input",
                     "set_categorical": "#/components/schemas/SetCategorical",
-                    "set_survey": "#/components/schemas/SetSurvey-Input"
+                    "set_survey": "#/components/schemas/SetSurvey-Input",
+                    "set_exposure_form": "#/components/schemas/SetExposureForm-Input",
+                    "set_outcome_order": "#/components/schemas/SetOutcomeOrder"
                   }
                 },
                 "title": "Decision"
@@ -1922,6 +1938,12 @@
               },
               {
                 "$ref": "#/components/schemas/SetSurvey-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetExposureForm-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetOutcomeOrder"
               }
             ],
             "title": "Decision",
@@ -1939,11 +1961,13 @@
                 "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
                 "set_event": "#/components/schemas/SetEvent",
                 "set_exclusions": "#/components/schemas/SetExclusions-Output",
+                "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
                 "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
                 "set_grain": "#/components/schemas/SetGrain-Output",
                 "set_lens": "#/components/schemas/SetLens",
                 "set_missing": "#/components/schemas/SetMissing-Output",
                 "set_orientation": "#/components/schemas/SetOrientation",
+                "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
                 "set_purpose": "#/components/schemas/SetPurpose",
                 "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                 "set_roles": "#/components/schemas/SetRoles",
@@ -2541,6 +2565,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetSurvey-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExposureForm-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOutcomeOrder"
                   }
                 ],
                 "discriminator": {
@@ -2557,11 +2587,13 @@
                     "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
                     "set_event": "#/components/schemas/SetEvent",
                     "set_exclusions": "#/components/schemas/SetExclusions-Output",
+                    "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
                     "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
                     "set_grain": "#/components/schemas/SetGrain-Output",
                     "set_lens": "#/components/schemas/SetLens",
                     "set_missing": "#/components/schemas/SetMissing-Output",
                     "set_orientation": "#/components/schemas/SetOrientation",
+                    "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
                     "set_purpose": "#/components/schemas/SetPurpose",
                     "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                     "set_roles": "#/components/schemas/SetRoles",
@@ -2589,6 +2621,40 @@
         ],
         "title": "Exit"
       },
+      "ExposureFormSpec": {
+        "properties": {
+          "form": {
+            "type": "string",
+            "enum": [
+              "linear",
+              "spline",
+              "quintiles"
+            ],
+            "title": "Form"
+          },
+          "knots": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 3.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knots"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "form",
+          "knots"
+        ],
+        "title": "ExposureFormSpec",
+        "description": "How one numeric predictor enters the models: a straight line, a restricted cubic spline\n(``knots`` 3–5, at Harrell's percentiles), or quintile indicators with a trend test."
+      },
       "FamilyInfo": {
         "properties": {
           "key": {
@@ -2605,7 +2671,8 @@
               "enum": [
                 "regression",
                 "binary",
-                "multiclass"
+                "multiclass",
+                "ordinal"
               ]
             },
             "type": "array",
@@ -3682,7 +3749,8 @@
                 "enum": [
                   "regression",
                   "binary",
-                  "multiclass"
+                  "multiclass",
+                  "ordinal"
                 ]
               },
               {
@@ -3937,6 +4005,34 @@
                 "type": "null"
               }
             ]
+          },
+          "exposure_forms": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/ExposureFormSpec"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure Forms"
+          },
+          "outcome_order": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Order"
           }
         },
         "type": "object",
@@ -3963,7 +4059,9 @@
           "findings",
           "feature_table",
           "categorical",
-          "survey"
+          "survey",
+          "exposure_forms",
+          "outcome_order"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -5155,6 +5253,99 @@
         "title": "SetExclusions",
         "description": "Row exclusions; an empty list is the answer \"keep every row\"."
       },
+      "SetExposureForm-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_exposure_form",
+            "title": "Kind",
+            "default": "set_exposure_form"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "form": {
+            "type": "string",
+            "enum": [
+              "linear",
+              "spline",
+              "quintiles"
+            ],
+            "title": "Form"
+          },
+          "knots": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 3.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knots"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "form"
+        ],
+        "title": "SetExposureForm",
+        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column."
+      },
+      "SetExposureForm-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_exposure_form",
+            "title": "Kind",
+            "default": "set_exposure_form"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "form": {
+            "type": "string",
+            "enum": [
+              "linear",
+              "spline",
+              "quintiles"
+            ],
+            "title": "Form"
+          },
+          "knots": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 3.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knots"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "form",
+          "knots"
+        ],
+        "title": "SetExposureForm",
+        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column."
+      },
       "SetFeatureTable-Input": {
         "properties": {
           "kind": {
@@ -5467,6 +5658,38 @@
         ],
         "title": "SetOrientation",
         "description": "Which way round an assay table is; feature-major is transposed before any diagnosis."
+      },
+      "SetOutcomeOrder": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_outcome_order",
+            "title": "Kind",
+            "default": "set_outcome_order"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "levels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 2,
+            "title": "Levels"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "levels"
+        ],
+        "title": "SetOutcomeOrder",
+        "description": "The order of an ordinal outcome's levels, lowest first. Stands only while ``column`` is the\ntarget. Numbers are ordered by value without it; text levels need it (asked, never inferred)."
       },
       "SetPurpose": {
         "properties": {
@@ -5814,6 +6037,22 @@
             "type": "boolean",
             "title": "Acknowledged",
             "default": false
+          },
+          "scale": {
+            "type": "string",
+            "enum": [
+              "kcal",
+              "percent_energy"
+            ],
+            "title": "Scale",
+            "default": "kcal"
+          },
+          "step_percent": {
+            "type": "number",
+            "maximum": 50.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Step Percent",
+            "default": 5.0
           }
         },
         "additionalProperties": false,
@@ -5861,6 +6100,22 @@
             "type": "boolean",
             "title": "Acknowledged",
             "default": false
+          },
+          "scale": {
+            "type": "string",
+            "enum": [
+              "kcal",
+              "percent_energy"
+            ],
+            "title": "Scale",
+            "default": "kcal"
+          },
+          "step_percent": {
+            "type": "number",
+            "maximum": 50.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Step Percent",
+            "default": 5.0
           }
         },
         "additionalProperties": false,
@@ -5871,7 +6126,9 @@
           "recipient",
           "step_kcal",
           "n_boot",
-          "acknowledged"
+          "acknowledged",
+          "scale",
+          "step_percent"
         ],
         "title": "SetSubstitution",
         "description": "The substitution to draw; ``n_boot > 0`` adds a band from that many bootstrap refits."
@@ -6094,7 +6351,8 @@
             "enum": [
               "regression",
               "binary",
-              "multiclass"
+              "multiclass",
+              "ordinal"
             ],
             "title": "Task"
           }
@@ -6465,6 +6723,22 @@
             "type": "boolean",
             "title": "Acknowledged",
             "default": false
+          },
+          "scale": {
+            "type": "string",
+            "enum": [
+              "kcal",
+              "percent_energy"
+            ],
+            "title": "Scale",
+            "default": "kcal"
+          },
+          "step_percent": {
+            "type": "number",
+            "maximum": 50.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Step Percent",
+            "default": 5.0
           }
         },
         "additionalProperties": false,
@@ -6474,7 +6748,9 @@
           "recipient",
           "step_kcal",
           "n_boot",
-          "acknowledged"
+          "acknowledged",
+          "scale",
+          "step_percent"
         ],
         "title": "SubstitutionSpec"
       },
@@ -7265,6 +7541,63 @@
           "label"
         ],
         "title": "Baseline",
+        "type": "object"
+      },
+      "BrantCheck": {
+        "additionalProperties": false,
+        "description": "Brant's (1990) Wald test of the proportional-odds assumption: overall, and per column.",
+        "properties": {
+          "statistic": {
+            "title": "Statistic",
+            "type": "number"
+          },
+          "df": {
+            "title": "Df",
+            "type": "integer"
+          },
+          "p": {
+            "title": "P",
+            "type": "number"
+          },
+          "columns": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BrantColumn"
+            },
+            "title": "Columns",
+            "type": "object"
+          }
+        },
+        "required": [
+          "statistic",
+          "df",
+          "p",
+          "columns"
+        ],
+        "title": "BrantCheck",
+        "type": "object"
+      },
+      "BrantColumn": {
+        "additionalProperties": false,
+        "properties": {
+          "statistic": {
+            "title": "Statistic",
+            "type": "number"
+          },
+          "df": {
+            "title": "Df",
+            "type": "integer"
+          },
+          "p": {
+            "title": "P",
+            "type": "number"
+          }
+        },
+        "required": [
+          "statistic",
+          "df",
+          "p"
+        ],
+        "title": "BrantColumn",
         "type": "object"
       },
       "Calibration": {
@@ -8329,6 +8662,175 @@
         "title": "ExclusionRule",
         "type": "object"
       },
+      "ExposureTest": {
+        "additionalProperties": false,
+        "description": "A test an exposure's form carries under inference (``methods/exposure_form.py``): a\nspline's overall and nonlinear Wald tests, or quintiles' trend across their medians.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "form": {
+            "enum": [
+              "spline",
+              "quintiles"
+            ],
+            "title": "Form",
+            "type": "string"
+          },
+          "test": {
+            "enum": [
+              "overall",
+              "nonlinear",
+              "trend"
+            ],
+            "title": "Test",
+            "type": "string"
+          },
+          "statistic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statistic"
+          },
+          "df_num": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Df Num"
+          },
+          "df_den": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Df Den"
+          },
+          "distribution": {
+            "enum": [
+              "F",
+              "chi2",
+              "t",
+              "z"
+            ],
+            "title": "Distribution",
+            "type": "string"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Estimate"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          },
+          "knots": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Knots"
+          },
+          "medians": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Medians"
+          },
+          "caption": {
+            "title": "Caption",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "form",
+          "test",
+          "statistic",
+          "df_num",
+          "df_den",
+          "distribution",
+          "p",
+          "estimate",
+          "ci_low",
+          "ci_high",
+          "knots",
+          "medians",
+          "caption"
+        ],
+        "title": "ExposureTest",
+        "type": "object"
+      },
       "FamilyDifference": {
         "additionalProperties": false,
         "description": "Two families' primary metric, paired over the same folds, with a corrected interval.",
@@ -8645,7 +9147,8 @@
             "enum": [
               "regression",
               "binary",
-              "multiclass"
+              "multiclass",
+              "ordinal"
             ],
             "title": "Task",
             "type": "string"
@@ -8821,6 +9324,21 @@
             ],
             "default": null,
             "title": "Imbalance"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Levels"
           }
         },
         "required": [
@@ -8844,7 +9362,8 @@
           "se_definition",
           "comparisons",
           "precision",
-          "imbalance"
+          "imbalance",
+          "levels"
         ],
         "title": "FitArtifact",
         "type": "object"
@@ -9009,6 +9528,14 @@
               }
             ],
             "default": null
+          },
+          "exposure_tests": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ExposureTest"
+            },
+            "title": "Exposure Tests",
+            "type": "array"
           }
         },
         "required": [
@@ -9027,7 +9554,8 @@
           "calibration",
           "holdout_detail",
           "optimism",
-          "internal_external"
+          "internal_external",
+          "exposure_tests"
         ],
         "title": "FittedModel",
         "type": "object"
@@ -9176,6 +9704,7 @@
             "enum": [
               "HC3",
               "CR2",
+              "CR1",
               "model",
               "profile",
               "design",
@@ -9338,6 +9867,17 @@
               }
             ],
             "default": null
+          },
+          "brant": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BrantCheck"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -9357,7 +9897,8 @@
           "reference",
           "n_rows",
           "rows",
-          "survey"
+          "survey",
+          "brant"
         ],
         "title": "Inference",
         "type": "object"
@@ -11540,6 +12081,27 @@
               }
             ],
             "default": null
+          },
+          "scale": {
+            "default": "kcal",
+            "enum": [
+              "kcal",
+              "percent_energy"
+            ],
+            "title": "Scale",
+            "type": "string"
+          },
+          "step_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Step Percent"
           }
         },
         "required": [
@@ -11556,7 +12118,9 @@
           "band",
           "band_estimate",
           "support",
-          "omitted_energy"
+          "omitted_energy",
+          "scale",
+          "step_percent"
         ],
         "title": "SubstitutionArtifact",
         "type": "object"
@@ -12223,7 +12787,8 @@
             "enum": [
               "regression",
               "binary",
-              "multiclass"
+              "multiclass",
+              "ordinal"
             ],
             "title": "Task",
             "type": "string"
@@ -12232,7 +12797,8 @@
             "enum": [
               "regression",
               "binary",
-              "multiclass"
+              "multiclass",
+              "ordinal"
             ],
             "title": "Detected Task",
             "type": "string"

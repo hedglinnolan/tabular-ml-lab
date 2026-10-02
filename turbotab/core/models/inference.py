@@ -56,7 +56,10 @@ _BATCH = 1_000_000  # floats per block of clusters in the CR2 engine (8 MB)
 BM_BUDGET = 1e11
 _EIG_FLOOR = 1e-10  # 1 − λ below this is a zero eigenvalue of I − H_gg: pseudo-inverted (clubSandwich)
 
-Covariance = Literal["HC3", "CR2", "model", "profile", "none"]
+# CR1: the cluster sandwich with the G/(G − 1) correction, on t(G − 1), for a model with no
+# working linear form here (the proportional-odds family, ``turbotab/core/models/ordinal.py``).
+# design: Taylor linearization over a survey design (``turbotab/core/models/survey.py``, WP10).
+Covariance = Literal["HC3", "CR2", "CR1", "model", "profile", "design", "none"]
 Scale = Literal["difference", "odds_ratio", "relative_risk_ratio"]
 Rows = Literal["all", "training"]
 
@@ -474,6 +477,10 @@ class InferenceTable:
     rows: list[dict[str, Any]]
     info: dict[str, Any]
     concerns: list[str] = field(default_factory=list)
+    # The covariance the intervals rest on, over the rows in order (None when refused or when the
+    # intervals are not Wald: Firth's profile ones). Joint tests read it (WP12a: a spline's
+    # nonlinearity, ``turbotab/core/methods/exposure_form.py``); it is never serialized.
+    cov: Any = None
 
 
 def _clean(value: Any) -> float | None:
@@ -542,7 +549,7 @@ def _clustered(names: Sequence[str], est: np.ndarray, estimator: str, X: np.ndar
         df = np.full(len(est), float(clusters.n_clusters - 1))
     rows = _t_rows(names, est, np.sqrt(np.clip(np.diag(V), 0, None)), df)
     return InferenceTable(rows, _info(estimator, "CR2", _cluster_caption(clusters, exact), clusters),
-                          _cluster_concerns(clusters))
+                          _cluster_concerns(clusters), cov=V)
 
 
 def _cluster_concerns(clusters: Clusters) -> list[str]:
@@ -744,7 +751,8 @@ def _least_squares(names: list[str], exog: pd.DataFrame, y: np.ndarray,
     if hetero:
         concerns.append(hetero)
     caption = f"95% intervals from HC3 heteroskedasticity-robust standard errors, on t({dof:,.0f})."
-    return InferenceTable(rows, _info(estimator, "HC3", caption, clusters), concerns)
+    return InferenceTable(rows, _info(estimator, "HC3", caption, clusters), concerns,
+                          cov=np.asarray(hc3.cov_params(), dtype=float))
 
 
 def _named(names: Sequence[str], idx: Sequence[int]) -> list[str]:
@@ -776,7 +784,8 @@ def _logistic(names: list[str], exog: pd.DataFrame, y: np.ndarray, clusters: Clu
     concerns = [clusters.note] if clusters.note else []
     return InferenceTable(rows, _info(estimator, "model",
                                       "95% Wald intervals from the logistic model's information.",
-                                      clusters), concerns)
+                                      clusters), concerns,
+                          cov=np.asarray(fit.cov_params(), dtype=float))
 
 
 def _firth_table(names: list[str], X: np.ndarray, y: np.ndarray, clusters: Clusters,

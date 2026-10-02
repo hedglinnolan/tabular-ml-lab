@@ -128,6 +128,7 @@ const wp9 = { calibration: null, holdout_detail: null, optimism: null, internal_
 
 const fit: FitArtifact = {
   task: "regression",
+  levels: null,
   primary_metric: "r2",
   metric_labels: { r2: "R²", rmse: "RMSE" },
   n_train: 2352,
@@ -150,6 +151,7 @@ const fit: FitArtifact = {
       coefficients_n: null,
       role: null,
       ...wp9,
+      exposure_tests: [],
     },
     {
       family: "elastic_net",
@@ -168,6 +170,7 @@ const fit: FitArtifact = {
       coefficients_n: null,
       role: null,
       ...wp9,
+      exposure_tests: [],
     },
     {
       family: "boosted_trees",
@@ -186,6 +189,7 @@ const fit: FitArtifact = {
       coefficients_n: null,
       role: null,
       ...wp9,
+      exposure_tests: [],
     },
   ],
   holdout_sealed: true,

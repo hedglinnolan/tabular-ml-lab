@@ -634,6 +634,10 @@ function slotOf(d: Decision): Slot | null {
       return "categorical";
     case "set_survey":
       return "survey";
+    case "set_exposure_form":
+      return "exposure_forms";
+    case "set_outcome_order":
+      return "outcome_order";
     case "revert":
       return null;
   }
@@ -683,6 +687,8 @@ function valueOf(d: Decision): ProjectState[Slot] {
         step_kcal: d.step_kcal ?? 100,
         n_boot: d.n_boot ?? 0,
         acknowledged: d.acknowledged ?? false,
+        scale: d.scale ?? "kcal",
+        step_percent: d.step_percent ?? 5,
       };
     // M2 kinds: the mock records them without modeling their effect (M2's mock work).
     case "set_orientation":
@@ -707,6 +713,9 @@ function valueOf(d: Decision): ProjectState[Slot] {
       const { kind: _kind, ...value } = d;
       return value;
     }
+    case "set_outcome_order":
+      return d.levels;
+    case "set_exposure_form": // keyed by column; the fold merges it
     case "apply_repair":
     case "defer_finding":
     case "dismiss_finding":
@@ -770,6 +779,8 @@ export function fold(records: DecisionRecord[]): ProjectState {
     feature_table: null,
     categorical: null,
     survey: null,
+    exposure_forms: null,
+    outcome_order: null,
   };
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }>();
   for (const r of [...records].sort((a, b) => a.seq - b.seq)) {
@@ -786,6 +797,12 @@ export function fold(records: DecisionRecord[]): ProjectState {
     if (d.kind === "apply_repair" || d.kind === "defer_finding" || d.kind === "dismiss_finding") {
       // A keyed slot: one disposition per finding, the latest write winning (M2_CONTRACT §4).
       state.findings = { ...(state.findings ?? {}), [d.finding_id]: disposition(d) };
+      continue;
+    }
+    if (d.kind === "set_exposure_form") {
+      // A keyed slot: one form per column (turbotab/core/decisions.py, exposure_forms).
+      const form = { form: d.form, knots: d.knots ?? null };
+      state.exposure_forms = { ...(state.exposure_forms ?? {}), [d.column]: form };
       continue;
     }
     (state as Record<Slot, unknown>)[slot] =

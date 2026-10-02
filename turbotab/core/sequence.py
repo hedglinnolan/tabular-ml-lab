@@ -269,7 +269,8 @@ def _aggregation_knows_the_outcome(decision: SetAggregation, ctx: Any) -> None:
     task = _ctx(ctx, "task")
     info = (_ctx(ctx, "column_info") or {}).get(state.target) or {}
     numeric = bool(outcome.get("numeric", info.get("dtype") in NUMERIC_DTYPES))
-    allowed = ["first", "last"] + (["mean"] if numeric and task not in ("binary", "multiclass") else [])
+    allowed = ["first", "last"] + (["mean"] if numeric and task not in ("binary", "multiclass", "ordinal")
+                                   else [])
     label = {"first": "Keep the first outcome", "last": "Keep the last outcome",
              "mean": "Average the outcome"}
     exits = [{"label": label[o], "decision": SetAggregation(method=decision.method, outcome=o)}

@@ -164,6 +164,21 @@ class SurveyInference(_Model):
     lonely_method: str = "centered"
 
 
+class BrantColumn(_Model):
+    statistic: float
+    df: int
+    p: float
+
+
+class BrantCheck(_Model):
+    """Brant's (1990) Wald test of the proportional-odds assumption: overall, and per column."""
+
+    statistic: float
+    df: int
+    p: float
+    columns: dict[str, BrantColumn]
+
+
 class Inference(_Model):
     """How the coefficient table's intervals were made (AUDIT_REPORT §5 WP2;
     ``turbotab/core/models/inference.py``): the estimator, the covariance, and the clusters."""
@@ -172,7 +187,8 @@ class Inference(_Model):
     # HC3 · CR2 (cluster-robust, Bell–McCaffrey df) · model (Wald, from the information) ·
     # profile (penalized likelihood) · design (Taylor linearization over a survey design, WP10) ·
     # none (refused: ``refused`` says why).
-    covariance: Literal["HC3", "CR2", "model", "profile", "design", "none"]
+    # CR1 (cluster sandwich, G/(G − 1), on t(G − 1)): the proportional-odds family's.
+    covariance: Literal["HC3", "CR2", "CR1", "model", "profile", "design", "none"]
     # One or two lines: the scale (on a ratio scale), the covariance, the clusters, the reference
     # distribution and the rows the table was estimated from.
     caption: str
@@ -196,6 +212,27 @@ class Inference(_Model):
     n_rows: int | None = None
     rows: Literal["all", "training"] | None = None
     survey: SurveyInference | None = None  # the design, when the table is design-based
+    brant: BrantCheck | None = None  # the proportional-odds family's check (independent rows)
+
+
+class ExposureTest(_Model):
+    """A test an exposure's form carries under inference (``methods/exposure_form.py``): a
+    spline's overall and nonlinear Wald tests, or quintiles' trend across their medians."""
+
+    column: str
+    form: Literal["spline", "quintiles"]
+    test: Literal["overall", "nonlinear", "trend"]
+    statistic: float | None
+    df_num: int | None
+    df_den: float | None  # the F or t reference's degrees of freedom; null for χ² and z
+    distribution: Literal["F", "chi2", "t", "z"]
+    p: float | None
+    estimate: float | None = None  # trend: the coefficient per unit, scored at quintile medians
+    ci_low: float | None = None
+    ci_high: float | None = None
+    knots: list[float] | None = None  # the spline's knots, learned on the fitting rows
+    medians: list[float] | None = None  # each quintile's median, learned on the fitting rows
+    caption: str
 
 
 class Baseline(_Model):
@@ -250,6 +287,8 @@ class FittedModel(_Model):
     optimism: Optimism | None = None
     # Internal–external validation by a cluster column, when the split asked for it (audit E16).
     internal_external: InternalExternal | None = None
+    # Under inference, the tests each spline or quintile exposure carries (WP12a).
+    exposure_tests: list[ExposureTest] = []
 
 
 class Selection(_Model):
@@ -310,6 +349,8 @@ class FitArtifact(_Model):
     precision: str | None = None  # one sentence: each family's standard error on these rows
     # Binary outcomes: the event's share and the resampling tension in one line (audit E15).
     imbalance: str | None = None
+    # An ordinal outcome's levels in their order, lowest first: code k is levels[k] (WP12a).
+    levels: list[str] | None = None
 
 
 class SubstitutionModel(_Model):
@@ -395,6 +436,10 @@ class SubstitutionArtifact(_Model):
     # The energy sources the model leaves to total energy's composite, and how much of total
     # energy they make up on the training rows (audit ME-05; ``methods.energy.omitted_energy``).
     omitted_energy: OmittedEnergy | None = None
+    # What k measures (WP12a; audit B24, D19): kcal on every row, or percentage points of each
+    # row's own total energy ("5% of energy from X replaced by Y"; ks then step by step_percent).
+    scale: Literal["kcal", "percent_energy"] = "kcal"
+    step_percent: float | None = None
 
 
 MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
@@ -405,7 +450,7 @@ MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
 }
 
 __all__ = [
-    "BandEstimate", "Baseline", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel", "HoldoutDetail",
+    "BandEstimate", "Baseline", "BrantCheck", "BrantColumn", "ExposureTest", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel", "HoldoutDetail",
     "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "OmittedEnergy", "Selection", "ShelfArtifact", "ShelfFamily",
     "SubstitutionArtifact", "SubstitutionModel", "SubstitutionPair", "SubstitutionSupport",
 ]

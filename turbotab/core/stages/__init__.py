@@ -16,8 +16,9 @@ M1 (docs/turbotab-next/M1_CONTRACT.md):
     cohort       heavy   deps: ingest, target_info            reads target, roles, exclusions, missing, findings; requires target
     split        heavy   deps: cohort, target_info            reads split, roles, task; requires split
     shelf        light   deps: cohort, target_info            reads purpose, task, roles; requires roles
-    design       heavy   deps: split, target_info             reads roles, energy_adjustment, missing, models, purpose, event; requires models, roles
-    fit          heavy   deps: design, split, target_info     reads models, purpose, task, survey; requires models
+    design       heavy   deps: split, target_info             reads roles, energy_adjustment, missing, models, purpose, event,
+                                                              exposure_forms; requires models, roles
+    fit          heavy   deps: design, split, target_info     reads models, purpose, task, survey, outcome_order; requires models
     substitution heavy   deps: fit, design                    reads substitution; requires substitution
 
 M2 (docs/turbotab-next/M2_CONTRACT.md §2) — the table the analysis reads:
@@ -117,25 +118,30 @@ def build_graph() -> Graph:
             Stage("split", 3, ("working", "cohort", "target_info", "structure"),
                   ("split", "roles", "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
-            Stage("shelf", 4, ("working", "cohort", "target_info", "split"),
-                  ("purpose", "task", "roles", "missing", "categorical", "lens", "findings", "event"),
+            Stage("shelf", 5, ("working", "cohort", "target_info", "split"),
+                  ("purpose", "task", "roles", "missing", "categorical", "lens", "findings", "event",
+                   "outcome_order", "exposure_forms"),
                   shelf_stage, heavy=True,
                   requires=("roles",), label="Ranking the model families for this table"),
-            # design 4: the estimand and coefficient meanings are read off the matrix, and the
+            # design 5: the estimand and coefficient meanings are read off the matrix, and the
             # energy-dropped residual's gap reads the outcome and its event (audit WP6); an omics
-            # normalization step reads the lens and the findings (audit WP11).
-            Stage("design", 4, ("working", "split", "target_info"),
+            # normalization step reads the lens and the findings (audit WP11); each formed
+            # exposure's spline or quintiles (audit WP12a).
+            Stage("design", 5, ("working", "split", "target_info"),
                   ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical",
-                   "event", "lens", "findings"),
+                   "event", "lens", "findings", "exposure_forms"),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
-            # fit 6: the merged fit (WP8's every-row table, WP9's validation, WP10's survey design).
-            Stage("fit", 6, ("working", "design", "split", "target_info"),
-                  ("models", "purpose", "task", "event", "survey"), fit_stage, heavy=True,
-                  requires=("models",),
+            # fit 7: the merged fit (WP8's every-row table, WP9's validation, WP10's survey design,
+            # WP11's feature-wise tests, WP12a's ordinal outcome and exposure tests).
+            Stage("fit", 7, ("working", "design", "split", "target_info"),
+                  ("models", "purpose", "task", "event", "survey", "outcome_order"), fit_stage,
+                  heavy=True, requires=("models",),
                   label="Fitting the models"),
-            Stage("substitution", 3, ("working", "fit", "design"), ("substitution", "event"),
+            # substitution 4: a swap can move a share of energy (WP12a).
+            Stage("substitution", 4, ("working", "fit", "design"),
+                  ("substitution", "event", "outcome_order"),
                   substitution_stage, heavy=True, requires=("substitution",),
                   label="Drawing the substitution curves"),
             # ── M2: the seal (docs/turbotab-next/M2_CONTRACT.md §3) ──

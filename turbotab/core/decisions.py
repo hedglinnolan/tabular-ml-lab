@@ -46,7 +46,9 @@ except ImportError:  # pragma: no cover - exercised on Windows only
 log = logging.getLogger(__name__)
 
 Lens = Literal["metabolomics", "genomics", "dietary", "clinical", "survey"]
-Task = Literal["regression", "binary", "multiclass"]
+# "ordinal": ordered levels (a 1–5 rating, none < mild < severe), modeled by a cumulative-link
+# family that keeps the order (audit ME-19, RO-10). The order is declared, never inferred.
+Task = Literal["regression", "binary", "multiclass", "ordinal"]
 Purpose = Literal["prediction", "inference"]
 
 ROW_ID = "__row_id"  # the stable row identity the datastore adds (BLUEPRINT §2)
@@ -200,6 +202,12 @@ class SplitSpec(_Value):
 MAX_BOOT = 2000
 
 
+# The scale a substitution moves energy on: kcal (the same amount on every row), or a share of each
+# row's own total energy, "5% of energy from X replaced by Y", the field's expected figure
+# (NUTRITION_PACK §05; audit B24, D19).
+SubstitutionScale = Literal["kcal", "percent_energy"]
+
+
 class SubstitutionSpec(_Value):
     donor: str = Field(min_length=1)
     recipient: str = Field(min_length=1)
@@ -208,6 +216,8 @@ class SubstitutionSpec(_Value):
     # Kept under inference although energy sources are missing from the model (audit ME-05): the
     # recorded attestation that the curve carries their confounding.
     acknowledged: bool = False
+    scale: SubstitutionScale = "kcal"
+    step_percent: float = Field(default=5.0, gt=0, le=50)  # percentage points of energy per step
 
 
 class MissingSpec(_Value):
@@ -305,6 +315,9 @@ class SetSubstitution(_DecisionModel):
     # The attestation exit of the omitted-sources block under inference (audit ME-05): "keep this
     # swap; the curve carries the confounding of the energy sources not in the model".
     acknowledged: bool = False
+    # "percent_energy": each step moves ``step_percent`` % of each row's total energy.
+    scale: SubstitutionScale = "kcal"
+    step_percent: float = Field(default=5.0, gt=0, le=50)
 
 
 # ── M2 kinds (docs/turbotab-next/M2_CONTRACT.md) ─────────────────────────────
@@ -443,6 +456,44 @@ class SetCategorical(_DecisionModel):
         return value
 
 
+# WP12a (audit ME-17, ME-19): the form an exposure takes, and the order of an ordinal outcome.
+
+ExposureFormKind = Literal["linear", "spline", "quintiles"]
+
+
+class ExposureFormSpec(_Value):
+    """How one numeric predictor enters the models: a straight line, a restricted cubic spline
+    (``knots`` 3–5, at Harrell's percentiles), or quintile indicators with a trend test."""
+
+    form: ExposureFormKind
+    knots: int | None = Field(default=None, ge=3, le=5)
+
+
+class SetExposureForm(_DecisionModel):
+    """The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column."""
+
+    kind: Literal["set_exposure_form"] = "set_exposure_form"
+    column: str = Field(min_length=1)
+    form: ExposureFormKind
+    knots: int | None = Field(default=None, ge=3, le=5)
+
+
+class SetOutcomeOrder(_DecisionModel):
+    """The order of an ordinal outcome's levels, lowest first. Stands only while ``column`` is the
+    target. Numbers are ordered by value without it; text levels need it (asked, never inferred)."""
+
+    kind: Literal["set_outcome_order"] = "set_outcome_order"
+    column: str = Field(min_length=1)
+    levels: list[str] = Field(min_length=2)
+
+    @field_validator("levels")
+    @classmethod
+    def _distinct(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("each level may be placed only once")
+        return value
+
+
 class SetTemporal(_DecisionModel):
     kind: Literal["set_temporal"] = "set_temporal"
     temporal: bool
@@ -525,6 +576,7 @@ Decision = Annotated[
         SetOrientation, SetEvent, SetGrain, SetRepeatKind, SetUnit, SetAggregation, SetTemporal,
         OpenSeal, ApplyRepair, DeferFinding, DismissFinding,
         SetFeatureTable, SetCategorical, SetSurvey,
+        SetExposureForm, SetOutcomeOrder,
     ],
     Field(discriminator="kind"),
 ]
@@ -590,6 +642,9 @@ class ProjectState(BaseModel):
     categorical: list[str] | None = None  # integer columns that are codes for categories
     # WP10 (audit §5): the surveyed population or these participants, under a survey design
     survey: SurveySpec | None = None
+    # WP12a (audit §5): each formed predictor's form, and an ordinal outcome's declared order
+    exposure_forms: dict[str, ExposureFormSpec] | None = None
+    outcome_order: list[str] | None = None  # holds while its column is the target
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -845,6 +900,10 @@ register_kind(SetFeatureTable, "feature_table",
               value=lambda d: FeatureTableSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetCategorical, "categorical")
 register_kind(SetSurvey, "survey", value=lambda d: SurveySpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetExposureForm, "exposure_forms", key=lambda d: d.column,
+              value=lambda d: ExposureFormSpec(form=d.form, knots=d.knots))
+register_kind(SetOutcomeOrder, "outcome_order", value=lambda d: list(d.levels),
+              holds=lambda d, slots: slots.get("target") == d.column)
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
@@ -920,7 +979,7 @@ def _task_fits_the_outcome(decision: SetTask, ctx: Any) -> None:
     if n_unique == 2:
         fits.append("binary")
     if 2 < n_unique <= MAX_CLASSES_MULTICLASS:
-        fits.append("multiclass")
+        fits.extend(["multiclass", "ordinal"])
     if numeric and n_unique > 2:
         fits.append("regression")
     exits = [{"label": f"Treat it as {task}", "decision": SetTask(column=decision.column, task=task)}
@@ -937,6 +996,15 @@ def _task_fits_the_outcome(decision: SetTask, ctx: Any) -> None:
             f"`{decision.column}` has {n_unique:,} distinct values; multiclass takes at most "
             f"{MAX_CLASSES_MULTICLASS}.",
             exits=exits or [{"label": "Choose another outcome", "decision": None}],
+        )
+    if decision.task == "ordinal" and not 2 < n_unique <= MAX_CLASSES_MULTICLASS:
+        why = ("two levels are a binary outcome" if n_unique == 2 else
+               f"an ordinal outcome takes 3 to {MAX_CLASSES_MULTICLASS} levels")
+        raise Refusal(
+            "task_mismatch",
+            f"`{decision.column}` has {n_unique:,} distinct values; {why}.",
+            exits=[e for e in exits if e["decision"].task != "ordinal"]
+            or [{"label": "Choose another outcome", "decision": None}],
         )
 
 
@@ -1348,10 +1416,33 @@ def _substitution_swaps_energy(decision: SetSubstitution, ctx: Any) -> None:
     state = _state(ctx)
     if state is None:
         return
+    from turbotab.core.methods.percent_energy import is_percent_of_energy
     from turbotab.core.stages.rows import energy_bearing
 
     roles = state.roles or {}
-    candidates = [c for c, r in roles.items() if r == "exposure" and energy_bearing(c)]
+    # A share of energy (``fat_pct_kcal``) moves in percentage points of energy (audit B24).
+    percent = [c for c in (decision.donor, decision.recipient)
+               if roles.get(c) == "exposure" and is_percent_of_energy(c)]
+    if percent and decision.scale == "kcal":
+        base = decision.model_dump(exclude={"kind"})
+        raise Refusal(
+            "percent_of_energy",
+            f"{_and(percent)} {'is' if len(percent) == 1 else 'are'} already a share of energy, so "
+            f"energy moves through {'it' if len(percent) == 1 else 'them'} in percentage points of "
+            f"energy, not in kcal.",
+            exits=[{"label": "Move 5% of energy at a time",
+                    "decision": SetSubstitution(**{**base, "scale": "percent_energy"})}])
+    if decision.scale == "percent_energy":
+        amounts = [c for c in (decision.donor, decision.recipient) if c not in percent]
+        if amounts and not any(r == "energy" for r in roles.values()):
+            raise Refusal(
+                "no_total_energy",
+                f"Moving a share of energy through {_and(amounts)} needs each row's total energy; "
+                f"no column has the energy role.",
+                exits=[{"label": "Give the total-energy column the energy role", "decision": None}])
+    candidates = [c for c, r in roles.items() if r == "exposure"
+                  and (energy_bearing(c) or (decision.scale == "percent_energy"
+                                             and is_percent_of_energy(c)))]
     bad = [c for c in (decision.donor, decision.recipient) if c not in candidates]
     if bad:
         base = decision.model_dump(exclude={"kind"})
@@ -1572,7 +1663,117 @@ def _categorical_names_predictors(decision: SetCategorical, ctx: Any) -> None:
             exits=[{"label": "Leave the outcome out", "decision": SetCategorical(columns=rest)}])
 
 
+def _outcome_values(ctx: Any, column: str) -> list[Any] | None:
+    """The distinct recorded values of ``column``, read from the store ``ctx`` opens; None when it
+    opens none."""
+    opener = _ctx(ctx, "store")
+    try:
+        store = opener() if callable(opener) else None
+    except Exception:  # noqa: BLE001 - no data to check: the fit decides
+        store = None
+    if store is None or column not in set(store.columns):
+        return None
+    return list(store.materialize([column])[column].dropna().unique())
+
+
+def _order_names_the_outcome(decision: SetOutcomeOrder, ctx: Any) -> None:
+    """The order answers for the outcome and places each of its levels exactly once."""
+    target = _target_of(ctx)
+    if target is not _UNKNOWN and target is None:
+        raise Refusal("no_target", "Choose the outcome first; the order describes its levels.",
+                      exits=[{"label": "Choose the outcome", "decision": None}])
+    if target is not _UNKNOWN and decision.column != target:
+        raise Refusal(
+            "not_the_target",
+            f"The outcome is `{target}`, not `{decision.column}`; the order answers for the outcome.",
+            exits=[{"label": f"Order the levels of `{target}`", "decision": None}])
+    from turbotab.core.stages.rows import _level_key
+
+    values = _outcome_values(ctx, decision.column)
+    if values is None:
+        info = _info(ctx, decision.column)
+        known = info.get("n_unique") if info is not None else None
+        if known is not None and int(known) != len(decision.levels):
+            raise Refusal(
+                "levels_mismatch",
+                f"`{decision.column}` has {int(known):,} distinct values, but "
+                f"{len(decision.levels):,} levels were placed in order.",
+                exits=[{"label": "Place every level, each once", "decision": None}])
+        return
+    have = {_level_key(v) for v in values}
+    named = {_level_key(v) for v in decision.levels}
+    missing = sorted(str(v) for v in values if _level_key(v) not in named)
+    extra = [lv for lv in decision.levels if _level_key(lv) not in have]
+    if missing or extra:
+        said = []
+        if missing:
+            said.append(f"{_and(missing)} {'is' if len(missing) == 1 else 'are'} not placed")
+        if extra:
+            said.append(f"{_and(extra)} {'is' if len(extra) == 1 else 'are'} not a level of it")
+        raise Refusal(
+            "levels_mismatch",
+            f"The order must place every level of `{decision.column}` once: {'; '.join(said)}.",
+            exits=[{"label": "Place every level, each once", "decision": None}])
+
+
+def _form_fits_the_column(decision: SetExposureForm, ctx: Any) -> None:
+    """A spline or quintiles need a numeric predictor with enough distinct values; knots belong
+    to a spline only."""
+    linear = {"label": f"Keep `{decision.column}` a straight line",
+              "decision": SetExposureForm(column=decision.column, form="linear")}
+    if decision.knots is not None and decision.form != "spline":
+        raise Refusal(
+            "knots_without_spline",
+            f"Knots belong to a spline; the {decision.form} form has none.",
+            exits=[{"label": f"{decision.form.capitalize()} without knots",
+                    "decision": SetExposureForm(column=decision.column, form=decision.form)}])
+    columns = _columns_of(ctx)
+    if columns is not None and (decision.column not in columns or decision.column == ROW_ID):
+        raise Refusal("unknown_column", f"This dataset has no column named `{decision.column}`.",
+                      exits=[{"label": "Choose one of the dataset's columns", "decision": None}])
+    target = _target_of(ctx)
+    if target is not _UNKNOWN and target is not None and decision.column == target:
+        raise Refusal("form_of_outcome",
+                      f"`{decision.column}` is the outcome; a form shapes a predictor.",
+                      exits=[{"label": "Choose a predictor", "decision": None}])
+    if decision.form == "linear":
+        return
+    state = _state(ctx)
+    roles = (state.roles if state is not None else None) or {}
+    if roles and roles.get(decision.column) not in PREDICTOR_ROLES:
+        raise Refusal(
+            "not_a_predictor",
+            f"`{decision.column}` is not an exposure, a covariate or energy, so it does not enter "
+            f"the models.",
+            exits=[{"label": "Choose a predictor", "decision": None}])
+    declared = set((state.categorical if state is not None else None) or [])
+    info = _info(ctx, decision.column)
+    if decision.column in declared or (info is not None and info.get("dtype") not in NUMERIC_DTYPES):
+        raise Refusal(
+            "not_numeric",
+            f"`{decision.column}` is a category, so it has no curve or quintiles; its levels "
+            f"already enter as indicators.",
+            exits=[linear])
+    n_unique = int(info.get("n_unique") or 0) if info is not None else None
+    if n_unique is not None and n_unique < 5:
+        raise Refusal(
+            "too_few_values",
+            f"`{decision.column}` has {n_unique} distinct values; a {decision.form} needs at least "
+            f"5. Declared a category, each value gets its own coefficient.",
+            exits=[linear, {"label": f"`{decision.column}` is a category",
+                            "decision": SetCategorical(columns=[*sorted(declared), decision.column])}])
+    adj = state.energy_adjustment if state is not None else None
+    if adj is not None and adj.method == "partition" and decision.column in (adj.nutrients or []):
+        raise Refusal(
+            "replaced_by_energy_step",
+            f"The energy partition replaces `{decision.column}` by its kcal, so it leaves the "
+            f"model before any form could shape it.",
+            exits=[linear])
+
+
 register_validator("set_task", _task_fits_the_outcome)
+register_validator("set_outcome_order", _order_names_the_outcome)
+register_validator("set_exposure_form", _form_fits_the_column)
 register_validator("set_roles", _roles_name_real_columns)
 register_validator("set_feature_table", _feature_table_names_the_files_columns)
 register_validator("set_categorical", _categorical_names_predictors)

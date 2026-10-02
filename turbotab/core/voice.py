@@ -320,7 +320,8 @@ def _set_target(d: Any, state: Any, ctx: Any) -> str:
 
 @register_sentence("set_task")
 def _set_task(d: Any, state: Any, ctx: Any) -> str:
-    text = f"{tick(d.column)} was modeled as a {tick(d.task)} task"
+    article = "an" if str(d.task)[:1] in "aeiou" else "a"  # an `ordinal` task
+    text = f"{tick(d.column)} was modeled as {article} {tick(d.task)} task"
     detected = _get(ctx, "detected_task")
     if detected and detected != d.task:
         text += f", overriding the detected {tick(detected)}"
@@ -354,6 +355,8 @@ _SLOT_SUBJECT = {
     "aggregation": "the combining of each unit's rows",
     "temporal": "the temporal question",
     "survey": "the survey answer",
+    "exposure_forms": "the exposure forms",
+    "outcome_order": "the order of the outcome's levels",
 }
 _PLURAL_SUBJECTS = {"roles", "exclusions", "models"}
 
@@ -676,7 +679,7 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
         how.append(f"keeping each {tick(group)}'s rows together")
     # Folds that are a cluster's levels are not stratified; a held-out draw still is.
     by_cluster = getattr(d, "validation", "kfold") == "internal_external" and d.holdout == 0
-    if task in ("binary", "multiclass") and target and not latest and not by_cluster:
+    if task in ("binary", "multiclass", "ordinal") and target and not latest and not by_cluster:
         how.append(f"stratified by {tick(target)}")
     manner = " (" + ", ".join([f"seed {tick(d.seed)}", *how]) + ")"
     folds = f"{tick(d.folds)}-fold cross-validation"
@@ -815,11 +818,13 @@ _FAMILY_LABEL = {
     "boosted_trees": "gradient-boosted trees",
     # WP11: one least-squares test per exposure, q-values by Benjamini–Hochberg
     "featurewise": "feature-wise least-squares tests with Benjamini–Hochberg false-discovery control",
+    "proportional_odds": "a proportional-odds (cumulative logit) model",
 }
 _LINEAR_LABEL = {
     "regression": "linear regression",
     "binary": "logistic regression",
     "multiclass": "multinomial logistic regression",
+    "ordinal": "multinomial logistic regression, which ignores the levels' order",
 }
 
 
@@ -850,8 +855,14 @@ def _select_models(d: Any, state: Any, ctx: Any) -> str:
 def _set_substitution(d: Any, state: Any, ctx: Any) -> str:
     energy = getattr(getattr(state, "energy_adjustment", None), "energy_column", None)
     fixed = f"with {tick(energy)} held fixed" if energy else "at the same total energy"
-    text = (f"The substitution studied is {tick(d.donor)} replaced by {tick(d.recipient)}, in steps "
-            f"of {tick(number(d.step_kcal))} kcal {fixed}")
+    if getattr(d, "scale", "kcal") == "percent_energy":
+        # "5% of energy from X replaced by Y" (NUTRITION_PACK §05; audit B24, D19)
+        text = (f"The substitution studied is {tick(d.donor)} replaced by {tick(d.recipient)}, in "
+                f"steps of {tick(number(d.step_percent))}% of each participant's own total energy "
+                f"{fixed}")
+    else:
+        text = (f"The substitution studied is {tick(d.donor)} replaced by {tick(d.recipient)}, in "
+                f"steps of {tick(number(d.step_kcal))} kcal {fixed}")
     n_boot = int(getattr(d, "n_boot", 0) or 0)
     if n_boot:
         text += (f"; its band comes from {count(n_boot)} refits of each model on bootstrap "
@@ -928,6 +939,43 @@ def _set_feature_table(d: Any, state: Any, ctx: Any) -> str:
     return (f"For the features-in-rows table, {named}; {listing(d.annotations)} "
             f"{'describes' if n == 1 else 'describe'} the features and {'stays' if n == 1 else 'stay'} "
             f"beside them, and every other column is a sample")
+
+
+@register_sentence("set_exposure_form")
+def _set_exposure_form(d: Any, state: Any, ctx: Any) -> str:
+    """How one predictor entered the models (WP12a; NUTRITION_PACK §07G and §08)."""
+    from turbotab.core.methods.exposure_form import DEFAULT_KNOTS, KNOT_PERCENTILES
+
+    adj = getattr(state, "energy_adjustment", None)
+    # The residual and density methods replace the nutrient's column before the form step; the
+    # standard model keeps it as recorded (energy enters beside it), and the partition refuses.
+    adjusted = (adj is not None and _attr(adj, "method") in ("residual", "density",
+                                                             "density_multivariate")
+                and d.column in (_attr(adj, "nutrients") or []))
+    values = "energy-adjusted values" if adjusted else "values"
+    tested = getattr(state, "purpose", None) == "inference"
+    if d.form == "linear":
+        return f"{tick(d.column)} entered the models as a straight line"
+    if d.form == "spline":
+        k = d.knots or DEFAULT_KNOTS
+        pct = [f"{100 * p:g}" for p in KNOT_PERCENTILES.get(k, ())]
+        where = (f" at the {', '.join(pct[:-1])} and {pct[-1]} percentiles of its {values} in the "
+                 f"rows each model was fit on (Harrell's placement)" if pct
+                 else f" placed on its {values}")
+        test = ("; nonlinearity was tested by a Wald test that its nonlinear terms are zero"
+                if tested else "")
+        return (f"{tick(d.column)} entered the models as a restricted cubic spline with {tick(k)} "
+                f"knots{where}{test}")
+    trend = ("; the p for trend scored each quintile by its median, entered as one continuous term"
+             if tested else "")
+    return (f"{tick(d.column)} entered the models as quintiles of its {values} in the rows each "
+            f"model was fit on, the lowest the reference{trend}")
+
+
+@register_sentence("set_outcome_order")
+def _set_outcome_order(d: Any, state: Any, ctx: Any) -> str:
+    return (f"The levels of {tick(d.column)} were ordered {' < '.join(tick(v) for v in d.levels)}, "
+            f"lowest first")
 
 
 @register_sentence("set_categorical")

@@ -447,6 +447,8 @@ def _check_method(method: str) -> str:
 
 def _and(items: Sequence[str]) -> str:
     items = list(items)
+    if not items:
+        return ""
     return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
 
 

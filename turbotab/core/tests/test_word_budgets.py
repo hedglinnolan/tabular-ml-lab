@@ -250,6 +250,12 @@ def representative_decisions():
         d.SetCategorical(columns=["RIDRETH3", "DMDEDUC2"]),
         # WP10 (audit §5): the survey answer
         d.SetSurvey(estimand="population", weight="WTDRD1", strata="SDMVSTRA", psu="SDMVPSU"),
+        # WP12a (audit §5): an exposure's form, an ordinal outcome's order, a %E substitution
+        d.SetExposureForm(column="protein_g", form="spline", knots=4),
+        d.SetExposureForm(column="fat_g", form="quintiles"),
+        d.SetOutcomeOrder(column="hba1c", levels=["normal", "prediabetes", "diabetes"]),
+        d.SetSubstitution(donor="fat_g", recipient="carbohydrate_g", scale="percent_energy",
+                          step_percent=5),
     ]
 
 

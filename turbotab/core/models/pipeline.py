@@ -24,12 +24,18 @@ missing-values answer:
   among its inputs: the pipeline's inputs are the predictors (``DesignSpec.inputs``), and ``y``
   never reaches a transformer.
 
-Step order: normalize → impute → energy adjustment → levels → one-hot → scale → model.
+Step order: normalize → impute → energy adjustment → exposure form → levels → one-hot → scale →
+model.
 
 Omics values (AUDIT_REPORT §5 WP11): when the ``omics_scale`` finding's normalization is recorded,
 the exposures among its columns are normalized first — log-CPM with TMM factors, or quotient
 normalization and log2 (``turbotab.core.methods.omics``) — fit on each training fold like every
 other step. It runs before imputation, so a missing value is filled on the normalized scale.
+
+The exposure form (``set_exposure_form``; :class:`~turbotab.core.methods.exposure_form.ExposureForms`)
+turns a numeric predictor into a restricted cubic spline basis or quintile indicators. It runs
+after energy adjustment, so the curve or the fifths are of the energy-adjusted intake, and it is
+fit in the pipeline, so knots and cut points come from the rows each fit sees (audit ME-17).
 """
 from __future__ import annotations
 
@@ -233,6 +239,8 @@ class DesignSpec:
     # WP11: the omics normalization the pipeline runs first, ``{method, kind, columns}``, or None
     normalization: dict[str, Any] | None = None
     lenses: list[str] = field(default_factory=list)  # the declared lenses (what the steps say)
+    # predictor -> {"form": "spline" | "quintiles", "knots": k}: the non-linear forms (WP12a)
+    exposure_forms: dict[str, Any] = field(default_factory=dict)
 
     def energy_adjustment(self) -> EnergyAdjustment | None:
         return EnergyAdjustment(**self.energy) if self.energy else None
@@ -279,6 +287,8 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
     impute = missing_strategy(state) == "impute"
     from turbotab.core.methods.omics import design_normalization
 
+    forms = {str(c): f.model_dump() for c, f in (getattr(state, "exposure_forms", None) or {}).items()
+             if c in present and c in numeric and f.form != "linear"}
     return DesignSpec(
         predictors=predictors,
         inputs=inputs,
@@ -291,6 +301,7 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
         indicators=bool(impute and state.missing is not None and state.missing.indicators),
         normalization=design_normalization(state, inputs),
         lenses=[str(k) for k in (getattr(state, "lens", None) or [])],
+        exposure_forms=forms,
     )
 
 
@@ -298,7 +309,8 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
 
 
 def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
-    """The steps every family shares: impute → energy adjustment → levels → one-hot.
+    """The steps every family shares: impute → energy adjustment → exposure form → levels →
+    one-hot.
 
     Columns whose blanks are a level skip the imputer and the one-hot step: the levels step
     encodes them, blanks included.
@@ -331,6 +343,11 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
     step = energy_step(spec.energy_adjustment(), spec.predictors, spec.roles)
     if step is not None:
         steps.append(("energy", step))
+    if spec.exposure_forms:
+        from turbotab.core.methods.exposure_form import ExposureForms, adjusted_forms
+
+        # After the energy step a formed nutrient may carry the step's name (``protein_adj``).
+        steps.append(("form", ExposureForms(adjusted_forms(spec.exposure_forms, spec.energy))))
     if levels:
         steps.append(("levels", MissingLevelEncoder(levels)))
     categorical = [c for c in spec.categorical if c in spec.predictors and c not in levels]
@@ -422,7 +439,7 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
                    purpose: Purpose | None, n_matrix_columns: int | None = None) -> list[dict[str, str]]:
     """``[{key, label, detail}]`` for each step of this family's pipeline, in order."""
     out: list[dict[str, str]] = []
-    for name, _ in family_steps(spec, family):
+    for name, step in family_steps(spec, family):
         if name == "normalize":
             from turbotab.core.methods.omics import describe as describe_normalization
 
@@ -433,6 +450,11 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
             out.append({"key": "impute", "label": "Fill missing values",
                         "detail": f"Median for numbers, most frequent value for categories, "
                                   f"learned within each training fold{marked}."})
+        elif name == "form":
+            from turbotab.core.methods.exposure_form import describe as describe_forms
+
+            out.append({"key": "form", "label": "Exposure form",
+                        "detail": describe_forms(step.forms)})
         elif name == "levels":
             cols = [c for c in spec.levels if c in spec.predictors]
             verb = "becomes" if len(cols) == 1 else "become"

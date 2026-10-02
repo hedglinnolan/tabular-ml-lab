@@ -576,7 +576,9 @@ def test_4_the_ranking_is_named_and_multiclass_ranks_on_log_loss(tmp_path):
     CV log loss minus the model's (scikit-learn ``log_loss`` per fold)."""
     from sklearn.metrics import log_loss
 
-    assert PRIMARY == {"regression": "r2", "binary": "auc", "multiclass": "log_loss"}
+    # The ordered outcome WP12a added ranks on its concordance, C; these three are WP9's.
+    assert {k: PRIMARY[k] for k in ("regression", "binary", "multiclass")} == {
+        "regression": "r2", "binary": "auc", "multiclass": "log_loss"}
     rng = np.random.default_rng(31)
     n = 600
     X = pd.DataFrame(rng.normal(size=(n, 3)), columns=["a", "b", "c"])
