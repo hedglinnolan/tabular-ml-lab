@@ -1,8 +1,10 @@
 """``linear``: ordinary least squares and unpenalized logistic regression.
 
 Predictions and cross-validation use scikit-learn. When the purpose is inference, the
-coefficient table comes from statsmodels (OLS, Logit or MNLogit) fit on the same training
-matrix, with cluster-robust intervals when rows repeat within a participant.
+coefficient table is fit on the same training matrix by :mod:`turbotab.core.models.inference`:
+HC3 intervals for least squares on independent rows, CR2 cluster-robust intervals with
+Bell–McCaffrey degrees of freedom when a unit's rows repeat (refused below the unit floor), and
+Firth's penalized likelihood when a column separates a binary outcome.
 """
 from __future__ import annotations
 
@@ -72,21 +74,24 @@ def collinearity_concern(matrix: pd.DataFrame) -> str | None:
             f"identified; leave one of them out.")
 
 
-def statsmodels_fit(task: Task, matrix: pd.DataFrame, y: Any, classes: Any, groups: Any = None) -> Any:
-    """The statsmodels fit the inference table reports; cluster-robust by ``groups`` when given."""
-    import statsmodels.api as sm
+def as_clusters(groups: Any) -> Any:
+    """``groups`` as :class:`~turbotab.core.models.inference.Clusters`: given as such, or as one
+    unit label per row (a missing label is its own unit, as the split maps it)."""
+    from turbotab.core.models.inference import INDEPENDENT, Clusters
 
-    exog = sm.add_constant(matrix.astype(float), has_constant="add")
-    cov: dict[str, Any] = {}
-    if groups is not None:
-        cov = {"cov_type": "cluster", "cov_kwds": {"groups": pd.factorize(np.asarray(groups))[0]}}
-    y = np.asarray(y)
-    if task == "regression":
-        return sm.OLS(y.astype(float), exog).fit(**cov)
-    if task == "binary":
-        return sm.Logit((y == classes[1]).astype(float), exog).fit(disp=0, maxiter=200, **cov)
-    codes = pd.Categorical(y, categories=list(classes)).codes
-    return sm.MNLogit(codes, exog).fit(disp=0, maxiter=200, **cov)
+    if groups is None:
+        return INDEPENDENT
+    if isinstance(groups, Clusters):
+        return groups
+    values = pd.Series(np.asarray(groups, dtype=object))
+    missing = values.isna().to_numpy()
+    keys = values.to_numpy(dtype=object).copy()
+    keys[missing] = [f"__missing_{i}" for i in np.flatnonzero(missing)]
+    codes = pd.factorize(pd.Series(keys, dtype=object))[0].astype(np.int64)
+    if len(codes) == 0 or codes.max() + 1 == len(codes):
+        return INDEPENDENT
+    return Clusters(column="unit", codes=codes, n_clusters=int(codes.max()) + 1,
+                    n_missing=int(missing.sum()))
 
 
 class Linear(FamilyBase):
@@ -118,11 +123,15 @@ class Linear(FamilyBase):
     def describe(self, task: Task, purpose: Purpose | None) -> tuple[str, str]:
         if task == "regression":
             label, detail = "Ordinary least squares", "Fits the straight-line effect of every column."
+            if purpose == "inference":
+                detail += (" Intervals use HC3 robust standard errors, or CR2 cluster-robust ones "
+                           "when a unit's rows repeat.")
         else:
             label = "Logistic regression"
             detail = "Fits the log-odds effect of every column, without a penalty."
-        if purpose == "inference":
-            detail += " Confidence intervals come from statsmodels on the training rows."
+            if purpose == "inference":
+                detail += (" Intervals are cluster-robust (CR2) when a unit's rows repeat; a column "
+                           "that separates the outcome gets Firth's penalized fit.")
         return label, detail
 
     def coefficients(self, pipeline: Any, X: Any, y: Any, *, task: Task,
@@ -133,9 +142,15 @@ class Linear(FamilyBase):
         if purpose != "inference":
             return coefficient_rows(features, model.coef_, intercept=model.intercept_,
                                     classes=classes if classes and len(classes) > 2 else None)
-        matrix = model_matrix(pipeline, X)
-        result = statsmodels_fit(task, matrix, y, classes, groups)
-        return statsmodels_rows(task, result, classes)
+        return self.inference(pipeline, X, y, task=task, clusters=as_clusters(groups)).rows
+
+    def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any) -> Any:
+        """The inference table (:class:`~turbotab.core.models.inference.InferenceTable`): rows,
+        how their intervals were made, and the concerns to state, on the matrix the model saw."""
+        from turbotab.core.models.inference import inference_table
+
+        classes = list(getattr(pipeline[-1], "classes_", [])) or None
+        return inference_table(task, model_matrix(pipeline, X), y, classes, clusters)
 
     def assess(self, s: Situation) -> Assessment:
         concerns: list[str] = []
@@ -160,42 +175,6 @@ class Linear(FamilyBase):
         elif fit == "poor":
             score = 0.5
         return Assessment(score, fit, tuple(concerns))
-
-
-def statsmodels_rows(task: Task, result: Any, classes: list[Any] | None) -> list[dict[str, Any]]:
-    """Coefficient rows (intercept first) from a statsmodels OLS, Logit or MNLogit result."""
-    params = result.params
-    ci = np.asarray(result.conf_int(0.05))
-    pvalues = result.pvalues
-    if task != "multiclass":
-        names = list(params.index)
-        rows = []
-        for j, name in enumerate(names):
-            rows.append({"feature": "(intercept)" if name == "const" else str(name)})
-        est, p = np.asarray(params, dtype=float), np.asarray(pvalues, dtype=float)
-        return [
-            {**row, **_numbers(est[j], ci[j, 0], ci[j, 1], p[j])} for j, row in enumerate(rows)
-        ]
-    # MNLogit: params is (features, K-1) against the first class; conf_int stacks classes.
-    names = [("(intercept)" if n == "const" else str(n)) for n in params.index]
-    est = np.asarray(params, dtype=float)
-    p = np.asarray(pvalues, dtype=float)
-    n_features = len(names)
-    rows = []
-    for k in range(est.shape[1]):
-        label = classes[k + 1] if classes else k + 1
-        for j, name in enumerate(names):
-            lo, hi = ci[k * n_features + j]
-            rows.append({"feature": f"{name} [{label}]", **_numbers(est[j, k], lo, hi, p[j, k])})
-    return rows
-
-
-def _numbers(estimate: float, low: float, high: float, p: float) -> dict[str, float | None]:
-    def clean(v: float) -> float | None:
-        v = float(v)
-        return v if np.isfinite(v) else None
-
-    return {"estimate": clean(estimate), "ci_low": clean(low), "ci_high": clean(high), "p": clean(p)}
 
 
 LINEAR = register_family(Linear())

@@ -2226,6 +2226,16 @@ export interface components {
             ci_high: number | null;
             /** P */
             p: number | null;
+            /**
+             * Se
+             * @default null
+             */
+            se: number | null;
+            /**
+             * Df
+             * @default null
+             */
+            df: number | null;
         };
         /**
          * CohortArtifact
@@ -2550,6 +2560,8 @@ export interface components {
             baseline: components["schemas"]["Baseline"];
             /** @default null */
             versus_baseline: components["schemas"]["VersusBaseline"] | null;
+            /** @default null */
+            inference: components["schemas"]["Inference"] | null;
         };
         /** GrainContradiction */
         GrainContradiction: {
@@ -2580,6 +2592,67 @@ export interface components {
             measures: string;
             /** Below Floor */
             below_floor: boolean;
+        };
+        /**
+         * Inference
+         * @description How the coefficient table's intervals were made (AUDIT_REPORT §5 WP2;
+         *     ``turbotab/core/models/inference.py``): the estimator, the covariance, and the clusters.
+         */
+        Inference: {
+            /** Estimator */
+            estimator: string;
+            /**
+             * Covariance
+             * @enum {string}
+             */
+            covariance: "HC3" | "CR2" | "model" | "profile" | "none";
+            /** Caption */
+            caption: string;
+            /**
+             * Grouped By
+             * @default null
+             */
+            grouped_by: string | null;
+            /**
+             * N Clusters
+             * @default null
+             */
+            n_clusters: number | null;
+            /**
+             * N Missing Ids
+             * @default 0
+             */
+            n_missing_ids: number;
+            /**
+             * Separated
+             * @default []
+             */
+            separated: string[];
+            /**
+             * Refused
+             * @default null
+             */
+            refused: string | null;
+            /**
+             * Exits
+             * @default []
+             */
+            exits: components["schemas"]["InferenceExit"][];
+        };
+        /**
+         * InferenceExit
+         * @description A way forward when no interval can be reported, as a refusal's exits are shaped.
+         */
+        InferenceExit: {
+            /** Label */
+            label: string;
+            /**
+             * Decision
+             * @default null
+             */
+            decision: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * LeaveOut

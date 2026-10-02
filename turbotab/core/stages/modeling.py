@@ -366,6 +366,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.models import get_family
     from turbotab.core.models.artifacts import FitArtifact
     from turbotab.core.models.baseline import no_better_concern, versus_baseline
+    from turbotab.core.models.inference import cluster_columns, resolve_clusters
     from turbotab.core.models.inner_cv import with_grouped_inner_cv
     from turbotab.core.models.metrics import LABELS, PRIMARY, metric_labels, score, summarize
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
@@ -384,7 +385,12 @@ def fit_stage(ctx: StageContext) -> Bundle:
     ctx.progress(0.01, "Reading the analysis rows")
     columns = [*spec.inputs, target] + ([grouped_by] if grouped_by and grouped_by not in spec.inputs
                                         and grouped_by != target else [])
+    inference = state.purpose == "inference"
     with open_store(ctx) as store:
+        # Under inference the intervals cluster by whatever identifier repeats, however the seal
+        # was drawn (AUDIT_REPORT MA-01): read every column that may name the unit.
+        unit_columns = cluster_columns(state, store.columns, [grouped_by]) if inference else []
+        columns += [c for c in unit_columns if c not in columns]
         frame = modeling_frame(store, columns, assignment.index.to_numpy())
     train = assignment["train"].to_numpy()
     y_all = frame[target]
@@ -397,6 +403,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
     folds = assignment.loc[train, "fold"].to_numpy().astype(int)
     fold_keys = sorted(set(folds.tolist()))
     groups = frame.loc[train, grouped_by].to_numpy() if grouped_by else None
+    clusters = resolve_clusters(state, frame.loc[train, unit_columns], [grouped_by]) if inference else None
     if groups is not None and len(pd.unique(groups)) == len(groups):
         # One row per unit (the rows were combined per unit, M2_CONTRACT §2): the split is keyed by
         # the unit, but no unit repeats, so clustering by it changes nothing and "its rows repeat"
@@ -442,9 +449,15 @@ def fit_stage(ctx: StageContext) -> Bundle:
             holdout = score(task, final, X_hold, y_hold) if len(y_hold) else None
             ctx.progress(share(done), f"{family.label}: coefficients")
             concerns: list[str] = []
+            interval_info = None
             try:
-                coefficients = family.coefficients(final, X, y, task=task, purpose=state.purpose,
-                                                   groups=groups)
+                if clusters is not None and hasattr(family, "inference"):
+                    table = family.inference(final, X, y, task=task, clusters=clusters)
+                    coefficients, interval_info = table.rows, table.info
+                    concerns.extend(table.concerns)
+                else:
+                    coefficients = family.coefficients(final, X, y, task=task,
+                                                       purpose=state.purpose, groups=groups)
             except Exception as exc:  # noqa: BLE001 - a table that cannot be computed is a concern
                 coefficients = None
                 concerns.append(f"The coefficient table could not be computed: {exc}")
@@ -467,10 +480,6 @@ def fit_stage(ctx: StageContext) -> Bundle:
                                                    cv[primary]["mean"], baseline["value"], _two)
         if worse or tie:
             concerns.insert(0, worse or tie)
-        if coefficients is not None and groups is not None and state.purpose == "inference" \
-                and family.key == "linear":
-            concerns.append(f"Confidence intervals are cluster-robust by {grouped_by}, because its "
-                            f"rows repeat.")
         fitted[key] = final
         sealed[key] = holdout
         models.append({
@@ -483,6 +492,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
             "concerns": concerns,
             "baseline": baseline,
             "versus_baseline": versus.model_dump(mode="json"),
+            "inference": interval_info,
         })
     ctx.progress(1.0, "Done")
     n_holdout = int((~train).sum())

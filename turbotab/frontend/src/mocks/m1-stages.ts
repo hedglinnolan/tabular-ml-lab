@@ -1136,6 +1136,8 @@ export function fit(
                   state.purpose === "inference"
                     ? Math.min(1, Math.abs(jitter(`p:${x.column}`)))
                     : null,
+                se: null,
+                df: null,
               };
             });
     return {
@@ -1152,6 +1154,7 @@ export function fit(
         label: classification ? "the class prior" : "the outcome's average",
       },
       versus_baseline: null,
+      inference: null,
     };
   });
   // The fit computes the held-out scores; as on the server (turbotab/core/seal.py), the route

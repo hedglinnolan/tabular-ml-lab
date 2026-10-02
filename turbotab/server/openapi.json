@@ -6918,6 +6918,30 @@
               }
             ],
             "title": "P"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Df"
           }
         },
         "required": [
@@ -6925,7 +6949,9 @@
           "estimate",
           "ci_low",
           "ci_high",
-          "p"
+          "p",
+          "se",
+          "df"
         ],
         "title": "Coefficient",
         "type": "object"
@@ -7842,6 +7868,17 @@
               }
             ],
             "default": null
+          },
+          "inference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Inference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -7853,7 +7890,8 @@
           "fit_seconds",
           "concerns",
           "baseline",
-          "versus_baseline"
+          "versus_baseline",
+          "inference"
         ],
         "title": "FittedModel",
         "type": "object"
@@ -7958,6 +7996,130 @@
           "below_floor"
         ],
         "title": "HoldoutOption",
+        "type": "object"
+      },
+      "Inference": {
+        "additionalProperties": false,
+        "description": "How the coefficient table's intervals were made (AUDIT_REPORT §5 WP2;\n``turbotab/core/models/inference.py``): the estimator, the covariance, and the clusters.",
+        "properties": {
+          "estimator": {
+            "title": "Estimator",
+            "type": "string"
+          },
+          "covariance": {
+            "enum": [
+              "HC3",
+              "CR2",
+              "model",
+              "profile",
+              "none"
+            ],
+            "title": "Covariance",
+            "type": "string"
+          },
+          "caption": {
+            "title": "Caption",
+            "type": "string"
+          },
+          "grouped_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Grouped By"
+          },
+          "n_clusters": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Clusters"
+          },
+          "n_missing_ids": {
+            "default": 0,
+            "title": "N Missing Ids",
+            "type": "integer"
+          },
+          "separated": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Separated",
+            "type": "array"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refused"
+          },
+          "exits": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InferenceExit"
+            },
+            "title": "Exits",
+            "type": "array"
+          }
+        },
+        "required": [
+          "estimator",
+          "covariance",
+          "caption",
+          "grouped_by",
+          "n_clusters",
+          "n_missing_ids",
+          "separated",
+          "refused",
+          "exits"
+        ],
+        "title": "Inference",
+        "type": "object"
+      },
+      "InferenceExit": {
+        "additionalProperties": false,
+        "description": "A way forward when no interval can be reported, as a refusal's exits are shaped.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decision"
+          }
+        },
+        "required": [
+          "label",
+          "decision"
+        ],
+        "title": "InferenceExit",
         "type": "object"
       },
       "LeaveOut": {

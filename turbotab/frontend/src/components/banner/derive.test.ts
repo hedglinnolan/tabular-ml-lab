@@ -134,6 +134,7 @@ const fit: FitArtifact = {
       concerns: [],
       baseline,
       versus_baseline: null,
+      inference: null,
     },
     {
       family: "elastic_net",
@@ -145,6 +146,7 @@ const fit: FitArtifact = {
       concerns: [],
       baseline,
       versus_baseline: null,
+      inference: null,
     },
     {
       family: "boosted_trees",
@@ -156,6 +158,7 @@ const fit: FitArtifact = {
       concerns: ["Predicts worse than the outcome's average: CV R² −0.04"],
       baseline,
       versus_baseline: null,
+      inference: null,
     },
   ],
   holdout_sealed: true,
