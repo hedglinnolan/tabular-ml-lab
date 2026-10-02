@@ -122,6 +122,10 @@ const design: DesignArtifact = {
 
 const baseline = { metric: "r2", value: 0, label: "the outcome's average" };
 
+// The fields WP9 added (models/performance.py, validation.py): no SE, calibration or resampling.
+const noSe = { se: null, ci_low: null, ci_high: null, repeats: 1, repeat_sd: null };
+const wp9 = { calibration: null, holdout_detail: null, optimism: null, internal_external: null };
+
 const fit: FitArtifact = {
   task: "regression",
   primary_metric: "r2",
@@ -133,8 +137,8 @@ const fit: FitArtifact = {
       family: "linear",
       label: "Linear regression",
       cv: {
-        r2: { mean: 0.07, sd: 0.04, folds: [], estimate: 0.076, estimator: "pooled" },
-        rmse: { mean: 44.8, sd: 1, folds: [], estimate: 44.8, estimator: "pooled" },
+        r2: { mean: 0.07, sd: 0.04, folds: [], estimate: 0.076, estimator: "pooled", ...noSe },
+        rmse: { mean: 44.8, sd: 1, folds: [], estimate: 44.8, estimator: "pooled", ...noSe },
       },
       holdout: null,
       coefficients: null,
@@ -145,13 +149,14 @@ const fit: FitArtifact = {
       inference: null,
       coefficients_n: null,
       role: null,
+      ...wp9,
     },
     {
       family: "elastic_net",
       label: "Elastic net",
       cv: {
-        r2: { mean: 0.07, sd: 0.03, folds: [], estimate: 0.077, estimator: "pooled" },
-        rmse: { mean: 44.7, sd: 1, folds: [], estimate: 44.7, estimator: "pooled" },
+        r2: { mean: 0.07, sd: 0.03, folds: [], estimate: 0.077, estimator: "pooled", ...noSe },
+        rmse: { mean: 44.7, sd: 1, folds: [], estimate: 44.7, estimator: "pooled", ...noSe },
       },
       holdout: null,
       coefficients: null,
@@ -162,13 +167,14 @@ const fit: FitArtifact = {
       inference: null,
       coefficients_n: null,
       role: null,
+      ...wp9,
     },
     {
       family: "boosted_trees",
       label: "Gradient-boosted trees",
       cv: {
-        r2: { mean: -0.05, sd: 0.06, folds: [], estimate: -0.039, estimator: "pooled" },
-        rmse: { mean: 47.5, sd: 1, folds: [], estimate: 47.5, estimator: "pooled" },
+        r2: { mean: -0.05, sd: 0.06, folds: [], estimate: -0.039, estimator: "pooled", ...noSe },
+        rmse: { mean: 47.5, sd: 1, folds: [], estimate: 47.5, estimator: "pooled", ...noSe },
       },
       holdout: null,
       coefficients: null,
@@ -179,6 +185,7 @@ const fit: FitArtifact = {
       inference: null,
       coefficients_n: null,
       role: null,
+      ...wp9,
     },
   ],
   holdout_sealed: true,
@@ -189,6 +196,13 @@ const fit: FitArtifact = {
   selection: null,
   final_model: null,
   final_note: null,
+  validation: "kfold",
+  repeats: 1,
+  ranking: "highest R²",
+  se_definition: null,
+  comparisons: [],
+  precision: null,
+  imbalance: null,
 };
 
 function input(over: Partial<BannerInput> = {}, viewOver: Partial<ProjectView> = {}): BannerInput {
@@ -285,6 +299,49 @@ describe("deriveBanner", () => {
     // Lower is better for an error metric.
     expect(bestModel({ ...fit, primary_metric: "rmse" })?.family).toBe("elastic_net");
     expect(formatMetric(-0.0391)).toBe("−0.039");
+  });
+
+  it("names how the families were ranked, never 'best' (audit ME-10, WP9)", () => {
+    const res = deriveBanner(input()).segments[3];
+    expect(res.summary).toBe("Result: R² 0.077 by cross-validation, highest R² for Elastic net.");
+    const summary = (estimate: number) => ({
+      mean: estimate,
+      sd: 0.01,
+      folds: [],
+      estimate,
+      estimator: "fold_mean" as const,
+      se: null,
+      ci_low: null,
+      ci_high: null,
+      repeats: 1,
+      repeat_sd: null,
+    });
+    const binary: FitArtifact = {
+      ...fit,
+      task: "binary",
+      primary_metric: "auc",
+      metric_labels: { auc: "AUC" },
+      ranking: "highest AUC",
+      models: fit.models.map((m, i) => ({
+        ...m,
+        cv: { auc: summary([0.71, 0.74, 0.69][i] ?? 0) },
+      })),
+    };
+    const auc = deriveBanner(input({ fit: result("fit", "f1", binary) })).segments[3];
+    expect(auc.summary).toBe("Result: AUC 0.740 by cross-validation, highest AUC for Elastic net.");
+    expect(auc.summary).not.toContain("best");
+    // Lower is better for log loss, the multiclass primary: the lowest is the one named.
+    const multiclass: FitArtifact = {
+      ...fit,
+      task: "multiclass",
+      primary_metric: "log_loss",
+      ranking: "lowest log loss",
+      models: fit.models.map((m, i) => ({
+        ...m,
+        cv: { log_loss: summary([0.9, 0.8, 1.1][i] ?? 0) },
+      })),
+    };
+    expect(bestModel(multiclass)?.family).toBe("elastic_net");
   });
 
   it("veils what an earlier answer made stale, segment by segment", () => {

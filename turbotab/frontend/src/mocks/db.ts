@@ -663,7 +663,15 @@ function valueOf(d: Decision): ProjectState[Slot] {
         indicators: d.indicators ?? false,
       };
     case "set_split":
-      return { holdout: d.holdout, seed: d.seed ?? 0, folds: d.folds ?? 5 };
+      return {
+        holdout: d.holdout,
+        seed: d.seed ?? 0,
+        folds: d.folds ?? 5,
+        validation: d.validation ?? "kfold",
+        repeats: d.repeats ?? 10,
+        n_boot: d.n_boot ?? 200,
+        cluster: d.cluster ?? null,
+      };
     case "select_models":
       return d.models;
     case "set_substitution":

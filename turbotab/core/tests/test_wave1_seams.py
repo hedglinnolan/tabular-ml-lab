@@ -108,3 +108,100 @@ def test_a_binary_relative_effect_is_on_the_tables_odds_ratio_scale(tmp_path):
     assert row["ratio"] == pytest.approx(np.exp(row["estimate"]), rel=1e-12)
     assert row["ratio_low"] == pytest.approx(np.exp(row["ci_low"]), rel=1e-12)
     assert row["ratio_high"] == pytest.approx(np.exp(row["ci_high"]), rel=1e-12)
+
+
+# ── WP8 × WP9: choosing among families under repeated k-fold ─────────────────────────────────
+
+
+def test_selection_optimism_under_repeated_kfold_bootstraps_one_repeats_predictions(tmp_path):
+    """WP8's bootstrap bias-corrected CV (Tsamardinos et al. 2018) resamples Π, each training row's
+    out-of-fold prediction, once per row. WP9's repeated k-fold scores every row once per repeat,
+    so the fit stage keeps the first repeat's predictions for Π (the repeat WP9's out-of-fold
+    calibration reads too) and passes the other repeats' fits through.
+
+    Reference: Π rebuilt here by refitting each family's pipeline on the split's first fold column
+    alone (scikit-learn pipelines through ``fit_pipeline``), then the same resampling; the fit
+    stage's selection must equal it. Π built from the last repeat instead gives another estimate,
+    so the check discriminates.
+    """
+    import warnings
+
+    from sklearn.base import clone
+
+    from turbotab.core.decisions import GrainSpec, ProjectState
+    from turbotab.core.models.inner_cv import fit_pipeline
+    from turbotab.core.models.metrics import LABELS, cross_validate, fold_pairs
+    from turbotab.core.models.pipeline import modeling_frame
+    from turbotab.core.models.selection import OutOfFold, selection_optimism
+    from turbotab.core.stages.modeling import coded_outcome, read_assignment
+    from turbotab.core.stages.rows import cohort_stage, split_stage
+    from turbotab.core.stages.target import target_info_stage
+    from turbotab.core.tests.stage_harness import Ingested
+
+    rng = np.random.default_rng(5)
+    n = 300
+    X = pd.DataFrame(rng.normal(size=(n, 4)), columns=[f"x{i}" for i in range(4)])
+    risk = 1 / (1 + np.exp(-(X.to_numpy() @ np.array([0.7, -0.5, 0.2, 0.0]))))
+    frame = X.assign(id=np.arange(n), event=np.where(rng.random(n) < risk, "yes", "no"))
+    source = tmp_path / "t.csv"
+    frame.to_csv(source, index=False)
+    table = Ingested(source, tmp_path / "i")
+    families = ["linear", "elastic_net"]
+    st = ProjectState(lens=["clinical"], target="event", task="binary", event="yes",
+                      purpose="prediction", roles={"id": "identifier", **{c: "covariate" for c in X}},
+                      missing="complete_case",
+                      grain=GrainSpec(grain="one_row_per_unit", id_column="id"), models=families,
+                      split=SplitSpec(holdout=0.0, seed=4, folds=5, validation="repeated_kfold",
+                                      repeats=3))
+    info = table.run(target_info_stage, st)
+    cohort = table.run(cohort_stage, st, {"target_info": info})
+    split = table.run(split_stage, st, {"cohort": cohort, "target_info": info})
+    design = table.run(design_stage, st, {"split": split, "target_info": info})
+    fit = table.run(fit_stage, st, {"design": design, "split": split, "target_info": info})
+    assert fit.data["repeats"] == 3
+    selection = fit.data["selection"]
+    assert selection is not None and selection["families"] == families
+
+    # The training rows as the fit stage reads them (from the ingested store, in the split's order:
+    # elastic net's inner folds are keyed by the rows' stored contents).
+    assignment = read_assignment(split)
+    with table.store() as store:
+        stored = modeling_frame(store, [*X.columns, "event"], assignment.index.to_numpy())
+    Xs = stored[list(X.columns)]
+    ys = np.asarray(coded_outcome("binary", stored["event"].to_numpy(), "yes"))
+    assert set(np.unique(ys)) == {0, 1}
+    pipelines = design.objects["pipelines"]
+
+    def rebuilt(column: str) -> dict[str, Any]:
+        pairs = fold_pairs(assignment[column].to_numpy().astype(int))
+        oof = OutOfFold("binary", Xs, ys, pairs)
+        results = {}
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            for key in families:
+                wrapped = oof.wrap(key, lambda m, Xf, yf, r: fit_pipeline(m, Xf, yf))
+                results[key] = cross_validate("binary", lambda _k=key: clone(pipelines[_k]), Xs, ys,
+                                              pairs, fit=wrapped)
+        # The best family and its CV score are the fit's own (the mean over every repeat).
+        cv = {m["family"]: m["cv"]["auc"]["estimate"] for m in fit.data["models"]}
+        results = {k: _Fixed(cv[k]) for k in results}
+        return selection_optimism("binary", "auc", results, oof,
+                                  {m["family"]: m["label"] for m in fit.data["models"]}, LABELS["auc"])
+
+    first = rebuilt("fold")
+    assert selection["best"] == first["best"]
+    assert selection["corrected"] == pytest.approx(first["corrected"], abs=1e-9)
+    assert selection["optimism"] == pytest.approx(first["optimism"], abs=1e-9)
+    assert selection["wins"] == first["wins"]
+    last = rebuilt("fold_r2")
+    assert abs(last["corrected"] - selection["corrected"]) > 1e-6
+
+
+class _Fixed:
+    """A cross-validation result whose summary is one fixed estimate (the fit's own CV AUC)."""
+
+    def __init__(self, estimate: float):
+        self.estimate = estimate
+
+    def summary(self, task: str) -> dict[str, Any]:
+        return {"auc": {"estimate": self.estimate}}

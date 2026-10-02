@@ -74,6 +74,10 @@ class OutOfFold:
     fold's model was fit on; classification keeps the predicted probabilities, in the order of the
     outcome's sorted classes. Rows no fold scores (the first block of time-ordered folds) stay
     missing and are never resampled.
+
+    With repeated k-fold (WP9) the fit stage hands it the first repeat's pairs only, so every row
+    is predicted once, as Π is defined; a wrapped fit of another repeat's fold is passed through
+    without keeping its predictions.
     """
 
     def __init__(self, task: str, X: Any, y: Any, pairs: Sequence[tuple[int, np.ndarray, np.ndarray]]):
@@ -94,18 +98,22 @@ class OutOfFold:
     def wrap(self, key: str, fit: Callable[..., Any]) -> Callable[..., Any]:
         def fit_and_keep(model: Any, X_fit: Any, y_fit: Any, rows: Any) -> Any:
             fitted = fit(model, X_fit, y_fit, rows)
-            self.keep(key, fitted, self._scored_by(rows))
+            test_rows = self._scored_by(rows)
+            if test_rows is not None:
+                self.keep(key, fitted, test_rows)
             return fitted
         return fit_and_keep
 
-    def _scored_by(self, fit_rows: Any) -> np.ndarray:
+    def _scored_by(self, fit_rows: Any) -> np.ndarray | None:
+        """The rows the pair fit on ``fit_rows`` scores; None for a fold not among the pairs (another
+        repeat's)."""
         for _, f, t in self.pairs:
             if f is fit_rows:
                 return t
         for _, f, t in self.pairs:
             if np.array_equal(f, fit_rows):
                 return t
-        raise ValueError("The fold being fit is not one of the split's folds.")
+        return None
 
     def keep(self, key: str, fitted: Any, test_rows: np.ndarray) -> None:
         """Store ``fitted``'s predictions for the rows ``test_rows`` marks."""

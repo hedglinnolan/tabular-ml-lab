@@ -5606,6 +5606,42 @@
             "minimum": 2.0,
             "title": "Folds",
             "default": 5
+          },
+          "validation": {
+            "type": "string",
+            "enum": [
+              "kfold",
+              "repeated_kfold",
+              "bootstrap",
+              "internal_external"
+            ],
+            "title": "Validation",
+            "default": "kfold"
+          },
+          "repeats": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 2.0,
+            "title": "Repeats",
+            "default": 10
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 20.0,
+            "title": "N Boot",
+            "default": 200
+          },
+          "cluster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cluster"
           }
         },
         "additionalProperties": false,
@@ -5641,6 +5677,42 @@
             "minimum": 2.0,
             "title": "Folds",
             "default": 5
+          },
+          "validation": {
+            "type": "string",
+            "enum": [
+              "kfold",
+              "repeated_kfold",
+              "bootstrap",
+              "internal_external"
+            ],
+            "title": "Validation",
+            "default": "kfold"
+          },
+          "repeats": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 2.0,
+            "title": "Repeats",
+            "default": 10
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 20.0,
+            "title": "N Boot",
+            "default": 200
+          },
+          "cluster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cluster"
           }
         },
         "additionalProperties": false,
@@ -5649,7 +5721,11 @@
           "kind",
           "holdout",
           "seed",
-          "folds"
+          "folds",
+          "validation",
+          "repeats",
+          "n_boot",
+          "cluster"
         ],
         "title": "SetSplit"
       },
@@ -5915,6 +5991,42 @@
             "minimum": 2.0,
             "title": "Folds",
             "default": 5
+          },
+          "validation": {
+            "type": "string",
+            "enum": [
+              "kfold",
+              "repeated_kfold",
+              "bootstrap",
+              "internal_external"
+            ],
+            "title": "Validation",
+            "default": "kfold"
+          },
+          "repeats": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 2.0,
+            "title": "Repeats",
+            "default": 10
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 20.0,
+            "title": "N Boot",
+            "default": 200
+          },
+          "cluster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cluster"
           }
         },
         "additionalProperties": false,
@@ -5922,7 +6034,11 @@
         "required": [
           "holdout",
           "seed",
-          "folds"
+          "folds",
+          "validation",
+          "repeats",
+          "n_boot",
+          "cluster"
         ],
         "title": "SplitSpec"
       },
@@ -6837,6 +6953,112 @@
         "title": "Baseline",
         "type": "object"
       },
+      "Calibration": {
+        "additionalProperties": false,
+        "description": "Calibration of one set of predictions: in the large, its slope, and its smoothed curve.",
+        "properties": {
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "observed": {
+            "title": "Observed",
+            "type": "number"
+          },
+          "expected": {
+            "title": "Expected",
+            "type": "number"
+          },
+          "intercept": {
+            "$ref": "#/components/schemas/Interval"
+          },
+          "slope": {
+            "$ref": "#/components/schemas/Interval"
+          },
+          "curve": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "title": "Curve",
+            "type": "array"
+          },
+          "eavg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Eavg"
+          },
+          "e90": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "E90"
+          },
+          "emax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Emax"
+          },
+          "smoother": {
+            "default": "lowess, span 2/3, no robustness iterations (as rms val.prob)",
+            "title": "Smoother",
+            "type": "string"
+          },
+          "flagged": {
+            "default": false,
+            "title": "Flagged",
+            "type": "boolean"
+          },
+          "concern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Concern"
+          }
+        },
+        "required": [
+          "n",
+          "observed",
+          "expected",
+          "intercept",
+          "slope",
+          "curve",
+          "eavg",
+          "e90",
+          "emax",
+          "smoother",
+          "flagged",
+          "concern"
+        ],
+        "title": "Calibration",
+        "type": "object"
+      },
       "CategoricalProposal": {
         "description": "A predictor whose numbers may be codes for groups (``set_categorical`` declares it).",
         "properties": {
@@ -6929,6 +7151,71 @@
           "sentence"
         ],
         "title": "Chronology",
+        "type": "object"
+      },
+      "ClusterScore": {
+        "additionalProperties": false,
+        "description": "One held-out cluster: its rows, its scores, and the primary metric's interval.",
+        "properties": {
+          "cluster": {
+            "title": "Cluster",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "n_events": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Events"
+          },
+          "scores": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Scores",
+            "type": "object"
+          },
+          "primary": {
+            "$ref": "#/components/schemas/Interval"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Note"
+          }
+        },
+        "required": [
+          "cluster",
+          "n",
+          "n_events",
+          "scores",
+          "primary",
+          "note"
+        ],
+        "title": "ClusterScore",
         "type": "object"
       },
       "Coefficient": {
@@ -7194,6 +7481,25 @@
           "chosen"
         ],
         "title": "CombinedColumn",
+        "type": "object"
+      },
+      "CurvePoint": {
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "CurvePoint",
         "type": "object"
       },
       "DatasetInfo": {
@@ -7696,6 +8002,84 @@
         "title": "ExclusionRule",
         "type": "object"
       },
+      "FamilyDifference": {
+        "additionalProperties": false,
+        "description": "Two families' primary metric, paired over the same folds, with a corrected interval.",
+        "properties": {
+          "a": {
+            "title": "A",
+            "type": "string"
+          },
+          "b": {
+            "title": "B",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difference"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci High"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Df"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "metric",
+          "difference",
+          "ci_low",
+          "ci_high",
+          "df",
+          "sentence"
+        ],
+        "title": "FamilyDifference",
+        "type": "object"
+      },
       "Finding": {
         "properties": {
           "id": {
@@ -8037,6 +8421,78 @@
             ],
             "default": null,
             "title": "Final Note"
+          },
+          "validation": {
+            "default": "kfold",
+            "enum": [
+              "kfold",
+              "repeated_kfold",
+              "bootstrap",
+              "internal_external"
+            ],
+            "title": "Validation",
+            "type": "string"
+          },
+          "repeats": {
+            "default": 1,
+            "title": "Repeats",
+            "type": "integer"
+          },
+          "ranking": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ranking"
+          },
+          "se_definition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se Definition"
+          },
+          "comparisons": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FamilyDifference"
+            },
+            "title": "Comparisons",
+            "type": "array"
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Precision"
+          },
+          "imbalance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Imbalance"
           }
         },
         "required": [
@@ -8053,7 +8509,14 @@
           "cv_definition",
           "selection",
           "final_model",
-          "final_note"
+          "final_note",
+          "validation",
+          "repeats",
+          "ranking",
+          "se_definition",
+          "comparisons",
+          "precision",
+          "imbalance"
         ],
         "title": "FitArtifact",
         "type": "object"
@@ -8174,6 +8637,50 @@
             ],
             "default": null,
             "title": "Role"
+          },
+          "calibration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Calibration"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "holdout_detail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HoldoutDetail"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "optimism": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Optimism"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "internal_external": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InternalExternal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -8188,7 +8695,11 @@
           "versus_baseline",
           "inference",
           "coefficients_n",
-          "role"
+          "role",
+          "calibration",
+          "holdout_detail",
+          "optimism",
+          "internal_external"
         ],
         "title": "FittedModel",
         "type": "object"
@@ -8259,6 +8770,36 @@
           "stated"
         ],
         "title": "GrainReading",
+        "type": "object"
+      },
+      "HoldoutDetail": {
+        "additionalProperties": false,
+        "description": "What the held-out rows say beyond their scores: an interval on each, and calibration.",
+        "properties": {
+          "intervals": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Interval"
+            },
+            "title": "Intervals",
+            "type": "object"
+          },
+          "calibration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Calibration"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "intervals",
+          "calibration"
+        ],
+        "title": "HoldoutDetail",
         "type": "object"
       },
       "HoldoutOption": {
@@ -8509,6 +9050,116 @@
         "title": "InferenceExit",
         "type": "object"
       },
+      "InternalExternal": {
+        "additionalProperties": false,
+        "description": "Internal–external validation by ``cluster`` (module docstring).",
+        "properties": {
+          "cluster": {
+            "title": "Cluster",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "clusters": {
+            "items": {
+              "$ref": "#/components/schemas/ClusterScore"
+            },
+            "title": "Clusters",
+            "type": "array"
+          },
+          "pooled": {
+            "$ref": "#/components/schemas/Pooled"
+          },
+          "spread": {
+            "title": "Spread",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cluster",
+          "metric",
+          "clusters",
+          "pooled",
+          "spread"
+        ],
+        "title": "InternalExternal",
+        "type": "object"
+      },
+      "Interval": {
+        "additionalProperties": false,
+        "description": "A score with its standard error and its 95% interval.",
+        "properties": {
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          },
+          "level": {
+            "default": 0.95,
+            "title": "Level",
+            "type": "number"
+          },
+          "method": {
+            "default": "",
+            "title": "Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "estimate",
+          "se",
+          "ci_low",
+          "ci_high",
+          "level",
+          "method"
+        ],
+        "title": "Interval",
+        "type": "object"
+      },
       "LeaveOut": {
         "description": "The offer: leave the likely-not-asked columns out, then handle the rest.",
         "properties": {
@@ -8658,6 +9309,59 @@
             ],
             "title": "Estimator",
             "type": "string"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          },
+          "repeats": {
+            "default": 1,
+            "title": "Repeats",
+            "type": "integer"
+          },
+          "repeat_sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Repeat Sd"
           }
         },
         "required": [
@@ -8665,7 +9369,12 @@
           "sd",
           "folds",
           "estimate",
-          "estimator"
+          "estimator",
+          "se",
+          "ci_low",
+          "ci_high",
+          "repeats",
+          "repeat_sd"
         ],
         "title": "MetricSummary",
         "type": "object"
@@ -8830,6 +9539,120 @@
           "n_rows"
         ],
         "title": "OmittedEnergy",
+        "type": "object"
+      },
+      "Optimism": {
+        "additionalProperties": false,
+        "description": "Harrell's bootstrap optimism correction of one family (module docstring).",
+        "properties": {
+          "n_boot": {
+            "title": "N Boot",
+            "type": "integer"
+          },
+          "n_ok": {
+            "title": "N Ok",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "number"
+          },
+          "resampled": {
+            "title": "Resampled",
+            "type": "string"
+          },
+          "estimates": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/OptimismEstimate"
+            },
+            "title": "Estimates",
+            "type": "object"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refused"
+          }
+        },
+        "required": [
+          "n_boot",
+          "n_ok",
+          "failed",
+          "seconds",
+          "resampled",
+          "estimates",
+          "refused"
+        ],
+        "title": "Optimism",
+        "type": "object"
+      },
+      "OptimismEstimate": {
+        "additionalProperties": false,
+        "properties": {
+          "apparent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apparent"
+          },
+          "optimism": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Optimism"
+          },
+          "corrected": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corrected"
+          },
+          "optimism_sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Optimism Sd"
+          }
+        },
+        "required": [
+          "apparent",
+          "optimism",
+          "corrected",
+          "optimism_sd"
+        ],
+        "title": "OptimismEstimate",
         "type": "object"
       },
       "OrientationReading": {
@@ -9039,6 +9862,125 @@
           "numeric"
         ],
         "title": "OutcomeWithinUnit",
+        "type": "object"
+      },
+      "Pooled": {
+        "additionalProperties": false,
+        "description": "A DerSimonian–Laird random-effects summary of one score across clusters.",
+        "properties": {
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "scale": {
+            "enum": [
+              "identity",
+              "logit"
+            ],
+            "title": "Scale",
+            "type": "string"
+          },
+          "k": {
+            "title": "K",
+            "type": "integer"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          },
+          "tau": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tau"
+          },
+          "i2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "I2"
+          },
+          "pi_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pi Low"
+          },
+          "pi_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pi High"
+          }
+        },
+        "required": [
+          "metric",
+          "scale",
+          "k",
+          "estimate",
+          "ci_low",
+          "ci_high",
+          "tau",
+          "i2",
+          "pi_low",
+          "pi_high"
+        ],
+        "title": "Pooled",
         "type": "object"
       },
       "ProfileArtifact": {
@@ -9655,6 +10597,17 @@
             "default": false,
             "title": "Time Ordered Folds",
             "type": "boolean"
+          },
+          "validation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidationPlan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -9670,7 +10623,8 @@
           "reason",
           "precision_note",
           "refusal",
-          "time_ordered_folds"
+          "time_ordered_folds",
+          "validation"
         ],
         "title": "SealPlan",
         "type": "object"
@@ -10980,6 +11934,100 @@
           "n_missing"
         ],
         "title": "UnitCounts",
+        "type": "object"
+      },
+      "ValidationOption": {
+        "additionalProperties": false,
+        "description": "One way the training rows can validate the models, as the split question offers it.",
+        "properties": {
+          "validation": {
+            "enum": [
+              "kfold",
+              "repeated_kfold",
+              "bootstrap",
+              "internal_external"
+            ],
+            "title": "Validation",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "measures": {
+            "title": "Measures",
+            "type": "string"
+          },
+          "cost": {
+            "title": "Cost",
+            "type": "string"
+          },
+          "needs_cluster": {
+            "default": false,
+            "title": "Needs Cluster",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "validation",
+          "label",
+          "measures",
+          "cost",
+          "needs_cluster"
+        ],
+        "title": "ValidationOption",
+        "type": "object"
+      },
+      "ValidationPlan": {
+        "additionalProperties": false,
+        "description": "The validation options in the order to offer them, and why (module docstring).",
+        "properties": {
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationOption"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "resampling_first": {
+            "title": "Resampling First",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "holdout_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdout Note"
+          },
+          "below": {
+            "default": 20000,
+            "title": "Below",
+            "type": "integer"
+          },
+          "source": {
+            "default": "Harrell 2017, Split-sample model validation: data splitting is unstable below about 20,000 subjects",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "options",
+          "resampling_first",
+          "reason",
+          "holdout_note",
+          "below",
+          "source"
+        ],
+        "title": "ValidationPlan",
         "type": "object"
       },
       "VersusBaseline": {

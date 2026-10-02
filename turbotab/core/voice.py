@@ -658,7 +658,9 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
     how = []
     if group:
         how.append(f"keeping each {tick(group)}'s rows together")
-    if task in ("binary", "multiclass") and target and not latest:
+    # Folds that are a cluster's levels are not stratified; a held-out draw still is.
+    by_cluster = getattr(d, "validation", "kfold") == "internal_external" and d.holdout == 0
+    if task in ("binary", "multiclass") and target and not latest and not by_cluster:
         how.append(f"stratified by {tick(target)}")
     manner = " (" + ", ".join([f"seed {tick(d.seed)}", *how]) + ")"
     folds = f"{tick(d.folds)}-fold cross-validation"
@@ -667,11 +669,26 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
         folds = (f"cross-validation over {tick(d.folds)} time-ordered folds, each scored by models "
                  f"fit on earlier units")
         compared = f"models were compared on the rest by {folds}"
+    # How the training rows validated the models (audit ME-11, E16; models/validation.py).
+    validation = getattr(d, "validation", "kfold")
+    if validation == "repeated_kfold":
+        folds = (f"{tick(d.folds)}-fold cross-validation repeated {tick(d.repeats)} times, each "
+                 f"score the mean over the repeats")
+        compared = f"models were compared on the rest by {folds}"
+    elif validation == "internal_external" and getattr(d, "cluster", None):
+        folds = (f"internal–external validation, each level of {tick(d.cluster)} held out in turn "
+                 f"and scored by models fit on the others")
+        compared = f"models were compared on the rest by {folds}"
+    boot = ""
+    if validation == "bootstrap":
+        boot = (f"; the optimism of each model's apparent performance was estimated by Harrell's "
+                f"bootstrap ({tick(d.n_boot)} resamples, the whole pipeline refit on each) and "
+                f"subtracted")
     # How a cross-validated or held-out R² is measured (audit MA-09; models/metrics.py).
     r2 = ("; R² was measured against the training rows' mean and pooled over every out-of-fold "
           "prediction" if task == "regression" else "")
     if d.holdout == 0:
-        return f"No rows were held out; performance was estimated by {folds}{manner}{r2}"
+        return f"No rows were held out; performance was estimated by {folds}{manner}{boot}{r2}"
     share = tick(f"{d.holdout:.0%}")
     # No count: the held-out rows are drawn over every row with the outcome recorded, and the
     # analysis count changes with any later exclusion or missing-values answer; the banner and
@@ -684,7 +701,7 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
                 f"models are scored on later data than they learned from; {compared}")
     else:
         text = f"A random {share}{pool}{manner} was held out for one final score; {compared}"
-    text += r2
+    text += boot + r2
     if basis is not None and _attr(basis, "exploratory"):
         text += f"; the held-out score is exploratory, as the split's basis is {_attr(basis, 'label')}"
     return text

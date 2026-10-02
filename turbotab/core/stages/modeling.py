@@ -55,6 +55,12 @@ def row_ids_of(frame: pd.DataFrame) -> np.ndarray:
     return frame.index.to_numpy(dtype=np.int64)
 
 
+def repeat_columns(frame: pd.DataFrame) -> list[str]:
+    """``fold_r1``, ``fold_r2``, … in order: the repeats after the first (``fold``)."""
+    names = [c for c in frame.columns if str(c).startswith("fold_r") and str(c)[6:].isdigit()]
+    return sorted(names, key=lambda c: int(str(c)[6:]))
+
+
 def read_assignment(split: Any) -> pd.DataFrame:
     """The split's assignment, indexed by row id: ``train`` (bool) and ``fold`` (training rows)."""
     frame = split.frames["assignment"] if isinstance(split, Bundle) else split
@@ -65,6 +71,8 @@ def read_assignment(split: Any) -> pd.DataFrame:
     out = pd.DataFrame({"train": train, "fold": fold}, index=pd.Index(ids, name="row_id"))
     if "order" in frame.columns:  # time-ordered folds: each row's unit rank in time
         out["order"] = pd.to_numeric(frame["order"], errors="coerce").to_numpy()
+    for name in repeat_columns(frame):  # repeated k-fold: the second and later draws of the folds
+        out[name] = pd.to_numeric(frame[name], errors="coerce").to_numpy()
     if out.loc[out["train"], "fold"].isna().any():
         raise ValueError("Some training rows have no cross-validation fold in the split.")
     return out
@@ -175,7 +183,9 @@ def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[
     if train_ids is None or not len(train_ids):
         return {}
     split = ctx.inputs.get("split")
-    folds = int((split.data or {}).get("folds") or 5) if isinstance(split, Bundle) else 5
+    data = (split.data or {}) if isinstance(split, Bundle) else {}
+    # Every fold of every repeat, and each bootstrap refit, is about one fit of the whole table.
+    folds = int(data.get("folds") or 5) * int(data.get("repeats") or 1) + int(data.get("n_boot") or 0)
     scheme = str((split.data or {}).get("fold_scheme") or "random") if isinstance(split, Bundle) else "random"
     ctx.progress(0.5, "Timing one fit of each family on a sample of the training rows")
     try:
@@ -394,13 +404,14 @@ def baseline_model(task: str) -> Any:
     return DummyRegressor(strategy="mean") if task == "regression" else DummyClassifier(strategy="prior")
 
 
-def _baseline_cv(task: str, X: Any, y: Any, pairs: Sequence[Any]) -> Any:
+def _baseline_cv(task: str, X: Any, y: Any, pairs: Sequence[Any],
+                 repeat_of: Sequence[int] | None = None) -> Any:
     """The baseline cross-validated on the same fold pairs, scored as the models are."""
     from turbotab.core.models.metrics import cross_validate
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return cross_validate(task, lambda: baseline_model(task), X, y, pairs)
+        return cross_validate(task, lambda: baseline_model(task), X, y, pairs, repeat_of=repeat_of)
 
 
 def _baseline_scores(task: str, X: Any, y: Any, folds: Any, fold_keys: Sequence[int]) -> list[dict[str, float]]:
@@ -422,17 +433,73 @@ def _two(a: float, b: float) -> tuple[str, str]:
     return f"{a:.{pa}f}".replace("-", "−"), f"{b:.{pb}f}".replace("-", "−")
 
 
-def baseline_concern(task: str, metric_label: str, model: float | None, base: float | None) -> str | None:
-    """A plain sentence when a family scores worse than its baseline on the primary metric."""
-    if model is None or base is None or not np.isfinite(model) or not np.isfinite(base) or model >= base:
+def baseline_concern(task: str, metric_label: str, model: float | None, base: float | None,
+                     lower: bool = False) -> str | None:
+    """A plain sentence when a family scores worse than its baseline on the primary metric
+    (``lower``: the metric is better when lower, as log loss is)."""
+    if model is None or base is None or not np.isfinite(model) or not np.isfinite(base):
+        return None
+    if (model <= base) if lower else (model >= base):
         return None
     m, b = _two(model, base)
     if task == "regression":
         return f"Predicts worse than the outcome's average: CV {metric_label} {m}, against {b} for the average."
     if task == "binary":
         return f"Separates the classes worse than the class prior: CV {metric_label} {m}, against {b} for the prior."
-    return (f"Classifies worse than always guessing the most common class: CV {metric_label} {m}, "
-            f"against {b}.")
+    return (f"Predicts the classes worse than the class prior: CV {metric_label} {m}, against {b} "
+            f"for the prior.")
+
+
+RANKING = {"r2": "highest R²", "auc": "highest AUC", "log_loss": "lowest log loss"}
+
+
+def ranking_phrase(metric: str) -> str:
+    """How families are ranked, in words the banner can use (audit ME-10): AUC ranks risks and is
+    named as such, never "best"."""
+    from turbotab.core.models.metrics import LABELS, higher_is_better
+
+    return RANKING.get(metric) or (
+        f"{'highest' if higher_is_better(metric) else 'lowest'} {LABELS.get(metric, metric)}")
+
+
+def imbalance_sentence(task: str, y: Any, event: str | None) -> str | None:
+    """A binary outcome's event share, and why nothing was resampled (audit E15; BLUEPRINT north
+    star 5: "SMOTE versus calibration-preserving weighting"). Van den Goorbergh et al. (JAMIA
+    2022;29:1525): "The use of random undersampling, random oversampling, or SMOTE yielded poorly
+    calibrated models: the probability to belong to the minority class was strongly
+    overestimated. These methods did not result in higher areas under the ROC curve"; "similar
+    results were obtained by shifting the probability threshold instead"."""
+    y = np.asarray(y)
+    if task != "binary" or not len(y):
+        return None
+    if event is not None and set(pd.unique(y).tolist()) <= {0, 1}:  # coded: 1 is the event
+        name, share = f"The event, `{event}`,", float(np.mean(y == 1))
+    else:  # no event named: the rarer class
+        values, counts = np.unique(y.astype(str), return_counts=True)
+        name, share = f"The rarer class, `{values[counts.argmin()]}`,", float(counts.min() / len(y))
+    return (f"{name} is {share:.0%} of the training rows. No resampling (SMOTE, over- or "
+            f"undersampling) or class weighting was applied: customary in machine-learning "
+            f"papers, resampling overestimates the rarer class's probability without raising the "
+            f"AUC (van den Goorbergh et al. 2022); a decision moves the threshold instead.")
+
+
+def precision_sentence(metric: str, summaries: Mapping[str, Any], labels: Mapping[str, str],
+                       n_train: int) -> str | None:
+    """Each family's standard error on these rows, in one sentence: what a "small" difference is
+    here, computed on the user's data instead of a rule of thumb about sample size."""
+    from turbotab.core.models.metrics import LABELS
+
+    parts = []
+    for key, summary in summaries.items():
+        se = (summary.get(metric) or {}).get("se")
+        if se is not None:
+            parts.append(f"{se:.3f} for {labels.get(key, key)}")
+    if not parts:
+        return None
+    listed = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+    return (f"On these {n_train:,} training rows the cross-validated {LABELS.get(metric, metric)} "
+            f"has a standard error of {listed}; whether two families differ is read from their "
+            f"paired interval, not from either one alone.")
 
 
 def coded_outcome(task: str | None, y: Any, event: str | None) -> Any:
@@ -498,20 +565,29 @@ def fit_stage(ctx: StageContext) -> Bundle:
     the outcome's own scale: odds ratios or relative-risk ratios with the event and the reference
     level named (``models/inference.py``). With two or more families, ``selection`` states how much
     picking the best of them by cross-validation flatters it (``models/selection.py``).
+    Audit WP9: every cross-validated score carries a standard error; the out-of-fold predictions
+    are checked for calibration (a flagged calibration is a concern); the held-out rows get an
+    interval on every score and their own calibration, sealed with the scores. The split's
+    validation answer adds repeated k-fold (every repeat's folds), bootstrap optimism correction
+    (``turbotab.core.models.validation``) or internal–external validation (one fold per cluster).
     """
     from sklearn.base import clone
 
     from turbotab.core.models import get_family
-    from turbotab.core.models.artifacts import FitArtifact
+    from turbotab.core.models.artifacts import FitArtifact, HoldoutDetail
     from turbotab.core.models.base import reports_coefficients
     from turbotab.core.models.baseline import compare, no_better_concern
     from turbotab.core.models.inference import Outcome, cluster_columns, resolve_clusters
     from turbotab.core.models.inner_cv import fit_pipeline
-    from turbotab.core.models.metrics import (CV_DEFINITION, LABELS, PRIMARY, cross_validate,
-                                              fold_pairs, metric_labels, score)
+    from turbotab.core.models.metrics import (CV_DEFINITION, LABELS, PRIMARY, SE_DEFINITION,
+                                              cross_validate, higher_is_better, metric_labels,
+                                              predict, repeated_pairs, score)
+    from turbotab.core.models.performance import calibration, score_intervals
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
     from turbotab.core.models.selection import OutOfFold, selection_optimism
-    from turbotab.core.seal import SEALED_SCORES, sealed_scores_frame
+    from turbotab.core.models.validation import (family_differences, internal_external,
+                                                 optimism_bootstrap)
+    from turbotab.core.seal import SEALED_DETAIL, SEALED_SCORES, sealed_detail_frame, sealed_scores_frame
 
     state = ctx.state
     task = _task(ctx)
@@ -545,12 +621,16 @@ def fit_stage(ctx: StageContext) -> Bundle:
     y_all = pd.Series(coded_outcome(task, y_all.to_numpy(), state.event), index=y_all.index)
     X, y = frame.loc[train, spec.inputs], y_all[train].to_numpy()
     X_hold, y_hold = frame.loc[~train, spec.inputs], y_all[~train].to_numpy()
-    folds = assignment.loc[train, "fold"].to_numpy().astype(int)
     order_all = assignment["order"].to_numpy(dtype=float) if scheme == "time_ordered" else None
     order = order_all[train] if order_all is not None else None
-    pairs = fold_pairs(folds, scheme)
+    validation = str(split_data.get("validation") or "kfold")
+    # Every repeat's folds (repeated k-fold: ``fold``, ``fold_r1``, …); one column otherwise.
+    fold_columns = [assignment.loc[train, c].to_numpy().astype(int)
+                    for c in ["fold", *repeat_columns(assignment)]]
+    pairs, repeat_of = repeated_pairs(fold_columns, scheme)
     unit_all = frame[grouped_by].to_numpy() if grouped_by else None
     groups = unit_all[train] if unit_all is not None else None
+    hold_groups = unit_all[~train] if unit_all is not None else None
     # The rows the coefficient table is estimated from: every analyzed row under inference
     # (BLUEPRINT §12 ruling 3: a holdout is a prediction concept), the training rows otherwise.
     table_rows = np.ones(len(train), dtype=bool) if inference else train
@@ -562,7 +642,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
         # One row per unit (the rows were combined per unit, M2_CONTRACT §2): the split is keyed by
         # the unit, but no unit repeats, so clustering by it changes nothing and "its rows repeat"
         # would be false.
-        groups, grouped_by, unit_all = None, None, None
+        groups, grouped_by, unit_all, hold_groups = None, None, None, None
 
     def fit(model: Any, X_fit: Any, y_fit: Any, rows: Any = None) -> Any:
         """Fit a pipeline on these training rows, its inner splits drawn as the folds are."""
@@ -575,15 +655,22 @@ def fit_stage(ctx: StageContext) -> Bundle:
         return fit_pipeline(model, X_tab, y_tab,
                             groups=None if unit_all is None else unit_all[table_rows],
                             order=None if order_all is None else order_all[table_rows])
+    def refit_resample(model: Any, X_b: Any, y_b: Any, units_b: Any) -> Any:
+        """A bootstrap resample's fit: every copy of a unit keeps to one side of an inner split."""
+        return fit_pipeline(model, X_b, y_b, groups=units_b)
 
     keys = [k for k in (state.models or []) if k in pipelines]
     primary = PRIMARY[task]
-    base = _baseline_cv(task, X, y, pairs)
+    base = _baseline_cv(task, X, y, pairs, repeat_of)
     base_cv = base.summary(task)
     baseline = {"metric": primary, "value": base_cv[primary]["estimate"], "label": BASELINE_LABEL[task]}
     reference = float(np.mean(y.astype(float))) if task == "regression" and len(y) else None
-    units = max(1, len(keys) * (len(pairs) + 2))
+    n_boot = int(split_data.get("n_boot") or 0) if validation == "bootstrap" else 0
+    units = max(1, len(keys) * (len(pairs) + 2 + n_boot))
     done = 0
+    results: dict[str, Any] = {}
+    summaries: dict[str, Any] = {}
+    sealed_detail: dict[str, Any] = {}
 
     def share(n: int) -> float:
         return 0.02 + 0.97 * n / units
@@ -591,8 +678,9 @@ def fit_stage(ctx: StageContext) -> Bundle:
     models: list[dict[str, Any]] = []
     fitted: dict[str, Any] = {}
     sealed: dict[str, Any] = {}  # held-out scores: kept out of the public data (M2_CONTRACT §3)
-    results: dict[str, Any] = {}  # each family's cross-validation, for the selection's optimism
-    oof = OutOfFold(task, X, y, pairs)  # …and its out-of-fold predictions (models/selection.py)
+    # Each family's out-of-fold predictions, for the selection's optimism (models/selection.py):
+    # one repeat's, so each scored row is predicted once (repeated k-fold scores every row again).
+    oof = OutOfFold(task, X, y, [p for p, r in zip(pairs, repeat_of) if r == 0])
     for key in keys:
         family = get_family(key)
         started = time.perf_counter()
@@ -608,7 +696,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
             warnings.simplefilter("always")
             result = cross_validate(task, lambda _k=key: clone(pipelines[_k]), X, y, pairs,
                                     fit=oof.wrap(key, fit) if len(keys) > 1 else fit,
-                                    before_fold=before_fold)
+                                    before_fold=before_fold, repeat_of=repeat_of,
+                                    keep_predictions=True)
             if ctx.cancelled():
                 raise Cancelled()
             ctx.progress(share(done), f"{family.label}: refitting on all training rows")
@@ -616,6 +705,27 @@ def fit_stage(ctx: StageContext) -> Bundle:
             done += 1
             # R² on the held-out rows is measured against the training rows' mean.
             holdout = score(task, final, X_hold, y_hold, reference=reference) if len(y_hold) else None
+            if len(y_hold):  # sealed with the scores: an interval on each, and calibration
+                classes = None if task == "regression" else list(final.classes_)
+                held_pred = predict(task, final, X_hold)
+                sealed_detail[key] = HoldoutDetail(
+                    intervals=score_intervals(task, y_hold, held_pred, classes=classes,
+                                              reference=reference, groups=hold_groups,
+                                              unit=grouped_by),
+                    calibration=calibration(task, y_hold, held_pred, classes=classes,
+                                            groups=hold_groups, where="on the held-out rows"),
+                ).model_dump(mode="json")
+            optimism = None
+            if n_boot:
+                def boot_progress(b: int, total: int, _label: str = family.label) -> None:
+                    nonlocal done
+                    done += 1
+                    ctx.progress(share(done), f"{_label}: bootstrap refit {b} of {total}")
+
+                optimism = optimism_bootstrap(
+                    task, lambda _k=key: clone(pipelines[_k]), refit_resample, X, y, n_boot=n_boot,
+                    seed=int(split_data.get("seed") or 0), groups=groups, unit=grouped_by,
+                    final=final, progress=boot_progress, cancelled=ctx.cancelled)
             ctx.progress(share(done), f"{family.label}: coefficients")
             concerns: list[str] = []
             interval_info = None
@@ -662,16 +772,30 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 singular = None
             if singular and not any("singular" in c for c in concerns):
                 concerns.insert(0, singular)
-        cv, versus = compare(task, result, base)
+        summary = result.summary(task, groups=groups, unit=grouped_by)
+        cv, versus = compare(task, result, base, summary=summary)
         estimate = cv[primary]["estimate"]
-        worse = baseline_concern(task, LABELS[primary], estimate, baseline["value"])
+        worse = baseline_concern(task, LABELS[primary], estimate, baseline["value"],
+                                 lower=not higher_is_better(primary))
         tie = None if worse else no_better_concern(task, LABELS[primary], versus, estimate,
                                                    baseline["value"], _two)
         if worse or tie:
             concerns.insert(0, worse or tie)
+        rows_oof, y_oof, pred_oof = result.out_of_fold(0)
+        oof_calibration = calibration(
+            task, y_oof, pred_oof, classes=None if task == "regression" else list(final.classes_),
+            groups=None if groups is None else groups[rows_oof]) if len(y_oof) else None
+        if oof_calibration is not None and oof_calibration.concern:
+            concerns.append(oof_calibration.concern)
+        if optimism is not None and optimism.refused:
+            concerns.append(optimism.refused)
+        iecv = None
+        if validation == "internal_external" and split_data.get("cluster"):
+            iecv = internal_external(task, result, list(split_data.get("fold_labels") or []),
+                                     str(split_data["cluster"]), groups=groups, unit=grouped_by)
+        results[key], summaries[key] = result, cv
         fitted[key] = final
         sealed[key] = holdout
-        results[key] = result
         models.append({
             "family": key,
             "label": family.label,
@@ -684,19 +808,30 @@ def fit_stage(ctx: StageContext) -> Bundle:
             "versus_baseline": versus.model_dump(mode="json"),
             "inference": interval_info,
             "coefficients_n": n_coefficients,
+            "calibration": oof_calibration.model_dump(mode="json") if oof_calibration else None,
+            "holdout_detail": None,  # sealed: the server serves it once the seal is opened
+            "optimism": optimism.model_dump(mode="json") if optimism is not None else None,
+            "internal_external": iecv.model_dump(mode="json") if iecv is not None else None,
         })
     # Picking the best of several families by cross-validation flatters it (audit ME-13).
     if len(results) > 1:
         ctx.progress(0.995, "Choosing among the families: bootstrapping the out-of-fold predictions")
-    selection = selection_optimism(task, primary, results, oof,
-                                   {m["family"]: m["label"] for m in models}, LABELS[primary])
+    labels = {m["family"]: m["label"] for m in models}
+    selection = selection_optimism(task, primary, results, oof, labels, LABELS[primary])
     ctx.progress(1.0, "Done")
     n_holdout = int((~train).sum())
+    comparisons = family_differences(task, results, summaries, labels) if len(results) > 1 else []
     artifact = FitArtifact(task=task, primary_metric=PRIMARY[task], metric_labels=metric_labels(task),
                            n_train=int(train.sum()), n_holdout=n_holdout, models=models,
                            holdout_sealed=n_holdout > 0, fold_scheme=scheme,
-                           cv_definition=CV_DEFINITION[task], selection=selection)
+                           cv_definition=CV_DEFINITION[task], validation=validation,
+                           repeats=len(fold_columns), ranking=ranking_phrase(primary),
+                           se_definition=SE_DEFINITION, comparisons=comparisons,
+                           precision=precision_sentence(primary, summaries, labels, int(train.sum())),
+                           imbalance=imbalance_sentence(task, y, state.event), selection=selection)
     frames = {SEALED_SCORES: sealed_scores_frame(models, sealed)} if n_holdout else {}
+    if n_holdout and sealed_detail:
+        frames[SEALED_DETAIL] = sealed_detail_frame(sealed_detail)
     return Bundle(data=artifact.model_dump(mode="json"), frames=frames,
                   objects={"fitted": fitted, "grouped_by": grouped_by})
 

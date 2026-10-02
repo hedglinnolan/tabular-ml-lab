@@ -776,6 +776,15 @@ SPLIT = {
                               "so repeat measurements cannot leak across."),
         term("seed", "The number that fixes the random draw, so the same split can be drawn "
                      "again."),
+        # The validation answer (audit ME-11, E16; turbotab/core/models/validation.py).
+        term("optimism", "How much better a model scores on the rows it learned from than on new "
+                         "rows; the bootstrap estimates it, refitting everything, and subtracts "
+                         "it."),
+        term("repeated cross-validation", "Cross-validation drawn again on fresh folds and "
+                                          "averaged, so the score rests on no single partition."),
+        term("internal–external validation", "Each site, study or period held out in turn and "
+                                             "scored by models fit on the others, showing how "
+                                             "performance varies."),
     ],
     "drawer": {"sections": [
         section("Split by participant",
@@ -792,11 +801,13 @@ SPLIT = {
                 "correction or repeated cross-validation is preferred; a single train/test split "
                 "is the weakest option at typical clinical sample sizes.",
                 "CONVENTION", CLIN_A55),
-        section("Small samples",
-                "Below about 50 rows, a single 5-fold estimate has a standard error large enough "
-                "that a 0.05 AUC difference is noise. Repeat the cross-validation and report the "
-                "spread.",
-                "SETTLED", GEN08),
+        # Audit ME-11/G10: the unsourced "below about 50 rows" threshold was 2–4× too low; the
+        # spread is now computed on the user's own rows (models/validation.py).
+        section("How precise the scores are here",
+                "Each cross-validated score carries its standard error, and each pair of families "
+                "an interval for their difference, computed on these rows. Read whether two models "
+                "differ from that interval, not from a rule about sample size.",
+                "SETTLED", CLIN_A53),
     ]},
     "evidence": ev("CONVENTION", CLIN_A55),
 }

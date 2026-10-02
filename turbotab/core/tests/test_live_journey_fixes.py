@@ -171,7 +171,8 @@ def _run(st, paths, split, task, target):
 @pytest.mark.parametrize("task,target,dummy,scoring,metric", [
     ("regression", "glucose", DummyRegressor(strategy="mean"), "r2", "r2"),
     ("binary", "glucose_high", DummyClassifier(strategy="prior"), "roc_auc", "auc"),
-    ("multiclass", "glucose_band", DummyClassifier(strategy="prior"), "f1_macro", "macro_f1"),
+    # Log loss, a proper scoring rule, is the multiclass primary (audit ME-10, WP9).
+    ("multiclass", "glucose_band", DummyClassifier(strategy="prior"), "neg_log_loss", "log_loss"),
 ])
 def test_the_baseline_is_a_dummy_model_cross_validated_on_the_same_folds(table, task, target, dummy,
                                                                           scoring, metric):
@@ -187,6 +188,8 @@ def test_the_baseline_is_a_dummy_model_cross_validated_on_the_same_folds(table, 
     result = cross_validate(dummy, X, y, cv=PredefinedSplit(train["fold"].to_numpy()),
                             scoring=scoring, return_estimator=True, return_indices=True)
     expected = result["test_score"].mean()
+    if scoring.startswith("neg_"):
+        expected = -expected  # scikit-learn negates a loss so that higher is better
     if task == "regression":
         # R² is pooled over every out-of-fold prediction, against each fold's training mean: the
         # training mean's own pooled R² is exactly 0.

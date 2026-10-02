@@ -369,7 +369,9 @@ function resultSegment(input: BannerInput): ResultSegment {
     waiting,
     retry: view.state.models?.length ? stopped(view.stages, ["fit", "substitution"]) : null,
     summary: best
-      ? `Result: ${metric} ${formatMetric(best.value)} by cross-validation, best for ${best.label}.`
+      ? // How the families were ranked, as the fit names it ("highest AUC", "lowest log loss"):
+        // AUC ranks risks and says nothing of calibration, so the banner never says "best".
+        `Result: ${metric} ${formatMetric(best.value)} by cross-validation, ${f?.ranking ?? `ranked by ${metric}`} for ${best.label}.`
       : `Result: ${waiting}.`,
     metric,
     value: best?.value ?? null,
