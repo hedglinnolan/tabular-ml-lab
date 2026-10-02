@@ -52,13 +52,14 @@ const SLOT_OF: Record<string, QuestionKey> = {
 };
 
 /**
- * The opening sequence's gates (M2_CONTRACT §1), mirrored. The mock's tables are one row per
- * sample, so orientation never fires; the repeats chain follows the grain answer.
+ * The opening sequence's gates (M2_CONTRACT §1), mirrored. Orientation fires only on the mock's
+ * features-in-rows table (`featureMajor`); the repeats chain follows the grain answer.
  */
 function sequenceGate(
   key: QuestionKey,
   state: ProjectState,
   targetInfo: TargetInfoArtifact | null,
+  featureMajor = false,
 ): string | null {
   const repeated = state.grain === null ? null : state.grain.grain === "repeated";
   switch (key) {
@@ -66,7 +67,9 @@ function sequenceGate(
       return state.lens === null
         ? null
         : state.lens.some((l) => l === "metabolomics" || l === "genomics")
-          ? "The table's shape reads as one row per sample."
+          ? featureMajor
+            ? null
+            : "The table's shape reads as one row per sample."
           : "No assay lens is on, and other tables are not exported turned around.";
     case "event": {
       const task =
@@ -88,6 +91,8 @@ function sequenceGate(
         : null;
     case "temporal":
       if (repeated === false) return "Each unit appears once, so no row comes later than another.";
+      if (repeated && state.repeat_kind?.repeat_kind === "repeats")
+        return "The rows are repeats of one measurement, not different time points.";
       return repeated && state.unit === "unit"
         ? "Each unit's rows are combined, so no time points stay as rows."
         : null;
@@ -119,7 +124,10 @@ export function pendingStages(
   return new Set(Object.keys(stages).filter(pending));
 }
 
-function liveWriters(records: DecisionRecord[], state: ProjectState): Map<QuestionKey, string> {
+export function liveWriters(
+  records: DecisionRecord[],
+  state: ProjectState,
+): Map<QuestionKey, string> {
   const reverted = new Set(
     records.flatMap((r) => (r.decision.kind === "revert" ? [r.decision.decision_id] : [])),
   );
@@ -142,6 +150,7 @@ export function route(
   records: DecisionRecord[],
   deps: Record<string, string[]>,
   bearing: (column: string) => boolean,
+  opts: { featureMajor?: boolean } = {},
 ): InterviewStep[] {
   const pending = pendingStages(stages, deps);
   const writers = liveWriters(records, state);
@@ -156,7 +165,7 @@ export function route(
       steps.push({ key, status: "answered", decision_id, reason: null, waiting_on: [] });
       continue;
     }
-    let na: string | null = sequenceGate(key, state, targetInfo);
+    let na: string | null = sequenceGate(key, state, targetInfo, opts.featureMajor);
     if (key === "energy_adjustment") {
       if (state.lens && !state.lens.includes("dietary"))
         na = "The dietary lens is off, so energy adjustment does not apply.";

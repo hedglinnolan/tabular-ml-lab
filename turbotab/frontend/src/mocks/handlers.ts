@@ -46,8 +46,10 @@ async function datasetFromUpload(file: File): Promise<MockDataset> {
 
 export function makeHandlers(server: MockServer): HttpHandler[] {
   return [
-    ...m1StageHandlers(), // the stage's NHANES project (M1 part 2); literal paths, so first
-    ...m1RecordHandlers(server), // M1: the Router, teaching, sentences, findings, M1 stages
+    // M1 + M2: the Router, teaching, sentences, findings and repairs, the M1 and M2 stages. Each
+    // answers only for projects it knows, so the stage lab project falls through to its own.
+    ...m1RecordHandlers(server),
+    ...m1StageHandlers(), // the stage's NHANES project (M1 part 2), and captured previews
     http.get("/api/health", () => HttpResponse.json(HEALTH)),
 
     http.get("/api/projects", () => HttpResponse.json(server.listProjects())),

@@ -189,19 +189,36 @@ export function sentenceFor(
     }
     case "set_missing": {
       const drop = d.drop_columns;
+      // M2, missingness by mechanism (turbotab/core/voice.py): blanks kept as a level, indicators.
+      const levels = d.categorical === "missing_category";
+      let first = drop.length
+        ? `${listing(drop)} ${drop.length === 1 ? "was" : "were"} left out of the predictors; then `
+        : "";
+      if (levels)
+        first +=
+          "blanks in categorical and yes/no predictors were kept as a level of their own, `Missing`; then ";
+      const other = drop.length || levels ? "any other predictor" : "any predictor";
       if (d.strategy === "impute") {
-        return finish(
-          `${drop.length ? `${listing(drop)} ${drop.length === 1 ? "was" : "were"} left out of the predictors; ` : ""}Missing predictor values were imputed from the training rows only, so no row is dropped for a blank`,
-        );
+        const others =
+          drop.length || levels
+            ? "the other predictors' missing values"
+            : "missing predictor values";
+        let text = `${first}${others} were imputed, learned from training rows only; no row was dropped for a missing predictor`;
+        if (d.indicators) text += ", and each imputed number carries a missing indicator";
+        return finish(text[0]!.toUpperCase() + text.slice(1));
       }
-      const state: ProjectState = { ...before, missing: { strategy: d.strategy, drop_columns: drop, categorical: "impute", indicators: false } };
+      const state: ProjectState = {
+        ...before,
+        missing: {
+          strategy: d.strategy,
+          drop_columns: drop,
+          categorical: d.categorical ?? "impute",
+          indicators: false,
+        },
+      };
       const c = cohort(ds, state, records, drop).artifact;
       const step = c.steps.find((st) => st.key === "complete_cases");
       const prior = step ? step.n + step.dropped : c.n_final;
-      const first = drop.length
-        ? `${listing(drop)} ${drop.length === 1 ? "was" : "were"} left out of the predictors; then `
-        : "";
-      const other = drop.length ? "any other predictor" : "any predictor";
       const text =
         c.n_final === prior
           ? `${first}a complete-case analysis was applied: no row is missing ${other}, so all ${count(prior)} rows remain`

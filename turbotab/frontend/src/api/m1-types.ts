@@ -5,6 +5,7 @@
  */
 import type { components } from "./generated";
 import type { Decision, StageArtifacts } from "./schema";
+import type { M2StageArtifacts } from "./m2-types";
 
 type S = components["schemas"];
 
@@ -121,8 +122,8 @@ export interface M1StageArtifacts {
   substitution: SubstitutionArtifact;
 }
 
-/** Every stage the client reads, M0 and M1, by name. */
-export type AnyStageArtifacts = StageArtifacts & M1StageArtifacts;
+/** Every stage the client reads, M0, M1 and M2, by name. */
+export type AnyStageArtifacts = StageArtifacts & M1StageArtifacts & M2StageArtifacts;
 export type AnyStageName = keyof AnyStageArtifacts;
 
 const m1Stages = [

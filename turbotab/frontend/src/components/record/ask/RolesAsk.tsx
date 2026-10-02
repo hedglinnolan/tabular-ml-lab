@@ -10,6 +10,7 @@ import type { Role, RolesArtifact } from "../../../api/m1-types";
 import { PREDICTOR_ROLES, ROLES } from "../../../api/m1-types";
 import type { Decision } from "../../../api/schema";
 import { useStageFocus, type StageFocus } from "../../../state/focus";
+import { buildColumnIndex, filterColumns } from "../../../util/filterColumns";
 import { cx } from "../../../util/format";
 import { V } from "../../Prose";
 import { Question } from "../Question";
@@ -30,6 +31,8 @@ const GROUP: Record<Role, [one: string, many: string]> = {
 
 /** Chips shown per group before "N more". */
 const SHOWN = 14;
+/** Above this many columns, the roles question gets a search box (M2_CONTRACT §10). */
+export const SEARCH_ABOVE = 200;
 
 export function RolesAsk({
   artifact,
@@ -66,11 +69,25 @@ export function RolesAsk({
     label,
   });
 
+  // Wide tables (M2_CONTRACT §5, §10): above 200 columns the roles are searched, not scrolled.
+  const wide = artifact.columns.length > SEARCH_ABOVE;
+  const [query, setQuery] = useState("");
+  const index = useMemo(
+    () => (wide ? buildColumnIndex(artifact.columns.map((col) => col.column)) : null),
+    [artifact, wide],
+  );
+  const matching = useMemo(() => {
+    if (!index || !query.trim()) return null;
+    return new Set(filterColumns(index, query).map((i) => index.names[i]!));
+  }, [index, query]);
+
   const changed = Object.keys(draft).filter((col) => draft[col] !== baseline[col]);
   const edited = Object.keys(draft).filter((col) => draft[col] !== proposed[col]);
   const groups = ROLES.map((role) => ({
     role,
-    columns: artifact.columns.filter((col) => draft[col.column] === role).map((col) => col.column),
+    columns: artifact.columns
+      .filter((col) => draft[col.column] === role && (!matching || matching.has(col.column)))
+      .map((col) => col.column),
   })).filter((g) => g.columns.length > 0);
   const nPredictors = Object.values(draft).filter((r) => PREDICTOR_ROLES.includes(r)).length;
   const count = (r: Role) => Object.values(draft).filter((x) => x === r).length;
@@ -120,6 +137,29 @@ export function RolesAsk({
         </>
       }
     >
+      {wide ? (
+        <div className={c.search} role="search">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(null);
+            }}
+            placeholder={`Find among ${fmtCount(artifact.columns.length)} columns`}
+            aria-label="Find a column by name"
+            data-testid="roles-search"
+          />
+          <span className={c.searchCount} aria-live="polite" data-testid="roles-search-count">
+            {matching
+              ? `${fmtCount(matching.size)} of ${fmtCount(artifact.columns.length)}`
+              : `${fmtCount(artifact.columns.length)} columns`}
+          </span>
+        </div>
+      ) : null}
+      {matching && matching.size === 0 ? (
+        <p className={c.reason}>No column name holds those words.</p>
+      ) : null}
       <div className={c.groups} data-testid="roles-groups">
         {groups.map(({ role, columns }) => {
           const predictor = PREDICTOR_ROLES.includes(role);
@@ -136,7 +176,11 @@ export function RolesAsk({
             >
               <div className={c.groupHead}>
                 <span className={c.groupName}>{GROUP[role][columns.length === 1 ? 0 : 1]}</span>
-                <span className={c.groupCount}>{fmtCount(columns.length)}</span>
+                <span className={c.groupCount}>
+                  {matching
+                    ? `${fmtCount(columns.length)} of ${fmtCount(count(role))}`
+                    : fmtCount(columns.length)}
+                </span>
                 <span className={c.groupNote}>
                   {predictor ? "predictors" : "kept out of the models"}
                 </span>

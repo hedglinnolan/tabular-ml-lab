@@ -40,6 +40,9 @@ function applyDecision(qc: QueryClient, pid: string, record: DecisionRecord): vo
   }
   // The folded state (and any revert) is the server's to compute.
   void qc.invalidateQueries({ queryKey: keys.view(pid), exact: true });
+  // Each finding is served with what answered it (M2_CONTRACT §4), and a disposition never
+  // changes the findings stage's key: any decision may settle one, so it is read again.
+  void qc.invalidateQueries({ queryKey: keys.stage(pid, "findings"), exact: true });
 }
 
 function applyStage(qc: QueryClient, pid: string, status: StageStatus): void {

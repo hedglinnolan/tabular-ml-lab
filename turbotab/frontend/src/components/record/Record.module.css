@@ -75,6 +75,36 @@
   font-size: 13.5px;
 }
 
+.naWhy {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.naList {
+  flex-basis: 100%;
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--serif);
+  font-size: 13.5px;
+}
+
+.naItem {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
 .hintsMissing {
   margin: 10px 0 0;
   font-size: 12.5px;

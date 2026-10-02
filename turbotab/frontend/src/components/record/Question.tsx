@@ -82,6 +82,10 @@ interface Props {
   onOpenDrawer?: () => void;
   /** Reopened with "change": says so. */
   reopened?: boolean;
+  /** At most one coach line per card (M2_CONTRACT §10): data-grounded, amber, never choosing. */
+  coach?: ReactNode;
+  /** Findings held for this question, resurfacing inside it, attributed (M2_CONTRACT §4). */
+  resurfaced?: ReactNode;
   children: ReactNode;
 }
 
@@ -95,6 +99,8 @@ export function Question({
   onArrived,
   onOpenDrawer,
   reopened = false,
+  coach,
+  resurfaced,
   children,
 }: Props) {
   const t = useTransitions();
@@ -186,6 +192,12 @@ export function Question({
             </div>
           ) : null}
           {data ? <div className={s.data}>{data}</div> : null}
+          {coach ? (
+            <p className={s.coach} data-testid={`coach-${qkey}`}>
+              {coach}
+            </p>
+          ) : null}
+          {resurfaced}
           <div className={s.body}>{children}</div>
         </motion.div>
       </motion.section>

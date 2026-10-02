@@ -28,6 +28,12 @@ import type { MockColumn, MockDataset } from "./datasets";
 import { findColumn, isNumericDtype, nMissing, nUnique } from "./stats";
 
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
+
+/** Whether a column's blanks can be a level of their own: categorical, or two values at most
+ *  (turbotab/core/models/pipeline.py `takes_level`). */
+export function takesLevel(c: MockColumn): boolean {
+  return ["boolean", "categorical", "text"].includes(c.dtype) || nUnique(c) <= 2;
+}
 const missing = (v: Scalar | undefined) => v === null || v === undefined || v === "";
 
 // ── recognizing columns ──────────────────────────────────────────────────────
@@ -473,10 +479,35 @@ export function proposalsArtifact(ds: MockDataset, state: ProjectState): Proposa
       not_adjusted: [],
     },
     missing: missingCols,
-    coach: {},
+    coach: cardLines(ds, energy, base),
     n_base: base.filter(Boolean).length,
     basis: `Counted on the ${fmt(base.filter(Boolean).length)} rows with \`${state.target ?? "the outcome"}\` measured.`,
   };
+}
+
+/** The decision cards' coach lines, at most one per card (turbotab/core/coach.py `card_lines`):
+ *  the exclusions card names the rows outside the plausible-intake range. */
+function cardLines(
+  ds: MockDataset,
+  energy: string | null,
+  base: boolean[],
+): ProposalsArtifact["coach"] {
+  const col = energy ? findColumn(ds, energy) : undefined;
+  if (!col) return {};
+  let below = 0;
+  let above = 0;
+  col.values.forEach((v, i) => {
+    if (!base[i] || typeof v !== "number") return;
+    if (v < 500) below += 1;
+    else if (v > 5000) above += 1;
+  });
+  const rows = (n: number) => `\`${fmt(n)}\` ${n === 1 ? "row" : "rows"}`;
+  const text = below
+    ? `${rows(below)} below \`500\` kcal: likely under-reporting`
+    : above
+      ? `${rows(above)} above \`5,000\` kcal: likely over-reporting`
+      : null;
+  return text ? { exclusions: { text, anchor: { kind: "column", ref: col.name } } } : {};
 }
 
 /** §12.4: each predictor's blanks, and whether they likely mean "not asked". */
@@ -587,7 +618,11 @@ export function cohort(
     (c) => PREDICTOR.includes(roles[c]!) && c !== target && !dropColumns.includes(c),
   );
   if (state.missing?.strategy === "complete_case") {
-    const cols = predictors.map((p) => findColumn(ds, p)).filter((c): c is MockColumn => !!c);
+    // M2 (constitution §07): a column whose blanks become their own `Missing` level drops no row.
+    const levels = state.missing.categorical === "missing_category";
+    const cols = predictors
+      .map((p) => findColumn(ds, p))
+      .filter((c): c is MockColumn => !!c && !(levels && takesLevel(c)));
     let d = 0;
     for (let i = 0; i < ds.nRows; i++) {
       if (!rows[i]) continue;
@@ -696,7 +731,8 @@ function sealBasis(
       state: "one_row_per_unit",
       column: null,
       label: "one row per unit",
-      sentence: "Held out by row: each row was said to be a different unit, and no identifier repeats.",
+      sentence:
+        "Held out by row: each row was said to be a different unit, and no identifier repeats.",
       exploratory: false,
       source: "grain",
       n_units: null,
@@ -748,6 +784,36 @@ export function familyLabel(key: string, task: Task | null): string {
   return f ? f.label[task ?? "regression"] : key;
 }
 
+/** Seconds per million cells of the model matrix, five folds and a final fit (mock rates). */
+const COST_PER_MILLION_CELLS: Record<FamilyKey, number> = {
+  linear: 0.8,
+  elastic_net: 12,
+  boosted_trees: 25,
+};
+
+/** The server's `cost.duration` + `cost.say`: a fit's length, naming the width or length only
+ * when the fit is long enough for that to matter (NOTEWORTHY_SECONDS). */
+function cost(seconds: number, n: number, p: number): { estimate_seconds: number; estimate: string } {
+  const about = (k: number, unit: string) => `about ${k} ${unit}${k === 1 ? "" : "s"}`;
+  const text =
+    seconds < 1
+      ? "under a second"
+      : seconds < 60
+        ? about(seconds < 10 ? Math.round(seconds) : 5 * Math.round(seconds / 5), "second")
+        : seconds < 3600
+          ? about(Math.max(1, Math.round(seconds / 60)), "minute")
+          : about(Math.max(1, Math.round(seconds / 3600)), "hour");
+  const named =
+    seconds < 10
+      ? text
+      : p > 200
+        ? `${text} at \`${fmt(p)}\` columns`
+        : n >= 100_000
+          ? `${text} on \`${fmt(n)}\` rows`
+          : text;
+  return { estimate_seconds: seconds, estimate: named };
+}
+
 export function shelf(state: ProjectState, c: CohortArtifact, task: Task | null): ShelfArtifact {
   const p = Math.max(1, c.predictors.length);
   const n = c.n_final;
@@ -771,9 +837,9 @@ export function shelf(state: ProjectState, c: CohortArtifact, task: Task | null)
         fit: concerns.length === 0 ? "good" : concerns.length === 1 ? "fair" : "poor",
         concerns,
         inductive_bias: FAMILY[key].bias,
-        // the server times one fit per family (M2_CONTRACT §12.6); the mock's tables are small
-        estimate_seconds: 0.2,
-        estimate: "under a second",
+        // §12.6: the measured cost before a fit (the mock's rough per-cell rates), worded as the
+        // server's cost.say words it.
+        ...cost(Math.max(0.3, ((n * p) / 1e6) * COST_PER_MILLION_CELLS[key]), n, p),
       };
     }),
     basis: `Ranked for ${state.purpose ?? "prediction"} on ${fmt(n)} rows and ${fmt(p)} predictors.`,
@@ -1113,7 +1179,13 @@ export function substitution(
   return {
     carried: [],
     band: banded
-      ? { n_boot: spec.n_boot, n_rows: Math.min(2000, f.n_train), grouped_by: null, seconds: 39.5, failed: 0 }
+      ? {
+          n_boot: spec.n_boot,
+          n_rows: Math.min(2000, f.n_train),
+          grouped_by: null,
+          seconds: 39.5,
+          failed: 0,
+        }
       : null,
     band_estimate: banded ? null : { n_boot: 50, seconds: 40 },
     donor: spec.donor,

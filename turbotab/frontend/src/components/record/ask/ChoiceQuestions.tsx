@@ -12,9 +12,9 @@ import type {
   ExclusionRule,
   MissingColumn,
   ProposalsArtifact,
-  RolesArtifact,
   ShelfArtifact,
 } from "../../../api/m1-types";
+import type { ShelfFamilyWithCost } from "../../../api/m2-types";
 import type { Decision, ProjectState } from "../../../api/schema";
 import { listJoin } from "../../../util/format";
 import { V } from "../../Prose";
@@ -185,48 +185,151 @@ export function ExclusionsAsk({
   );
 }
 
-// ── missing values ───────────────────────────────────────────────────────────
+// ── missing values, by mechanism ─────────────────────────────────────────────
+
+/** Whether a column's blanks can be a level of their own: categorical, or two values at most
+ *  (turbotab/core/models/pipeline.py `takes_level`). */
+export function takesLevel(info: { dtype: string; n_unique: number } | undefined): boolean {
+  if (!info) return false;
+  return ["boolean", "categorical", "text"].includes(info.dtype) || info.n_unique <= 2;
+}
+
+type MissingDecision = Extract<Decision, { kind: "set_missing" }>;
+
+/** The option an answer on record reads back as. */
+export function missingKey(current: ProjectState["missing"]): string | null {
+  if (current === null) return null;
+  if ((current.drop_columns ?? []).length) return "leave_out";
+  if (current.strategy === "complete_case" && current.categorical === "missing_category")
+    return "missing_level";
+  return current.strategy;
+}
 
 export function MissingAsk({
   proposals,
+  columns,
+  purpose,
   current,
   ...p
 }: AskProps & {
   proposals: ProposalsArtifact | undefined;
+  /** The working table's columns (dtype and distinct values): which blanks can be a level. */
+  columns: ReadonlyMap<string, { dtype: string; n_unique: number }>;
+  purpose: ProjectState["purpose"];
   current: ProjectState["missing"];
 }) {
   const blanks: MissingColumn[] = proposals?.missing?.columns ?? [];
   const notAsked = blanks.filter((b) => b.likely_not_asked);
+  // Missingness by mechanism (constitution §07): a categorical or yes/no blank can be a level.
+  const levelable = blanks.filter((b) => takesLevel(columns.get(b.column)));
+  const numeric = blanks.filter((b) => !takesLevel(columns.get(b.column)));
+  const levelNotAsked = levelable.filter((b) => b.likely_not_asked);
   // The server's offer names the columns and the share of rows blank in any of them.
   const offer = proposals?.missing?.leave_out ?? null;
   const drop = offer?.columns ?? notAsked.map((b) => b.column);
-  const recordedDrop = current?.drop_columns ?? [];
-  const recordedKey: string | null =
-    current === null ? null : recordedDrop.length ? "leave_out" : current.strategy;
+  const [levels, setLevels] = useState(current?.categorical === "missing_category");
+  const [indicators, setIndicators] = useState(current?.indicators ?? false);
   const shares = notAsked.map((b) => Math.round(b.share * 100));
   const lo = shares.length ? Math.min(...shares) : 0;
   const hi = shares.length ? Math.max(...shares) : 0;
   const blankOn = offer ? pct(offer.share) : lo === hi ? `${lo}%` : `${lo}–${hi}%`;
-  const option = (strategy: "complete_case" | "impute"): OptionItem => ({
-    key: strategy,
-    label: taught(p.entry, strategy)?.label ?? strategy,
-    line: taught(p.entry, strategy)?.consequence ?? "",
-    decision: { kind: "set_missing", strategy, drop_columns: [], categorical: "impute", indicators: false },
+  const ticked = (cols: { column: string }[]) => listJoin(cols.map((b) => "`" + b.column + "`"));
+  const spec = (patch: Partial<MissingDecision>): MissingDecision => ({
+    kind: "set_missing",
+    strategy: "complete_case",
+    drop_columns: [],
+    categorical: "impute",
+    indicators: false,
+    ...patch,
   });
+
+  const missingLevel: OptionItem | null = levelable.length
+    ? {
+        key: "missing_level",
+        label: "Blanks as a level",
+        line: `${ticked(levelable.slice(0, 3))} keep their rows: a blank becomes the level \`Missing\`.${numeric.length ? " Other blanks drop their row." : ""}`,
+        decision: spec({ categorical: "missing_category" }),
+        previewLabel: `Blanks in ${listJoin(levelable.map((b) => b.column))} as a Missing level`,
+        // Recommended with its reason when the blanks read as "not asked" (§10).
+        tags: levelNotAsked.length ? [{ text: "recommended", tone: "usual" }] : undefined,
+        note: levelNotAsked.length ? (
+          <span className={c.hint}>
+            <Taught text={levelNotAsked[0]!.reason} />
+          </span>
+        ) : undefined,
+      }
+    : null;
   const leaveOut: OptionItem | null = drop.length
     ? {
         key: "leave_out",
         label: `Leave ${drop.length === 1 ? "it" : "them"} out first`,
-        line: `Leave out ${listJoin(drop.map((d) => `\`${d}\``))} (blank on ${blankOn}), then complete cases.`,
-        decision: { kind: "set_missing", strategy: "complete_case", drop_columns: drop, categorical: "impute", indicators: false },
+        line: `Leave out ${listJoin(drop.map((d) => "`" + d + "`"))} (blank on ${blankOn}), then complete cases.`,
+        decision: spec({ drop_columns: drop }),
         previewLabel: `Leave out ${listJoin(drop)}, then complete cases`,
-        tags: [{ text: "likely not asked", tone: "suggested" }],
+        // Where the not-asked blanks cannot be a level, leaving them out is the honest offer.
+        tags: missingLevel ? undefined : [{ text: "likely not asked", tone: "suggested" }],
       }
     : null;
-  const items = [leaveOut, option("complete_case"), option("impute")].filter(
+  const completeCase: OptionItem = {
+    key: "complete_case",
+    label: taught(p.entry, "complete_case")?.label ?? "Complete cases",
+    line: taught(p.entry, "complete_case")?.consequence ?? "",
+    decision: spec({}),
+  };
+  const imputeDecision = spec({
+    strategy: "impute",
+    categorical: levels && levelable.length ? "missing_category" : "impute",
+    indicators: indicators && numeric.length > 0,
+  });
+  const impute: OptionItem = {
+    key: "impute",
+    label: taught(p.entry, "impute")?.label ?? "Impute",
+    line: taught(p.entry, "impute")?.consequence ?? "",
+    decision: imputeDecision,
+    previewLabel: `Impute${imputeDecision.categorical === "missing_category" ? ", blanks as a level" : ""}${imputeDecision.indicators ? ", with indicators" : ""}`,
+    extra:
+      levelable.length || numeric.length ? (
+        <span className={c.modifierInline} role="group" aria-label="How imputation treats blanks">
+          {levelable.length ? (
+            <label className={c.check}>
+              <input
+                type="checkbox"
+                checked={levels}
+                onChange={(e) => setLevels(e.target.checked)}
+                data-testid="missing-levels"
+              />
+              <Taught text={`blanks in ${ticked(levelable.slice(0, 2))} as \`Missing\``} />
+            </label>
+          ) : null}
+          {numeric.length ? (
+            <label className={c.check}>
+              <input
+                type="checkbox"
+                checked={indicators}
+                onChange={(e) => setIndicators(e.target.checked)}
+                data-testid="missing-indicators"
+              />
+              a was-missing indicator for each filled number
+            </label>
+          ) : null}
+          {indicators && numeric.length && purpose === "inference" ? (
+            <span className={c.coachNote}>Under inference, an indicator biases the estimates.</span>
+          ) : null}
+        </span>
+      ) : undefined,
+  };
+  const items = [missingLevel, leaveOut, completeCase, impute].filter(
     (x): x is OptionItem => x !== null,
   );
-  const listed = blanks.slice(0, 4).map((b) => `\`${b.column}\` ${pct(b.share)}`);
+  const recordedKey = (() => {
+    const key = missingKey(current);
+    if (key !== "impute" || !current) return key;
+    const same =
+      (current.categorical === "missing_category") === (levels && levelable.length > 0) &&
+      current.indicators === (indicators && numeric.length > 0);
+    return same ? key : null;
+  })();
+  const listed = blanks.slice(0, 4).map((b) => "`" + b.column + "` " + pct(b.share));
   const data =
     proposals?.missing === undefined || proposals?.missing === null
       ? undefined
@@ -244,51 +347,6 @@ export function MissingAsk({
         answerAt={p.answerAt}
         label="Missing values — preview with the arrow keys, Enter to record"
         testId="options-missing"
-      />
-      <KeepRow keep={p.keep} />
-    </Question>
-  );
-}
-
-// ── the split ────────────────────────────────────────────────────────────────
-
-const HOLDOUTS = ["0", "0.1", "0.2", "0.3"];
-
-export function SplitAsk({
-  roles,
-  current,
-  ...p
-}: AskProps & { roles: RolesArtifact | undefined; current: ProjectState["split"] }) {
-  const values = p.entry?.options.map((o) => o.value) ?? HOLDOUTS;
-  const items: OptionItem[] = values.map((v) => ({
-    key: v,
-    label: taught(p.entry, v)?.label ?? v,
-    line: taught(p.entry, v)?.consequence ?? "",
-    decision: { kind: "set_split", holdout: Number(v), seed: 0, folds: 5 },
-  }));
-  const recordedKey = current ? (values.find((v) => Number(v) === current.holdout) ?? null) : null;
-  const repeats = roles?.repeats;
-  return (
-    <Question
-      {...p.shell}
-      entry={p.entry}
-      data={
-        repeats ? (
-          <Taught
-            text={`\`${repeats.column}\` repeats, so each person's rows stay on one side of the split.`}
-          />
-        ) : undefined
-      }
-    >
-      <Options
-        items={items}
-        mode="single"
-        onRecord={(o) => o.decision && p.record(o.decision, o.key)}
-        recordedKey={recordedKey}
-        pending={p.pending}
-        answerAt={p.answerAt}
-        label="Held-out rows — preview with the arrow keys, Enter to record"
-        testId="options-split"
       />
       <KeepRow keep={p.keep} />
     </Question>
@@ -450,11 +508,25 @@ export function EnergyAsk({
 
 // ── model families ───────────────────────────────────────────────────────────
 
+/** A measured fit time, said as a person would: "about 40 s", "about 5 min". */
+export function aboutTime(seconds: number): string {
+  if (seconds < 1) return "under a second";
+  if (seconds < 90) return `about ${Math.round(seconds)} s`;
+  if (seconds < 5400) return `about ${Math.round(seconds / 60)} min`;
+  return `about ${(seconds / 3600).toFixed(1)} h`;
+}
+
 export function ModelsAsk({
   shelf,
   current,
+  nColumns,
   ...p
-}: AskProps & { shelf: ShelfArtifact; current: string[] | null }) {
+}: AskProps & {
+  shelf: ShelfArtifact;
+  current: string[] | null;
+  /** The predictors the fit reads: a slow fit's cost is said with its width (§12.6). */
+  nColumns: number | null;
+}) {
   // Nothing is chosen for the user: the shelf's order is its judgment (§0).
   const [chosen, setChosen] = useState<string[]>(current ?? []);
   const families = [...shelf.families].sort((a, b) => a.rank - b.rank);
@@ -466,10 +538,23 @@ export function ModelsAsk({
   // Enter and the stage's record button do the same thing: record the chosen families, or the
   // shown one when none is chosen yet.
   const recordFor = (key: string): string[] => (ordered.length ? ordered : [key]);
+  // Honest cost at scale (M2_CONTRACT §12.6): each family's measured fit time, shown, not hidden.
+  const cost = (f: ShelfFamilyWithCost) => {
+    const sec = f.estimate_seconds;
+    if (sec === undefined || sec === null) return undefined;
+    const wide = sec >= 60 && nColumns !== null ? ` at ${fmtCount(nColumns)} columns` : "";
+    return (
+      <span data-testid={`cost-${f.key}`}>
+        {aboutTime(sec)}
+        {wide}
+      </span>
+    );
+  };
   const items: OptionItem[] = families.map((f) => ({
     key: f.key,
     label: f.label,
     line: taught(p.entry, f.key)?.consequence ?? f.inductive_bias,
+    data: cost(f),
     decision: { kind: "select_models", models: [f.key] },
     record: { kind: "select_models", models: recordFor(f.key) },
     recordLabel: fitLabel(recordFor(f.key)),
