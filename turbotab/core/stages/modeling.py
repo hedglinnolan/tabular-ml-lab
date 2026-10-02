@@ -52,6 +52,8 @@ def read_assignment(split: Any) -> pd.DataFrame:
     train = np.isin(partition, TRAIN)
     fold = pd.to_numeric(frame["fold"], errors="coerce").to_numpy()
     out = pd.DataFrame({"train": train, "fold": fold}, index=pd.Index(ids, name="row_id"))
+    if "order" in frame.columns:  # time-ordered folds: each row's unit rank in time
+        out["order"] = pd.to_numeric(frame["order"], errors="coerce").to_numpy()
     if out.loc[out["train"], "fold"].isna().any():
         raise ValueError("Some training rows have no cross-validation fold in the split.")
     return out
@@ -135,11 +137,12 @@ def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[
         return {}
     split = ctx.inputs.get("split")
     folds = int((split.data or {}).get("folds") or 5) if isinstance(split, Bundle) else 5
+    scheme = str((split.data or {}).get("fold_scheme") or "random") if isinstance(split, Bundle) else "random"
     ctx.progress(0.5, "Timing one fit of each family on a sample of the training rows")
     try:
         with open_store(ctx) as store:
             return estimate_fits(store, ctx.state, task, train_ids, families, folds,
-                                 cancelled=ctx.cancelled)
+                                 cancelled=ctx.cancelled, scheme=scheme)
     except Cancelled:
         raise
     except Exception:  # noqa: BLE001 - the shelf stands without its estimates
@@ -304,17 +307,20 @@ def baseline_model(task: str) -> Any:
     return DummyRegressor(strategy="mean") if task == "regression" else DummyClassifier(strategy="prior")
 
 
-def _baseline_scores(task: str, X: Any, y: Any, folds: Any, fold_keys: Sequence[int]) -> list[dict[str, float]]:
-    from turbotab.core.models.metrics import score
+def _baseline_cv(task: str, X: Any, y: Any, pairs: Sequence[Any]) -> Any:
+    """The baseline cross-validated on the same fold pairs, scored as the models are."""
+    from turbotab.core.models.metrics import cross_validate
 
-    out = []
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        for k in fold_keys:
-            fit_rows, test_rows = folds != k, folds == k
-            dummy = baseline_model(task).fit(X[fit_rows], y[fit_rows])
-            out.append(score(task, dummy, X[test_rows], y[test_rows]))
-    return out
+        return cross_validate(task, lambda: baseline_model(task), X, y, pairs)
+
+
+def _baseline_scores(task: str, X: Any, y: Any, folds: Any, fold_keys: Sequence[int]) -> list[dict[str, float]]:
+    """Per-fold baseline scores on random folds ``fold_keys`` (kept for scripts that call it)."""
+    folds = np.asarray(folds)
+    pairs = [(k, folds != k, folds == k) for k in fold_keys]
+    return _baseline_cv(task, X, y, pairs).per_fold
 
 
 def _two(a: float, b: float) -> tuple[str, str]:
@@ -361,16 +367,22 @@ def fit_stage(ctx: StageContext) -> Bundle:
     """Cross-validate each pipeline on the split's folds, then refit on all training rows.
 
     Each model is set beside its baseline on the same folds (the outcome's training-fold mean, or
-    the class prior), and a model that scores worse than it says so in its first concern.
+    the class prior), and a model that scores worse than it, or is not shown to beat it, says so in
+    its first concern. Scores are estimated as ``turbotab.core.models.metrics`` defines: R² against
+    the training rows' mean, pooled over every out-of-fold prediction. Time-ordered folds
+    (``fold_scheme``) score each fold by a model fit on the folds before it; every inner split a
+    model makes (elastic net's penalty, boosted trees' early stopping) is drawn the same way
+    (``turbotab.core.models.inner_cv.fit_pipeline``).
     """
     from sklearn.base import clone
 
     from turbotab.core.models import get_family
     from turbotab.core.models.artifacts import FitArtifact
-    from turbotab.core.models.baseline import no_better_concern, versus_baseline
+    from turbotab.core.models.baseline import compare, no_better_concern
     from turbotab.core.models.inference import cluster_columns, resolve_clusters
-    from turbotab.core.models.inner_cv import with_grouped_inner_cv
-    from turbotab.core.models.metrics import LABELS, PRIMARY, metric_labels, score, summarize
+    from turbotab.core.models.inner_cv import fit_pipeline
+    from turbotab.core.models.metrics import (CV_DEFINITION, LABELS, PRIMARY, cross_validate,
+                                              fold_pairs, metric_labels, score)
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
     from turbotab.core.seal import SEALED_SCORES, sealed_scores_frame
 
@@ -382,7 +394,10 @@ def fit_stage(ctx: StageContext) -> Bundle:
     pipelines = design.objects["pipelines"]
     assignment = read_assignment(split)
     target = state.target
-    grouped_by = (split.data or {}).get("grouped_by") if isinstance(split, Bundle) else None
+    split_data = (split.data or {}) if isinstance(split, Bundle) else {}
+    grouped_by = split_data.get("grouped_by")
+    scheme = ("time_ordered" if split_data.get("fold_scheme") == "time_ordered"
+              and "order" in assignment.columns else "random")
 
     ctx.progress(0.01, "Reading the analysis rows")
     columns = [*spec.inputs, target] + ([grouped_by] if grouped_by and grouped_by not in spec.inputs
@@ -403,7 +418,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
     X, y = frame.loc[train, spec.inputs], y_all[train].to_numpy()
     X_hold, y_hold = frame.loc[~train, spec.inputs], y_all[~train].to_numpy()
     folds = assignment.loc[train, "fold"].to_numpy().astype(int)
-    fold_keys = sorted(set(folds.tolist()))
+    order = assignment.loc[train, "order"].to_numpy(dtype=float) if scheme == "time_ordered" else None
+    pairs = fold_pairs(folds, scheme)
     groups = frame.loc[train, grouped_by].to_numpy() if grouped_by else None
     clusters = resolve_clusters(state, frame.loc[train, unit_columns], [grouped_by]) if inference else None
     if groups is not None and len(pd.unique(groups)) == len(groups):
@@ -412,12 +428,19 @@ def fit_stage(ctx: StageContext) -> Bundle:
         # would be false.
         groups, grouped_by = None, None
 
+    def fit(model: Any, X_fit: Any, y_fit: Any, rows: Any = None) -> Any:
+        """Fit a pipeline on these training rows, its inner splits drawn as the folds are."""
+        take = slice(None) if rows is None else rows
+        return fit_pipeline(model, X_fit, y_fit, groups=None if groups is None else groups[take],
+                            order=None if order is None else order[take])
+
     keys = [k for k in (state.models or []) if k in pipelines]
     primary = PRIMARY[task]
-    base_per_fold = _baseline_scores(task, X, y, folds, fold_keys)
-    base_cv = summarize(task, base_per_fold)
-    baseline = {"metric": primary, "value": base_cv[primary]["mean"], "label": BASELINE_LABEL[task]}
-    units = max(1, len(keys) * (len(fold_keys) + 2))
+    base = _baseline_cv(task, X, y, pairs)
+    base_cv = base.summary(task)
+    baseline = {"metric": primary, "value": base_cv[primary]["estimate"], "label": BASELINE_LABEL[task]}
+    reference = float(np.mean(y.astype(float))) if task == "regression" and len(y) else None
+    units = max(1, len(keys) * (len(pairs) + 2))
     done = 0
 
     def share(n: int) -> float:
@@ -429,26 +452,25 @@ def fit_stage(ctx: StageContext) -> Bundle:
     for key in keys:
         family = get_family(key)
         started = time.perf_counter()
-        per_fold: list[dict[str, float]] = []
+
+        def before_fold(i: int, n: int, _label: str = family.label) -> None:
+            nonlocal done
+            if ctx.cancelled():
+                raise Cancelled()
+            ctx.progress(share(done), f"{_label}: fold {i + 1} of {n}")
+            done += 1
+
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            for i, k in enumerate(fold_keys):
-                if ctx.cancelled():
-                    raise Cancelled()
-                ctx.progress(share(done), f"{family.label}: fold {i + 1} of {len(fold_keys)}")
-                fit_rows, test_rows = folds != k, folds == k
-                # An inner cross-validation (elastic net's penalty) is grouped as the split is.
-                model = with_grouped_inner_cv(clone(pipelines[key]),
-                                              None if groups is None else groups[fit_rows])
-                model = model.fit(X[fit_rows], y[fit_rows])
-                per_fold.append(score(task, model, X[test_rows], y[test_rows]))
-                done += 1
+            result = cross_validate(task, lambda _k=key: clone(pipelines[_k]), X, y, pairs, fit=fit,
+                                    before_fold=before_fold)
             if ctx.cancelled():
                 raise Cancelled()
             ctx.progress(share(done), f"{family.label}: refitting on all training rows")
-            final = with_grouped_inner_cv(clone(pipelines[key]), groups).fit(X, y)
+            final = fit(clone(pipelines[key]), X, y)
             done += 1
-            holdout = score(task, final, X_hold, y_hold) if len(y_hold) else None
+            # R² on the held-out rows is measured against the training rows' mean.
+            holdout = score(task, final, X_hold, y_hold, reference=reference) if len(y_hold) else None
             ctx.progress(share(done), f"{family.label}: coefficients")
             concerns: list[str] = []
             interval_info = None
@@ -464,7 +486,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 coefficients = None
                 concerns.append(f"The coefficient table could not be computed: {exc}")
             done += 1
-        concerns = _concerns(caught, len(fold_keys) + 1) + concerns
+        concerns = _concerns(caught, len(pairs) + 1) + concerns
         if family.key == "linear":
             from turbotab.core.models.linear import collinearity_concern, model_matrix
 
@@ -474,12 +496,11 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 singular = None
             if singular and not any("singular" in c for c in concerns):
                 concerns.insert(0, singular)
-        cv = summarize(task, per_fold)
-        versus = versus_baseline(primary, [f[primary] for f in per_fold],
-                                 [b[primary] for b in base_per_fold])
-        worse = baseline_concern(task, LABELS[primary], cv[primary]["mean"], baseline["value"])
-        tie = None if worse else no_better_concern(task, LABELS[primary], versus,
-                                                   cv[primary]["mean"], baseline["value"], _two)
+        cv, versus = compare(task, result, base)
+        estimate = cv[primary]["estimate"]
+        worse = baseline_concern(task, LABELS[primary], estimate, baseline["value"])
+        tie = None if worse else no_better_concern(task, LABELS[primary], versus, estimate,
+                                                   baseline["value"], _two)
         if worse or tie:
             concerns.insert(0, worse or tie)
         fitted[key] = final
@@ -500,7 +521,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
     n_holdout = int((~train).sum())
     artifact = FitArtifact(task=task, primary_metric=PRIMARY[task], metric_labels=metric_labels(task),
                            n_train=int(train.sum()), n_holdout=n_holdout, models=models,
-                           holdout_sealed=n_holdout > 0)
+                           holdout_sealed=n_holdout > 0, fold_scheme=scheme,
+                           cv_definition=CV_DEFINITION[task])
     frames = {SEALED_SCORES: sealed_scores_frame(models, sealed)} if n_holdout else {}
     return Bundle(data=artifact.model_dump(mode="json"), frames=frames,
                   objects={"fitted": fitted, "grouped_by": grouped_by})
@@ -606,12 +628,12 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         }
         if pipelines.get(key) is not None:
             def refit(Xb: pd.DataFrame, yb: Any, _pipe: Any = pipelines[key]) -> Any:
-                from turbotab.core.models.inner_cv import with_grouped_inner_cv
+                from turbotab.core.models.inner_cv import fit_pipeline
 
                 inner = group_of.loc[Xb.index].to_numpy() if group_of is not None else None
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    return _predictor(task, with_grouped_inner_cv(clone(_pipe), inner).fit(Xb, yb))
+                    return _predictor(task, fit_pipeline(clone(_pipe), Xb, yb, groups=inner))
 
             if n_boot:
                 def progress(done: int, total: int, _lo: float = start + 0.1 * slot,

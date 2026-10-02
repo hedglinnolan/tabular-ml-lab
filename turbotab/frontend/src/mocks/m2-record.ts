@@ -471,7 +471,7 @@ function sealPlan(
       };
     return {
       held,
-      text: `About \`${fmt(held)}\` held-out rows: R² known to about ±${(1.96 * Math.sqrt(2 / held)).toFixed(2)}.`,
+      text: `About \`${fmt(held)}\` held-out rows: R² known to about ±${(1.96 * ((2 * Math.sqrt(0.2) * 0.8) / Math.sqrt(held))).toFixed(2)}.`,
       below: held < 100,
     };
   };
@@ -519,8 +519,9 @@ function sealPlan(
       ? `Of \`${fmt(n)}\` rows analyzed, a 20% holdout leaves about \`${fmt(usual.held)}\` held-out rows, below the floor of ${floor.n} ${floor.unit}; cross-validation reuses every row, so it comes first.`
       : `Of \`${fmt(n)}\` rows analyzed, a 20% holdout leaves about \`${fmt(usual.held)}\` held-out rows, above the floor of ${floor.n} ${floor.unit}.`,
     precision_note:
-      "Widths are approximate 95% intervals of a score on that many held-out rows: R² by (1 − R²)·√(2/n) at R² = 0, AUC by Hanley & McNeil (1982) at an AUC of 0.75.",
+      "Widths are approximate 95% intervals of a score on that many held-out rows: R² by its large-sample standard error 2·√R²·(1 − R²)/√n at an R² of 0.2, AUC by Hanley & McNeil (1982) at an AUC of 0.75, macro-F1 by a proportion's interval on the rarest class.",
     refusal: null,
+    time_ordered_folds: Boolean(state.temporal?.temporal && state.temporal.time_column),
   };
 }
 

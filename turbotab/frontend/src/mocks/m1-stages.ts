@@ -692,6 +692,9 @@ export function split(
     grouped_by: repeats?.column ?? null,
     n_groups: repeats?.n_units ?? null,
     stratified: task === "binary" || task === "multiclass",
+    fold_scheme: state.temporal?.temporal && state.temporal.time_column ? "time_ordered" : "random",
+    folds_stratified: (task === "binary" || task === "multiclass") && !state.temporal?.temporal,
+    time_ordered_folds: Boolean(state.temporal?.temporal && state.temporal.time_column),
     note:
       spec.holdout > 0
         ? `Held-out rows are drawn from the ${fmt(nMeasured)} rows with \`${target}\` measured, so no later answer moves a row across the seal.`
@@ -1091,18 +1094,35 @@ export function fit(
     );
     const cv: FitArtifact["models"][number]["cv"] = classification
       ? {
-          [primary]: { mean: 0.68 + mean, sd: 0.02, folds: folds.map((f) => 0.68 + f) },
-          log_loss: { mean: 0.61 - mean, sd: 0.01, folds: folds.map((f) => 0.61 - f) },
+          [primary]: {
+            mean: 0.68 + mean,
+            sd: 0.02,
+            folds: folds.map((f) => 0.68 + f),
+            estimate: 0.68 + mean,
+            estimator: "fold_mean",
+          },
+          log_loss: {
+            mean: 0.61 - mean,
+            sd: 0.01,
+            folds: folds.map((f) => 0.61 - f),
+            estimate: 0.61 - mean,
+            estimator: "fold_mean",
+          },
         }
       : {
-          r2: { mean, sd, folds },
+          // the server pools R², RMSE and MAE over out-of-fold predictions (models/metrics.py)
+          r2: { mean, sd, folds, estimate: mean, estimator: "pooled" },
           rmse: {
             mean: 46.4 * Math.sqrt(1 - mean),
             sd: 1.6,
             folds: folds.map((f) => 46.4 * Math.sqrt(1 - f)),
+            estimate: 46.4 * Math.sqrt(1 - mean),
+            estimator: "pooled",
           },
           mae: {
             mean: 30.1 * Math.sqrt(1 - mean),
+            estimate: 30.1 * Math.sqrt(1 - mean),
+            estimator: "pooled",
             sd: 1.1,
             folds: folds.map((f) => 30.1 * Math.sqrt(1 - f)),
           },
@@ -1170,6 +1190,10 @@ export function fit(
     holdout_sealed: false,
     changed_after_seal: false,
     post_seal_decisions: [],
+    fold_scheme: state.temporal?.temporal && state.temporal.time_column ? "time_ordered" : "random",
+    cv_definition: classification
+      ? "Cross-validated scores are the mean over folds; the fold values show the spread."
+      : "Cross-validated R², RMSE and MAE pool every out-of-fold prediction; R² is measured against the mean of the rows each fold's model was fit on, as the held-out R² is against the training rows' mean. The fold values show the spread.",
   };
 }
 

@@ -539,10 +539,11 @@ TEMPORAL = {
            "visits and be scored on their earlier ones. Validation in time, holding out the "
            "latest rows, is a distinct check from validation on random rows, and reporting "
            "guidelines treat it so.",
-    "consumer": "The seal: chronological when yes, grouped by person either way.",
+    "consumer": "The seal and the folds: ordered by time when yes, grouped by person either way.",
     "options": [
         option("true", "Yes, later from earlier",
-               "The held-out rows are the latest, and each person's rows stay together."),
+               "The held-out rows are the latest; folds run forward in time; each person's rows "
+               "stay together."),
         option("false", "No",
                "The held-out rows are drawn at random, each person's rows kept together."),
     ],

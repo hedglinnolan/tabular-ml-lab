@@ -56,7 +56,9 @@ export function comparisonOf(
   const rows = inShelfOrder(fit, shelf).map((m) => ({
     family: m.family,
     label: m.label,
-    mean: m.cv[metric]?.mean ?? null,
+    // The reported CV score: pooled over out-of-fold predictions for R², RMSE and MAE (the
+    // engine's `estimate`); the fold mean in artifacts from before it existed.
+    mean: m.cv[metric]?.estimate ?? m.cv[metric]?.mean ?? null,
     sd: m.cv[metric]?.sd ?? null,
     holdout: shownHoldout(phase, m.holdout?.[metric]),
     concerns: m.concerns,

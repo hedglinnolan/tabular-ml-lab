@@ -2169,7 +2169,8 @@ export interface components {
          * @description What predicting without the predictors scores on the same folds (M1_CONTRACT §12.6).
          *
          *     The outcome's training-fold mean for regression; the training-fold class prior for
-         *     classification. ``value`` is the CV mean of ``metric`` (the primary metric).
+         *     classification. ``value`` is its cross-validated ``metric`` (the primary metric), estimated
+         *     as the models' is: a pooled R² of the training-fold mean is 0 by construction.
          */
         Baseline: {
             /** Metric */
@@ -2536,6 +2537,17 @@ export interface components {
              * @default []
              */
             post_seal_decisions: string[];
+            /**
+             * Fold Scheme
+             * @default random
+             * @enum {string}
+             */
+            fold_scheme: "random" | "time_ordered";
+            /**
+             * Cv Definition
+             * @default null
+             */
+            cv_definition: string | null;
         };
         /** FittedModel */
         FittedModel: {
@@ -2690,7 +2702,14 @@ export interface components {
             /** Reason */
             reason: string;
         };
-        /** MetricSummary */
+        /**
+         * MetricSummary
+         * @description One metric's cross-validated score (``turbotab/core/models/metrics.py``).
+         *
+         *     ``estimate`` is the score the app reports: pooled over every out-of-fold prediction for R²,
+         *     RMSE and MAE (``estimator: "pooled"``), the mean over folds otherwise (``"fold_mean"``).
+         *     ``mean`` and ``sd`` describe the per-fold values, which show the spread.
+         */
         MetricSummary: {
             /** Mean */
             mean: number | null;
@@ -2698,6 +2717,17 @@ export interface components {
             sd: number | null;
             /** Folds */
             folds: (number | null)[];
+            /**
+             * Estimate
+             * @default null
+             */
+            estimate: number | null;
+            /**
+             * Estimator
+             * @default fold_mean
+             * @enum {string}
+             */
+            estimator: "pooled" | "fold_mean";
         };
         /**
          * MissingColumn
@@ -3035,6 +3065,11 @@ export interface components {
             precision_note: string;
             /** Refusal */
             refusal: string | null;
+            /**
+             * Time Ordered Folds
+             * @default false
+             */
+            time_ordered_folds: boolean;
         };
         /**
          * ShelfArtifact
@@ -3120,6 +3155,22 @@ export interface components {
             chronology: components["schemas"]["Chronology"] | null;
             /** Exploratory */
             exploratory: boolean;
+            /**
+             * Fold Scheme
+             * @default random
+             * @enum {string}
+             */
+            fold_scheme: "random" | "time_ordered";
+            /**
+             * Folds Stratified
+             * @default false
+             */
+            folds_stratified: boolean;
+            /**
+             * Time Ordered Folds
+             * @default false
+             */
+            time_ordered_folds: boolean;
         };
         /**
          * StatedGrain
@@ -3358,6 +3409,31 @@ export interface components {
             tolerance: number;
             /** Tolerance Basis */
             tolerance_basis: string;
+            /**
+             * Se
+             * @default null
+             */
+            se: number | null;
+            /**
+             * Ci Low
+             * @default null
+             */
+            ci_low: number | null;
+            /**
+             * Ci High
+             * @default null
+             */
+            ci_high: number | null;
+            /**
+             * Df
+             * @default null
+             */
+            df: number | null;
+            /**
+             * Level
+             * @default 0.95
+             */
+            level: number;
         };
         /**
          * WorkingArtifact

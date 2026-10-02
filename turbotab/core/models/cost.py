@@ -4,10 +4,12 @@ Honest cost at scale: elastic net at 20,000 columns takes minutes, and the shelf
 user chooses it. The estimate is measured the way the substitution band's is (one refit timed,
 then multiplied by the refits the band makes): each family's own pipeline, built exactly as the
 design stage builds it for the whole table, is fit once on a sample of the training rows and
-columns and timed. Coordinate descent, histogram building and least squares all cost about one
-pass over the cells per iteration, so the time is scaled by the cells the real fit reads, then by
-the fits the fit stage makes: one per fold on (k − 1)/k of the rows plus the refit on all of them,
-which comes to k fits of the whole table.
+columns and timed. Coordinate descent and histogram building cost about one pass over the cells
+per iteration, so their time is scaled by the cells the real fit reads. Least squares and Newton
+steps form and factor the p × p cross-product, about n·p·min(n, p) operations, so theirs is scaled
+by that (audit A20: scaled by cells alone, a wide least-squares fit was underestimated). Then by the fits the fit stage makes: one per fold on (k − 1)/k of the rows plus the
+refit on all of them, which comes to k fits of the whole table (time-ordered folds fit on 1/(k+1)
+… k/(k+1) of the rows: k/2 + 1 fits of the whole table).
 
 A table that fits inside the timing sample is timed whole, so the scaling is exact there. Above
 it the number is an estimate and is worded as one ("about 5 minutes").
@@ -90,8 +92,30 @@ def time_one_fit(pipeline: Any, X: Any, y: Any) -> float | None:
     return time.perf_counter() - started
 
 
+def fit_cost(model: Any, n_rows: float, n_columns: float) -> float:
+    """Operations one fit of ``model`` takes on an ``n_rows`` × ``n_columns`` matrix, up to a constant.
+
+    Least squares (``LinearRegression``) and Newton-Cholesky logistic regression factor the p × p
+    cross-product: about n·p·min(n, p). Everything else on the shelf passes over the cells once per
+    iteration: n·p.
+    """
+    from sklearn.linear_model import LinearRegression, LogisticRegression
+
+    n, p = float(n_rows), float(n_columns)
+    if isinstance(model, LinearRegression) or (
+            isinstance(model, LogisticRegression) and model.solver == "newton-cholesky"):
+        return n * p * min(n, p)
+    return n * p
+
+
+def full_fits(folds: int, scheme: str = "random") -> float:
+    """The fit stage's fits, in fits of the whole training table (the module docstring)."""
+    k = max(1, int(folds))
+    return k / 2 + 1 if scheme == "time_ordered" else float(k)
+
+
 def estimate_fits(store: Any, state: Any, task: str, train_ids: Any, families: Sequence[Any],
-                  folds: int, *, cancelled: Any = None) -> dict[str, Estimate | None]:
+                  folds: int, *, cancelled: Any = None, scheme: str = "random") -> dict[str, Estimate | None]:
     """``{family key: Estimate | None}`` for fitting each family on these training rows."""
     from turbotab.core.models.pipeline import build_pipeline, design_spec, model_predictors, modeling_frame
     from turbotab.core.stages.modeling import coded_outcome
@@ -117,18 +141,19 @@ def estimate_fits(store: Any, state: Any, task: str, train_ids: Any, families: S
     X = frame[sampled]
     y = coded_outcome(task, frame[target].to_numpy(), getattr(state, "event", None))
     spec = design_spec(state, X, sampled, energy=None)  # adjusting energy costs next to nothing
-    scale = (n_rows / len(y)) * (n_columns / max(1, len(sampled)))
     for family in families:
         if callable(cancelled) and cancelled():
             break
         pipeline = build_pipeline(spec, family, task, getattr(state, "purpose", None), n_rows, n_columns)
+        model = pipeline[-1]
+        scale = fit_cost(model, n_rows, n_columns) / max(fit_cost(model, len(y), len(sampled)), 1.0)
         seconds = time_one_fit(pipeline, X[spec.inputs], y)
         if seconds is None:
             continue
-        total = seconds * scale * max(1, int(folds))
+        total = seconds * scale * full_fits(folds, scheme)
         out[family.key] = Estimate(seconds=round(total, 1), text=say(total, n_rows, n_columns))
     return out
 
 
-__all__ = ["NOTEWORTHY_SECONDS", "Estimate", "duration", "estimate_fits", "sample_shape", "say",
-           "time_one_fit"]
+__all__ = ["NOTEWORTHY_SECONDS", "Estimate", "duration", "estimate_fits", "fit_cost", "full_fits",
+           "sample_shape", "say", "time_one_fit"]

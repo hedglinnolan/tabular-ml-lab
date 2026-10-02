@@ -177,8 +177,14 @@ def sweep(client, pid: str, service: ProjectService, tmp_path,
     return bodies, called
 
 
-def assert_nothing_held_out_in(bodies: list[Any], sealed: dict[str, dict[str, float]]) -> None:
-    hidden = [v for scores in sealed.values() for v in scores.values() if v is not None]
+def assert_nothing_held_out_in(bodies: list[Any], sealed: dict[str, dict[str, float]],
+                               constant: set[str] = frozenset()) -> None:
+    # A family in ``constant`` predicts its training mean (an elastic net that removed every
+    # predictor: CV R² exactly 0 in every fold), so it scores an R² of exactly 0 on any rows, held
+    # out or not (R² is against the training mean, models/metrics.py). That 0 is known without the
+    # held-out rows, and 0.0 is everywhere in a response.
+    hidden = [v for family, scores in sealed.items() for m, v in scores.items()
+              if v is not None and not (family in constant and m == "r2" and v == 0.0)]
     assert hidden, "the fit computed no held-out scores to hide"
     for b in bodies:
         assert not list(score_dicts(b)), json.dumps(b)[:400]
@@ -232,7 +238,9 @@ def test_no_held_out_score_reaches_any_response_until_the_seal_is_opened(client,
     assert fits and fits[0]["artifact"]["holdout_sealed"] is True  # the sweep did read the fit
     events = [data for p, _, data in bus_spy if p == pid]
     assert any(e.get("stage") == "fit" for e in events)
-    assert_nothing_held_out_in(bodies + events, sealed)
+    constant = {m["family"] for m in fit["models"]
+                if m["cv"]["r2"]["folds"] and all(v == 0.0 for v in m["cv"]["r2"]["folds"])}
+    assert_nothing_held_out_in(bodies + events, sealed, constant)
 
     # Opened once: the scores appear, exactly the ones the fit computed.
     view = decide(client, pid, {"kind": "open_seal"})
