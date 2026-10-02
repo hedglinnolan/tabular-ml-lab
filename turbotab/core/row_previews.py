@@ -30,7 +30,7 @@ from turbotab.core.consequences import (
 from turbotab.core.decisions import ROW_ID, MissingSpec, ProjectState, missing_strategy
 from turbotab.core.stages.rows import (
     PREDICTOR_ROLES, _missing_mask, cohort_flow, cohort_inputs, draw_split, predictors, repair_rules,
-    rule_keep,
+    rule_drops, rule_keep,
 )
 
 MAX_FOCUS_COLUMNS = 12
@@ -122,8 +122,17 @@ def exclusions_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         caption = f"No rule excludes a row: all {fmt_count(entering)} {_pool_words(ctx)} pass"
         caption += f"; the current rules exclude {fmt_count(now)}." if now else "."
     else:
-        caption = (f"{fmt_count(excluded)} of {fmt_count(entering)} {_pool_words(ctx)} fall outside "
-                   f"these ranges and would leave; {fmt_count(entering - excluded)} stay.")
+        # Rows with no value to check leave on lines of their own (stages.rows.cohort_flow).
+        unchecked = sum(s["dropped"] for s in after
+                        if s["key"].startswith("exclusion:") and ":not_" in s["key"])
+        if unchecked:
+            caption = (f"{fmt_count(excluded)} of {fmt_count(entering)} {_pool_words(ctx)} would "
+                       f"leave: {fmt_count(excluded - unchecked)} outside these ranges, "
+                       f"{fmt_count(unchecked)} with no value to check; "
+                       f"{fmt_count(entering - excluded)} stay.")
+        else:
+            caption = (f"{fmt_count(excluded)} of {fmt_count(entering)} {_pool_words(ctx)} fall "
+                       f"outside these ranges and would leave; {fmt_count(entering - excluded)} stay.")
     views: list[Any] = [RowFlowView(
         title="Who these rules would exclude",
         caption=clip_words(caption, CAPTION_WORDS),
@@ -133,7 +142,7 @@ def exclusions_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     )]
     rules = list(decision.rules) or list(state.exclusions or [])
     if rules:
-        drops = [s["dropped"] for s in (after if decision.rules else before) if s["key"].startswith("exclusion:")]
+        drops = rule_drops(after if decision.rules else before)  # one count per rule
         rule = rules[int(np.argmax(drops))] if drops else rules[0]
         views.append(_cut_view(frame, state.target, rule, removing=bool(decision.rules), ctx=ctx))
     return views

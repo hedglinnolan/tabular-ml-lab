@@ -133,10 +133,14 @@ def test_the_dietary_cohort_counts_match_pandas(stores, rules, missing, preds):
     assert set(kept.tolist()) <= set(expected_ids.tolist())
 
 
-def test_a_missing_value_is_kept_by_a_range_rule():
+def test_a_range_rule_leaves_out_a_missing_value_unless_told_to_keep_it():
+    """A row with no value cannot be confirmed eligible (STROBE 13a; audit MA-19): left out by
+    default, kept only when the rule says so (and its label then says so too)."""
     frame = pd.DataFrame({"x": [np.nan, 1.0, 10.0, 5.0]})
     keep = rule_keep(frame, ExclusionRule(column="x", low=2, high=8, reason="r"))
-    assert keep.tolist() == [True, False, False, True]
+    assert keep.tolist() == [False, False, False, True]
+    kept = rule_keep(frame, ExclusionRule(column="x", low=2, high=8, reason="r", missing="keep"))
+    assert kept.tolist() == [True, False, False, True]
 
 
 # ── the split ────────────────────────────────────────────────────────────────

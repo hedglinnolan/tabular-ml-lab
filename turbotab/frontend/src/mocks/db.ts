@@ -628,6 +628,10 @@ function slotOf(d: Decision): Slot | null {
     case "defer_finding":
     case "dismiss_finding":
       return "findings";
+    case "set_feature_table":
+      return "feature_table";
+    case "set_categorical":
+      return "categorical";
     case "revert":
       return null;
   }
@@ -681,10 +685,13 @@ function valueOf(d: Decision): ProjectState[Slot] {
     case "set_grain":
     case "set_repeat_kind":
     case "set_aggregation":
-    case "set_temporal": {
+    case "set_temporal":
+    case "set_feature_table": {
       const { kind: _k, ...value } = d;
       return value as ProjectState[Slot];
     }
+    case "set_categorical":
+      return d.columns;
     case "apply_repair":
     case "defer_finding":
     case "dismiss_finding":
@@ -745,6 +752,8 @@ export function fold(records: DecisionRecord[]): ProjectState {
     temporal: null,
     seal_opened: null,
     findings: null,
+    feature_table: null,
+    categorical: null,
   };
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }>();
   for (const r of [...records].sort((a, b) => a.seq - b.seq)) {

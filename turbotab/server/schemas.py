@@ -125,6 +125,8 @@ class ColumnSummary(Model):
     q75: float | None
     max: float | None
     top: list[ValueCount] | None
+    # Infinite values (a ratio over zero) are counted here and left out of every statistic above.
+    n_infinite: int
 
 
 class TableWindow(Model):
@@ -286,11 +288,21 @@ class Repeats(Model):
     max_rows_per_unit: int
 
 
+class CategoricalProposal(Model):
+    """A predictor whose numbers may be codes for groups (``set_categorical`` declares it)."""
+
+    column: str
+    levels: int
+    confidence: Literal["high", "medium"]
+    reason: str
+
+
 class RolesArtifact(Model):
     """The ``roles`` artifact: a proposed role for every column but the outcome."""
 
     columns: list[RoleProposal]
     repeats: Repeats | None
+    categorical: list[CategoricalProposal]
 
 
 class CohortArtifact(Model):
@@ -411,14 +423,24 @@ class OrientationReading(Model):
     confidence: Literal["medium", "low"]
 
 
+class TurnExit(Model):
+    label: str
+    decision: dict[str, Any] | None
+
+
 class TurnCheck(Model):
-    """Whether the table can be turned around: the feature-name column, and why not."""
+    """Whether the table can be turned around: the feature-name column, the columns that describe
+    the features (kept beside them, never turned into samples), and why not."""
 
     label_column: str | None
+    label_kind: Literal["text", "number"] | None
+    annotations: list[str]
     n_features: int
     n_samples: int
     refusal: str | None
     code: str | None
+    exits: list[TurnExit]
+    declared: bool  # the user's ``feature_table`` answer, not the reading
 
 
 class OrientedArtifact(DatasetInfo):
@@ -509,6 +531,25 @@ class AggregationMenu(Model):
     options: list[Literal["mean", "first", "last", "change"]]
 
 
+class DateExample(Model):
+    text: str
+    month_first: str
+    day_first: str
+
+
+class TimeOrder(Model):
+    """Whether the time column can put a unit's records in order (stages.working.time_order)."""
+
+    column: str
+    kind: Literal["numbers", "dates", "levels", "ambiguous", "mixed", "none"]
+    n: int  # values present
+    placed: int  # values it orders; the rest are undated
+    orderable: bool
+    levels: list[str]  # a text column's levels, first seen first
+    proposed: list[str]  # a natural order of them, to declare
+    examples: list[DateExample]  # dates that read two ways: both readings
+
+
 class StructureArtifact(Model):
     """The ``structure`` artifact: what the grain, repeats, unit and aggregation questions offer."""
 
@@ -519,6 +560,8 @@ class StructureArtifact(Model):
     aggregation: AggregationMenu | None
     time_columns: list[str]
     time_column: str | None
+    unread_dates: list[str]  # text dates that read month-first and day-first alike: not read yet
+    time_order: TimeOrder | None
 
 
 class Repair(Model):
@@ -530,6 +573,17 @@ class OutcomeRule(Model):
     column: str
     varies: bool
     rule: Literal["constant", "mean", "first", "last"]
+    n_missing: int  # units whose kept outcome is blank (the first or last record had none)
+
+
+class CombinedColumn(Model):
+    """One column that varied within a unit (or was given its own rule), and how it was combined."""
+
+    column: str
+    kind: Literal["amount", "code", "category", "constant"]
+    rule: Literal["mean", "first", "last", "change", "mode", "constant"]
+    varied: bool
+    chosen: bool  # the aggregation answer set this column's rule
 
 
 class AggregationReceipt(Model):
@@ -539,12 +593,17 @@ class AggregationReceipt(Model):
     method: Literal["mean", "first", "last", "change"]
     outcome: OutcomeRule | None
     time_column: str | None
-    ordered_by: str
+    ordered_by: str  # the time column when it ordered the records, else "file order"
+    order: Literal["numbers", "dates", "declared levels", "file order"]
+    undated_records: int  # records the time column could not place: never first, last or change
+    units_without_dated_records: int
     n_source_rows: int
     n_units: int
     single_record_units: int
-    varying: list[str]  # non-numeric columns that differed within a unit and took the first record's
+    varying: list[str]  # non-numeric columns that differed within a unit
     combined_numeric: int
+    constant_columns: int
+    columns: list[CombinedColumn]  # every column that varied within a unit, with its rule
 
 
 class WorkingArtifact(DatasetInfo):

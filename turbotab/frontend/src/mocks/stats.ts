@@ -60,6 +60,7 @@ export function columnSummary(col: MockColumn): ColumnSummary {
     n: col.values.length - missing,
     n_missing: missing,
     n_unique: nUnique(col),
+    n_infinite: 0,
   };
   if (isNumericDtype(col.dtype)) {
     const xs = numbers(col).sort((a, b) => a - b);

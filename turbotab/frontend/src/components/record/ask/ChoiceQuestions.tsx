@@ -68,6 +68,7 @@ export function ExclusionsAsk({
         high: hi,
         by: null,
         reason: "implausible values (your own range)",
+        missing: "exclude", // a row with no value cannot be confirmed eligible (the server's default)
       }
     : null;
 

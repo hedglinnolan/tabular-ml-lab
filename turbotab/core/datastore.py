@@ -45,9 +45,13 @@ PARQUET_SUFFIXES = (".parquet", ".pq")
 EXCEL_SUFFIXES = (".xlsx", ".xls")
 SUPPORTED_TYPES = "CSV, TSV or TXT (optionally .gz), Parquet, or Excel (.xlsx, .xls)"
 
-# Read as missing in delimited text: pandas' default NA tokens, less "None"
-# (a real answer on a questionnaire) and the rare "-1.#IND"-style spellings.
+# Read as missing in delimited text AND in Excel cells (one list, so a CSV and an xlsx copy of one
+# table agree on what is missing: audit MA-17): pandas' default NA tokens, less "None" (a real
+# answer on a questionnaire) and the rare "-1.#IND"-style spellings.
 NULL_TOKENS = ("", "NA", "N/A", "n/a", "NaN", "nan", "NULL", "null", "#N/A", "<NA>")
+
+# Beyond 2**53 a double cannot hold every integer: 9007199254740993 is stored as ...992.
+EXACT_INT = 2 ** 53
 
 SNIFF_SAMPLE_ROWS = 20_480
 BATCH_COLUMNS = 200            # aggregate queries touch at most this many columns
@@ -222,7 +226,9 @@ def json_safe(value: Any) -> Any:
     if isinstance(value, (bool, np.bool_)):
         return bool(value)
     if isinstance(value, (int, np.integer)):
-        return int(value)
+        # A browser reads every JSON number as a double, so an integer past 2**53 would arrive
+        # changed (an identifier off by one); it travels as its exact digits instead.
+        return int(value) if abs(int(value)) <= EXACT_INT else str(int(value))
     if isinstance(value, (float, np.floating)):
         f = float(value)
         return f if math.isfinite(f) else None
@@ -250,6 +256,15 @@ def json_safe(value: Any) -> Any:
     if isinstance(value, np.generic):
         return json_safe(value.item())
     return str(value)
+
+
+def _stat(value: Any) -> Any:
+    """A summary statistic for JSON: a number always (json_safe sends an integer past 2**53 as
+    its exact digits, which suits an identifier's value, not a column's minimum)."""
+    if isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_)) \
+            and abs(int(value)) > EXACT_INT:
+        return float(value)
+    return json_safe(value)
 
 
 def _chunks(items: Sequence[Any], size: int) -> Iterator[Sequence[Any]]:
@@ -401,18 +416,34 @@ def _source_kind(source: Path) -> str:
     raise ValueError(f"TurboTab cannot read {source.name!r}; it reads {SUPPORTED_TYPES}")
 
 
-def _select_expr(name: str, physical: str, out: str | None = None) -> str:
+def _select_expr(name: str, physical: str, out: str | None = None,
+                 decimal_comma: bool = False) -> str:
     """Select one source column for the Parquet file (nested values become text).
 
     Plain column references on purpose: DuckDB's planner cost per CASE
     expression grows with the statement's width (15 s for 20,000 columns), so
     NaN → NULL is a second, targeted pass (``_null_the_nans``) that only runs
-    for the float columns that actually hold a NaN.
+    for the float columns that actually hold a NaN. ``decimal_comma``: the
+    text column writes its decimals with a comma (``2000,5``; :func:`_spellings`
+    found every value reads so), and is read as the numbers it holds.
     """
     expr = _ident(name)
-    if _is_nested(physical):
+    if decimal_comma:
+        expr = decimal_comma_sql(expr)
+    elif _is_nested(physical):
         expr = f"CAST({expr} AS VARCHAR)"
     return f"{expr} AS {_ident(out if out is not None else name)}"
+
+
+# A number written with a decimal comma: "2000,5", "-0,25", "12", or with dots between thousands,
+# "1.234,5". And a number a comma could split into thousands: "1,234", "12,045,300".
+DECIMAL_COMMA = r"[+-]?(\d+(,\d+)?|\d{1,3}(\.\d{3})+(,\d+)?)"
+THOUSANDS_COMMA = r"[+-]?[1-9]\d{0,2}(,\d{3})+"
+
+
+def decimal_comma_sql(x: str) -> str:
+    """SQL reading decimal-comma text as a DOUBLE: thousands dots out, the comma becomes the point."""
+    return f"TRY_CAST(replace(replace(trim(CAST({x} AS VARCHAR)), '.', ''), ',', '.') AS DOUBLE)"
 
 
 def row_group_rows(n_columns: int, n_rows: int | None = None) -> int | None:
@@ -666,12 +697,17 @@ def _ingest_csv_as(con: duckdb.DuckDBPyConnection, source: Path, tmp: Path,
                 if not header_noted:
                     warnings.extend(rename_notes)
                     header_noted = True
+            # What the sniffer's types cannot say, read from every row: dates that read two
+            # ways stay text, and decimal commas are read as the numbers they write.
+            text_notes, commas = (_spellings(con, source, dialect, encoding, names, types,
+                                             null_padding, report)
+                                  if mode == "sniff" else ([], set()))
 
             def copy(types: list[str]) -> None:
                 columns = dict(zip(names, types))
                 src = _csv_sql(source, dialect, encoding=encoding, header=True,
                                columns=columns, null_padding=null_padding)
-                select = [_select_expr(n, t) for n, t in columns.items()]
+                select = [_select_expr(n, t, decimal_comma=n in commas) for n, t in columns.items()]
                 _execute(con, _copy_sql(select, src, tmp, estimated_csv_rows(source)),
                          report, 0.1, 0.7,
                          "Writing the columnar copy")
@@ -679,13 +715,19 @@ def _ingest_csv_as(con: duckdb.DuckDBPyConnection, source: Path, tmp: Path,
             copy(types)
             # DuckDB's sniffer already refuses to read "007" as an integer, but
             # only within the rows it sampled. Past the sample, check every row.
-            text_notes: list[str] = []
             n_rows = _count_rows(con, tmp)
             if sample_size != -1 and n_rows > SNIFF_SAMPLE_ROWS // 2:
-                text_notes = _protect_leading_zeros(con, source, dialect, encoding, names,
-                                                    types, null_padding, report)
-                if text_notes:
+                zeros = _protect_leading_zeros(con, source, dialect, encoding, names,
+                                               types, null_padding, report)
+                if zeros:
+                    text_notes += zeros
                     copy(types)
+            # An integer past 2**53 read as a double is silently another integer (C14).
+            big = _protect_big_integers(con, tmp, source, dialect, encoding, names, types,
+                                        commas, null_padding)
+            if big:
+                text_notes += big
+                copy(types)
         except duckdb.InterruptException:
             raise
         except duckdb.Error as exc:
@@ -751,6 +793,118 @@ def _protect_leading_zeros(con: duckdb.DuckDBPyConnection, source: Path, d: _Dia
     return notes
 
 
+def _spellings(con: duckdb.DuckDBPyConnection, source: Path, d: _Dialect, encoding: str,
+               names: list[str], types: list[str], null_padding: bool,
+               report: _Progress) -> tuple[list[str], set[str]]:
+    """Readings the sniffer's types cannot make, checked on every row (audit MA-05, MA-16).
+
+    * A DATE or TIMESTAMP column read with a numeric day-month format (``%d/%m/%Y``) whose every
+      value the other order reads too (no day above 12) is kept as text: the sniffer picks one
+      order without a word, and reading US visit dates day-first moved them all into January.
+      ``types`` is rewritten in place; the date-reading repair asks which order is meant.
+    * A text column whose every value is a number written with a decimal comma (``2000,5``), at
+      least one of them unmistakably so (``22,1`` or ``0,25``, never only ``1,234``, which a
+      comma could also split into thousands), is read as the numbers it holds: returned.
+    """
+    from turbotab.core import dates
+
+    checks: list[tuple[int, str, str | None]] = []  # (column index, kind, the other date order)
+    for i, t in enumerate(types):
+        base = _base_type(t)
+        fmt = d.dateformat if base == "DATE" else d.timestampformat if base.startswith("TIMESTAMP") else None
+        other = dates.swapped(fmt)
+        if other is not None:
+            checks.append((i, "date", other))
+        elif base == "VARCHAR":
+            checks.append((i, "comma", None))
+    if not checks:
+        return [], set()
+    src = _csv_sql(source, d, encoding=encoding, header=True, columns=dict(zip(names, types)),
+                   all_varchar=True, null_padding=null_padding)
+    notes: list[str] = []
+    commas: set[str] = set()
+    for batch in _chunks(checks, BATCH_COLUMNS):
+        report(0.06, "Checking how dates and decimals are written")
+        aggs: list[str] = []
+        for i, kind, other in batch:
+            c = f"trim({_ident(names[i])})"
+            first = f"first({c}) FILTER (WHERE {c} IS NOT NULL)"
+            if kind == "date":
+                aggs += [f"count({c})", f"count(try_strptime({c}, {_lit(str(other))}))", first]
+            else:
+                comma = f"regexp_full_match({c}, '{DECIMAL_COMMA}')"
+                plain = f"(contains({c}, ',') AND NOT regexp_full_match({c}, '{THOUSANDS_COMMA}'))"
+                aggs += [f"count({c})", f"count_if({comma})", f"count_if({comma} AND contains({c}, ','))",
+                         f"count_if({comma} AND {plain})",
+                         f"first({c}) FILTER (WHERE {comma} AND {plain})"]
+        row = con.execute(f"SELECT {', '.join(aggs)} FROM {src}").fetchone()
+        k = 0
+        for i, kind, other in batch:
+            name = names[i]
+            if kind == "date":
+                n, both, example = int(row[k] or 0), int(row[k + 1] or 0), row[k + 2]
+                k += 3
+                if n and both == n:
+                    types[i] = "VARCHAR"
+                    notes.append(f"column \"{name}\" holds dates such as \"{example}\" that read the "
+                                 f"same month-first and day-first (no day is above 12), so it is "
+                                 f"kept as text until you say which")
+            else:
+                n, fits, with_comma, plain, example = row[k:k + 5]
+                k += 5
+                if n and int(fits or 0) == int(n) and int(with_comma or 0) and int(plain or 0):
+                    commas.add(name)
+                    notes.append(f"column \"{name}\" writes decimals with a comma (e.g. "
+                                 f"\"{example}\"); it was read as the numbers it holds")
+    return notes, commas
+
+
+def _protect_big_integers(con: duckdb.DuckDBPyConnection, parquet: Path, source: Path,
+                          d: _Dialect, encoding: str, names: list[str], types: list[str],
+                          commas: set[str], null_padding: bool) -> list[str]:
+    """Integer-valued columns read as doubles past 2**53 stay text (audit C14).
+
+    A double holds every integer only up to 2**53, so ``9007199254740993`` written in a file comes
+    back ``...992``: an identifier silently becomes another. The Parquet footer's statistics name
+    the double columns that reach that far; their raw text decides (every value an integer
+    literal). Rewrites ``types`` in place.
+    """
+    import pyarrow.parquet as pq
+
+    meta = pq.read_metadata(parquet)
+    index = {meta.schema.column(j).name: j for j in range(meta.num_columns)}
+    reach: dict[int, float] = {}
+    for i, t in enumerate(types):
+        j = index.get(names[i])
+        if not _is_float(t) or names[i] in commas or j is None:
+            continue
+        for g in range(meta.num_row_groups):
+            stats = meta.row_group(g).column(j).statistics
+            if stats is not None and stats.has_min_max:
+                lo, hi = float(stats.min), float(stats.max)
+                if math.isfinite(lo) and math.isfinite(hi):
+                    reach[i] = max(reach.get(i, 0.0), abs(lo), abs(hi))
+    wide = [i for i, v in reach.items() if v >= EXACT_INT]
+    if not wide:
+        return []
+    src = _csv_sql(source, d, encoding=encoding, header=True, columns=dict(zip(names, types)),
+                   all_varchar=True, null_padding=null_padding)
+    aggs = []
+    for i in wide:
+        c = f"trim({_ident(names[i])})"
+        aggs += [f"count({c})", f"count_if(regexp_full_match({c}, '[+-]?\\d+'))",
+                 f"max({c}) FILTER (WHERE length({c}) > 15)"]
+    row = con.execute(f"SELECT {', '.join(aggs)} FROM {src}").fetchone()
+    notes = []
+    for k, i in enumerate(wide):
+        n, whole, example = row[3 * k: 3 * k + 3]
+        if n and int(whole or 0) == int(n):
+            types[i] = "VARCHAR"
+            notes.append(f"column \"{names[i]}\" holds integers too long to store exactly as "
+                         f"numbers (e.g. \"{example}\"); it is kept as text so they are not changed")
+    return notes
+
+
 def _ingest_parquet(con: duckdb.DuckDBPyConnection, source: Path, tmp: Path,
                     warnings: list[str], report: _Progress) -> None:
     src = f"read_parquet({_lit(source)})"
@@ -789,9 +943,13 @@ def _ingest_excel(con: duckdb.DuckDBPyConnection, source: Path, tmp: Path,
                             f"\"{sheets[0]}\", was read")
         # dtype=object: pandas would otherwise run text cells through number
         # inference and turn an identifier "007" into 7. Cells keep the type
-        # the workbook gave them and each column is typed below.
-        header = book.parse(sheets[0], header=None, nrows=1, dtype=object)
-        frame = book.parse(sheets[0], header=0, dtype=object)
+        # the workbook gave them and each column is typed below. The missing
+        # tokens are the CSV reader's own (NULL_TOKENS), not pandas' defaults,
+        # which also blank "None", "-nan" and "1.#IND": an xlsx and a CSV copy
+        # of one table must agree on what is missing (audit MA-17).
+        tokens = dict(keep_default_na=False, na_values=list(NULL_TOKENS))
+        header = book.parse(sheets[0], header=None, nrows=1, dtype=object, **tokens)
+        frame = book.parse(sheets[0], header=0, dtype=object, **tokens)
     raw = list(header.iloc[0]) if len(header) else []
     raw = [c if not isinstance(c, float) or not c.is_integer() else int(c) for c in raw]
     names, notes = pandas_style_names(raw)
@@ -1162,13 +1320,23 @@ def _positions(found: np.ndarray, ids: np.ndarray) -> np.ndarray:
 
 
 def _number_summary(values: np.ndarray, *, integer: bool) -> dict[str, Any]:
-    """mean, std, min, quartiles, max of present values, as DuckDB's aggregates give them.
+    """mean, std, min, quartiles, max of the finite present values, as DuckDB's aggregates give
+    them, and how many values are infinite (``n_infinite``).
 
-    ``stddev_samp`` of one value is missing; any non-finite answer is missing (json_safe).
-    Quartiles interpolate in double precision and come back in the column's own precision
-    (``quantile_cont`` of a FLOAT is a FLOAT).
+    An infinity (a ratio over a zero) is a value, not a blank, so it is counted rather than
+    averaged: one ``inf`` once made the whole profile fail (audit MA-18). ``stddev_samp`` of one
+    value is missing; any non-finite answer is missing (json_safe). Quartiles interpolate in
+    double precision and come back in the column's own precision (``quantile_cont`` of a FLOAT is
+    a FLOAT).
     """
+    n_infinite = 0
+    if not integer:
+        n_infinite = int(np.isinf(values).sum())
+        values = values[np.isfinite(values)]
     n = int(values.size)
+    if n == 0:
+        return {"mean": None, "std": None, "min": None, "max": None, "q25": None, "median": None,
+                "q75": None, "n_infinite": n_infinite}
     with np.errstate(all="ignore"):
         x = values.astype(np.float64, copy=False)
         if integer:
@@ -1187,9 +1355,9 @@ def _number_summary(values: np.ndarray, *, integer: bool) -> dict[str, Any]:
         if values.dtype == np.float32:
             quartiles = quartiles.astype(np.float32)
         q25, median, q75 = (float(q) for q in quartiles)
-    return {"mean": json_safe(mean), "std": json_safe(std), "min": json_safe(lo_hi[0]),
-            "max": json_safe(lo_hi[1]), "q25": json_safe(q25), "median": json_safe(median),
-            "q75": json_safe(q75)}
+    return {"mean": json_safe(mean), "std": json_safe(std), "min": _stat(lo_hi[0]),
+            "max": _stat(lo_hi[1]), "q25": json_safe(q25), "median": json_safe(median),
+            "q75": json_safe(q75), "n_infinite": n_infinite}
 
 
 # ── the store ────────────────────────────────────────────────────────────────
@@ -1414,7 +1582,7 @@ class DataStore:
         ci = self._column_map()[name]
         return {"name": name, "dtype": ci.dtype, "n": int(n), "n_missing": self.n_rows - int(n),
                 "n_unique": ci.n_unique, "mean": None, "std": None, "min": None, "q25": None,
-                "median": None, "q75": None, "max": None, "top": None}
+                "median": None, "q75": None, "max": None, "top": None, "n_infinite": 0}
 
     def _summaries_arrow(self, cols: list[str]) -> dict[str, dict[str, Any]]:
         """The DuckDB summaries, computed from Arrow columns with numpy.
@@ -1471,11 +1639,15 @@ class DataStore:
                 if ci.dtype in ("numeric", "integer"):
                     x = f"CAST({c} AS DOUBLE)" if (_is_decimal(ci.physical_type) or
                                                    "HUGEINT" in ci.physical_type) else c
-                    q = (f"quantile_cont({x}, [0.25, 0.5, 0.75])" if exact
-                         else f"approx_quantile({x}, [0.25, 0.5, 0.75])")
-                    aggs += [f"count({x})", f"avg({x})", f"stddev_samp({x})", f"min({x})",
-                             f"max({x})", q]
-                    plan.append((name, "number", 6))
+                    # Over the finite values only, with the infinities counted (MA-18):
+                    # stddev_samp over an inf raises "out of range" and lost the whole batch.
+                    fin = f" FILTER (WHERE isfinite({x}))" if _is_float(ci.physical_type) else ""
+                    q = (f"quantile_cont({x}, [0.25, 0.5, 0.75]){fin}" if exact
+                         else f"approx_quantile({x}, [0.25, 0.5, 0.75]){fin}")
+                    aggs += [f"count({x})", f"avg({x}){fin}", f"stddev_samp({x}){fin}",
+                             f"min({x}){fin}", f"max({x}){fin}", q,
+                             f"count_if(isinf({x}))" if fin else "0"]
+                    plan.append((name, "number", 7))
                 elif ci.dtype == "boolean":
                     aggs += [f"count({c})", f"avg(CAST({c} AS INTEGER))",
                              f"count_if({c})", f"count_if(NOT {c})"]
@@ -1498,13 +1670,13 @@ class DataStore:
                                "n_missing": info.n_rows - int(vals[0] or 0),
                                "n_unique": ci.n_unique, "mean": None, "std": None,
                                "min": None, "q25": None, "median": None, "q75": None,
-                               "max": None, "top": None}
+                               "max": None, "top": None, "n_infinite": 0}
                     if kind == "number":
                         quart = vals[5] or [None, None, None]
                         summary.update(mean=json_safe(vals[1]), std=json_safe(vals[2]),
-                                       min=json_safe(vals[3]), max=json_safe(vals[4]),
+                                       min=_stat(vals[3]), max=_stat(vals[4]),
                                        q25=json_safe(quart[0]), median=json_safe(quart[1]),
-                                       q75=json_safe(quart[2]))
+                                       q75=json_safe(quart[2]), n_infinite=int(vals[6] or 0))
                     elif kind == "boolean":
                         summary["mean"] = json_safe(vals[1])
                         top = [{"value": True, "count": int(vals[2] or 0)},

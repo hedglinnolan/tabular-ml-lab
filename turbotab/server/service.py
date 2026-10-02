@@ -197,7 +197,9 @@ class SentenceFacts:
         steps = self._steps() if self._decision.kind == "set_exclusions" else None
         if steps is None:
             return None
-        return [int(s["dropped"]) for s in steps if str(s["key"]).startswith("exclusion:")]
+        from turbotab.core.stages.rows import rule_drops  # a rule's lines: not recorded, then range
+
+        return rule_drops(steps)
 
     @property
     def n_before(self) -> int | None:

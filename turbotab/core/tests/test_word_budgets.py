@@ -245,6 +245,9 @@ def representative_decisions():
                       params={"code": 9}),
         d.DeferFinding(finding_id="voice::flag__imputed_bmi", to="missing"),
         d.DismissFinding(finding_id="pack::dietary::compositional", reason="Shares are not modeled"),
+        # WP1 (audit §5): what values mean
+        d.SetFeatureTable(label="metabolite", annotations=["mz", "rt"]),
+        d.SetCategorical(columns=["RIDRETH3", "DMDEDUC2"]),
     ]
 
 

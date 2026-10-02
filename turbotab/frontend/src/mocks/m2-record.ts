@@ -153,12 +153,26 @@ function orientedArtifact(p: MockProject, state: ProjectState): OrientedArtifact
     turn: featureMajor
       ? {
           label_column: "feature_id",
+          label_kind: "text",
+          annotations: [],
           n_features: ds.nRows,
           n_samples: ds.columns.length - 1,
           refusal: null,
           code: null,
+          exits: [],
+          declared: false,
         }
-      : { label_column: null, n_features: 0, n_samples: ds.nRows, refusal: null, code: null },
+      : {
+          label_column: null,
+          label_kind: null,
+          annotations: [],
+          n_features: 0,
+          n_samples: ds.nRows,
+          refusal: null,
+          code: null,
+          exits: [],
+          declared: false,
+        },
   };
 }
 
@@ -295,6 +309,8 @@ function structureArtifact(p: MockProject, state: ProjectState): StructureArtifa
     aggregation: null,
     time_columns: ds.columns.filter((c) => c.dtype === "datetime").map((c) => c.name),
     time_column: ds.columns.find((c) => c.dtype === "datetime")?.name ?? null,
+    unread_dates: [],
+    time_order: null,
   };
   if (!units) return out;
   const sizes = [...units.of.values()].map((r) => r.length);
@@ -814,6 +830,7 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
             repeat_kind: reading.reading,
             time_column:
               reading.reading === "time_points" ? (reading.spacing?.column ?? null) : null,
+            levels: null,
           };
       }
       return { ...state, grain, repeat_kind: repeatKind };
@@ -952,7 +969,12 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
               `\`${outcome.column}\` changes within ${fmt(outcome.n_units_varying)} units, so combining their rows needs to know which outcome to keep.`,
               (["first", "last"] as const).map((o) => ({
                 label: o === "first" ? "Keep the first outcome" : "Keep the last outcome",
-                decision: { kind: "set_aggregation" as const, method: d.method, outcome: o },
+                decision: {
+                  kind: "set_aggregation" as const,
+                  method: d.method,
+                  outcome: o,
+                  columns: {},
+                },
               })),
             );
           return null;

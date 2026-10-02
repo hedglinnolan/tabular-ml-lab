@@ -278,6 +278,46 @@ def propose_roles(
     return out
 
 
+# NHANES variables whose numbers are codes for categories (the codebooks' "Code or Value" tables):
+# race and Hispanic origin, education, marital status, citizenship, birthplace, income bands,
+# interview language, pregnancy status, military service, self-rated health, insurance.
+NHANES_CODED = frozenset({
+    "RIDRETH1", "RIDRETH3", "DMDEDUC2", "DMDEDUC3", "DMDMARTL", "DMDCITZN", "DMDBORN4",
+    "DMDBORN2", "INDHHIN2", "INDFMIN2", "SIALANG", "SIAPROXY", "RIDEXPRG", "DMQMILIZ", "HUQ010",
+    "HIQ011", "SMQ040", "SMQ020", "DIQ010", "BPQ020", "ALQ101", "ALQ111", "PAQ605", "PAQ650",
+    "OCD150", "DMDHREDU", "DMDHRMAR", "DMDHRGND", "DMDHREDZ", "DMDHRMAZ",
+})
+CATEGORY_LEVELS = 10  # whole-number columns with at most this many values may be codes
+
+
+def categorical_proposals(columns: Sequence[Mapping[str, Any]],
+                          proposals: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Predictors whose numbers may be codes for categories, to declare with ``set_categorical``.
+
+    A whole-number column with 3 to CATEGORY_LEVELS values (two levels make one indicator either
+    way), or a known NHANES coded variable with at least three. Entered as one number, RIDRETH3's
+    codes 1, 2, 3, 4, 6, 7 would be one straight line across ethnic groups (audit MA-15). A
+    suggestion only: counts and scores take few values too.
+    """
+    roles = {str(p["column"]): str(p["proposed"]) for p in proposals}
+    out: list[dict[str, Any]] = []
+    for s in columns:
+        name = str(s["name"])
+        if roles.get(name) not in PREDICTOR_ROLES:
+            continue
+        n = int(s.get("n_unique") or 0)
+        if str(s.get("dtype")) not in ("integer", "numeric") or n < 3:
+            continue
+        if name.upper() in NHANES_CODED:
+            out.append({"column": name, "levels": n, "confidence": "high",
+                        "reason": f"An NHANES coded variable: its `{n}` values name groups, not amounts."})
+        elif str(s.get("dtype")) == "integer" and n <= CATEGORY_LEVELS:
+            out.append({"column": name, "levels": n, "confidence": "medium",
+                        "reason": f"Whole numbers with `{n}` values: if they are codes for groups, one "
+                                  f"slope across them means nothing."})
+    return out
+
+
 def _energy_reading(columns: Sequence[Mapping[str, Any]]) -> str | None:
     """The nutrition pack's total-energy column, read from names and dtypes only."""
     import pandas as pd
@@ -388,7 +428,8 @@ def roles_stage(ctx: StageContext) -> dict[str, Any]:
                 p["reason"] = (f"Names each unit; `{repeats['n_units']:,}` units, up to "
                                f"`{repeats['max_rows_per_unit']}` rows each.")
                 p["confidence"] = "high"
-    return {"columns": proposals, "repeats": repeats}
+    return {"columns": proposals, "repeats": repeats,
+            "categorical": categorical_proposals(columns, proposals)}
 
 
 # ── cohort ────────────────────────────────────────────────────────────────────
@@ -407,11 +448,22 @@ def _level_key(value: Any) -> str:
     return str(value)
 
 
-def rule_keep(frame: Any, rule: Any) -> Any:
-    """Boolean Series: True where ``rule`` keeps the row. Missing values are kept.
+def _group_key(value: Any) -> str:
+    """One unit per identifier as written: text identifiers are exact ("007", "07" and "7" are three
+    people, audit C12); a number is its value (``7`` and ``7.0`` are one)."""
+    if isinstance(value, str):
+        return "s:" + value
+    return "n:" + _level_key(value)
 
-    A range keeps ``low <= value <= high`` (either bound may be open). With ``by``, a row whose
-    level of ``by.column`` has its own range uses that range; other rows use the rule's own.
+
+def rule_parts(frame: Any, rule: Any) -> tuple[Any, Any, Any]:
+    """``(recorded, screened, inside)`` Boolean Series for ``rule`` over ``frame``.
+
+    ``recorded``: the column has a value. ``screened``: a range applies to the row; without ``by``
+    always, with ``by`` when the row's level of ``by.column`` has its own range or the rule has
+    bounds of its own (a row whose sex is missing or unrecognized, under a by-sex rule with no
+    bounds of its own, is screened by nothing: audit D16). ``inside``: ``low <= value <= high``
+    (either bound may be open).
     """
     import pandas as pd
 
@@ -419,14 +471,32 @@ def rule_keep(frame: Any, rule: Any) -> Any:
     values = pd.to_numeric(frame[rule.column], errors="coerce").astype(float)
     low = pd.Series(np.nan if rule.low is None else float(rule.low), index=frame.index, dtype=float)
     high = pd.Series(np.nan if rule.high is None else float(rule.high), index=frame.index, dtype=float)
+    screened = pd.Series(True, index=frame.index)
     if rule.by is not None:
         levels = frame[rule.by.column].map(lambda v: None if pd.isna(v) else _level_key(v))
         for key, (lo, hi) in rule.by.ranges.items():
             at = levels == _level_key(key)
             low[at] = np.nan if lo is None else float(lo)
             high[at] = np.nan if hi is None else float(hi)
+        if rule.low is None and rule.high is None:
+            screened = levels.isin([_level_key(k) for k in rule.by.ranges])
     inside = (low.isna() | (values >= low)) & (high.isna() | (values <= high))
-    return values.isna() | inside
+    return values.notna(), screened, inside
+
+
+def rule_keep(frame: Any, rule: Any) -> Any:
+    """Boolean Series: True where ``rule`` keeps the row.
+
+    A range keeps ``low <= value <= high``. A row it cannot confirm (no value, or under ``by`` no
+    range for its level) is left out by default, the STROBE reading of "confirmed eligible"; with
+    ``missing="keep"`` it is kept, and the flow's label says so (audit MA-19).
+    """
+    rule = _as_rule(rule)
+    recorded, screened, inside = rule_parts(frame, rule)
+    confirmed = recorded & screened
+    if rule.missing == "keep":
+        return ~confirmed | inside
+    return confirmed & inside
 
 
 def _as_rule(rule: Any) -> Any:
@@ -436,15 +506,32 @@ def _as_rule(rule: Any) -> Any:
 
 
 def rule_label(rule: Any) -> str:
+    """What the rows a rule keeps are: true of every one of them (``or not recorded`` when the
+    rule keeps the rows it cannot confirm)."""
     rule = _as_rule(rule)
     col = f"`{rule.column}`"
     if rule.by is not None:
-        return f"{col} within its range for each `{rule.by.column}`"
-    if rule.low is not None and rule.high is not None:
-        return f"{col} within `{_fmt_num(rule.low)}`–`{_fmt_num(rule.high)}`"
-    if rule.low is not None:
-        return f"{col} at least `{_fmt_num(rule.low)}`"
-    return f"{col} at most `{_fmt_num(rule.high)}`"
+        text = f"{col} within its range for each `{rule.by.column}`"
+    elif rule.low is not None and rule.high is not None:
+        text = f"{col} within `{_fmt_num(rule.low)}`–`{_fmt_num(rule.high)}`"
+    elif rule.low is not None:
+        text = f"{col} at least `{_fmt_num(rule.low)}`"
+    else:
+        text = f"{col} at most `{_fmt_num(rule.high)}`"
+    return text + (", or not recorded" if rule.missing == "keep" else "")
+
+
+def rule_drops(steps: Sequence[Mapping[str, Any]]) -> list[int]:
+    """Rows each exclusion rule left out, in rule order: its range step and the lines before it
+    (not recorded, not screened) together. Read by the decision's sentence and the preview."""
+    out: dict[int, int] = {}
+    for s in steps:
+        key = str(s["key"])
+        if not key.startswith("exclusion:"):
+            continue
+        i = int(key.split(":")[1])
+        out[i] = out.get(i, 0) + int(s["dropped"])
+    return [out[i] for i in sorted(out)]
 
 
 def _measured(series: Any) -> Any:
@@ -492,7 +579,33 @@ def cohort_flow(
         keep = pd.Series(True, index=frame.index)
         kept = len(frame)
     for i, rule in enumerate(rules or []):
+        # STROBE item 13(a) counts who was "confirmed eligible": a row whose value is unknown is
+        # not, so it leaves on a line of its own before the range (audit MA-19), and the range's
+        # label is then true of every row it counts. With missing="keep" it stays, and both the
+        # label and a line of its own say so.
         rule = _as_rule(rule)
+        recorded, screened, inside = rule_parts(frame, rule)
+        col, by = f"`{rule.column}`", (f"`{rule.by.column}`" if rule.by is not None else None)
+        unknown = keep & ~recorded
+        unscreened = keep & recorded & ~screened
+        lines = [(f"exclusion:{i}:not_recorded", f"{col} not recorded", unknown,
+                  f"no value for {col}, so the rule cannot confirm the row")]
+        if by is not None:
+            lines.append((f"exclusion:{i}:not_screened", f"{col} not screened: no range for its {by}",
+                          unscreened, f"its {by} is missing or has no range of its own"))
+        for key, label, rows, reason in lines:
+            n_rows = int(rows.sum())
+            if not n_rows:
+                continue
+            if rule.missing == "keep":
+                steps.append({"key": key, "label": f"{label}: `{n_rows:,}` kept", "n": kept,
+                              "dropped": 0, "reason": None, "decision_id": None})
+            else:
+                keep &= ~rows
+                now = int(keep.sum())
+                steps.append({"key": key, "label": label, "n": now, "dropped": kept - now,
+                              "reason": reason, "decision_id": None})
+                kept = now
         keep &= rule_keep(frame, rule)
         now = int(keep.sum())
         steps.append({"key": f"exclusion:{i}", "label": rule_label(rule), "n": now,
@@ -744,12 +857,12 @@ def draw_split(
     order = np.argsort(base, kind="stable")
     uids = base[order]
 
-    def keyed(values: Any | None) -> Any | None:
+    def keyed(values: Any | None, key: Any = _level_key) -> Any | None:
         if values is None:
             return None
-        return np.array([_level_key(v) for v in np.asarray(values, dtype=object)[order]], dtype=object)
+        return np.array([key(v) for v in np.asarray(values, dtype=object)[order]], dtype=object)
 
-    y_u, g_u = keyed(y), keyed(groups)
+    y_u, g_u = keyed(y), keyed(groups, _group_key)
     notes: list[str] = []
     if held is not None:
         held_u, stratified = np.asarray(held, dtype=bool)[order], False
@@ -873,7 +986,8 @@ def split_stage(ctx: StageContext) -> Bundle:
 
 
 __all__ = [
-    "PREDICTOR_ROLES", "cohort_flow", "cohort_inputs", "cohort_stage", "compute_cohort",
-    "draw_split", "energy_bearing", "predictors", "propose_roles", "roles_stage", "rule_keep",
-    "rule_label", "split_inputs", "split_note", "split_stage",
+    "CATEGORY_LEVELS", "NHANES_CODED", "PREDICTOR_ROLES", "categorical_proposals", "cohort_flow",
+    "cohort_inputs", "cohort_stage", "compute_cohort", "draw_split", "energy_bearing", "predictors",
+    "propose_roles", "roles_stage", "rule_drops", "rule_keep", "rule_label", "rule_parts",
+    "split_inputs", "split_note", "split_stage",
 ]

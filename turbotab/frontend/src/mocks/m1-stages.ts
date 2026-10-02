@@ -240,7 +240,7 @@ export function rolesArtifact(ds: MockDataset, state: ProjectState): RolesArtifa
     const max = Math.max(...counts.values());
     if (max > 1) repeats = { column: id.column, n_units: counts.size, max_rows_per_unit: max };
   }
-  return { columns, repeats };
+  return { columns, repeats, categorical: [] };
 }
 
 /** The roles in force: the record's, else what the roles stage proposes. */
@@ -371,6 +371,7 @@ export function proposalsArtifact(ds: MockDataset, state: ProjectState): Proposa
           high: null,
           by: { column: sex.column, ranges },
           reason: "implausible intakes (Willett's sex-specific cut-offs)",
+          missing: "exclude",
         },
       ]);
     }
@@ -388,6 +389,7 @@ export function proposalsArtifact(ds: MockDataset, state: ProjectState): Proposa
           high: hi,
           by: null,
           reason: `implausible intakes (sex-neutral ${fmt(lo)}–${fmt(hi)} kcal a day)`,
+          missing: "exclude",
         },
       ]);
     }

@@ -22,8 +22,9 @@ M1 (docs/turbotab-next/M1_CONTRACT.md):
 
 M2 (docs/turbotab-next/M2_CONTRACT.md §2) — the table the analysis reads:
 
-    oriented     heavy   deps: ingest                         reads orientation
-    structure    heavy   deps: oriented                       reads grain, target, lens, repeat_kind
+    oriented     heavy   deps: ingest                         reads orientation, feature_table
+    structure    heavy   deps: oriented                       reads grain, target, lens, repeat_kind,
+                                                              findings (the date-reading repair)
     working      heavy   deps: oriented, findings, structure  reads findings, target, grain, unit,
                                                               aggregation, repeat_kind
 
@@ -66,8 +67,8 @@ def build_graph() -> Graph:
         [
             Stage("ingest", 1, (), (), ingest_stage, heavy=True, label="Reading the file"),
             # ── M2: what the table is (M2_CONTRACT §2) ──
-            Stage("oriented", 1, ("ingest",), ("orientation",), oriented_stage, heavy=True,
-                  label="Reading which way round the table is"),
+            Stage("oriented", 2, ("ingest",), ("orientation", "feature_table"), oriented_stage,
+                  heavy=True, label="Reading which way round the table is"),
             Stage(
                 "profile",
                 1,
@@ -87,9 +88,12 @@ def build_graph() -> Graph:
                 requires=("lens",),
                 label="Checking the table against the chosen lenses",
             ),
-            Stage("structure", 3, ("oriented",), ("grain", "target", "lens", "repeat_kind"),
+            # structure reads ``findings`` for the date-reading repair: a date column that reads
+            # both month-first and day-first is read only once that is answered (audit MA-05).
+            Stage("structure", 4, ("oriented",),
+                  ("grain", "target", "lens", "repeat_kind", "findings"),
                   structure_stage, heavy=True, label="Reading how the rows repeat"),
-            Stage("working", 1, ("oriented", "findings", "structure"),
+            Stage("working", 2, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind"),
                   working_stage, heavy=True, label="Building the working table"),
             Stage(
@@ -113,10 +117,11 @@ def build_graph() -> Graph:
                   ("split", "roles", "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
             Stage("shelf", 3, ("working", "cohort", "target_info", "split"),
-                  ("purpose", "task", "roles", "missing"), shelf_stage, heavy=True,
+                  ("purpose", "task", "roles", "missing", "categorical"), shelf_stage, heavy=True,
                   requires=("roles",), label="Ranking the model families for this table"),
             Stage("design", 1, ("working", "split", "target_info"),
-                  ("roles", "energy_adjustment", "missing", "models", "purpose"), design_stage,
+                  ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical"),
+                  design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
             Stage("fit", 3, ("working", "design", "split", "target_info"),

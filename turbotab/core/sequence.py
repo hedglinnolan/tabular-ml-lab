@@ -291,6 +291,45 @@ def _aggregation_knows_the_outcome(decision: SetAggregation, ctx: Any) -> None:
         )
 
 
+def _aggregation_can_order_the_records(decision: SetAggregation, ctx: Any) -> None:
+    """Refuse first, last or change when the time column cannot put a unit's records in order.
+
+    The structure stage reads the column (``time_order``, stages.working.time_order): text visit
+    labels, dates that read month-first and day-first alike, or a column that places fewer than
+    half of its values. Combining by it once fell back to file order while the Record said "in
+    order of `visit_date`" (audit MA-03). Exits: declare the levels' order (the natural order is
+    offered), combine by the mean, or choose another column.
+    """
+    from turbotab.core.decisions import SetRepeatKind
+    from turbotab.core.stages.working import needs_order, order_refusal
+
+    for column in decision.columns:
+        if _unknown(column, ctx):
+            raise _no_such_column(column)
+    state = _state(ctx)
+    if state is None or not needs_order(decision.method, decision.outcome, decision.columns):
+        return
+    order = (artifact(ctx, "structure") or {}).get("time_order")
+    if not order or order.get("orderable"):
+        return
+    exits: list[dict[str, Any]] = []
+    spec = state.repeat_kind
+    kind = spec.repeat_kind if spec is not None else "time_points"
+    if order.get("kind") in ("none", "levels") and order.get("proposed"):
+        levels = list(order["proposed"])
+        shown = ", ".join(f"`{v}`" for v in levels[:4]) + (" …" if len(levels) > 4 else "")
+        exits.append({"label": f"Order them {shown}",
+                      "decision": SetRepeatKind(repeat_kind=kind, time_column=order["column"],
+                                                levels=levels)})
+    if order.get("kind") == "ambiguous":
+        exits.append({"label": "Say how the dates are written (the dates finding)", "decision": None})
+    if decision.outcome != "first" and decision.outcome != "last":
+        exits.append({"label": "Combine by the mean", "decision": SetAggregation(
+            method="mean", outcome=decision.outcome)})
+    exits.append({"label": "Choose another time column", "decision": None})
+    raise Refusal("cannot_order", order_refusal(order, decision.method), exits=exits)
+
+
 def _temporal_needs_time_points_as_rows(decision: SetTemporal, ctx: Any) -> None:
     from turbotab.core.stages.working import time_column
 
@@ -426,6 +465,7 @@ register_validator("set_grain", _grain_is_consistent)
 register_validator("set_repeat_kind", _repeat_kind_follows_the_grain)
 register_validator("set_unit", _unit_follows_the_grain)
 register_validator("set_aggregation", _aggregation_knows_the_outcome)
+register_validator("set_aggregation", _aggregation_can_order_the_records)
 register_validator("set_temporal", _temporal_needs_time_points_as_rows)
 
 __all__ = ["ATTEST", "artifact", "question_of"]
