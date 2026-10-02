@@ -375,6 +375,47 @@ def form_columns(step: ExposureForms) -> dict[str, list[str]]:
     return {column: step._outputs(column) for column in step._plan()}
 
 
+def formed_name(column: str, adjustment: Any) -> str:
+    """The column the form step receives for ``column`` after the energy step: the step that runs
+    first may have replaced it (``EnergyAdjuster``'s output names: the residual method's
+    ``{column}_adj``, the density methods' ``{column}_per_{energy}``). The form then shapes the
+    energy-adjusted intake, and its terms carry that name. Unchanged without an adjustment, under
+    the standard model (energy enters beside the nutrient) and for a column it does not adjust."""
+    if adjustment is None:
+        return column
+    get = adjustment.get if isinstance(adjustment, Mapping) else (
+        lambda k, a=adjustment: getattr(a, k, None))
+    method, energy = get("method"), get("energy_column")
+    if column not in (get("nutrients") or []) or method in (None, "none", "standard"):
+        return column
+    if method == "residual":
+        return f"{column}_adj"
+    if method in ("density", "density_multivariate"):
+        return f"{column}_per_{energy}"
+    return column  # the partition replaces the nutrient by its kcal; the decision refuses a form
+
+
+def adjusted_forms(forms: Mapping[str, Any], adjustment: Any) -> dict[str, Any]:
+    """``forms`` keyed by the columns the form step receives (:func:`formed_name`)."""
+    return {formed_name(str(column), adjustment): spec for column, spec in forms.items()}
+
+
+def model_terms(predictors: Sequence[str], forms: Mapping[str, Any] | None) -> int:
+    """How many columns ``predictors`` put in the model matrix once formed: a spline k − 1, a
+    quintile exposure 4, any other predictor 1 (the count the shelf's per-predictor rules read)."""
+    total = 0
+    for column in predictors:
+        spec = (forms or {}).get(column)
+        form, knots = _form_of(spec) if spec is not None else ("linear", None)
+        if form == "spline":
+            total += (knots or DEFAULT_KNOTS) - 1
+        elif form == "quintiles":
+            total += QUINTILES - 1
+        else:
+            total += 1
+    return total
+
+
 # ── the options, labeled as north star 5 asks ────────────────────────────────
 
 
@@ -510,9 +551,9 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
     info = dict(table.info or {})
     tests: list[dict[str, Any]] = []
     concerns: list[str] = []
-    if task == "multiclass":
-        return [], ["Tests of an exposure's form are not computed for a multinomial outcome: each "
-                    "class has its own curve."]
+    if task == "multiclass" or (task == "ordinal" and not getattr(family, "ordered_levels", False)):
+        return [], ["Tests of an exposure's form are not computed for a multinomial model: each "
+                    "level has its own curve."]
     if info.get("refused"):
         return [], []
     plan = step._plan()
@@ -592,24 +633,32 @@ def _trend(family: Any, pipeline: Any, step: ExposureForms, column: str, X: pd.D
 
 
 def describe(forms: Mapping[str, Any]) -> str:
-    """The pipeline step's detail line: which column takes which form."""
+    """The pipeline step's detail line: which column takes which form, and where its knots or cut
+    points come from."""
     parts = []
+    learned = []
     for column, spec in forms.items():
         form, knots = _form_of(spec)
         if form == "spline":
-            parts.append(f"{column} as a restricted cubic spline with {knots or DEFAULT_KNOTS} "
+            parts.append(f"a restricted cubic spline of {column} with {knots or DEFAULT_KNOTS} "
                          f"knots at Harrell's percentiles")
+            if "knots" not in learned:
+                learned.append("knots")
         elif form == "quintiles":
-            parts.append(f"{column} as quintile indicators against the lowest fifth")
+            parts.append(f"quintile indicators of {column} against its lowest fifth")
+            if "cut points" not in learned:
+                learned.append("cut points")
     if not parts:
         return "Every exposure enters as a straight line."
     joined = parts[0] if len(parts) == 1 else f"{'; '.join(parts[:-1])}; and {parts[-1]}"
-    return f"{joined[0].upper()}{joined[1:]}, with knots and cut points learned on the training fold."
+    return (f"{joined[0].upper()}{joined[1:]}. The {' and '.join(learned)} are learned on the rows "
+            f"each fit sees, every training fold included.")
 
 
 __all__ = [
     "DEFAULT_KNOTS", "ExposureForms", "FORMS", "FRACTIED", "Form", "KNOT_CHOICES",
     "KNOT_PERCENTILES", "QUINTILES", "describe", "exposure_tests", "form_columns", "form_step",
+    "adjusted_forms", "formed_name", "model_terms",
     "knot_sentence", "options", "quantile_cuts", "quantile_group", "quintile_names", "rcs_basis",
     "rcs_knots", "spline_names", "wald_test",
 ]

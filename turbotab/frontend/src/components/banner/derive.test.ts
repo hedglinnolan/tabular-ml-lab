@@ -122,6 +122,7 @@ const baseline = { metric: "r2", value: 0, label: "the outcome's average" };
 
 const fit: FitArtifact = {
   task: "regression",
+  levels: null,
   primary_metric: "r2",
   metric_labels: { r2: "R²", rmse: "RMSE" },
   n_train: 2352,
@@ -141,6 +142,7 @@ const fit: FitArtifact = {
       baseline,
       versus_baseline: null,
       inference: null,
+      exposure_tests: [],
     },
     {
       family: "elastic_net",
@@ -156,6 +158,7 @@ const fit: FitArtifact = {
       baseline,
       versus_baseline: null,
       inference: null,
+      exposure_tests: [],
     },
     {
       family: "boosted_trees",
@@ -171,6 +174,7 @@ const fit: FitArtifact = {
       baseline,
       versus_baseline: null,
       inference: null,
+      exposure_tests: [],
     },
   ],
   holdout_sealed: true,

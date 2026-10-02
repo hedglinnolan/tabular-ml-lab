@@ -527,7 +527,7 @@ export interface components {
              */
             post_seal: boolean;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"];
         };
         /**
          * DeferFinding
@@ -702,7 +702,21 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"]) | null;
+        };
+        /**
+         * ExposureFormSpec
+         * @description How one numeric predictor enters the models: a straight line, a restricted cubic spline
+         *     (``knots`` 3–5, at Harrell's percentiles), or quintile indicators with a trend test.
+         */
+        ExposureFormSpec: {
+            /**
+             * Form
+             * @enum {string}
+             */
+            form: "linear" | "spline" | "quintiles";
+            /** Knots */
+            knots: number | null;
         };
         /**
          * FamilyInfo
@@ -714,7 +728,7 @@ export interface components {
             /** Label */
             label: string;
             /** Tasks */
-            tasks: ("regression" | "binary" | "multiclass")[];
+            tasks: ("regression" | "binary" | "multiclass" | "ordinal")[];
             /** Inductive Bias */
             inductive_bias: string;
             /** Strengths */
@@ -1037,7 +1051,7 @@ export interface components {
             /** Target */
             target: string | null;
             /** Task */
-            task: ("regression" | "binary" | "multiclass") | null;
+            task: ("regression" | "binary" | "multiclass" | "ordinal") | null;
             /** Purpose */
             purpose: ("prediction" | "inference") | null;
             /** Roles */
@@ -1071,6 +1085,12 @@ export interface components {
             feature_table: components["schemas"]["FeatureTableSpec"] | null;
             /** Categorical */
             categorical: string[] | null;
+            /** Exposure Forms */
+            exposure_forms: {
+                [key: string]: components["schemas"]["ExposureFormSpec"];
+            } | null;
+            /** Outcome Order */
+            outcome_order: string[] | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -1469,6 +1489,46 @@ export interface components {
             rules: components["schemas"]["ExclusionRule-Output"][];
         };
         /**
+         * SetExposureForm
+         * @description The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.
+         */
+        "SetExposureForm-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_exposure_form";
+            /** Column */
+            column: string;
+            /**
+             * Form
+             * @enum {string}
+             */
+            form: "linear" | "spline" | "quintiles";
+            /** Knots */
+            knots?: number | null;
+        };
+        /**
+         * SetExposureForm
+         * @description The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.
+         */
+        "SetExposureForm-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_exposure_form";
+            /** Column */
+            column: string;
+            /**
+             * Form
+             * @enum {string}
+             */
+            form: "linear" | "spline" | "quintiles";
+            /** Knots */
+            knots: number | null;
+        };
+        /**
          * SetFeatureTable
          * @description How a features-in-rows table reads: the column naming the features, and the columns that
          *     describe them (m/z, retention time, IDs). Turning it makes every other column a sample.
@@ -1630,6 +1690,22 @@ export interface components {
              */
             orientation: "sample_major" | "feature_major";
         };
+        /**
+         * SetOutcomeOrder
+         * @description The order of an ordinal outcome's levels, lowest first. Stands only while ``column`` is the
+         *     target. Numbers are ordered by value without it; text levels need it (asked, never inferred).
+         */
+        SetOutcomeOrder: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_outcome_order";
+            /** Column */
+            column: string;
+            /** Levels */
+            levels: string[];
+        };
         /** SetPurpose */
         SetPurpose: {
             /**
@@ -1756,6 +1832,17 @@ export interface components {
              * @default 0
              */
             n_boot: number;
+            /**
+             * Scale
+             * @default kcal
+             * @enum {string}
+             */
+            scale: "kcal" | "percent_energy";
+            /**
+             * Step Percent
+             * @default 5
+             */
+            step_percent: number;
         };
         /**
          * SetSubstitution
@@ -1781,6 +1868,17 @@ export interface components {
              * @default 0
              */
             n_boot: number;
+            /**
+             * Scale
+             * @default kcal
+             * @enum {string}
+             */
+            scale: "kcal" | "percent_energy";
+            /**
+             * Step Percent
+             * @default 5
+             */
+            step_percent: number;
         };
         /** SetTarget */
         SetTarget: {
@@ -1810,7 +1908,7 @@ export interface components {
              * Task
              * @enum {string}
              */
-            task: "regression" | "binary" | "multiclass";
+            task: "regression" | "binary" | "multiclass" | "ordinal";
         };
         /** SetTemporal */
         "SetTemporal-Input": {
@@ -1936,6 +2034,17 @@ export interface components {
              * @default 0
              */
             n_boot: number;
+            /**
+             * Scale
+             * @default kcal
+             * @enum {string}
+             */
+            scale: "kcal" | "percent_energy";
+            /**
+             * Step Percent
+             * @default 5
+             */
+            step_percent: number;
         };
         /**
          * TableFocusView
@@ -2179,6 +2288,31 @@ export interface components {
             value: number | null;
             /** Label */
             label: string;
+        };
+        /**
+         * BrantCheck
+         * @description Brant's (1990) Wald test of the proportional-odds assumption: overall, and per column.
+         */
+        BrantCheck: {
+            /** Statistic */
+            statistic: number;
+            /** Df */
+            df: number;
+            /** P */
+            p: number;
+            /** Columns */
+            columns: {
+                [key: string]: components["schemas"]["BrantColumn"];
+            };
+        };
+        /** BrantColumn */
+        BrantColumn: {
+            /** Statistic */
+            statistic: number;
+            /** Df */
+            df: number;
+            /** P */
+            p: number;
         };
         /**
          * CategoricalProposal
@@ -2437,6 +2571,65 @@ export interface components {
              */
             missing: "exclude" | "keep";
         };
+        /**
+         * ExposureTest
+         * @description A test an exposure's form carries under inference (``methods/exposure_form.py``): a
+         *     spline's overall and nonlinear Wald tests, or quintiles' trend across their medians.
+         */
+        ExposureTest: {
+            /** Column */
+            column: string;
+            /**
+             * Form
+             * @enum {string}
+             */
+            form: "spline" | "quintiles";
+            /**
+             * Test
+             * @enum {string}
+             */
+            test: "overall" | "nonlinear" | "trend";
+            /** Statistic */
+            statistic: number | null;
+            /** Df Num */
+            df_num: number | null;
+            /** Df Den */
+            df_den: number | null;
+            /**
+             * Distribution
+             * @enum {string}
+             */
+            distribution: "F" | "chi2" | "t" | "z";
+            /** P */
+            p: number | null;
+            /**
+             * Estimate
+             * @default null
+             */
+            estimate: number | null;
+            /**
+             * Ci Low
+             * @default null
+             */
+            ci_low: number | null;
+            /**
+             * Ci High
+             * @default null
+             */
+            ci_high: number | null;
+            /**
+             * Knots
+             * @default null
+             */
+            knots: number[] | null;
+            /**
+             * Medians
+             * @default null
+             */
+            medians: number[] | null;
+            /** Caption */
+            caption: string;
+        };
         /** Finding */
         Finding: {
             /** Id */
@@ -2509,7 +2702,7 @@ export interface components {
              * Task
              * @enum {string}
              */
-            task: "regression" | "binary" | "multiclass";
+            task: "regression" | "binary" | "multiclass" | "ordinal";
             /** Primary Metric */
             primary_metric: string;
             /** Metric Labels */
@@ -2548,6 +2741,11 @@ export interface components {
              * @default null
              */
             cv_definition: string | null;
+            /**
+             * Levels
+             * @default null
+             */
+            levels: string[] | null;
         };
         /** FittedModel */
         FittedModel: {
@@ -2574,6 +2772,11 @@ export interface components {
             versus_baseline: components["schemas"]["VersusBaseline"] | null;
             /** @default null */
             inference: components["schemas"]["Inference"] | null;
+            /**
+             * Exposure Tests
+             * @default []
+             */
+            exposure_tests: components["schemas"]["ExposureTest"][];
         };
         /** GrainContradiction */
         GrainContradiction: {
@@ -2617,7 +2820,7 @@ export interface components {
              * Covariance
              * @enum {string}
              */
-            covariance: "HC3" | "CR2" | "model" | "profile" | "none";
+            covariance: "HC3" | "CR2" | "CR1" | "model" | "profile" | "none";
             /** Caption */
             caption: string;
             /**
@@ -2650,6 +2853,8 @@ export interface components {
              * @default []
              */
             exits: components["schemas"]["InferenceExit"][];
+            /** @default null */
+            brant: components["schemas"]["BrantCheck"] | null;
         };
         /**
          * InferenceExit
@@ -3240,6 +3445,17 @@ export interface components {
             band_estimate: components["schemas"]["BandEstimate"] | null;
             /** @default null */
             support: components["schemas"]["SubstitutionSupport"] | null;
+            /**
+             * Scale
+             * @default kcal
+             * @enum {string}
+             */
+            scale: "kcal" | "percent_energy";
+            /**
+             * Step Percent
+             * @default null
+             */
+            step_percent: number | null;
         };
         /**
          * SubstitutionBand
@@ -3369,12 +3585,12 @@ export interface components {
              * Task
              * @enum {string}
              */
-            task: "regression" | "binary" | "multiclass";
+            task: "regression" | "binary" | "multiclass" | "ordinal";
             /**
              * Detected Task
              * @enum {string}
              */
-            detected_task: "regression" | "binary" | "multiclass";
+            detected_task: "regression" | "binary" | "multiclass" | "ordinal";
             /**
              * Confidence
              * @enum {string}
@@ -3794,7 +4010,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"];
             };
         };
         responses: {
@@ -3929,7 +4145,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"];
             };
         };
         responses: {

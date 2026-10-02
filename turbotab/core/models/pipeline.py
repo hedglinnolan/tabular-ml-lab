@@ -325,9 +325,10 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
     if step is not None:
         steps.append(("energy", step))
     if spec.exposure_forms:
-        from turbotab.core.methods.exposure_form import ExposureForms
+        from turbotab.core.methods.exposure_form import ExposureForms, adjusted_forms
 
-        steps.append(("form", ExposureForms(dict(spec.exposure_forms))))
+        # After the energy step a formed nutrient may carry the step's name (``protein_adj``).
+        steps.append(("form", ExposureForms(adjusted_forms(spec.exposure_forms, spec.energy))))
     if levels:
         steps.append(("levels", MissingLevelEncoder(levels)))
     categorical = [c for c in spec.categorical if c in spec.predictors and c not in levels]
@@ -402,7 +403,7 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
                    purpose: Purpose | None, n_matrix_columns: int | None = None) -> list[dict[str, str]]:
     """``[{key, label, detail}]`` for each step of this family's pipeline, in order."""
     out: list[dict[str, str]] = []
-    for name, _ in family_steps(spec, family):
+    for name, step in family_steps(spec, family):
         if name == "impute":
             marked = "; each filled number also gets a missing indicator" if spec.indicators else ""
             out.append({"key": "impute", "label": "Fill missing values",
@@ -412,7 +413,7 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
             from turbotab.core.methods.exposure_form import describe as describe_forms
 
             out.append({"key": "form", "label": "Exposure form",
-                        "detail": describe_forms(spec.exposure_forms)})
+                        "detail": describe_forms(step.forms)})
         elif name == "levels":
             cols = [c for c in spec.levels if c in spec.predictors]
             verb = "becomes" if len(cols) == 1 else "become"

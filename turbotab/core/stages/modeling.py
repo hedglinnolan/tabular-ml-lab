@@ -113,8 +113,12 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
         class_counts = tuple(int(c) for c in counts.to_numpy())
         if task == "binary" and n_classes:
             n_events = int(counts.min())
+    from turbotab.core.methods.exposure_form import model_terms
+
+    # A spline or quintile exposure puts several columns in the model (WP12a).
+    terms = model_terms(predictors, ctx.state.exposure_forms)
     situation = Situation(task=task, purpose=ctx.state.purpose, n_rows=n,
-                          n_features=len(predictors), n_events=n_events, n_classes=n_classes,
+                          n_features=terms, n_events=n_events, n_classes=n_classes,
                           class_counts=class_counts)
     ranked = rank(situation)
     events = f", {n_events:,} in the rarer class" if n_events is not None else ""
@@ -128,9 +132,14 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
             for i, (f, a) in enumerate(ranked)
         ],
         basis=f"Ranked for {n:,} {'training ' if trained else ''}rows and {len(predictors):,} "
-              f"predictors{events}.",
+              f"predictors{_terms_clause(terms, len(predictors))}{events}.",
     )
     return artifact.model_dump(mode="json")
+
+
+def _terms_clause(terms: int, predictors: int) -> str:
+    """`` (12 model terms, with the spline and quintile columns)`` when forms add columns."""
+    return f" ({terms:,} model terms, with the spline and quintile columns)" if terms != predictors else ""
 
 
 def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[Any]) -> dict[str, Any]:

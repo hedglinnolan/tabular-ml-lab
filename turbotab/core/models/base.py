@@ -36,7 +36,7 @@ class Situation:
     n_features: int
     n_events: int | None = None  # binary: rows in the rarer class
     n_classes: int | None = None
-    class_counts: tuple[int, ...] | None = None  # rows per class (per level, in order, if ordinal)
+    class_counts: tuple[int, ...] | None = None  # rows per class or level
 
 
 @dataclass(frozen=True)

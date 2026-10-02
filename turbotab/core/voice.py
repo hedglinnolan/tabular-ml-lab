@@ -320,7 +320,8 @@ def _set_target(d: Any, state: Any, ctx: Any) -> str:
 
 @register_sentence("set_task")
 def _set_task(d: Any, state: Any, ctx: Any) -> str:
-    text = f"{tick(d.column)} was modeled as a {tick(d.task)} task"
+    article = "an" if str(d.task)[:1] in "aeiou" else "a"  # an `ordinal` task
+    text = f"{tick(d.column)} was modeled as {article} {tick(d.task)} task"
     detected = _get(ctx, "detected_task")
     if detected and detected != d.task:
         text += f", overriding the detected {tick(detected)}"
@@ -865,20 +866,29 @@ def _set_exposure_form(d: Any, state: Any, ctx: Any) -> str:
     from turbotab.core.methods.exposure_form import DEFAULT_KNOTS, KNOT_PERCENTILES
 
     adj = getattr(state, "energy_adjustment", None)
-    adjusted = (adj is not None and _attr(adj, "method") not in (None, "none")
+    # The residual and density methods replace the nutrient's column before the form step; the
+    # standard model keeps it as recorded (energy enters beside it), and the partition refuses.
+    adjusted = (adj is not None and _attr(adj, "method") in ("residual", "density",
+                                                             "density_multivariate")
                 and d.column in (_attr(adj, "nutrients") or []))
-    values = "energy-adjusted training values" if adjusted else "training values"
+    values = "energy-adjusted values" if adjusted else "values"
+    tested = getattr(state, "purpose", None) == "inference"
     if d.form == "linear":
         return f"{tick(d.column)} entered the models as a straight line"
     if d.form == "spline":
         k = d.knots or DEFAULT_KNOTS
         pct = [f"{100 * p:g}" for p in KNOT_PERCENTILES.get(k, ())]
-        where = (f" at the {', '.join(pct[:-1])} and {pct[-1]} percentiles of its {values} "
-                 f"(Harrell's placement)" if pct else f" placed on its {values}")
+        where = (f" at the {', '.join(pct[:-1])} and {pct[-1]} percentiles of its {values} in the "
+                 f"rows each model was fit on (Harrell's placement)" if pct
+                 else f" placed on its {values}")
+        test = ("; nonlinearity was tested by a Wald test that its nonlinear terms are zero"
+                if tested else "")
         return (f"{tick(d.column)} entered the models as a restricted cubic spline with {tick(k)} "
-                f"knots{where}; nonlinearity was tested by a Wald test of its nonlinear terms")
-    return (f"{tick(d.column)} entered the models as quintiles of its {values}, the lowest the "
-            f"reference; the p for trend scored each quintile by its median")
+                f"knots{where}{test}")
+    trend = ("; the p for trend scored each quintile by its median, entered as one continuous term"
+             if tested else "")
+    return (f"{tick(d.column)} entered the models as quintiles of its {values} in the rows each "
+            f"model was fit on, the lowest the reference{trend}")
 
 
 @register_sentence("set_outcome_order")
