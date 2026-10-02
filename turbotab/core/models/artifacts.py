@@ -106,6 +106,8 @@ class Coefficient(_Model):
     se: float | None = None  # the standard error the interval rests on (inference only)
     # The t reference distribution's degrees of freedom; null for a normal or likelihood-based one.
     df: float | None = None
+    # The Benjamini–Hochberg adjusted p-value across the features a feature-wise family tested.
+    q: float | None = None
 
 
 class InferenceExit(_Model):

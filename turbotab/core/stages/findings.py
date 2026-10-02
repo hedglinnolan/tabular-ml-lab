@@ -29,6 +29,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from turbotab.core import repairs  # noqa: F401 - registers the repair validators, previews, key view
+from turbotab.core.methods import omics  # noqa: F401 - registers the omics_scale repairs (WP11)
 from turbotab.core.graph import StageContext
 from turbotab.core.shape_memo import remembered
 from turbotab.core.stages.data import LENSES, open_store
@@ -164,6 +165,14 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
     for found in (repairs.ambiguous_date_finding(frame), repairs.infinite_finding(frame)):
         if found is not None:
             own.append(found)
+    # WP11 (audit ME-09): raw counts or intensities, read from the values alone, with the
+    # normalizations a linear model needs; and the raw-counts coaching made purpose-specific.
+    scale = omics.scale_finding(frame, lens, target)
+    if scale is not None:
+        own.append(scale)
+    for _, f in spoken:
+        if family(f["id"]) == "pack::genomics::data_type":
+            omics.restate_raw_counts(f)
     read = {c for _, f in own if family(f["id"]) == "text_numbers" for c in f["affected_columns"]}
     spoken = [pair for pair in spoken
               if not (family(pair[1]["id"]) in ("numeric_as_text", "text_missing")
