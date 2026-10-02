@@ -434,7 +434,9 @@ correlated errors can introduce **spurious** nutrient–outcome associations and
   sample*, after exclusions? If exclusions happened after, residuals no longer have mean zero and the
   added constant no longer corresponds to the analytic sample's mean energy.
 - **Stratification check.** Pooled residuals across sexes carry a sex effect into the "adjusted"
-  variable.
+  variable. So does adding each sex's own constant to within-sex residuals; add one constant, the
+  predicted nutrient at the cohort mean energy, and report r(N_adj, E) and r(N_adj, sex) pooled over
+  both sexes as well as within each.
 - Compute all five variants and report coefficient, SE, and estimand side by side.
 - Check for **energy in the model twice** (density *and* residual *and* total energy).
 - Detect whether the outcome is itself energy-related (weight, BMI, adiposity, diabetes) — if so,
@@ -477,8 +479,13 @@ correlated errors can introduce **spurious** nutrient–outcome associations and
   shows fragility.
 - **Methods sentence generator:** *"Nutrient intakes were energy-adjusted using the residual method
   (Willett & Stampfer), by regressing log-transformed nutrient intake on log-transformed total energy
-  within sex in the analytic sample and adding the predicted intake at the sex-specific mean energy
-  (men: 2,180 kcal/d; women: 1,720 kcal/d) to the residuals."*
+  within sex in the analytic sample and adding the predicted intake at the cohort mean energy
+  (1,950 kcal/d) to the residuals."*
+  *(This sentence read "at the sex-specific mean energy (men: 2,180 kcal/d; women: 1,720 kcal/d)"
+  until 2026-10-02, contradicting the coaching line above. Adding each sex's own constant gives the
+  adjusted nutrient the sexes' difference by construction, and a model without sex then reports it
+  as the nutrient's effect: on a fixture where fat had no effect, p ≈ 10⁻¹⁰⁶ (audit MA-02). One
+  constant for both sexes keeps the within-sex residuals free of sex.)*
 
 ### Anti-patterns
 

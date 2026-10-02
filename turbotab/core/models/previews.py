@@ -203,21 +203,18 @@ def _relationship_caption(method: str, n: str, E: str, out: str, r0: float | Non
 
 
 def _residual_story(fitted: Any, n: str, E: str, e: np.ndarray, raw: np.ndarray, after: np.ndarray,
-                    keep: np.ndarray, frame: Any, strata: str | None) -> tuple[list[Any], list[Any]]:
+                    keep: np.ndarray, strata: str | None) -> tuple[list[Any], list[Any]]:
     """Residual's two steps, for the scatter and the distribution: the fit, then the residuals.
 
     The residual is the adjusted value less what the method adds back (the nutrient predicted at
-    the mean energy), so it is exactly ``N − N̂(E)`` on the fitting rows' own regression, per
-    level under strata. On the log scale it is the residual of ``log N`` on ``log E``.
+    the mean energy of all fitting rows, one constant even under strata), so it is exactly
+    ``N − N̂(E)`` on the fitting rows' own regression, per level under strata. On the log scale
+    it is the residual of ``log N`` on ``log E``.
     """
     pooled = getattr(fitted, "pooled_", fitted)
     params = pooled.params_[n]
     log = params["scale"] == "log"
     added = np.full(len(after), float(params["constant_added"]))
-    if strata is not None and hasattr(fitted, "by_level_"):
-        levels = frame[strata].to_numpy(dtype=object)
-        for level, adjuster in fitted.by_level_.items():
-            added[levels == level] = float(adjuster.params_[n]["constant_added"])
     with np.errstate(invalid="ignore", divide="ignore"):
         residual = (np.log(after) if log else after) - added
     line = None
@@ -341,7 +338,7 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     hist_story: list[Any] = []
     if not problem and not reopened and method == "residual" and fitted is not None:
         strata = after_adj.strata if after_adj.strata in frame.columns else None
-        scatter_story, hist_story = _residual_story(fitted, n, E, e, raw, after, keep, frame, strata)
+        scatter_story, hist_story = _residual_story(fitted, n, E, e, raw, after, keep, strata)
     views: list[Any] = [RelationshipView(
         title=fit_words(f"{n} against {E}, now and with this choice" if reopened else
                         f"{n} against {E}, before and after", TITLE_WORDS),

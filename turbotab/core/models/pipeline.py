@@ -475,7 +475,9 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
                        f"overlap, moving energy through one while the rest stay fixed is not a "
                        f"coherent substitution.")
     if not spec.impute:
-        valued = [c for c in spec.inputs if c not in spec.levels]  # a blank there is a level
+        # Predictors only (as the cohort's complete cases): a strata column that is not one is the
+        # energy step's input, where a blank is a level of its own. In spec.levels a blank is too.
+        valued = [c for c in spec.predictors if c in spec.inputs and c not in spec.levels]
         incomplete = frame[valued].isna().any(axis=1)
         n_bad = int(incomplete.sum())
         if n_bad:

@@ -553,7 +553,10 @@ def test_substitution_names_its_assumptions_and_skips_nothing_it_can_draw(table)
 # ── stratified residuals ─────────────────────────────────────────────────────
 
 
-def test_stratified_residuals_equal_one_residual_fit_per_level():
+def test_stratified_residuals_are_each_levels_residual_plus_one_constant():
+    """Each level's own residual regression, plus one constant for every level: the nutrient's
+    mean over all fitting rows (NUTRITION_PACK §04: "the predicted nutrient at the cohort mean
+    energy"), never the level's own mean (audit MA-02)."""
     frame = mf.nhanes_like(400, seed=16)
     X = frame[["gender", "kcal", "protein", "carb", "age"]]
     step = StratifiedEnergyAdjuster("kcal", ["protein", "carb"], strata="gender").fit(X)
@@ -561,10 +564,12 @@ def test_stratified_residuals_equal_one_residual_fit_per_level():
     for level in ("female", "male"):
         rows = X[X["gender"] == level]
         alone = EnergyAdjuster("residual", "kcal", ["protein", "carb"]).fit(rows).transform(rows)
-        for n in ("protein_adj", "carb_adj"):
-            np.testing.assert_allclose(out.loc[rows.index, n], alone[n], rtol=0, atol=1e-10)
-            assert abs(np.corrcoef(out.loc[rows.index, n], rows["kcal"])[0, 1]) < 1e-8
-    assert "within each level of gender" in next(e for e in step.lineage() if e["output"] == "protein_adj")["formula"]
+        for n in ("protein", "carb"):
+            expected = alone[f"{n}_adj"] - rows[n].mean() + X[n].mean()
+            np.testing.assert_allclose(out.loc[rows.index, f"{n}_adj"], expected, rtol=0, atol=1e-10)
+            assert abs(np.corrcoef(out.loc[rows.index, f"{n}_adj"], rows["kcal"])[0, 1]) < 1e-8
+            assert out.loc[rows.index, f"{n}_adj"].mean() == pytest.approx(X[n].mean(), abs=1e-9)
+    assert "within each level s of gender" in next(e for e in step.lineage() if e["output"] == "protein_adj")["formula"]
     dropped = StratifiedEnergyAdjuster("kcal", ["protein"], strata="gender", drop_strata=True).fit(X)
     assert "gender" not in dropped.transform(X).columns
     assert "gender" not in dropped.get_feature_names_out()
