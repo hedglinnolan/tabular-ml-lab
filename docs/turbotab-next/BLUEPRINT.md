@@ -30,6 +30,25 @@ not done.
    record (decisions, lineage, software versions) that a reviewer can replay to regenerate the
    same model matrix.
 
+5. **Custom and soundness are separate axes.** Nolan (2026-10-01): *"math modeling is simply a
+   sequence of decisions. Sometimes those decisions are backed by what is customary in the field,
+   sometimes they're backed by mathematically sound practices, but both may not be true every single
+   time."* The engine may break with a field's convention when a sounder practice exists, and must say
+   so. Every option carries two independent labels: **customary in <field>** (with a source) and
+   **sound for <your purpose>** (with the reason). Options are ordered by soundness for the declared
+   purpose. When the two diverge, the coach names the tension in one line and the researcher decides.
+   The methods sentence records any departure from convention together with its justification. Some
+   examples:
+   - quintiles of intake versus continuous splines;
+   - the residual method versus the all-components model for substitution estimands;
+   - fixed kcal cut-offs versus sensitivity analysis;
+   - a single split at small n versus bootstrap optimism correction;
+   - stepwise selection or VIP > 1 versus penalized or permutation-validated models;
+   - SMOTE versus calibration-preserving weighting.
+
+   **Performance versus explainability is a measured price**, not an assumption: the model comparison
+   states what the more interpretable choice costs on the user's own data.
+
 ## 0 · Rulings (2026-09-27) — do not re-litigate
 
 - **Keep the Python engine and domain packs; replace the frontend.** React + TypeScript + Vite.
