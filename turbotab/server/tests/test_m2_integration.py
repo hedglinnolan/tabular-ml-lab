@@ -8,10 +8,12 @@ import numpy as np
 import pandas as pd
 
 from turbotab.core.stages.modeling import coded_outcome
-from turbotab.server.tests.conftest import SAMPLES, open_by_path, wait_for
+from turbotab.server.tests.conftest import SAMPLES, open_by_path, prepare, wait_for
 
 
 def decide(client, pid, decision, status=200):
+    if status == 200:
+        prepare(client, pid, decision)  # the questions before it, answered as usual (M2 §12.2)
     response = client.post(f"/api/projects/{pid}/decisions", json=decision)
     assert response.status_code == status, response.text
     return response.json()
@@ -103,12 +105,17 @@ def test_the_aggregation_coach_reads_the_stated_repeats_and_their_dates(client):
     wait_for(client, pid, {"structure": "fresh"})
 
     def coach(method):
-        body = client.post(f"/api/projects/{pid}/preview",
-                           json={"kind": "set_aggregation", "method": method}).json()
+        body = preview(client, pid, {"kind": "set_aggregation", "method": method})
         return [n["text"] for v in body["views"] for n in v.get("coach") or []]
 
     assert any("replicates" in t for t in coach("mean"))  # stated repeats, not only answered
     assert not any("No time column" in t for t in coach("first"))  # recall_date orders them
+    # M2_CONTRACT §12.4: once combined, the notes still read the rows before combining
+    decide(client, pid, {"kind": "set_aggregation", "method": "mean"})
+    wait_for(client, pid, {"working": "fresh"})
+    assert client.get(f"/api/projects/{pid}/stages/working").json()["artifact"]["n_rows"] == 300
+    assert not any("replicates" in t for t in coach("first"))  # keeping one is not averaging
+    assert any("Averaging `2` replicates" in t for t in coach("mean"))
 
 
 def test_a_binary_outcome_is_coded_by_the_event_the_user_named():
@@ -120,6 +127,7 @@ def test_a_binary_outcome_is_coded_by_the_event_the_user_named():
 
 
 def preview(client, pid, decision):
+    prepare(client, pid, decision)  # a question the Router has not reached refuses its preview too
     response = client.post(f"/api/projects/{pid}/preview", json=decision)
     assert response.status_code == 200, response.text
     return response.json()

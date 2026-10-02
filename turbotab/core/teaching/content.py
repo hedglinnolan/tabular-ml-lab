@@ -387,6 +387,8 @@ GRAIN = {
                "Each row is a different person; the split may draw rows freely."),
         option("repeated", "People repeat",
                "Rows sharing an identifier stay together; the next questions ask what repeats."),
+        option("unknown", "I don't know",
+               "Rows are held out one by one, and every held-out score is labeled exploratory."),
     ],
     "terms": [
         GROUPED_SPLIT,

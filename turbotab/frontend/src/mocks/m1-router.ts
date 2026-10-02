@@ -25,8 +25,9 @@ const NEEDS: Record<QuestionKey, string[]> = {
   energy_adjustment: ["proposals"],
   models: ["shelf"],
   substitution: ["fit"],
+  open_seal: ["fit"],
 };
-const MUST_BE_FRESH: Partial<Record<QuestionKey, string>> = { substitution: "fit" };
+const MUST_BE_FRESH: Partial<Record<QuestionKey, string>> = { substitution: "fit", open_seal: "fit" };
 
 const SLOT_OF: Record<string, QuestionKey> = {
   set_lens: "lens",
@@ -47,6 +48,7 @@ const SLOT_OF: Record<string, QuestionKey> = {
   set_unit: "unit",
   set_aggregation: "aggregation",
   set_temporal: "temporal",
+  open_seal: "open_seal",
 };
 
 /**
@@ -147,7 +149,8 @@ export function route(
   const steps: Omit<InterviewStep, "deferred_findings">[] = [];
   let first: QuestionKey | null = null;
   for (const key of QUESTION_KEYS) {
-    const value = state[key];
+    // open_seal writes the seal_opened slot (turbotab/core/interview.py SLOT_OF)
+    const value = key === "open_seal" ? state.seal_opened : state[key];
     const decision_id = writers.get(key) ?? null;
     if (key === "orientation" && value !== null) {
       steps.push({ key, status: "answered", decision_id, reason: null, waiting_on: [] });

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from turbotab.core.teaching import TEACHING_KEYS
-from turbotab.server.tests.conftest import open_by_path, wait_for
+from turbotab.server.tests.conftest import open_by_path, prepare, wait_for
 
 
 def test_teaching_answers_one_entry_per_question(client):
@@ -38,8 +38,9 @@ def test_m2_sentences_coach_lines_and_units_over_http(client):
     for decision in ({"kind": "set_lens", "lenses": ["dietary"]}, {"kind": "set_target", "column": "hba1c"}):
         assert client.post(f"/api/projects/{pid}/decisions", json=decision).status_code == 200
     wait_for(client, pid, {"target_info": "fresh", "proposals": "fresh", "findings": "fresh"})
-    record = client.post(f"/api/projects/{pid}/decisions",
-                         json={"kind": "set_grain", "grain": "repeated", "id_column": "participant_id"})
+    grain = {"kind": "set_grain", "grain": "repeated", "id_column": "participant_id"}
+    prepare(client, pid, grain)  # the purpose question comes first (M2_CONTRACT §12.2)
+    record = client.post(f"/api/projects/{pid}/decisions", json=grain)
     assert record.status_code == 200, record.text
     sentence = record.json()["decisions"][-1]["sentence"]
     assert sentence == ("Participants were declared to appear in more than one row, identified by "

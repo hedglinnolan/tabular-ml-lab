@@ -33,9 +33,11 @@ def seal_plan_stage(ctx: StageContext) -> dict[str, Any]:
     measured = frames.get("measured")
     universe = measured["row_id"].to_numpy(dtype=np.int64) if measured is not None else rows
     task = ctx.state.task or ctx.inputs["target_info"].get("task")
+    structure = ctx.inputs.get("structure")  # the grain stated from a unique identifier
     ctx.progress(0.2, "Reading the identifier, the outcome and the time column")
     with open_store(ctx) as store:
-        return plan(ctx.state, universe, store, task, analyzed=rows)
+        return plan(ctx.state, universe, store, task, analyzed=rows,
+                    structure=getattr(structure, "data", structure))
 
 
 __all__ = ["SEAL_READS", "seal_plan_stage"]

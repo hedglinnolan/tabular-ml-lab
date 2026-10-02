@@ -103,7 +103,7 @@ def test_dietary_recalls_repeat_per_person_and_are_combined_by_their_mean(projec
     steps = p.steps()
     assert steps["grain"].status == "answered"
     assert steps["repeat_kind"].status == "skipped"  # stated: repeats, from the recall spacing
-    assert steps["repeat_kind"].reason.startswith("Not asked: these look like repeated")
+    assert steps["repeat_kind"].reason.startswith("these look like repeated")  # after "Not asked:"
     assert "`recall_date`" in steps["repeat_kind"].reason
     assert steps["unit"].status == "open"  # no default
     assert steps["temporal"].status == "not_applicable"  # repeats, not time points

@@ -76,10 +76,13 @@ def test_a_stated_repeated_grain_groups_the_seal_by_its_column(dietary):
     assert s.groupby("unit")["part"].nunique().max() == 1  # no person on both sides of the seal
 
 
-def test_a_repeating_identifier_groups_the_seal_when_grain_is_unanswered(dietary):
-    split = drawn(dietary, dietary_state())
-    assert split.data["basis"]["state"] == "grouped" and split.data["basis"]["source"] == "roles"
-    assert split.data["grouped_by"] == "participant_id"
+def test_no_seal_is_drawn_without_a_grain(dietary):
+    """M2_CONTRACT §12.2: the seal requires grain. Skipping the question never draws a seal, so it
+    can never yield an undetermined one either; the split stops and says the grain comes first."""
+    with pytest.raises(ValueError, match="grain answer"):
+        drawn(dietary, dietary_state())
+    draw = seal.seal_inputs(dietary_state(), np.arange(10), None, "regression", holdout=0.2, seed=0)
+    assert draw.basis is None and draw.refusal == seal.GRAIN_FIRST
 
 
 def test_one_row_per_unit_said_over_a_repeating_identifier_is_abandoned_and_exploratory(dietary):
@@ -92,15 +95,17 @@ def test_one_row_per_unit_said_over_a_repeating_identifier_is_abandoned_and_expl
     assert "exploratory" in basis["sentence"]
 
 
-def test_nobody_knowing_is_undetermined_never_a_clean_lock(dietary):
-    roles = {c: r for c, r in DIETARY_ROLES.items() if r != "identifier"}
-    split = drawn(dietary, dietary_state(roles=roles))
+def test_i_dont_know_is_undetermined_never_a_clean_lock(dietary):
+    split = drawn(dietary, dietary_state(grain=GrainSpec(grain="unknown")))
     basis = split.data["basis"]
     assert basis["state"] == "undetermined" and basis["exploratory"] and split.data["exploratory"]
     assert basis["label"] == "undetermined" and "not a verified clean split" in basis["sentence"]
-    # A repeated grain with no column naming the unit is undetermined too.
+    assert "not known" in basis["sentence"] and "`participant_id` repeats" in basis["sentence"]
+    assert split.data["grouped_by"] is None  # drawn by row, as the basis says
+    # A repeated grain with no column naming the unit is not "I don't know": grouping was abandoned.
+    roles = {c: r for c, r in DIETARY_ROLES.items() if r != "identifier"}
     split = drawn(dietary, dietary_state(roles=roles, grain=GrainSpec(grain="repeated")))
-    assert split.data["basis"]["state"] == "undetermined"
+    assert split.data["basis"]["state"] == "abandoned" and split.data["exploratory"]
 
 
 def test_a_verified_one_row_per_unit_seal_is_clean_and_distinct_from_undetermined():
@@ -109,8 +114,45 @@ def test_a_verified_one_row_per_unit_seal_is_clean_and_distinct_from_undetermine
                          grain=GrainSpec(grain="one_row_per_unit"))
     basis, column = seal.decide_basis(state, frame, ["pid"])
     assert (basis.state, basis.exploratory, column) == ("one_row_per_unit", False, None)
-    unknown, _ = seal.decide_basis(ProjectState(roles={"x": "covariate"}), frame, [])
+    unknown, _ = seal.decide_basis(ProjectState(grain=GrainSpec(grain="unknown")), frame, [])
     assert unknown.state == "undetermined" and unknown.model_dump() != basis.model_dump()
+    # the grain the Router states from a unique identifier is clean too, and says it was stated
+    stated, _ = seal.decide_basis(state.model_copy(update={"grain": GrainSpec(
+        grain="one_row_per_unit", id_column="pid")}), frame, ["pid"], stated=True)
+    assert (stated.state, stated.source, stated.exploratory) == ("one_row_per_unit", "stated", False)
+    assert "every `pid` appears once" in stated.sentence
+
+
+GRAIN_ANSWERS = [
+    None,
+    GrainSpec(grain="repeated", id_column="pid"),
+    GrainSpec(grain="repeated", id_column="gone"),  # a column the table does not have
+    GrainSpec(grain="repeated", id_column="site"),  # too few units to hold any out whole
+    GrainSpec(grain="repeated"),
+    GrainSpec(grain="one_row_per_unit"),
+    GrainSpec(grain="one_row_per_unit", id_column="pid", acknowledged=True),
+    GrainSpec(grain="unknown"),
+]
+
+
+@pytest.mark.parametrize("repeats", [True, False], ids=["pid-repeats", "pid-unique"])
+@pytest.mark.parametrize("grain", GRAIN_ANSWERS, ids=lambda g: "unanswered" if g is None else
+                         f"{g.grain}-{g.id_column}")
+@pytest.mark.parametrize("stated", [False, True], ids=["answered", "stated"])
+def test_an_undetermined_basis_comes_only_from_answering_i_dont_know(grain, repeats, stated):
+    """Tier A (M2_CONTRACT §12.2): ``undetermined`` iff the grain answer is ``unknown``, over every
+    grain answer and data shape; no answer draws no seal at all rather than an undetermined one."""
+    n = 40
+    pid = [f"p{i // 2}" for i in range(n)] if repeats else [f"p{i}" for i in range(n)]
+    frame = pd.DataFrame({"pid": pid, "site": ["a", "b", "c", "d"] * (n // 4)})
+    state = ProjectState(roles={"pid": "identifier"}, grain=grain)
+    if grain is None:
+        with pytest.raises(ValueError, match="grain answer"):
+            seal.decide_basis(state, frame, ["pid"], stated=stated)
+        return
+    basis, _ = seal.decide_basis(state, frame, ["pid"], stated=stated and grain.grain == "one_row_per_unit")
+    assert (basis.state == "undetermined") == (grain.grain == "unknown"), basis
+    assert basis.exploratory == (basis.state in ("abandoned", "undetermined"))
 
 
 def test_too_few_units_to_hold_out_whole_is_abandoned():
@@ -332,6 +374,22 @@ def test_decision_a_is_refused_once_the_seal_is_drawn_with_the_reseal_path(decis
     # Before the seal is drawn the same answer is not refused (by this rule).
     before = records[:3]
     seal._decision_a_waits_for_a_reseal(decision, {"state": d.fold(before), "records": before})
+
+
+def test_decision_a_under_cross_validation_only_names_the_folds_not_held_out_rows():
+    """M2_CONTRACT §12.3: with nothing held out, the refusal says the folds name rows as they were."""
+    records = [*sealed_log()[:3], record(4, d.SetSplit(holdout=0.0, seed=0, folds=5), "split-cv")]
+    with pytest.raises(Refusal) as refused:
+        seal._decision_a_waits_for_a_reseal(d.SetUnit(unit="unit"),
+                                            {"state": d.fold(records), "records": records})
+    message = refused.value.message
+    assert "folds" in message and "held-out rows" not in message and "seal names" not in message
+    [exit_] = refused.value.exits
+    assert exit_["label"].startswith("Re-draw") and "folds" in exit_["label"]
+    assert exit_["decision"] == {"kind": "revert", "decision_id": "split-cv"}
+    with pytest.raises(Refusal) as by_revert:
+        seal._revert_keeps_the_seal(d.Revert(decision_id="grain"), {"records": records})
+    assert "folds" in by_revert.value.message
 
 
 def test_the_same_answer_again_is_not_a_change():

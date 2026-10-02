@@ -4,16 +4,19 @@ from __future__ import annotations
 
 from turbotab.core.consequences import CAPTION_WORDS, FRAME_WORDS, TITLE_WORDS, words
 from turbotab.server import schemas
-from turbotab.server.tests.conftest import open_by_path, wait_for
+from turbotab.server.tests.conftest import open_by_path, prepare, wait_for
 
 
 def decide(client, pid, decision, status=200):
+    if status == 200:
+        prepare(client, pid, decision)  # the questions before it, answered as usual (M2 §12.2)
     response = client.post(f"/api/projects/{pid}/decisions", json=decision)
     assert response.status_code == status, response.text
     return response.json()
 
 
 def preview(client, pid, decision):
+    prepare(client, pid, decision)  # a question the Router has not reached refuses its preview too
     response = client.post(f"/api/projects/{pid}/preview", json=decision)
     assert response.status_code == 200, response.text
     result = schemas.PreviewResult.model_validate(response.json())
@@ -32,6 +35,7 @@ def test_combining_a_persons_recalls_reaches_the_table_the_previews_and_the_rout
     wait_for(client, pid, {"structure": "fresh", "working": "fresh"})
     assert client.get(f"/api/projects/{pid}/table?limit=1").json()["total_rows"] == 600
 
+    prepare(client, pid, {"kind": "set_grain"})  # the purpose question comes first
     refusal = decide(client, pid, {"kind": "set_grain", "grain": "one_row_per_unit"}, status=409)
     schemas.Refusal.model_validate(refusal)
     assert refusal["error"]["code"] == "data_repeats"

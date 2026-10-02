@@ -12,10 +12,12 @@ from turbotab.core import repairs
 from turbotab.core.consequences import CAPTION_WORDS, TITLE_WORDS, words
 from turbotab.core.tests.stage_harness import NHANES
 from turbotab.server import schemas
-from turbotab.server.tests.conftest import SAMPLES, open_by_path, wait_for
+from turbotab.server.tests.conftest import SAMPLES, open_by_path, prepare, wait_for
 
 
 def decide(client, pid, decision, status=200):
+    if status == 200:
+        prepare(client, pid, decision)  # the questions before it, answered as usual (M2 §12.2)
     response = client.post(f"/api/projects/{pid}/decisions", json=decision)
     assert response.status_code == status, response.text
     return response.json()
@@ -153,6 +155,10 @@ def test_nhanes_can_keep_meds_hbp_blanks_as_a_missing_level(client):
     roles = client.get(f"/api/projects/{pid}/stages/roles").json()["artifact"]
     decide(client, pid, {"kind": "set_roles", "roles": {c["column"]: c["proposed"] for c in roles["columns"]}})
     wait_for(client, pid, {"cohort": "fresh"})
+    prepare(client, pid, {"kind": "set_missing"})  # the eligibility question comes first
+    # SEQN is unique on every row, so the grain was stated, not asked (M2_CONTRACT §10)
+    grain = next(s for s in client.get(f"/api/projects/{pid}").json()["interview"] if s["key"] == "grain")
+    assert grain["status"] == "skipped" and "`SEQN` appears once" in grain["reason"]
 
     impute = client.post(f"/api/projects/{pid}/preview", json={"kind": "set_missing", "strategy": "impute"}).json()
     level = {"kind": "set_missing", "strategy": "impute", "categorical": "missing_category",

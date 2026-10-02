@@ -35,7 +35,12 @@ M2, the seal (M2_CONTRACT.md §3): ``split`` also reads the grain, unit, aggrega
 repeat_kind answers (its basis and the chronological draw); ``shelf`` ranks on the training rows,
 so it waits for the split; ``fit`` keeps its held-out scores out of its public data.
 
-    seal_plan    light   deps: working, cohort, target_info   reads roles, task + the seal's; requires target
+    seal_plan    light   deps: working, cohort, target_info, structure   reads roles, task + the seal's; requires target
+
+M2 part 2 (M2_CONTRACT.md §12): ``split`` and ``seal_plan`` also depend on ``structure``, whose
+``grain.stated`` is the grain when the Router states it rather than asks (a unique person
+identifier); the seal needs a grain, answered or stated. ``shelf`` is heavy: it times one fit of
+each family on a sample of the training rows, so each family carries ``estimate_seconds``.
 
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
@@ -82,7 +87,7 @@ def build_graph() -> Graph:
                 requires=("lens",),
                 label="Checking the table against the chosen lenses",
             ),
-            Stage("structure", 2, ("oriented",), ("grain", "target", "lens", "repeat_kind"),
+            Stage("structure", 3, ("oriented",), ("grain", "target", "lens", "repeat_kind"),
                   structure_stage, heavy=True, label="Reading how the rows repeat"),
             Stage("working", 1, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind"),
@@ -104,12 +109,12 @@ def build_graph() -> Graph:
             Stage("cohort", 1, ("working", "target_info"),
                   ("target", "roles", "exclusions", "missing", "findings"), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
-            Stage("split", 2, ("working", "cohort", "target_info"),
+            Stage("split", 3, ("working", "cohort", "target_info", "structure"),
                   ("split", "roles", "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
-            Stage("shelf", 2, ("working", "cohort", "target_info", "split"),
-                  ("purpose", "task", "roles"), shelf_stage, requires=("roles",),
-                  label="Ranking the model families for this table"),
+            Stage("shelf", 3, ("working", "cohort", "target_info", "split"),
+                  ("purpose", "task", "roles", "missing"), shelf_stage, heavy=True,
+                  requires=("roles",), label="Ranking the model families for this table"),
             Stage("design", 1, ("working", "split", "target_info"),
                   ("roles", "energy_adjustment", "missing", "models", "purpose"), design_stage,
                   heavy=True, requires=("models", "roles"),
@@ -122,7 +127,7 @@ def build_graph() -> Graph:
                   substitution_stage, heavy=True, requires=("substitution",),
                   label="Drawing the substitution curves"),
             # ── M2: the seal (docs/turbotab-next/M2_CONTRACT.md §3) ──
-            Stage("seal_plan", 1, ("working", "cohort", "target_info"),
+            Stage("seal_plan", 2, ("working", "cohort", "target_info", "structure"),
                   ("roles", "task", *SEAL_READS), seal_plan_stage, requires=("target",),
                   label="Reading what a held-out set can measure"),
         ]

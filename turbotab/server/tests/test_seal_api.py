@@ -17,7 +17,7 @@ import pytest
 
 from turbotab.core import seal
 from turbotab.server.service import ProjectService
-from turbotab.server.tests.conftest import DIETARY, open_by_path, wait_for
+from turbotab.server.tests.conftest import DIETARY, open_by_path, prepare, wait_for
 
 FAMILIES = ["linear", "elastic_net", "boosted_trees"]
 # The event stream never ends, so it is spied on where it starts: every event the bus publishes.
@@ -25,6 +25,8 @@ EXEMPT = {"/api/projects/{pid}/events"}
 
 
 def decide(client, pid, decision, status=200):
+    if status == 200:
+        prepare(client, pid, decision)  # the questions before it, answered as usual (M2 §12.2)
     response = client.post(f"/api/projects/{pid}/decisions", json=decision)
     assert response.status_code == status, response.text
     return response.json()
@@ -255,8 +257,15 @@ def test_a_change_after_the_opening_is_marked_post_seal_and_the_results_say_so(c
     pid = sealed_project(client)
     decide(client, pid, {"kind": "select_models", "models": ["linear", "boosted_trees"]})
     wait_for(client, pid, {"fit": "fresh"}, timeout=180)
+    # M2_CONTRACT §12.1: once the fit is fresh, opening the seal is the Router's last question
+    prepare(client, pid, {"kind": "open_seal"})
+    wait_for(client, pid, {"fit": "fresh"}, timeout=180)
+    asked = {s["key"]: s for s in client.get(f"/api/projects/{pid}").json()["interview"]}
+    assert list(asked)[-1] == "open_seal" and asked["open_seal"]["status"] == "open"
     view = decide(client, pid, {"kind": "open_seal"})
     assert not any(r["post_seal"] for r in view["decisions"])  # nothing before it, nor the opening
+    opened = next(s for s in view["interview"] if s["key"] == "open_seal")
+    assert opened["status"] == "answered" and opened["decision_id"] == view["decisions"][-1]["id"]
 
     view = decide(client, pid, {"kind": "select_models", "models": ["linear"]})
     changed = view["decisions"][-1]

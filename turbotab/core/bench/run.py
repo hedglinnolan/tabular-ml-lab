@@ -117,6 +117,25 @@ class Driver:
             raise RuntimeError(f"POST {path} {body.get('kind', '')}: {r.status_code} {r.text[:400]}")
         return r.json()
 
+    def reach(self, key: str, timeout: float = 600.0) -> dict[str, Any]:
+        """Wait until the Router reaches question ``key``, and return its step: answers are taken
+        in its order (M2_CONTRACT §12.2), so an answer to a question it holds back is refused."""
+        end = time.perf_counter() + timeout
+        while True:
+            steps = self.get("")["interview"]
+            step = next(s for s in steps if s["key"] == key)
+            first = next((s for s in steps if s["status"] in ("open", "waiting")), None)
+            if step["status"] not in ("open", "waiting") or first is None or first["key"] == key:
+                return step
+            if time.perf_counter() > end:
+                raise TimeoutError(f"{key} is held behind {first}")
+            time.sleep(0.05)
+
+    def answer_the_task(self, column: str, task: str) -> None:
+        """The task is stated when the outcome reads clearly, else asked: answer it when asked."""
+        if self.reach("task")["status"] in ("open", "waiting"):
+            self.decide({"kind": "set_task", "column": column, "task": task})
+
     def timed(self, fn: Any, *args: Any, **kwargs: Any) -> tuple[Any, float]:
         t = time.perf_counter()
         out = fn(*args, **kwargs)
@@ -208,19 +227,33 @@ def run_wide(client: Any, tap: Tap, source: Path, steps: list[Step], fit_timeout
     ingest_and_profile(d, source)
     t1 = time.perf_counter()
     d.decide({"kind": "set_lens", "lenses": ["genomics"]})
+    d.reach("target")  # an assay lens: the table's shape is read before the outcome
     d.decide({"kind": "set_target", "column": "bmi"})
     d.stage_step("roles", t1, "roles (stage)")
     d.stage_step("findings", t1, "findings (stage)")
+    d.answer_the_task("bmi", "regression")
+    d.reach("purpose")
     d.decide({"kind": "set_purpose", "purpose": "prediction"})
+    d.reach("grain")  # `sample_id` names samples, not people: the grain is asked
+    d.decide({"kind": "set_grain", "grain": "one_row_per_unit", "id_column": "sample_id"})
+    d.reach("roles")
     roles = d.accept_roles()
     seconds = d.decide({"kind": "set_roles", "roles": roles})
     d.record("record the roles (POST set_roles)", seconds, f"{len(roles):,} columns")
+    d.reach("exclusions")
     d.decide({"kind": "set_exclusions", "rules": []})
+    d.reach("missing")
     d.preview({"kind": "set_missing", "strategy": "complete_case"},
               "preview: complete cases (energy-free)")
     d.preview({"kind": "set_roles", "roles": roles}, "preview: roles (lineage)")
     d.decide({"kind": "set_missing", "strategy": "complete_case"})
+    d.reach("split")
     d.decide({"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5})
+    d.stage_step("shelf", t1, "shelf: rank + time one fit of each family (stage)")
+    for family in d.get("/stages/shelf")["artifact"]["families"]:
+        d.record(f"shelf estimate: {family['label'].lower()}", family.get("estimate_seconds"),
+                 family.get("estimate") or "not timed")
+    d.reach("models")
     t2 = time.perf_counter()
     d.decide({"kind": "select_models", "models": ["elastic_net"]})
     d.stage_step("cohort", t1, "cohort (stage)")
@@ -262,20 +295,26 @@ def run_tall(client: Any, tap: Tap, source: Path, steps: list[Step]) -> None:
     ingest_and_profile(d, source)
     t1 = time.perf_counter()
     d.decide({"kind": "set_lens", "lenses": ["dietary"]})
+    d.reach("target")
     d.decide({"kind": "set_target", "column": "glucose"})
     d.stage_step("roles", t1, "roles (stage)")
     d.stage_step("findings", t1, "findings (stage)")
+    d.answer_the_task("glucose", "regression")
+    d.reach("purpose")
     d.decide({"kind": "set_purpose", "purpose": "prediction"})
+    d.reach("roles")  # every `participant_id` appears once: the grain is stated, not asked
     roles = d.accept_roles()
     d.decide({"kind": "set_roles", "roles": roles})
     rule = {"kind": "range", "column": "kcal", "low": 500, "high": 5000,
             "reason": "implausible energy intake"}
+    d.reach("exclusions")
     t2 = time.perf_counter()
     seconds = d.decide({"kind": "set_exclusions", "rules": [rule]})
     d.record("record an exclusion (POST set_exclusions)", seconds)
     d.stage_step("cohort", t2, "cohort (stage)")
     wider = dict(rule, low=600, high=4500)
     d.preview({"kind": "set_exclusions", "rules": [wider]}, "preview: exclusions (energy-free)")
+    d.reach("missing")
     d.preview({"kind": "set_missing", "strategy": "complete_case"},
               "preview: complete cases (energy-free)")
 

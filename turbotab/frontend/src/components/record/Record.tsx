@@ -64,6 +64,7 @@ const SUBJECT: Record<QuestionKey, string> = {
   energy_adjustment: "the energy adjustment",
   models: "the models",
   substitution: "the substitution",
+  open_seal: "opening the seal",
 };
 
 /** What each stage is doing while a question waits on it: the job chip's own words. */

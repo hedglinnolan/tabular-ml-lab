@@ -495,6 +495,56 @@ def _fork(info: dict[str, Any]) -> list[RowStep]:
     ]
 
 
+def _structure(ctx: PreviewContext) -> dict[str, Any] | None:
+    """The structure artifact (the grain reading, stated or suggested), when it is fresh."""
+    try:
+        found = ctx.artifact("structure")
+    except Exception:  # noqa: BLE001 - no reading: the answers alone decide
+        return None
+    found = getattr(found, "data", found)
+    return found if isinstance(found, dict) else None
+
+
+SUGGESTED_EXITS = 2
+
+
+def seal_exits(draw: Any, decision: Any, structure: dict[str, Any] | None) -> list[CautionExit]:
+    """The ways out of an exploratory seal (DESIGN_LANGUAGE §09: a caution resolves or is attested).
+
+    Resolve: the answer that would let the seal group its units (the grain, a column naming the
+    unit) or draw by time (the time column). Attest: keep this split, labeled exploratory, as is.
+    """
+    from turbotab.core import seal
+
+    basis, chronology = draw.basis, draw.chronology
+    reading = (structure or {}).get("grain") or {}
+    suggested = [str(c) for c in reading.get("suggested") or []][:SUGGESTED_EXITS]
+    exits: list[CautionExit] = []
+
+    def repeats_by(column: str) -> CautionExit:
+        return CautionExit(label=f"Keep each `{column}`'s rows together",
+                           decision={"kind": "set_grain", "grain": "repeated", "id_column": column})
+
+    if basis is not None and basis.exploratory:
+        if basis.state == "abandoned" and basis.column and basis.source in ("grain", "stated") \
+                and basis.n_units is not None and basis.n_units >= seal.min_groups():
+            # Each row was said to be a unit while an identifier repeats: the lever is the grain.
+            exits.append(repeats_by(basis.column))
+        elif basis.state in ("undetermined", "abandoned"):
+            exits += [repeats_by(c) for c in suggested if c != basis.column]
+            if basis.state == "undetermined" and not reading.get("if_one_row"):
+                exits.append(CautionExit(label="Each row is a different unit",
+                                         decision={"kind": "set_grain",
+                                                   "grain": "one_row_per_unit"}))
+    elif chronology is not None and not chronology.drawn and chronology.time_column is None:
+        exits += [CautionExit(label=f"Order by `{c}`",
+                              decision={"kind": "set_temporal", "temporal": True, "time_column": c})
+                  for c in ((structure or {}).get("time_columns") or [])[:SUGGESTED_EXITS]]
+    exits.append(CautionExit(label="Keep this split, labeled exploratory",
+                             decision=decision.model_dump(mode="json")))
+    return exits
+
+
 def split_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     state = ctx.state
     if state.target is None:
@@ -516,8 +566,9 @@ def split_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     # (turbotab/core/seal.py, M2_CONTRACT §3).
     from turbotab.core import seal
 
+    structure = _structure(ctx)
     draw = seal.seal_inputs(state, universe, ctx.datastore, task, holdout=decision.holdout,
-                            seed=decision.seed)
+                            seed=decision.seed, structure=structure)
     if draw.refusal:
         ctx.read["note"] = draw.refusal
         return []
@@ -543,14 +594,8 @@ def split_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                    f"{fmt_count(info['folds'])}-fold cross-validation.")
     if draw.exploratory and decision.holdout > 0:
         basis = draw.basis
-        exits = []
-        if basis.state == "abandoned" and basis.source == "grain" and basis.column:
-            # Each row was said to be a unit while an identifier repeats: the lever is the grain.
-            exits.append(CautionExit(label=f"Keep each `{basis.column}`'s rows together",
-                                     decision={"kind": "set_grain", "grain": "repeated",
-                                               "id_column": basis.column}))
         ctx.caution = Caution(text=basis.sentence if basis.exploratory else draw.chronology.sentence,
-                              exits=exits)
+                              exits=seal_exits(draw, decision, structure))
     elif below and decision.holdout > 0:
         floor = seal.floor_for(task)
         ctx.caution = Caution(
@@ -635,4 +680,5 @@ register_consequence("set_missing", missing_views)
 register_consequence("set_split", split_views)
 register_consequence("set_roles", roles_views)
 
-__all__ = ["exclusions_views", "missing_views", "roles_views", "sealed_rows", "split_views"]
+__all__ = ["exclusions_views", "missing_views", "roles_views", "seal_exits", "sealed_rows",
+           "split_views"]

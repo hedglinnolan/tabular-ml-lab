@@ -443,10 +443,20 @@ class GrainContradiction(Model):
     message: str
 
 
+class StatedGrain(Model):
+    """The grain stated rather than asked (M2_CONTRACT §10): a recognized person identifier that is
+    unique on every row, with nothing else repeating like a roster. "Ask me anyway" reopens it."""
+
+    column: str
+    n_rows: int
+    sentence: str  # the skip's reason, after the client's "Not asked:" label
+
+
 class GrainReading(Model):
     suggested: list[str]  # offered under "rows repeat", best first; never an answer
     evidence: list[RepetitionEvidence]  # name-blind repetition, the most regular first
     if_one_row: GrainContradiction | None  # what "one row per unit" would contradict
+    stated: StatedGrain | None = None  # the grain the Router states rather than asks
 
 
 class UnitCounts(Model):

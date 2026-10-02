@@ -109,6 +109,7 @@ export const QUESTION_SEGMENT: Record<QuestionKey, BannerSegment> = {
   energy_adjustment: "columns",
   models: "models",
   substitution: "result",
+  open_seal: "result",
 };
 
 export const QUESTION_NAME: Record<QuestionKey, string> = {
@@ -130,6 +131,7 @@ export const QUESTION_NAME: Record<QuestionKey, string> = {
   energy_adjustment: "energy adjustment",
   models: "model families",
   substitution: "the substitution",
+  open_seal: "opening the seal",
 };
 
 const METHOD_SHORT: Record<EnergyMethod, string | null> = {

@@ -16,12 +16,19 @@ Rules:
 * The opening sequence (M2_CONTRACT §1, OPENING_SEQUENCE §01/§03), nothing resequenced:
   ``orientation`` fires only when the lens includes an assay pack and the oriented stage's shape
   reading is feature-major (and, while it is open, the target question waits behind it);
-  ``event`` only for a binary outcome; ``grain`` always; ``repeat_kind`` and ``unit`` only when
-  units repeat, ``repeat_kind`` usually ``skipped`` (stated from the structure stage's reading,
-  with its evidence as ``reason``); ``aggregation`` only when the unit is the unit; ``temporal``
-  only when time points stay as rows. A question that does not fire is ``not_applicable`` with
-  the reason; ``orientation`` stays answered once answered, since its slot turns the table
-  whatever the lens.
+  ``event`` only for a binary outcome; ``grain`` always, but ``skipped`` (stated) when a recognized
+  person identifier is unique on every row and nothing repeats like a roster (M2_CONTRACT §10;
+  the structure stage's ``grain.stated``); ``repeat_kind`` and ``unit`` only when units repeat,
+  ``repeat_kind`` usually ``skipped`` (stated from the structure stage's reading, with its evidence
+  as ``reason``); ``aggregation`` only when the unit is the unit; ``temporal`` only when time
+  points stay as rows. A grain of ``unknown`` ("I don't know") repeats nothing, so the four
+  follow-ups do not apply. A question that does not fire is ``not_applicable`` with the reason;
+  ``orientation`` stays answered once answered, since its slot turns the table whatever the lens.
+* ``open_seal`` is the last step (M2_CONTRACT §12.1): asked once the fit is fresh (it waits on the
+  fit until then), ``not_applicable`` when nothing is held out, and answered once opened. Its slot
+  is ``seal_opened``.
+* A skip's ``reason`` is the clause after the client's own "Not asked:" label, so it never begins
+  with those words itself.
 * At most one question is ``open``: the first applicable unanswered one. It is ``waiting``
   instead while a stage it needs is still being computed (``waiting_on`` names the stage) —
   ``substitution`` waits until ``fit`` is fresh. Every later unanswered question is ``waiting``
@@ -38,13 +45,15 @@ from pydantic import BaseModel, ConfigDict
 QuestionKey = Literal[
     "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
     "aggregation", "temporal", "roles", "exclusions", "missing", "split", "energy_adjustment",
-    "models", "substitution",
+    "models", "substitution", "open_seal",
 ]
 QUESTION_KEYS: tuple[str, ...] = (
     "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
     "aggregation", "temporal", "roles", "exclusions", "missing", "split", "energy_adjustment",
-    "models", "substitution",
+    "models", "substitution", "open_seal",
 )
+# The ProjectState slot a question's answer writes, where it is not the question's own name.
+SLOT_OF: dict[str, str] = {"open_seal": "seal_opened"}
 ASSAY_LENSES = ("metabolomics", "genomics")
 StepStatus = Literal["answered", "open", "waiting", "skipped", "not_applicable"]
 
@@ -68,8 +77,10 @@ NEEDS: dict[str, tuple[str, ...]] = {
     "energy_adjustment": ("proposals",),
     "models": ("shelf",),
     "substitution": ("fit",),
+    "open_seal": ("fit",),
 }
-MUST_BE_FRESH = {"substitution": "fit"}
+MUST_BE_FRESH = {"substitution": "fit", "open_seal": "fit"}
+NOT_ASKED = "Not asked:"  # the client's label before a skip's reason
 
 
 class InterviewStep(BaseModel):
@@ -208,39 +219,68 @@ def _event_gate(state: Any, target_info: Any) -> Gate:
     return None
 
 
-def _repeats_known(state: Any) -> bool | None:
-    """True when units repeat, False when they do not, None while the grain is unanswered."""
-    if state.grain is None:
+def _skip_reason(text: Any) -> str | None:
+    """A skip's reason as the clause after the client's "Not asked:" label."""
+    if not text:
         return None
-    return _get(state.grain, "grain") == "repeated"
+    text = str(text).strip()
+    return text[len(NOT_ASKED):].lstrip() if text.startswith(NOT_ASKED) else text
+
+
+def _grain_gate(state: Any, structure: Any) -> Gate:
+    """Stated, not asked, when a recognized person identifier is unique on every row (M2 §10)."""
+    if state.grain is not None:
+        return None
+    stated = _get(_get(structure, "grain"), "stated")
+    if stated and _get(stated, "column"):
+        return ("skipped", _skip_reason(_get(stated, "sentence")))
+    return None
+
+
+def _grain_answer(state: Any, structure: Any) -> str | None:
+    """The grain as answered, else as stated (``one_row_per_unit``), else None while unanswered."""
+    if state.grain is not None:
+        return str(_get(state.grain, "grain"))
+    if _grain_gate(state, structure) is not None:
+        return "one_row_per_unit"
+    return None
+
+
+UNKNOWN_GRAIN = "Whether a unit can appear in more than one row is not known"
 
 
 def _repeat_kind_gate(state: Any, structure: Any) -> Gate:
-    repeated = _repeats_known(state)
-    if repeated is None:
+    grain = _grain_answer(state, structure)
+    if grain is None:
         return None
-    if not repeated:
+    if grain == "unknown":
+        return ("not_applicable", f"{UNKNOWN_GRAIN}, so there are no repeats to tell apart.")
+    if grain != "repeated":
         return ("not_applicable", "Each unit appears once, so there are no repeats to tell apart.")
     reading = _get(structure, "repeats") or {}
     units = _get(structure, "units") or {}
     if (_get(reading, "stated") and _get(reading, "reading")
             and _get(units, "column") == _get(state.grain, "id_column")):
-        return ("skipped", _get(reading, "sentence"))
+        return ("skipped", _skip_reason(_get(reading, "sentence")))
     return None
 
 
-def _unit_gate(state: Any) -> Gate:
-    repeated = _repeats_known(state)
-    if repeated is False:
+def _unit_gate(state: Any, structure: Any) -> Gate:
+    grain = _grain_answer(state, structure)
+    if grain == "unknown":
+        return ("not_applicable", f"{UNKNOWN_GRAIN}, so each row is analyzed as it is.")
+    if grain == "one_row_per_unit":
         return ("not_applicable", "Each unit appears once, so each row already is one.")
     return None
 
 
-def _aggregation_gate(state: Any) -> Gate:
-    repeated = _repeats_known(state)
-    if repeated is False:
+def _aggregation_gate(state: Any, structure: Any) -> Gate:
+    grain = _grain_answer(state, structure)
+    if grain == "unknown":
+        return ("not_applicable", f"{UNKNOWN_GRAIN}, so nothing is combined.")
+    if grain == "one_row_per_unit":
         return ("not_applicable", "Each unit appears once, so there is nothing to combine.")
-    if repeated and state.unit == "row":
+    if grain == "repeated" and state.unit == "row":
         return ("not_applicable", "Records stay as they are, so nothing is combined.")
     return None
 
@@ -248,16 +288,26 @@ def _aggregation_gate(state: Any) -> Gate:
 def _temporal_gate(state: Any, structure: Any) -> Gate:
     from turbotab.core.stages.working import effective_repeat_kind
 
-    repeated = _repeats_known(state)
-    if repeated is False:
+    grain = _grain_answer(state, structure)
+    if grain == "unknown":
+        return ("not_applicable", f"{UNKNOWN_GRAIN}, so no rows are read as time points.")
+    if grain == "one_row_per_unit":
         return ("not_applicable", "Each unit appears once, so no row comes later than another.")
-    if repeated is None:
+    if grain is None:
         return None
     kind = effective_repeat_kind(state, structure if isinstance(structure, Mapping) else None)
     if kind == "repeats":
         return ("not_applicable", "The rows are repeats of one measurement, not different time points.")
     if state.unit == "unit":
         return ("not_applicable", "Each unit's rows are combined, so no time points stay as rows.")
+    return None
+
+
+def _open_seal_gate(state: Any) -> Gate:
+    split = state.split
+    if split is not None and float(_get(split, "holdout") or 0) == 0:
+        return ("not_applicable",
+                "Every row trains under cross-validation alone, so no held-out rows wait to be opened.")
     return None
 
 
@@ -290,17 +340,20 @@ def route(
     gates: dict[str, Callable[[], Gate]] = {
         "orientation": lambda: _orientation_gate(state, oriented),
         "event": lambda: _event_gate(state, target_info),
+        "grain": lambda: _grain_gate(state, structure),
         "repeat_kind": lambda: _repeat_kind_gate(state, structure),
-        "unit": lambda: _unit_gate(state),
-        "aggregation": lambda: _aggregation_gate(state),
+        "unit": lambda: _unit_gate(state, structure),
+        "aggregation": lambda: _aggregation_gate(state, structure),
         "temporal": lambda: _temporal_gate(state, structure),
+        "open_seal": lambda: _open_seal_gate(state),
     }
 
     steps: list[InterviewStep] = []
     first_unanswered: str | None = None
     for key in QUESTION_KEYS:
-        value = getattr(state, key, None)
-        decision_id = writers.get(key)
+        slot = SLOT_OF.get(key, key)
+        value = getattr(state, slot, None)
+        decision_id = writers.get(slot)
         if key == "orientation" and value is not None:  # its slot turns the table whatever the lens
             steps.append(InterviewStep(key=key, status="answered", decision_id=decision_id))
             continue
@@ -349,5 +402,10 @@ def with_deferred(steps: list[InterviewStep], state: Any) -> list[InterviewStep]
             for s in steps]
 
 
-__all__ = ["InterviewStep", "NEEDS", "QUESTION_KEYS", "QuestionKey", "pending_stages", "route",
-           "with_deferred"]
+def first_unanswered(steps: Sequence[InterviewStep]) -> InterviewStep | None:
+    """The earliest question still waiting for an answer (``open`` or ``waiting``), if any."""
+    return next((s for s in steps if s.status in ("open", "waiting")), None)
+
+
+__all__ = ["InterviewStep", "NEEDS", "QUESTION_KEYS", "QuestionKey", "SLOT_OF", "first_unanswered",
+           "pending_stages", "route", "with_deferred"]

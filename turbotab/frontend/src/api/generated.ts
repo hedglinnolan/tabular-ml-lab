@@ -768,7 +768,7 @@ export interface components {
              * Grain
              * @enum {string}
              */
-            grain: "one_row_per_unit" | "repeated";
+            grain: "one_row_per_unit" | "repeated" | "unknown";
             /** Id Column */
             id_column: string | null;
             /**
@@ -823,7 +823,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "lens" | "orientation" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution";
+            key: "lens" | "orientation" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal";
             /**
              * Status
              * @enum {string}
@@ -1371,7 +1371,7 @@ export interface components {
              * Grain
              * @enum {string}
              */
-            grain: "one_row_per_unit" | "repeated";
+            grain: "one_row_per_unit" | "repeated" | "unknown";
             /** Id Column */
             id_column?: string | null;
             /**
@@ -1391,7 +1391,7 @@ export interface components {
              * Grain
              * @enum {string}
              */
-            grain: "one_row_per_unit" | "repeated";
+            grain: "one_row_per_unit" | "repeated" | "unknown";
             /** Id Column */
             id_column: string | null;
             /**
@@ -2243,7 +2243,7 @@ export interface components {
             /** Summary */
             summary: string;
             /** Routes To */
-            routes_to: ("lens" | "orientation" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution") | null;
+            routes_to: ("lens" | "orientation" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal") | null;
             /** Lever Label */
             lever_label: string | null;
             /** Group */
@@ -2354,6 +2354,8 @@ export interface components {
             /** Evidence */
             evidence: components["schemas"]["RepetitionEvidence"][];
             if_one_row: components["schemas"]["GrainContradiction"] | null;
+            /** @default null */
+            stated: components["schemas"]["StatedGrain"] | null;
         };
         /** HoldoutOption */
         HoldoutOption: {
@@ -2696,7 +2698,7 @@ export interface components {
             /** Exploratory */
             exploratory: boolean;
             /** Source */
-            source: ("grain" | "roles" | "aggregation") | null;
+            source: ("grain" | "stated" | "roles" | "aggregation") | null;
             /** N Units */
             n_units: number | null;
         };
@@ -2730,7 +2732,7 @@ export interface components {
             n_measured: number;
             /** N Analyzed */
             n_analyzed: number;
-            basis: components["schemas"]["SealBasis"];
+            basis: components["schemas"]["SealBasis"] | null;
             chronology: components["schemas"]["Chronology"] | null;
             /** Exploratory */
             exploratory: boolean;
@@ -2773,6 +2775,16 @@ export interface components {
             concerns: string[];
             /** Inductive Bias */
             inductive_bias: string;
+            /**
+             * Estimate Seconds
+             * @default null
+             */
+            estimate_seconds: number | null;
+            /**
+             * Estimate
+             * @default null
+             */
+            estimate: string | null;
         };
         /** Spacing */
         Spacing: {
@@ -2820,6 +2832,19 @@ export interface components {
             chronology: components["schemas"]["Chronology"] | null;
             /** Exploratory */
             exploratory: boolean;
+        };
+        /**
+         * StatedGrain
+         * @description The grain stated rather than asked (M2_CONTRACT §10): a recognized person identifier that is
+         *     unique on every row, with nothing else repeating like a roster. "Ask me anyway" reopens it.
+         */
+        StatedGrain: {
+            /** Column */
+            column: string;
+            /** N Rows */
+            n_rows: number;
+            /** Sentence */
+            sentence: string;
         };
         /**
          * StructureArtifact

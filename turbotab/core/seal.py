@@ -8,11 +8,15 @@ What this module decides, and where each piece runs:
 
   ==================== =====================================================================
   ``grouped``          grouped by a named column: no unit is on both sides
-  ``one_row_per_unit`` the user said each row is a different unit, and no identifier repeats
-  ``abandoned``        repetition found but grouping abandoned (too few units, or the user
-                       said each row is a unit while an identifier repeats)
-  ``undetermined``     nobody knows whether units repeat
+  ``one_row_per_unit`` the user said (or the app stated, from a unique person identifier) that
+                       each row is a different unit, and no identifier repeats
+  ``abandoned``        repetition found but grouping abandoned (too few units, no column to
+                       group by, or each row said to be a unit while an identifier repeats)
+  ``undetermined``     the user answered "I don't know" to the grain question
   ==================== =====================================================================
+
+  The seal needs a grain (M2_CONTRACT §12.2): answered, or stated by the Router. Skipping the
+  question never yields ``undetermined``; the split question waits for it instead.
 
   ``abandoned`` and ``undetermined`` carry ``exploratory: true`` and are never drawn as a clean
   lock. ``undetermined`` is its own state, never a missing column, which a reader could not tell
@@ -89,9 +93,10 @@ class SealBasis(_Model):
     label: str  # "grouped by `participant_id`" · "one row per unit" · "repetition found but …"
     sentence: str  # one plain sentence for the seal
     exploratory: bool  # abandoned or undetermined: never drawn as a clean lock
-    # What the basis rests on: the grain answer, the identifier among the confirmed roles, or
-    # the combining of each unit's rows into one.
-    source: Literal["grain", "roles", "aggregation"] | None
+    # What the basis rests on: the grain answer, the grain as stated from a unique identifier
+    # (not asked, M2_CONTRACT §10), the identifier among the confirmed roles, or the combining of
+    # each unit's rows into one.
+    source: Literal["grain", "stated", "roles", "aggregation"] | None
     n_units: int | None  # units the draw kept whole (grouped), or found repeating (abandoned)
 
 
@@ -141,15 +146,24 @@ def _repeating(frame: Any, columns: Sequence[str]) -> list[tuple[int, str]]:
     return sorted(out)
 
 
-def decide_basis(state: Any, frame: Any, identifiers: Sequence[str]) -> tuple[SealBasis, str | None]:
+GRAIN_FIRST = ("The held-out rows are drawn by the grain answer: say first whether a unit can "
+               "appear in more than one row.")
+
+
+def decide_basis(state: Any, frame: Any, identifiers: Sequence[str], *,
+                 stated: bool = False) -> tuple[SealBasis, str | None]:
     """The basis the grain answer and the data give, and the column to group the draw by.
 
     ``frame`` holds the identifier columns (and the grain's named column) over the rows the seal
-    is drawn from. The grain answer is the authority; the data confirms or contradicts it.
+    is drawn from. The grain answer is the authority; the data confirms or contradicts it. The
+    seal needs a grain (M2_CONTRACT §12.2): answered, or ``stated`` from a unique identifier.
+    ``undetermined`` comes only from the answer "I don't know" (``unknown``), never from silence.
     """
     n = int(len(frame))
     grain = getattr(state, "grain", None)
-    named = getattr(grain, "id_column", None) if grain is not None else None
+    if grain is None:
+        raise ValueError(GRAIN_FIRST)
+    named = getattr(grain, "id_column", None)
     repeating = _repeating(frame, list(dict.fromkeys([*([named] if named else []), *identifiers])))
     aggregated = getattr(state, "unit", None) == "unit" and getattr(state, "aggregation", None) is not None
 
@@ -163,10 +177,10 @@ def decide_basis(state: Any, frame: Any, identifiers: Sequence[str]) -> tuple[Se
                     column if present else None)
         units = _units(frame[column]) if present else 0
         if not present:
-            return (_basis("undetermined", None,
+            return (_basis("abandoned", column,
                            f"The rows were said to repeat by `{column}`, but the table has no such "
-                           f"column, so the held-out rows were drawn by row. This is not a verified "
-                           f"clean split: treat held-out scores as exploratory."), None)
+                           f"column, so the held-out rows were drawn by row. A unit can sit on both "
+                           f"sides: treat held-out scores as exploratory.", source=source), None)
         if units < min_groups():
             return (_basis("abandoned", column,
                            f"`{column}` repeats, but `{units}` units are too few to hold any out "
@@ -178,32 +192,41 @@ def decide_basis(state: Any, frame: Any, identifiers: Sequence[str]) -> tuple[Se
                        f"side, so no unit is both trained on and scored.",
                        source=source, n_units=units), column)
 
-    if grain is not None and grain.grain == "repeated":
+    if grain.grain == "unknown":
+        seen = ""
+        if repeating:
+            units, column = repeating[0]
+            seen = (f" `{column}` repeats (`{units:,}` values over `{n:,}` rows), so a unit can "
+                    f"sit on both sides.")
+        return (_basis("undetermined", None,
+                       f"Held out by row, because whether a unit can appear in more than one row "
+                       f"was answered as not known.{seen} This is not a verified clean split: "
+                       f"treat held-out scores as exploratory.", source="grain"), None)
+    if grain.grain == "repeated":
         if named:
             return grouped(named, "grain")
         if repeating:
             return grouped(repeating[0][1], "roles")
-        return (_basis("undetermined", None,
+        return (_basis("abandoned", None,
                        "Units were said to repeat, but no column names the unit, so the held-out "
-                       "rows were drawn by row. This is not a verified clean split: treat held-out "
-                       "scores as exploratory."), None)
-    if grain is not None and grain.grain == "one_row_per_unit":
-        if repeating:
-            units, column = repeating[0]
-            return (_basis("abandoned", column,
-                           f"Each row was said to be a different unit, but `{column}` repeats "
-                           f"(`{units:,}` values over `{n:,}` rows); the held-out rows were drawn by "
-                           f"row as answered. Treat held-out scores as exploratory.",
-                           source="grain", n_units=units), None)
-        return (_basis("one_row_per_unit", None,
-                       "Held out by row: each row was said to be a different unit, and no "
-                       "identifier repeats.", source="grain"), None)
+                       "rows were drawn by row. A unit can sit on both sides: treat held-out "
+                       "scores as exploratory.", source="grain"), None)
+    source = "stated" if stated else "grain"
     if repeating:
-        return grouped(repeating[0][1], "roles")
-    return (_basis("undetermined", None,
-                   "Held out by row, because whether a unit can appear in more than one row was "
-                   "not answered. This is not a verified clean split: treat held-out scores as "
-                   "exploratory."), None)
+        units, column = repeating[0]
+        said = "stated" if stated else "said"
+        return (_basis("abandoned", column,
+                       f"Each row was {said} to be a different unit, but `{column}` repeats "
+                       f"(`{units:,}` values over `{n:,}` rows); the held-out rows were drawn by "
+                       f"row as answered. Treat held-out scores as exploratory.",
+                       source=source, n_units=units), None)
+    if stated and named:
+        return (_basis("one_row_per_unit", None,
+                       f"Held out by row: every `{named}` appears once, so each row is a different "
+                       f"unit.", source=source), None)
+    return (_basis("one_row_per_unit", None,
+                   "Held out by row: each row was said to be a different unit, and no "
+                   "identifier repeats.", source=source), None)
 
 
 # ── the chronological draw ───────────────────────────────────────────────────
@@ -302,7 +325,7 @@ def chronological_holdout(times: Any, groups: Any | None, holdout: float, seed: 
 class SealDraw:
     """Everything the split needs to draw the seal, and the facts it reports about it."""
 
-    basis: SealBasis
+    basis: SealBasis | None  # None: no grain yet, so no seal (``refusal`` says why)
     chronology: Chronology | None = None
     y: Any | None = None  # classification labels over the universe (stratification)
     groups: Any | None = None  # the grouping column's values over the universe
@@ -313,8 +336,9 @@ class SealDraw:
 
     @property
     def exploratory(self) -> bool:
-        return self.basis.exploratory or (self.chronology is not None and not self.chronology.drawn
-                                          and self.chronology.time_column is None)
+        return bool((self.basis is not None and self.basis.exploratory)
+                    or (self.chronology is not None and not self.chronology.drawn
+                        and self.chronology.time_column is None))
 
     def split_args(self) -> dict[str, Any]:
         """Keyword arguments for ``stages.rows.draw_split``."""
@@ -323,19 +347,26 @@ class SealDraw:
     def facts(self) -> dict[str, Any]:
         """What the split artifact reports about the seal (its ``basis``, ``chronology``…)."""
         return {
-            "basis": self.basis.model_dump(mode="json"),
+            "basis": self.basis.model_dump(mode="json") if self.basis is not None else None,
             "chronology": self.chronology.model_dump(mode="json") if self.chronology else None,
             "exploratory": bool(self.exploratory),
         }
 
 
 def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
-                holdout: float, seed: int) -> SealDraw:
+                holdout: float, seed: int, structure: Mapping[str, Any] | None = None) -> SealDraw:
     """Read what the seal is drawn from (identifiers, the outcome's classes, time) and decide it.
 
     ``universe`` is every row the held-out rows are drawn over (every row with the outcome
-    measured), in any order; every array returned aligns with it.
+    measured), in any order; every array returned aligns with it. ``structure`` (the structure
+    stage's artifact) supplies the grain stated from a unique identifier when none is answered;
+    with neither, nothing is drawn and ``refusal`` says the grain comes first.
     """
+    from turbotab.core.stages.working import with_effective_grain
+
+    state, stated = with_effective_grain(state, structure)
+    if getattr(state, "grain", None) is None:
+        return SealDraw(basis=None, refusal=GRAIN_FIRST)
     ids = np.asarray(universe, dtype=np.int64)
     columns = set(store.columns)
     roles = getattr(state, "roles", None) or {}
@@ -357,7 +388,7 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
         import pandas as pd
 
         frame = pd.DataFrame(index=pd.Index(ids, name="row_id"))
-    basis, column = decide_basis(state, frame, identifiers)
+    basis, column = decide_basis(state, frame, identifiers, stated=stated)
     draw = SealDraw(basis=basis)
     if column is not None:
         values = frame[column].astype(object)
@@ -457,7 +488,9 @@ class SealPlan(_Model):
     task: str
     n_measured: int  # rows with the outcome recorded: the base the seal is drawn over
     n_analyzed: int  # rows in the analysis now: a held-out score is made on the held-out ones
-    basis: SealBasis  # the basis the seal would carry if it were drawn now
+    # The basis the seal would carry if it were drawn now; None until the grain is answered or
+    # stated, when ``refusal`` says the grain comes first (M2_CONTRACT §12.2).
+    basis: SealBasis | None
     chronology: Chronology | None
     exploratory: bool
     floor: SealFloor
@@ -568,7 +601,7 @@ def class_counts(labels: Any) -> list[int]:
 
 
 def plan(state: Any, universe: Any, store: Any, task: str | None,
-         analyzed: Any | None = None) -> dict[str, Any]:
+         analyzed: Any | None = None, structure: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The ``seal_plan`` artifact (see :class:`SealPlan`).
 
     The seal is drawn over ``universe`` (every row with the outcome measured), but a held-out score
@@ -578,7 +611,7 @@ def plan(state: Any, universe: Any, store: Any, task: str | None,
     """
     universe = np.asarray(universe, dtype=np.int64)
     analyzed = universe if analyzed is None else np.asarray(analyzed, dtype=np.int64)
-    draw = seal_inputs(state, universe, store, task, holdout=USUAL, seed=0)
+    draw = seal_inputs(state, universe, store, task, holdout=USUAL, seed=0, structure=structure)
     counts: list[int] = []
     if task in ("binary", "multiclass") and getattr(state, "target", None):
         frame = store.materialize([state.target], analyzed)
@@ -785,13 +818,28 @@ DECISION_A: dict[str, tuple[str, str]] = {
 DECISION_A_SLOTS = tuple(slot for slot, _ in DECISION_A.values())
 
 
-def _reseal_exit(records: Sequence[Any] | None) -> dict[str, Any]:
+def _cross_validation_only(state: Any) -> bool:
+    split = getattr(state, "split", None)
+    return split is not None and float(getattr(split, "holdout", 0) or 0) == 0
+
+
+def _reseal_exit(records: Sequence[Any] | None, cv_only: bool = False) -> dict[str, Any]:
     writer = split_writer(records)
-    return {"label": "Re-seal: withdraw the held-out rows, change this, then draw them again",
-            "decision": Revert(decision_id=writer) if writer else None}
+    label = ("Re-draw: withdraw the folds, change this, then draw them again" if cv_only
+             else "Re-seal: withdraw the held-out rows, change this, then draw them again")
+    return {"label": label, "decision": Revert(decision_id=writer) if writer else None}
 
 
-def _sealed_refusal(what: str, records: Sequence[Any] | None) -> Refusal:
+def _sealed_refusal(what: str, records: Sequence[Any] | None, state: Any = None) -> Refusal:
+    """Decision A's refusal, worded for what is drawn: held-out rows, or the folds alone when every
+    row trains under cross-validation (M2_CONTRACT §12.3)."""
+    if _cross_validation_only(state):
+        return Refusal(
+            "sealed",
+            f"The cross-validation folds are drawn, and changing {what} changes what a row is: the "
+            f"folds name rows as they were. Withdraw the split first, then draw it again.",
+            exits=[_reseal_exit(records, cv_only=True)],
+        )
     return Refusal(
         "sealed",
         f"The held-out rows are drawn, and changing {what} changes what a row is: the seal names "
@@ -808,7 +856,7 @@ def _decision_a_waits_for_a_reseal(decision: Any, ctx: Any) -> None:
     value = decisions._SLOT_VALUE[decision.kind](decision)
     if getattr(state, slot, None) == value:
         return  # the same answer again changes nothing
-    raise _sealed_refusal(what, _records(ctx))
+    raise _sealed_refusal(what, _records(ctx), state)
 
 
 def _probe(records: Sequence[Any], decision: Any) -> list[Any]:
@@ -839,7 +887,7 @@ def _revert_keeps_the_seal(decision: Revert, ctx: Any) -> None:
         return  # this revert withdraws the seal: the re-seal path
     for kind, (slot, what) in DECISION_A.items():
         if getattr(now, slot) != getattr(after, slot):
-            raise _sealed_refusal(what, records)
+            raise _sealed_refusal(what, records, now)
 
 
 def _open_seal_once_on_a_fresh_fit(decision: Any, ctx: Any) -> None:
@@ -922,7 +970,8 @@ def _register_preview() -> None:
 _register_preview()
 
 __all__ = [
-    "BasisState", "Chronology", "DECISION_A", "HoldoutOption", "SEALED_SCORES", "SealBasis",
+    "BasisState", "Chronology", "DECISION_A", "GRAIN_FIRST", "HoldoutOption", "SEALED_SCORES",
+    "SealBasis",
     "SealDraw", "SealFloor", "SealPlan", "changed_after_seal", "chronological_holdout",
     "decide_basis", "floor_for", "holdout_options", "keys_for", "measure", "open_seal_views",
     "opening", "plan", "post_seal_changes", "post_seal_sentence", "read_sealed_scores",

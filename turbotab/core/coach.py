@@ -355,12 +355,41 @@ def _anchor_for(view: Any, unit: str) -> tuple[str, Any]:
     return "column", unit
 
 
+def _before_combining(ctx: PreviewContext, columns: Sequence[str]) -> pd.DataFrame | None:
+    """These columns of the table before any rows are combined: the oriented table, every row.
+
+    Once an aggregation is recorded the working table has one row per unit, so a note read from
+    it would find no replicates to speak of (M2_CONTRACT §12.4). Aggregation is pre-seal (Decision
+    A refuses it after), so every row is the pool. Falls back to the datastore's table.
+    """
+    from turbotab.core.stages.working import _bundle_table
+
+    try:
+        oriented = ctx.artifact("oriented")
+    except Exception:  # noqa: BLE001 - no oriented table: read what the datastore holds
+        oriented = None
+    path = _bundle_table(oriented) if oriented is not None else None
+    if path is None:
+        return None
+    import pyarrow.parquet as pq
+
+    present = set(pq.read_schema(path).names)
+    wanted = [c for c in dict.fromkeys(columns) if c and c in present]
+    return pq.read_table(path, columns=wanted).to_pandas() if wanted else None
+
+
 def aggregation_coach(decision: Any, views: list, ctx: PreviewContext) -> None:
     unit = _unit_column(ctx.state)
-    if not views or not unit or unit not in ctx.datastore.columns:
+    if not views or not unit:
         return
     target = ctx.state.target
-    frame = _read(ctx, [unit, target])
+    frame = _before_combining(ctx, [unit, target])
+    if frame is None:
+        if unit not in ctx.datastore.columns:
+            return
+        frame = _read(ctx, [unit, target])
+    if unit not in frame.columns:
+        return
     sizes = frame[unit].dropna().value_counts()
     if sizes.empty:
         return

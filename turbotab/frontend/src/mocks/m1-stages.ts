@@ -771,6 +771,9 @@ export function shelf(state: ProjectState, c: CohortArtifact, task: Task | null)
         fit: concerns.length === 0 ? "good" : concerns.length === 1 ? "fair" : "poor",
         concerns,
         inductive_bias: FAMILY[key].bias,
+        // the server times one fit per family (M2_CONTRACT §12.6); the mock's tables are small
+        estimate_seconds: 0.2,
+        estimate: "under a second",
       };
     }),
     basis: `Ranked for ${state.purpose ?? "prediction"} on ${fmt(n)} rows and ${fmt(p)} predictors.`,
