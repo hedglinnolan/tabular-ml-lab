@@ -36,6 +36,10 @@ What this module decides, and where each piece runs:
   ``holdout_sealed: true`` until ``open_seal`` is recorded, whatever artifact it is handed.
 * **Refusals**: ``open_seal`` once, on a fresh fit, and never reverted; Decision A (orientation,
   grain, unit, aggregation) refused while the seal is drawn, with the re-seal path as the exit.
+  So is any answer that changes what the draw reads once rows are held out (audit RO-02): the
+  outcome, its task, a chronological request, a repair to a column the draw reads
+  (:func:`draw_columns`), or a revert that undoes one. A repair the draw would read comes first:
+  the split waits for a finding that would rewrite the outcome to be repaired or kept.
 * **Post-seal marking**: a decision recorded after the seal was opened says so in its sentence
   (:func:`post_seal_sentence`), its record carries ``post_seal: true`` (``DecisionLog.append``),
   and the Results say when the fit changed after the opening (:func:`changed_after_seal`).
@@ -915,6 +919,281 @@ def _decision_a_waits_for_a_reseal(decision: Any, ctx: Any) -> None:
     raise _sealed_refusal(what, _records(ctx), state)
 
 
+# ── what the draw reads holds still until a re-seal (audit RO-02) ────────────
+# The held-out rows are drawn over every row with the outcome measured, stratified by its classes
+# when it is categorical, grouped by the column naming the unit when rows repeat, and ordered by
+# time when a chronological split is asked for (``seal_inputs``). Changing any of these after the
+# draw draws them again: setting three impossible `sbp` values to missing moved 119–130 of 200
+# held-out rows into training, and rows whose outcomes had trained the fits already shown became
+# "sealed" behind a lock that still read clean (docs/turbotab-next/audit, RO-02). Exclusions and
+# the missing-values answer never move a row (``stages.rows.draw_split``). So, like Decision A,
+# each such change waits for a re-seal, and the re-seal is the exit. Only a seal that holds rows
+# out is guarded: under cross-validation alone nothing is held out.
+
+
+def holds_rows_out(state: Any) -> bool:
+    split = getattr(state, "split", None)
+    return split is not None and float(getattr(split, "holdout", 0) or 0) > 0
+
+
+def draw_columns(state: Any) -> list[str]:
+    """The columns whose values the held-out draw reads: the outcome (which rows have it measured,
+    and its classes), the column naming the unit when rows repeat, and the time column of a
+    chronological draw."""
+    out: list[str] = []
+    target = getattr(state, "target", None)
+    if target:
+        out.append(target)
+    grain = getattr(state, "grain", None)
+    if grain is not None and grain.grain == "repeated":
+        if grain.id_column:
+            out.append(grain.id_column)
+        else:  # ``decide_basis`` then groups by a repeating identifier
+            out += [c for c, r in (getattr(state, "roles", None) or {}).items() if r == "identifier"]
+    requested, column = temporal_request(state)
+    if requested and column:
+        out.append(column)
+    return list(dict.fromkeys(out))
+
+
+def _fresh_artifact(ctx: Any, stage: str) -> Any:
+    reader = _ctx(ctx, "artifact")
+    if not callable(reader):
+        return None
+    try:
+        found = reader(stage)
+    except Exception:  # noqa: BLE001 - an unreadable artifact checks nothing
+        return None
+    return getattr(found, "data", found)
+
+
+def _task_now(state: Any, ctx: Any) -> str | None:
+    """The task the outcome is read as under ``state``: answered, else detected (None: unknown)."""
+    if state is None:
+        return None
+    if state.task is not None:
+        return state.task
+    info = _fresh_artifact(ctx, "target_info")
+    if isinstance(info, Mapping) and state.target is not None and info.get("column") == state.target:
+        return info.get("task")
+    if state.target is not None and _ctx(ctx, "target") == state.target:
+        return _ctx(ctx, "task")
+    return None
+
+
+def _draw_values(state: Any, findings: Any) -> dict[str, str]:
+    """The SQL each applied repair puts in place of a column the draw reads (absent: untouched)."""
+    from turbotab.core.repairs import column_expressions
+
+    expressions = column_expressions(findings, state)
+    return {c: expressions[c] for c in draw_columns(state) if c in expressions}
+
+
+def _redrawn_by(now: Any, after: Any, ctx: Any) -> str | None:
+    """How going from ``now`` to ``after`` would draw the held-out rows again, as a clause; None
+    when everything the draw reads stays as it is."""
+    target = now.target
+    if after.target != target:
+        return (f"The held-out rows are drawn over the rows with `{target}` measured, and making "
+                f"`{after.target}` the outcome would draw them again over other rows")
+    before_task, after_task = _task_now(now, ctx), _task_now(after, ctx)
+    if after_task != before_task:
+        return (f"The held-out rows are drawn for `{target}` read as "
+                f"{before_task or 'it is read now'}, and reading it as "
+                f"{after_task or 'something else'} would draw them again")
+    (asked, column), (asks, new_column) = temporal_request(now), temporal_request(after)
+    if (asked, column) != (asks, new_column):
+        if asked and asks:
+            return (f"The held-out rows are the latest by `{column}`, and ordering them by "
+                    f"`{new_column}` would draw them again")
+        if asks:
+            return ("The held-out rows are drawn at random, and drawing them by time instead would "
+                    "draw them again")
+        return (f"The held-out rows are the latest by `{column or 'time'}`, and drawing them at "
+                f"random instead would draw them again")
+    findings = _fresh_artifact(ctx, "findings")
+    before_values, after_values = _draw_values(now, findings), _draw_values(after, findings)
+    changed = [c for c in draw_columns(now) if before_values.get(c) != after_values.get(c)]
+    if changed:
+        return (f"The held-out rows are drawn by `{changed[0]}`, and this changes its values, so "
+                f"it could draw them again")
+    return None
+
+
+def _redraw_refusal(clause: str, records: Sequence[Any] | None,
+                    extra: Sequence[Mapping[str, Any]] = ()) -> Refusal:
+    return Refusal(
+        "sealed",
+        f"{clause}, moving rows across the seal. Withdraw the seal first, then draw it again.",
+        exits=[*extra, _reseal_exit(records)],
+    )
+
+
+def _state_with(state: Any, decision: Any, ctx: Any) -> Any | None:
+    """``state`` with ``decision`` recorded, for the kinds this guard reads; None for any other."""
+    from turbotab.core.decisions import TemporalSpec
+
+    kind = decision.kind
+    if kind == "set_target":
+        if decision.column == state.target:
+            return None  # the same outcome again: its task answer still stands (``fold``)
+        return state.model_copy(update={"target": decision.column, "task": None})
+    if kind == "set_task":
+        if decision.column != state.target:
+            return None  # answers for another column: refused for that reason
+        return state.model_copy(update={"task": decision.task})
+    if kind == "set_temporal":
+        from turbotab.core.sequence import _temporal_names_its_time_column
+
+        done = _temporal_names_its_time_column(decision, ctx)
+        return state.model_copy(update={"temporal": TemporalSpec(temporal=done.temporal,
+                                                                 time_column=done.time_column)})
+    if kind in ("apply_repair", "defer_finding", "dismiss_finding"):
+        if kind == "apply_repair":
+            from turbotab.core.repairs import _fill_params
+
+            decision = _fill_params(decision, ctx)
+        entries = dict(state.findings or {})
+        entries[decision.finding_id] = decisions._SLOT_VALUE[kind](decision)
+        return state.model_copy(update={"findings": entries})
+    return None
+
+
+def _same_rows_another_way(decision: Any, ctx: Any) -> list[dict[str, Any]]:
+    """For a repair that would move rows across the seal, the same finding's options that leave the
+    draw alone (impossible outcome values: exclude those rows, which never moves a row)."""
+    from turbotab.core.repairs import option_columns
+
+    if decision.kind != "apply_repair":
+        return []
+    found = None
+    for f in _findings(ctx):
+        if f.get("id") == decision.finding_id:
+            found = f
+    reads = set(draw_columns(_ctx(ctx, "state")))
+    exits = []
+    for option in (found or {}).get("repairs") or []:
+        if option.get("key") == decision.option or option.get("effect") != "rows":
+            continue
+        if not reads & option_columns(decision.finding_id, str(option.get("key")),
+                                      (option.get("decision") or {}).get("params") or {}):
+            continue
+        try:
+            decisions.validate(option["decision"], ctx)
+        except Refusal:
+            continue
+        exits.append({"label": f"{option.get('label') or option.get('key')} instead: the held-out "
+                               f"rows stay as drawn", "decision": option["decision"]})
+    return exits
+
+
+def _findings(ctx: Any) -> list[dict[str, Any]]:
+    from turbotab.core.repairs import findings_of
+
+    return findings_of(_fresh_artifact(ctx, "findings"))
+
+
+def _the_draw_holds_until_a_reseal(decision: Any, ctx: Any) -> None:
+    state = _ctx(ctx, "state")
+    if state is None or not holds_rows_out(state):
+        return
+    after = _state_with(state, decision, ctx)
+    if after is None:
+        return
+    clause = _redrawn_by(state, after, ctx)
+    if clause is not None:
+        raise _redraw_refusal(clause, _records(ctx), _same_rows_another_way(decision, ctx))
+
+
+DRAW_READS = ("set_target", "set_task", "set_temporal", "apply_repair", "defer_finding",
+              "dismiss_finding")
+
+
+# ── the repairs to what the draw reads come before it (audit RO-02) ──────────
+
+
+def _settled(finding: Mapping[str, Any], state: Any, done: Mapping[tuple[str, str], str]) -> bool:
+    from turbotab.core.repairs import _covered
+
+    d = (getattr(state, "findings", None) or {}).get(str(finding.get("id")))
+    if d is not None and d.action in ("applied", "dismissed"):
+        return True
+    return _covered(finding, done) is not None
+
+
+def unsettled_on_the_draw(state: Any, findings: Any) -> list[dict[str, Any]]:
+    """Findings whose repair would rewrite a column the draw reads, neither applied, dismissed nor
+    done by another finding's repair: the ones to settle before the held-out rows are drawn."""
+    from turbotab.core.repairs import _applied, findings_of
+
+    reads = set(draw_columns(state))
+    done: dict[tuple[str, str], str] = {}
+    for fam, fid, option, params in _applied(state, findings):
+        for mark in fam.marks(option, params):
+            done.setdefault(mark, fid)
+    out = []
+    for finding in findings_of(findings):
+        touches = any(reads & _option_value_columns(finding, o) for o in finding.get("repairs") or [])
+        if touches and not _settled(finding, state, done):
+            out.append(dict(finding))
+    return out
+
+
+def _the_draw_reads_settled_values(decision: Any, ctx: Any) -> None:
+    """Draw the held-out rows once, on the values the analysis will use: a finding that would
+    rewrite the outcome (impossible values, missing-value codes) is settled first."""
+    from turbotab.core.decisions import DismissFinding, SplitSpec
+
+    state = _ctx(ctx, "state")
+    if state is None or decision.holdout <= 0:
+        return
+    if state.split == SplitSpec(holdout=decision.holdout, seed=decision.seed, folds=decision.folds):
+        return  # the same answer again draws nothing new
+    findings = _fresh_artifact(ctx, "findings")
+    pending = unsettled_on_the_draw(state, findings) if findings is not None else []
+    if not pending:
+        return
+    finding = pending[0]
+    reads = set(draw_columns(state))
+    columns = sorted({c for f in pending for o in f.get("repairs") or []
+                      for c in reads & set(_option_value_columns(f, o))})
+    named = ", ".join(f"`{c}`" for c in columns) or "a column the draw reads"
+    what = "A finding" if len(pending) == 1 else f"{len(pending)} findings"
+    exits = []
+    for option in finding.get("repairs") or []:
+        if not reads & _option_columns(finding, option):
+            continue  # about another column (a predictor set aside): not what the draw reads
+        try:
+            decisions.validate(option["decision"], ctx)
+        except Refusal:
+            continue  # a repair the drawn seal refuses: the re-seal exit below comes first
+        exits.append({"label": str(option.get("label") or option.get("key")),
+                      "decision": option["decision"]})
+    exits.append({"label": "Keep the values as they are",
+                  "decision": DismissFinding(finding_id=str(finding["id"]))})
+    if holds_rows_out(state):
+        exits.append(_reseal_exit(_records(ctx)))
+    raise Refusal(
+        "settle_first",
+        f"{what} about {named} {'is' if len(pending) == 1 else 'are'} not settled, and the held-out "
+        f"rows are drawn by {'it' if len(columns) <= 1 else 'them'}: repair or keep the values "
+        f"first, so the seal is drawn once, on the values the analysis uses.",
+        exits=exits,
+    )
+
+
+def _option_value_columns(finding: Mapping[str, Any], option: Mapping[str, Any]) -> set[str]:
+    return _option_columns(finding, option, effects=("values",))
+
+
+def _option_columns(finding: Mapping[str, Any], option: Mapping[str, Any],
+                    effects: Sequence[str] = ("values", "rows", "columns")) -> set[str]:
+    from turbotab.core.repairs import option_columns
+
+    return option_columns(str(finding["id"]), str(option.get("key")),
+                          (option.get("decision") or {}).get("params") or {}, effects=effects)
+
+
 def _probe(records: Sequence[Any], decision: Any) -> list[Any]:
     seq = max((r.seq for r in records), default=0) + 1
     probe = decisions.DecisionRecord(id="__probe__", seq=seq, at=datetime.now(timezone.utc),
@@ -944,6 +1223,10 @@ def _revert_keeps_the_seal(decision: Revert, ctx: Any) -> None:
     for kind, (slot, what) in DECISION_A.items():
         if getattr(now, slot) != getattr(after, slot):
             raise _sealed_refusal(what, records, now)
+    if holds_rows_out(now) and now.split == after.split:
+        clause = _redrawn_by(now, after, ctx)
+        if clause is not None:
+            raise _redraw_refusal(clause, records)
 
 
 def _open_seal_once_on_a_fresh_fit(decision: Any, ctx: Any) -> None:
@@ -989,6 +1272,9 @@ decisions.register_validator("open_seal", _open_seal_once_on_a_fresh_fit)
 decisions.register_validator("revert", _revert_keeps_the_seal)
 for _kind in DECISION_A:  # first: once sealed, the seal is the reason, whatever the data says
     decisions.register_validator(_kind, _decision_a_waits_for_a_reseal, first=True)
+for _kind in DRAW_READS:  # after the kind's own checks: a malformed answer says what is wrong first
+    decisions.register_validator(_kind, _the_draw_holds_until_a_reseal)
+decisions.register_validator("set_split", _the_draw_reads_settled_values)
 
 
 # ── the open_seal consequence ────────────────────────────────────────────────
@@ -1029,9 +1315,9 @@ __all__ = [
     "BasisState", "Chronology", "DECISION_A", "GRAIN_FIRST", "HoldoutOption", "SEALED_SCORES",
     "SealBasis",
     "SealDraw", "SealFloor", "SealPlan", "changed_after_seal", "chronological_holdout",
-    "decide_basis", "floor_for", "holdout_options", "keys_for", "measure", "open_seal_views",
-    "r2_se", "time_order",
+    "decide_basis", "draw_columns", "floor_for", "holdout_options", "holds_rows_out", "keys_for",
+    "measure", "open_seal_views", "r2_se", "time_order",
     "opening", "plan", "post_seal_changes", "post_seal_sentence", "read_sealed_scores",
     "read_times", "seal_inputs", "sealed_scores_frame", "serve_fit", "slots_read_by",
-    "split_writer", "state_at_opening",
+    "split_writer", "state_at_opening", "unsettled_on_the_draw",
 ]

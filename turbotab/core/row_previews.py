@@ -140,10 +140,15 @@ def exclusions_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         before=_steps(before, training),
         after=_steps(after, training),
     )]
+    # Never the outcome's own distribution (audit RO-01): a rule on it is refused, and one recorded
+    # before that refusal existed still draws no histogram of the outcome here.
     rules = list(decision.rules) or list(state.exclusions or [])
-    if rules:
-        drops = rule_drops(after if decision.rules else before)  # one count per rule
-        rule = rules[int(np.argmax(drops))] if drops else rules[0]
+    shown = [i for i, r in enumerate(rules)
+             if r.column != state.target and (r.by is None or r.by.column != state.target)]
+    if shown:
+        # One count per rule in rule order, its not-recorded and not-screened lines included.
+        drops = rule_drops(after if decision.rules else before)
+        rule = rules[max(shown, key=lambda i: drops[i] if i < len(drops) else 0)]
         views.append(_cut_view(frame, state.target, rule, removing=bool(decision.rules), ctx=ctx))
     return views
 

@@ -899,6 +899,137 @@ def _exclusions_are_ranges_on_numbers(decision: SetExclusions, ctx: Any) -> None
                 )
 
 
+# ── no eligibility rule on the outcome (audit RO-01) ─────────────────────────
+# Keeping rows by the outcome's own value selects on the value the model explains: with a true
+# fiber slope of −0.25, a `bmi 18.5–30` rule on a `bmi` outcome gave −0.092 (−0.104, −0.080),
+# a tight interval around a truncated answer (docs/turbotab-next/audit, RO-01). Under prediction
+# the rule could not be applied to anyone whose outcome is still unknown. Refused under every
+# purpose; impossible outcome values have their own repair, which the exits offer.
+
+OUTCOME_RULE = ("Keeping rows by their outcome selects on the value being explained, which biases "
+                "the estimates, and no one whose outcome is still unknown could be screened by it.")
+
+
+def _on_the_outcome(rule: ExclusionRule, target: str) -> bool:
+    """The rule reads the outcome: as its column, or as the column its ranges are set by."""
+    return rule.column == target or (rule.by is not None and rule.by.column == target)
+
+
+def _records_in(ctx: Any) -> list["DecisionRecord"] | None:
+    found = _ctx(ctx, "records")
+    if callable(found):
+        try:
+            found = found()
+        except Exception:  # noqa: BLE001 - no log: nothing is checked against it
+            return None
+    return list(found) if found is not None else None
+
+
+def state_after(decision: Any, ctx: Any) -> "ProjectState | None":
+    """The state recording ``decision`` would leave: the log ``ctx`` names, folded with it.
+
+    None when ``ctx`` names no log, or the log would refuse the decision itself (an unknown
+    revert): what cannot be folded is not checked here.
+    """
+    records = _records_in(ctx)
+    if records is None:
+        return None
+    probe = DecisionRecord(id="__probe__", seq=max((r.seq for r in records), default=0) + 1,
+                           at=datetime.now(timezone.utc), decision=decision)
+    try:
+        return fold([*records, probe])
+    except Refusal:
+        return None
+
+
+def _outcome_repair_exits(target: str, ctx: Any) -> list[dict[str, Any]]:
+    """The repairs a finding offers for impossible or coded values of the outcome, as exits: only
+    those that would be accepted now, and none for a finding already repaired."""
+    from turbotab.core import repairs
+
+    artifact = _ctx(ctx, "artifact")
+    if not callable(artifact):
+        return []
+    try:
+        findings = artifact("findings")
+    except Exception:  # noqa: BLE001 - no findings: no repair to offer
+        return []
+    state = _state(ctx)
+    done = {fid for fid, d in ((state.findings or {}) if state is not None else {}).items()
+            if d.action == "applied"}
+    exits: list[dict[str, Any]] = []
+    for finding in repairs.findings_of(findings):
+        if finding.get("id") in done:
+            continue
+        for option in finding.get("repairs") or []:
+            decision = option.get("decision") or {}
+            touched = repairs.option_columns(str(finding["id"]), str(option.get("key")),
+                                             decision.get("params") or {})
+            if target not in touched:
+                continue
+            try:
+                validate(decision, ctx)
+            except Refusal:
+                continue
+            exits.append({"label": f"Impossible or coded `{target}` values: "
+                                   f"{str(option.get('label') or option.get('key')).lower()}",
+                          "decision": decision})
+    return exits
+
+
+def _exclusions_leave_the_outcome_alone(decision: SetExclusions, ctx: Any) -> None:
+    target = _target_of(ctx)
+    if target is _UNKNOWN or target is None:
+        return
+    on = [i for i, rule in enumerate(decision.rules) if _on_the_outcome(rule, target)]
+    if not on:
+        return
+    kept = SetExclusions(rules=[r for i, r in enumerate(decision.rules) if i not in on])
+    raise Refusal(
+        "rule_on_outcome",
+        f"`{target}` is the outcome. {OUTCOME_RULE} Say who is studied by what was known before "
+        f"the outcome.",
+        exits=[{"label": f"Drop the rule on `{target}`", "decision": kept},
+               *_outcome_repair_exits(target, ctx),
+               {"label": "Restrict by a variable measured before the outcome", "decision": None}],
+    )
+
+
+def _new_outcome_has_no_rule(decision: SetTarget, ctx: Any) -> None:
+    """A rule already on the column chosen as the outcome would become a rule on the outcome."""
+    state = _state(ctx)
+    rules = list(state.exclusions or []) if state is not None else []
+    on = [r for r in rules if _on_the_outcome(r, decision.column)]
+    if not on or decision.column == getattr(state, "target", None):
+        return
+    raise Refusal(
+        "rule_on_outcome",
+        f"An eligibility rule reads `{decision.column}`, so making it the outcome would keep rows by "
+        f"their outcome. {OUTCOME_RULE}",
+        exits=[{"label": f"Drop the rule on `{decision.column}` first",
+                "decision": SetExclusions(rules=[r for r in rules if r not in on])}],
+    )
+
+
+def _revert_leaves_no_rule_on_the_outcome(decision: "Revert", ctx: Any) -> None:
+    """A revert that would bring back an outcome with a rule on it, or a rule on the outcome."""
+    after = state_after(decision, ctx)
+    if after is None or after.target is None:
+        return
+    if not any(_on_the_outcome(r, after.target) for r in after.exclusions or []):
+        return
+    now = _state(ctx)
+    if now is not None and now.target == after.target and \
+            any(_on_the_outcome(r, now.target) for r in now.exclusions or []):
+        return  # already so before this revert: not this revert's doing
+    raise Refusal(
+        "rule_on_outcome",
+        f"Undoing that decision would leave an eligibility rule on the outcome `{after.target}`. "
+        f"{OUTCOME_RULE}",
+        exits=[{"label": "Keep the answers as they are", "decision": None}],
+    )
+
+
 def _energy_adjustment_fits_the_roles(decision: SetEnergyAdjustment, ctx: Any) -> None:
     if decision.method == "none":
         return
@@ -1241,6 +1372,10 @@ register_validator("set_categorical", _categorical_names_predictors)
 register_validator("set_missing", _left_out_columns_are_predictors)
 register_validator("set_substitution", _substitution_moves_between_separate_nutrients)
 register_validator("set_exclusions", _exclusions_are_ranges_on_numbers)
+# first: a rule on the outcome is refused for that reason, whatever else is wrong with its bounds
+register_validator("set_exclusions", _exclusions_leave_the_outcome_alone, first=True)
+register_validator("set_target", _new_outcome_has_no_rule)
+register_validator("revert", _revert_leaves_no_rule_on_the_outcome)
 register_validator("set_energy_adjustment", _energy_adjustment_fits_the_roles)
 register_validator("select_models", _models_can_fit_the_task)
 register_validator("set_substitution", _substitution_swaps_energy)

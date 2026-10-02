@@ -73,7 +73,10 @@ NEEDS: dict[str, tuple[str, ...]] = {
     "roles": ("roles",),
     "exclusions": ("proposals",),
     "missing": (),
-    "split": (),
+    # The checks come before the seal (audit RO-02): a repair to the outcome after the draw would
+    # draw it again, so the split waits for the findings, and one that would rewrite a column the
+    # draw reads is settled first (``seal._the_draw_reads_settled_values``).
+    "split": ("findings",),
     "energy_adjustment": ("proposals",),
     "models": ("shelf",),
     "substitution": ("fit",),
