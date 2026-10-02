@@ -209,13 +209,24 @@ Launch: `venv/bin/python -m turbotab.server --port 8787 [--open] [--mode local|s
 | **M0 Foundations** | core (workspace, datastore, decisions, graph, jobs, events), typed server, frontend shell with the Record + Pipeline panel, open-by-path + upload, lens/target/purpose questions, virtualized table, motion primitives |
 | **M1 Energy-adjustment slice** | dietary lens: energy adjustment (the five specs in `research/NUTRITION_PACK.md` §04) as an in-fold pipeline step; split; fit a linear model and a tree ensemble; Rows/Columns/Results panels live; switching the spec rewrites the model matrix, refits, and redraws a substitution curve |
 | **M2 Opening sequence, all lenses** | orientation, grain/repeats, eligibility & exclusions, the seal; findings with preview-before-apply and deferral; wide omics data path benchmarked |
-| **M3 Explore & prepare** | explore stack, missingness routing, preprocessing recipes, survey weights as `sample_weight` |
+| **M3 Explore & prepare, and the paper in embryo** | explore stack, preprocessing recipes, survey weights as `sample_weight`; **a thin manuscript and provenance export pulled forward from M5** (Nolan, 2026-10-01): the methods section assembled from recorded sentences, the participant-flow and lineage figures, and a replayable provenance record, so every later milestone is tested against how its decisions read in the paper |
 | **M4 Models & meaning** | model shelf at scale, comparison deck, explainability (inductive-bias curves, substitution curves), sensitivity/instability |
-| **M5 Report & ship** | manuscript + checklists + journal-format figure export; desktop launcher; university server deployment (Docker, auth) |
+| **M5 Report & ship** | the full manuscript (results, discussion scaffolding), reporting checklists (TRIPOD+AI, STROBE-nut…), journal-format figure export; desktop launcher; university server deployment (Docker, auth) |
 
 Each milestone runs as: build (parallel agents by area, in worktrees) → integrate → one review
 drive (blockers only) → fix → the orchestrator drives it with Playwright → Nolan drives it when he
 can (his findings jump the queue; the next milestone does not wait for him).
+
+## 9.1 · Retiring the legacy TurboTab app (Nolan, 2026-10-01)
+
+At M2's end, `turbotab-next` drops the old TurboTab app and its machinery: `turbotab/api.py`,
+`turbotab/web/`, `turbotab/pageharness.py`, the page-coupled legacy tests, and the
+ledger/copy-deck pre-commit gates. Legacy domain modules that Classic or `turbotab/core` still
+import stay until they are absorbed into `turbotab/core`. The authoritative reference material —
+the opening sequence, the lockbox constitution, the design language, and the research packs — is
+curated into `docs/turbotab-next/reference/`. The rest of `docs/turbotab/` becomes
+`docs/turbotab/archive/`, marked as history, not instructions. Git keeps everything. Classic on
+`main` is untouched.
 
 ## 10 · Source control — so v2 ships as one clean merge
 
