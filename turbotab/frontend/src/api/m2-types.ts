@@ -1,11 +1,8 @@
 /**
- * The M2 contract the Record reads (M2_CONTRACT §1–§4, §10): thin aliases over the generated
- * types, plus a few hand-written additions for what the backend's §12 adds in parallel. Those are
- * marked "§12" below; once `npm run gen:api` carries them, the integrator swaps each for the
- * generated type and deletes the hand-written one.
+ * The M2 contract the Record reads (M2_CONTRACT §1–§4, §10, §12): thin aliases over the generated
+ * types.
  */
 import type { components } from "./generated";
-import type { InterviewStep, QuestionKey, ShelfFamily } from "./m1-types";
 import type { Decision } from "./schema";
 
 type S = components["schemas"];
@@ -58,27 +55,20 @@ export interface M2StageArtifacts {
   seal_plan: SealPlan;
 }
 
-// ── §12, hand-written until the backend's additions are generated ────────────
-
-/** §12.1: "open the seal" is the Router's last step, once a fit is fresh. */
-export type RouterKey = QuestionKey | "open_seal";
-export type RouterStep = Omit<InterviewStep, "key"> & { key: RouterKey };
+// ── part 2 (§12) ─────────────────────────────────────────────────────────────
 
 /** §12.2: "I don't know" is a grain answer, and the only way to an undetermined seal. */
-export type GrainAnswer = SetGrain["grain"] | "unknown";
+export type GrainAnswer = SetGrain["grain"];
 
-/** A grain answer as the Record records it: `unknown` passes as a Decision until it is generated. */
-export function grainDecision(grain: GrainAnswer, idColumn: string | null): Decision {
+/** A grain answer as the Record records it: the identifier is named only for repeated rows. */
+export function grainDecision(grain: GrainAnswer, idColumn: string | null): SetGrain {
   return {
     kind: "set_grain",
-    grain: grain as SetGrain["grain"],
+    grain,
     id_column: grain === "repeated" ? idColumn : null,
     acknowledged: false,
   };
 }
-
-/** §12.6: a family's measured cost before a fit ("about 5 minutes at 20,000 columns"). */
-export type ShelfFamilyWithCost = ShelfFamily & { estimate_seconds?: number | null };
 
 /** §12.2: the refusal code of an answer that waits behind an unanswered prerequisite. */
 export const NOT_YET = "not_yet";

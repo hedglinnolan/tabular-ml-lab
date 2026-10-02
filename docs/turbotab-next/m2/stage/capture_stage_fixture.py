@@ -13,8 +13,8 @@ Projects (each is one scenario of the stage lab, /lab/stage/m2):
 * ``m2-orientation`` the feature-major copy of metabolomics_untargeted.csv: the turn
 * ``m2-seal-*``      the split question's preview in each basis: grouped (dietary), chronological
                      (clinical_longitudinal), abandoned (dietary, "one row per unit" kept over the
-                     data) and undetermined (dietary, the grain not answered); plus eligibility and
-                     missing-value previews with the coach's notes
+                     data) and undetermined (dietary, the grain answered "I don't know"); plus
+                     eligibility and missing-value previews with the coach's notes
 * ``m2-results``     dietary combined by mean, fitted: sealed, opened once, then changed after the
                      opening (energy adjustment residual → density)
 * ``m2-repairs``     survey_sentinels.csv: the repairs' previews and the findings' evidence
@@ -42,6 +42,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from turbotab.core.config import Settings  # noqa: E402
 from turbotab.server.app import create_app  # noqa: E402
+from turbotab.server.tests.conftest import prepare  # noqa: E402
 
 SAMPLES = ROOT / "turbotab" / "sample_data"
 OUT = ROOT / "turbotab/frontend/src/mocks/m2-stage-fixture.json"
@@ -109,6 +110,9 @@ class Project:
             time.sleep(0.05)
 
     def decide(self, decision: dict) -> dict:
+        # The Router takes answers in its order (M2_CONTRACT §12.2): every question before this
+        # one gets its usual answer first, as a user clicking through would give it.
+        prepare(self.c, self.pid, decision)
         r = self.c.post(f"/api/projects/{self.pid}/decisions", json=decision)
         if r.status_code != 200:
             raise RuntimeError(f"{decision}: {r.status_code} {r.text}")
@@ -130,6 +134,7 @@ class Project:
             self.out["start"] = name
 
     def preview(self, group: str, label: str, decision: dict) -> dict:
+        prepare(self.c, self.pid, decision)  # a preview of a question not reached yet is refused
         t0 = time.perf_counter()
         r = self.c.post(f"/api/projects/{self.pid}/preview", json=decision)
         ms = (time.perf_counter() - t0) * 1000
@@ -291,7 +296,9 @@ def seal_undetermined(client: TestClient) -> dict:
     p.wait({"ingest": "fresh", "profile": "fresh"})
     p.decide({"kind": "set_lens", "lenses": ["dietary"]})
     p.decide({"kind": "set_target", "column": "hba1c"})
-    # The grain is not answered and no identifier is named: whether a person repeats is unknown.
+    # "I don't know" whether a person repeats (M2 §12.2: the only way to an undetermined seal),
+    # and no identifier is named.
+    p.decide({"kind": "set_grain", "grain": "unknown"})
     roles = proposed_roles(p, {"hba1c"})
     roles["participant_id"] = "excluded"
     p.decide({"kind": "set_roles", "roles": roles})

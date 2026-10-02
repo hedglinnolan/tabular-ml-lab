@@ -87,6 +87,24 @@ function applyJob(qc: QueryClient, pid: string, job: JobView): void {
   });
 }
 
+/**
+ * Read again every stage result the view says is fresh but the cache holds older: fetched while the
+ * stage was still running, with the event that it finished racing that fetch (or arriving before
+ * the stream opened). Without this the outcome question could wait on "the file is still being
+ * read" forever. Bounded: it runs once per view update, and a stage refetch never updates the view.
+ */
+export function reconcileStages(qc: QueryClient, pid: string, view: ProjectView): string[] {
+  const reread: string[] = [];
+  for (const [name, status] of Object.entries(view.stages)) {
+    if (!status || status.status !== "fresh") continue;
+    const cached = qc.getQueryData<StageResult>(keys.stage(pid, name));
+    if (!cached || (cached.fresh && cached.key === status.key)) continue;
+    reread.push(name);
+    void qc.invalidateQueries({ queryKey: keys.stage(pid, name), exact: true });
+  }
+  return reread;
+}
+
 /** Apply one event to the cache. Pure with respect to everything but `qc`. */
 export function applyProjectEvent(qc: QueryClient, pid: string, event: ProjectEvent): void {
   switch (event.type) {
@@ -152,6 +170,19 @@ export function useProjectEvents(pid: string): StreamState {
       source.close();
     };
   }, [pid, qc]);
+
+  // Whenever the view changes, no stage result may stay older than the status it reports.
+  useEffect(
+    () =>
+      qc.getQueryCache().subscribe((e) => {
+        if (e.type !== "updated" || e.action.type !== "success") return;
+        const [owner, what] = e.query.queryKey as readonly unknown[];
+        if (owner !== pid || what !== "view" || !e.query.state.data) return;
+        const view = e.query.state.data as ProjectView;
+        queueMicrotask(() => reconcileStages(qc, pid, view));
+      }),
+    [pid, qc],
+  );
 
   return state;
 }

@@ -56,12 +56,32 @@ export function liveSteps(cohort: CohortArtifact | null, split: SplitArtifact | 
   return steps;
 }
 
-/** Before the design exists: the predictors as recorded, entering as they are. */
+/** Columns per lane above which a lineage collapses into one count node per role (the server's
+ *  `consequences.MAX_FOCUS_COLUMNS`): the picture keeps its size at 11 or 20,000 columns. */
+export const MAX_LINEAGE_COLUMNS = 12;
+
+/** Before the design exists: the predictors as recorded, entering as they are. A wide table
+ *  collapses into one node per role with its count, as the server's lineages do (BLUEPRINT §11 rule 3). */
 export function predictorsLineage(predictors: string[], roles: Record<string, string> | null): LineageData {
   const nodes: LineageData["nodes"] = [];
   const links: LineageData["links"] = [];
+  const roleOf = (c: string) => (roles?.[c] ?? null) as LineageData["nodes"][number]["role"];
+  const collapsed = predictors.length > MAX_LINEAGE_COLUMNS;
+  if (collapsed) {
+    const groups = new Map<string, number>();
+    for (const c of predictors) groups.set(roleOf(c) ?? "other", (groups.get(roleOf(c) ?? "other") ?? 0) + 1);
+    for (const [group, count] of groups) {
+      const role = group === "other" ? null : (group as LineageData["nodes"][number]["role"]);
+      const label = `${fmtInt(count)} ${group} ${count === 1 ? "column" : "columns"}`;
+      for (const lane of ["raw", "adjusted", "matrix"] as const)
+        nodes.push({ id: `${lane}:group:${group}:kept`, column: null, lane, role, label, formula: null, group, count });
+      links.push({ source: `raw:group:${group}:kept`, target: `adjusted:group:${group}:kept`, operation: "kept" });
+      links.push({ source: `adjusted:group:${group}:kept`, target: `matrix:group:${group}:kept`, operation: "kept" });
+    }
+    return { nodes, links, collapsed: true };
+  }
   for (const c of predictors) {
-    const role = (roles?.[c] ?? null) as LineageData["nodes"][number]["role"];
+    const role = roleOf(c);
     nodes.push({ id: `raw:${c}`, column: c, lane: "raw", role, label: c, formula: null, group: null, count: 1 });
     nodes.push({ id: `adj:${c}`, column: c, lane: "adjusted", role, label: c, formula: null, group: null, count: 1 });
     nodes.push({ id: `mx:${c}`, column: c, lane: "matrix", role, label: c, formula: null, group: null, count: 1 });

@@ -112,7 +112,8 @@ def test_an_abandoned_seal_counts_every_unit_it_split():
 
 def test_an_undetermined_seal_claims_no_units_and_reports_only_what_an_identifier_suggests():
     frame = _table()
-    state = ProjectState()
+    # Undetermined comes only from an explicit "I don't know" (M2 §12.2); no grain draws no seal.
+    state = ProjectState(grain=GrainSpec(grain="unknown"))
     store, universe, d, assignment, info = _draw(state, frame)
     cells = seal_cells(draw=d, universe=universe, info=info, store=store, suggested="pid")
     assert cells.state == "undetermined" and cells.exploratory

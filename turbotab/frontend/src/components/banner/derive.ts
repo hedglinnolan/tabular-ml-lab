@@ -18,12 +18,17 @@ import type {
   ShelfArtifact,
   SplitArtifact,
 } from "../../api/m1-types";
+import type { OrientedArtifact, WorkingArtifact } from "../../api/m2-types";
 import { veilFor, type VeilState } from "../../motion/StaleVeil";
 import type { BannerSegment } from "../../state/focus";
 
 export interface BannerInput {
   view: Pick<ProjectView, "stages" | "state" | "interview" | "summary">;
   ingest?: StageResult<DatasetInfo> | undefined;
+  /** The table the right way round, and the working table (M2_CONTRACT §2): before a cohort,
+   *  the rows are theirs, not the file's (a turned table's samples, a combined table's units). */
+  oriented?: StageResult<OrientedArtifact> | undefined;
+  working?: StageResult<WorkingArtifact> | undefined;
   cohort?: StageResult<CohortArtifact> | undefined;
   split?: StageResult<SplitArtifact> | undefined;
   design?: StageResult<DesignArtifact> | undefined;
@@ -191,7 +196,7 @@ function pendingText(
 // ── segments ─────────────────────────────────────────────────────────────────
 
 function rowsSegment(input: BannerInput): RowsSegment {
-  const { view, ingest, cohort, split } = input;
+  const { view, ingest, oriented, working, cohort, split } = input;
   const stages = view.stages;
   const c = cohort?.artifact ?? null;
   const s = split?.artifact ?? null;
@@ -204,8 +209,13 @@ function rowsSegment(input: BannerInput): RowsSegment {
     const last = flow[flow.length - 1];
     if (!last || last.n !== c.n_final) flow.push({ n: c.n_final, label: "in the analysis" });
   } else {
-    const n = ingest?.artifact?.n_rows ?? view.summary.n_rows;
-    if (n !== null && n !== undefined) flow.push({ n, label: "rows loaded" });
+    // The working table while it is fresh, else the oriented one, else the file as read.
+    const w = working?.fresh ? working.artifact : null;
+    const o = oriented?.fresh ? oriented.artifact : null;
+    const reshaped = (w !== null && w.n_rows !== w.n_source_rows) || o?.transposed === true;
+    const n = w?.n_rows ?? o?.n_rows ?? ingest?.artifact?.n_rows ?? view.summary.n_rows;
+    if (n !== null && n !== undefined)
+      flow.push({ n, label: reshaped ? "rows in the table" : "rows loaded" });
   }
   const cvOnly = s !== null && s.n_holdout === 0;
   const train = s ? s.n_train : null;

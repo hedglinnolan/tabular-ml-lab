@@ -13,11 +13,11 @@ import type {
   MissingColumn,
   ProposalsArtifact,
   ShelfArtifact,
+  ShelfFamily,
 } from "../../../api/m1-types";
-import type { ShelfFamilyWithCost } from "../../../api/m2-types";
 import type { Decision, ProjectState } from "../../../api/schema";
 import { listJoin } from "../../../util/format";
-import { V } from "../../Prose";
+import { Prose, V } from "../../Prose";
 import { Options, type OptionItem } from "../Options";
 import { Question } from "../Question";
 import { Taught } from "../teach";
@@ -508,24 +508,17 @@ export function EnergyAsk({
 
 // ── model families ───────────────────────────────────────────────────────────
 
-/** A measured fit time, said as a person would: "about 40 s", "about 5 min". */
-export function aboutTime(seconds: number): string {
-  if (seconds < 1) return "under a second";
-  if (seconds < 90) return `about ${Math.round(seconds)} s`;
-  if (seconds < 5400) return `about ${Math.round(seconds / 60)} min`;
-  return `about ${(seconds / 3600).toFixed(1)} h`;
-}
+/** Below this a fit's length answers no question the user has (the server's
+ * `cost.NOTEWORTHY_SECONDS`): the models card says nothing about it. */
+export const NOTEWORTHY_SECONDS = 10;
 
 export function ModelsAsk({
   shelf,
   current,
-  nColumns,
   ...p
 }: AskProps & {
   shelf: ShelfArtifact;
   current: string[] | null;
-  /** The predictors the fit reads: a slow fit's cost is said with its width (§12.6). */
-  nColumns: number | null;
 }) {
   // Nothing is chosen for the user: the shelf's order is its judgment (§0).
   const [chosen, setChosen] = useState<string[]>(current ?? []);
@@ -538,15 +531,14 @@ export function ModelsAsk({
   // Enter and the stage's record button do the same thing: record the chosen families, or the
   // shown one when none is chosen yet.
   const recordFor = (key: string): string[] => (ordered.length ? ordered : [key]);
-  // Honest cost at scale (M2_CONTRACT §12.6): each family's measured fit time, shown, not hidden.
-  const cost = (f: ShelfFamilyWithCost) => {
+  // Honest cost at scale (M2_CONTRACT §12.6): a family's measured fit time, in the server's words
+  // ("about 5 minutes at `20,004` columns"), shown whenever it is long enough to weigh.
+  const cost = (f: ShelfFamily) => {
     const sec = f.estimate_seconds;
-    if (sec === undefined || sec === null) return undefined;
-    const wide = sec >= 60 && nColumns !== null ? ` at ${fmtCount(nColumns)} columns` : "";
+    if (sec === null || sec < NOTEWORTHY_SECONDS || !f.estimate) return undefined;
     return (
       <span data-testid={`cost-${f.key}`}>
-        {aboutTime(sec)}
-        {wide}
+        <Prose text={f.estimate} />
       </span>
     );
   };

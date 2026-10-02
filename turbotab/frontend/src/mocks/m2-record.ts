@@ -32,6 +32,8 @@ const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 const tick = (s: string | number) => `\`${s}\``;
 const IDENT =
   /(^|_)(id|seqn)$|^seqn$|^(participant|subject|person|patient|sample|respondent)(_?id)?$/i;
+/** A person's identifier (the server's `person_identifiers`: never a sample or a record's). */
+const PERSON = /^seqn$|^(participant|subject|person|patient|respondent)(_?id)?$/i;
 const DAY = 86_400_000;
 
 function hash(s: string): string {
@@ -210,7 +212,7 @@ function grainEvidence(ds: MockDataset, target: string | null) {
 /** A recognized identifier unique on every row, if there is one (§10: the grain is then stated). */
 export function uniqueIdentifier(ds: MockDataset, target: string | null): string | null {
   const col = ds.columns.find(
-    (c) => c.name !== target && IDENT.test(c.name) && nMissing(c) === 0 && nUnique(c) === ds.nRows,
+    (c) => c.name !== target && PERSON.test(c.name) && nMissing(c) === 0 && nUnique(c) === ds.nRows,
   );
   return col?.name ?? null;
 }
@@ -262,9 +264,19 @@ function structureArtifact(p: MockProject, state: ProjectState): StructureArtifa
   const evidence = grainEvidence(ds, state.target);
   const suggested = evidence.map((e) => e.column);
   const top = evidence[0];
+  const unique = state.target !== null ? uniqueIdentifier(ds, state.target) : null;
   const grain: StructureArtifact["grain"] = {
     suggested,
     evidence,
+    // §12.5: a recognized identifier unique on every row states the grain (the server's
+    // `_stated_grain_reading`); the skip's reason is this sentence after the client's label.
+    stated: unique
+      ? {
+          column: unique,
+          n_rows: ds.nRows,
+          sentence: `every ${tick(unique)} appears once, so each person is one row.`,
+        }
+      : null,
     if_one_row:
       top && IDENT.test(top.column) && top.rows_per >= 1.5 && top.regular_share >= 0.8
         ? {
@@ -319,7 +331,7 @@ function structureArtifact(p: MockProject, state: ProjectState): StructureArtifa
     confidence: reading === "time_points" ? "high" : reading ? "medium" : null,
     evidence: evidenceText,
     sentence: reading
-      ? `Not asked: these look like ${reading === "repeats" ? "repeated measurements of the same quantity rather than different time points" : "different time points rather than repeated measurements of the same quantity"} — ${evidenceText.join("; ")}.`
+      ? `these look like ${reading === "repeats" ? "repeated measurements of the same quantity rather than different time points" : "different time points rather than repeated measurements of the same quantity"} — ${evidenceText.join("; ")}.`
       : "Whether these are repeats or time points cannot be read from the data.",
     spacing,
     replicate_index: index,
@@ -825,7 +837,7 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
           next = {
             ...st,
             status: "skipped",
-            reason: `Not asked: every ${tick(stated)} appears once, so each person is one row.`,
+            reason: `every ${tick(stated)} appears once, so each person is one row.`,
           };
         }
         if (st.key === "repeat_kind" && repeats?.stated && unanswered) {
@@ -835,7 +847,9 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
       });
       // §12.1: the Router's last step is opening the seal, once a fit is fresh.
       const opened = p.records.find((r) => r.decision.kind === "open_seal");
-      const firstUnanswered = out.find((st) => st.status === "open" || st.status === "waiting");
+      const firstUnanswered = out.find(
+        (st) => st.key !== "open_seal" && (st.status === "open" || st.status === "waiting"),
+      );
       const seal: InterviewStep = (() => {
         const key = "open_seal" as QuestionKey;
         if (opened)
@@ -883,7 +897,8 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
           deferred_findings: [],
         };
       })();
-      return [...out, seal];
+      // The M1 Router lists open_seal too (QUESTION_KEYS): this reading replaces it, never doubles it.
+      return [...out.filter((st) => st.key !== "open_seal"), seal];
     },
 
     validate(p, d, stages) {

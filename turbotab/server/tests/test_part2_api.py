@@ -144,3 +144,25 @@ def test_the_shelf_says_what_each_fit_will_take_before_it_runs(client):
         assert family.estimate and family.estimate.startswith(("under", "about"))
     # a fit on 480 rows of a dozen columns takes seconds, and the estimate says so: no columns named
     assert all("columns" not in f.estimate for f in shelf.families)
+
+
+def test_the_event_finding_routes_to_the_event_question_and_learns_it_was_answered(client):
+    """`positive_class__<target>` once said "No control for this yet." beside a recorded event."""
+    pid = open_by_path(client, SAMPLES / "clinical_longitudinal.csv")
+    wait_for(client, pid, {"ingest": "fresh"})
+    decide(client, pid, {"kind": "set_lens", "lenses": ["clinical"]})
+    decide(client, pid, {"kind": "set_target", "column": "progressed"})
+    until_open(client, pid, "event")
+
+    def finding() -> dict:
+        wait_for(client, pid, {"findings": "fresh"})
+        found = [f for f in artifact(client, pid, "findings")["findings"]
+                 if f["id"] == "positive_class__progressed"]
+        assert len(found) == 1
+        return found[0]
+
+    asked = finding()
+    assert asked["routes_to"] == "event" and asked["answered_by"] is None
+    assert "No control" not in asked["summary"]
+    event = decide(client, pid, {"kind": "set_event", "column": "progressed", "level": "1"})["decisions"][-1]
+    assert finding()["answered_by"] == event["id"]

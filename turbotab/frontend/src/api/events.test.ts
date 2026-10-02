@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyProjectEvent, parseEvent } from "./events";
+import { applyProjectEvent, parseEvent, reconcileStages } from "./events";
 import { keys, mergeView } from "./queries";
 import type { DecisionRecord, JobView, ProjectView, StageResult, StageStatus } from "./schema";
 
@@ -331,5 +331,28 @@ describe("mergeView", () => {
     current.decisions = [record(1), record(2)];
     current.state = { ...current.state, target: "c2", purpose: "prediction" };
     expect(mergeView(prev, current).state.purpose).toBe("prediction");
+  });
+});
+
+describe("reconcileStages", () => {
+  it("reads again a result fetched while the stage ran, once the view says it is fresh", () => {
+    // The race behind "the file is still being read" forever: the result was fetched while
+    // ingest ran, and the event that it finished never refetched it.
+    const running: StageResult = { stage: "ingest", key: null, fresh: false, status: "running", artifact: null };
+    qc.setQueryData(keys.stage(PID, "ingest"), running);
+    const current: StageResult = { stage: "target_info", key: "t1", fresh: true, status: "fresh", artifact: {} };
+    qc.setQueryData(keys.stage(PID, "target_info"), current);
+    expect(reconcileStages(qc, PID, cachedView())).toEqual(["ingest"]);
+    expect(isInvalid(keys.stage(PID, "ingest"))).toBe(true);
+    expect(isInvalid(keys.stage(PID, "target_info"))).toBe(false); // already the fresh key
+  });
+
+  it("reads again a fresh result under another key, and leaves a stage that is not fresh", () => {
+    qc.setQueryData(keys.stage(PID, "ingest"), { stage: "ingest", key: "old", fresh: true, status: "fresh", artifact: {} });
+    const v = cachedView();
+    v.stages.target_info = status("target_info", { status: "running", fresh: false });
+    qc.setQueryData(keys.stage(PID, "target_info"), { stage: "target_info", key: null, fresh: false, status: "running", artifact: null });
+    expect(reconcileStages(qc, PID, v)).toEqual(["ingest"]);
+    expect(isInvalid(keys.stage(PID, "target_info"))).toBe(false);
   });
 });

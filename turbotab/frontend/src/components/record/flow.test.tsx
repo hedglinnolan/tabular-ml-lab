@@ -4,11 +4,11 @@
  * comes: a stated step after the open question waits under "Then".
  */
 import { fireEvent, render, screen } from "@testing-library/react";
-import type { RouterKey, RouterStep } from "../../api/m2-types";
+import type { InterviewStep, QuestionKey } from "../../api/m1-types";
 import { layoutFlow } from "./flow";
 import { StatedSkip, skipReason } from "./StatedSkip";
 
-const step = (key: RouterKey, status: RouterStep["status"], extra: Partial<RouterStep> = {}) =>
+const step = (key: QuestionKey, status: InterviewStep["status"], extra: Partial<InterviewStep> = {}) =>
   ({
     key,
     status,
@@ -17,7 +17,7 @@ const step = (key: RouterKey, status: RouterStep["status"], extra: Partial<Route
     waiting_on: [],
     deferred_findings: [],
     ...extra,
-  }) as RouterStep;
+  }) as InterviewStep;
 
 const GRAIN = "Not asked: every `SEQN` appears once, so each person is one row.";
 

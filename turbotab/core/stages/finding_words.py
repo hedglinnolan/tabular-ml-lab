@@ -127,6 +127,13 @@ def _two_level_text(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) ->
     return Voice(f"{tick(col)} stores true and false as text.")
 
 
+def _positive_class(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
+    # Raised for a two-level outcome: the event question answers it (M2_CONTRACT §1).
+    col = p.get("column") or p.get("target") or (f["affected_columns"] or [None])[0]
+    return Voice(f"{tick(col)} has two levels; which one is the event the models predict is asked, "
+                 f"never guessed.", "event", "Choose the event")
+
+
 def _unnamed(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
     cols = [str(c) for c in p.get("columns") or f["affected_columns"]]
     n = len(cols)
@@ -355,6 +362,7 @@ def _text_missing(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> V
 FAMILIES: dict[str, Say] = {
     "binary_text": _two_level_text,
     "boolean_as_text": _two_level_text,
+    "positive_class": _positive_class,
     "sentinel_missing": _sentinel,
     "category_variants": _column_title("{col} has categories that differ only by spacing or case."),
     "numeric_as_text": _column_title("{col} looks numeric but is stored as text."),

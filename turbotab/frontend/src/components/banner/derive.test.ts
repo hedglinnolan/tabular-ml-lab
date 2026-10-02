@@ -316,4 +316,18 @@ describe("deriveBanner", () => {
     expect(models.waiting).toBe("not chosen yet");
     expect(res.waiting).toBe("after the fit");
   });
+
+  it("before a cohort, counts the table as it stands: turned around, or combined per unit", () => {
+    const none = { cohort: undefined, split: undefined, design: undefined, fit: undefined };
+    const turned = result("oriented", "o1", { n_rows: 80, n_cols: 397, transposed: true } as never);
+    const rows = deriveBanner(input({ ...none, oriented: turned })).segments[0];
+    expect(rows.key === "rows" && rows.flow).toEqual([{ n: 80, label: "rows in the table" }]);
+    const combined = result("working", "w1", { n_rows: 300, n_source_rows: 600 } as never);
+    const both = deriveBanner(input({ ...none, oriented: turned, working: combined })).segments[0];
+    expect(both.key === "rows" && both.flow).toEqual([{ n: 300, label: "rows in the table" }]);
+    // A working table being recomputed is not read: the file's count stands until it is fresh.
+    const stale = result("working", "w0", { n_rows: 300, n_source_rows: 600 } as never, false);
+    const file = deriveBanner(input({ ...none, working: stale })).segments[0];
+    expect(file.key === "rows" && file.flow).toEqual([{ n: 21849, label: "rows loaded" }]);
+  });
 });

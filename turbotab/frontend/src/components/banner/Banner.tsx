@@ -30,12 +30,14 @@ import s from "./Banner.module.css";
 
 export function Banner({ pid, view }: { pid: string; view: ProjectView }) {
   const ingest = useStage(pid, view, "ingest");
+  const oriented = useStage(pid, view, "oriented");
+  const working = useStage(pid, view, "working");
   const cohort = useStage(pid, view, "cohort");
   const split = useStage(pid, view, "split");
   const design = useStage(pid, view, "design");
   const fit = useStage(pid, view, "fit");
   const shelf = useStage(pid, view, "shelf");
-  const model = deriveBanner({ view, ingest, cohort, split, design, fit, shelf });
+  const model = deriveBanner({ view, ingest, oriented, working, cohort, split, design, fit, shelf });
   return (
     <BannerView
       model={model}

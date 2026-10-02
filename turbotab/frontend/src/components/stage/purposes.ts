@@ -225,9 +225,9 @@ export const RECORD_PURPOSES: Record<string, Purpose | Structural> = {
     question: "provenance",
     answer: "the seal's basis at a glance, never a clean lock when it is undetermined",
   },
-  OpenSealCard: {
+  OpenSealStep: {
     question: "what",
-    answer: "what opening the held-out rows does, and that it happens once",
+    answer: "that opening the seal is the last step, with a way to its card",
   },
 
   // ── M2: findings with repairs ──

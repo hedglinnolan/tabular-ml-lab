@@ -320,6 +320,8 @@ test("a wide table keeps the outcome picker and the roles question responsive", 
   // M2: a binary outcome asks which level is the event, never guessed.
   await page.getByTestId("option-case").click({ timeout: 20_000 });
   await page.getByTestId("option-prediction").click({ timeout: 20_000 });
+  // M2: `sample_id` names a sample, not a person, so the grain is asked.
+  await page.getByTestId("option-one_row_per_unit").click({ timeout: 20_000 });
   // 1,998 exposures: the group shows a few chips and counts the rest.
   const roles = page.getByTestId("question-roles");
   await expect(roles).toBeVisible({ timeout: 20_000 });

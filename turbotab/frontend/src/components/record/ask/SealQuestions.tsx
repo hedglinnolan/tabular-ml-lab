@@ -5,13 +5,14 @@
  *                 found but grouping abandoned, or undetermined — never drawn as a clean lock),
  *                 and each held-out size states what a holdout that size can measure. Below the
  *                 floor, cross-validation alone comes first, with its reason; nothing is refused.
- *   OpenSealCard  the Router's last step: a CONSEQUENCE (DESIGN_LANGUAGE §09) — declarative, then
- *                 first person. The held-out scores exist and are withheld until it is pressed;
- *                 then they are fixed in the record, and any later change is marked post-seal.
+ *   OpenSealStep  the Router's last step: it says what opening the seal does and goes to the
+ *                 CONSEQUENCE card under the Results (stage/seal/OpenSeal.tsx), the one place the
+ *                 seal is opened. The held-out scores are withheld until it is pressed; then they
+ *                 are fixed in the record, and any later change is marked post-seal.
  */
 import { useId, useMemo, useState } from "react";
+import { useStageFocus } from "../../../state/focus";
 import type {
-  FitArtifact,
   RolesArtifact,
   SplitArtifact,
   TeachingEntry,
@@ -116,7 +117,8 @@ export function SealAsk({
       data={
         plan ? (
           <>
-            <SealBasisLine basis={plan.basis} chronology={plan.chronology} />
+            {/* No basis until there is a grain: the refusal below says the grain comes first. */}
+            {plan.basis ? <SealBasisLine basis={plan.basis} chronology={plan.chronology} /> : null}
             {plan.refusal ? (
               <span className={c.dataNote}>
                 <Taught text={plan.refusal} />
@@ -151,57 +153,48 @@ export function SealAsk({
 
 // ── the Router's last step: open the seal ───────────────────────────────────
 
-const NUMBER = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
-const count = (n: number) => NUMBER[n] ?? fmtCount(n);
-
-export function OpenSealCard({
+/**
+ * The Router's last step, in the Record's flow. The CONSEQUENCE card that opens the seal lives
+ * once, under the Results on the stage (M2_CONTRACT §3, §10): this step says what it does and
+ * takes the user there, rather than drawing the same card a second time (BLUEPRINT §11.2).
+ */
+export function OpenSealStep({
   entry,
-  fit,
   split,
-  pending,
-  record,
-  answerAt,
   now,
 }: {
   entry: TeachingEntry | undefined;
-  fit: FitArtifact | null;
   split: SplitArtifact | null;
-  pending: boolean;
-  record: (d: Decision, at?: string) => void;
-  answerAt: AskProps["answerAt"];
   now: boolean;
 }) {
   const titleId = useId();
   const whyId = useId();
   const [why, setWhy] = useState(false);
-  const n = fit?.models.length ?? 0;
-  const held = split?.n_holdout ?? fit?.n_holdout ?? null;
-  const metric = fit ? (fit.metric_labels[fit.primary_metric] ?? fit.primary_metric) : "score";
-  const basis = split?.basis ?? null;
-  const models = n === 1 ? "the model" : `the ${count(n)} models`;
+  const { reset } = useStageFocus();
+  const held = split?.n_holdout ?? null;
+  const go = () => {
+    reset(); // the stage's live view, which is the Results once fitted
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const card = document.querySelector<HTMLElement>('[data-purpose="open_seal"]');
+        card?.scrollIntoView({ block: "center" });
+        card?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+      }),
+    );
+  };
   return (
     <TermsProvider terms={entry?.terms}>
       <section
-        className={k.consequence}
+        className={k.step}
         aria-labelledby={titleId}
-        data-testid="open-seal-card"
+        data-testid="open-seal-step"
         data-now={now || undefined}
       >
-        <div className={k.rule} aria-hidden="true" />
-        <div className={k.head}>
-          <SealGlyph state={basis?.state ?? "grouped"} recorded size={24} />
-          <span className={k.signal}>Opened once</span>
-        </div>
-        <h2 id={titleId} className={k.title} tabIndex={-1}>
-          Opening the seal scores {models}
-          {held !== null ? <> on {fmtCount(held)} held-out rows</> : null} no choice has seen.
-        </h2>
-        <p className={k.body}>
-          It happens once. The held-out {metric} is then fixed in the record; any later change still
-          refits, and is marked post-seal in the Results and the manuscript.
-          {basis?.exploratory
-            ? " The seal's basis is not verified, so these scores are labeled exploratory."
-            : ""}{" "}
+        <span className={k.stepKicker}>Opening the seal</span>
+        <p id={titleId} className={k.stepText}>
+          The last step is under the Results: the models are scored once on
+          {held !== null ? <> the {fmtCount(held)}</> : " the"} held-out rows, and the scores are
+          fixed in the record.{" "}
           {entry ? (
             <button
               type="button"
@@ -220,19 +213,9 @@ export function OpenSealCard({
             <Taught text={entry.why} />
           </p>
         ) : null}
-        <div className={k.exits}>
-          <button
-            type="button"
-            className={k.attest}
-            disabled={pending || !fit}
-            onClick={() => record({ kind: "open_seal" }, "open")}
-            data-testid="open-seal"
-          >
-            {pending ? "Opening…" : "I'm done choosing: open the seal"}
-          </button>
-          <span className={k.or}>or keep choosing; nothing is opened until you press it.</span>
-        </div>
-        {answerAt?.key === "open" ? <div className={c.answer}>{answerAt.node}</div> : null}
+        <button type="button" className={k.go} onClick={go} data-testid="go-open-seal">
+          Show the seal under the Results
+        </button>
       </section>
     </TermsProvider>
   );

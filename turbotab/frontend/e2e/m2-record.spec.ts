@@ -192,8 +192,19 @@ test("NHANES: repairs, the grain stated, eligibility, missing by mechanism, and 
   await expect(page.getByTestId("question-energy_adjustment")).toBeVisible({ timeout: 15_000 });
   await page.getByTestId("option-residual").click();
   await expect(page.getByTestId("question-models")).toBeVisible({ timeout: 15_000 });
-  // Honest cost: each family's measured fit time is on its option before anything is fit.
-  await expect(page.getByTestId("cost-elastic_net")).toHaveText(/^about \d+ s$/);
+  // Honest cost: a family's measured fit time is on its option before anything is fit, in the
+  // shelf's words, whenever it is long enough to weigh (10 s, the server's NOTEWORTHY_SECONDS).
+  const shelf = await page.evaluate(async () => {
+    const pid = location.pathname.split("/").pop();
+    const r = await fetch(`/api/projects/${pid}/stages/shelf`);
+    return ((await r.json()) as { artifact: { families: { key: string; estimate_seconds: number | null; estimate: string | null }[] } })
+      .artifact.families;
+  });
+  for (const f of shelf) {
+    const cost = page.getByTestId(`cost-${f.key}`);
+    if ((f.estimate_seconds ?? 0) >= 10) await expect(cost).toHaveText(f.estimate!.replace(/`/g, ""));
+    else await expect(cost).toHaveCount(0);
+  }
   await page.getByTestId("option-elastic_net").focus();
   await page.keyboard.press("Space");
   await page.keyboard.press("ArrowDown");
@@ -208,21 +219,25 @@ test("NHANES: repairs, the grain stated, eligibility, missing by mechanism, and 
     timeout: 30_000,
   });
 
-  // ── open the seal: the Router's last step, a CONSEQUENCE card ─────────────
+  // ── open the seal: the Router's last step, and the one CONSEQUENCE card under the Results ──
+  const step = page.getByTestId("open-seal-step");
+  await expect(step).toBeVisible({ timeout: 30_000 });
+  await expect(step).toContainText("held-out rows");
+  await step.getByTestId("go-open-seal").click();
   const card = page.getByTestId("open-seal-card");
-  await expect(card).toBeVisible({ timeout: 30_000 });
+  await expect(card).toHaveCount(1);
   await expect(card).toContainText("It happens once.");
-  await expect(card).toContainText("held-out rows");
   // Until it is pressed, no held-out score is on screen.
   await expect(page.getByTestId("open-seal")).toBeEnabled({ timeout: 20_000 });
   await park(page);
-  await both(page, "open-seal", card);
+  await both(page, "open-seal", step);
   await page.getByTestId("open-seal").click();
   const opened = page.getByTestId("decision-open_seal");
   await expect(opened).toBeVisible({ timeout: 15_000 });
   // The seal opens once: its sentence has no "change".
   await expect(opened.getByRole("button", { name: /change/i })).toHaveCount(0);
   await expect(page.getByTestId("open-seal-card")).toHaveCount(0);
+  await expect(page.getByTestId("open-seal-step")).toHaveCount(0);
 
   // A later change still recomputes, and is marked post-seal.
   await page.getByRole("button", { name: "Change the energy adjustment" }).click();
@@ -348,7 +363,11 @@ test("a wide table's roles are searched, not scrolled", async ({ page }) => {
   await page.getByTestId("option-case").click();
   await expect(page.getByTestId("decision-event")).toContainText("case");
   await page.getByTestId("option-prediction").click({ timeout: 20_000 });
-  await expect(page.getByTestId("skip-grain")).toContainText("sample_id", { timeout: 15_000 });
+  // `sample_id` names a sample, not a person: the grain is asked, never stated from it.
+  await expect(page.getByTestId("question-grain")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("skip-grain")).toHaveCount(0);
+  await page.getByTestId("option-one_row_per_unit").click();
+  await expect(page.getByTestId("decision-grain")).toBeVisible();
 
   const roles = page.getByTestId("question-roles");
   await expect(roles).toBeVisible({ timeout: 20_000 });

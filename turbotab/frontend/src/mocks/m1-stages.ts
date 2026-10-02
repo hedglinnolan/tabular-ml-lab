@@ -1152,16 +1152,17 @@ export function fit(
       versus_baseline: null,
     };
   });
-  // The server withholds held-out scores until the seal is opened (turbotab/core/seal.py).
-  const sealed = s.n_holdout > 0 && !state.seal_opened;
+  // The fit computes the held-out scores; as on the server (turbotab/core/seal.py), the route
+  // withholds them until the seal is opened (the stage handler in m1-record.ts). Opening changes
+  // no stage's key, so a fit computed while sealed must still carry them.
   return {
     task: task ?? "regression",
     primary_metric: primary,
     metric_labels: labels,
     n_train: s.n_train,
     n_holdout: s.n_holdout,
-    models: sealed ? models.map((m) => ({ ...m, holdout: null })) : models,
-    holdout_sealed: sealed,
+    models,
+    holdout_sealed: false,
     changed_after_seal: false,
     post_seal_decisions: [],
   };

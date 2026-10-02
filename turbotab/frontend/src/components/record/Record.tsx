@@ -18,9 +18,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import { LayoutGroup, motion } from "motion/react";
 import { isRefusalError } from "../../api/client";
 import { useColumnSummaries, useDecide, useRunStage, useTeaching } from "../../api/queries";
-import { PREDICTOR_ROLES } from "../../api/m1-types";
-import type { QuestionKey, Role, TeachingEntry } from "../../api/m1-types";
-import { NOT_YET, type RouterKey, type RouterStep } from "../../api/m2-types";
+import type { InterviewStep, QuestionKey, Role, TeachingEntry } from "../../api/m1-types";
+import { NOT_YET } from "../../api/m2-types";
 import type {
   Decision,
   DecisionRecord,
@@ -51,7 +50,7 @@ import {
 import type { AskProps } from "./ask/common";
 import { LensAsk, PurposeAsk, TargetAsk, TaskAsk } from "./ask/FactQuestions";
 import { RolesAsk } from "./ask/RolesAsk";
-import { OpenSealCard, SealAsk } from "./ask/SealQuestions";
+import { OpenSealStep, SealAsk } from "./ask/SealQuestions";
 import {
   AggregationAsk,
   EventAsk,
@@ -74,7 +73,7 @@ import s from "./Record.module.css";
 import k from "./ask/seal.module.css";
 
 /** Each question's name in running text ("Change the column roles"). */
-export const SUBJECT: Record<RouterKey, string> = {
+export const SUBJECT: Record<QuestionKey, string> = {
   lens: "the lens",
   orientation: "the table's orientation",
   target: "the outcome",
@@ -100,7 +99,7 @@ export const SUBJECT: Record<RouterKey, string> = {
 const STAGE_WORK = STAGE_LABEL;
 
 /** The stage that carries out each answer: where "it did not run" is read. */
-const RUNS_IN: Partial<Record<RouterKey, string>> = {
+const RUNS_IN: Partial<Record<QuestionKey, string>> = {
   orientation: "oriented",
   aggregation: "working",
   exclusions: "cohort",
@@ -121,12 +120,12 @@ const STAGE_DEPS: Record<string, string[]> = {
   substitution: ["fit", "design"],
 };
 /** Sentences whose counts are made under earlier answers, and which ones. */
-const COUNTED_UNDER: Partial<Record<RouterKey, RouterKey[]>> = {
+const COUNTED_UNDER: Partial<Record<QuestionKey, QuestionKey[]>> = {
   exclusions: ["target"],
   missing: ["target", "roles", "exclusions"],
 };
 /** The slot each step's answer is written to (the seal's opening writes `seal_opened`). */
-const slotKey = (key: RouterKey): string => (key === "open_seal" ? "seal_opened" : key);
+const slotKey = (key: QuestionKey): string => (key === "open_seal" ? "seal_opened" : key);
 
 interface Answer {
   /** A question key, "repairs", or "open_seal". */
@@ -136,7 +135,7 @@ interface Answer {
   failure?: string;
 }
 
-const titleOf = (entries: Map<string, TeachingEntry>, key: RouterKey) =>
+const titleOf = (entries: Map<string, TeachingEntry>, key: QuestionKey) =>
   entries.get(key)?.title ?? key.replace(/_/g, " ");
 
 export function Record({ pid, view }: { pid: string; view: ProjectView }) {
@@ -145,8 +144,8 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
   const t = useTransitions();
   const { reset } = useStageFocus();
   const { state, decisions, stages } = view;
-  // §12.1: the Router's last step is "open the seal" (RouterKey until it is generated).
-  const interview = view.interview as RouterStep[];
+  // §12.1: the Router's last step is "open the seal".
+  const interview: readonly InterviewStep[] = view.interview;
 
   const ingest = useStage(pid, view, "ingest");
   const oriented = useStage(pid, view, "oriented");
@@ -160,17 +159,16 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
   const split = useStage(pid, view, "split");
   const shelf = useStage(pid, view, "shelf");
   const design = useStage(pid, view, "design");
-  const fit = useStage(pid, view, "fit");
   const summaries = useColumnSummaries(pid, stages.ingest?.status === "fresh").data;
 
-  const [reopened, setReopened] = useState<Partial<Record<RouterKey, boolean>>>({});
+  const [reopened, setReopened] = useState<Partial<Record<QuestionKey, boolean>>>({});
   const [answer, setAnswer] = useState<Answer | null>(null);
-  const [arrival, setArrival] = useState<{ from: RouterKey } | null>(null);
+  const [arrival, setArrival] = useState<{ from: QuestionKey } | null>(null);
   const [announce, setAnnounce] = useState("");
-  const [drawer, setDrawer] = useState<RouterKey | null>(null);
-  const [flash, setFlash] = useState<RouterKey | null>(null);
+  const [drawer, setDrawer] = useState<QuestionKey | null>(null);
+  const [flash, setFlash] = useState<QuestionKey | null>(null);
   const [held, setHeld] = useState<Record<string, DeferredChoice | undefined>>({});
-  const slots = useRef(new Map<RouterKey, HTMLElement>());
+  const slots = useRef(new Map<QuestionKey, HTMLElement>());
   const onArrived = useCallback(() => setArrival(null), []);
 
   const entries = useMemo(
@@ -192,7 +190,7 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
     [summaries],
   );
 
-  const stepOf = (key: RouterKey) => interview.find((st) => st.key === key);
+  const stepOf = (key: QuestionKey) => interview.find((st) => st.key === key);
   const openStep = interview.find((st) => st.status === "open");
   /** The question the Router asks first: where an answer refused as `not_yet` is sent. */
   const firstOpen = interview.find((st) => st.status === "open" || st.status === "waiting")?.key;
@@ -204,7 +202,7 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
       : null;
 
   /** Move to a question: the user asked for it (a lever, "change"). */
-  const goTo = (key: RouterKey, focusHeading: boolean) => {
+  const goTo = (key: QuestionKey, focusHeading: boolean) => {
     window.setTimeout(() => {
       const el = slots.current.get(key);
       if (!el) return;
@@ -216,7 +214,7 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
 
   /** Record a decision. `key` is the question it answers, or "repairs" for a finding's
    *  disposition (which settles in place: nothing arrives, the open question keeps its place). */
-  const record = (key: RouterKey | "repairs", decision: Decision, at = "") => {
+  const record = (key: QuestionKey | "repairs", decision: Decision, at = "") => {
     setAnswer(null);
     const stays = key === "repairs" || (!!reopened[key] && stepOf(key)?.status !== "open");
     decide.mutate(decision, {
@@ -254,13 +252,13 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
     });
   };
 
-  const reopen = (key: RouterKey) => {
+  const reopen = (key: QuestionKey) => {
     setAnswer(null);
     setArrival(null); // the user went somewhere: nothing arrives behind their back
     setReopened((r) => ({ ...r, [key]: true }));
     goTo(key, true);
   };
-  const keepFor = (key: RouterKey) =>
+  const keepFor = (key: QuestionKey) =>
     reopened[key]
       ? () => {
           setAnswer(null);
@@ -269,7 +267,7 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
         }
       : undefined;
 
-  const route = (key: RouterKey) => {
+  const route = (key: QuestionKey) => {
     const st = stepOf(key);
     if (!st) return;
     setArrival(null);
@@ -286,13 +284,13 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
     routeRef.current = route;
   });
   useEffect(() => {
-    const onReopen = (e: Event) => routeRef.current((e as CustomEvent<RouterKey>).detail);
+    const onReopen = (e: Event) => routeRef.current((e as CustomEvent<QuestionKey>).detail);
     window.addEventListener(REOPEN_EVENT, onReopen);
     return () => window.removeEventListener(REOPEN_EVENT, onReopen);
   }, []);
 
   /** The server's answer to a press that did not record, shown at the control it answers. */
-  const answerFor = (key: RouterKey | "repairs"): AskProps["answerAt"] => {
+  const answerFor = (key: QuestionKey | "repairs"): AskProps["answerAt"] => {
     if (!answer || answer.key !== key) return null;
     const at = answer.at;
     return {
@@ -399,14 +397,14 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
   });
 
   /** The live record behind a question's answer: the Router names it. */
-  const currentRecord = (key: RouterKey): DecisionRecord | undefined => {
+  const currentRecord = (key: QuestionKey): DecisionRecord | undefined => {
     const id = stepOf(key)?.decision_id;
     if (id) return byId.get(id);
     const recs = bySlot.get(slotKey(key)) ?? [];
     return key === "task" || key === "event" ? undefined : recs[recs.length - 1];
   };
 
-  const historyFor = (key: RouterKey) => {
+  const historyFor = (key: QuestionKey) => {
     const now = currentRecord(key);
     return (bySlot.get(slotKey(key)) ?? [])
       .filter((r) => r !== now)
@@ -575,13 +573,6 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
             {...p}
             shelf={shelf.artifact}
             current={state.models}
-            nColumns={
-              state.roles
-                ? Object.values(state.roles as Record<string, Role>).filter((r) =>
-                    PREDICTOR_ROLES.includes(r),
-                  ).length
-                : null
-            }
           />
         ) : (
           waitingFor("shelf", "Then the model families are offered.")
@@ -594,20 +585,16 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
   };
 
   const openSeal = (): ReactNode => (
-    <OpenSealCard
+    <OpenSealStep
       entry={entries.get("open_seal")}
-      fit={fit?.artifact ?? null}
       split={split?.artifact ?? null}
-      pending={decide.isPending}
-      record={(d, at) => record("open_seal", d, at)}
-      answerAt={answerFor("open_seal")}
       now={nowKey === "open_seal"}
     />
   );
 
   // ─── one slot per step, in the Router's order ─────────────────────────────
   /** What is true of a recorded answer now that its sentence cannot say. */
-  const sentenceNote = (key: RouterKey, rec: DecisionRecord): ReactNode => {
+  const sentenceNote = (key: QuestionKey, rec: DecisionRecord): ReactNode => {
     const stage = RUNS_IN[key];
     if (stage) {
       const failure = rootFailure(stages, stage);
@@ -659,11 +646,11 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
     if (under) {
       const later = decisions
         .filter(
-          (r) => r.seq > rec.seq && under.includes(slotOf(r.decision, decisions) as RouterKey),
+          (r) => r.seq > rec.seq && under.includes(slotOf(r.decision, decisions) as QuestionKey),
         )
         .sort((a, b) => b.seq - a.seq)[0];
       if (later) {
-        const slot = slotOf(later.decision, decisions) as RouterKey;
+        const slot = slotOf(later.decision, decisions) as QuestionKey;
         return (
           <>
             Its counts were made before #{later.seq} changed {SUBJECT[slot]}; the banner shows the
@@ -687,11 +674,11 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
       </span>
     ) : null;
 
-  const settled = (key: RouterKey, rec: DecisionRecord) => {
+  const settled = (key: QuestionKey, rec: DecisionRecord) => {
     const glyph =
       key === "split" || key === "open_seal" ? (
         <SealGlyph
-          state={split?.artifact?.basis.state ?? sealPlan?.artifact?.basis.state}
+          state={split?.artifact?.basis.state ?? sealPlan?.artifact?.basis?.state}
           recorded
           size={14}
         />
@@ -716,7 +703,7 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
     );
   };
 
-  const slotBody = (st: RouterStep): ReactNode => {
+  const slotBody = (st: InterviewStep): ReactNode => {
     const key = st.key;
     if (key === "open_seal") {
       if (st.status === "open") return openSeal();
