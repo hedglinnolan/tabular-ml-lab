@@ -1158,6 +1158,7 @@ export function fit(
                     : null,
                 se: null,
                 df: null,
+                q: null,
               };
             });
     return {

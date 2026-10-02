@@ -17,11 +17,22 @@ model matrix — covariates, energy, one-hot levels — is the adjustment set ``
   the difference in ``x_j``'s mean between the event and the other level, adjusted for ``Z`` (a
   log2 fold change on log2 values).
 
-Intervals: HC3 heteroskedasticity-robust standard errors on t(n − rank[1, Z] − 1), as the linear
-family's on independent rows (``inference.py``); CR2 with Bell–McCaffrey degrees of freedom when a
-unit's rows repeat (up to :data:`CR2_MAX_FEATURES` exposures; beyond, the table is refused rather
-than reported as if the rows were independent). p-values are two-sided; ``q`` is the
-Benjamini–Hochberg adjusted p-value over the exposures tested, and a discovery is ``q <`` :data:`FDR`.
+Standard errors: each test's own residual variance (classical least squares, limma's linear model
+without its variance moderation; Smyth 2004), on t(n − rank[1, Z] − 1). Under the null that the
+exposure is unrelated to the outcome given ``Z``, the residuals do not depend on the exposure, so
+this t-test is exact for normal errors whatever the exposure's distribution — and the null is what
+a false-discovery rate is about. The linear family's HC3 is not used here: Benjamini–Hochberg
+works in the far tail (a p-value near 0.05/m), where an HC3 t-statistic is much heavier-tailed than
+its t reference. Simulated (n = 40, 500 null exposures, one covariate; the acceptance suite,
+``test_wp11_omics.py``, keeps the comparison): the chance of any false discovery after
+Benjamini–Hochberg at q = 0.05 was 0.11 with HC3 on normal exposures and 0.74 on log-normal ones
+(200 replicates), against 0.054 and 0.051 with these standard errors (2,000 replicates, Monte
+Carlo error 0.005). The price: an interval around a real effect assumes equal residual variance.
+
+When a unit's rows repeat: CR2 with Bell–McCaffrey degrees of freedom, the math layer's estimator
+(up to :data:`CR2_MAX_FEATURES` exposures; beyond, the table is refused rather than reported as if
+the rows were independent). p-values are two-sided; ``q`` is the Benjamini–Hochberg adjusted
+p-value over the exposures tested, and a discovery is ``q <`` :data:`FDR`.
 
 Every test is computed by Frisch–Waugh–Lovell: ``Z`` is projected out once, so 20,000 tests cost a
 few matrix products. The family makes no predictions (``predicts = False``): the fit stage reports
@@ -44,6 +55,9 @@ CR2_MAX_FEATURES = 200  # CR2 is one design per exposure; beyond this the table 
 _BLOCK_FLOATS = 4_000_000  # n × exposures per block of the vectorized tests (32 MB)
 INDICATOR = "missingindicator_"
 OMICS = ("genomics", "metabolomics")
+PLS_DA_ABSENT = ("PLS-DA is not offered: customary in metabolomics, it is sound only with nested "
+                 "cross-validation and permutation tests, and VIP > 1 ranks features without "
+                 "testing them.")
 
 
 def bh_adjust(p: Sequence[float]) -> np.ndarray:
@@ -88,49 +102,48 @@ def split_columns(columns: Sequence[str], features: Sequence[str] | None) -> tup
 
 def event_indicator(y: Any) -> tuple[np.ndarray, Any, Any]:
     """(0/1 event indicator, event level, other level) of a two-level outcome: 1 where the outcome
-    is 1 when it is coded 0/1 (the fit stage codes the named event 1), else its last level."""
+    is 1 when it is coded 0/1 (the fit stage codes the named event 1; the other level is then
+    None, its name unknown here), else its last level."""
     values = pd.Series(np.asarray(y, dtype=object))
     levels = sorted(values.dropna().unique().tolist(), key=lambda v: str(v))
     if set(levels) <= {0, 1, 0.0, 1.0, True, False} and len(levels) == 2:
-        return values.astype(float).to_numpy(), 1, 0
+        return values.astype(float).to_numpy(), 1, None  # coded: the other level's name is not here
     if len(levels) != 2:
         raise ValueError(f"A two-level outcome needs two levels; this one has {len(levels)}.")
     return (values == levels[1]).to_numpy(dtype=float), levels[1], levels[0]
 
 
-def hc3_tests(response: np.ndarray, regressor: np.ndarray, Q: np.ndarray, *,
-              response_is_matrix: bool) -> tuple[np.ndarray, np.ndarray]:
-    """(estimates, HC3 standard errors) of the regressor's coefficient in ``response ~ regressor +
+def classical_tests(response: np.ndarray, regressor: np.ndarray, Q: np.ndarray, df: float, *,
+                    response_is_matrix: bool) -> tuple[np.ndarray, np.ndarray]:
+    """(estimates, standard errors) of the regressor's coefficient in ``response ~ regressor +
     span(Q)``, one test per column, by Frisch–Waugh–Lovell.
 
     ``response_is_matrix``: the responses are the columns of ``response`` (n × m) and ``regressor``
     is one vector (the event); otherwise ``response`` is one vector (the outcome) and the regressors
-    are the columns of ``regressor``. HC3 (MacKinnon & White 1985) for the one coefficient: with
-    the residualized regressor ``r``, ``Var = Σ r_i² e_i² / (1 − h_i)² / (Σ r_i²)²`` and the full
-    model's leverage ``h_i = h_Z,i + r_i² / Σ r²``.
+    are the columns of ``regressor``. With the residualized regressor ``r`` and the full model's
+    residuals ``e``: ``β = Σ r_i ỹ_i / Σ r_i²`` and ``Var = (Σ e_i² / df) / Σ r_i²``, the
+    least-squares coefficient and its classical variance, ``df = n − rank[1, Z] − 1``.
     """
-    hz = np.sum(Q ** 2, axis=1)
     if response_is_matrix:
         g = regressor - Q @ (Q.T @ regressor)
         sgg = float(g @ g)
         Y = response - Q @ (Q.T @ response)
-        beta = (g @ Y) / sgg if sgg > 0 else np.full(Y.shape[1], np.nan)
+        if sgg <= 0:
+            return np.full(Y.shape[1], np.nan), np.full(Y.shape[1], np.nan)
+        beta = (g @ Y) / sgg
         e = Y - np.outer(g, beta)
-        h = hz + g ** 2 / sgg if sgg > 0 else np.full(len(g), np.nan)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            w = (g ** 2 / (1.0 - h) ** 2)[:, None]
-            var = np.sum(w * e ** 2, axis=0) / sgg ** 2
-        return beta, np.sqrt(var)
+        return beta, np.sqrt(np.sum(e ** 2, axis=0) / df / sgg)
     X = regressor - Q @ (Q.T @ regressor)
     yt = response - Q @ (Q.T @ response)
     sxx = np.sum(X ** 2, axis=0)
     with np.errstate(divide="ignore", invalid="ignore"):
         beta = (yt @ X) / sxx
         e = yt[:, None] - X * beta
-        h = hz[:, None] + X ** 2 / sxx
-        var = np.sum(X ** 2 * e ** 2 / (1.0 - h) ** 2, axis=0) / sxx ** 2
-    beta = np.where(sxx > 0, beta, np.nan)
-    return beta, np.sqrt(np.where(sxx > 0, var, np.nan))
+        var = np.sum(e ** 2, axis=0) / df / sxx
+    # A column with nothing left once Z is projected out (constant, or a copy of a covariate)
+    # cannot be tested: no estimate, rather than a number from rounding error.
+    flat = sxx <= 1e-12 * np.maximum(np.sum(regressor ** 2, axis=0), 1e-300)
+    return np.where(flat, np.nan, beta), np.sqrt(np.where(flat, np.nan, var))
 
 
 def _p_and_ci(est: np.ndarray, se: np.ndarray, df: np.ndarray) -> tuple[np.ndarray, ...]:
@@ -176,11 +189,11 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
     binary = task == "binary"
     if binary:
         g, level, other = event_indicator(y)
-        estimand = (f"the difference in each exposure's mean between `{event or level}` and "
-                    f"`{other}`, adjusted for the other columns")
+        against = f"`{other}`" if other is not None else "the other level"
+        estimand = f"the difference in each exposure's mean between `{event or level}` and {against}"
     elif task == "regression":
         yv = np.asarray(y, dtype=float)
-        estimand = "the change in the outcome per unit of each exposure, adjusted for the other columns"
+        estimand = "the change in the outcome per unit of each exposure"
     else:
         raise ValueError("Feature-wise regression models a numeric or a two-level outcome.")
     m = len(tested)
@@ -203,10 +216,14 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
         step = max(1, _BLOCK_FLOATS // max(n, 1))
         for lo in range(0, m, step):
             block = slice(lo, lo + step)
+            if refusal is not None and df_resid < 1:
+                break  # no residual degrees of freedom: nothing can be estimated
             if binary:
-                est[block], se[block] = hc3_tests(X[:, block], g, Q, response_is_matrix=True)
+                est[block], se[block] = classical_tests(X[:, block], g, Q, df_resid,
+                                                        response_is_matrix=True)
             else:
-                est[block], se[block] = hc3_tests(yv, X[:, block], Q, response_is_matrix=False)
+                est[block], se[block] = classical_tests(yv, X[:, block], Q, df_resid,
+                                                        response_is_matrix=False)
     else:
         est, se, df = _cr2_tests(X, g if binary else yv, Z, clusters.codes, binary)
     concerns = [clusters.note] if clusters.note else []
@@ -226,13 +243,16 @@ def featurewise_table(matrix: pd.DataFrame, y: Any, task: str, features: Sequenc
     n_adjust = Q.shape[1] - 1
     adjusted = (f"with {n_adjust:,} adjustment column{'s' if n_adjust != 1 else ''}" if n_adjust
                 else "with no adjustment columns")
+    if n_adjust:
+        estimand += ", adjusted for them"
     if clusters.clustered:
         how = (f"cluster-robust (CR2) by `{clusters.column}`, G = {clusters.n_clusters:,}, on t with "
                f"Bell–McCaffrey degrees of freedom")
         covariance = "CR2"
     else:
-        how = f"from HC3 heteroskedasticity-robust standard errors, on t({df_resid:,.0f})"
-        covariance = "HC3"
+        how = (f"from each test's own residual variance (classical least squares, exact under "
+               f"the null for normal errors), on t({df_resid:,.0f})")
+        covariance = "model"
     caption = (f"Each of {m:,} exposures tested on its own {adjusted}; the estimate is {estimand}. "
                f"95% intervals {how}. Benjamini–Hochberg q < {FDR:g}: {found:,} of {m:,}.")
     smallest = np.nanmin(q) if np.isfinite(q).any() else float("nan")
@@ -281,7 +301,7 @@ class FeatureWiseTests(BaseEstimator):
         self.table_ = featurewise_table(frame, y, self.task, self.features)
         if self.task == "binary":
             _, event, other = event_indicator(y)
-            self.classes_ = np.asarray([other, event], dtype=object)
+            self.classes_ = np.asarray([0 if other is None else other, event], dtype=object)
         return self
 
 
@@ -301,6 +321,7 @@ class FeatureWise(FamilyBase):
     cautions = (
         "Each estimate ignores the other exposures: one separate question per feature.",
         "Tests only: it makes no predictions and has no cross-validated score.",
+        "Intervals assume equal residual variance; robust ones fail at the thresholds it tests.",
     )
     needs_scaling = False
     handles_missing = False
@@ -321,8 +342,9 @@ class FeatureWise(FamilyBase):
         else:
             what = ("Regresses the outcome on each exposure and the covariates, one exposure at a "
                     "time: the estimate is per unit of that exposure.")
-        return "Feature-wise least squares", (f"{what} HC3 intervals, CR2 when a unit's rows repeat; "
-                                              f"Benjamini–Hochberg q-values across the exposures.")
+        return "Feature-wise least squares", (f"{what} Classical least-squares intervals, CR2 when "
+                                              f"a unit's rows repeat; Benjamini–Hochberg q-values "
+                                              f"across the exposures.")
 
     def _matrix(self, pipeline: Any, X: Any) -> pd.DataFrame:
         from turbotab.core.models.linear import model_matrix
@@ -346,9 +368,12 @@ class FeatureWise(FamilyBase):
         if s.purpose != "inference":
             return Assessment(0.0, "poor", ("Tests each exposure on its own and makes no "
                                             "predictions, so it adds nothing to a prediction.",))
-        omics = any(lens in OMICS for lens in getattr(s, "lenses", ()) or ())
+        lenses = tuple(getattr(s, "lenses", ()) or ())
+        omics = any(lens in OMICS for lens in lenses)
         if omics or s.n_features >= s.n_rows:
-            return Assessment(3.5, "good", ())
+            # AUDIT_REPORT ME-18: PLS-DA is not on the shelf, and the one line says why.
+            pls = (PLS_DA_ABSENT,) if "metabolomics" in lenses else ()
+            return Assessment(3.5, "good", pls)
         return Assessment(2.0, "fair", ("Each exposure is adjusted for the covariates but not for the "
                                         "other exposures: a separate question for each.",))
 
@@ -356,4 +381,4 @@ class FeatureWise(FamilyBase):
 FEATUREWISE = register_family(FeatureWise())
 
 __all__ = ["CR2_MAX_FEATURES", "FDR", "FEATUREWISE", "FeatureWise", "FeatureWiseTests", "bh_adjust",
-           "event_indicator", "featurewise_table", "hc3_tests", "split_columns"]
+           "classical_tests", "event_indicator", "featurewise_table", "split_columns"]

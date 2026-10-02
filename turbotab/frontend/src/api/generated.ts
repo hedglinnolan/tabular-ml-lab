@@ -725,6 +725,19 @@ export interface components {
             needs_scaling: boolean;
             /** Handles Missing */
             handles_missing: boolean;
+            /**
+             * Purposes
+             * @default [
+             *       "prediction",
+             *       "inference"
+             *     ]
+             */
+            purposes: ("prediction" | "inference")[];
+            /**
+             * Predicts
+             * @default true
+             */
+            predicts: boolean;
         };
         /**
          * FeatureTableSpec
@@ -2237,6 +2250,11 @@ export interface components {
              * @default null
              */
             df: number | null;
+            /**
+             * Q
+             * @default null
+             */
+            q: number | null;
         };
         /**
          * CohortArtifact

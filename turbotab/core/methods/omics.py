@@ -32,9 +32,10 @@ The normalizations — fit on training rows, applied to every row
   does, and keeps it; a held-out row's factor is computed against that same reference and divided
   by the training factors' geometric mean, so on the training rows the factors are edgeR's own.
 * :class:`QuotientLog` — probabilistic quotient normalization (Dieterle et al. 2006) and/or log2:
-  the reference spectrum is the feature-wise median of the training rows; each sample is divided by
-  the median of its quotients to that reference (its most probable dilution); then log2. A zero
-  cannot be logged: it becomes missing, and the option that does this says so.
+  the reference spectrum is the feature-wise median of the training rows after integral
+  normalization; each sample is divided by the median of its quotients to that reference (its
+  most probable dilution); then log2. A zero cannot be logged: it becomes missing, and the option
+  that does this says so.
 
 Both are pipeline steps, so cross-validation refits them on each training fold and nothing learned
 from data sees a held-out row. Hornung et al. (2015) found that normalizing the whole table before
@@ -384,10 +385,17 @@ class LogCPM(_BlockStep):
 class QuotientLog(_BlockStep):
     """Probabilistic quotient normalization (``quotient``) and/or log2 (``log``).
 
-    Dieterle et al. (2006): a sample's "most probable dilution factor" is the median of the
-    quotients of its values to a reference spectrum's; the reference is the feature-wise median of
-    the rows it is fit on. Only positive values enter a quotient or the reference. After dividing
-    by the factor, log2: a zero cannot be logged and becomes missing.
+    Dieterle et al. (2006), in Kohl et al.'s (2011) summary: PQN "starts, with an integral
+    normalization of each spectrum, followed by the calculation of a reference spectrum such as a
+    median spectrum. Next, for each variable of interest the quotient of a given test spectrum and
+    reference spectrum is calculated and the median of all quotients is estimated. Finally, all
+    variables of the test spectrum are divided by the median quotient." Here the reference is the
+    feature-wise median of the training rows, each first scaled to the training rows' median total
+    (the integral normalization's constant: Dieterle used 100; any constant only shifts every log2
+    value alike, and this one keeps the values in their own units). Only positive values enter a
+    total, the reference or a quotient. The integral step cancels from a sample's own result, which
+    is its values divided by the median of their quotients to the reference; it shapes the
+    reference. After that, log2: a zero cannot be logged and becomes missing.
     """
 
     def __init__(self, columns: Sequence[str] = (), quotient: bool = True, log: bool = True):
@@ -400,15 +408,19 @@ class QuotientLog(_BlockStep):
         return STEP_LABELS["pqn_log2" if self.quotient else "log2"][1]
 
     def fit(self, X: pd.DataFrame, y: Any = None) -> "QuotientLog":
+        import warnings
+
         self._fit_names(X)
         _, values = self._split(X)
         positive = np.where(np.isfinite(values) & (values > 0), values, np.nan)
-        with np.errstate(all="ignore"):
-            import warnings
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", RuntimeWarning)
-                self.reference_ = np.nanmedian(positive, axis=0) if values.shape[0] else np.zeros(0)
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            totals = np.nansum(positive, axis=1)
+            ok = np.isfinite(totals) & (totals > 0)
+            self.integral_ = float(np.median(totals[ok])) if ok.any() else 1.0
+            scaled = positive[ok] * (self.integral_ / totals[ok])[:, None]
+            self.reference_ = (np.nanmedian(scaled, axis=0) if scaled.shape[0]
+                               else np.full(values.shape[1], np.nan))
         return self
 
     def dilution(self, values: np.ndarray) -> np.ndarray:
@@ -456,14 +468,15 @@ def describe(spec: Mapping[str, Any]) -> tuple[str, str] | None:
         return None
     what = f"{n:,} assay column{'s' if n != 1 else ''}"
     detail = {
-        "log_cpm_tmm": (f"Turns {what} into log2 counts per million, library sizes scaled by TMM "
-                        f"factors against a reference sample chosen within each training fold "
-                        f"(edgeR, prior count 2)."),
-        "log_cpm": (f"Turns {what} into log2 counts per million on each sample's own library size "
-                    f"(edgeR, prior count 2, the mean library size from each training fold)."),
+        "log_cpm_tmm": (f"Turns {what} into log2 counts per million, each sample's library size "
+                        f"(its total over these columns) scaled by TMM factors against a reference "
+                        f"sample chosen within each training fold (edgeR, prior count 2)."),
+        "log_cpm": (f"Turns {what} into log2 counts per million on each sample's own library size, "
+                    f"its total over these columns (edgeR, prior count 2, the mean library size "
+                    f"from each training fold)."),
         "pqn_log2": (f"Divides each sample's {what} by its most probable dilution, the median "
-                     f"quotient to a reference spectrum learned within each training fold, then "
-                     f"takes log2; a zero becomes missing."),
+                     f"quotient to a reference spectrum (the median of the training fold's "
+                     f"integral-normalized samples), then takes log2; a zero becomes missing."),
         "log2": f"Takes log2 of {what}; a zero becomes missing.",
     }[method]
     return STEP_LABELS[method][0], detail
@@ -547,7 +560,7 @@ def _offer(finding: dict[str, Any], p: dict[str, Any], oc: Any) -> list[Any]:
     kind = str(p.get("kind"))
     n = len(columns)
     zeros = int(p.get("n_zero") or 0)
-    params = {"kind": kind, "columns": columns}
+    params = {"kind": kind, "columns": columns, "n_zero": zeros}
     exposures = "those of them the models take as exposures"
 
     def option(key: str, label: str, consequence: str, sentence: str, in_fold: bool) -> Any:
@@ -583,7 +596,8 @@ def _offer(finding: dict[str, Any], p: dict[str, Any], oc: Any) -> list[Any]:
                f"Each sample is divided by its dilution against a fold's median reference, then logged{zero_words}.",
                f"Of the {n:,} intensity columns, {exposures} were normalized by probabilistic "
                f"quotient normalization (Dieterle et al. 2006), the reference spectrum the median of "
-               f"the training rows within each fold, then log2-transformed.{zero_sentence}",
+               f"the integral-normalized training rows within each fold, then log2-transformed."
+               f"{zero_sentence}",
                in_fold=True),
         option("log2", "Log2 only",
                f"Values become their log2; samples are not rescaled for dilution{zero_words}.",
@@ -619,7 +633,8 @@ def normalization_of(state: Any) -> dict[str, Any] | None:
         params = (getattr(d, "params", None) if not isinstance(d, Mapping) else d.get("params")) or {}
         if action == "applied" and option in (*COUNT_METHODS, *INTENSITY_METHODS):
             return {"method": str(option), "kind": params.get("kind"),
-                    "columns": [str(c) for c in params.get("columns") or []], "finding_id": str(fid)}
+                    "columns": [str(c) for c in params.get("columns") or []], "finding_id": str(fid),
+                    "n_zero": int(params.get("n_zero") or 0)}
     return None
 
 
@@ -667,16 +682,23 @@ def library_size_check(totals: np.ndarray, y: Any, task: str, kind: str = "count
         if len(groups) < 2 or min(len(g) for g in groups) < 3:
             return None
         if len(groups) == 2:
-            first = event if event is not None and event in levels else levels[-1]
+            # The fit stage codes the named event 1 (``coded_outcome``); otherwise the named level,
+            # else the last one. ``event`` names it in the sentence.
+            coded = {str(v) for v in levels} <= {"0", "1", "0.0", "1.0", "True", "False"}
+            if coded:
+                first = next(v for v in levels if str(v) in ("1", "1.0", "True"))
+            else:
+                first = next((v for v in levels if str(v) == str(event)), levels[-1])
             a = t[y == first]
             b = t[y != first]
             res = stats.mannwhitneyu(a, b, alternative="two-sided", method="auto")
-            auc = float(res.statistic) / (len(a) * len(b))
+            auc = float(res.statistic) / (len(a) * len(b))  # P(event's total > the other's)
             ratio = float(np.median(a) / np.median(b)) if np.median(b) > 0 else float("nan")
+            name = str(event) if coded and event is not None else str(first)
             out.update(test="mann_whitney", statistic=float(res.statistic), p=float(res.pvalue),
-                       auc=auc, ratio=ratio, event=str(first))
-            said = (f"median {ratio:.2f}× in `{first}`, AUC {auc:.2f}" if math.isfinite(ratio)
-                    else f"AUC {auc:.2f}")
+                       auc=auc, ratio=ratio, event=name)
+            said = (f"median {ratio:.2f}× as large in `{name}`, AUC {auc:.2f}"
+                    if math.isfinite(ratio) else f"AUC {auc:.2f}")
         else:
             h, p = stats.kruskal(*groups)
             out.update(test="kruskal_wallis", statistic=float(h), p=float(p))
@@ -773,6 +795,36 @@ def refusal_for(models: Sequence[str], state: Any, finding: Mapping[str, Any]) -
         exits=exits)
 
 
+def zeros_refusal(models: Sequence[str], state: Any) -> Any:
+    """The Refusal a selection meets when the recorded normalization logs values that include
+    zeros, nothing fills missing values, and some of ``models`` cannot fit a missing value."""
+    from turbotab.core.decisions import Refusal, SelectModels
+    from turbotab.core.models import get_family
+
+    found = normalization_of(state)
+    if found is None or found["method"] not in LOGGED or not found["n_zero"] or _fills_missing(state):
+        return None
+    known = []
+    for m in models:
+        try:
+            known.append(get_family(m))
+        except KeyError:
+            continue
+    unable = [f for f in known if not getattr(f, "handles_missing", False)]
+    if not unable:
+        return None
+    able = [f.key for f in known if getattr(f, "handles_missing", False)]
+    exits: list[dict[str, Any]] = [
+        {"label": "Settle the zeros first, on the finding about values below detection",
+         "decision": None}]
+    if able:
+        exits.append({"label": "Keep only the families that handle missing values",
+                      "decision": SelectModels(models=able)})
+    exits.append({"label": "Choose from the shelf", "decision": None})
+    return Refusal("zeros_cannot_be_logged",
+                   zeros_message(found["n_zero"], [f.label for f in unable]), exits=exits)
+
+
 def _linear_families_need_a_scale(decision: Any, ctx: Any) -> None:
     state = _ctx(ctx, "state")
     if state is None:
@@ -780,15 +832,42 @@ def _linear_families_need_a_scale(decision: Any, ctx: Any) -> None:
     finding = _scale_finding_of(ctx)
     if finding is None:
         return
-    refusal = refusal_for(decision.models, state, finding)
+    refusal = refusal_for(decision.models, state, finding) or zeros_refusal(decision.models, state)
     if refusal is not None:
         raise refusal
 
 
+LOGGED = ("pqn_log2", "log2")  # the normalizations that take a plain log, so a zero cannot pass
+
+
+def _fills_missing(state: Any) -> bool:
+    from turbotab.core.decisions import missing_strategy
+
+    return missing_strategy(state) == "impute"
+
+
+def zeros_message(n_zero: int, names: Sequence[str]) -> str:
+    listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+    return (f"{n_zero:,} zero values in the assay columns cannot be logged, so log2 makes them "
+            f"missing inside the pipeline, after complete cases were counted; {listed} cannot fit "
+            f"rows with a missing value. Settle the zeros first, as values below detection or as "
+            f"true zeros, or keep only families that handle missing values.")
+
+
 def design_refusal(state: Any, frame: pd.DataFrame, families: Sequence[Any]) -> str | None:
-    """The design stage's backstop: a message when a linear family would see raw assay values."""
-    if normalization_of(state) is not None:
-        return None
+    """The design stage's backstop: a message when a linear family would see raw assay values, or
+    when a log would turn zeros into missing values that nothing fills and a family cannot take.
+    ``frame`` holds the training rows."""
+    found = normalization_of(state)
+    if found is not None:
+        if found["method"] not in LOGGED or _fills_missing(state):
+            return None
+        unable = [f for f in families if not getattr(f, "handles_missing", False)]
+        columns = [c for c in found["columns"] if c in frame.columns]
+        if not unable or not columns:
+            return None
+        n_zero = int((frame[columns].to_numpy(dtype=float, na_value=np.nan) == 0).sum())
+        return zeros_message(n_zero, [f.label for f in unable]) if n_zero else None
     linear = [f for f in families if getattr(f, "linear_in_values", False)]
     if not linear:
         return None
@@ -808,13 +887,14 @@ def design_refusal(state: Any, frame: pd.DataFrame, families: Sequence[Any]) -> 
 
 RAW_COUNTS_COACHING = (
     "Raw counts keep what a count model needs: DESeq2 and edgeR estimate measurement precision "
-    "from them and correct library size themselves, so for inference with such a model give them "
-    "the counts as they are. The models in this app read the values directly, so here they need a "
-    "normalization first. For inference, the feature-wise tests take log counts per million with "
-    "TMM factors. For prediction, the same normalization is fit within each training fold. "
-    "Normalizing at all matters more than where: Hornung and colleagues (2015) found that "
-    "normalizing the whole table before cross-validation \"did not result in a noteworthy "
-    "optimistic bias\".")
+    "from them and correct for library size themselves, so a count model takes the counts as they "
+    "are. The models in this app read the values directly, so here the counts need a "
+    "normalization first. For inference, the feature-wise tests run on log counts per million "
+    "with TMM factors, one linear model per gene as limma fits, without its variance moderation. "
+    "For prediction, the same normalization is refit within each training fold. Whether to "
+    "normalize matters far more than where: for microarray data, Hornung and colleagues (2015) "
+    "found that normalizing the whole table before cross-validation \"did not result in a "
+    "noteworthy optimistic bias\".")
 
 
 def restate_raw_counts(finding: dict[str, Any]) -> dict[str, Any]:
@@ -857,5 +937,5 @@ __all__ = [
     "candidate_columns", "check_on", "describe", "design_normalization", "design_refusal",
     "library_size_check", "log_cpm", "normalization_of", "normalizer", "refusal_for",
     "restate_raw_counts", "scale_finding", "scale_reading", "tmm_factor", "tmm_factors",
-    "tmm_reference",
+    "tmm_reference", "zeros_message", "zeros_refusal",
 ]
