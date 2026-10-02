@@ -87,8 +87,8 @@ def test_the_residual_preview_shows_the_most_energy_correlated_nutrient_losing_i
     assert rel.r_before == pytest.approx(np.corrcoef(sample[strongest], sample["kcal"])[0, 1], abs=1e-12)
     assert abs(rel.r_after) < 1e-8  # zero by construction on the rows it was fit on
     assert f"`{strongest}` correlates" in rel.caption and "0.00" in rel.caption
-    # The model loses kcal and gains the adjusted nutrients.
-    assert lineage.caption.startswith("`kcal`, `protein` and 2 more leave; `protein_adj`")
+    # The model swaps the nutrients for their adjusted values; kcal stays beside them (ruling 1).
+    assert lineage.caption.startswith("`protein`, `carb` and 1 more leave; `protein_adj`")
     assert {f"{n}_adj" for n in NUTRIENTS} <= set(lineage.emphasis)
     assert dist.column == strongest and sum(dist.before.counts) == len(sample)
 

@@ -393,17 +393,38 @@ Let `N` = nutrient, `E` = total energy, `Y` = outcome, `C` = covariates.
 | # | Model | Specification | What the coefficient means | Standing |
 |---|---|---|---|---|
 | 1 | **Standard / multivariate** | `Y ~ N + E + C` | ↑N with total energy fixed → **implicitly a substitution** for the average of all other energy sources | [CONVENTION], very common |
-| 2 | **Willett residual** | `N ~ E` (OLS, both usually logged); `N_adj = residual + N̂(Ē)`; then `Y ~ N_adj + C` | Same substitution estimand as #1. The added constant restores units and removes negatives so quantile means are interpretable | [CONVENTION], the field default |
+| 2 | **Willett residual** | `N ~ E` (OLS, both usually logged); `N_adj = residual + N̂(Ē)`; then `Y ~ N_adj + E + C` (energy kept) or `Y ~ N_adj + C` (energy dropped) | With `E` kept: #1's coefficient exactly, in the nutrient's units. With `E` dropped: #1's only when no covariate correlates with `E`. The added constant restores units and removes negatives so quantile means are interpretable | [CONVENTION], the field default |
 | 3 | **Multivariate nutrient density** | `Y ~ (N/E) + E + C` | Composition, with total energy as a separate term | [CONVENTION] |
 | 4 | **Nutrient density alone** | `Y ~ (N/E) + C` | Rescaled relative effect; **interpretation obscure** without the energy term | [CONVENTION but weakest] |
 | 5 | **Energy partition** | `Y ~ E_from_N + E_from_other + C` (all kcal) | Effect of **adding** calories from N holding others fixed — an *addition*, not a substitution | [CONVENTION] |
 
+**Beside the five: the all-components model [DISPUTED].** A partition with every energy source its
+own term (`Y ~ E_from_protein + E_from_carbohydrate + E_from_fat + E_from_alcohol + E_from_other + C`).
+Each coefficient is that source's **total causal effect**; a source's **average relative causal
+effect** is its coefficient less the other sources' coefficients weighted by "the proportion of the
+remaining energy intake contributed by each component" (Tomova et al. 2022, who term it "the
+'all-components model'"). It trades precision for bias, one parameter per component, and Willett,
+Stampfer & Tobias (2022, *AJCN* 116:608) dispute its use.
+
+**With several energy-bearing nutrients in models #1 and #2**, each coefficient is a substitution
+for the energy sources *not in the model* (alcohol and "other" when protein, carbohydrate and fat
+are all in), not for the average of all others; name them (§05a). A total beside its own parts
+(fat beside SFA, MUFA, PUFA) estimates only the remainder in none of them.
+
 ### ★ The result that most surprises practitioners [SETTLED, under-appreciated]
 
-**The standard model and the residual model are mathematically equivalent** — the residual approach
-yields the identical coefficient and p-value for the nutrient as including N and E together. Tomova et
-al. (2022, *AJCN*, "Adjustment for energy intake in nutritional research: a causal inference
-perspective") formalize this and show:
+**The standard model and the residual model are mathematically equivalent — with total energy in
+both.** `Y ~ N_adj + E + C` is a reparametrization of `Y ~ N + E + C`, so the nutrient's coefficient,
+standard error and p-value are identical, covariates or not (the Willett–Stampfer variant: "the
+nutrient residual plus a term for total energy intake", McCullough & Byrd 2023, *AJE* 192:1801).
+Without the energy term the equivalence is partial: with no covariates the coefficient is identical
+but its standard error is not (energy's own effect stays in the residual variance); with a covariate
+that correlates with energy the coefficient itself differs, and can change sign.
+*(This paragraph read "the residual approach yields the identical coefficient and p-value for the
+nutrient as including N and E together" until 2026-10-02, which holds only with energy kept; the
+app's residual step dropped energy, and with a sex covariate gave −0.0067 against the standard
++0.0199 (audit ME-03).)* Tomova et al. (2022, *AJCN*, "Adjustment for energy intake in nutritional
+research: a causal inference perspective") formalize the equivalence and show:
 
 - Standard and residual models estimate the **average relative causal effect** (a substitution) but
   are **biased even absent confounding**. The mechanism is **composite variable bias** — information
@@ -453,8 +474,9 @@ correlated errors can introduce **spurious** nutrient–outcome associations and
 > estimate. It answers 'what if this person got more of their calories from X and correspondingly fewer
 > from everything else, at the same total intake?' — not 'what if this person ate more X?'"* **[SETTLED]**
 
-> *"The residual method and simply putting total energy in your model give numerically identical
-> nutrient coefficients. The residual method's advantages are practical, not inferential: an adjusted
+> *"The residual method with total energy kept in the model and simply putting total energy in your
+> model give numerically identical nutrient coefficients. The residual method's advantages are
+> practical, not inferential: an adjusted
 > variable in interpretable units, uncorrelated with energy, that you can cut into quintiles without
 > energy confounding the boundaries. **It does not buy extra confounding control.**"* **[SETTLED]**
 

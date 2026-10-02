@@ -70,6 +70,7 @@ export function substitutionDecision(
     recipient,
     step_kcal: stepKcal,
     n_boot: Math.max(0, Math.round(nBoot)),
+    acknowledged: false,
   };
   return d;
 }

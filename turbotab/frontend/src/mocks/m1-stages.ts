@@ -476,6 +476,7 @@ export function proposalsArtifact(ds: MockDataset, state: ProjectState): Proposa
       applicability,
       usual,
       usual_evidence: usual ? { ...ENERGY_EVIDENCE } : null,
+      ranking: null,
       r_with_energy,
       notes,
       not_adjusted: [],
@@ -856,19 +857,24 @@ const ESTIMAND: Record<EnergyMethod, string | null> = {
   standard: "More of the nutrient in place of other calories, at the same total energy.",
   residual:
     "More of the nutrient in place of other calories, at the same total energy, in its own units.",
+  residual_energy_dropped:
+    "Total energy is not in the outcome model; the standard model's only without energy-correlated covariates.",
   density_multivariate: "A higher share of energy from the nutrient, at the same total energy.",
   density:
     "A higher share of energy from the nutrient; the effect of total energy is not held fixed.",
   partition: "Adding calories from the nutrient, with calories from everything else held fixed.",
+  all_components: "Adding calories from each source; each source's average swap beside it.",
 };
 
 const OPERATION: Record<EnergyMethod, string> = {
   none: "kept",
   standard: "kept beside energy",
   residual: "energy-adjusted (residual)",
+  residual_energy_dropped: "energy-adjusted (residual)",
   density_multivariate: "per kcal (density, energy kept)",
   density: "per kcal (density)",
   partition: "kcal from the nutrient (partition)",
+  all_components: "kcal from the nutrient (partition)",
 };
 
 export function design(
@@ -1048,6 +1054,8 @@ export function design(
     warnings: [],
     nested: [],
     left_out: state.missing?.drop_columns ?? [],
+    terms: {},
+    energy_form: method === "none" ? null : method,
   };
 }
 
@@ -1060,9 +1068,11 @@ const METHOD_SHIFT: Record<EnergyMethod, number> = {
   none: 0.002,
   standard: 0.001,
   residual: 0,
+  residual_energy_dropped: -0.0005,
   density_multivariate: -0.001,
   density: -0.002,
   partition: -0.003,
+  all_components: -0.0035,
 };
 
 export function fit(
@@ -1158,6 +1168,7 @@ export function fit(
                     : null,
                 se: null,
                 df: null,
+                meaning: null,
               };
             });
     return {
@@ -1225,6 +1236,7 @@ export function substitution(
         }
       : null,
     support: null,
+    omitted_energy: null,
     band_estimate: banded ? null : { n_boot: 50, seconds: 40 },
     donor: spec.donor,
     recipient: spec.recipient,

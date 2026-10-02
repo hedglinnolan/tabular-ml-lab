@@ -2222,9 +2222,11 @@
               "none",
               "standard",
               "residual",
+              "residual_energy_dropped",
               "density_multivariate",
               "density",
-              "partition"
+              "partition",
+              "all_components"
             ],
             "title": "Method"
           },
@@ -4864,9 +4866,11 @@
               "none",
               "standard",
               "residual",
+              "residual_energy_dropped",
               "density_multivariate",
               "density",
-              "partition"
+              "partition",
+              "all_components"
             ],
             "title": "Method"
           },
@@ -4927,9 +4931,11 @@
               "none",
               "standard",
               "residual",
+              "residual_energy_dropped",
               "density_multivariate",
               "density",
-              "partition"
+              "partition",
+              "all_components"
             ],
             "title": "Method"
           },
@@ -5637,6 +5643,11 @@
             "minimum": 0.0,
             "title": "N Boot",
             "default": 0
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -5679,6 +5690,11 @@
             "minimum": 0.0,
             "title": "N Boot",
             "default": 0
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -5688,7 +5704,8 @@
           "donor",
           "recipient",
           "step_kcal",
-          "n_boot"
+          "n_boot",
+          "acknowledged"
         ],
         "title": "SetSubstitution",
         "description": "The substitution to draw; ``n_boot > 0`` adds a band from that many bootstrap refits."
@@ -6059,6 +6076,11 @@
             "minimum": 0.0,
             "title": "N Boot",
             "default": 0
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -6067,7 +6089,8 @@
           "donor",
           "recipient",
           "step_kcal",
-          "n_boot"
+          "n_boot",
+          "acknowledged"
         ],
         "title": "SubstitutionSpec"
       },
@@ -6942,6 +6965,18 @@
             ],
             "default": null,
             "title": "Df"
+          },
+          "meaning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Meaning"
           }
         },
         "required": [
@@ -6951,7 +6986,8 @@
           "ci_high",
           "p",
           "se",
-          "df"
+          "df",
+          "meaning"
         ],
         "title": "Coefficient",
         "type": "object"
@@ -7216,6 +7252,26 @@
             },
             "title": "Left Out",
             "type": "array"
+          },
+          "terms": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Terms",
+            "type": "object"
+          },
+          "energy_form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Energy Form"
           }
         },
         "required": [
@@ -7226,7 +7282,9 @@
           "substitution_pairs",
           "warnings",
           "nested",
-          "left_out"
+          "left_out",
+          "terms",
+          "energy_form"
         ],
         "title": "DesignArtifact",
         "type": "object"
@@ -7282,6 +7340,61 @@
         "title": "DesignStep",
         "type": "object"
       },
+      "EnergyRanking": {
+        "description": "The energy methods in order of soundness for the declared purpose, applicable ones first\n(audit WP6; BLUEPRINT §12 ruling 2): the all-components model first under inference, the\nenergy-keeping models first under prediction. ``line`` names the tension with custom.",
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prediction",
+                  "inference"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "order": {
+            "items": {
+              "enum": [
+                "none",
+                "standard",
+                "residual",
+                "residual_energy_dropped",
+                "density_multivariate",
+                "density",
+                "partition",
+                "all_components"
+              ],
+              "type": "string"
+            },
+            "title": "Order",
+            "type": "array"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          }
+        },
+        "required": [
+          "purpose",
+          "order",
+          "line"
+        ],
+        "title": "EnergyRanking",
+        "type": "object"
+      },
       "EnergyReading": {
         "description": "What the energy-adjustment question can offer on this table (NUTRITION_PACK §04).",
         "properties": {
@@ -7324,9 +7437,11 @@
                   "none",
                   "standard",
                   "residual",
+                  "residual_energy_dropped",
                   "density_multivariate",
                   "density",
-                  "partition"
+                  "partition",
+                  "all_components"
                 ],
                 "type": "string"
               },
@@ -7345,6 +7460,17 @@
                 "type": "null"
               }
             ]
+          },
+          "ranking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnergyRanking"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           },
           "r_with_energy": {
             "additionalProperties": {
@@ -7375,6 +7501,7 @@
           "applicability",
           "usual",
           "usual_evidence",
+          "ranking",
           "r_with_energy",
           "notes",
           "not_adjusted"
@@ -8405,6 +8532,67 @@
           "reason"
         ],
         "title": "NotAdjusted",
+        "type": "object"
+      },
+      "OmittedEnergy": {
+        "additionalProperties": false,
+        "description": "How much of total energy a model's energy-bearing columns leave out (audit ME-05).",
+        "properties": {
+          "energy_column": {
+            "title": "Energy Column",
+            "type": "string"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "omitted": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Omitted",
+            "type": "array"
+          },
+          "mean_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Share"
+          },
+          "rows_over": {
+            "title": "Rows Over",
+            "type": "integer"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "energy_column",
+          "columns",
+          "sources",
+          "omitted",
+          "mean_share",
+          "rows_over",
+          "n_rows"
+        ],
+        "title": "OmittedEnergy",
         "type": "object"
       },
       "OrientationReading": {
@@ -9721,6 +9909,17 @@
               }
             ],
             "default": null
+          },
+          "omitted_energy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OmittedEnergy"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -9736,7 +9935,8 @@
           "carried",
           "band",
           "band_estimate",
-          "support"
+          "support",
+          "omitted_energy"
         ],
         "title": "SubstitutionArtifact",
         "type": "object"

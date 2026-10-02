@@ -623,7 +623,7 @@ export interface components {
              * Method
              * @enum {string}
              */
-            method: "none" | "standard" | "residual" | "density_multivariate" | "density" | "partition";
+            method: "none" | "standard" | "residual" | "residual_energy_dropped" | "density_multivariate" | "density" | "partition" | "all_components";
             /** Energy Column */
             energy_column: string | null;
             /** Nutrients */
@@ -1390,7 +1390,7 @@ export interface components {
              * Method
              * @enum {string}
              */
-            method: "none" | "standard" | "residual" | "density_multivariate" | "density" | "partition";
+            method: "none" | "standard" | "residual" | "residual_energy_dropped" | "density_multivariate" | "density" | "partition" | "all_components";
             /** Energy Column */
             energy_column?: string | null;
             /** Nutrients */
@@ -1414,7 +1414,7 @@ export interface components {
              * Method
              * @enum {string}
              */
-            method: "none" | "standard" | "residual" | "density_multivariate" | "density" | "partition";
+            method: "none" | "standard" | "residual" | "residual_energy_dropped" | "density_multivariate" | "density" | "partition" | "all_components";
             /** Energy Column */
             energy_column: string | null;
             /** Nutrients */
@@ -1756,6 +1756,11 @@ export interface components {
              * @default 0
              */
             n_boot: number;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /**
          * SetSubstitution
@@ -1781,6 +1786,11 @@ export interface components {
              * @default 0
              */
             n_boot: number;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /** SetTarget */
         SetTarget: {
@@ -1936,6 +1946,11 @@ export interface components {
              * @default 0
              */
             n_boot: number;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /**
          * TableFocusView
@@ -2237,6 +2252,11 @@ export interface components {
              * @default null
              */
             df: number | null;
+            /**
+             * Meaning
+             * @default null
+             */
+            meaning: string | null;
         };
         /**
          * CohortArtifact
@@ -2346,6 +2366,18 @@ export interface components {
              * @default []
              */
             left_out: string[];
+            /**
+             * Terms
+             * @default {}
+             */
+            terms: {
+                [key: string]: string;
+            };
+            /**
+             * Energy Form
+             * @default null
+             */
+            energy_form: string | null;
         };
         /** DesignModel */
         DesignModel: {
@@ -2366,6 +2398,20 @@ export interface components {
             detail: string;
         };
         /**
+         * EnergyRanking
+         * @description The energy methods in order of soundness for the declared purpose, applicable ones first
+         *     (audit WP6; BLUEPRINT §12 ruling 2): the all-components model first under inference, the
+         *     energy-keeping models first under prediction. ``line`` names the tension with custom.
+         */
+        EnergyRanking: {
+            /** Purpose */
+            purpose: ("prediction" | "inference") | null;
+            /** Order */
+            order: ("none" | "standard" | "residual" | "residual_energy_dropped" | "density_multivariate" | "density" | "partition" | "all_components")[];
+            /** Line */
+            line: string | null;
+        };
+        /**
          * EnergyReading
          * @description What the energy-adjustment question can offer on this table (NUTRITION_PACK §04).
          */
@@ -2381,8 +2427,10 @@ export interface components {
                 [key: string]: components["schemas"]["MethodVerdict"];
             };
             /** Usual */
-            usual: ("none" | "standard" | "residual" | "density_multivariate" | "density" | "partition") | null;
+            usual: ("none" | "standard" | "residual" | "residual_energy_dropped" | "density_multivariate" | "density" | "partition" | "all_components") | null;
             usual_evidence: components["schemas"]["FindingEvidence"] | null;
+            /** @default null */
+            ranking: components["schemas"]["EnergyRanking"] | null;
             /** R With Energy */
             r_with_energy: {
                 [key: string]: number;
@@ -2773,6 +2821,26 @@ export interface components {
             column: string;
             /** Reason */
             reason: string;
+        };
+        /**
+         * OmittedEnergy
+         * @description How much of total energy a model's energy-bearing columns leave out (audit ME-05).
+         */
+        OmittedEnergy: {
+            /** Energy Column */
+            energy_column: string;
+            /** Columns */
+            columns: string[];
+            /** Sources */
+            sources: string[];
+            /** Omitted */
+            omitted: string[];
+            /** Mean Share */
+            mean_share: number | null;
+            /** Rows Over */
+            rows_over: number;
+            /** N Rows */
+            n_rows: number;
         };
         /**
          * OrientationReading
@@ -3240,6 +3308,8 @@ export interface components {
             band_estimate: components["schemas"]["BandEstimate"] | null;
             /** @default null */
             support: components["schemas"]["SubstitutionSupport"] | null;
+            /** @default null */
+            omitted_energy: components["schemas"]["OmittedEnergy"] | null;
         };
         /**
          * SubstitutionBand

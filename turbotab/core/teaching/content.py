@@ -809,28 +809,32 @@ ENERGY_ADJUSTMENT = {
                  "question about a nutrient.",
     "why": "Total energy confounds every nutrient association, and the errors in reported "
            "nutrients and energy move together. Each method has its own estimand: the standard "
-           "and residual methods ask about swapping calories between sources at fixed total "
-           "energy, and partition asks about adding calories. Choose by the question; compare "
-           "methods as a sensitivity analysis.",
+           "model and the residual method with energy kept swap calories between sources at "
+           "fixed total energy; partition adds calories; all components gives each source's "
+           "added and average swapped calories. Choose by the question.",
     "consumer": "Each model's pipeline, the column lineage, the coefficients and the substitution "
                 "curves read it.",
     "options": [
         option("none", "No adjustment",
-               "Absolute intake: a nutrient's effect stays mixed with how much people eat "
-               "overall."),
+               "Total energy leaves the model: absolute intake, mixed with how much people eat."),
         option("standard", "Standard model",
                "Energy stays in the model: more of the nutrient in place of other calories."),
-        option("residual", "Residual method",
-               "Each nutrient's residual on energy: the same substitution, in the nutrient's own "
-               "units."),
+        option("residual", "Residual, energy kept",
+               "Each nutrient's residual on energy, energy kept: the standard model's swap, in "
+               "its units."),
+        option("residual_energy_dropped", "Residual, energy dropped",
+               "Each nutrient's residual on energy, energy dropped: differs when covariates track "
+               "energy."),
         option("density_multivariate", "Density plus energy",
-               "Nutrient per calorie, with total energy as its own term: diet composition."),
+               "Nutrient per calorie, with total energy as its own term: an obscure quantity."),
         option("density", "Density alone",
                "Nutrient per calorie, energy dropped: a rescaled effect whose meaning is "
                "obscure."),
         option("partition", "Energy partition",
                "Calories from the nutrient and from everything else: adding calories, not "
                "substituting."),
+        option("all_components", "All components",
+               "Every energy source its own term: added calories, and each one's average swap."),
     ],
     "terms": [
         ESTIMAND,
@@ -842,6 +846,11 @@ ENERGY_ADJUSTMENT = {
                                  "1,000 kcal."),
         term("energy partition", "Splitting total energy into calories from the nutrient and "
                                  "calories from everything else, each its own term."),
+        term("all-components model", "A partition with every energy source its own term; a "
+                                     "source's average swap is its coefficient less the others', "
+                                     "weighted by their share of energy."),
+        term("omitted energy source", "An energy source not in the model; total energy carries it "
+                                      "in one composite, so every swap is partly in its place."),
         NESTED,
     ],
     "drawer": {"sections": [
@@ -852,18 +861,27 @@ ENERGY_ADJUSTMENT = {
                 "for.",
                 "SETTLED", NUT04),
         section("Residual and standard: when they agree",
-                "The pack calls the two mathematically equivalent, and it holds in two cases. With "
-                "total energy also in the model, swapping a nutrient for its residual only "
-                "reparametrizes it, so the coefficient is identical, covariates or not. With no "
-                "other covariates, the residual alone gives the standard model's coefficient too. "
-                "The residual method here takes energy out of the model, so with covariates the "
-                "two agree only when no covariate correlates with energy.",
+                "With total energy also in the model, swapping a nutrient for its residual only "
+                "reparametrizes it, so the coefficient, its interval and p are identical to the "
+                "standard model's, covariates or not; that is the residual method here unless you "
+                "choose to drop energy (McCullough & Byrd 2023). With energy dropped, the "
+                "coefficient is the standard model's only when no covariate correlates with "
+                "energy, and its interval is wider even then; otherwise it differs, sometimes in "
+                "sign.",
                 "SETTLED", NUT04),
         section("What the coefficient means",
                 "An energy-adjusted coefficient is a substitution estimate: more of this nutrient "
                 "and correspondingly less of everything else, at the same total intake — not the "
-                "effect of simply eating more of it.",
+                "effect of simply eating more of it. With several energy sources in the model, "
+                "\"everything else\" is only the sources left out of it; name them.",
                 "SETTLED", NUT04),
+        section("All components",
+                "Every energy source its own term in kcal: each coefficient is the total effect of "
+                "adding that source's calories, and its average swap is the coefficient less the "
+                "other sources', weighted by their share of the remaining energy (Tomova et al. "
+                "2022). It avoids composite variable bias at a cost in precision, one term per "
+                "source, and its use is disputed (Willett, Stampfer & Tobias 2022).",
+                "DISPUTED", NUT04),
         section("The biases they share",
                 "Standard and residual models are biased even without confounding (composite "
                 "variable bias), and all four models only partly account for confounding by "
@@ -873,7 +891,8 @@ ENERGY_ADJUSTMENT = {
         section("The field's default",
                 "The Willett residual method, computed within the final analytic sample and within "
                 "sex, on log-transformed intakes, with the predicted nutrient at the mean energy "
-                "added back. It is the field default, but not uncontested.",
+                "added back. It is the field default, but not uncontested. Here total energy stays "
+                "in the outcome model beside it unless you choose the energy-dropped form.",
                 "CONVENTION", NUT04),
         section("When the outcome is BMI or adiposity",
                 "Energy may be on the causal path and a collider at once. Present adjusted and "

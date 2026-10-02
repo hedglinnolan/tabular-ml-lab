@@ -103,8 +103,11 @@ def test_the_nhanes_energy_reading(nhanes):
     # The nested-parts note now lives here, on the option it is about (and in the "nested" term).
     assert partition["reason"] == ("`sugar`, `fat_sat` and 2 more are nested in `carb` and "
                                    "`fat_total`: a partition would count that energy twice."), partition
-    assert set(energy["applicability"]) == {"none", "standard", "residual", "density_multivariate",
-                                            "density", "partition"}
+    assert set(energy["applicability"]) == {"none", "standard", "residual", "residual_energy_dropped",
+                                            "density_multivariate", "density", "partition",
+                                            "all_components"}
+    # Nested parts make the all-components model refuse as the partition does.
+    assert not energy["applicability"]["all_components"]["ok"]
     assert energy["usual"] == "residual"
     assert energy["usual_evidence"]["status"] == "CONVENTION"
     df = pd.read_csv(table.source)

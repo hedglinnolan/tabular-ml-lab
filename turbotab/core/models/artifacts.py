@@ -80,6 +80,13 @@ class DesignArtifact(_Model):
     warnings: list[str]
     nested: list[NestedColumn] = []
     left_out: list[str] = []  # predictors the missing-values answer left out
+    # What each model-matrix column's coefficient means, read off the matrix (audit WP6:
+    # ``methods.energy.describe_model``): the energy sources a swap is "in place of", a total
+    # beside its parts as the remainder. The fit copies it onto each coefficient row.
+    terms: dict[str, str] = {}
+    # The energy model the matrix actually holds (one of the energy methods), whatever was named;
+    # null when the table has no energy question.
+    energy_form: str | None = None
 
 
 class MetricSummary(_Model):
@@ -106,6 +113,10 @@ class Coefficient(_Model):
     se: float | None = None  # the standard error the interval rests on (inference only)
     # The t reference distribution's degrees of freedom; null for a normal or likelihood-based one.
     df: float | None = None
+    # What the coefficient means in this model (the design's ``terms``), e.g. "fat in place of
+    # alcohol and other energy, total energy fixed"; the all-components model's average relative
+    # effects (``<nutrient>_relative`` rows) say their weights here.
+    meaning: str | None = None
 
 
 class InferenceExit(_Model):
@@ -237,6 +248,18 @@ class BandEstimate(_Model):
     seconds: float
 
 
+class OmittedEnergy(_Model):
+    """How much of total energy a model's energy-bearing columns leave out (audit ME-05)."""
+
+    energy_column: str
+    columns: list[str]  # the model's energy-bearing exposures, a part beside its total counted once
+    sources: list[str]  # the energy sources they carry (protein, carbohydrate, fat, alcohol)
+    omitted: list[str]  # the sources not in the model, "other" last
+    mean_share: float | None  # the mean share of total energy they leave out
+    rows_over: int  # rows whose remainder exceeds 10% of their total energy
+    n_rows: int
+
+
 class SubstitutionArtifact(_Model):
     """The ``substitution`` artifact: one curve per fitted model."""
 
@@ -253,6 +276,9 @@ class SubstitutionArtifact(_Model):
     band: SubstitutionBand | None = None  # set when the substitution asked for n_boot > 0
     band_estimate: BandEstimate | None = None  # "Add an uncertainty band (about N s)"
     support: SubstitutionSupport | None = None  # the support checks' counts (data, not model)
+    # The energy sources the model leaves to total energy's composite, and how much of total
+    # energy they make up on the training rows (audit ME-05; ``methods.energy.omitted_energy``).
+    omitted_energy: OmittedEnergy | None = None
 
 
 MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
@@ -264,6 +290,6 @@ MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
 
 __all__ = [
     "BandEstimate", "Baseline", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel",
-    "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "ShelfArtifact", "ShelfFamily",
+    "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "OmittedEnergy", "ShelfArtifact", "ShelfFamily",
     "SubstitutionArtifact", "SubstitutionModel", "SubstitutionPair", "SubstitutionSupport",
 ]

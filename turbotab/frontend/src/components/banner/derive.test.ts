@@ -116,6 +116,8 @@ const design: DesignArtifact = {
   warnings: [],
   nested: [],
   left_out: [],
+  terms: {},
+  energy_form: null,
 };
 
 const baseline = { metric: "r2", value: 0, label: "the outcome's average" };

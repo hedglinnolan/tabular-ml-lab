@@ -12,11 +12,11 @@ and so does every worker process that runs a heavy stage.
 M1 (docs/turbotab-next/M1_CONTRACT.md):
 
     roles        heavy   deps: ingest, profile                reads lens, target
-    proposals    light   deps: ingest, profile, roles         reads lens, roles, target
+    proposals    light   deps: ingest, profile, roles         reads lens, roles, target, purpose
     cohort       heavy   deps: ingest, target_info            reads target, roles, exclusions, missing, findings; requires target
     split        heavy   deps: cohort, target_info            reads split, roles, task; requires split
     shelf        light   deps: cohort, target_info            reads purpose, task, roles; requires roles
-    design       heavy   deps: split, target_info             reads roles, energy_adjustment, missing, models, purpose; requires models, roles
+    design       heavy   deps: split, target_info             reads roles, energy_adjustment, missing, models, purpose, event; requires models, roles
     fit          heavy   deps: design, split, target_info     reads models, purpose, task; requires models
     substitution heavy   deps: fit, design                    reads substitution; requires substitution
 
@@ -108,7 +108,8 @@ def build_graph() -> Graph:
             # ── M1 (each reads the working table) ──
             Stage("roles", 1, ("working",), ("lens", "target"), roles_stage,
                   heavy=True, label="Reading what each column is"),
-            Stage("proposals", 1, ("working", "roles"), ("lens", "roles", "target"),
+            # proposals 2: the declared purpose orders the energy methods by soundness (audit WP6).
+            Stage("proposals", 2, ("working", "roles"), ("lens", "roles", "target", "purpose"),
                   proposals_stage, label="Looking up what the field usually does"),
             Stage("cohort", 1, ("working", "target_info"),
                   ("target", "roles", "exclusions", "missing", "findings"), cohort_stage,
@@ -119,16 +120,19 @@ def build_graph() -> Graph:
             Stage("shelf", 3, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", "roles", "missing", "categorical"), shelf_stage, heavy=True,
                   requires=("roles",), label="Ranking the model families for this table"),
-            Stage("design", 2, ("working", "split", "target_info"),
-                  ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical"),
+            # design 3: the estimand and coefficient meanings are read off the matrix, and the
+            # energy-dropped residual's gap reads the outcome and its event (audit WP6).
+            Stage("design", 3, ("working", "split", "target_info"),
+                  ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical",
+                   "event"),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
-            Stage("fit", 4, ("working", "design", "split", "target_info"),
+            Stage("fit", 5, ("working", "design", "split", "target_info"),
                   ("models", "purpose", "task", "event"), fit_stage, heavy=True,
                   requires=("models",),
                   label="Fitting the models"),
-            Stage("substitution", 2, ("working", "fit", "design"), ("substitution", "event"),
+            Stage("substitution", 3, ("working", "fit", "design"), ("substitution", "event"),
                   substitution_stage, heavy=True, requires=("substitution",),
                   label="Drawing the substitution curves"),
             # ── M2: the seal (docs/turbotab-next/M2_CONTRACT.md §3) ──

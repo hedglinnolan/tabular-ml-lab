@@ -1,19 +1,32 @@
-"""Energy adjustment: the five models of NUTRITION_PACK §04 as an in-fold sklearn step.
+"""Energy adjustment: the models of NUTRITION_PACK §04 as an in-fold sklearn step.
 
-Source: ``docs/turbotab/research/NUTRITION_PACK.md`` §04, "The five models, formally".
-Let N be a nutrient, E total energy, Y the outcome, C other covariates.
+Source: ``docs/turbotab/research/NUTRITION_PACK.md`` §04, "The five models, formally", with the
+two forms of the residual method (McCullough & Byrd 2023) and the all-components model (Tomova et
+al. 2022) beside them. Let N be a nutrient, E total energy, Y the outcome, C other covariates.
 
-====================  =================================  ==================================
-method                what the model sees                what a nutrient coefficient means
-====================  =================================  ==================================
-none                  N, E as given                      absolute intake (confounded by E)
-standard              N + E                              substitution for the average of all
-                                                         other energy sources
-residual              N_adj  (E leaves the model)        the same substitution as standard
-density_multivariate  N/E + E                            composition, energy as its own term
-density               N/E    (E leaves the model)        rescaled relative effect; obscure
-partition             kcal from N + kcal from other      addition, not substitution
-====================  =================================  ==================================
+=======================  ==============================  =====================================
+method                   what the model sees             what a nutrient coefficient means
+=======================  ==============================  =====================================
+none                     N  (E leaves the model)         absolute intake (confounded by E)
+standard                 N + E                           substitution: for the average of all
+                                                         other sources with one nutrient; for
+                                                         the sources not in the model with more
+residual                 N_adj + E                       the standard model's, identically
+residual_energy_dropped  N_adj  (E leaves the model)     the standard model's only when no
+                                                         covariate correlates with E
+density_multivariate     N/E + E                         an obscure quantity (Tomova 2022)
+density                  N/E    (E leaves the model)     rescaled relative effect; obscure
+partition                kcal from N + kcal from other   addition, not substitution
+all_components           kcal from every source          addition per source; the average
+                                                         relative effect by a weighted contrast
+=======================  ==============================  =====================================
+
+The label equals the model fitted: :func:`describe_model` composes the estimand and each
+coefficient's meaning from the columns the fitted model actually sees (which energy sources are
+in it, which are left out, a total beside its own parts), never from the method's name alone
+(audit ME-02, ME-03, ME-04, ME-15). Ruling 1 (BLUEPRINT §12): the residual method keeps total
+energy in the outcome model by default; the energy-dropped form is offered under its own name and
+estimand.
 
 Residual: ``N ~ E`` by OLS on the fitting rows (optionally both logged), then
 ``N_adj = residual + N_hat(mean E of the fitting rows)``, which simplifies to
@@ -38,8 +51,8 @@ them as the nutrient's effect (audit MA-02).
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Literal, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -52,43 +65,81 @@ except Exception:  # pragma: no cover - a server deploy without Classic's ml/ pa
     _nutrition = None
 
 __all__ = [
+    "ENERGY_SOURCES",
     "EnergyMethod",
+    "EnergyTerm",
+    "LOG_ESTIMAND",
+    "MAX_OMITTED_SHARE",
     "METHODS",
     "METHOD_TABLE",
+    "ModelEstimand",
+    "OMITTED_ROW_SHARE",
+    "omitted_sentence",
+    "PARTITION_METHODS",
+    "RANKING",
+    "RESIDUAL_METHODS",
+    "TENSION",
     "EnergyAdjuster",
     "EnergyAdjustmentNotApplicable",
     "FactorReading",
     "MIN_LEVEL_ROWS",
     "StratifiedEnergyAdjuster",
     "applicable_methods",
+    "coefficient_gap",
     "default_atwater",
+    "describe_model",
+    "energy_terms",
+    "fiber_beside_carbohydrate",
+    "omitted_energy",
     "partition_refusal",
     "describe_method",
     "energy_factor",
     "nutrient_role",
+    "rank_methods",
+    "relative_effect_rows",
     "unit_of",
 ]
 
-EnergyMethod = Literal["none", "standard", "residual", "density_multivariate", "density", "partition"]
-METHODS: Tuple[str, ...] = ("none", "standard", "residual", "density_multivariate", "density", "partition")
+EnergyMethod = Literal["none", "standard", "residual", "residual_energy_dropped",
+                       "density_multivariate", "density", "partition", "all_components"]
+METHODS: Tuple[str, ...] = ("none", "standard", "residual", "residual_energy_dropped",
+                            "density_multivariate", "density", "partition", "all_components")
+RESIDUAL_METHODS: Tuple[str, ...] = ("residual", "residual_energy_dropped")
+PARTITION_METHODS: Tuple[str, ...] = ("partition", "all_components")
 
 SOURCE = "docs/turbotab/research/NUTRITION_PACK.md#04 · Energy adjustment"
 _TOMOVA = "Tomova et al. 2022, AJCN 115(1):189-198"
+_MCCULLOUGH = "McCullough & Byrd 2023, AJE 192(11):1801-1805"
+_DISPUTE = "Willett, Stampfer & Tobias 2022, AJCN 116(2):608-609"
 _PARTIAL = f"Only partially accounts for confounding by common dietary causes ({_TOMOVA})."
+# Tomova et al. 2022, Discussion: "this strategy does introduce a trade-off between minimizing bias
+# (by including the largest number of components at the finest level of detail) and maximizing
+# precision (by having to estimate many parameters, i.e., 1 for each additional dietary component)."
+_PRECISION = (f"Trades precision for bias: one term per energy source ({_TOMOVA}).")
 
-# The pack's table, one row per method. `estimand` is the plain-language sentence the
-# UI prints next to a coefficient; `kind` is the short label for a forest-plot row.
+# The energy sources a diet's total is made of, by Atwater factor (NUTRITION_PACK §01). Whatever
+# total energy holds beyond the sources in a model is named "other" (fiber, polyols, organic acids,
+# food-table rounding, and any source the table has no column for).
+ENERGY_SOURCES: Tuple[str, ...] = ("protein", "carbohydrate", "fat", "alcohol")
+
+# The pack's table, one row per method. ``estimand`` is the base sentence (one energy-bearing
+# nutrient; :func:`describe_model` composes the sentence for the model actually fitted); ``kind``
+# is the short label for a forest-plot row; ``customary`` and ``sound`` are north star 5's two
+# labels (AUDIT_REPORT §3.1): where the field uses it, and why it is or is not sound per purpose.
 METHOD_TABLE: Dict[str, Dict[str, Any]] = {
     "none": {
         "label": "No energy adjustment",
-        "specification": "Y ~ N + C",
+        "specification": "Y ~ N + C (total energy leaves the model)",
         "kind": "absolute",
         "estimand": (
-            "Not energy-adjusted: a nutrient coefficient describes absolute intake, which "
-            "total energy confounds through body size, physical activity, metabolic "
-            "efficiency and reporting scale."),
+            "Not energy-adjusted: total energy is not in the model, so a nutrient coefficient "
+            "describes absolute intake, which total energy confounds through body size, physical "
+            "activity, metabolic efficiency and reporting scale."),
         "standing": None,
         "caveats": [],
+        "customary": "As the unadjusted model beside an adjusted one (NUTRITION_PACK §04).",
+        "sound": {"inference": "As a stated crude or sensitivity model, beside an adjusted one.",
+                  "prediction": "Rarely: it drops total energy, often the strongest predictor."},
     },
     "standard": {
         "label": "Standard (multivariate) model",
@@ -100,28 +151,57 @@ METHOD_TABLE: Dict[str, Dict[str, Any]] = {
         "standing": "CONVENTION",
         "caveats": [f"Biased even absent confounding: composite variable bias ({_TOMOVA}).",
                     _PARTIAL],
+        "customary": "Yes (NUTRITION_PACK §04; Tomova et al. 2022).",
+        "sound": {"inference": "Acceptable with the omitted energy sources named.",
+                  "prediction": "Good: keeps total energy."},
     },
     "residual": {
-        "label": "Willett residual model",
-        "specification": "N ~ E (OLS); N_adj = residual + N_hat(mean E); Y ~ N_adj + C",
+        "label": "Willett residual model, total energy kept",
+        "specification": "N ~ E (OLS); N_adj = residual + N_hat(mean E); Y ~ N_adj + E + C",
         "kind": "substitution",
         "estimand": (
-            "The same substitution as the standard model: more of the nutrient at the same "
-            "total energy, in place of the average of all other energy sources, and not the "
-            "effect of simply eating more of it."),
+            "The standard model's substitution, with the nutrient in its own units: the "
+            "residual and total energy span the same model as the nutrient and total energy, "
+            "so the coefficient is the standard model's exactly (the Willett–Stampfer variant "
+            f"with a term for total energy; {_MCCULLOUGH}): more of the nutrient at the same "
+            "total energy, in place of the average of all other energy sources."),
         "standing": "CONVENTION",
         "caveats": [f"Biased even absent confounding: composite variable bias ({_TOMOVA}).",
                     _PARTIAL],
+        "customary": f"Yes ({_MCCULLOUGH}).",
+        "sound": {"inference": "The sound form of the residual method.",
+                  "prediction": "Fine: keeps total energy."},
+    },
+    "residual_energy_dropped": {
+        "label": "Willett residual model, total energy left out",
+        "specification": "N ~ E (OLS); N_adj = residual + N_hat(mean E); Y ~ N_adj + C",
+        "kind": "substitution only without energy-correlated covariates",
+        "estimand": (
+            "Total energy is not in the outcome model: the coefficient equals the standard "
+            "model's substitution only when no other covariate correlates with energy; "
+            "otherwise it is a different number, which can differ in sign, and its interval "
+            "is wider."),
+        "standing": "CONVENTION",
+        "caveats": [f"Biased even absent confounding: composite variable bias ({_TOMOVA}).",
+                    _PARTIAL],
+        "customary": "Yes, the field default (NUTRITION_PACK §04).",
+        "sound": {"inference": "Avoid in this form: covariates that track energy change it.",
+                  "prediction": "Avoid: discards total energy's signal."},
     },
     "density_multivariate": {
         "label": "Multivariate nutrient density model",
         "specification": "Y ~ (N/E) + E + C",
-        "kind": "composition",
+        "kind": "obscure",
         "estimand": (
-            "Diet composition: the nutrient's amount per unit of energy, with total energy "
-            "as a separate term."),
+            "The nutrient's amount per unit of energy, with total energy as a separate term. "
+            "Its coefficient is not clean diet composition: Tomova et al. (2022) find the "
+            "density model's coefficient \"an obscure quantity that conflates both the effect of "
+            "the nutrient exposure and that of the reciprocal of total energy\"."),
         "standing": "CONVENTION",
-        "caveats": [],
+        "caveats": [f"Interpretation obscure ({_TOMOVA}).", _PARTIAL],
+        "customary": "Yes (NUTRITION_PACK §04).",
+        "sound": {"inference": "Below standard and all components, with its caveat.",
+                  "prediction": "Fine: keeps total energy."},
     },
     "density": {
         "label": "Nutrient density alone",
@@ -132,6 +212,9 @@ METHOD_TABLE: Dict[str, Dict[str, Any]] = {
             "interpretation is obscure without a total-energy term."),
         "standing": "CONVENTION (weakest)",
         "caveats": [f"Interpretation obscure ({_TOMOVA}).", _PARTIAL],
+        "customary": "Yes, the weakest (NUTRITION_PACK §04).",
+        "sound": {"inference": "Avoid: an obscure estimand, severely biased (Tomova 2022).",
+                  "prediction": "Rank low: drops total energy."},
     },
     "partition": {
         "label": "Energy partition model",
@@ -145,8 +228,71 @@ METHOD_TABLE: Dict[str, Dict[str, Any]] = {
             "Estimates the total causal effect; unbiased only when there is no confounding "
             f"or all other nutrients have equal effects ({_TOMOVA}).",
             _PARTIAL],
+        "customary": "Yes (NUTRITION_PACK §04).",
+        "sound": {"inference": "For total-effect questions.",
+                  "prediction": "Fine: carries total energy in its parts."},
+    },
+    "all_components": {
+        "label": "All-components model",
+        "specification": ("Y ~ kcal from each energy source (protein, carbohydrate, fat, alcohol) "
+                          "+ kcal from other + C"),
+        "kind": "addition and relative effect",
+        "estimand": (
+            "Every energy source is its own term in kcal. A source's coefficient is the total "
+            "effect of adding its calories with every other source fixed; its average relative "
+            "effect, the coefficient less the other sources' coefficients weighted by their "
+            "share of the remaining energy, is the substitution for the average of the others "
+            f"({_TOMOVA}: the \"all-components model\")."),
+        "standing": "EMERGING (disputed)",
+        "caveats": [_PRECISION, f"Its use is disputed ({_DISPUTE})."],
+        "customary": f"Emerging ({_TOMOVA}); disputed ({_DISPUTE}).",
+        "sound": {"inference": "Sound for total and average relative effects, at a precision cost.",
+                  "prediction": "Information-equivalent to keeping total energy."},
     },
 }
+
+# The log variant (``log_transform``) of each residual form estimates something else again: it
+# regresses log N on log E and rescales the nutrient to the geometric-mean energy, N × (E/G)^(−b).
+LOG_ESTIMAND: Dict[str, str] = {
+    "residual": (
+        "An energy-elasticity adjustment: log N is regressed on log E and the nutrient is "
+        "rescaled to the geometric-mean energy, N × (E/G)^(−b). With total energy also in the "
+        "model, the coefficient is per unit of that rescaled nutrient at fixed energy; it is not "
+        "the linear residual's or the standard model's coefficient, because the rescaling "
+        "differs with each row's energy."),
+    "residual_energy_dropped": (
+        "An energy-elasticity adjustment with total energy not in the outcome model: log N is "
+        "regressed on log E and the nutrient rescaled to the geometric-mean energy, "
+        "N × (E/G)^(−b). With an elasticity b near 1 that is close to a nutrient density "
+        "(N/E, rescaled), so the coefficient reads like the density model's rescaled relative "
+        "effect, not the linear residual's substitution."),
+}
+
+# Soundness for the declared purpose orders the menu (north star 5; AUDIT_REPORT §3.1 and §4).
+# Ruling 2 (BLUEPRINT §12): under inference the all-components model ranks first for substitution
+# questions; under prediction the energy-model choice matters little among models that keep energy.
+RANKING: Dict[str, Tuple[str, ...]] = {
+    "inference": ("all_components", "standard", "residual", "partition", "density_multivariate",
+                  "none", "residual_energy_dropped", "density"),
+    "prediction": ("standard", "residual", "density_multivariate", "partition", "all_components",
+                   "none", "residual_energy_dropped", "density"),
+}
+TENSION: Dict[str, str] = {
+    "inference": (
+        "All components ranks first for substitution questions: no composite-variable bias "
+        "(Tomova 2022), at a precision cost of one term per source; disputed by Willett, "
+        "Stampfer and Tobias (2022)."),
+    "prediction": (
+        "For prediction the energy model matters little: models that keep total energy predict "
+        "alike, and dropping energy discards its signal."),
+}
+
+# The mean share of total energy a model's energy sources may leave unaccounted before a
+# substitution under inference is blocked and recorded (audit ME-05). Below it the remainder is
+# within the general Atwater factors' own error (PARTITION_SLACK, a few percent of total energy);
+# above it a real energy source is missing from the model. A stated threshold, not a sourced one.
+MAX_OMITTED_SHARE = 0.05
+OMITTED_ROW_SHARE = 0.10  # a row's remainder counted as large (the audit's NHANES reading)
 
 
 def describe_method(method: str) -> Dict[str, Any]:
@@ -324,7 +470,9 @@ def applicable_methods(columns: Sequence[str], energy_column: Optional[str],
     nutrients = _as_list(nutrient_columns)
     E = str(energy_column) if energy_column else None
     out: Dict[str, Dict[str, Any]] = {
-        "none": {"ok": True, "reason": "Nutrients enter the model as absolute intakes; nothing is adjusted."}}
+        "none": {"ok": True, "reason": (
+            f"{E} leaves the model, and nutrients enter as absolute intakes." if E and E in cols
+            else "Nutrients enter the model as absolute intakes; nothing is adjusted.")}}
 
     common: Optional[str] = None
     if not E:
@@ -358,7 +506,10 @@ def applicable_methods(columns: Sequence[str], energy_column: Optional[str],
                  f"unit of energy; adjusting again puts energy into the model twice.")
     out["residual"] = {"ok": not twice, "reason": twice or (
         f"Each of {listed} is regressed on {E} within the fitting rows; the model sees the "
-        f"adjusted nutrients and not {E} itself.")}
+        f"adjusted nutrients with {E} beside them.")}
+    out["residual_energy_dropped"] = {"ok": not twice, "reason": twice or (
+        f"Each of {listed} is regressed on {E} within the fitting rows; {E} then leaves the "
+        f"outcome model.")}
     out["density_multivariate"] = {"ok": not twice, "reason": twice or (
         f"Each of {listed} is divided by {E}, and {E} stays in the model as its own term.")}
     out["density"] = {"ok": not twice, "reason": twice or (
@@ -382,7 +533,43 @@ def applicable_methods(columns: Sequence[str], energy_column: Optional[str],
         out["partition"] = {"ok": True, "reason": (
             f"{E} splits into kcal from {listed} and kcal from everything else; {E} itself "
             f"leaves the model.{tail}")}
+    out["all_components"] = _all_components_verdict(cols, E, nutrients, out["partition"], atwater)
     return out
+
+
+def _all_components_verdict(columns: Sequence[str], E: str, nutrients: Sequence[str],
+                            partition: Mapping[str, Any],
+                            atwater: Optional[Mapping[str, float]]) -> Dict[str, Any]:
+    """The all-components model is a partition over every energy source the table holds: each of
+    protein, carbohydrate and fat its own term, and alcohol too when the table has it (Tomova et
+    al. 2022: "simultaneously adjusting for all dietary components")."""
+    if not partition["ok"]:
+        return {"ok": False, "reason": str(partition["reason"]).replace(
+            "Energy partition splits", "The all-components model splits", 1)}
+    covered = {_role_or_none(n) for n in nutrients}
+    missing = [role for role in ENERGY_SOURCES[:3] if role not in covered]
+    if missing:
+        return {"ok": False, "reason": (
+            f"The all-components model gives every energy source its own term, and "
+            f"{_and(missing)} {'is' if len(missing) == 1 else 'are'} not among the chosen "
+            f"nutrients.")}
+    left = [c for c in columns if c not in nutrients and c != E and _role_or_none(c) == "alcohol"
+            and energy_factor(c, atwater).factor is not None]
+    if left:
+        return {"ok": False, "reason": (
+            f"The all-components model gives every energy source its own term, and {_and(left)} "
+            f"carries alcohol's energy but is not among the chosen nutrients.")}
+    listed = _and(list(nutrients))
+    return {"ok": True, "reason": (
+        f"{E} splits into kcal from {listed}, each its own term, and kcal from everything else; "
+        f"each nutrient's average relative effect is computed from them.")}
+
+
+def _role_or_none(column: str) -> Optional[str]:
+    try:
+        return nutrient_role(column)
+    except ValueError:
+        return None
 
 
 PARTITION_NEGATIVE_SHARE = 0.10  # rows on which the nutrients out-weigh total energy …
@@ -470,16 +657,24 @@ def _numeric(frame: pd.DataFrame, column: str) -> np.ndarray:
 
 
 class EnergyAdjuster(TransformerMixin, BaseEstimator):
-    """One of NUTRITION_PACK §04's five energy-adjustment models, as a Pipeline step.
+    """One of the energy-adjustment models (NUTRITION_PACK §04 and beside it), as a Pipeline step.
 
     Parameters
     ----------
-    method : "none" | "standard" | "residual" | "density_multivariate" | "density" | "partition"
+    method : one of :data:`METHODS`.
     energy_column : the total-energy column.
     nutrient_columns : the nutrient columns to adjust. Every other column passes through.
-    log_transform : residual method only: regress log N on log E and back-transform.
+    log_transform : the residual methods only: regress log N on log E and back-transform.
     atwater : kcal per gram by nutrient role or exact column name; overrides the defaults
-        (``default_atwater()``). Used by the partition method.
+        (``default_atwater()``). Used by the partition and all-components methods.
+    leave_out : "none" only: further total-energy columns (the energy role) that leave the model
+        with ``energy_column``. Under "none" total energy is not in the model at all: that is
+        what "no energy adjustment" means (audit ME-02).
+
+    Which columns leave the model: total energy under "none", "residual_energy_dropped" and
+    "density"; under "partition" and "all_components" it is replaced by kcal from everything
+    else. "residual" keeps total energy beside the adjusted nutrients (the Willett–Stampfer
+    variant; McCullough & Byrd 2023), so its coefficient is the standard model's.
 
     Missing values stay missing: the residual regression is fit on the rows where both
     the nutrient and energy are present, and an adjusted value is missing wherever
@@ -488,12 +683,13 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
 
     def __init__(self, method: EnergyMethod = "residual", energy_column: Optional[str] = "energy_kcal",
                  nutrient_columns: Sequence[str] = (), log_transform: bool = False,
-                 atwater: Optional[Mapping[str, float]] = None):
+                 atwater: Optional[Mapping[str, float]] = None, leave_out: Sequence[str] = ()):
         self.method = method
         self.energy_column = energy_column
         self.nutrient_columns = nutrient_columns
         self.log_transform = log_transform
         self.atwater = atwater
+        self.leave_out = leave_out
 
     # -- fitting -----------------------------------------------------------
 
@@ -505,8 +701,8 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
         verdict = applicable_methods(list(X.columns), E, nutrients, atwater=self.atwater)[method]
         if not verdict["ok"]:
             raise EnergyAdjustmentNotApplicable(method, verdict["reason"])
-        if self.log_transform and method != "residual":
-            raise ValueError("log_transform applies to the residual method only "
+        if self.log_transform and method not in RESIDUAL_METHODS:
+            raise ValueError("log_transform applies to the residual methods only "
                              f"(the chosen method is {method!r}).")
 
         self.feature_names_in_ = np.asarray([str(c) for c in X.columns], dtype=object)
@@ -518,6 +714,7 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
         self.factors_: Dict[str, float] = {}
         self.factor_notes_: Dict[str, str] = {}
         self.atwater_check_: Optional[Dict[str, Any]] = None
+        self.other_term_ = True  # partition methods: whether kcal_from_other is a term
 
         if method != "none":
             e = _numeric(X, E)
@@ -525,13 +722,28 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
                 _numeric(X, n)
             if method in ("density", "density_multivariate"):
                 self._check_positive_energy(e, "fitting rows")
-            elif method == "residual":
+            elif method in RESIDUAL_METHODS:
                 for n in nutrients:
                     self.params_[n] = self._fit_residual(_numeric(X, n), e, n)
-            elif method == "partition":
+            elif method in PARTITION_METHODS:
                 self._fit_partition(X, e)
+                # The all-components model: when the named sources make up total energy exactly
+                # (a recall's energy computed from them, or a simulation), kcal from everything
+                # else is zero on every row, a term with nothing in it; it leaves the model.
+                if method == "all_components":
+                    other = e - sum(self.factors_[n] * _numeric(X, n) for n in self.nutrients_)
+                    finite = np.isfinite(other) & np.isfinite(e)
+                    scale = float(np.nanmax(np.abs(e[finite]))) if finite.any() else 0.0
+                    self.other_term_ = not (finite.any() and
+                                            float(np.max(np.abs(other[finite]))) <= 1e-9 * max(scale, 1.0))
 
-        self.dropped_columns_ = [E] if method in ("residual", "density") else []
+        if method == "none":
+            self.dropped_columns_ = [c for c in dict.fromkeys([E, *_as_list(self.leave_out)])
+                                     if c and c in X.columns]
+        elif method in ("residual_energy_dropped", "density"):
+            self.dropped_columns_ = [E]
+        else:
+            self.dropped_columns_ = []
         self._plan = self._build_plan()
         names = [entry["output"] for entry in self._plan]
         clashes = sorted({name for name in names if names.count(name) > 1})
@@ -596,12 +808,12 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
         if complete:
             if check.verdict in ("energy_in_kj", "energy_inverse", "mixed_units"):
                 raise EnergyAdjustmentNotApplicable(
-                    "partition", f"the partition subtracts kcal from {E}, and the Atwater "
+                    self.method_, f"the partition subtracts kcal from {E}, and the Atwater "
                                  f"reconstruction on the fitting rows says: {check.sentence}")
             overlap = [n for n in self.nutrients_ if n in check.macro_columns.values()]
             if check.verdict == "macros_not_grams" and overlap:
                 raise EnergyAdjustmentNotApplicable(
-                    "partition", f"{_and(overlap)} would be converted as grams, and the "
+                    self.method_, f"{_and(overlap)} would be converted as grams, and the "
                                  f"Atwater reconstruction says: {check.sentence}")
         for n, reading in readings.items():
             if not reading.declared:
@@ -611,7 +823,7 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
                            "the table does not carry protein, carbohydrate and fat columns "
                            "for the reconstruction to check.")
                     raise EnergyAdjustmentNotApplicable(
-                        "partition", f"{n} does not say what unit it is in, and the Atwater "
+                        self.method_, f"{n} does not say what unit it is in, and the Atwater "
                                      f"reconstruction could not confirm it is grams: {why} If it "
                                      f"is in grams, a _g suffix on its name says so.")
             self.factors_[n] = float(reading.factor)
@@ -645,7 +857,11 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
         plan: List[Dict[str, Any]] = []
         for col in self.feature_names_in_:
             col = str(col)
-            if method == "none" or (col not in nutrients and col != E):
+            if method == "none":
+                if col not in self.dropped_columns_:  # total energy leaves the model (ME-02)
+                    plan.append({"output": col, "inputs": [col], "operation": "pass-through",
+                                 "formula": f"{col} (unchanged)"})
+            elif col not in nutrients and col != E:
                 plan.append({"output": col, "inputs": [col], "operation": "pass-through",
                              "formula": f"{col} (unchanged)"})
             elif method == "standard":
@@ -656,20 +872,25 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
                 if method == "density_multivariate":
                     plan.append({"output": col, "inputs": [col], "operation": "kept", "formula": (
                         f"{col} (unchanged; total energy enters as its own term: Y ~ N/E + E + C)")})
-                elif method == "partition":
+                elif method == "residual":
+                    plan.append({"output": col, "inputs": [col], "operation": "kept", "formula": (
+                        f"{col} (unchanged; total energy stays in the outcome model beside the "
+                        f"adjusted nutrients: Y ~ N_adj + E + C)")})
+                elif method in PARTITION_METHODS and self.other_term_:
                     terms = " + ".join(f"{_fmt(self.factors_[n])} × {n}" for n in self.nutrients_)
                     plan.append({"output": "kcal_from_other", "inputs": [E, *self.nutrients_],
                                  "operation": "partition-other",
                                  "formula": f"kcal_from_other = {E} − ({terms})",
                                  "params": {**self.params_["__other__"],
                                             "atwater_check": self.atwater_check_}})
-                # residual and density: energy leaves the model (see dropped_columns_)
-            elif method == "residual":
+                # residual_energy_dropped and density: energy leaves the model (dropped_columns_);
+                # all-components whose sources make up total energy exactly: no other term.
+            elif method in RESIDUAL_METHODS:
                 plan.append(self._residual_entry(col))
             elif method in ("density", "density_multivariate"):
                 plan.append({"output": f"{col}_per_{E}", "inputs": [col, E], "operation": "density",
                              "formula": f"{col}_per_{E} = {col} / {E}"})
-            elif method == "partition":
+            elif method in PARTITION_METHODS:
                 plan.append({"output": f"kcal_from_{col}", "inputs": [col], "operation": "partition",
                              "formula": f"kcal_from_{col} = {_fmt(self.factors_[col])} × {col}  "
                                         f"({self.factor_notes_[col]})",
@@ -752,8 +973,13 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
                 for entry in self._plan]
 
     def estimand(self) -> str:
-        """What a nutrient coefficient means under this method, in one sentence (from the pack)."""
-        return METHOD_TABLE[_check_method(self.method)]["estimand"]
+        """What a nutrient coefficient means under this method with one adjusted nutrient. The
+        log variant of a residual form has its own (:data:`LOG_ESTIMAND`). For the model a design
+        actually fits, several nutrients and all, :func:`describe_model` composes the sentence."""
+        method = _check_method(self.method)
+        if self.log_transform and method in LOG_ESTIMAND:
+            return LOG_ESTIMAND[method]
+        return METHOD_TABLE[method]["estimand"]
 
     # -- helpers -------------------------------------------------------------
 
@@ -897,17 +1123,21 @@ class StratifiedEnergyAdjuster(TransformerMixin, BaseEstimator):
     the output. Every other column passes through as the pooled :class:`EnergyAdjuster` passes
     it. ``lineage()`` reports each level's slope and rows, the levels on the pooled slope, and
     r(N_adj, E) and r(N_adj, strata) on the fitting rows, pooled and per level.
+
+    ``method``: "residual" keeps total energy in the outcome model beside the adjusted nutrients
+    (the default, BLUEPRINT §12 ruling 1); "residual_energy_dropped" lets it leave.
     """
 
     def __init__(self, energy_column: str = "energy_kcal", nutrient_columns: Sequence[str] = (),
                  strata: str = "sex", log_transform: bool = False, drop_strata: bool = False,
-                 atwater: Optional[Mapping[str, float]] = None):
+                 atwater: Optional[Mapping[str, float]] = None, method: str = "residual"):
         self.energy_column = energy_column
         self.nutrient_columns = nutrient_columns
         self.strata = strata
         self.log_transform = log_transform
         self.drop_strata = drop_strata
         self.atwater = atwater
+        self.method = method
 
     # -- fitting -----------------------------------------------------------
 
@@ -919,7 +1149,9 @@ class StratifiedEnergyAdjuster(TransformerMixin, BaseEstimator):
         self.feature_names_in_ = np.asarray([str(c) for c in X.columns], dtype=object)
         self.n_features_in_ = X.shape[1]
         self.nutrients_ = _as_list(self.nutrient_columns)
-        self.pooled_ = EnergyAdjuster("residual", self.energy_column, self.nutrients_,
+        if self.method not in RESIDUAL_METHODS:
+            raise ValueError(f"Strata stratify the residual methods only, not {self.method!r}.")
+        self.pooled_ = EnergyAdjuster(self.method, self.energy_column, self.nutrients_,
                                       log_transform=self.log_transform, atwater=self.atwater).fit(X)
         strata = X[self.strata]
         levels: List[Any] = sorted(pd.unique(strata.dropna().to_numpy(dtype=object)), key=str)
@@ -1092,7 +1324,10 @@ class StratifiedEnergyAdjuster(TransformerMixin, BaseEstimator):
         return out
 
     def estimand(self) -> str:
-        return METHOD_TABLE["residual"]["estimand"]
+        method = self.method if self.method in RESIDUAL_METHODS else "residual"
+        if self.log_transform:
+            return LOG_ESTIMAND[method]
+        return METHOD_TABLE[method]["estimand"]
 
 
 _RECONSTRUCTION_ROLES = ("protein", "carbohydrate", "fat")
@@ -1109,3 +1344,422 @@ def _atwater_reading(X: pd.DataFrame, energy_column: str) -> Any:
     if reading is None or reading.energy_column != energy_column:
         return None
     return reading
+
+
+# ── What the fitted model estimates (audit ME-02, ME-03, ME-04, ME-14, ME-15) ────
+
+
+@dataclass(frozen=True)
+class EnergyTerm:
+    """A predictor that carries a diet's energy: its column, its source, its kcal per unit."""
+
+    column: str
+    source: str  # protein | carbohydrate | fat | alcohol | fiber, else the column's own name
+    factor: float
+
+
+def energy_terms(predictors: Sequence[str], roles: Mapping[str, str],
+                 energy_columns: Sequence[str] = (),
+                 atwater: Optional[Mapping[str, float]] = None) -> List[EnergyTerm]:
+    """The predictors that carry energy in a known unit, in the order given.
+
+    Exposures with an energy factor, and covariates whose name states their unit (``fat_g``): a
+    covariate's name alone (``body_fat``) is not read as an energy source. Total-energy columns
+    (``energy_columns`` and the energy role) are not sources.
+    """
+    skip = set(_as_list(energy_columns))
+    out: List[EnergyTerm] = []
+    for c in predictors:
+        role = roles.get(c)
+        if c in skip or role not in ("exposure", "covariate"):
+            continue
+        reading = energy_factor(c, atwater)
+        if reading.factor is None or (role == "covariate" and not reading.declared):
+            continue
+        out.append(EnergyTerm(str(c), _role_or_none(c) or str(c), float(reading.factor)))
+    return out
+
+
+def _omitted(sources: Sequence[str]) -> List[str]:
+    """The energy sources not among ``sources``, then "other" (always: what total energy holds
+    beyond any listed source)."""
+    return [s for s in ENERGY_SOURCES if s not in sources] + ["other"]
+
+
+def _in_place_of(named: bool, omitted: Sequence[str]) -> str:
+    if not named:
+        return "in place of the average of all other energy sources"
+    return f"in place of {_and([*omitted[:-1], 'other energy'])}"
+
+
+@dataclass
+class ModelEstimand:
+    """What the fitted model estimates, composed from the columns it sees.
+
+    ``form`` is the energy model actually fitted (a method's name never overrides its matrix);
+    ``text`` the estimand sentence (None when the table has no energy question); ``terms`` each
+    model-matrix column's meaning, for its coefficient row; ``omitted`` the energy sources not in
+    the model ("other" last); ``sources`` those in it.
+    """
+
+    form: str
+    text: Optional[str]
+    terms: Dict[str, str] = field(default_factory=dict)
+    omitted: List[str] = field(default_factory=list)
+    sources: List[str] = field(default_factory=list)
+    energy_in_model: bool = False
+    nested: Dict[str, List[str]] = field(default_factory=dict)  # total -> its parts, both in it
+
+
+def _form(method: Optional[str], energy_in: bool) -> str:
+    if method in (None, "none", "standard"):
+        return "standard" if energy_in else "none"
+    if method in RESIDUAL_METHODS:
+        return "residual" if energy_in else "residual_energy_dropped"
+    return str(method)
+
+
+def _matrix_name(column: str, form: str, adjusted: Sequence[str], E: Optional[str]) -> str:
+    """The model-matrix column an energy step makes of a raw column (EnergyAdjuster's names)."""
+    if column not in adjusted:
+        return column
+    if form in RESIDUAL_METHODS:
+        return f"{column}_adj"
+    if form in ("density", "density_multivariate"):
+        return f"{column}_per_{E}"
+    if form in PARTITION_METHODS:
+        return f"kcal_from_{column}"
+    return column
+
+
+def _slopes(step: Any) -> Dict[str, float]:
+    pooled = getattr(step, "pooled_", step)
+    params = getattr(pooled, "params_", {}) or {}
+    return {n: float(p["slope"]) for n, p in params.items()
+            if isinstance(p, Mapping) and p.get("scale") == "log"}
+
+
+def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[str, str],
+                   matrix_columns: Sequence[str], *, nested: Optional[Mapping[str, str]] = None,
+                   step: Any = None, atwater: Optional[Mapping[str, float]] = None) -> ModelEstimand:
+    """The estimand of the model a design fits, and each coefficient's meaning, from its matrix.
+
+    ``adjustment`` is the recorded ``EnergyAdjustment`` (or None: unanswered); ``predictors`` and
+    ``roles`` the design's; ``matrix_columns`` the columns the model sees after the shared steps;
+    ``nested`` child -> parent among the predictors; ``step`` the fitted energy step (for the log
+    variant's fitted elasticity).
+
+    * Whether total energy is in the model is read off the matrix, so "no adjustment" with energy
+      still in it would read as the standard model (it no longer can: ME-02), and a residual whose
+      energy left reads as the energy-dropped form (ME-03).
+    * With two or more energy sources in the model, each coefficient is a substitution for the
+      sources not in it, which are listed (NUTRITION_PACK §05a: "Each coefficient is the effect of
+      substituting that component for the omitted one. Name the omitted component in your
+      results."), not for "the average of all other sources" (ME-04).
+    * A total beside its own parts estimates the remainder not in any part (ME-15).
+    """
+    roles = dict(roles or {})
+    matrix = [str(c) for c in matrix_columns]
+    in_matrix = set(matrix)
+    method = getattr(adjustment, "method", None)
+    energy_cols = [c for c in predictors if roles.get(c) == "energy"]
+    E = getattr(adjustment, "energy_column", None) or (energy_cols[0] if energy_cols else None)
+    if E and E not in energy_cols:
+        energy_cols = [E, *energy_cols]
+    terms = energy_terms(predictors, roles, energy_cols, atwater)
+    if method is None and not energy_cols and not terms:
+        return ModelEstimand(form="none", text=None)
+    energy_in = [c for c in energy_cols if c in in_matrix]
+    form = _form(method, bool(energy_in))
+    adjusted = (list(getattr(adjustment, "nutrients", None) or [])
+                if form not in ("none", "standard") else [])
+    log = bool(getattr(adjustment, "log_transform", False)) and form in RESIDUAL_METHODS
+
+    present = [(t, _matrix_name(t.column, form, adjusted, E)) for t in terms]
+    present = [(t, m) for t, m in present if m in in_matrix]
+    raw_present = {t.column for t, _ in present}
+    groups: Dict[str, List[str]] = {}
+    for child, parent in dict(nested or {}).items():
+        if child in raw_present and parent in raw_present:
+            groups.setdefault(parent, []).append(child)
+    children = {c for kids in groups.values() for c in kids}
+    # The main sources first (protein, carbohydrate, fat, alcohol), then any other energy-bearing
+    # source the model holds (fiber at 2 kcal/g): each is "in the model" and not left to "other".
+    held = list(dict.fromkeys(t.source for t, _ in present))
+    sources = [s for s in ENERGY_SOURCES if s in held] + [s for s in held if s not in ENERGY_SOURCES]
+    omitted = _omitted(sources)
+
+    # Two energy-bearing terms that are not one another's parts: each coefficient is then a swap
+    # for the sources left out of the model, not for the average of all the others (ME-04).
+    named = len([t for t, _ in present if t.column not in children]) >= 2
+    swap = _in_place_of(named, omitted)
+    who = (_and(sources) if len(sources) >= 2 else
+           _and([t.column for t, _ in present if t.column not in children]))
+    clause = (f"with {who} all in the model, each coefficient is a substitution in place "
+              f"of the energy sources not in the model: {', '.join(omitted)}." if named else "")
+    if log:
+        text = LOG_ESTIMAND[form]
+        slopes = _slopes(step)
+        if slopes:
+            text += " Fitted elasticities: " + ", ".join(
+                f"b = {_slope(b)} for {n}" for n, b in slopes.items()) + "."
+    elif form == "standard" and named:
+        text = ("More of each nutrient with total energy held fixed: " + clause +
+                " It is not a swap for the average of all other sources (NUTRITION_PACK §05a: "
+                "name the omitted component).")
+    elif form == "residual" and named:
+        text = ("The standard model's substitution, in each nutrient's own units: the residuals "
+                "and total energy span the same model as the nutrients and total energy, so each "
+                f"coefficient is the standard model's exactly ({_MCCULLOUGH}). "
+                + clause[0].upper() + clause[1:])
+    else:
+        text = METHOD_TABLE[form]["estimand"]
+        if form == "residual_energy_dropped" and named:
+            text += f" Where it does equal the standard model, {clause}"
+    if form in PARTITION_METHODS:
+        if "kcal_from_other" in in_matrix:
+            text += (f" kcal_from_other is one term for the energy sources not named: "
+                     f"{', '.join(omitted)}.")
+        elif form == "all_components":
+            text += (" The named sources make up total energy on every row, so there is no "
+                     "other term.")
+        if form == "all_components":
+            text += (" Each nutrient's average relative effect is reported beside its "
+                     "coefficient, per unit of the nutrient.")
+    for parent, kids in groups.items():
+        source = next((t.source for t, _ in present if t.column == parent), parent)
+        text += (f" {parent} sits beside its own parts {_and(kids)}, so its coefficient is "
+                 f"the remaining {source} (holding {', '.join(kids)} fixed): the {source} in "
+                 f"none of them, not total {source}.")
+
+    meanings: Dict[str, str] = {}
+    parent_of = {c: p for p, kids in groups.items() for c in kids}
+    for t, m in present:
+        if t.column in parent_of:
+            meanings[m] = (f"{t.column} in place of the rest of {parent_of[t.column]} "
+                           f"({parent_of[t.column]} fixed)")
+            continue
+        what = (f"remaining {t.source} (holding {', '.join(groups[t.column])} fixed)"
+                if t.column in groups else t.source)
+        if form in ("standard", "residual"):
+            meanings[m] = f"{what} {swap}, total energy fixed"
+        elif form == "residual_energy_dropped":
+            meanings[m] = f"energy-adjusted {what}; total energy not in the outcome model"
+        elif form == "none":
+            meanings[m] = f"absolute intake of {what}; total energy not in the model"
+        elif form == "density_multivariate":
+            meanings[m] = f"{what} per kcal, total energy fixed (an obscure quantity: Tomova 2022)"
+        elif form == "density":
+            meanings[m] = f"{what} per kcal; total energy not in the model (obscure)"
+        else:
+            meanings[m] = f"adding kcal from {what}, every other source fixed (total effect)"
+    rest = _and([*omitted[:-1], "other energy"])
+    for c in energy_in:
+        if form == "standard" and sources:
+            meanings[c] = (f"more energy from {rest} (the sources not in the model), the named "
+                           f"nutrients fixed")
+        elif form == "residual":
+            meanings[c] = ("more energy with each adjusted nutrient fixed: the nutrients rise with "
+                           "it as they do on average")
+        elif form == "density_multivariate":
+            meanings[c] = "more energy with each nutrient's share of it fixed"
+    if "kcal_from_other" in in_matrix:
+        meanings["kcal_from_other"] = f"adding kcal from {rest}, every named source fixed"
+    return ModelEstimand(form=form, text=text, terms=meanings, omitted=omitted, sources=sources,
+                         energy_in_model=bool(energy_in), nested=groups)
+
+
+def omitted_energy(frame: pd.DataFrame, energy_column: Optional[str], columns: Sequence[str], *,
+                   nested: Optional[Mapping[str, str]] = None,
+                   atwater: Optional[Mapping[str, float]] = None) -> Optional[Dict[str, Any]]:
+    """How much of total energy the model's energy-bearing columns leave out, on ``frame``'s rows.
+
+    Each row's remainder is ``(E − Σ kcal per unit × amount) / E`` over ``columns`` that carry
+    energy (a part beside its own total counted once, through the total). Returns the sources in
+    the model, the ones left out ("other" last), the mean remainder, and the rows whose remainder
+    exceeds :data:`OMITTED_ROW_SHARE`; None without a usable energy column.
+    """
+    if not energy_column or energy_column not in frame.columns:
+        return None
+    nested = dict(nested or {})
+    cols = [str(c) for c in columns if c in frame.columns and c != energy_column]
+    readings = {c: energy_factor(c, atwater) for c in cols}
+    carriers = [c for c in cols if readings[c].factor is not None and nested.get(c) not in cols]
+    e = pd.to_numeric(frame[energy_column], errors="coerce").to_numpy(dtype=float)
+    named = np.zeros(len(e))
+    for c in carriers:
+        named = named + float(readings[c].factor) * pd.to_numeric(
+            frame[c], errors="coerce").to_numpy(dtype=float)
+    ok = np.isfinite(e) & np.isfinite(named) & (e > 0)
+    share = (e[ok] - named[ok]) / e[ok]
+    sources = list(dict.fromkeys(r for r in (_role_or_none(c) for c in carriers)
+                                 if r in ENERGY_SOURCES))
+    return {
+        "energy_column": str(energy_column),
+        "columns": carriers,
+        "sources": sources,
+        "omitted": _omitted(sources),
+        "mean_share": float(share.mean()) if share.size else None,
+        "rows_over": int(np.sum(share > OMITTED_ROW_SHARE)),
+        "n_rows": int(share.size),
+    }
+
+
+def omitted_sentence(reading: Mapping[str, Any]) -> Optional[str]:
+    """The concern a substitution states when energy sources are missing from the model (ME-05)."""
+    share = reading.get("mean_share")
+    if share is None:
+        return None
+    omitted = list(reading["omitted"])
+    named = _and([*omitted[:-1], "other energy"])
+    held = _and(list(reading["columns"])) if reading["columns"] else "no energy source"
+    over = int(reading.get("rows_over") or 0)
+    rows = (f", and more than {OMITTED_ROW_SHARE:.0%} on {over:,} of {int(reading['n_rows']):,} rows"
+            if over else "")
+    return (f"The model holds {held}; {named} make up the rest of total energy, "
+            f"{share:.0%} of it on average{rows}. Total energy carries them as one composite, so "
+            f"the curve carries their confounding (Tomova, Gilthorpe & Tennant 2022: \"wherever ≥2 "
+            f"components are involved in the substitution, there is scope for composite variable "
+            f"bias unless the individual effects are estimated\"); add the remaining sources to "
+            f"the model to remove it.")
+
+
+def fiber_beside_carbohydrate(columns: Sequence[str]) -> Optional[str]:
+    """A warning when fiber and total carbohydrate are both energy-bearing predictors (B19).
+
+    Carbohydrate "by difference" (USDA's, and the NHANES total) already holds fiber, so fiber's
+    energy then counts twice in any kcal accounting (a partition's "other", the omitted share of
+    energy) and a swap through fiber also moves carbohydrate's. Food tables differ, so the data
+    cannot say which it is (``nesting`` does not read fiber as a part of carbohydrate).
+    """
+    def bearing(c: str, role: str) -> bool:
+        return _role_or_none(c) == role and energy_factor(c).factor is not None
+
+    fiber = [c for c in columns if bearing(c, "fiber")]
+    carbs = [c for c in columns if bearing(c, "carbohydrate")
+             and not re.search(r"sugar|starch|sucrose|fructose|lactose", str(c), re.I)]
+    if not fiber or not carbs:
+        return None
+    return (f"{_and(fiber)} sits beside {_and(carbs)}: if carbohydrate is by difference (total "
+            f"carbohydrate, as in USDA and NHANES tables), it already holds fiber, so fiber's "
+            f"energy counts twice in kcal accounting and a swap through fiber also moves "
+            f"carbohydrate.")
+
+
+def rank_methods(purpose: Optional[str],
+                 applicability: Optional[Mapping[str, Mapping[str, Any]]] = None) -> Dict[str, Any]:
+    """The energy methods in order of soundness for ``purpose`` (applicable ones first), with the
+    one line that names the tension between custom and soundness. No declared purpose: the
+    method table's own order and no line."""
+    order = list(RANKING.get(str(purpose), METHODS))
+    if applicability:
+        ok = [m for m in order if m == "none" or applicability.get(m, {}).get("ok")]
+        order = ok + [m for m in order if m not in ok]
+    return {"order": order, "first": order[0] if order else None, "line": TENSION.get(str(purpose))}
+
+
+def _unit_word(column: str) -> str:
+    return {"grams": "g", "kcal": "kcal", "kj": "kJ"}.get(unit_of(column), "unit")
+
+
+def relative_effect_rows(matrix: pd.DataFrame, nutrients: Sequence[str],
+                         factors: Mapping[str, float], *,
+                         table: Optional[Callable[[pd.DataFrame], Sequence[Mapping[str, Any]]]] = None,
+                         coefficients: Optional[Sequence[Mapping[str, Any]]] = None
+                         ) -> List[Dict[str, Any]]:
+    """Each nutrient's average relative causal effect from the all-components model (ME-14).
+
+    For nutrient j with kcal term x_j and every other energy term x_k (``kcal_from_other``
+    included), ``θ_j = β_j − Σ_k w_k β_k`` with ``w_k = mean(x_k) / Σ_k' mean(x_k')`` over the rows
+    the model was fit on: Tomova et al. (2022) subtract "a weighted average of the estimated effects
+    of all other individual component sources of energy", w_i being "the proportion of the
+    remaining energy intake contributed by each component".
+
+    ``θ_j`` is exactly the coefficient of x_j once each x_k is replaced by ``x_k + w_k x_j``: an
+    invertible change of the model's columns, with the same fit, residuals and leverages. So
+    ``table(matrix)`` (the family's own coefficient table, whatever its covariance: HC3, CR2,
+    Firth) gives ``θ_j`` its interval as it gives any coefficient one. Without ``table`` (no
+    intervals: prediction) the estimate is read off ``coefficients``. Reported per unit of the
+    nutrient: × its kcal per unit (``factors``).
+    """
+    kcal = [f"kcal_from_{n}" for n in nutrients if f"kcal_from_{n}" in matrix.columns]
+    if "kcal_from_other" in matrix.columns:
+        kcal.append("kcal_from_other")
+    if len(kcal) < 2:
+        return []
+    means = matrix[kcal].astype(float).mean()
+    by_feature = {str(r["feature"]): r for r in (coefficients or [])}
+    rows: List[Dict[str, Any]] = []
+    for n in nutrients:
+        j = f"kcal_from_{n}"
+        if j not in kcal:
+            continue
+        others = [k for k in kcal if k != j]
+        total = float(means[others].sum())
+        if not np.isfinite(total) or total <= 0:
+            continue
+        w = {k: float(means[k]) / total for k in others}
+        f = float(factors.get(n, 1.0))
+        shares = ", ".join(f"{k.replace('kcal_from_', '')} {w[k]:.0%}" for k in others)
+        meaning = (f"{n} in place of the other energy sources, weighted by their share of the "
+                   f"remaining energy ({shares}): the average relative effect, per "
+                   f"{_unit_word(n)}")
+
+        def scaled(v: Any, _f: float = f) -> Optional[float]:
+            return None if v is None else float(v) * _f
+
+        if table is not None:
+            moved = matrix.copy()
+            for k in others:
+                moved[k] = matrix[k].astype(float) + w[k] * matrix[j].astype(float)
+            found = next((r for r in table(moved) if str(r["feature"]) == j), None)
+            if found is None:
+                continue
+            rows.append({"feature": f"{n}_relative", "estimate": scaled(found.get("estimate")),
+                         "ci_low": scaled(found.get("ci_low")),
+                         "ci_high": scaled(found.get("ci_high")), "p": found.get("p"),
+                         "se": scaled(found.get("se")), "df": found.get("df"),
+                         "meaning": meaning})
+            continue
+        if j not in by_feature or any(k not in by_feature for k in others):
+            continue
+        b = {k: by_feature[k].get("estimate") for k in [j, *others]}
+        if any(v is None for v in b.values()):
+            continue
+        theta = float(b[j]) - sum(w[k] * float(b[k]) for k in others)
+        rows.append({"feature": f"{n}_relative", "estimate": theta * f, "ci_low": None,
+                     "ci_high": None, "p": None, "meaning": meaning})
+    return rows
+
+
+def coefficient_gap(task: str, y: Any, dropped: pd.DataFrame, kept: pd.DataFrame,
+                    pairs: Sequence[Tuple[str, str]]) -> List[Dict[str, Any]]:
+    """Each adjusted nutrient's coefficient with total energy left out of the outcome model and
+    with it kept (the standard model), fit on the same rows (ME-03: "show the gap").
+
+    ``dropped`` and ``kept`` are the two model matrices; ``pairs`` (column in ``dropped``, column
+    in ``kept``) name the nutrient in each. Least squares for a regression, logistic regression
+    for a binary outcome (coded 0/1); [] for anything else or a fit that fails.
+    """
+    import statsmodels.api as sm
+
+    if task not in ("regression", "binary"):
+        return []
+    yv = pd.Series(np.asarray(y, dtype=float), index=dropped.index)
+    ok = yv.notna() & dropped.notna().all(axis=1) & kept.notna().all(axis=1)
+    if int(ok.sum()) <= max(dropped.shape[1], kept.shape[1]) + 1:
+        return []
+
+    def fit(matrix: pd.DataFrame) -> Any:
+        X = sm.add_constant(matrix.loc[ok].astype(float), has_constant="add")
+        if task == "regression":
+            return sm.OLS(yv[ok], X).fit()
+        return sm.Logit(yv[ok], X).fit(disp=0, maxiter=200)
+
+    try:
+        a, b = fit(dropped), fit(kept)
+    except Exception:  # noqa: BLE001 - a gap that cannot be computed is not shown
+        return []
+    return [{"nutrient": d, "dropped": float(a.params[d]), "standard": float(b.params[k]),
+             "n_rows": int(ok.sum())}
+            for d, k in pairs if d in a.params.index and k in b.params.index]

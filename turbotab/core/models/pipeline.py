@@ -1,8 +1,8 @@
 """The model pipeline every family shares, and what the design stage says about it.
 
-Step order (M1_CONTRACT §3): impute (when the answer is "impute") → energy adjustment (when the
-method is not none) → one-hot for categorical columns → scale (families that need it) → the
-model. Every step is fit inside the pipeline, so cross-validation refits it on each training fold
+Step order (M1_CONTRACT §3): impute (when the answer is "impute") → energy adjustment (when one
+is answered; under "none" the step takes total energy out of the model, audit ME-02) → one-hot for
+categorical columns → scale (families that need it) → the model. Every step is fit inside the pipeline, so cross-validation refits it on each training fold
 and nothing learned from the data ever sees a held-out row. Column names survive every step
 (``set_output(transform="pandas")``), and so does the row-id index, which the lineage and the
 leakage tests rely on.
@@ -36,7 +36,7 @@ import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from turbotab.core.decisions import EnergyAdjustment, ProjectState, Purpose, Task, missing_strategy
-from turbotab.core.methods.energy import METHOD_TABLE
+from turbotab.core.methods.energy import METHOD_TABLE, RESIDUAL_METHODS
 from turbotab.core.models.base import ModelFamily
 from turbotab.core.models.steps import energy_step
 
@@ -243,7 +243,7 @@ STATE = "state"  # design_spec(energy=STATE): use the state's own energy-adjustm
 def input_columns(predictors: Sequence[str], adjustment: EnergyAdjustment | None) -> list[str]:
     """Predictors plus a strata column the residual method needs but the model does not see."""
     columns = list(predictors)
-    if (adjustment is not None and adjustment.method == "residual" and adjustment.strata
+    if (adjustment is not None and adjustment.method in RESIDUAL_METHODS and adjustment.strata
             and adjustment.strata not in columns):
         columns.append(adjustment.strata)
     return columns
@@ -310,7 +310,7 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
         if parts:
             steps.append(("impute", ColumnTransformer(parts, remainder="passthrough",
                                                       verbose_feature_names_out=False)))
-    step = energy_step(spec.energy_adjustment(), spec.predictors)
+    step = energy_step(spec.energy_adjustment(), spec.predictors, spec.roles)
     if step is not None:
         steps.append(("energy", step))
     if levels:
@@ -364,22 +364,35 @@ def transformer(steps: list[tuple[str, Any]]) -> Any:
 # ── describing ──────────────────────────────────────────────────────────────
 
 
-def energy_detail(adj: EnergyAdjustment | None) -> str | None:
-    if adj is None or adj.method == "none":
+def energy_detail(adj: EnergyAdjustment | None, energy: Sequence[str] = ()) -> str | None:
+    """One line on what the energy step does; ``energy`` names the total-energy columns "none"
+    takes out of the model."""
+    if adj is None:
         return None
+    if adj.method == "none":
+        gone = list(energy) or ([adj.energy_column] if adj.energy_column else [])
+        if not gone:
+            return None
+        verb = "leaves" if len(gone) == 1 else "leave"
+        return f"{', '.join(gone)} {verb} the model; nutrients enter as absolute intakes."
     nutrients = len(adj.nutrients)
     what = f"{nutrients} nutrient{'s' if nutrients != 1 else ''}"
     E = adj.energy_column
-    if adj.method == "residual":
+    if adj.method in RESIDUAL_METHODS:
         log = " on the log scale" if adj.log_transform else ""
         within = f" within each level of {adj.strata}" if adj.strata else ""
-        return f"Replaces {what} with their residual on {E}{within}{log}, fit on training rows."
+        where = (f"{E} stays in the model beside them" if adj.method == "residual"
+                 else f"{E} leaves the outcome model")
+        return f"Replaces {what} with their residual on {E}{within}{log}, fit on training rows; {where}."
     if adj.method == "standard":
         return f"Keeps {what} as they are, with {E} in the model beside them."
     if adj.method == "density_multivariate":
         return f"Divides {what} by {E}; {E} stays in the model as its own term."
     if adj.method == "density":
         return f"Divides {what} by {E}; {E} leaves the model."
+    if adj.method == "all_components":
+        return (f"Splits {E} into kcal from {what}, each its own term, and kcal from everything "
+                f"else; {E} leaves the model.")
     return f"Splits {E} into kcal from {what} and kcal from everything else; {E} leaves the model."
 
 
@@ -401,8 +414,9 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
                                   f"own level, {MISSING_LEVEL}; the first level is the reference."})
         elif name == "energy":
             adj = spec.energy_adjustment()
+            energy = [c for c in spec.predictors if spec.roles.get(c) == "energy"]
             out.append({"key": "energy", "label": METHOD_TABLE[adj.method]["label"],
-                        "detail": energy_detail(adj) or ""})
+                        "detail": energy_detail(adj, energy) or ""})
         elif name == "onehot":
             cats = [c for c in spec.categorical if c in spec.predictors]
             verb = "becomes" if len(cats) == 1 else "become"
@@ -440,9 +454,14 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
             if levels > MANY_LEVELS:
                 out.append(f"{c} has {levels} levels, so one-hot encoding adds {levels - 1} columns.")
     adj = spec.energy_adjustment()
-    if adj is not None and adj.strata and adj.method != "residual":
+    if adj is not None and adj.strata and adj.method not in RESIDUAL_METHODS:
         out.append(f"Strata apply to the residual method only; {adj.strata} does not change the "
                    f"{METHOD_TABLE[adj.method]['label'].lower()}.")
+    from turbotab.core.methods.energy import fiber_beside_carbohydrate
+
+    fiber = fiber_beside_carbohydrate([c for c in spec.predictors if spec.roles.get(c) == "exposure"])
+    if fiber:
+        out.append(fiber)
     by_role: dict[str, list[str]] = {}
     for c in spec.predictors:
         if spec.roles.get(c) != "exposure":
@@ -465,9 +484,12 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
     for parent, parts in parts_of(nested).items():
         if parent in spec.predictors:
             verb = "is a part" if len(parts) == 1 else "are parts"
-            out.append(f"{', '.join(parts)} {verb} of {parent}: a substitution through {parent} "
-                       f"moves {'it' if len(parts) == 1 else 'them'} in proportion, and never pairs "
-                       f"{parent} with its own part.")
+            them = "it" if len(parts) == 1 else "them"
+            # Audit ME-15: beside its parts, a total's coefficient is the remainder in none of them.
+            out.append(f"{', '.join(parts)} {verb} of {parent}: {parent}'s coefficient is the "
+                       f"remainder (holding {', '.join(parts)} fixed), not total {parent}; leave "
+                       f"{them} out to estimate the total. A substitution through {parent} moves "
+                       f"{them} in proportion, and never pairs {parent} with its own part.")
     for role, cols in by_role.items():
         loose = [c for c in cols if c not in nested and c not in parts_of(nested)]
         if len(cols) > 1 and len(loose) > 1:
