@@ -19,6 +19,7 @@ const NEEDS: Record<QuestionKey, string[]> = {
   aggregation: ["structure"],
   temporal: ["structure"],
   roles: ["roles"],
+  survey: ["proposals"],
   exclusions: ["proposals"],
   missing: [],
   split: [],
@@ -35,6 +36,7 @@ const SLOT_OF: Record<string, QuestionKey> = {
   set_task: "task",
   set_purpose: "purpose",
   set_roles: "roles",
+  set_survey: "survey",
   set_exclusions: "exclusions",
   set_missing: "missing",
   set_split: "split",
@@ -96,6 +98,15 @@ function sequenceGate(
       return repeated && state.unit === "unit"
         ? "Each unit's rows are combined, so no time points stay as rows."
         : null;
+    case "survey":
+      // turbotab/core/survey.py: asked under inference when a column reads as a survey weight;
+      // the mock's tables carry none.
+      if (state.purpose === "prediction")
+        return "Under prediction the scores describe the rows they were computed on; they are not weighted to a population.";
+      if (state.purpose === null || state.roles === null) return null;
+      return Object.keys(state.roles).some((c) => /^WT(DRD1|DR2D|MEC2YR|INT2YR)$/i.test(c))
+        ? null
+        : "No column reads as a survey weight, so there is no surveyed population to weight to.";
     default:
       return null;
   }

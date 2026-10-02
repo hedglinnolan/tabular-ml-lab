@@ -45,6 +45,7 @@ ANSWER = {
     "aggregation": d.SetAggregation(method="mean"),
     "temporal": d.SetTemporal(temporal=False),
     "roles": d.SetRoles(roles=DIET_ROLES),
+    "survey": d.SetSurvey(estimand="sample"),
     "exclusions": d.SetExclusions(rules=[]),
     "missing": d.SetMissing(strategy="complete_case"),
     "split": d.SetSplit(holdout=0.2),

@@ -668,7 +668,7 @@ def design_findings(fc: FindingContext) -> list[dict[str, Any]]:
         "population.",
         "This NHANES table has no survey weight (such as `WTDRD1` or `WTMEC2YR`), no strata "
         "(`SDMVSTRA`) and no primary sampling units (`SDMVPSU`). If the export dropped them, export "
-        "them again; this version does not yet weight its estimates.",
+        "them again: with them, an inference can describe the surveyed population.",
         "NHANES deliberately oversamples some age, race and income groups, so unweighted means are "
         "biased toward them, and standard errors that ignore the design are too small.",
         [], "roles", "Mark design columns", evidence)]
@@ -692,8 +692,11 @@ def cycle_findings(fc: FindingContext) -> list[dict[str, Any]]:
             f"Each cycle holds {count(int(counts.min()))} to {count(int(counts.max()))} rows. As a "
             f"covariate, the cycle absorbs level differences between cycles; as a time column, it "
             f"stays out of the models.",
-            "Combining NHANES cycles means dividing the two-year weights by the number of cycles "
-            "combined and confirming the same dietary methodology applies across them.",
+            "Combining NHANES cycles from 2001–2002 on means dividing the two-year weights by the "
+            "number of cycles combined. 1999–2000 is the exception: its two-year weights and "
+            "2001–2002's rest on different censuses, so the 1999–2002 rows take the four-year "
+            "weight, doubled before the division (NHANES Analytic Guidelines 2011–2016 "
+            "§3.1.3–3.1.4). Confirm the same dietary methodology applies across cycles.",
             [c], "roles", "Choose the cycle's role", {"status": "SETTLED", "source": NUT01}))
     return out
 

@@ -24,6 +24,9 @@ Rules:
   points stay as rows. A grain of ``unknown`` ("I don't know") repeats nothing, so the four
   follow-ups do not apply. A question that does not fire is ``not_applicable`` with the reason;
   ``orientation`` stays answered once answered, since its slot turns the table whatever the lens.
+* ``survey`` (audit §5 WP10) is asked after the roles, under inference, when a column reads as a
+  survey weight: the surveyed population (design-based) or these participants (unweighted, and
+  recorded as such). It is ``not_applicable`` under prediction and without a weight column.
 * ``open_seal`` is the last step (M2_CONTRACT §12.1): asked once the fit is fresh (it waits on the
   fit until then), ``not_applicable`` when nothing is held out, and answered once opened. Its slot
   is ``seal_opened``.
@@ -44,13 +47,13 @@ from pydantic import BaseModel, ConfigDict
 
 QuestionKey = Literal[
     "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
-    "aggregation", "temporal", "roles", "exclusions", "missing", "split", "energy_adjustment",
-    "models", "substitution", "open_seal",
+    "aggregation", "temporal", "roles", "survey", "exclusions", "missing", "split",
+    "energy_adjustment", "models", "substitution", "open_seal",
 ]
 QUESTION_KEYS: tuple[str, ...] = (
     "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
-    "aggregation", "temporal", "roles", "exclusions", "missing", "split", "energy_adjustment",
-    "models", "substitution", "open_seal",
+    "aggregation", "temporal", "roles", "survey", "exclusions", "missing", "split",
+    "energy_adjustment", "models", "substitution", "open_seal",
 )
 # The ProjectState slot a question's answer writes, where it is not the question's own name.
 SLOT_OF: dict[str, str] = {"open_seal": "seal_opened"}
@@ -71,6 +74,8 @@ NEEDS: dict[str, tuple[str, ...]] = {
     "temporal": ("structure",),
     "purpose": (),
     "roles": ("roles",),
+    # Its options (one per recognized weight, the pooled cycle) are read with the proposals.
+    "survey": ("proposals",),
     "exclusions": ("proposals",),
     "missing": (),
     # The checks come before the seal (audit RO-02): a repair to the outcome after the draw would
@@ -306,6 +311,14 @@ def _temporal_gate(state: Any, structure: Any) -> Gate:
     return None
 
 
+def _survey_gate(state: Any) -> Gate:
+    """Asked under inference when a column reads as a survey weight (audit ME-06, WP10)."""
+    from turbotab.core.survey import not_applicable_reason
+
+    reason = not_applicable_reason(state)
+    return ("not_applicable", reason) if reason else None
+
+
 def _open_seal_gate(state: Any) -> Gate:
     split = state.split
     if split is not None and float(_get(split, "holdout") or 0) == 0:
@@ -348,6 +361,7 @@ def route(
         "unit": lambda: _unit_gate(state, structure),
         "aggregation": lambda: _aggregation_gate(state, structure),
         "temporal": lambda: _temporal_gate(state, structure),
+        "survey": lambda: _survey_gate(state),
         "open_seal": lambda: _open_seal_gate(state),
     }
 

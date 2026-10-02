@@ -118,7 +118,14 @@ multiplicity keyed on `SEQN`. If present and unhandled, **the naive N is inflate
 > calculation and gives wrong standard errors."* **[SETTLED]**
 
 > *"Combining NHANES cycles: divide the 2-year weights by the number of cycles combined, and confirm
-> the same dietary methodology applies across them."* **[SETTLED]**
+> the same dietary methodology applies across them."* **[SETTLED]** — for cycles from 2001–2002 on.
+> 1999–2000 is the exception: its 2-year weights rest on the 1990 census and 2001–2002's on the 2000
+> census, so they are not comparable. Pooling 1999–2000 with other cycles, the 1999–2002 rows take
+> the 4-year weight (`WTINT4YR`, `WTMEC4YR`, `WTDR4YR`), doubled, and every weight is then divided by
+> the number of 2-year cycles; 1999–2002 alone uses the 4-year weight as provided. NHANES Analytic
+> Guidelines 2011–2016 §3.1.3–3.1.4: *"When combining data from the 1999-2000 NHANES cycle with
+> other cycles, it is recommended that the 4-year sample weights be used for 1999-2002 and the
+> 2-year sample weights be used for other cycles."* (audit D20/G20, fixed in WP10)
 
 > *"Your DXA table has exactly 5 rows per participant. These are multiple imputations, not repeat
 > scans. Analyze all 5 with Rubin's rules and report N from one implicate — otherwise your N is 5×

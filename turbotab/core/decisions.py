@@ -449,6 +449,37 @@ class SetTemporal(_DecisionModel):
     time_column: str | None = None
 
 
+# WP10 (audit §5, ME-06): under inference with survey design columns, whose estimate it is.
+SurveyEstimand = Literal["population", "sample"]
+
+
+class SurveySpec(_Value):
+    """The survey answer: the surveyed population (design-based, ``weight`` and the design named),
+    or these participants (unweighted, recorded as such; ``turbotab/core/methods/survey.py``)."""
+
+    estimand: SurveyEstimand
+    weight: str | None = None
+    strata: str | None = None
+    psu: str | None = None
+    cycle: str | None = None  # the cycle column, when the table pools survey cycles
+    four_year_weight: str | None = None  # 1999–2002's four-year weight, when 1999–2000 is pooled
+    # A weight with no strata or no PSU named: the user attests the intervals' sampling units.
+    acknowledged: bool = False
+
+
+class SetSurvey(_DecisionModel):
+    """Whose estimate it is under a survey design (``SurveySpec``)."""
+
+    kind: Literal["set_survey"] = "set_survey"
+    estimand: SurveyEstimand
+    weight: str | None = None
+    strata: str | None = None
+    psu: str | None = None
+    cycle: str | None = None
+    four_year_weight: str | None = None
+    acknowledged: bool = False
+
+
 class OpenSeal(_DecisionModel):
     """Open the held-out rows: once, at the end. Held-out scores are withheld until then.
 
@@ -493,7 +524,7 @@ Decision = Annotated[
         SelectModels, SetSubstitution,
         SetOrientation, SetEvent, SetGrain, SetRepeatKind, SetUnit, SetAggregation, SetTemporal,
         OpenSeal, ApplyRepair, DeferFinding, DismissFinding,
-        SetFeatureTable, SetCategorical,
+        SetFeatureTable, SetCategorical, SetSurvey,
     ],
     Field(discriminator="kind"),
 ]
@@ -557,6 +588,8 @@ class ProjectState(BaseModel):
     # WP1 (audit §5): what values mean
     feature_table: FeatureTableSpec | None = None  # a features-in-rows table's label and annotations
     categorical: list[str] | None = None  # integer columns that are codes for categories
+    # WP10 (audit §5): the surveyed population or these participants, under a survey design
+    survey: SurveySpec | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -811,6 +844,7 @@ register_kind(DismissFinding, "findings", key=lambda d: d.finding_id,
 register_kind(SetFeatureTable, "feature_table",
               value=lambda d: FeatureTableSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetCategorical, "categorical")
+register_kind(SetSurvey, "survey", value=lambda d: SurveySpec(**d.model_dump(exclude={"kind"})))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
@@ -1733,3 +1767,5 @@ class DecisionLog:
 # The opening sequence's validators (orientation, event, grain, repeats, unit, aggregation,
 # temporal) live beside the Router's rules; importing them registers them.
 from turbotab.core import sequence as _sequence  # noqa: E402,F401
+# The survey question's refusals (``set_survey``; audit §5 WP10) live with its name reading.
+from turbotab.core import survey as _survey  # noqa: E402,F401

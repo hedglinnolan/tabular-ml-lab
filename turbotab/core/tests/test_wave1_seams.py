@@ -205,3 +205,117 @@ class _Fixed:
 
     def summary(self, task: str) -> dict[str, Any]:
         return {"auc": {"estimate": self.estimate}}
+
+
+# ── WP10 × WP6 × WP8: a surveyed population ──────────────────────────────────────────────────
+
+
+def _surveyed(n: int, seed: int) -> pd.DataFrame:
+    """The all-components fixture drawn as a two-PSU-per-stratum survey with informative weights."""
+    rng = np.random.default_rng(seed)
+    frame = _all_components(n, seed)
+    frame["SDMVSTRA"] = rng.integers(1, 13, n)
+    frame["SDMVPSU"] = rng.integers(1, 3, n)
+    frame["WTMEC2YR"] = np.round(np.where(frame["age"] > 50, 4000.0, 12000.0)
+                                 * rng.uniform(0.7, 1.3, n), 1)
+    return frame
+
+
+def test_the_relative_effect_under_a_surveyed_population_is_design_based(tmp_path):
+    """WP10 makes the linear family's table design-based under the "surveyed population" answer;
+    WP8 estimates it from every analyzed row, held-out ones included; WP6's average relative effect
+    is a contrast of that table. All three hold at once: the contrast is the survey-weighted one,
+    its interval Taylor-linearized over the design on the design's degrees of freedom.
+
+    Reference: survey-weighted least squares and its linearized variance written out from the
+    definition over every row (``survey_references.wls_by_definition``, R survey's svyrecvar
+    semantics); θ = c'β with c = 4·(e_p − w_c e_c − w_f e_f), w the sources' unweighted mean shares
+    of the remaining energy (as Tomova et al. define them, over the rows the model was fit on);
+    SE √(c'Vc); df = PSUs − strata (``design_df_by_definition``).
+    """
+    from turbotab.core.decisions import SurveySpec
+    from turbotab.core.tests.acceptance import survey_references as sref
+
+    frame = _surveyed(1500, seed=21)
+    roles = {**ROLES, "WTMEC2YR": "design", "SDMVSTRA": "design", "SDMVPSU": "design"}
+    paths = mf.ingest_frame(frame, tmp_path)
+    survey = SurveySpec(estimand="population", weight="WTMEC2YR", strata="SDMVSTRA", psu="SDMVPSU")
+    st = mf.state(roles=roles, target="y", task="regression", models=["linear"],
+                  energy_adjustment=ALL, purpose="inference", survey=survey,
+                  split=SplitSpec(holdout=0.2, seed=3, folds=5))
+    split = mf.split_bundle(np.arange(len(frame)), holdout=0.2, seed=3)
+    ti = mf.target_info("regression", "y")
+    design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
+    fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
+    model = fit.data["models"][0]
+    assert model["inference"]["covariance"] == "design"
+    assert model["inference"]["survey"]["n_domain"] == len(frame) == model["coefficients_n"]
+
+    X = np.column_stack([np.ones(len(frame)), frame["protein_g"] * 4, frame["carb_g"] * 4,
+                         frame["fat_g"] * 9, frame["age"]])
+    beta, V = sref.wls_by_definition(X, frame["y"].to_numpy(float), frame["WTMEC2YR"].to_numpy(float),
+                                     frame["SDMVSTRA"], frame["SDMVPSU"], np.ones(len(frame), bool))
+    kc, kf = X[:, 2].mean(), X[:, 3].mean()
+    w_c = kc / (kc + kf)
+    c = np.array([0.0, 4.0, -4.0 * w_c, -4.0 * (1 - w_c), 0.0])
+    theta, se = float(c @ beta), float(np.sqrt(c @ V @ c))
+    df = sref.design_df_by_definition(frame["SDMVSTRA"], frame["SDMVPSU"], [True] * len(frame))
+    q = stats.t.ppf(0.975, df)
+
+    rows = {r["feature"]: r for r in model["coefficients"]}
+    assert rows["kcal_from_protein_g"]["estimate"] == pytest.approx(beta[1], rel=1e-9)
+    row = rows["protein_g_relative"]
+    assert row["estimate"] == pytest.approx(theta, rel=1e-9)
+    assert row["se"] == pytest.approx(se, rel=1e-9)
+    assert row["df"] == df
+    assert row["ci_low"] == pytest.approx(theta - q * se, rel=1e-8)
+    assert row["ci_high"] == pytest.approx(theta + q * se, rel=1e-8)
+
+
+def test_a_binary_design_based_table_is_on_the_odds_ratio_scale_and_names_its_domain(tmp_path):
+    """WP8 puts every binary inference table on the odds-ratio scale with the event named; WP10's
+    design-based table is one, so it carries exp(β) and the scale, and says how many rows it was
+    estimated from when rows with no positive weight fall outside the domain.
+
+    Reference: samplics ``SurveyGLM(LOGISTIC)`` on the domain rows (the rows outside it carry a
+    zero weight, R survey's ``subset()`` semantics), exponentiated.
+    """
+    import warnings
+
+    from turbotab.core.models import get_family
+    from turbotab.core.models.inference import INDEPENDENT, Outcome
+    from turbotab.core.models.survey import build_design
+
+    frame = _surveyed(1200, seed=22)
+    frame.index = pd.Index(np.arange(len(frame)), name="row_id")
+    frame.loc[frame.index[:40], "WTMEC2YR"] = 0.0  # forty rows represent no one
+    event = (frame["y"] > frame["y"].median()).astype(int).to_numpy()
+    X = frame[["protein_g", "age"]]
+    design = build_design(frame, frame["WTMEC2YR"].to_numpy(float), weight_column="WTMEC2YR",
+                          strata_column="SDMVSTRA", psu_column="SDMVPSU")
+    table = get_family("linear").inference_matrix(
+        X, event, task="binary", classes=[0, 1], clusters=INDEPENDENT,
+        outcome=Outcome(name="y_high", labels={1: "high", 0: "low"}), rows="all", survey=design)
+    assert table.info["covariance"] == "design" and table.info["scale"] == "odds_ratio"
+    assert table.info["event"] == "high" and table.info["reference"] == "low"
+    assert table.info["n_rows"] == len(frame) - 40
+    assert f"Estimated from the {len(frame) - 40:,} of the {len(frame):,} analyzed rows" in \
+        table.info["caption"]
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        from samplics.regression import SurveyGLM
+        from samplics.utils.types import ModelType
+
+        glm = SurveyGLM(model=ModelType.LOGISTIC)
+        glm.estimate(y=event.astype(float), x=X.to_numpy(float),
+                     samp_weight=frame["WTMEC2YR"].to_numpy(float),
+                     stratum=frame["SDMVSTRA"].to_numpy(), psu=frame["SDMVPSU"].to_numpy(),
+                     add_intercept=True)
+    beta = np.asarray(glm.beta["point_est"])
+    rows = {r["feature"]: r for r in table.rows}
+    assert rows["(intercept)"]["ratio"] is None
+    for j, name in enumerate(["protein_g", "age"], start=1):
+        assert rows[name]["estimate"] == pytest.approx(beta[j], rel=1e-7)
+        assert rows[name]["ratio"] == pytest.approx(np.exp(beta[j]), rel=1e-7)
+        assert rows[name]["ratio_low"] == pytest.approx(np.exp(rows[name]["ci_low"]), rel=1e-12)

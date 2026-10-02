@@ -622,3 +622,43 @@ export function SubstitutionAsk({ pairs, ...p }: AskProps & { pairs: number | nu
     </Question>
   );
 }
+
+// ── the survey answer (audit §5 WP10) ────────────────────────────────────────
+
+/** Whose estimate it is under a survey design: the server offers one "surveyed population"
+ *  option per weight it recognized, and "these participants"; each carries its decision. */
+export function SurveyAsk({
+  proposal,
+  current,
+  ...p
+}: AskProps & {
+  proposal: ProposalsArtifact["survey"] | undefined;
+  current: ProjectState["survey"];
+}) {
+  const items: OptionItem[] = (proposal?.options ?? []).map((o) => ({
+    key: o.key,
+    label: o.label,
+    line: o.consequence,
+    decision: o.decision as unknown as Decision,
+  }));
+  const recorded = current
+    ? current.estimand === "sample"
+      ? "sample"
+      : `population:${current.weight ?? ""}`
+    : null;
+  return (
+    <Question {...p.shell} entry={p.entry}>
+      <Options
+        items={items}
+        mode="single"
+        onRecord={(o) => o.decision && p.record(o.decision, o.key)}
+        recordedKey={recorded}
+        pending={p.pending}
+        answerAt={p.answerAt}
+        label="Survey design — preview with the arrow keys, Enter to record"
+        testId="options-survey"
+      />
+      <KeepRow keep={p.keep} />
+    </Question>
+  );
+}

@@ -132,7 +132,7 @@ class Linear(FamilyBase):
             if purpose == "inference":
                 detail += (" The coefficient table uses every analyzed row; intervals use HC3 "
                            "robust standard errors, or CR2 cluster-robust ones when a unit's rows "
-                           "repeat.")
+                           "repeat, or Taylor linearization over a survey design.")
         else:
             label = "Logistic regression"
             detail = "Fits the log-odds effect of every column, without a penalty."
@@ -154,17 +154,43 @@ class Linear(FamilyBase):
         return self.inference(pipeline, X, y, task=task, clusters=as_clusters(groups)).rows
 
     def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
-                  outcome: Any = None, rows: Any = None) -> Any:
+                  outcome: Any = None, rows: Any = None, survey: Any = None) -> Any:
         """The inference table (:class:`~turbotab.core.models.inference.InferenceTable`): rows,
         how their intervals were made, and the concerns to state, on the matrix the model saw.
 
         ``outcome`` (:class:`~turbotab.core.models.inference.Outcome`) names the outcome and its
-        levels for the odds or relative-risk ratios; ``rows`` says which rows ``X`` holds."""
-        from turbotab.core.models.inference import inference_table
-
+        levels for the odds or relative-risk ratios; ``rows`` says which rows ``X`` holds. With
+        ``survey`` (a :class:`~turbotab.core.models.survey.SurveyDesign`, the "surveyed population"
+        answer) the table is design-based: weighted, with Taylor-linearized intervals over the
+        design's strata and PSUs, ``X``'s rows its domain (audit §5 WP10)."""
         classes = list(getattr(pipeline[-1], "classes_", [])) or None
-        return inference_table(task, model_matrix(pipeline, X), y, classes, clusters,
-                               outcome=outcome, rows=rows)
+        return self.inference_matrix(model_matrix(pipeline, X), y, task=task, classes=classes,
+                                     clusters=clusters, outcome=outcome, rows=rows, survey=survey)
+
+    def inference_matrix(self, matrix: pd.DataFrame, y: Any, *, task: Task, classes: Any,
+                         clusters: Any, outcome: Any = None, rows: Any = None,
+                         survey: Any = None) -> Any:
+        """The inference table on a given model matrix (the all-components contrasts refit on
+        one): design-based under ``survey`` (WP10), model-based or robust otherwise
+        (``models/inference.py``), and either way on the outcome's scale (WP8)."""
+        from turbotab.core.models.inference import _on_rows, _on_scale, inference_table
+
+        if survey is None:
+            return inference_table(task, matrix, y, classes, clusters, outcome=outcome, rows=rows)
+        from turbotab.core.models.survey import survey_table
+
+        table = survey_table(task, matrix, y, classes, survey)
+        if table.rows:  # a blocked or refused design leaves no rows to put on a scale
+            table = _on_scale(table, task, classes, outcome)
+        n_domain = (table.info.get("survey") or {}).get("n_domain")
+        if n_domain is not None and int(n_domain) < len(matrix):
+            # Rows with no positive weight or no place in the design are outside the domain.
+            table.info.update(n_rows=int(n_domain), rows=rows)
+            table.info["caption"] += (f" Estimated from the {int(n_domain):,} of the "
+                                      f"{len(matrix):,} analyzed rows with a positive weight and a "
+                                      f"place in the design.")
+            return table
+        return _on_rows(table, len(matrix), rows)
 
     def assess(self, s: Situation) -> Assessment:
         from turbotab.core.models.sample_size import (

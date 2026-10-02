@@ -248,6 +248,8 @@ def representative_decisions():
         # WP1 (audit §5): what values mean
         d.SetFeatureTable(label="metabolite", annotations=["mz", "rt"]),
         d.SetCategorical(columns=["RIDRETH3", "DMDEDUC2"]),
+        # WP10 (audit §5): the survey answer
+        d.SetSurvey(estimand="population", weight="WTDRD1", strata="SDMVSTRA", psu="SDMVPSU"),
     ]
 
 

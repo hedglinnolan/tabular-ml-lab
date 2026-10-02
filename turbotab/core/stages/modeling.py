@@ -538,15 +538,49 @@ def outcome_levels(task: str | None, y: Any, event: str | None) -> dict[Any, Any
     return {1: hit[0], 0: reference}
 
 
-def _inference_table(family: Any, pipeline: Any, X: Any, y: Any, *, task: str, clusters: Any,
-                     outcome: Any, rows: str) -> Any:
-    """``family.inference``, handing it the outcome's names and the rows it is estimated from when
-    it takes them (a family registered before WP8 may not)."""
+def _accepts(fn: Any, name: str) -> bool:
     import inspect
 
-    accepts = inspect.signature(family.inference).parameters
-    extra = {name: value for name, value in (("outcome", outcome), ("rows", rows)) if name in accepts}
-    return family.inference(pipeline, X, y, task=task, clusters=clusters, **extra)
+    return name in inspect.signature(fn).parameters
+
+
+def _inference_table(family: Any, pipeline: Any, X: Any, y: Any, *, task: str, clusters: Any,
+                     outcome: Any, rows: str, survey: Any = None) -> Any:
+    """``family.inference``, handing it the outcome's names, the rows it is estimated from and the
+    survey design when it takes them (a family registered before WP8 or WP10 may not). A family
+    that cannot weight by the design under the population answer says so in a concern."""
+    extra = {name: value for name, value in (("outcome", outcome), ("rows", rows), ("survey", survey))
+             if value is not None and _accepts(family.inference, name)}
+    table = family.inference(pipeline, X, y, task=task, clusters=clusters, **extra)
+    if survey is not None and "survey" not in extra:
+        table.concerns.insert(0, "Fit without the survey weights: its scores and coefficients "
+                                 "describe these participants, not the surveyed population.")
+    return table
+UNWEIGHTED_SCORES = ("Scores are unweighted: they describe these rows, not the population the survey "
+                     "weights stand for.")
+
+
+def _survey(ctx: StageContext, clusters: Any) -> tuple[Any, str | None]:
+    """The survey answer as this fit applies it (``turbotab.core.methods.survey.for_fit``), and
+    the note every model carries under prediction when the table has survey weights.
+
+    Under inference: None without a design; else the design ("surveyed population"), the
+    "these participants" answer, or a refusal while the question is unanswered. A design without a
+    PSU column takes the unit the intervals cluster by as its sampling unit.
+    """
+    from turbotab.core.survey import reading_of
+
+    state = ctx.state
+    present = reading_of(state).present
+    if state.purpose != "inference":
+        return None, (UNWEIGHTED_SCORES if present else None)
+    if state.survey is None and not present:
+        return None, None
+    from turbotab.core.methods.survey import for_fit
+
+    unit = clusters.column if clusters is not None and clusters.clustered else None
+    with open_store(ctx) as store:
+        return for_fit(state, store, unit), None
 
 
 def fit_stage(ctx: StageContext) -> Bundle:
@@ -643,6 +677,9 @@ def fit_stage(ctx: StageContext) -> Bundle:
         # the unit, but no unit repeats, so clustering by it changes nothing and "its rows repeat"
         # would be false.
         groups, grouped_by, unit_all, hold_groups = None, None, None, None
+    # Under a survey design (audit §5 WP10, ME-06): whose estimate the table is. The design is read
+    # over every row of the working table, so rows outside the analysis stay in its variance.
+    survey, survey_note = _survey(ctx, clusters)
 
     def fit(model: Any, X_fit: Any, y_fit: Any, rows: Any = None) -> Any:
         """Fit a pipeline on these training rows, its inner splits drawn as the folds are."""
@@ -737,15 +774,30 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 table_fit = (final if same_rows else fit_table(clone(pipelines[key]))) if on_all else final
                 X_c, y_c = (X_tab, y_tab) if on_all else (X, y)
                 if clusters is not None and hasattr(family, "inference"):
-                    table = _inference_table(family, table_fit, X_c, y_c, task=task,
-                                             clusters=clusters, outcome=outcome,
-                                             rows="all" if on_all else "training")
+                    if survey is not None and survey.refusal:
+                        from turbotab.core.models.survey import blocked
+
+                        table = blocked(survey.refusal, survey.exits)
+                    else:
+                        # Under the population answer the table is design-based, its domain every
+                        # analysis row: a holdout is a prediction concept (BLUEPRINT §12 ruling 3),
+                        # and NCHS estimates over every eligible row.
+                        table = _inference_table(
+                            family, table_fit, X_c, y_c, task=task, clusters=clusters,
+                            outcome=outcome, rows="all" if on_all else "training",
+                            survey=survey.design if survey is not None else None)
                     coefficients, interval_info = table.rows, table.info
                     concerns.extend(table.concerns)
+                    if survey is not None and survey.concern():
+                        concerns.insert(0, survey.concern())
                 else:
                     unit_c = (None if unit_all is None else unit_all[table_rows]) if on_all else groups
                     coefficients = family.coefficients(table_fit, X_c, y_c, task=task,
                                                        purpose=state.purpose, groups=unit_c)
+                    if survey is not None and survey.answer == "population":
+                        concerns.append("Fit without the survey weights: its scores and "
+                                        "coefficients describe these participants, not the "
+                                        "surveyed population.")
                 n_coefficients = len(y_c) if coefficients is not None else None
                 if on_all and not same_rows and coefficients is not None:
                     concerns.append(
@@ -760,7 +812,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 # The relative effects come from the fit the table came from: under inference
                 # every analyzed row, with the table's clusters and outcome scale.
                 coefficients = _energy_rows(coefficients, design, spec, family, table_fit, X_c, y_c,
-                                            task, clusters, outcome)
+                                            task, clusters, outcome,
+                                            survey.design if survey is not None else None)
             done += 1
         concerns = _concerns(caught, len(pairs) + 1) + concerns
         if family.key == "linear":
@@ -793,6 +846,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
         if validation == "internal_external" and split_data.get("cluster"):
             iecv = internal_external(task, result, list(split_data.get("fold_labels") or []),
                                      str(split_data["cluster"]), groups=groups, unit=grouped_by)
+        if survey_note:
+            concerns.append(survey_note)
         results[key], summaries[key] = result, cv
         fitted[key] = final
         sealed[key] = holdout
@@ -838,14 +893,15 @@ def fit_stage(ctx: StageContext) -> Bundle:
 
 def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, family: Any,
                  final: Any, X: Any, y: Any, task: str, clusters: Any,
-                 outcome: Any = None) -> list[dict[str, Any]]:
+                 outcome: Any = None, survey: Any = None) -> list[dict[str, Any]]:
     """The coefficient rows with what each means (the design's ``terms``), and under the
     all-components model each nutrient's average relative effect beside them (audit ME-14):
     with the family's own intervals under inference, as a point estimate otherwise.
 
     ``final``, ``X`` and ``y`` are the fit and rows the coefficient table was estimated from
     (every analyzed row under inference, WP8), so the relative effects share its rows, clusters
-    and scale (odds or relative-risk ratios, named by ``outcome``)."""
+    and scale (odds or relative-risk ratios, named by ``outcome``), and under a survey design its
+    weights and Taylor-linearized intervals (WP10)."""
     terms = ((design.data or {}).get("terms") or {}) if isinstance(design, Bundle) else {}
     rows = [{**row, "meaning": terms[row["feature"]]} if row.get("feature") in terms else row
             for row in coefficients]
@@ -854,18 +910,20 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
             or not hasattr(family, "inference")):
         return rows
     from turbotab.core.methods.energy import relative_effect_rows
-    from turbotab.core.models.inference import inference_table
     from turbotab.core.models.linear import model_matrix
 
     matrix = model_matrix(final, X)
     step = getattr(final, "named_steps", {}).get("energy")
     factors = dict(getattr(getattr(step, "pooled_", step), "factors_", {}) or {})
     table = None
-    if clusters is not None:
+    refit = getattr(family, "inference_matrix", None)
+    if clusters is not None and refit is not None:
         classes = list(getattr(final[-1], "classes_", [])) or None
+        extra = {name: value for name, value in (("outcome", outcome), ("survey", survey))
+                 if value is not None and _accepts(refit, name)}
 
         def table(m: Any) -> Any:
-            return inference_table(task, m, y, classes, clusters, outcome=outcome).rows
+            return refit(m, y, task=task, classes=classes, clusters=clusters, **extra).rows
     try:
         extra = relative_effect_rows(matrix, list(adj.nutrients), factors, table=table,
                                      coefficients=rows)

@@ -142,14 +142,35 @@ class InferenceExit(_Model):
     decision: dict[str, Any] | None = None
 
 
+class SurveyInference(_Model):
+    """The survey design a design-based table rests on (AUDIT_REPORT §5 WP10;
+    ``turbotab/core/models/survey.py``): what weighted it, its PSUs and strata, the domain."""
+
+    weight: str | None
+    strata: str | None
+    psu: str | None
+    weight_note: str | None = None  # how a pooled-cycle weight was built
+    psu_note: str | None = None  # no PSU column: what stood for one
+    n_design: int  # rows in the design (every row of the table with a stratum and PSU)
+    n_domain: int  # the analysis rows the estimate uses
+    n_psu: int
+    n_strata: int
+    domain_psu: int | None = None  # PSUs and strata holding analysis rows (the df count them)
+    domain_strata: int | None = None
+    df: int | None = None  # design degrees of freedom: domain PSUs minus domain strata
+    lonely_strata: list[str] = []  # strata with a single PSU, centered at the mean PSU total
+    lonely_method: str = "centered"
+
+
 class Inference(_Model):
     """How the coefficient table's intervals were made (AUDIT_REPORT §5 WP2;
     ``turbotab/core/models/inference.py``): the estimator, the covariance, and the clusters."""
 
     estimator: str  # "ordinary least squares", "Firth-penalized logistic regression", …
     # HC3 · CR2 (cluster-robust, Bell–McCaffrey df) · model (Wald, from the information) ·
-    # profile (penalized likelihood) · none (refused: ``refused`` says why).
-    covariance: Literal["HC3", "CR2", "model", "profile", "none"]
+    # profile (penalized likelihood) · design (Taylor linearization over a survey design, WP10) ·
+    # none (refused: ``refused`` says why).
+    covariance: Literal["HC3", "CR2", "model", "profile", "design", "none"]
     # One or two lines: the scale (on a ratio scale), the covariance, the clusters, the reference
     # distribution and the rows the table was estimated from.
     caption: str
@@ -172,6 +193,7 @@ class Inference(_Model):
     # ruling 3), the training rows otherwise. Null only in artifacts from before WP8.
     n_rows: int | None = None
     rows: Literal["all", "training"] | None = None
+    survey: SurveyInference | None = None  # the design, when the table is design-based
 
 
 class Baseline(_Model):

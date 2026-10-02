@@ -158,6 +158,10 @@ export const RECORD_PURPOSES: Record<string, Purpose | Structural> = {
     question: "matters",
     answer: "which nutrient pair the substitution curve moves energy between",
   },
+  SurveyAsk: {
+    question: "matters",
+    answer: "whether estimates describe the surveyed population, weighted, or these participants",
+  },
   TermsProvider: { structural: "makes the teaching's terms define themselves on hover or focus" },
   Taught: {
     question: "what",

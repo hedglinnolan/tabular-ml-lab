@@ -34,6 +34,7 @@ const questionKeys = [
   "aggregation",
   "temporal",
   "roles",
+  "survey",
   "exclusions",
   "missing",
   "split",
