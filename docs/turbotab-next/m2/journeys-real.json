@@ -1,0 +1,93 @@
+{
+ "dietary": {
+  "open_s": 0.9,
+  "reshape_positions": [
+   0,
+   0.5,
+   1,
+   1.5,
+   2,
+   3
+  ],
+  "fit_s": 1.8,
+  "open_seal_s": 0.1,
+  "total_s": 20.9,
+  "previews": {
+   "n": 21,
+   "p50_ms": 11,
+   "p95_ms": 83,
+   "max_ms": 571
+  },
+  "problems": []
+ },
+ "clinical": {
+  "open_s": 0.1,
+  "fit_s": 0.8,
+  "total_s": 11.2,
+  "previews": {
+   "n": 22,
+   "p50_ms": 7,
+   "p95_ms": 24,
+   "max_ms": 77
+  },
+  "problems": []
+ },
+ "metabolomics": {
+  "open_s": 0.2,
+  "orientation_positions": [
+   0,
+   0.5,
+   1,
+   1.5,
+   2,
+   3
+  ],
+  "total_s": 12,
+  "previews": {
+   "n": 18,
+   "p50_ms": 8,
+   "p95_ms": 67,
+   "max_ms": 154
+  },
+  "problems": []
+ },
+ "genomics": {
+  "open_s": 0.2,
+  "roles_search_ms": 14,
+  "fit_s": 2.4,
+  "total_s": 10.4,
+  "previews": {
+   "n": 16,
+   "p50_ms": 6,
+   "p95_ms": 25,
+   "max_ms": 183
+  },
+  "problems": []
+ },
+ "survey": {
+  "open_s": 0.1,
+  "total_s": 7.5,
+  "previews": {
+   "n": 16,
+   "p50_ms": 7,
+   "p95_ms": 27,
+   "max_ms": 36
+  },
+  "problems": []
+ },
+ "nhanes": {
+  "open_s": 0.3,
+  "fit_s": 2.3,
+  "substitution_s": 0.9,
+  "open_seal_s": 0.1,
+  "post_seal_refit_s": 2.3,
+  "total_s": 20.6,
+  "previews": {
+   "n": 18,
+   "p50_ms": 24,
+   "p95_ms": 94,
+   "max_ms": 94
+  },
+  "problems": []
+ }
+}

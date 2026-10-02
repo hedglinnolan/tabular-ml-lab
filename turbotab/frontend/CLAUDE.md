@@ -24,7 +24,9 @@ src/screens/          Start, Project, Lab (/lab demonstrates every motion primit
 src/mocks/            MSW handlers + an in-memory server with a stage graph (dev:mock only)
 src/styles/tokens.css the palette and the three voices; base.css global rules
 e2e/                  one Playwright journey per milestone (mock or real server), review screenshots;
-                      M1: m1-journey.spec.ts (the whole journey), m1-record, m1-stage
+                      M1: m1-journey.spec.ts (the whole journey), m1-record, m1-stage;
+                      M2: m2-journeys.spec.ts (every lens and NHANES, real server only), m2-record,
+                      m2-stage (the mock lab at /lab/stage/m2)
 ```
 
 ## Rules
@@ -67,7 +69,10 @@ npm run gen:api    # openapi-typescript ../../turbotab/server/openapi.json -> sr
 First e2e run on a machine: `npx playwright install chromium`. Screenshots are written to
 `docs/turbotab-next/m<N>/screens/<prefix>-*.png`; keep each under 300 KB. The M1 journey against
 the real server: start it with `TURBOTAB_WORKERS=2 TURBOTAB_HOME=$(mktemp -d)` on port 8812, then
-`E2E_BASE_URL=http://127.0.0.1:8812 npx playwright test m1-journey` (screens: `real-*`).
+`E2E_BASE_URL=http://127.0.0.1:8812 npx playwright test m1-journey` (screens: `real-*`). The M2
+journeys the same way on port 8842: `E2E_BASE_URL=http://127.0.0.1:8842 npx playwright test
+m2-journeys` (screens: `docs/turbotab-next/m2/screens/real-*`; timings in
+`docs/turbotab-next/m2/journeys-real.json`).
 
 Space belongs to the stage's flip, except in a multi-select list (the lens, the models), where it
 chooses; Enter records.
