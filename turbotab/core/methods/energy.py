@@ -27,8 +27,13 @@ Put this step inside the Pipeline that is cross-validated and the residual
 regression sees training-fold rows only. That is the pack's own anti-pattern
 ("fitting the N ~ E residual regression on train+test before cross-validation").
 
-What this module does not do yet: stratified residuals (the pack's default is
-"within sex"); that needs a strata column and is a separate decision.
+Within strata (the pack's "within sex"), :class:`StratifiedEnergyAdjuster` fits
+``N ~ E`` within each level of a strata column and adds back **one** constant for
+every level: the predicted nutrient at the mean energy of all fitting rows
+(NUTRITION_PACK §04, "with the predicted nutrient at the cohort mean energy added
+back"). Each level's own constant would give the adjusted nutrient the levels'
+differences by construction, and a model without the strata column would read
+them as the nutrient's effect (audit MA-02).
 """
 from __future__ import annotations
 
@@ -53,6 +58,8 @@ __all__ = [
     "EnergyAdjuster",
     "EnergyAdjustmentNotApplicable",
     "FactorReading",
+    "MIN_LEVEL_ROWS",
+    "StratifiedEnergyAdjuster",
     "applicable_methods",
     "default_atwater",
     "partition_refusal",
@@ -756,6 +763,336 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
             raise TypeError("EnergyAdjuster needs a pandas DataFrame with named columns, "
                             f"not {type(X).__name__}.")
         return X
+
+
+# ── Within strata (NUTRITION_PACK §04: "within sex") ─────────────────────────
+
+MIN_LEVEL_ROWS = 30
+"""Fitting rows (nutrient and energy both present) a level needs for a slope of its own.
+
+Below it, the level's residual uses the pooled slope, still centered on the level's own means,
+and the lineage says so. A stated floor, not a sourced one: the audit's proposal (AUDIT_REPORT
+§5, WP3) for a slope that a handful of rows cannot pin down.
+"""
+
+
+class _BlankLevel:
+    """The level of a row whose strata value is missing: a level of its own, like any other.
+
+    It pickles by reference and equals any copy of itself, so a fitted step reloaded from the
+    stage cache still finds its blank rows.
+    """
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _BlankLevel)
+
+    def __hash__(self) -> int:
+        return hash(_BlankLevel.__name__)
+
+    def __repr__(self) -> str:
+        return "(blank)"
+
+    __str__ = __repr__
+
+    def __reduce__(self) -> str:
+        return "BLANK_LEVEL"
+
+
+BLANK_LEVEL = _BlankLevel()
+
+
+def _pearson(a: np.ndarray, b: np.ndarray) -> Optional[float]:
+    """Pearson's r, or None when it is undefined (under 3 rows, or either side constant)."""
+    if a.size < 3:
+        return None
+    da, db = a - a.mean(), b - b.mean()
+    saa, sbb = float(da @ da), float(db @ db)
+    if saa <= 0.0 or sbb <= 0.0:
+        return None
+    return float(da @ db) / float(np.sqrt(saa * sbb))
+
+
+def _correlation_ratio(values: np.ndarray, codes: np.ndarray) -> Optional[float]:
+    """η, the correlation of ``values`` with a category: sqrt(between-level SS / total SS).
+
+    With two levels it is the size of the point-biserial r with either level's indicator. None
+    when it is undefined (fewer than two levels, or ``values`` constant).
+    """
+    groups = np.unique(codes)
+    if groups.size < 2 or values.size < 3:
+        return None
+    grand = float(values.mean())
+    total = float(((values - grand) ** 2).sum())
+    if total <= 0.0:
+        return None
+    between = sum(float((codes == g).sum()) * (float(values[codes == g].mean()) - grand) ** 2
+                  for g in groups)
+    return float(np.sqrt(between / total))
+
+
+def _level_fit(v: np.ndarray, e: np.ndarray, pooled_slope: float, log: bool) -> Optional[Dict[str, Any]]:
+    """One level's residual regression ``v ~ e`` (both on the regression's scale), or None
+    when the level has no row with both present."""
+    rows = np.isfinite(v) & np.isfinite(e)
+    m = int(rows.sum())
+    if m == 0:
+        return None
+    x, yv = e[rows], v[rows]
+    xbar, ybar = float(x.mean()), float(yv.mean())
+    dx, dy = x - xbar, yv - ybar
+    sxx, syy = float(dx @ dx), float(dy @ dy)
+    if m < MIN_LEVEL_ROWS:
+        slope, source, reason = float(pooled_slope), "pooled", f"fewer than {MIN_LEVEL_ROWS} fitting rows"
+    elif sxx == 0.0:
+        slope, source, reason = float(pooled_slope), "pooled", "energy is constant in this level"
+    else:
+        slope, source, reason = float(dx @ dy) / sxx, "level", None
+    return {
+        "slope": slope,
+        "slope_from": source,
+        "reason": reason,
+        "scale": "log" if log else "linear",
+        "center": xbar,  # the level's mean of the regressor, on its own (possibly log) scale
+        "level_mean": ybar,  # the level's mean nutrient: what its residual is centered on
+        "reference_energy": float(np.exp(xbar)) if log else xbar,
+        "reference_kind": "geometric mean" if log else "mean",
+        "r_before": float(dx @ dy) / float(np.sqrt(sxx * syy)) if sxx > 0 and syy > 0 else None,
+        "n_fit": m,
+    }
+
+
+def _r3(value: Optional[float]) -> str:
+    if value is None or not np.isfinite(value):
+        return "undefined"
+    return "0.000" if abs(value) < 0.0005 else f"{value:.3f}".replace("-", "−")
+
+
+def _slope(value: float) -> str:
+    return np.format_float_positional(float(value), precision=4, unique=False, fractional=False,
+                                      trim="-")
+
+
+class StratifiedEnergyAdjuster(TransformerMixin, BaseEstimator):
+    """The residual method within each level of ``strata``, with one constant for every level.
+
+    For a nutrient N and energy E (both logged under ``log_transform``), in level s::
+
+        N_adj = N − b_s × (E − Ē_s) − N̄_s + N̄
+
+    ``b_s``, ``Ē_s`` and ``N̄_s`` are level s's slope and means over its fitting rows. ``N̄`` is
+    the predicted nutrient at the mean energy of **all** fitting rows, the pooled regression's
+    ``N̂(Ē)``, which is the nutrient's mean over them (NUTRITION_PACK §04: "with the predicted
+    nutrient at the cohort mean energy added back"). Each level's residual is uncorrelated with
+    energy and averages zero, so on the fitting rows N_adj is uncorrelated with energy and with
+    the strata column, pooled as well as within levels, whether or not the strata column is a
+    predictor. (Adding each level's own ``N̄_s`` instead hands N_adj the levels' differences, and
+    a model without the strata column reads them as the nutrient's effect: audit MA-02.)
+
+    * A level with fewer than :data:`MIN_LEVEL_ROWS` fitting rows, or with constant energy, uses
+      the pooled slope ``b``, still centered on its own means.
+    * Rows whose strata value is missing are a level of their own, :data:`BLANK_LEVEL`.
+    * A row from a level never seen in fit uses the pooled regression, ``N − b × (E − Ē)``.
+
+    ``drop_strata``: the strata column is an input only (it is not a predictor), so it leaves
+    the output. Every other column passes through as the pooled :class:`EnergyAdjuster` passes
+    it. ``lineage()`` reports each level's slope and rows, the levels on the pooled slope, and
+    r(N_adj, E) and r(N_adj, strata) on the fitting rows, pooled and per level.
+    """
+
+    def __init__(self, energy_column: str = "energy_kcal", nutrient_columns: Sequence[str] = (),
+                 strata: str = "sex", log_transform: bool = False, drop_strata: bool = False,
+                 atwater: Optional[Mapping[str, float]] = None):
+        self.energy_column = energy_column
+        self.nutrient_columns = nutrient_columns
+        self.strata = strata
+        self.log_transform = log_transform
+        self.drop_strata = drop_strata
+        self.atwater = atwater
+
+    # -- fitting -----------------------------------------------------------
+
+    def fit(self, X: pd.DataFrame, y: Any = None) -> "StratifiedEnergyAdjuster":
+        if not isinstance(X, pd.DataFrame):
+            raise TypeError("StratifiedEnergyAdjuster needs a pandas DataFrame with named columns.")
+        if self.strata not in X.columns:
+            raise ValueError(f"The strata column {self.strata} is not among the inputs.")
+        self.feature_names_in_ = np.asarray([str(c) for c in X.columns], dtype=object)
+        self.n_features_in_ = X.shape[1]
+        self.nutrients_ = _as_list(self.nutrient_columns)
+        self.pooled_ = EnergyAdjuster("residual", self.energy_column, self.nutrients_,
+                                      log_transform=self.log_transform, atwater=self.atwater).fit(X)
+        strata = X[self.strata]
+        levels: List[Any] = sorted(pd.unique(strata.dropna().to_numpy(dtype=object)), key=str)
+        if strata.isna().any():
+            levels.append(BLANK_LEVEL)
+        self.level_index_: Dict[Any, int] = {level: i for i, level in enumerate(levels)}
+        codes = self._codes(X)
+        e = self._scaled(_numeric(X, self.energy_column))
+        self.levels_: Dict[str, Dict[Any, Dict[str, Any]]] = {}
+        for n in self.nutrients_:
+            v = self._scaled(_numeric(X, n))
+            pooled_slope = self.pooled_.params_[n]["slope"]
+            fits = {level: _level_fit(v[codes == i], e[codes == i], pooled_slope, self.log_transform)
+                    for level, i in self.level_index_.items()}
+            self.levels_[n] = {level: fit for level, fit in fits.items() if fit is not None}
+        self.check_ = self._check(X, codes)
+        return self
+
+    def _scaled(self, values: np.ndarray) -> np.ndarray:
+        if not self.log_transform:
+            return values
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return np.log(values)
+
+    def _codes(self, X: pd.DataFrame) -> np.ndarray:
+        """Each row's level as its index in ``level_index_``; -1 for a level fit never saw."""
+        values = pd.Series(X[self.strata].to_numpy(dtype=object))
+        codes = values.map(self.level_index_).to_numpy(dtype=float, na_value=np.nan)
+        codes[values.isna().to_numpy()] = self.level_index_.get(BLANK_LEVEL, -1)
+        codes[np.isnan(codes)] = -1
+        return codes.astype(np.int64)
+
+    def _check(self, X: pd.DataFrame, codes: np.ndarray) -> Dict[str, Dict[str, Any]]:
+        """r(N_adj, E) and r(N_adj, strata) on the fitting rows, as the model sees N_adj.
+
+        Pooled: Pearson's r with energy, and the correlation ratio η with the strata column.
+        Per level: r with energy within the level, and r with the level's indicator over every
+        row (within one level the strata column is constant, so it has no r of its own there).
+        """
+        out = self.transform(X)
+        e = _numeric(X, self.energy_column)
+        check: Dict[str, Dict[str, Any]] = {}
+        for n in self.nutrients_:
+            adj = out[f"{n}_adj"].to_numpy(dtype=float, na_value=np.nan)
+            ok = np.isfinite(adj) & np.isfinite(e) & (codes >= 0)
+            per = {}
+            for level, i in self.level_index_.items():
+                inside = ok & (codes == i)
+                per[str(level)] = {
+                    "rows": int(inside.sum()),
+                    "r_adj_energy": _pearson(adj[inside], e[inside]),
+                    "r_adj_indicator": _pearson(adj[ok], (codes[ok] == i).astype(float)),
+                }
+            check[n] = {
+                "pooled": {"rows": int(ok.sum()),
+                           "r_adj_energy": _pearson(adj[ok], e[ok]),
+                           "r_adj_strata": _correlation_ratio(adj[ok], codes[ok]),
+                           "strata_measure": "correlation ratio (η)"},
+                "levels": per,
+            }
+        return check
+
+    # -- transforming --------------------------------------------------------
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        check_is_fitted(self, "pooled_")
+        out = self.pooled_.transform(X)  # the pooled regression for every row, to start
+        codes = self._codes(X)
+        e = self._scaled(_numeric(X, self.energy_column))
+        for n in self.nutrients_:
+            constant = float(self.pooled_.params_[n]["constant_added"])
+            v = self._scaled(_numeric(X, n))
+            column = out[f"{n}_adj"].to_numpy(dtype=float, na_value=np.nan).copy()
+            for level, p in self.levels_[n].items():
+                rows = codes == self.level_index_[level]
+                if rows.any():
+                    adjusted = v[rows] - p["slope"] * (e[rows] - p["center"]) - p["level_mean"] + constant
+                    column[rows] = np.exp(adjusted) if self.log_transform else adjusted
+            out[f"{n}_adj"] = column
+        if self.drop_strata:
+            out = out.drop(columns=[self.strata])
+        return out
+
+    def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
+        check_is_fitted(self, "pooled_")
+        names = [str(n) for n in self.pooled_.get_feature_names_out()]
+        if self.drop_strata:
+            names = [n for n in names if n != self.strata]
+        return np.asarray(names, dtype=object)
+
+    # -- what the UI shows ----------------------------------------------------
+
+    def lineage(self) -> List[Dict[str, Any]]:
+        """``{output, inputs, operation, formula[, params]}`` per output, as EnergyAdjuster's."""
+        check_is_fitted(self, "pooled_")
+        entries = []
+        for entry in self.pooled_.lineage():
+            if self.drop_strata and entry["output"] == self.strata:
+                continue
+            if entry["operation"] != "residual":
+                entries.append(entry)
+                continue
+            n = entry["inputs"][0]
+            entries.append({**entry, "inputs": [n, self.energy_column, self.strata],
+                            "formula": self._formula(n), "params": self._params(n, entry.get("params"))})
+        return entries
+
+    def _params(self, n: str, pooled: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+        fits = self.levels_[n]
+        return {
+            "strata": self.strata,
+            "constant": float(self.pooled_.params_[n]["constant_added"]),
+            "constant_is": "the predicted nutrient at the mean energy of all fitting rows",
+            "min_level_rows": MIN_LEVEL_ROWS,
+            "levels": {str(level): dict(p) for level, p in fits.items()},
+            "pooled_slope_levels": [str(level) for level, p in fits.items() if p["slope_from"] == "pooled"],
+            "check": self.check_[n],
+            "pooled": dict(pooled) if pooled else None,
+        }
+
+    def _formula(self, n: str) -> str:
+        E, s = self.energy_column, self.strata
+        pooled = self.pooled_.params_[n]
+        constant = _fmt(pooled["constant_added"])
+        lg = "log " if self.log_transform else ""
+        if self.log_transform:
+            head = (f"{n}_adj = exp(log {n} − b_s × (log {E} − mean log {E}_s) − mean log {n}_s "
+                    f"+ {constant})")
+            back = f", back-transformed to {n}'s units"
+        else:
+            head = f"{n}_adj = {n} − b_s × ({E} − mean {E}_s) − mean {n}_s + {constant}"
+            back = ""
+        check = self.check_[n]
+        slopes = []
+        for level, p in self.levels_[n].items():
+            if p["slope_from"] == "level":
+                slopes.append(f"{level} b = {_slope(p['slope'])} ({p['n_fit']:,} rows)")
+            else:
+                slopes.append(f"{level} the pooled slope b = {_slope(p['slope'])} on its own means "
+                              f"({p['n_fit']:,} rows; {p['reason']})")
+        within = ", ".join(f"{_r3(c['r_adj_energy'])} within {level}" for level, c in check["levels"].items())
+        whole = check["pooled"]
+        return (f"{head}: the residual of {lg}{n} ~ {lg}{E} within each level s of {s}, plus one "
+                f"constant for every level, the predicted {lg}{n} at the mean {lg}{E} of all "
+                f"{pooled['n_fit']:,} fitting rows{back}. Slopes: {'; '.join(slopes)}. On the "
+                f"fitting rows, r({n}_adj, {E}) is {_r3(whole['r_adj_energy'])} pooled, {within}; "
+                f"r({n}_adj, {s}) is {_r3(whole['r_adj_strata'])} pooled (correlation ratio).")
+
+    def notes(self) -> List[str]:
+        """Plain statements for the design's warnings: the levels on the pooled slope."""
+        check_is_fitted(self, "pooled_")
+        by_level: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        for n, fits in self.levels_.items():
+            for level, p in fits.items():
+                if p["slope_from"] == "pooled":
+                    entry = by_level.setdefault((str(level), p["reason"]), {"rows": 0, "nutrients": []})
+                    entry["rows"] = max(entry["rows"], p["n_fit"])
+                    entry["nutrients"].append(n)
+        out = []
+        for (level, reason), entry in by_level.items():
+            who = _and(entry["nutrients"])
+            verb = "is" if len(entry["nutrients"]) == 1 else "are"
+            rows = entry["rows"]
+            why = (f"{self.energy_column} is constant in level {level} of {self.strata}"
+                   if reason.startswith("energy") else
+                   f"level {level} of {self.strata} has {rows:,} training row{'s' if rows != 1 else ''}, "
+                   f"fewer than the {MIN_LEVEL_ROWS} a residual regression of its own needs")
+            out.append(f"{why[0].upper()}{why[1:]}, so {who} {verb} adjusted there with the pooled "
+                       f"slope, centered on the level's own means.")
+        return out
+
+    def estimand(self) -> str:
+        return METHOD_TABLE["residual"]["estimand"]
 
 
 _RECONSTRUCTION_ROLES = ("protein", "carbohydrate", "fat")

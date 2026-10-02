@@ -705,8 +705,10 @@ def _set_energy_adjustment(d: Any, state: Any, ctx: Any) -> str:
         many = len(d.nutrients) > 1
         who = f"{nutrients} were each" if many else (f"{nutrients} was" if nutrients else "each nutrient was")
         logged = ", both logged," if d.log_transform else ""
+        # Under strata, one constant for every level (StratifiedEnergyAdjuster), not each level's.
+        mean = "the nutrient's mean over all training rows" if d.strata else "the nutrient's mean"
         return (f"Energy was adjusted by the {name}: {who} regressed on {energy}{logged}{where} "
-                f"on training rows and replaced by the residual plus the nutrient's mean")
+                f"on training rows and replaced by the residual plus {mean}")
     if d.method == "standard":
         who = nutrients or "the nutrients"
         return (f"Energy was adjusted by the {name}: {energy} enters the models beside {who}, so "

@@ -122,7 +122,7 @@ def test_the_residual_sentence_says_where_it_was_fit():
                                                     nutrients=["protein", "fat_total"], strata="gender"))
     assert text == ("Energy was adjusted by the residual method: `protein` and `fat_total` were "
                     "each regressed on `kcal` within levels of `gender` on training rows and "
-                    "replaced by the residual plus the nutrient's mean.")
+                    "replaced by the residual plus the nutrient's mean over all training rows.")
 
 
 # ── the task reason ──────────────────────────────────────────────────────────

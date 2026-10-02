@@ -115,7 +115,7 @@ def build_graph() -> Graph:
             Stage("shelf", 3, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", "roles", "missing"), shelf_stage, heavy=True,
                   requires=("roles",), label="Ranking the model families for this table"),
-            Stage("design", 1, ("working", "split", "target_info"),
+            Stage("design", 2, ("working", "split", "target_info"),
                   ("roles", "energy_adjustment", "missing", "models", "purpose"), design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),

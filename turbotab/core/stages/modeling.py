@@ -262,6 +262,8 @@ def _energy_warnings(step: Any) -> list[str]:
         if n != "__other__" and isinstance(p, Mapping) and p.get("r2") is not None and p["r2"] < 0.05:
             out.append(f"Energy explains {p['r2']:.0%} of {n}'s variation, so adjusting it barely "
                        f"changes it.")
+    # Within strata: the levels too small for a slope of their own (StratifiedEnergyAdjuster).
+    out.extend(step.notes() if hasattr(step, "notes") else [])
     return out
 
 
