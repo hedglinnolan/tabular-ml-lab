@@ -166,3 +166,79 @@ Every fixture in §7 runs its path in the browser with the canvas previewing eac
 On NHANES, `meds_hbp` can be kept as a `Missing` category. Held-out scores appear only after the seal
 is opened, and a later change is marked post-seal. The seal's basis is named on every fixture. The
 wide benchmarks are recorded. DRIVE_RUBRIC passes, and so does the extended word-budget gate.
+
+---
+
+# M2 part 2 — the frontend, three reviews, and what part 1 left open
+
+Part 1 is merged (`m2/w1-result.json`): the working table, the sequence, the seal, repairs, the wide
+path, voice and coach. The design prototype is at `turbotab/frontend/src/explore/m2/` (route
+`/lab/m2`, screens in `m2/explore/`). **Lift its components into production; don't redraw them.**
+They are the reshape storyboard, the orientation turn, the seal in four basis states, the sealed
+Results with the open-once card, the post-seal band, and the coach notes.
+
+## 10 · The Record (record agent)
+
+- **The new questions, in the Router's order.** Orientation, event, grain, repeat_kind (a stated skip
+  with "Ask me anyway"), unit, aggregation (the domain menu, with the recommended option's reason),
+  temporal, eligibility, and the seal.
+  - **Grain is stated, not asked, when a recognized identifier is unique on every row.** For example:
+    "Not asked: every `SEQN` appears once, so each person is one row". "Ask me anyway" reopens it.
+    Grain stays a question whenever there is no identifier or the identifier repeats. This is the
+    orchestrator's challenge to the old "asked, never inferred" rule, accepted by default.
+  - **Eligibility withholds the outcome's distribution.** No outcome histogram appears on its card
+    or its previews (constitution §04).
+  - **The split card states the held-out-size consequence** and the seal's basis.
+  - **Open the seal** is the Router's last step: a CONSEQUENCE card under the Results.
+- **Repairs on findings.** Each finding shows its options. Focusing one previews it on the stage;
+  then apply, defer (to the question it targets) or dismiss. Deferred findings resurface inside
+  their question, pre-checked and attributed. Answered findings fold into "answered by #N".
+- **Missing values by mechanism.** Offer the `Missing` level for categorical blanks, recommended
+  with its reason when a column reads as "not asked", and a missing-indicator option for numeric
+  columns.
+- **Wide tables.** The roles question gets a search box above 200 columns, and the working-table
+  preview sends only its visible columns.
+- At most one coach line per card. Outcome units appear wherever the outcome's values do.
+
+## 11 · The stage (stage agent)
+
+- Lift `/lab/m2`'s views: reshape (gather → combine → settle, the "from rows" provenance column,
+  the row flow's "folded in"), orientation turn, the seal (grouped / chronological / abandoned /
+  undetermined — never a clean lock), the sealed / opened / post-seal Results.
+- Coach annotations rendered on every view kind from `view.coach` (anchors per M2 §6). Amber,
+  at most two per view.
+- Repair previews: table_focus of the changed cells plus a distribution with labeled marks.
+- Lens, target and purpose previews (part 1 serves them).
+- **The purpose registry (BLUEPRINT §11.2).** `src/components/stage/purposes.ts` maps every view
+  kind, coach anchor kind and Record component to the user question it answers. A vitest test fails
+  when a rendered kind or component has no entry. Mirror it in Python
+  (`turbotab/core/purposes.py`, every consequence view kind) with a pytest test.
+
+## 12 · Backend: what part 1 left open (backend agent)
+
+1. The Router asks "open the seal" once a fit is fresh.
+2. **Out-of-order answers are refused.** A decision for a question still waiting behind an unanswered
+   prerequisite gets 409 `not_yet`, with the exit "Answer <question> first". Changing an answered
+   question is always allowed. The seal requires grain. An `undetermined` basis comes only from an
+   explicit grain answer of "I don't know" (add `unknown` to the grain options), never from skipping.
+3. The Decision-A message says the right thing under cross-validation only. The genomics
+   split-preview caution gets an exit.
+4. The aggregation coach reads the pre-aggregation (oriented) table, so it stays after recording.
+5. The grain stated-skip of §10: the Router rule and its voice reason.
+6. **Honest cost at scale.** Before a fit, each family carries an `estimate_seconds` (measured as the
+   band estimate is). The shelf and the models card state it ("about 5 minutes at 20,000 columns").
+   Elastic net's 5-minute fit at 20,000 columns is shown, not hidden; faster screening is M4.
+
+## 13 · Reviews — three in parallel, then one fixer
+
+- **Function:** recompute every number on all five lens journeys plus NHANES. Prove no held-out score
+  is visible before the seal opens. Prove repairs equal pandas.
+- **Taste:** DRIVE_RUBRIC §5, all 18 questions, against the `/lab/m2` prototype as the bar.
+- **Pedagogy (new, BLUEPRINT §11.2):** walk every screen of every journey and list each visible
+  element with the user question it answers. Flag orphans, duplicates, and answers to questions the
+  user doesn't have yet. Its blockers are fixed before the tag.
+
+## 14 · Acceptance
+
+M2 §9, driven in a real browser: all five lens fixtures and NHANES, with screenshots and frame
+strips. The purpose registry and the extended word-budget gate both pass.
