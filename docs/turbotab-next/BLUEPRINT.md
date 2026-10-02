@@ -369,3 +369,21 @@ How it is enforced:
 - **The myriad-of-decisions problem is handled by the closed vocabulary** (§11 rule 2), not by
   per-decision design. Each view kind's purpose is audited once and holds for every decision that
   uses it.
+
+### 11.3 · The leash — the menu and the guidance pull against each other (Nolan, 2026-10-02)
+
+*"Recognize the tension between providing the actual menu of options and providing the right
+in-app guidance. Give users the right leash length."* Every decision is set on two dials:
+
+- **The menu.** Every option the literature and practice support is offered: the shelf is never
+  shortened (§04b). An indefensible option is never offered silently.
+- **The guidance.** The rung (refuse · block and record · rank and state the concern), the order,
+  the recommendation (which depends on purpose), and the coach. Its strength scales with the
+  **stakes**: whether a wrong answer would put a false number or an invalid inference into a paper.
+  It also scales with the **purpose**: a causal question gets a shorter leash than exploratory
+  prediction.
+
+A leash is **too tight** when it hides or refuses a defensible choice, or lectures where the
+researcher knows best. It is **too loose** when it offers an unsound choice without saying so, or
+stays silent where errors are likely. Audits grade every decision as too tight, right, or too loose.
+
