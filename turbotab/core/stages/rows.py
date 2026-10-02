@@ -673,9 +673,16 @@ def _draw_holdout(
 
 
 def _assign_folds(
-    n_train: int, y: Any | None, g: Any | None, folds: int, seed: int, stratified: bool, notes: list[str]
+    n_train: int, y: Any | None, g: Any | None, folds: int, seed: int, stratified: bool, notes: list[str],
+    order: Any | None = None,
 ) -> tuple[Any, int]:
-    """Fold numbers for ``n_train`` training rows: grouped when ``g``, stratified when asked."""
+    """Fold numbers for ``n_train`` training rows: grouped when ``g``, stratified when asked.
+
+    With ``order`` (each row's unit rank in time) the folds are time-ordered blocks of whole units
+    instead (:func:`turbotab.core.models.folds.forward_blocks`): fold 0 only trains, and fold j is
+    scored by a model fit on folds 0 … j − 1; every block holds every class of ``y``. The count
+    returned is the folds scored.
+    """
     import pandas as pd
     from sklearn.model_selection import GroupKFold, KFold, StratifiedGroupKFold, StratifiedKFold
 
@@ -683,6 +690,16 @@ def _assign_folds(
     if n_train < 2:
         notes.append("Too few training rows for cross-validation.")
         return fold, 1 if n_train else 0
+    if order is not None:
+        from turbotab.core.models.folds import forward_blocks
+
+        units = g if g is not None else np.arange(n_train)
+        blocks, made, said = forward_blocks(order, units, int(folds) + 1, labels=y)
+        notes.extend(said)
+        if made < int(folds) + 1 and not said:
+            notes.append(f"Only `{made}` training units, so `{max(1, made - 1)}` time-ordered folds "
+                         f"instead of `{folds}`.")
+        return blocks, max(1, made - 1)
     units = len(pd.unique(g)) if g is not None else n_train
     k = max(2, min(int(folds), units))
     if k < folds:
@@ -723,6 +740,7 @@ def draw_split(
     grouped_by: str | None = None,
     universe: Any | None = None,
     held: Any | None = None,
+    order: Any | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """Assign each row of ``row_ids`` to ``train`` or ``holdout``, and each training row a fold.
 
@@ -736,10 +754,14 @@ def draw_split(
     held out) and the facts the split artifact reports, plus ``sealed``: every row of the
     universe drawn to be held out, in or out of ``row_ids`` — the rows nothing may read.
     ``held`` (aligned like ``groups``) is a held-out mask drawn elsewhere — the seal's
-    chronological draw (``turbotab/core/seal.py``) — used in place of a random draw.
+    chronological draw (``turbotab/core/seal.py``) — used in place of a random draw. ``order``
+    (aligned like ``groups``: each row's unit rank in time, ``seal.time_order``) makes the folds
+    time-ordered: forward chaining by whole unit (audit MA-11), with fold stratification decided
+    on its own, never inherited from how the held-out rows were drawn (A17).
     """
     import pandas as pd
 
+    ranks = order  # each row's unit rank in time, aligned like ``groups``
     base = np.asarray(row_ids if universe is None else universe, dtype=np.int64)
     order = np.argsort(base, kind="stable")
     uids = base[order]
@@ -750,6 +772,7 @@ def draw_split(
         return np.array([_level_key(v) for v in np.asarray(values, dtype=object)[order]], dtype=object)
 
     y_u, g_u = keyed(y), keyed(groups)
+    order_u = None if ranks is None else np.asarray(ranks, dtype=float)[order]
     notes: list[str] = []
     if held is not None:
         held_u, stratified = np.asarray(held, dtype=bool)[order], False
@@ -762,15 +785,20 @@ def draw_split(
     held = np.where(inside, held_u[pos] if len(uids) else False, False)
     y_r = None if y_u is None else np.where(inside, y_u[pos], "__unknown__")
     g_r = None if g_u is None else np.where(inside, g_u[pos], np.array([f"__row_{r}" for r in rows], dtype=object))
+    o_r = None if order_u is None else np.where(inside, order_u[pos] if len(uids) else np.nan, np.nan)
 
     train = np.flatnonzero(~held)
     fold = np.full(len(rows), -1, dtype=np.int64)
+    # Folds are stratified whenever there are classes to keep in proportion, however the held-out
+    # rows were drawn (a chronological draw cannot be stratified; its folds still can be).
     train_folds, k = _assign_folds(
         len(train), None if y_r is None else y_r[train], None if g_r is None else g_r[train],
-        folds, seed, stratified, notes)
+        folds, seed, y_r is not None, notes, order=None if o_r is None else o_r[train])
     fold[train] = train_folds
 
     frame = pd.DataFrame({"row_id": rows, "partition": np.where(held, "holdout", "train"), "fold": fold})
+    if o_r is not None:
+        frame["order"] = o_r  # each row's unit rank in time: the inner splits follow it too
     info = {
         "n_train": int(len(train)),
         "n_holdout": int(held.sum()),
@@ -780,6 +808,9 @@ def draw_split(
         "grouped_by": grouped_by if g_r is not None else None,
         "n_groups": int(len(pd.unique(g_r))) if g_r is not None else None,
         "stratified": bool(stratified),
+        "fold_scheme": "time_ordered" if o_r is not None else "random",
+        "folds_stratified": bool(y_r is not None and o_r is None
+                                 and not any("could not be stratified" in t for t in notes)),
         "notes": notes,
         "sealed": uids[held_u],
     }
@@ -797,7 +828,11 @@ def split_note(info: Mapping[str, Any], unit_rows: int | None = None) -> str:
         parts.append(f"grouped by `{info['grouped_by']}` so a unit's rows stay together")
     if info["stratified"]:
         parts.append("with the outcome's classes in proportion")
-    sentence = ", ".join(parts) + f"; `{info['folds']}` folds."
+    if info.get("fold_scheme") == "time_ordered":
+        sentence = (", ".join(parts) + f"; `{info['folds']}` time-ordered folds, each scored by models "
+                    f"fit on the units before it.")
+    else:
+        sentence = ", ".join(parts) + f"; `{info['folds']}` folds."
     extra = " ".join(info.get("notes") or [])
     return f"{sentence} {extra}".strip()
 

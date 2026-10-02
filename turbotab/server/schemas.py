@@ -319,6 +319,11 @@ class SplitArtifact(Model):
     basis: SealBasis
     chronology: Chronology | None
     exploratory: bool
+    # How the folds were drawn (audit MA-11, A17): "time_ordered" forward-chains by whole unit (each
+    # fold scored by models fit on the folds before it); fold stratification is decided on its own.
+    fold_scheme: Literal["random", "time_ordered"] = "random"
+    folds_stratified: bool = False
+    time_ordered_folds: bool = False
 
 
 class ExclusionProposal(Model):

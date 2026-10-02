@@ -26,6 +26,8 @@ What this module decides, and where each piece runs:
   (``temporal.temporal``): whole units ordered by their last observation, the latest held out
   (``turbotab/engine.py::draw_holdout``, ``GUIDED-143``: a unit split across the boundary would
   trade one leak for another). A time column that cannot be read refuses; none named discloses.
+  The cross-validation folds follow the same ranking (:func:`time_order`): forward chaining by whole
+  unit, each fold scored by models fit on the folds before it (``turbotab/core/models/folds.py``).
 * **What a holdout of this size can measure**: the split question's options, each with the
   precision of a held-out score on that many rows, ordered so cross-validation alone comes first
   when the usual holdout falls below a stated floor (:func:`holdout_options`). Never a refusal.
@@ -273,12 +275,12 @@ def _show_time(value: float, dated: bool) -> str:
     return f"{value:g}"
 
 
-def chronological_holdout(times: Any, groups: Any | None, holdout: float, seed: int,
-                          column: str, *, dated: bool) -> tuple[Any, Chronology]:
-    """The held-out mask: whole units, ordered by their last observation, the latest held out.
+def _units_by_time(times: Any, groups: Any | None, seed: int) -> tuple[Any, Any, Any, int]:
+    """Each row's unit key, each unit's last time, the dated units latest-last, and the undated count.
 
-    Units with no readable time are never held out (they train) and are counted. Units tied at
-    the boundary are ordered by a seeded draw, and the sentence says so.
+    Units tied on their last time are ordered by a draw seeded by ``seed`` over the units in key
+    order, so the ranking never depends on the order the rows arrive in. The chronological holdout
+    and the time-ordered folds both rank units by this one function.
     """
     import pandas as pd
 
@@ -288,7 +290,31 @@ def chronological_holdout(times: Any, groups: Any | None, holdout: float, seed: 
             if groups is not None else np.arange(n).astype(str).astype(object))
     last = pd.Series(times).groupby(keys).max()  # NaN for a unit with no readable time
     dated_units = last.dropna()
-    n_undated = int(last.isna().sum())
+    tiebreak = np.random.default_rng(seed).random(len(dated_units))
+    ranked = dated_units.index.to_numpy()[np.lexsort((tiebreak, dated_units.to_numpy()))]
+    return keys, dated_units, ranked, int(last.isna().sum())
+
+
+def time_order(times: Any, groups: Any | None, seed: int) -> Any:
+    """Each row's unit rank by its last observation (0 earliest); NaN when the unit has no time.
+
+    The order the time-ordered folds follow (:mod:`turbotab.core.models.folds`): the same ranking
+    the chronological holdout draws its latest units from.
+    """
+    keys, _, ranked, _ = _units_by_time(times, groups, seed)
+    rank = {k: float(i) for i, k in enumerate(ranked.tolist())}
+    return np.asarray([rank.get(k, np.nan) for k in keys.tolist()], dtype=float)
+
+
+def chronological_holdout(times: Any, groups: Any | None, holdout: float, seed: int,
+                          column: str, *, dated: bool) -> tuple[Any, Chronology]:
+    """The held-out mask: whole units, ordered by their last observation, the latest held out.
+
+    Units with no readable time are never held out (they train) and are counted. Units tied at
+    the boundary are ordered by a seeded draw, and the sentence says so.
+    """
+    keys, dated_units, ranked, n_undated = _units_by_time(times, groups, seed)
+    n = len(keys)
     mask = np.zeros(n, dtype=bool)
     word = "units" if groups is not None else "rows"
     if holdout <= 0 or len(dated_units) < 2:
@@ -297,9 +323,6 @@ def chronological_holdout(times: Any, groups: Any | None, holdout: float, seed: 
         return mask, Chronology(drawn=False, time_column=column, boundary=None, n_units=None,
                                 n_undated=n_undated,
                                 sentence=f"No rows were held out by time: {why}.")
-    tiebreak = np.random.default_rng(seed).random(len(dated_units))
-    order = np.lexsort((tiebreak, dated_units.to_numpy()))
-    ranked = dated_units.index.to_numpy()[order]
     n_hold = min(len(ranked) - 1, max(1, int(round(len(ranked) * holdout))))
     held = set(ranked[-n_hold:].tolist())
     mask = np.isin(keys, np.asarray(list(held), dtype=object))
@@ -331,6 +354,9 @@ class SealDraw:
     groups: Any | None = None  # the grouping column's values over the universe
     grouped_by: str | None = None
     held: Any | None = None  # a held-out mask over the universe (the chronological draw)
+    # Each row's unit rank in time over the universe (:func:`time_order`), when the answers ask for
+    # time order and the time column reads: the folds then forward-chain by whole unit (MA-11).
+    order: Any | None = None
     refusal: str | None = None  # why the seal cannot be drawn as the answers ask
     labels: Any | None = field(default=None, repr=False)  # the outcome over the universe (counts)
     read: list[str] = field(default_factory=list)  # the columns read over the universe, to say so
@@ -343,7 +369,8 @@ class SealDraw:
 
     def split_args(self) -> dict[str, Any]:
         """Keyword arguments for ``stages.rows.draw_split``."""
-        return {"y": self.y, "groups": self.groups, "grouped_by": self.grouped_by, "held": self.held}
+        return {"y": self.y, "groups": self.groups, "grouped_by": self.grouped_by, "held": self.held,
+                "order": self.order}
 
     def facts(self) -> dict[str, Any]:
         """What the split artifact reports about the seal (its ``basis``, ``chronology``…)."""
@@ -351,6 +378,7 @@ class SealDraw:
             "basis": self.basis.model_dump(mode="json") if self.basis is not None else None,
             "chronology": self.chronology.model_dump(mode="json") if self.chronology else None,
             "exploratory": bool(self.exploratory),
+            "time_ordered_folds": self.order is not None,
         }
 
 
@@ -400,26 +428,27 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
         draw.y = frame[target].to_numpy(dtype=object)
         draw.labels = draw.y
     if requested:
-        draw.chronology, draw.held, draw.refusal = _chronology(
+        draw.chronology, draw.held, draw.refusal, draw.order = _chronology(
             frame, time_column, draw.groups, holdout=holdout, seed=seed, present=time_column in columns)
     return draw
 
 
 def _chronology(frame: Any, column: str | None, groups: Any | None, *, holdout: float, seed: int,
-                present: bool) -> tuple[Chronology, Any | None, str | None]:
-    """The chronological draw, its disclosure, and a refusal when the named column cannot order."""
+                present: bool) -> tuple[Chronology, Any | None, str | None, Any | None]:
+    """The chronological draw, its disclosure, a refusal when the named column cannot order, and
+    each row's unit rank in time for the folds (None when time cannot order them)."""
     if column is None:
         return (Chronology(drawn=False, time_column=None, boundary=None, n_units=None, n_undated=0,
                            sentence="Later outcomes were said to be predicted from earlier ones, but "
                                     "no column was named as time, so the held-out rows were drawn "
                                     "at random rather than by time: treat held-out scores as "
-                                    "exploratory."), None, None)
+                                    "exploratory."), None, None, None)
     if not present:
         return (Chronology(drawn=False, time_column=column, boundary=None, n_units=None, n_undated=0,
                            sentence=f"`{column}` is named as time but is not in the table."),
                 None,
                 f"`{column}` was named as the time column, but the table has no column by that "
-                f"name, so the latest rows cannot be held out.")
+                f"name, so the latest rows cannot be held out.", None)
     import pandas as pd
 
     raw = frame[column]
@@ -431,16 +460,19 @@ def _chronology(frame: Any, column: str | None, groups: Any | None, *, holdout: 
                            n_undated=0, sentence=f"No value of `{column}` reads as a time."),
                 None,
                 f"`{column}` was named as the time column, but none of its values reads as a date "
-                f"or a number, so the held-out rows cannot be the latest ones.")
+                f"or a number, so the held-out rows cannot be the latest ones.", None)
     if len(times) and unreadable > MAX_UNDATED_SHARE * len(times):
         return (Chronology(drawn=False, time_column=column, boundary=None, n_units=None,
                            n_undated=0, sentence=f"Too many rows have no readable `{column}`."),
                 None,
                 f"`{unreadable:,}` of `{len(times):,}` rows have no readable `{column}`. Ordering "
                 f"units by their last one would place those units arbitrarily, and the seal would "
-                f"report a chronology it did not draw.")
+                f"report a chronology it did not draw.", None)
     mask, chronology = chronological_holdout(times, groups, holdout, seed, column, dated=dated)
-    return chronology, (mask if chronology.drawn else None), None
+    order = time_order(times, groups, seed)
+    # Time orders the folds when at least two units have a readable time, held out or not.
+    ordered = order if int(np.unique(order[~np.isnan(order)]).size) >= 2 else None
+    return chronology, (mask if chronology.drawn else None), None, ordered
 
 
 def _isna(value: Any) -> bool:
@@ -460,9 +492,13 @@ HOLDOUTS = (0.0, 0.1, 0.2, 0.3)  # the split question's options (teaching conten
 USUAL = 0.2  # the holdout the floor is checked at: the usual choice
 BINARY_FLOOR_SOURCE = ("Collins, Ogundimu & Altman, Stat Med 2016;35:214–226; Vergouwe et al., "
                        "J Clin Epidemiol 2005;58:475–483")
+# The R² a plan assumes, as the AUC's width assumes 0.75: a held-out R²'s precision depends on the
+# R² itself, and a plan comes before any fit. 0.2 is a modest prediction R² for a diet outcome.
+PLAN_R2 = 0.2
 PRECISION_NOTE = ("Widths are approximate 95% intervals of a score on that many held-out rows: "
-                  "R² by (1 − R²)·√(2/n) at R² = 0, AUC by Hanley & McNeil (1982) at an AUC of "
-                  "0.75, macro-F1 by a proportion's interval on the rarest class.")
+                  "R² by its large-sample standard error 2·√R²·(1 − R²)/√n at an R² of 0.2, AUC by "
+                  "Hanley & McNeil (1982) at an AUC of 0.75, macro-F1 by a proportion's interval "
+                  "on the rarest class.")
 
 
 class SealFloor(_Model):
@@ -500,6 +536,9 @@ class SealPlan(_Model):
     reason: str  # why that order
     precision_note: str
     refusal: str | None  # why the seal cannot be drawn as the answers stand, if it cannot
+    # True when the answers ask for time order and the time column reads: the cross-validation
+    # folds then forward-chain by whole unit (each scored by a model fit on earlier units).
+    time_ordered_folds: bool = False
 
 
 def floor_for(task: str | None) -> SealFloor:
@@ -547,9 +586,24 @@ def measure(task: str | None, n: int, counts: Sequence[int] | None = None) -> tu
         what = f"macro-F1 known to about ±{width:.2f}" if width < 0.5 else "too few to measure"
         return (f"About {rows} held-out rows, {tick(f'{rarest:,}')} in the rarest class: {what}.",
                 rarest < FLOOR)
-    width = Z95 * math.sqrt(2.0 / n)
+    width = Z95 * r2_se(n)
     what = f"R² known to about ±{width:.2f}" if width < 0.5 else "too few to measure an R²"
     return f"About {rows} held-out rows: {what}.", n < FLOOR
+
+
+def r2_se(n: int, r2: float = PLAN_R2) -> float:
+    """The large-sample standard error of an R² measured on ``n`` held-out rows: 2·√R²·(1 − R²)/√n.
+
+    For a model whose predictions are calibrated on new rows, a held-out R² is 1 − A/B with
+    A = mean (y − ŷ)² and B = mean (y − ȳ)². By the delta method, with (y − ŷ, y − ȳ) bivariate
+    normal and corr² = 1 − R² (the residual is uncorrelated with the prediction),
+    Var(1 − A/B) ≈ 4·(1 − R²)²·(1 − corr²)/n = 4·R²·(1 − R²)²/n: the large-sample variance of a
+    squared correlation. The formula this replaces, (1 − R²)·√(2/n) evaluated at R² = 0, overstated
+    the standard error about twofold at R² = 0.2 (audit A19/E11).
+    """
+    if n <= 0:
+        return math.inf
+    return 2.0 * math.sqrt(max(r2, 0.0)) * (1.0 - r2) / math.sqrt(n)
 
 
 def _label(h: float) -> str:
@@ -623,6 +677,7 @@ def plan(state: Any, universe: Any, store: Any, task: str | None,
         basis=draw.basis, chronology=draw.chronology, exploratory=draw.exploratory,
         floor=floor_for(task), options=options, cv_first=cv_first, reason=reason,
         precision_note=PRECISION_NOTE, refusal=draw.refusal,
+        time_ordered_folds=draw.order is not None,
     ).model_dump(mode="json")
 
 
@@ -975,6 +1030,7 @@ __all__ = [
     "SealBasis",
     "SealDraw", "SealFloor", "SealPlan", "changed_after_seal", "chronological_holdout",
     "decide_basis", "floor_for", "holdout_options", "keys_for", "measure", "open_seal_views",
+    "r2_se", "time_order",
     "opening", "plan", "post_seal_changes", "post_seal_sentence", "read_sealed_scores",
     "read_times", "seal_inputs", "sealed_scores_frame", "serve_fit", "slots_read_by",
     "split_writer", "state_at_opening",

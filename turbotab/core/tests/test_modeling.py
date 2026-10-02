@@ -84,9 +84,56 @@ SCORING = {
 NEGATED = {"rmse", "mae", "brier", "log_loss"}
 
 
+class _AppFitted:
+    """A family's pipeline fit as the fit stage fits it (its inner splits drawn by
+    ``inner_cv.fit_pipeline``, which the acceptance tests check on their own), so that
+    scikit-learn's ``cross_validate`` can run the outer loop and the scoring independently."""
+
+    def __init__(self, pipeline=None):
+        self.pipeline = pipeline
+
+    def get_params(self, deep=True):
+        return {"pipeline": self.pipeline}
+
+    def set_params(self, **params):
+        self.pipeline = params.get("pipeline", self.pipeline)
+        return self
+
+    def fit(self, X, y):
+        from turbotab.core.models.inner_cv import fit_pipeline
+
+        self.fitted_ = fit_pipeline(clone(self.pipeline), X, y)
+        if hasattr(self.fitted_, "classes_"):
+            self.classes_ = self.fitted_.classes_
+        return self
+
+    def predict(self, X):
+        return self.fitted_.predict(X)
+
+    def predict_proba(self, X):
+        return self.fitted_.predict_proba(X)
+
+
+class _AppRegressor(_AppFitted):
+    def __sklearn_tags__(self):
+        from sklearn.base import BaseEstimator, RegressorMixin
+
+        return type("R", (RegressorMixin, BaseEstimator), {})().__sklearn_tags__()
+
+
+class _AppClassifier(_AppFitted):
+    def __sklearn_tags__(self):
+        from sklearn.base import BaseEstimator, ClassifierMixin
+
+        return type("C", (ClassifierMixin, BaseEstimator), {})().__sklearn_tags__()
+
+
 @pytest.mark.parametrize("task,target", [("regression", "glucose"), ("binary", "glucose_high"),
                                          ("multiclass", "glucose_band")])
 def test_cv_metrics_equal_an_independent_cross_validate(table, task, target):
+    """scikit-learn's ``cross_validate`` runs the folds and scores them; R² against each fold's
+    training mean, and the pooled estimate (``metrics.py``), are recomputed here in numpy from the
+    fold models' own predictions."""
     frame, paths = table
     # The analysis rows are whatever the split names; classification runs on fewer to stay quick.
     split = mf.split_bundle(np.arange(len(frame) if task == "regression" else 240), seed=4)
@@ -97,15 +144,38 @@ def test_cv_metrics_equal_an_independent_cross_validate(table, task, target):
     X = raw_inputs(paths, design.objects["spec"]["inputs"], train_ids)
     y = frame.loc[train_ids, target].to_numpy()
     by_family = {m["family"]: m for m in fit.data["models"]}
+    wrapper = _AppRegressor if task == "regression" else _AppClassifier
     for key in FAMILIES:
-        result = cross_validate(clone(design.objects["pipelines"][key]), X, y,
-                                cv=PredefinedSplit(folds), scoring=SCORING[task])
+        result = cross_validate(wrapper(design.objects["pipelines"][key]), X, y,
+                                cv=PredefinedSplit(folds), scoring=SCORING[task],
+                                return_estimator=True, return_indices=True)
         for metric in SCORING[task]:
             expected = result[f"test_{metric}"] * (-1 if metric in NEGATED else 1)
             got = by_family[key]["cv"][metric]
+            if metric == "r2":  # against the training rows' mean, fold by fold
+                expected = []
+                for est, tr, te in zip(result["estimator"], result["indices"]["train"],
+                                       result["indices"]["test"]):
+                    pred = est.predict(X.iloc[te])
+                    expected.append(1 - ((y[te] - pred) ** 2).sum() / ((y[te] - y[tr].mean()) ** 2).sum())
+                expected = np.asarray(expected)
             np.testing.assert_allclose(got["folds"], expected, rtol=0, atol=1e-9, err_msg=f"{key} {metric}")
             assert got["mean"] == pytest.approx(expected.mean(), abs=1e-9)
             assert got["sd"] == pytest.approx(expected.std(ddof=1), abs=1e-9)
+            if task != "regression":
+                assert got["estimator"] == "fold_mean" and got["estimate"] == pytest.approx(expected.mean(), abs=1e-9)
+        if task == "regression":  # pooled over every out-of-fold prediction
+            sse = sst = sae = 0.0
+            for est, tr, te in zip(result["estimator"], result["indices"]["train"], result["indices"]["test"]):
+                e = y[te] - est.predict(X.iloc[te])
+                sse += (e ** 2).sum()
+                sst += ((y[te] - y[tr].mean()) ** 2).sum()
+                sae += np.abs(e).sum()
+            cv = by_family[key]["cv"]
+            assert {cv[m]["estimator"] for m in ("r2", "rmse", "mae")} == {"pooled"}
+            assert cv["r2"]["estimate"] == pytest.approx(1 - sse / sst, abs=1e-9)
+            assert cv["rmse"]["estimate"] == pytest.approx(np.sqrt(sse / len(y)), abs=1e-9)
+            assert cv["mae"]["estimate"] == pytest.approx(sae / len(y), abs=1e-9)
 
 
 def opened(fit):
@@ -131,11 +201,17 @@ def test_holdout_metrics_equal_direct_computation_from_the_refit_pipeline(table)
     for m in opened(fit)["models"]:
         refit = fit.objects["fitted"][m["family"]]
         pred = refit.predict(X_hold)
-        assert m["holdout"]["r2"] == pytest.approx(r2_score(y_hold, pred), abs=1e-12)
+        # R² on the held-out rows is against the training rows' mean, not the held-out rows' own.
+        r2_train_mean = 1 - ((y_hold - pred) ** 2).sum() / ((y_hold - y_train.mean()) ** 2).sum()
+        assert m["holdout"]["r2"] == pytest.approx(r2_train_mean, abs=1e-12)
+        assert m["holdout"]["r2"] != pytest.approx(r2_score(y_hold, pred), abs=1e-6)
         assert m["holdout"]["rmse"] == pytest.approx(root_mean_squared_error(y_hold, pred), abs=1e-12)
         assert m["holdout"]["mae"] == pytest.approx(mean_absolute_error(y_hold, pred), abs=1e-12)
-        # The refit pipeline is the pipeline fit once on every training row, nothing else.
-        again = clone(design.objects["pipelines"][m["family"]]).fit(X_train, y_train)
+        # The refit pipeline is the pipeline fit once on every training row, nothing else (its
+        # inner splits drawn by fit_pipeline, as in every fold).
+        from turbotab.core.models.inner_cv import fit_pipeline
+
+        again = fit_pipeline(clone(design.objects["pipelines"][m["family"]]), X_train, y_train)
         np.testing.assert_allclose(again.predict(X_hold), pred, rtol=0, atol=1e-9)
 
 

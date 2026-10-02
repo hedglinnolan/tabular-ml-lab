@@ -38,7 +38,7 @@ class BoostedTrees(FamilyBase):
     def describe(self, task: Task, purpose: Purpose | None) -> tuple[str, str]:
         return ("Histogram gradient boosting",
                 "Up to 100 trees of at most 31 leaves; on more than 10,000 rows it stops early on "
-                "a tenth of its training rows.")
+                "a tenth of its training units, the latest when the folds follow time.")
 
     def assess(self, s: Situation) -> Assessment:
         concerns: list[str] = []

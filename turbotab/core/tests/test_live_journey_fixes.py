@@ -184,8 +184,17 @@ def test_the_baseline_is_a_dummy_model_cross_validated_on_the_same_folds(table, 
     train = a[a["partition"] == "train"]
     y = frame.loc[train["row_id"], target].to_numpy()
     X = np.zeros((len(y), 1))
-    expected = cross_validate(dummy, X, y, cv=PredefinedSplit(train["fold"].to_numpy()),
-                              scoring=scoring)["test_score"].mean()
+    result = cross_validate(dummy, X, y, cv=PredefinedSplit(train["fold"].to_numpy()),
+                            scoring=scoring, return_estimator=True, return_indices=True)
+    expected = result["test_score"].mean()
+    if task == "regression":
+        # R² is pooled over every out-of-fold prediction, against each fold's training mean: the
+        # training mean's own pooled R² is exactly 0.
+        sse = sst = 0.0
+        for est, tr, te in zip(result["estimator"], result["indices"]["train"], result["indices"]["test"]):
+            sse += ((y[te] - est.predict(X[te])) ** 2).sum()
+            sst += ((y[te] - y[tr].mean()) ** 2).sum()
+        expected = 1 - sse / sst
     baseline = fit.data["models"][0]["baseline"]
     assert baseline["metric"] == metric
     assert baseline["value"] == pytest.approx(expected, abs=1e-12)

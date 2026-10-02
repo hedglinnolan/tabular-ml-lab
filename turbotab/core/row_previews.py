@@ -591,7 +591,9 @@ def split_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         caption = f"{fmt_count(info['n_holdout'])} rows held out, {how}. {measures}"
     else:
         caption = (f"All {fmt_count(info['n_train'])} rows train, scored by "
-                   f"{fmt_count(info['folds'])}-fold cross-validation.")
+                   + (f"{fmt_count(info['folds'])} time-ordered folds."
+                      if info.get("fold_scheme") == "time_ordered"
+                      else f"{fmt_count(info['folds'])}-fold cross-validation."))
     if draw.exploratory and decision.holdout > 0:
         basis = draw.basis
         ctx.caution = Caution(text=basis.sentence if basis.exploratory else draw.chronology.sentence,

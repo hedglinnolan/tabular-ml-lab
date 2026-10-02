@@ -338,7 +338,7 @@ export function bestModel(
   const lower = LOWER_IS_BETTER.test(metric);
   let best: { family: string; label: string; value: number } | null = null;
   for (const m of fit.models) {
-    const value = m.cv[metric]?.mean;
+    const value = m.cv[metric]?.estimate ?? m.cv[metric]?.mean; // the reported CV score
     if (value === null || value === undefined || Number.isNaN(value)) continue;
     if (!best || (lower ? value < best.value : value > best.value)) {
       best = { family: m.family, label: m.label, value };

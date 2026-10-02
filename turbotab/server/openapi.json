@@ -6413,7 +6413,7 @@
       },
       "Baseline": {
         "additionalProperties": false,
-        "description": "What predicting without the predictors scores on the same folds (M1_CONTRACT §12.6).\n\nThe outcome's training-fold mean for regression; the training-fold class prior for\nclassification. ``value`` is the CV mean of ``metric`` (the primary metric).",
+        "description": "What predicting without the predictors scores on the same folds (M1_CONTRACT §12.6).\n\nThe outcome's training-fold mean for regression; the training-fold class prior for\nclassification. ``value`` is its cross-validated ``metric`` (the primary metric), estimated\nas the models' is: a pooled R² of the training-fold mean is 0 by construction.",
         "properties": {
           "metric": {
             "title": "Metric",
@@ -7304,6 +7304,27 @@
             },
             "title": "Post Seal Decisions",
             "type": "array"
+          },
+          "fold_scheme": {
+            "default": "random",
+            "enum": [
+              "random",
+              "time_ordered"
+            ],
+            "title": "Fold Scheme",
+            "type": "string"
+          },
+          "cv_definition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cv Definition"
           }
         },
         "required": [
@@ -7315,7 +7336,9 @@
           "models",
           "holdout_sealed",
           "changed_after_seal",
-          "post_seal_decisions"
+          "post_seal_decisions",
+          "fold_scheme",
+          "cv_definition"
         ],
         "title": "FitArtifact",
         "type": "object"
@@ -7606,6 +7629,7 @@
       },
       "MetricSummary": {
         "additionalProperties": false,
+        "description": "One metric's cross-validated score (``turbotab/core/models/metrics.py``).\n\n``estimate`` is the score the app reports: pooled over every out-of-fold prediction for R²,\nRMSE and MAE (``estimator: \"pooled\"``), the mean over folds otherwise (``\"fold_mean\"``).\n``mean`` and ``sd`` describe the per-fold values, which show the spread.",
         "properties": {
           "mean": {
             "anyOf": [
@@ -7642,12 +7666,35 @@
             },
             "title": "Folds",
             "type": "array"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Estimate"
+          },
+          "estimator": {
+            "default": "fold_mean",
+            "enum": [
+              "pooled",
+              "fold_mean"
+            ],
+            "title": "Estimator",
+            "type": "string"
           }
         },
         "required": [
           "mean",
           "sd",
-          "folds"
+          "folds",
+          "estimate",
+          "estimator"
         ],
         "title": "MetricSummary",
         "type": "object"
@@ -8558,6 +8605,11 @@
               }
             ],
             "title": "Refusal"
+          },
+          "time_ordered_folds": {
+            "default": false,
+            "title": "Time Ordered Folds",
+            "type": "boolean"
           }
         },
         "required": [
@@ -8572,7 +8624,8 @@
           "cv_first",
           "reason",
           "precision_note",
-          "refusal"
+          "refusal",
+          "time_ordered_folds"
         ],
         "title": "SealPlan",
         "type": "object"
@@ -8790,6 +8843,25 @@
           "exploratory": {
             "title": "Exploratory",
             "type": "boolean"
+          },
+          "fold_scheme": {
+            "default": "random",
+            "enum": [
+              "random",
+              "time_ordered"
+            ],
+            "title": "Fold Scheme",
+            "type": "string"
+          },
+          "folds_stratified": {
+            "default": false,
+            "title": "Folds Stratified",
+            "type": "boolean"
+          },
+          "time_ordered_folds": {
+            "default": false,
+            "title": "Time Ordered Folds",
+            "type": "boolean"
           }
         },
         "required": [
@@ -8804,7 +8876,10 @@
           "note",
           "basis",
           "chronology",
-          "exploratory"
+          "exploratory",
+          "fold_scheme",
+          "folds_stratified",
+          "time_ordered_folds"
         ],
         "title": "SplitArtifact",
         "type": "object"
@@ -9414,6 +9489,59 @@
           "tolerance_basis": {
             "title": "Tolerance Basis",
             "type": "string"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Df"
+          },
+          "level": {
+            "default": 0.95,
+            "title": "Level",
+            "type": "number"
           }
         },
         "required": [
@@ -9421,7 +9549,12 @@
           "metric",
           "gain",
           "tolerance",
-          "tolerance_basis"
+          "tolerance_basis",
+          "se",
+          "ci_low",
+          "ci_high",
+          "df",
+          "level"
         ],
         "title": "VersusBaseline",
         "type": "object"

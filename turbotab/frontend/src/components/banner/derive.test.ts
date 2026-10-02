@@ -69,6 +69,9 @@ const split: SplitArtifact = {
   grouped_by: null,
   n_groups: null,
   stratified: false,
+  fold_scheme: "random",
+  folds_stratified: false,
+  time_ordered_folds: false,
   note: "",
   basis: {
     state: "one_row_per_unit",
@@ -115,7 +118,7 @@ const design: DesignArtifact = {
   left_out: [],
 };
 
-const baseline = { metric: "r2", value: -0.002, label: "the outcome's average" };
+const baseline = { metric: "r2", value: 0, label: "the outcome's average" };
 
 const fit: FitArtifact = {
   task: "regression",
@@ -127,7 +130,10 @@ const fit: FitArtifact = {
     {
       family: "linear",
       label: "Linear regression",
-      cv: { r2: { mean: 0.076, sd: 0.04, folds: [] }, rmse: { mean: 44.8, sd: 1, folds: [] } },
+      cv: {
+        r2: { mean: 0.07, sd: 0.04, folds: [], estimate: 0.076, estimator: "pooled" },
+        rmse: { mean: 44.8, sd: 1, folds: [], estimate: 44.8, estimator: "pooled" },
+      },
       holdout: null,
       coefficients: null,
       fit_seconds: 0.03,
@@ -138,7 +144,10 @@ const fit: FitArtifact = {
     {
       family: "elastic_net",
       label: "Elastic net",
-      cv: { r2: { mean: 0.077, sd: 0.03, folds: [] }, rmse: { mean: 44.7, sd: 1, folds: [] } },
+      cv: {
+        r2: { mean: 0.07, sd: 0.03, folds: [], estimate: 0.077, estimator: "pooled" },
+        rmse: { mean: 44.7, sd: 1, folds: [], estimate: 44.7, estimator: "pooled" },
+      },
       holdout: null,
       coefficients: null,
       fit_seconds: 0.8,
@@ -149,7 +158,10 @@ const fit: FitArtifact = {
     {
       family: "boosted_trees",
       label: "Gradient-boosted trees",
-      cv: { r2: { mean: -0.039, sd: 0.06, folds: [] }, rmse: { mean: 47.5, sd: 1, folds: [] } },
+      cv: {
+        r2: { mean: -0.05, sd: 0.06, folds: [], estimate: -0.039, estimator: "pooled" },
+        rmse: { mean: 47.5, sd: 1, folds: [], estimate: 47.5, estimator: "pooled" },
+      },
       holdout: null,
       coefficients: null,
       fit_seconds: 1.7,
@@ -161,6 +173,8 @@ const fit: FitArtifact = {
   holdout_sealed: true,
   changed_after_seal: false,
   post_seal_decisions: [],
+  fold_scheme: "random",
+  cv_definition: null,
 };
 
 function input(over: Partial<BannerInput> = {}, viewOver: Partial<ProjectView> = {}): BannerInput {

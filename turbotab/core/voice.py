@@ -658,8 +658,16 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
         how.append(f"stratified by {tick(target)}")
     manner = " (" + ", ".join([f"seed {tick(d.seed)}", *how]) + ")"
     folds = f"{tick(d.folds)}-fold cross-validation"
+    compared = f"models were compared by {folds} on the rest"
+    if plan is not None and _attr(plan, "time_ordered_folds"):  # audit MA-11: folds follow time
+        folds = (f"cross-validation over {tick(d.folds)} time-ordered folds, each scored by models "
+                 f"fit on earlier units")
+        compared = f"models were compared on the rest by {folds}"
+    # How a cross-validated or held-out R² is measured (audit MA-09; models/metrics.py).
+    r2 = ("; R² was measured against the training rows' mean and pooled over every out-of-fold "
+          "prediction" if task == "regression" else "")
     if d.holdout == 0:
-        return f"No rows were held out; performance was estimated by {folds}{manner}"
+        return f"No rows were held out; performance was estimated by {folds}{manner}{r2}"
     share = tick(f"{d.holdout:.0%}")
     # No count: the held-out rows are drawn over every row with the outcome recorded, and the
     # analysis count changes with any later exclusion or missing-values answer; the banner and
@@ -669,11 +677,10 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
         time = tick(_attr(chron, "time_column"))
         whole = f"whole {tick(group)} units by their last {time}" if group else f"by {time}"
         text = (f"The latest {share}{pool} ({whole}) were held out for one final score, so the "
-                f"models are scored on later data than they learned from; models were compared by "
-                f"{folds} on the rest")
+                f"models are scored on later data than they learned from; {compared}")
     else:
-        text = (f"A random {share}{pool}{manner} was held out for one final score; models were "
-                f"compared by {folds} on the rest")
+        text = f"A random {share}{pool}{manner} was held out for one final score; {compared}"
+    text += r2
     if basis is not None and _attr(basis, "exploratory"):
         text += f"; the held-out score is exploratory, as the split's basis is {_attr(basis, 'label')}"
     return text

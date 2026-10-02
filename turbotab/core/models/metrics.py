@@ -1,13 +1,35 @@
-"""Performance metrics by task (M1_CONTRACT §3 "fit").
+"""Performance metrics by task, and how a cross-validated score is estimated (M1_CONTRACT §3 "fit").
 
-Regression: R², RMSE, MAE. Binary: AUC, Brier score, log loss (the positive class is the
-second of the sorted classes, as scikit-learn orders them). Multiclass: accuracy, macro-F1,
-log loss. Each is scikit-learn's own function, so a number here is the number anyone gets from
-the same predictions.
+Regression: R², RMSE, MAE. Binary: AUC, Brier score, log loss (the positive class is the second
+of the sorted classes, as scikit-learn orders them). Multiclass: accuracy, macro-F1, log loss.
+
+**R² is measured against the training rows' mean** — in every fold, in the pooled estimate and on
+the held-out rows. R² compares the model with the model that predicts without predictors; that
+model is the mean of the rows it was fit on, so its error on new rows is measured against that mean,
+not against the new rows' own (which no prediction could know). Staerk et al. 2024 call the
+training-mean definition the one that "may generally be preferable based on theoretical reasons".
+Scored against the held-out rows' own mean, a 60-row holdout read 0.155 where the training mean
+read 0.175, against a target of 0.18 (audit MA-09).
+
+**Cross-validated R², RMSE and MAE are pooled** over every out-of-fold prediction (audit MA-09):
+
+    R²_CV = 1 − Σ_k Σ_{i ∈ k} (y_i − ŷ_i)²  /  Σ_k Σ_{i ∈ k} (y_i − ȳ_{−k})²
+
+where ȳ_{−k} is the mean of the rows fold k's model was fit on. The denominator is the out-of-fold
+squared error of the no-predictor model, so this is Hawinkel, Waegeman & Maere's pooling estimator
+(Am Stat 2024; arXiv:2302.05131): "The pooling R² estimator, which separately estimates the squared
+error losses of the null and prediction models and only then combines them into a final estimate
+R², is unbiased. Hence this pooling estimator should be preferred to averaging estimators that
+calculate R² values in every cross-validation fold separately and then average over the folds,
+which suffer from bias." Averaged fold by fold against each fold's own mean, OLS with 5 predictors
+and a population R² of 0.20 read 0.05 at n = 100 against a target of 0.13–0.14. The per-fold values
+are kept to show the spread. Classification scores stay the mean over folds: AUC is not pooled
+across fold models, whose scores are not on one scale (Forman & Scholz 2010).
 """
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Callable, Sequence
 
 import numpy as np
 
@@ -23,21 +45,44 @@ LABELS: dict[str, str] = {
     "r2": "R²", "rmse": "RMSE", "mae": "MAE", "auc": "AUC", "brier": "Brier score",
     "log_loss": "Log loss", "accuracy": "Accuracy", "macro_f1": "Macro-F1",
 }
+POOLED = ("r2", "rmse", "mae")  # estimated over every out-of-fold prediction, not fold by fold
+CV_DEFINITION = {
+    "regression": ("Cross-validated R², RMSE and MAE pool every out-of-fold prediction; R² is "
+                   "measured against the mean of the rows each fold's model was fit on, as the "
+                   "held-out R² is against the training rows' mean. The fold values show the spread."),
+    "binary": "Cross-validated scores are the mean over folds; the fold values show the spread.",
+    "multiclass": "Cross-validated scores are the mean over folds; the fold values show the spread.",
+}
 
 
 def metric_labels(task: Task) -> dict[str, str]:
     return {m: LABELS[m] for m in METRICS[task]}
 
 
-def score(task: Task, model: Any, X: Any, y: Any) -> dict[str, float]:
-    """Every metric for ``task`` of a fitted model on ``X``, ``y``."""
+def r2_against(y: Any, pred: Any, reference: float) -> float:
+    """1 − Σ(y − ŷ)² / Σ(y − reference)²: R² against a reference mean known before scoring."""
+    y = np.asarray(y, dtype=float)
+    sst = float(((y - reference) ** 2).sum())
+    if sst == 0:
+        return float("nan")
+    return 1.0 - float(((y - np.asarray(pred, dtype=float)) ** 2).sum()) / sst
+
+
+def score(task: Task, model: Any, X: Any, y: Any, *, reference: float | None = None) -> dict[str, float]:
+    """Every metric for ``task`` of a fitted model on ``X``, ``y``.
+
+    ``reference``: for regression, the mean of the rows the model was fit on; R² is measured
+    against it. Without one, R² is scikit-learn's (against ``y``'s own mean).
+    """
     from sklearn import metrics as m
 
     y = np.asarray(y)
     if task == "regression":
         pred = model.predict(X)
+        r2 = (float(m.r2_score(y, pred)) if reference is None
+              else r2_against(y, pred, float(reference)))
         return {
-            "r2": float(m.r2_score(y, pred)),
+            "r2": r2,
             "rmse": float(m.root_mean_squared_error(y, pred)),
             "mae": float(m.mean_absolute_error(y, pred)),
         }
@@ -58,18 +103,127 @@ def score(task: Task, model: Any, X: Any, y: Any) -> dict[str, float]:
     }
 
 
-def summarize(task: Task, per_fold: list[dict[str, float]]) -> dict[str, dict[str, Any]]:
-    """``{metric: {mean, sd, folds}}``; ``sd`` is the sample SD over folds (null for one fold)."""
+@dataclass
+class FoldPart:
+    """What pooling needs from one regression fold: sums over its scored rows."""
+
+    sse: float  # Σ (y − ŷ)²
+    sst: float  # Σ (y − ȳ_train)²: the no-predictor model's squared error
+    sae: float  # Σ |y − ŷ|
+    n: int
+
+
+def fold_part(model: Any, X: Any, y: Any, reference: float) -> FoldPart:
+    y = np.asarray(y, dtype=float)
+    e = y - np.asarray(model.predict(X), dtype=float)
+    return FoldPart(sse=float((e ** 2).sum()), sst=float(((y - reference) ** 2).sum()),
+                    sae=float(np.abs(e).sum()), n=int(len(y)))
+
+
+def pooled(parts: Sequence[FoldPart]) -> dict[str, float]:
+    """R², RMSE and MAE over every out-of-fold prediction (the module docstring's estimator)."""
+    sse = sum(p.sse for p in parts)
+    sst = sum(p.sst for p in parts)
+    sae = sum(p.sae for p in parts)
+    n = sum(p.n for p in parts)
+    if not n:
+        return {m: float("nan") for m in POOLED}
+    return {"r2": 1.0 - sse / sst if sst > 0 else float("nan"), "rmse": float(np.sqrt(sse / n)),
+            "mae": sae / n}
+
+
+def summarize(task: Task, per_fold: list[dict[str, float]],
+              parts: Sequence[FoldPart] | None = None) -> dict[str, dict[str, Any]]:
+    """``{metric: {estimate, estimator, mean, sd, folds}}``.
+
+    ``estimate`` is the cross-validated score the app reports: pooled over every out-of-fold
+    prediction for R², RMSE and MAE when ``parts`` are given, else the mean over folds.
+    ``mean`` is always the mean over folds and ``sd`` their sample SD (null for one fold).
+    """
+    pool = pooled(parts) if parts and task == "regression" else {}
     out: dict[str, dict[str, Any]] = {}
     for metric in METRICS[task]:
         values = [f[metric] for f in per_fold]
         arr = np.asarray(values, dtype=float)
+        mean = float(arr.mean()) if arr.size else float("nan")
         out[metric] = {
-            "mean": float(arr.mean()),
+            "estimate": float(pool[metric]) if metric in pool else mean,
+            "estimator": "pooled" if metric in pool else "fold_mean",
+            "mean": mean,
             "sd": float(arr.std(ddof=1)) if arr.size > 1 else None,
             "folds": [float(v) for v in values],
         }
     return out
 
 
-__all__ = ["LABELS", "METRICS", "PRIMARY", "metric_labels", "score", "summarize"]
+# ── cross-validation over the split's folds ──────────────────────────────────
+
+
+def fold_pairs(folds: Any, scheme: str = "random") -> list[tuple[int, np.ndarray, np.ndarray]]:
+    """``(fold, fit rows, scored rows)`` as boolean masks over the training rows.
+
+    ``random``: each fold is scored by a model fit on every other fold. ``time_ordered``: fold
+    ``j`` is scored by a model fit on the folds before it, and fold 0 only trains
+    (:mod:`turbotab.core.models.folds`).
+    """
+    folds = np.asarray(folds).astype(int)
+    keys = sorted(set(folds.tolist()))
+    if scheme == "time_ordered":
+        return [(k, folds < k, folds == k) for k in keys if k > keys[0]]
+    return [(k, folds != k, folds == k) for k in keys]
+
+
+@dataclass
+class CrossValidated:
+    per_fold: list[dict[str, float]]
+    parts: list[FoldPart] = field(default_factory=list)  # regression only
+    sizes: list[tuple[int, int]] = field(default_factory=list)  # (rows fit, rows scored) per fold
+
+    def summary(self, task: Task) -> dict[str, dict[str, Any]]:
+        return summarize(task, self.per_fold, self.parts)
+
+    @property
+    def test_share(self) -> float | None:
+        """The mean of rows scored over rows fit, per fold (Nadeau & Bengio's n₂/n₁)."""
+        shares = [s / f for f, s in self.sizes if f]
+        return float(np.mean(shares)) if shares else None
+
+
+def _rows(data: Any, mask: np.ndarray) -> Any:
+    import pandas as pd
+
+    if isinstance(data, (pd.DataFrame, pd.Series)):
+        return data.iloc[np.flatnonzero(mask)]
+    return np.asarray(data)[mask]
+
+
+def cross_validate(task: Task, make: Callable[[], Any], X: Any, y: Any,
+                   pairs: Sequence[tuple[int, np.ndarray, np.ndarray]], *,
+                   fit: Callable[[Any, Any, Any, np.ndarray], Any] | None = None,
+                   before_fold: Callable[[int, int], None] | None = None) -> CrossValidated:
+    """Fit a fresh model (``make()``) on each pair's fit rows and score it on its scored rows.
+
+    ``fit(model, X_fit, y_fit, fit_mask)`` fits a model (default: ``model.fit``); the fit stage
+    passes one that draws the model's inner splits as the outer folds are. ``before_fold(i, n)``
+    runs before each fold (progress, cancellation).
+    """
+    y = np.asarray(y)
+    out = CrossValidated(per_fold=[])
+    for i, (_, fit_rows, test_rows) in enumerate(pairs):
+        if before_fold is not None:
+            before_fold(i, len(pairs))
+        X_fit, y_fit = _rows(X, fit_rows), y[fit_rows]
+        X_test, y_test = _rows(X, test_rows), y[test_rows]
+        model = make()
+        model = fit(model, X_fit, y_fit, fit_rows) if fit is not None else model.fit(X_fit, y_fit)
+        reference = float(np.mean(y_fit.astype(float))) if task == "regression" else None
+        out.per_fold.append(score(task, model, X_test, y_test, reference=reference))
+        if task == "regression":
+            out.parts.append(fold_part(model, X_test, y_test, reference))
+        out.sizes.append((int(fit_rows.sum()), int(test_rows.sum())))
+    return out
+
+
+__all__ = ["CV_DEFINITION", "CrossValidated", "FoldPart", "LABELS", "METRICS", "POOLED", "PRIMARY",
+           "cross_validate", "fold_part", "fold_pairs", "metric_labels", "pooled", "r2_against",
+           "score", "summarize"]

@@ -83,9 +83,18 @@ class DesignArtifact(_Model):
 
 
 class MetricSummary(_Model):
+    """One metric's cross-validated score (``turbotab/core/models/metrics.py``).
+
+    ``estimate`` is the score the app reports: pooled over every out-of-fold prediction for R²,
+    RMSE and MAE (``estimator: "pooled"``), the mean over folds otherwise (``"fold_mean"``).
+    ``mean`` and ``sd`` describe the per-fold values, which show the spread.
+    """
+
     mean: float | None
     sd: float | None
     folds: list[float | None]
+    estimate: float | None = None  # null only in artifacts from before the pooled estimator
+    estimator: Literal["pooled", "fold_mean"] = "fold_mean"
 
 
 class Coefficient(_Model):
@@ -100,7 +109,8 @@ class Baseline(_Model):
     """What predicting without the predictors scores on the same folds (M1_CONTRACT §12.6).
 
     The outcome's training-fold mean for regression; the training-fold class prior for
-    classification. ``value`` is the CV mean of ``metric`` (the primary metric).
+    classification. ``value`` is its cross-validated ``metric`` (the primary metric), estimated
+    as the models' is: a pooled R² of the training-fold mean is 0 by construction.
     """
 
     metric: str
@@ -139,6 +149,10 @@ class FitArtifact(_Model):
     # opened on, and the decisions made after the opening that changed what it reads.
     changed_after_seal: bool = False
     post_seal_decisions: list[str] = []
+    # How the folds were used: "random" (each fold scored by a model fit on the others) or
+    # "time_ordered" (each fold scored by a model fit on the earlier ones, forward chaining).
+    fold_scheme: Literal["random", "time_ordered"] = "random"
+    cv_definition: str | None = None  # what a cross-validated score is, in one or two sentences
 
 
 class SubstitutionModel(_Model):

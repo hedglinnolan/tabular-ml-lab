@@ -245,7 +245,8 @@ def test_the_precision_of_a_held_out_r2_shrinks_with_n():
         text, _ = seal.measure("regression", n)
         return float(text.split("±")[1].rstrip("."))
     assert width(100) > width(400) > width(1600)
-    assert width(400) == pytest.approx(1.96 * np.sqrt(2 / 400), abs=0.006)
+    # 1.96 × the large-sample SE 2·√R²·(1 − R²)/√n at the plan's R² of 0.2 (acceptance: WP4 §5).
+    assert width(400) == pytest.approx(1.96 * 2 * np.sqrt(0.2) * 0.8 / np.sqrt(400), abs=0.006)
 
 
 # ── grouped inner cross-validation ───────────────────────────────────────────
@@ -320,7 +321,14 @@ def test_a_fit_on_noise_says_it_is_no_better_than_the_baseline_first(tmp_path):
     for m in fit.data["models"]:
         verdict = m["versus_baseline"]["verdict"]
         assert verdict in ("no_better", "worse"), m["versus_baseline"]
-        assert m["concerns"][0].startswith("No better than" if verdict == "no_better" else "Predicts worse")
+        v = m["versus_baseline"]
+        if verdict == "worse":
+            assert m["concerns"][0].startswith("Predicts worse")
+        elif v["se"] == 0 and v["gain"] == 0:  # a penalty that removed every predictor
+            assert m["concerns"][0].startswith("Scores the same as the outcome's average")
+        else:  # the gain is reported with its interval
+            assert m["concerns"][0].startswith("Not distinguishable from")
+            assert v["ci_low"] < v["gain"] < v["ci_high"] and "95% interval" in m["concerns"][0]
 
 
 # ── withholding ──────────────────────────────────────────────────────────────
