@@ -160,4 +160,10 @@ def test_every_structural_answer_previews_its_picture(client, tmp_path):
     assert focus["kind"] == "table_focus" and [f["label"] for f in focus["story"]] == [
         "As supplied: features in rows", "Turned: one row per sample"]
     assert focus["story"][1]["columns"][0] == "sample_id" and len(turn["views"]) == 1
+    # the corner at a table_focus's limits: 8 features by 8 samples, each cell the same either way
+    supplied, after = focus["story"]
+    assert len(supplied["rows"]) == len(after["rows"]) == 8 and len(after["columns"]) == 9
+    first = supplied["rows"][0]["values"]
+    assert all(after["rows"][j]["values"][str(first["feature_id"])] == first[s]
+               for j, s in enumerate(supplied["columns"][1:]))
     assert f"`{turned.shape[1]}` rows, one per sample" in focus["caption"]

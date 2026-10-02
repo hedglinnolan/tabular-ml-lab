@@ -1,0 +1,83 @@
+/*
+ * The coach (DESIGN_LANGUAGE §02: --warn is the coach's hue). Notes speak in the app's serif voice;
+ * data in a note is a mono chip. The layer never takes a pointer: the picture below stays live.
+ */
+
+.layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.leaders {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.leader {
+  stroke: var(--warn);
+  stroke-width: 1;
+  stroke-opacity: 0.85;
+}
+
+.bracket {
+  fill: none;
+  stroke: var(--warn);
+  stroke-width: 1.5;
+}
+
+.dot {
+  fill: var(--warn);
+}
+
+.note {
+  position: absolute;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 1px 7px 2px;
+  font-family: var(--serif);
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--warn);
+  background: var(--warn-tint);
+  border: 1px solid var(--warn-line);
+  border-radius: 7px;
+}
+
+.note :global(code.v) {
+  color: var(--ink);
+}
+
+/* A note drawn inline beside what it is about (a row-flow step). */
+.inline {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 1px 0 3px;
+  padding: 1px 7px 2px;
+  width: fit-content;
+  max-width: 100%;
+  font-family: var(--serif);
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--warn);
+  background: var(--warn-tint);
+  border: 1px solid var(--warn-line);
+  border-radius: 7px;
+}
+
+.inline::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  transform: translateY(-1px);
+}

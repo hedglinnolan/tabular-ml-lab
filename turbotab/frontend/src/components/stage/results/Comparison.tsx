@@ -7,6 +7,9 @@
 import { scaleLinear } from "d3-scale";
 import type { FitArtifact } from "../../../api/m1-stage-types";
 import { fmtNum } from "../format";
+import type { GlyphState, SealPhase } from "../seal/phase";
+import { SealGlyph } from "../seal/SealGlyph";
+import seal from "../seal/seal.module.css";
 import { Rich } from "../text";
 import { useSize } from "../views/geometry";
 import type { Comparison as ComparisonData } from "./model";
@@ -16,11 +19,16 @@ interface Props {
   data: ComparisonData;
   fit: FitArtifact;
   basis: string;
+  /** Where the seal stands: held-out scores show only once it is opened. */
+  phase?: SealPhase;
+  /** The seal's glyph for its basis (never a clean lock for an exploratory one). */
+  glyph?: GlyphState;
 }
 
 const ROW = 46;
 
-export function Comparison({ data, fit, basis }: Props) {
+export function Comparison({ data, fit, basis, phase = "sealed", glyph = "closed" }: Props) {
+  const post = phase === "post_seal";
   const [ref, { w }] = useSize<HTMLDivElement>();
   const x = scaleLinear().domain(data.domain).range([8, Math.max(40, w - 8)]);
   const ticks = x.ticks(w < 300 ? 3 : 5);
@@ -51,7 +59,9 @@ export function Comparison({ data, fit, basis }: Props) {
               {w > 0 ? (
                 <svg width={w} height={ROW} className={s.svg} aria-hidden="true">
                   {base ? <line x1={x(base.value)} x2={x(base.value)} y1={0} y2={ROW} className={s.baseLine} /> : null}
-                  {r.holdout !== null ? <circle cx={x(r.holdout)} cy={ROW / 2} r={7} className={s.hollow} /> : null}
+                  {r.holdout !== null ? (
+                    <circle cx={x(r.holdout)} cy={ROW / 2} r={7} className={post ? s.hollowPost : s.hollow} />
+                  ) : null}
                   {r.mean !== null ? (
                     <>
                       <line
@@ -71,7 +81,15 @@ export function Comparison({ data, fit, basis }: Props) {
               <span className="num">
                 {fmtNum(r.mean)} ± {fmtNum(r.sd, 2)}
               </span>
-              <span className={s.cmpHold}>{r.holdout !== null ? `held out ${fmtNum(r.holdout)}` : "no held-out rows"}</span>
+              {r.holdout !== null ? (
+                <span className={post ? s.cmpHoldPost : s.cmpHold}>held out {fmtNum(r.holdout)}</span>
+              ) : phase === "sealed" ? (
+                <span className={s.cmpSealed} data-testid="held-out-cell-sealed">
+                  <SealGlyph state={glyph} recorded size={12} className={seal.inlineGlyph} /> sealed
+                </span>
+              ) : (
+                <span className={s.cmpHold}>no held-out rows</span>
+              )}
             </div>
             <div className={s.tip} role="tooltip">
               <strong>{r.label}</strong>: CV {data.label} {fmtNum(r.mean)} ± {fmtNum(r.sd, 2)} over folds{" "}
@@ -104,7 +122,12 @@ export function Comparison({ data, fit, basis }: Props) {
         <span />
       </div>
       <p className={s.legendLine}>
-        <span className={s.keyDot} /> CV mean ± SD <span className={s.keyHollow} /> held out
+        <span className={s.keyDot} /> CV mean ± SD
+        {phase === "opened" || post ? (
+          <>
+            <span className={post ? s.keyHollowPost : s.keyHollow} /> held out{post ? ", after the opening" : ""}
+          </>
+        ) : null}
         {base ? (
           <>
             <span className={s.keyBase} /> baseline: {base.label}, scored the same way

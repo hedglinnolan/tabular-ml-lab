@@ -26,8 +26,10 @@ import { ColumnsScene, ModelsScene, NowScene, ResultsScene, RowsScene, type Live
 import { initial } from "./player";
 import { PreviewGrid } from "./PreviewGrid";
 import { PlayerControls, StageBar } from "./StageBar";
+import { composedOf } from "./composed";
+import { fmtInt } from "./format";
 import { ColumnsContext, Rich } from "./text";
-import { readoutOf, storyboardOf, trackOf } from "./tracks";
+import { readoutOf, storyboardOf, trackOf, type ReadoutItem } from "./tracks";
 import { createPlayerStore, PlayerContext } from "./usePlayer";
 import s from "./Stage.module.css";
 
@@ -156,7 +158,20 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
         : null;
   const tracks = useMemo(() => (showing ? showing.views.map((v) => trackOf(v)) : []), [showing]);
   const story = useMemo(() => storyboardOf(tracks), [tracks]);
-  const readout = useMemo(() => (showing ? readoutOf(showing.views) : []), [showing]);
+  const nRows = view.summary.n_rows;
+  const nCols = view.summary.n_cols;
+  const readout = useMemo(() => {
+    if (!showing) return [];
+    const out: ReadoutItem[] = readoutOf(showing.views);
+    // A turn: the table's rows become its columns (one row per sample, one column per feature).
+    if (showing.views.some((v) => composedOf(v)?.kind === "turn_table") && nRows !== null && nCols !== null) {
+      out.unshift(
+        { key: "turn-rows", name: "rows", before: fmtInt(nRows), after: fmtInt(nCols - 1) },
+        { key: "turn-cols", name: "columns", before: fmtInt(nCols), after: fmtInt(nRows + 1) },
+      );
+    }
+    return out.slice(0, 3);
+  }, [showing, nRows, nCols]);
   // Nothing to flip when every view shows one state (evidence), or a preview has no views at all.
   const still = tracks.every((tr) => tr.still);
   // Say truly what that one state is: the data as loaded (evidence), the choice's own picture (a
@@ -333,7 +348,7 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
                 transition={t.arrive}
               >
                 {scene.kind === "refusal" ? (
-                  <div className={s.refusal} role="alert" data-testid="refusal">
+                  <div className={s.refusal} role="alert" data-testid="refusal" data-purpose="refusal">
                     <p className={s.refusalText}>
                       <Rich text={`Not available: ${scene.refusal.error.message}`} />
                     </p>
@@ -361,12 +376,12 @@ export function Stage({ pid, view, focus, onFocus }: StageProps) {
                 {showing && (scene.kind === "preview" || scene.kind === "evidence" || scene.kind === "refusal") ? (
                   <div className={scene.kind === "refusal" ? s.veiled : s.views} inert={scene.kind === "refusal"}>
                     {showing.note ? (
-                      <p className={s.note} data-testid="stage-note">
+                      <p className={s.note} data-testid="stage-note" data-purpose="stage_note">
                         <Rich text={showing.note} />
                       </p>
                     ) : null}
                     {showing.caution ? (
-                      <div className={s.caution} role="note" data-testid="stage-caution">
+                      <div className={s.caution} role="note" data-testid="stage-caution" data-purpose="stage_caution">
                         <p className={s.cautionText}>
                           <Rich text={showing.caution.text} />
                         </p>

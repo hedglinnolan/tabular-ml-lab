@@ -58,9 +58,20 @@ def test_combining_a_persons_recalls_reaches_the_table_the_previews_and_the_rout
     first = {r["row_id"]: r for r in reshape["rows"]}
     assert first[0]["before"]["energy_kcal"] == 3063.0 and first[1]["before"]["energy_kcal"] == 1913.0
     assert first[0]["after"]["energy_kcal"] == first[1]["after"]["energy_kcal"] == 2488.0
-    assert [r["values"]["participant_id"] for r in reshape["story"][1]["rows"]] == ["P001", "P002"]
+    people = ["P001", "P002", "P003", "P004"]  # four people's 8 recalls: a table_focus's 8 rows
+    assert [r["values"]["participant_id"] for r in reshape["story"][1]["rows"]] == people
+    # the row map, made visible: each record is its unit's; a combined row stands for its records
+    records, combined = reshape["story"]
+    assert [(r["unit"], r["sources"]) for r in records["rows"]] == [
+        (p, [2 * i + k]) for i, p in enumerate(people) for k in (0, 1)]
+    assert [(r["unit"], r["sources"]) for r in combined["rows"]] == [
+        (p, [2 * i, 2 * i + 1]) for i, p in enumerate(people)]
     last = preview(client, pid, {"kind": "set_aggregation", "method": "last"})["views"][0]
     assert {r["row_id"]: r for r in last["rows"]}[0]["after"]["energy_kcal"] == 1913.0
+    # a kept record keeps its own identity: the last recall is that recall, not its unit's first row
+    assert [(r["row_id"], r["sources"]) for r in last["story"][1]["rows"]] == [
+        (2 * i + 1, [2 * i + 1]) for i in range(4)]
+    assert last["story"][1]["rows"][0]["values"]["energy_kcal"] == 1913.0
     assert client.get(f"/api/projects/{pid}").json()["state"]["aggregation"] is None  # nothing recorded
 
     decide(client, pid, {"kind": "set_aggregation", "method": "mean"})

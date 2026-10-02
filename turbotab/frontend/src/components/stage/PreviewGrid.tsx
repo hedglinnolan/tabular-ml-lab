@@ -6,7 +6,11 @@
 import { AnimatePresence, motion } from "motion/react";
 import type { ConsequenceView, ViewKind } from "../../api/m1-stage-types";
 import { useTransitions } from "../../motion/prefs";
+import { composedOf } from "./composed";
 import { heading } from "./player";
+import { ReshapeTable } from "./reshape/ReshapeTable";
+import { TurnTable } from "./reshape/TurnTable";
+import { SealForkTrack } from "./seal/SealFork";
 import { figureForTrack } from "./save/journal";
 import { saveIndices, type SaveWhich } from "./save/export";
 import { SaveMenu, type SaveChoice } from "./save/SaveMenu";
@@ -32,6 +36,14 @@ interface Props {
 
 export function renderTrack(track: Track, globalLast: number, compact: boolean) {
   const v = track.view as ConsequenceView;
+  // The pictures composed from the vocabulary (composed.ts): the reshape, the turn, the seal.
+  const composed = composedOf(v);
+  if (composed?.kind === "reshape_table" && v.kind === "table_focus")
+    return <ReshapeTable track={track as Track<typeof v>} model={composed.model} globalLast={globalLast} compact={compact} />;
+  if (composed?.kind === "turn_table" && v.kind === "table_focus" && !compact)
+    return <TurnTable track={track as Track<typeof v>} model={composed.model} globalLast={globalLast} />;
+  if (composed?.kind === "seal_fork" && v.kind === "row_flow")
+    return <SealForkTrack track={track as Track<typeof v>} globalLast={globalLast} compact={compact} />;
   switch (v.kind) {
     case "relationship":
       return <Relationship track={track as Track<typeof v>} globalLast={globalLast} compact={compact} />;
@@ -105,7 +117,16 @@ export function PreviewGrid({ tracks, story, promoted, onPromote, basis, provena
         : `"p" ${intrinsic ? "auto" : "minmax(0, 1fr)"} / 1fr`;
   const counts = new Map<string, number>();
   return (
-    <div className={s.grid} style={{ gridTemplate: template }}>
+    <div
+      className={s.grid}
+      // A view with an intrinsic height (a flow, a table, the seal's cells) is never squeezed below
+      // it: the stage scrolls instead, and a lone one sits at the top rather than stretching.
+      style={{
+        gridTemplate: template,
+        ...(intrinsic ? { flex: "1 0 auto" } : null),
+        ...(intrinsic && views.length === 1 ? { alignContent: "start" } : null),
+      }}
+    >
       <AnimatePresence initial={false} mode="popLayout">
         {views.map((track, i) => {
           const v = track.view;

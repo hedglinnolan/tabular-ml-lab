@@ -564,7 +564,36 @@ def split_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         emphasis=["train", "holdout"],
         before=before,
         after=after,
+        seal=_seal_cells(ctx, draw, universe, info, state.target),
     )]
+
+
+def _seal_cells(ctx: PreviewContext, draw: Any, universe: Any, info: dict[str, Any],
+                target: str | None) -> Any:
+    """The rows as cells on their sides of the seal, so its basis is a picture (M2 §11).
+
+    Drawing the seal reads identifiers, time and (classification) the outcome's classes on every
+    row with the outcome measured; the preview's basis says which (M2 §3, the basis audit).
+    """
+    read = list(draw.read)
+    cells = None
+    if info["n_holdout"]:
+        from turbotab.core.seal_picture import seal_cells
+
+        structure = ctx.artifact("structure")
+        data = getattr(structure, "data", structure)
+        grain = (data.get("grain") or {}) if isinstance(data, dict) else {}
+        suggested = next(iter(grain.get("suggested") or []), None)
+        cells = seal_cells(draw=draw, universe=universe, info=info, store=ctx.datastore,
+                           suggested=suggested, read=read)
+    read = list(dict.fromkeys(read))
+    if read:
+        # Plain text: the basis line is printed as is, beside the picture (no chips).
+        items = [c for c in read if c != target] + (["the outcome's classes"] if target in read else [])
+        what = " and ".join(", ".join(items).rsplit(", ", 1))
+        tail = "no score is computed" if target in read else "no outcome value is read"
+        ctx.read["basis"] = f"Reads {what} on all {len(universe):,} rows to draw the seal; {tail}."
+    return cells
 
 
 # ── set_roles ────────────────────────────────────────────────────────────────

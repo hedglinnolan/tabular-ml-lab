@@ -61,9 +61,12 @@ def test_every_row_kind_previews_within_its_word_budgets_and_records_nothing(cli
     views = preview(client, pid, {"kind": "set_missing", "strategy": "complete_case"})["views"]
     assert views[0]["kind"] == "row_flow" and views[0]["after"][-1]["key"] == "complete_cases"
 
-    fork = preview(client, pid, {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5})["views"][0]
+    body = preview(client, pid, {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5})
+    fork = body["views"][0]
     assert [s["key"] for s in fork["after"][-2:]] == ["train", "holdout"]
     assert "participant_id" in fork["caption"]  # people repeat, so the split is grouped
+    # Drawing the seal reads the identifier on every row, and the basis says so (M2 §3's audit).
+    assert body["basis"].startswith("Reads participant_id on all ") and "no outcome value" in body["basis"]
 
     assert len(client.get(f"/api/projects/{pid}").json()["decisions"]) == before + 1  # only set_roles
 

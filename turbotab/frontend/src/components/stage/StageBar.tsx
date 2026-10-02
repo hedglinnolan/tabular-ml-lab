@@ -135,7 +135,7 @@ export function PlayerControls({ story, readout, still, stillLabel = "Your data 
       ) : null}
       <span className={s.spacer} />
       {readout.length ? (
-        <span className={s.readout} data-testid="readout">
+        <span className={s.readout} data-testid="readout" data-purpose="readout">
           {readout.map((r) => (
             <span key={r.key} className={s.readoutItem}>
               <span className={s.readoutName}>{r.name}</span>

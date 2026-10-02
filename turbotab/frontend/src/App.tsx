@@ -16,6 +16,9 @@ const StageScreen = lazy(() =>
 const StageLabScreen = lazy(() =>
   import("./screens/StageLabScreen").then((m) => ({ default: m.StageLabScreen })),
 );
+const StageLabM2Screen = lazy(() =>
+  import("./screens/StageLabM2Screen").then((m) => ({ default: m.StageLabM2Screen })),
+);
 const M2Screen = lazy(() => import("./explore/m2/M2Screen").then((m) => ({ default: m.M2Screen })));
 
 function Routes() {
@@ -41,6 +44,12 @@ function Routes() {
       return (
         <Suspense fallback={<Header />}>
           <StageLabScreen />
+        </Suspense>
+      );
+    case "stage-lab-m2":
+      return (
+        <Suspense fallback={<Header />}>
+          <StageLabM2Screen />
         </Suspense>
       );
     case "m2-lab":

@@ -741,6 +741,10 @@ export interface components {
             values: {
                 [key: string]: unknown;
             };
+            /** Unit */
+            unit: string | null;
+            /** Sources */
+            sources: number[];
         };
         /** FsEntry */
         FsEntry: {
@@ -1209,6 +1213,7 @@ export interface components {
             after: components["schemas"]["RowStep"][];
             /** Story */
             story: components["schemas"]["RowFlowFrame"][];
+            seal: components["schemas"]["SealCells"] | null;
         };
         /**
          * RowStep
@@ -1230,6 +1235,54 @@ export interface components {
             reason: string | null;
             /** Decision Id */
             decision_id: string | null;
+        };
+        /**
+         * SealCells
+         * @description The seal drawn one cell per row (M2_CONTRACT §3, §11): which side each row falls on and which
+         *     unit it belongs to, so the basis is a picture. Whole units, in file order, up to
+         *     :data:`SEAL_CELLS` rows; the counts are over every row the seal is drawn from. No outcome value
+         *     is carried: only row identity, the draw, and (chronological) each unit's last time.
+         */
+        SealCells: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "grouped" | "one_row_per_unit" | "abandoned" | "undetermined";
+            /** Label */
+            label: string;
+            /** Exploratory */
+            exploratory: boolean;
+            /** Column */
+            column: string | null;
+            /** Chronological */
+            chronological: boolean;
+            /** Time Column */
+            time_column: string | null;
+            /** Boundary */
+            boundary: string | null;
+            /** Time Start */
+            time_start: string | null;
+            /** Time End */
+            time_end: string | null;
+            /** N Rows */
+            n_rows: number;
+            /** N Holdout */
+            n_holdout: number;
+            /** N Units */
+            n_units: number | null;
+            /** N Holdout Units */
+            n_holdout_units: number | null;
+            /** Straddle */
+            straddle: number | null;
+            /** Evidence */
+            evidence: string | null;
+            /** Hold */
+            hold: number[];
+            /** Unit */
+            unit: number[] | null;
+            /** Unit Time */
+            unit_time: number[] | null;
         };
         /** SelectModels */
         SelectModels: {

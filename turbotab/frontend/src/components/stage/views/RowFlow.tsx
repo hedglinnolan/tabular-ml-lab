@@ -9,11 +9,15 @@
  */
 import { AnimatePresence, motion } from "motion/react";
 import type { RowFlowView, RowStep } from "../../../api/m1-stage-types";
+import type { CoachNote } from "../../../api/m2-stage-types";
 import { useTransitions } from "../../../motion/prefs";
+import c from "../coach/coach.module.css";
+import { MAX_NOTES, notesFor } from "../coach/place";
 import { fmtInt } from "../format";
 import { Rich } from "../text";
 import { localPos, noRepeats, type Track } from "../tracks";
 import { usePlayerStore, usePlayerUi } from "../usePlayer";
+import { useSize } from "./geometry";
 import s from "./views.module.css";
 
 interface Props {
@@ -28,14 +32,28 @@ interface Props {
   openLabel?: string;
   /** Say why each step drops rows (the full row flow). */
   reasons?: boolean;
+  /** The coach's notes (M2_CONTRACT §6): one on a step sits under that step, in amber. */
+  coach?: CoachNote[];
+}
+
+/**
+ * A step that folds rows into a partner row (one row per unit): the same count as rows that leave,
+ * but a different claim, so it is drawn as a fold and said as "folded in", never "−300".
+ */
+export function folds(step: RowStep): boolean {
+  return step.key === "combined" && step.dropped > 0;
 }
 
 const HOLD = new Set(["holdout"]);
 
-export function RowFlow({ steps, compact = false, preview, emphasis, openAfter, openLabel, reasons }: Props) {
+export function RowFlow({ steps, compact = false, preview, emphasis, openAfter, openLabel, reasons, coach }: Props) {
   const t = useTransitions();
   const n0 = Math.max(1, steps[0]?.n ?? 1);
   const picked = new Set(emphasis ?? []);
+  // The caller decides which notes a flow this size carries (`notesFor`); at most two.
+  const notes = (coach ?? []).slice(0, MAX_NOTES);
+  const onStep = (key: string) => notes.filter((n) => n.anchor.kind === "step" && n.anchor.ref === key);
+  const loose = notes.filter((n) => n.anchor.kind !== "step" || !steps.some((st) => st.key === n.anchor.ref));
   const rows: ({ kind: "step"; step: RowStep } | { kind: "open" })[] = [];
   for (const step of steps) {
     rows.push({ kind: "step", step });
@@ -43,6 +61,11 @@ export function RowFlow({ steps, compact = false, preview, emphasis, openAfter, 
   }
   return (
     <div className={compact ? s.flowCompact : s.flow} data-view="row_flow">
+      {loose.map((n) => (
+        <p key={n.text} className={c.inline} data-testid="coach-note" data-purpose="coach_note" data-anchor={n.anchor.kind}>
+          <Rich text={n.text} />
+        </p>
+      ))}
       <AnimatePresence initial={false}>
         {rows.map((r) =>
           r.kind === "open" ? (
@@ -84,20 +107,27 @@ export function RowFlow({ steps, compact = false, preview, emphasis, openAfter, 
                     transition={t.arrive}
                   />
                   <motion.span
-                    className={s.flowGone}
+                    className={folds(r.step) ? s.flowFolded : s.flowGone}
                     initial={false}
                     animate={{ width: `${(100 * r.step.dropped) / n0}%` }}
                     transition={t.arrive}
                   />
                 </span>
                 <span className={s.flowCount}>{fmtInt(r.step.n)}</span>
-                <span className={s.flowDrop}>{r.step.dropped ? `−${fmtInt(r.step.dropped)}` : ""}</span>
+                <span className={s.flowDrop}>
+                  {r.step.dropped ? (folds(r.step) ? `${fmtInt(r.step.dropped)} folded in` : `−${fmtInt(r.step.dropped)}`) : ""}
+                </span>
               </div>
               {reasons && r.step.dropped && r.step.reason && !compact ? (
                 <div className={s.flowDetail}>
                   <Rich text={r.step.reason} />
                 </div>
               ) : null}
+              {onStep(r.step.key).map((n) => (
+                <p key={n.text} className={c.inline} data-testid="coach-note" data-purpose="coach_note" data-anchor="step">
+                  <Rich text={n.text} />
+                </p>
+              ))}
             </motion.div>
           ),
         )}
@@ -117,16 +147,18 @@ export function RowFlowTrack({
   compact?: boolean;
 }) {
   const ui = usePlayerUi(usePlayerStore());
+  const [ref, { w }] = useSize<HTMLDivElement>();
   const localLast = track.states.length - 1;
   const shown = Math.min(localLast, Math.round(localPos(ui.nearest, globalLast, localLast)));
   return (
-    <div data-state={shown}>
+    <div data-state={shown} ref={ref}>
       <RowFlow
         steps={track.states[shown]!.steps}
         compact={compact}
         preview={shown > 0}
         emphasis={track.view.emphasis}
         reasons={!compact}
+        coach={notesFor(track.view.coach, !!compact, w)}
       />
     </div>
   );

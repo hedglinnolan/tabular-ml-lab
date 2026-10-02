@@ -20,6 +20,15 @@ import { StageRetry } from "../../StageRetry";
 import { DesignWarnings, warningsAbout } from "../DesignWarnings";
 import { plain } from "../format";
 import { comparisonFigure, curvesFigure, forestFigure } from "../save/resultsJournal";
+import {
+  HeldOutAside,
+  OpenSealCard,
+  openingRecord,
+  PostSealBand,
+  SealOpenedLine,
+  useRefetchOnOpening,
+} from "../seal/OpenSeal";
+import { glyphOf, sealPhase } from "../seal/phase";
 import { SaveMenu } from "../save/SaveMenu";
 import { Rich } from "../text";
 import { Coefficients } from "./Coefficients";
@@ -72,10 +81,16 @@ export function Results({ pid, view, data }: Props) {
   const [pending, setPending] = useState<{ donor: string; recipient: string } | null>(null);
   const [said, setSaid] = useState<string | null>(null);
 
+  const opened = !!view.state.seal_opened;
+  useRefetchOnOpening(pid, opened, fit, view.stages.fit?.key ?? undefined);
   if (!fit) return null;
   const target = view.state.target ?? "the outcome";
-  const comparison = comparisonOf(fit, data.shelf);
-  const basis = metricBasis(fit, data.split);
+  // The seal (M2_CONTRACT §3): held-out scores reach the comparison only once it is opened.
+  const phase = sealPhase(fit, opened);
+  const opening = openingRecord(view);
+  const openedSeq = opening?.seq ?? null;
+  const comparison = comparisonOf(fit, data.shelf, fit.primary_metric, phase);
+  const basis = metricBasis(fit, data.split, phase);
   const recorded = `Fitted as recorded. ${basis}`;
   // The family with intervals first (the plain linear model under inference), then the shelf's order.
   const hasCi = (m: (typeof fit.models)[number]) => !!m.coefficients?.some((c) => c.ci_low !== null);
@@ -102,29 +117,33 @@ export function Results({ pid, view, data }: Props) {
   };
 
   return (
-    <div className={s.results} data-testid="results">
+    <div className={s.results} data-testid="results" data-seal-phase={phase}>
+      {phase === "post_seal" ? <PostSealBand view={view} fit={fit} openedSeq={openedSeq} /> : null}
       <StaleVeil
         state={data.fit.veil}
         order={0}
         label="Model comparison"
         action={<StageRetry pid={pid} status={view.stages.fit} />}
       >
-        <section className={s.section}>
+        <section className={s.section} data-purpose="model_comparison">
           <header className={s.sectionHead}>
             <h3 className={s.kicker}>Models compared</h3>
+            <span className={s.sectionAside}>
+              <HeldOutAside phase={phase} split={data.split} openedSeq={openedSeq} />
+            </span>
             <SaveMenu
               title="Model comparison"
               choices={null}
               build={() =>
                 comparisonFigure(comparison, {
                   title: `Model comparison: ${comparison.label} by family`,
-                  caption: `Filled dots: cross-validated mean ± SD; hollow dots: held-out rows${comparison.baseline ? `; dashed line: ${comparison.baseline.label}` : ""}.`,
+                  caption: `Filled dots: cross-validated mean ± SD${phase === "opened" || phase === "post_seal" ? "; hollow dots: held-out rows, scored once" : ""}${comparison.baseline ? `; dashed line: ${comparison.baseline.label}` : ""}.`,
                   provenance: plain(`${energyProvenance(view, data.design)} ${basis}`),
                 })
               }
             />
           </header>
-          <Comparison data={comparison} fit={fit} basis={basis} />
+          <Comparison data={comparison} fit={fit} basis={basis} phase={phase} glyph={glyphOf(data.split?.basis?.state)} />
         </section>
       </StaleVeil>
 
@@ -135,7 +154,7 @@ export function Results({ pid, view, data }: Props) {
           label="Coefficients"
           action={<StageRetry pid={pid} status={view.stages.fit} />}
         >
-          <section className={s.section}>
+          <section className={s.section} data-purpose="coefficients">
             <header className={s.sectionHead}>
               <h3 className={s.kicker}>Coefficients of the exposures</h3>
               <SaveMenu
@@ -159,7 +178,7 @@ export function Results({ pid, view, data }: Props) {
       ) : null}
 
       {sub ? (
-        <section className={s.section} aria-label="Substitution curves">
+        <section className={s.section} aria-label="Substitution curves" data-purpose="substitution">
           <StaleVeil
             state={data.substitution.veil}
             order={2}
@@ -247,7 +266,7 @@ export function Results({ pid, view, data }: Props) {
             ) : null}
         </section>
       ) : data.design && data.design.substitution_pairs.length ? (
-        <section className={s.section}>
+        <section className={s.section} data-purpose="substitution">
           <header className={s.sectionHead}>
             <h3 className={s.kicker}>Substitution</h3>
           </header>
@@ -265,6 +284,12 @@ export function Results({ pid, view, data }: Props) {
             </span>
           ) : null}
         </section>
+      ) : null}
+
+      {phase === "sealed" && data.fit.veil === "fresh" ? (
+        <OpenSealCard pid={pid} fit={fit} split={data.split} metric={comparison.label} />
+      ) : phase === "opened" || phase === "post_seal" ? (
+        <SealOpenedLine seq={openedSeq} metric={comparison.label} nHoldout={fit.n_holdout} post={phase === "post_seal"} />
       ) : null}
     </div>
   );

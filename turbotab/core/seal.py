@@ -310,6 +310,7 @@ class SealDraw:
     held: Any | None = None  # a held-out mask over the universe (the chronological draw)
     refusal: str | None = None  # why the seal cannot be drawn as the answers ask
     labels: Any | None = field(default=None, repr=False)  # the outcome over the universe (counts)
+    read: list[str] = field(default_factory=list)  # the columns read over the universe, to say so
 
     @property
     def exploratory(self) -> bool:
@@ -358,7 +359,7 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
 
         frame = pd.DataFrame(index=pd.Index(ids, name="row_id"))
     basis, column = decide_basis(state, frame, identifiers)
-    draw = SealDraw(basis=basis)
+    draw = SealDraw(basis=basis, read=wanted if len(ids) else [])
     if column is not None:
         values = frame[column].astype(object)
         # A missing identifier is its own unit per row: it cannot be matched to anyone.

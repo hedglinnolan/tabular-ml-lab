@@ -33,6 +33,10 @@ from turbotab.core.consequences import (
 
 SHOWN_UNITS = 2
 SHOWN_NUMBERS = 4
+# The reshape shows up to this many units, as long as their records fit a table_focus (≤ 8 rows),
+# so rows can be seen meeting their partners (M2_CONTRACT §11).
+RESHAPE_UNITS = 4
+RESHAPE_ROWS = 8
 _METHOD_WORDS = {
     "mean": "are averaged",
     "first": "keep the first record",
@@ -112,10 +116,16 @@ def _reshape(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> Table
     q = _ident(key)
     con = duckdb.connect()
     try:
-        picked = [r[0] for r in con.execute(
-            f"SELECT CAST({q} AS VARCHAR) AS u FROM read_parquet({_lit(source)}) "
+        candidates = con.execute(
+            f"SELECT CAST({q} AS VARCHAR) AS u, count(*) AS n FROM read_parquet({_lit(source)}) "
             f"WHERE {q} IS NOT NULL GROUP BY u HAVING count(*) > 1 ORDER BY min({ROW_ID}) "
-            f"LIMIT {SHOWN_UNITS}").fetchall()]
+            f"LIMIT {RESHAPE_UNITS}").fetchall()
+        picked, rows_shown = [], 0
+        for u, n in candidates:
+            if len(picked) >= SHOWN_UNITS and rows_shown + int(n) > RESHAPE_ROWS:
+                break
+            picked.append(u)
+            rows_shown += int(n)
         if not picked:
             return None
         chosen = ", ".join(_lit(u) for u in picked)
@@ -137,17 +147,25 @@ def _reshape(decision: Any, ctx: PreviewContext, facts: dict[str, Any]) -> Table
     rows: list[TableRow] = []
     changed: list[tuple[int, str]] = []
     record_frames: list[FrameRow] = []
+    label_of = {int(u): str(json_safe(v)) for u, v in zip(records[_UNIT], records[key])}
     for i, record in records.iterrows():
         rid = int(record[ROW_ID])
         before = {c: json_safe(record[c]) for c in shown}
         after = {c: json_safe(combined.iloc[int(unit_of[i])][c]) for c in shown}
         rows.append(TableRow(row_id=rid, before=before, after=after))
-        record_frames.append(FrameRow(row_id=rid, values=before))
+        record_frames.append(FrameRow(row_id=rid, values=before, unit=label_of[int(record[_UNIT])],
+                                      sources=[rid]))
         changed += [(rid, c) for c in shown if before[c] != after[c]]
-    first_rows = records.groupby(_UNIT)[ROW_ID].min().to_numpy()
-    combined_frames = [FrameRow(row_id=int(first_rows[j]), values={c: json_safe(combined.iloc[j][c])
-                                                                   for c in shown})
-                       for j in range(len(combined))]
+    # The row map, made visible: a combined row stands for all of its unit's records; a kept one
+    # (first, last) is that record, so it keeps the record's identity (M2_CONTRACT §11).
+    combined_frames: list[FrameRow] = []
+    for j, (u, group) in enumerate(records.groupby(_UNIT, sort=True)):
+        ids = [int(x) for x in group.sort_values(_K)[ROW_ID]]
+        if decision.method in ("first", "last"):
+            ids = [ids[0] if decision.method == "first" else ids[-1]]
+        combined_frames.append(FrameRow(row_id=ids[0] if len(ids) == 1 else min(ids),
+                                        values={c: json_safe(combined.iloc[j][c]) for c in shown},
+                                        unit=label_of[int(u)], sources=sorted(ids)))
     words = _METHOD_WORDS[decision.method]
     kept = "last" if decision.method == "last" else "first"
     return TableFocusView(
@@ -176,6 +194,10 @@ def aggregation_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 
 SHOWN_COLUMNS = 5
 SHOWN_ROWS = 4
+# The turn shows the table's corner at a table_focus's limits (≤ 8 rows either way round), so the
+# picture reads as a table turning rather than a few cells (M2_CONTRACT §11, the /lab/m2 bar).
+TURN_FEATURES = 8
+TURN_SAMPLES = 8
 
 
 def _oriented_source(ctx: PreviewContext) -> tuple[Any, Any] | None:
@@ -317,12 +339,12 @@ def orientation_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                             caption=clip_words(f"The `{n_rows:,}` rows stay as they are, one per "
                                                f"sample.", CAPTION_WORDS),
                             before=[loaded], after=[loaded])]
-    label, samples = names[0], names[1:SHOWN_COLUMNS]
+    label, samples = names[0], names[1:1 + TURN_SAMPLES]
     con = duckdb.connect()
     try:
         corner = con.execute(
             f"SELECT {ROW_ID}, {', '.join(_ident(c) for c in [label, *samples])} "
-            f"FROM read_parquet({_lit(str(source))}) ORDER BY {ROW_ID} LIMIT {SHOWN_ROWS}").df()
+            f"FROM read_parquet({_lit(str(source))}) ORDER BY {ROW_ID} LIMIT {TURN_FEATURES}").df()
     finally:
         con.close()
     features = [str(v) for v in corner[label]]

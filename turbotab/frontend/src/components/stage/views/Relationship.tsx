@@ -12,6 +12,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { scaleLinear, type ScaleLinear } from "d3-scale";
 import type { RelationshipView } from "../../../api/m1-stage-types";
 import { useTransitions } from "../../../motion/prefs";
+import { CoachLayer } from "../coach/CoachLayer";
+import { bandHeight, notesFor, type Span } from "../coach/place";
 import { fmtR, fmtTick } from "../format";
 import { extentOfPoints, localPos, unitRuns, type Track } from "../tracks";
 import { usePlayerFrame, usePlayerStore, usePlayerUi } from "../usePlayer";
@@ -75,10 +77,13 @@ export function Relationship({ track, globalLast, compact = false }: Props) {
   const extents = useMemo(() => states.map((st) => extentOfPoints(st.yLabel, st.points)), [states]);
   const runs = useMemo(() => unitRuns(extents), [extents]);
 
+  // The coach's band sits above the picture (M2_CONTRACT §6); a narrow thumbnail draws no notes.
+  const notes = useMemo(() => notesFor(track.view.coach, compact, w), [track.view.coach, compact, w]);
+  const band = bandHeight(notes.length);
   const geo = useMemo(() => {
-    if (w < 80 || h < 80) return null;
+    if (w < 80 || h < 80 + band) return null;
     const pad = compact ? PAD_C : PAD;
-    const box = { x0: pad.l, x1: w - pad.r, y0: pad.t, y1: h - pad.b };
+    const box = { x0: pad.l, x1: w - pad.r, y0: pad.t + band, y1: h - pad.b };
     let xLo = 0;
     let xHi = 0;
     const lo = new Map<number, number>();
@@ -105,7 +110,7 @@ export function Relationship({ track, globalLast, compact = false }: Props) {
       );
     }
     return { box, x, ys };
-  }, [w, h, compact, states, runs]);
+  }, [w, h, compact, states, runs, band]);
 
   /** Each state in pixels: its points, then the two ends of its line. */
   const pix = useMemo(() => {
@@ -237,6 +242,30 @@ export function Relationship({ track, globalLast, compact = false }: Props) {
   const run = runs[shown]!;
   const y = geo?.ys.get(run);
   const view = track.view;
+  // A note about a column points at its axis; a range brackets the x axis; points ring their middle.
+  const spans: (Span | null)[] = notes.map((n) => {
+    if (!geo || !y) return null;
+    const { box } = geo;
+    const ref = n.anchor.ref;
+    if (n.anchor.kind === "range" && Array.isArray(ref) && ref.length >= 2) {
+      const [lo, hi] = geo.x.domain() as [number, number];
+      const x0 = geo.x(Math.max(lo, Math.min(hi, Number(ref[0]))));
+      const x1 = geo.x(Math.max(lo, Math.min(hi, Number(ref[1]))));
+      return { x0, x1, y: box.y1 + 1, mark: "bracket" };
+    }
+    if (n.anchor.kind === "column") {
+      if (ref === view.x_label) return null;
+      return { x0: box.x0, x1: box.x0, y: box.y0 + 4, mark: "tick" };
+    }
+    if (n.anchor.kind === "points" && Array.isArray(ref) && ref.length) {
+      const pts = ref.map((i) => state.points[Number(i)]).filter((p): p is [number, number] => !!p);
+      if (!pts.length) return null;
+      const cx = pts.reduce((a, p) => a + geo.x(p[0]), 0) / pts.length;
+      const cy = pts.reduce((a, p) => a + y(p[1]), 0) / pts.length;
+      return { x0: cx, x1: cx, y: cy, mark: "ring" };
+    }
+    return null;
+  });
 
   return (
     <div ref={ref} className={s.fill} data-view="relationship" data-state={shown}>
@@ -273,7 +302,7 @@ export function Relationship({ track, globalLast, compact = false }: Props) {
             <motion.text
               key={state.yLabel}
               x={geo.box.x0}
-              y={compact ? 12 : 16}
+              y={(compact ? 12 : 16) + band}
               className={s.panelLabel}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -300,10 +329,11 @@ export function Relationship({ track, globalLast, compact = false }: Props) {
           </text>
         </svg>
       ) : null}
+      {notes.length && geo ? <CoachLayer notes={notes} spans={spans} width={w} /> : null}
       {geo ? (
         <div
           className={compact ? s.rBadgeCompact : s.rBadge}
-          style={{ left: geo.box.x1 }}
+          style={{ left: geo.box.x1, top: band ? band - 4 : undefined }}
           data-testid="r-badge"
         >
           <span className={s.rLetter}>r</span>
