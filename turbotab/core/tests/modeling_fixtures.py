@@ -110,12 +110,20 @@ def target_info(task: str, column: str = "glucose") -> dict[str, Any]:
             "reason": "", "histogram": None, "classes": None}
 
 
+# The NHANES export's (and :func:`nhanes_like`'s) whole-valued predictors, as the table's author
+# knows them (BLUEPRINT §14.3: whole numbers settle nothing by their values, so the fixture declares
+# its truth): age in whole years, HDL and triglycerides in whole mg/dL, all amounts.
+NHANES_TRUTH = {"code_or_count:age": "amount", "code_or_count:hdl": "amount",
+                "code_or_count:triglycerides": "amount", "code_or_count:kcal": "amount"}
+
+
 def state(**slots: Any) -> ProjectState:
     base: dict[str, Any] = {
         "lens": ["dietary"], "target": "glucose", "task": None, "purpose": "prediction",
         "roles": dict(NHANES_ROLES), "missing": "complete_case",
         "split": SplitSpec(holdout=0.2, seed=0, folds=5),
         "models": ["linear", "elastic_net", "boosted_trees"],
+        "shape_confirmations": dict(NHANES_TRUTH),
     }
     base.update(slots)
     return ProjectState(**base)

@@ -153,6 +153,7 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
                     n_events = int((pd.to_numeric(pd.Series(coded), errors="coerce") == 1).sum())
             n_units = _units_in(ctx, store, rows)
     from turbotab.core.methods.exposure_form import model_terms
+    from turbotab.core.readings import confirmed_codes
 
     # A spline or quintile exposure puts several columns in the model (WP12a); a sample-size
     # criterion counts them as parameters too (WP8).
@@ -160,7 +161,7 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
     situation = Situation(task=task, purpose=ctx.state.purpose, n_rows=n,
                           n_features=terms, n_events=n_events, n_classes=n_classes,
                           n_parameters=predictor_parameters(predictors, column_info,
-                                                            ctx.state.categorical)
+                                                            confirmed_codes(ctx.state))
                           + (terms - len(predictors)),
                           outcome_mean=outcome_mean, outcome_sd=outcome_sd,
                           lenses=tuple(ctx.state.lens or ()), class_counts=class_counts,
@@ -334,7 +335,7 @@ def design_stage(ctx: StageContext) -> Bundle:
     with open_store(ctx) as store:
         summaries = {c.name: {"dtype": c.dtype, "n_unique": c.n_unique}
                      for c in store.info().columns}
-    predictors_or_ask(state, summaries, drop=left_out(state))
+        predictors_or_ask(state, summaries, drop=left_out(state), store=store)
     predictors = model_predictors(state)
     if not predictors:
         raise ValueError("No column has the role exposure, covariate or energy, so there is "

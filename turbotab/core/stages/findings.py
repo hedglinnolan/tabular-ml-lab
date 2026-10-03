@@ -161,7 +161,8 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
     structural = detectors.reframe(detectors.structural(structural, frame), lens, frame)
     ctx.progress(0.65, "Running the lens packs")
     units = getattr(ctx.state, "column_units", None) or {}
-    from_packs = detectors.pack_findings(frame, lens, units=units)
+    codings = getattr(ctx.state, "sex_codings", None) or {}
+    from_packs = detectors.pack_findings(frame, lens, units=units, codings=codings)
     ctx.progress(0.95, "Ranking the findings")
 
     spoken = speak_for(frame, lens, target, structural, from_packs, units=units)

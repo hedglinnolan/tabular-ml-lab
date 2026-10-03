@@ -213,27 +213,36 @@ def post(client, pid: str, decision: dict) -> tuple[int, dict]:
 
 
 def accepted(client, pid: str, decision: dict) -> dict:
+    """Record ``decision`` after the questions before it; the readings it asks about are answered
+    from the table's declared truth (``TABLE_TRUTH``; BLUEPRINT §14.3: never a constant)."""
+    from turbotab.server.tests.conftest import answer_settled
+
     prepare(client, pid, decision)
-    code, body = post(client, pid, decision)
-    assert code == 200, body
-    return body
+    response = answer_settled(client, pid, None, decision)
+    assert response.status_code == 200, response.json()
+    return response.json()
+
+
+# The informative-weight tables' truth (their generator, ``informative_tables``): DR1TKCAL is one
+# day's simulated intake in kcal; the design codes are the design's.
+TABLE_TRUTH = {"unit:DR1TKCAL": "kcal", "day_count:DR1TKCAL": "1",
+               "code_or_count:SDMVSTRA": "code", "code_or_count:SDMVPSU": "code"}
 
 
 def open_project(client, path: Path, target: str, purpose: str, roles: dict[str, str]) -> str:
     response = client.post("/api/projects", json={"path": str(path)})
     assert response.status_code == 200, response.text
     pid = response.json()["id"]
+    from turbotab.server.tests.conftest import declare
+
+    declare(pid, TABLE_TRUTH, fixture=path.name)
     wait_for(client, pid, {"ingest": "fresh", "profile": "fresh"}, timeout=120)
     accepted(client, pid, {"kind": "set_lens", "lenses": ["dietary"]})
     accepted(client, pid, {"kind": "set_target", "column": target})
     accepted(client, pid, {"kind": "set_purpose", "purpose": purpose})
-    accepted(client, pid, {"kind": "set_roles", "roles": roles})
     # The readings ledger (BLUEPRINT §14.1): a role recorded exactly as a proposal below high
-    # confidence is confirmed on its own, as the roles' author does, column by column.
-    record = client.get(f"/api/projects/{pid}").json()["decisions"][-1]
-    for column in record["decision"].get("unconfirmed") or []:
-        accepted(client, pid, {"kind": "confirm_reading", "reading": "role", "column": column,
-                               "value": roles[column]})
+    # confidence is confirmed, with the role its author gave it (``answer_settled``).
+    accepted(client, pid, {"kind": "set_roles", "roles": roles})
     return pid
 
 

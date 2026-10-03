@@ -490,7 +490,10 @@ def propose_roles(
                      " Its values do not fit one." if not fits else
                      " The design's strata and PSUs do not hold codes." if not design_fits else
                      " Its name is no published design variable.")
-            put("design", "high" if confirmed else "medium", design + doubt)
+            # BLUEPRINT §14.3: a published design name is a name, and positive weights and
+            # whole-number codes fit a measurement and a predictor's codes as well; the user
+            # confirms each design column (the survey question then names its part).
+            put("design", "medium", design + (doubt or " Confirm it is part of the design."))
         elif name in acquisition and _acquisition_values_fit(name, n_unique, n_present) and assay:
             role, reason = acquisition_proposal(purpose)
             put(role, "medium", reason, kind="acquisition")
@@ -505,22 +508,42 @@ def propose_roles(
         elif _norm(name) == "seqn" or kind == "subject":
             what = ("`SEQN` is the NHANES respondent number" if _norm(name) == "seqn"
                     else "Named like a participant's identifier")
+            rows = fact.get("rows")
             if unit_check is None:
                 put("identifier", "medium", f"{what}; its values are not read yet.")
+            elif rows is not None and rows.settles:
+                put("identifier", "high", f"{what}; {rows.evidence}.")
+            elif name == named_unit and unit_check.verdict == "units":
+                put("identifier", "high", f"The grain answer names it as the unit; "
+                                          f"{unit_check.why}.")
             elif unit_check.verdict == "units":
-                put("identifier", "high", f"{what}; {unit_check.why}.")
+                # BLUEPRINT §14.3 (the gate's MEPS ``PID``, a roster's ``person_no``): a value that
+                # repeats may name a unit, or number people within a household; the values cannot
+                # tell, so it is asked.
+                put("identifier", "medium",
+                    f"{what}, and {(rows.evidence if rows is not None else unit_check.why)}: "
+                    f"whether it names each unit, or numbers people within a group (a household's "
+                    f"line number), is asked.")
             else:
                 put("identifier", "medium", f"{what}, but {unit_check.why}: say whether it names "
                                             f"units.")
         elif kind == "record" and n_unique > 2 and (n_unique > CATEGORY_LEVELS or unique):
             confirmed = unit_check is not None and unit_check.verdict == "units"
-            if confirmed and (unique or name == named_unit):
-                # One value per row names each row; a repeating code the grain answer names is the
-                # user's own unit.
-                put("identifier", "high",
-                    "Named like an identifier; it names rows or samples, not traits."
-                    if unique else "The grain answer names it as the unit; "
-                                   f"{unit_check.why}.")
+            rows = fact.get("rows")
+            if confirmed and rows is not None and rows.settles:
+                # One value per row that no measurement would take names each row (BLUEPRINT §14.3:
+                # :func:`turbotab.core.readings.names_rows`).
+                put("identifier", "high", f"Named like an identifier; it names rows or samples: "
+                                          f"{rows.evidence}.")
+            elif confirmed and name == named_unit:
+                # A repeating code the grain answer names is the user's own unit.
+                put("identifier", "high", f"The grain answer names it as the unit; "
+                                          f"{unit_check.why}.")
+            elif confirmed and unique:
+                put("identifier", "medium",
+                    f"Named like an identifier, one value per row, but "
+                    f"{rows.evidence if rows is not None else 'its values were not read'}: say "
+                    f"whether it names rows or measures something.")
             elif confirmed:
                 # BLUEPRINT §14.1 (the gate's ``stratum_id``, HCHS/SOL ``PSU_ID``, ``recruiter_id``):
                 # more than ten repeating codes are no unit structure by themselves; a stratum, a
@@ -543,15 +566,20 @@ def propose_roles(
             put(lens_default, "low", f"Named like an identifier, but {unit_check.why}: kept as a "
                                      f"predictor until you say otherwise.")
         elif kind == "cluster" and unique:
-            put("identifier", "high" if unit_check is not None and unit_check.verdict == "units"
-                else "medium", "Names a group, such as a household, and is unique on every row.")
+            rows = fact.get("rows")
+            put("identifier", "high" if rows is not None and rows.settles else "medium",
+                "Names a group, such as a household, and is unique on every row"
+                + (f": {rows.evidence}." if rows is not None else "."))
         elif kind == "cluster":
             put("cluster", "medium", "Named like a group of participants, such as a site or "
                                      "household; not a trait.")
         elif kind == "visit" and unique:
             put("identifier", "medium", "Names each record, such as a visit or encounter.")
         elif kind == "visit" and timed and time_share is not None and time_share >= TIME_VARIES:
-            put("time", "high", f"A visit or encounter index that changes within each {unit_word}.")
+            # BLUEPRINT §14.3: a measurement changes within units too; whether it orders the rows
+            # is the user's (the repeats answer naming it settles it).
+            put("time", "medium", f"A visit or encounter index that changes within each "
+                                  f"{unit_word}{_rising(fact)}: say whether it orders the rows.")
         elif kind == "visit":
             put("time", "medium", "Named like a visit or encounter index: when a row was "
                                   "measured.")
@@ -650,7 +678,18 @@ def propose_roles(
         elif tokens & _FASTING_TOKENS:
             put("covariate", "medium", "Fasting status: a known confounder, adjusted for rather than studied.")
         elif reads_as_time(name) and timed and time_share is not None and time_share >= TIME_VARIES:
-            put("time", "high", f"Named like a time, and it changes within each {unit_word}.")
+            # BLUEPRINT §14.3 (the gate: a sleep diary's ``hours``, an activity log's ``days``):
+            # any measurement changes within units, so varying is no evidence of time. The best
+            # guess follows the values: one that rises with each unit's rows may order them; one
+            # that rises and falls is a measurement in a time unit. Either is asked.
+            if (fact.get("rising") or 0.0) >= TIME_VARIES:
+                put("time", "medium", f"Named like a time, and it rises with each {unit_word}'s "
+                                      f"rows: say whether it orders them.")
+            else:
+                put(lens_default, "medium",
+                    f"Named like a time unit, but its values rise and fall within each "
+                    f"{unit_word}, as a measurement's do (hours slept, days active): read as a "
+                    f"measurement until you say otherwise.")
         elif reads_as_time(name) and timed and (time_share is None or time_share <= TIME_CONSTANT):
             # BLUEPRINT §14: "a time column varies within units". A crossover's ``period`` or a
             # menstrual ``cycle_day`` on one row per unit orders nothing; it stays a predictor.
@@ -662,12 +701,33 @@ def propose_roles(
             put("time", "medium", "Named like a time: a date, year, cycle, visit or recall.")
         elif tokens & _COVARIATE_TOKENS:
             # BLUEPRINT §14: high only where the values fit the characteristic the name says (a sex
-            # with at most three levels, an age from 0 to 120, a BMI from 10 to 80).
+            # with at most three levels, an age from 0 to 120, a BMI from 10 to 80). §14.3: the
+            # reading is "a predictor", against a column left out (an identifier, a constant) and the
+            # time axis of repeated rows (an age at each visit): one that changes within most units
+            # may be that axis, so it is asked (``readings.KIND_RULES["role:covariate"]``).
+            axis = timed and time_share is not None and time_share >= TIME_VARIES
             put("covariate", "high" if (tokens & {"age", "sex", "gender", "bmi"}
-                                        and fact.get("characteristic")) else "medium",
-                "A person's characteristic, usually adjusted for rather than studied.")
+                                        and fact.get("characteristic") and not axis) else "medium",
+                "A person's characteristic, usually adjusted for rather than studied."
+                + (f" It changes within each {unit_word}: say whether it is the time axis."
+                   if axis else ""))
         elif dtype == "text":
-            put("excluded", "high", f"Free text with `{n_unique:,}` different values; models cannot use it as is.")
+            # BLUEPRINT §14.3 (the gate: country of birth, 70 labels on 800 rows): a label count is
+            # no evidence of free text, so leaving the column out is asked. The best guess follows
+            # the values: labels mostly seen once and several words long read as free text; labels
+            # that repeat read as a category with many levels.
+            text = fact.get("text") or {}
+            once, words = float(text.get("once_share") or 0.0), float(text.get("words") or 0.0)
+            if once >= 0.5 and words >= 3:
+                put("excluded", "medium",
+                    f"Free text: `{once:.0%}` of rows hold a label seen once, about "
+                    f"`{words:.0f}` words long; models cannot use it as is. Left out unless you "
+                    f"say it is a category.")
+            else:
+                top = float(text.get("top_share") or 0.0)
+                put(lens_default, "medium",
+                    f"A category with `{n_unique:,}` labels (the most common on `{top:.0%}` of "
+                    f"rows): many levels for a model; say whether to keep it or leave it out.")
         elif is_rate(name) and not (dietary or omics):
             put("exposure", "low", "An amount per day or week: a rate, read as an exposure for now.")
         elif omics and numeric:
@@ -789,14 +849,18 @@ def intake_checks(store: Any, columns: Sequence[Mapping[str, Any]], *, energy: s
     if not names:
         return {}
     frame = store.materialize(list(dict.fromkeys([*names, *([energy] if energy else [])])))
-    unit = None
+    unit = proposed = None
     if energy and energy in frame.columns:
         from turbotab.core.stages.proposals import energy_unit_reading
 
         reading = energy_unit_reading(frame, energy)
-        unit = reading["unit"] if reading.get("confirmed") else None
+        # The unit alone (a share is the same over one day or several): settled by the record or
+        # the Atwater identity; a name's or a median's unit only sets what a contradiction reads.
+        unit = reading["unit"] if reading.get("unit_settled") else None
+        proposed = reading.get("unit")
     return corroborated_nutrients(frame, energy=energy if energy in frame.columns else None,
-                                  energy_unit=unit, skip=[c for c in (target,) if c])
+                                  energy_unit=unit, skip=[c for c in (target,) if c],
+                                  proposed_unit=proposed if energy else None)
 
 
 def value_facts(store: Any, columns: Sequence[Mapping[str, Any]], *, target: str | None,
@@ -823,11 +887,13 @@ def value_facts(store: Any, columns: Sequence[Mapping[str, Any]], *, target: str
     by_lower = {str(c["name"]).lower(): str(c["name"]) for c in columns}
     exact = {c.upper() for c in getattr(nutrition, "EXACT_DESIGN_NAMES", ())}
     in_table = _design_in_table(columns, exact)
-    ids, flags, times, designs, traits = [], {}, [], [], []
+    ids, flags, times, designs, traits, texts = [], {}, [], [], [], []
     for c in columns:
         name = str(c["name"])
         if name == target or name.startswith("__"):
             continue
+        if str(c.get("dtype") or "") == "text":
+            texts.append(name)
         kind = id_kind(name)
         if name not in fractional and (kind is not None or _norm(name) == "seqn"):
             ids.append(name)
@@ -841,13 +907,18 @@ def value_facts(store: Any, columns: Sequence[Mapping[str, Any]], *, target: str
         if set(_tokens(name)) & {"age", "sex", "gender", "bmi"}:
             traits.append(name)
     wanted = list(dict.fromkeys([*ids, *flags, *(b for b in flags.values() if b), *times,
-                                 *designs, *traits]))
+                                 *designs, *traits, *texts]))
     facts: dict[str, dict[str, Any]] = {}
     if not wanted:
         return facts, None
+    from turbotab.core.readings import names_rows
+
     frame = store.materialize(wanted)
     for name in ids:
         facts.setdefault(name, {})["id"] = identifier_values(frame[name])
+        facts[name]["rows"] = names_rows(frame[name])
+    for name in texts:
+        facts.setdefault(name, {})["text"] = text_values(frame[name])
     for name, base in flags.items():
         facts.setdefault(name, {})["flag"] = flag_values(
             frame[name], frame[base] if base else None, base)
@@ -866,12 +937,60 @@ def value_facts(store: Any, columns: Sequence[Mapping[str, Any]], *, target: str
                 repeating, best = name, -1
             elif best is None or (best >= 0 and check.n_units < best):
                 repeating, best = name, check.n_units
-    for name in times:
+    for name in list(dict.fromkeys([*times, *traits])):
         if name == repeating:
             continue
         facts.setdefault(name, {})["time"] = (within_unit_variation(frame[name], frame[repeating])
                                               if repeating else None)
+        facts[name]["rising"] = (within_unit_rising(frame[name], frame[repeating])
+                                 if repeating else None)
     return facts, repeating
+
+
+def within_unit_rising(values: Any, units: Any) -> float | None:
+    """The share of repeating units whose values rise strictly with their rows, in the table's
+    order (a visit index or a date does; hours slept rise and fall): the best guess a time question
+    leads with, never its settlement. None when no unit repeats."""
+    import pandas as pd
+
+    frame = pd.DataFrame({"v": pd.Series(values).to_numpy(), "u": pd.Series(units).to_numpy()})
+    frame = frame.dropna(subset=["u"])
+    sizes = frame.groupby("u").size()
+    repeating = sizes[sizes > 1].index
+    if not len(repeating):
+        return None
+    inner = frame[frame["u"].isin(repeating)]
+    try:
+        v = pd.to_numeric(inner["v"], errors="coerce") if not \
+            pd.api.types.is_datetime64_any_dtype(inner["v"]) else inner["v"]
+        rising = v.groupby(inner["u"]).apply(lambda x: bool(x.notna().all() and
+                                                         x.is_monotonic_increasing and x.is_unique))
+    except Exception:  # noqa: BLE001 - values that cannot be ordered rise nowhere
+        return 0.0
+    return float(rising.mean())
+
+
+def text_values(values: Any) -> dict[str, float]:
+    """What a text column's labels look like: the share of rows holding a label seen once, the
+    labels' median length in words, and the most common label's share of rows (the best guess
+    between free text and a category with many levels; never a settlement)."""
+    import pandas as pd
+
+    s = pd.Series(values).dropna().astype(str)
+    if s.empty:
+        return {"once_share": 0.0, "words": 0.0, "top_share": 0.0}
+    counts = s.value_counts()
+    once = float(s.map(counts).eq(1).mean())
+    words = float(s.str.split().map(len).median())
+    return {"once_share": once, "words": words, "top_share": float(counts.iloc[0] / len(s))}
+
+
+def _rising(fact: Mapping[str, Any]) -> str:
+    share = fact.get("rising")
+    if share is None:
+        return ""
+    return (" and rises with its rows" if share >= 0.5 else
+            " but rises and falls within it, as a measurement does")
 
 
 def _fractional_identifiers(store: Any, columns: Sequence[Mapping[str, Any]]) -> list[str]:
@@ -1664,9 +1783,10 @@ def split_inputs(state: Any, cohort_rows: Any, store: Any, task: str | None) -> 
     """The labels and groups ``draw_split`` needs for these cohort rows."""
     ids = np.asarray(cohort_rows, dtype=np.int64)
     out: dict[str, Any] = {"y": None, "groups": None, "grouped_by": None}
-    # BLUEPRINT §14.1: the groups are a settled cluster reading only (a confirmed identifier, or one
-    # the values corroborate); an identifier that rode along unconfirmed groups nothing.
-    from turbotab.core.readings import cluster_reading
+    # BLUEPRINT §14.3: the groups are a settled cluster reading only, which the user alone settles
+    # (the grain's unit, or an identifier the user confirmed while the grain names no other); an
+    # identifier that rode along unconfirmed, or one the grain answer passes over, groups nothing.
+    from turbotab.core.readings import cluster_rank, cluster_reading
 
     identifiers = [c for c, r in (state.roles or {}).items() if r == "identifier"
                    and cluster_reading(state, c).settled and cluster_reading(state, c).value == "yes"]
@@ -1678,14 +1798,15 @@ def split_inputs(state: Any, cohort_rows: Any, store: Any, task: str | None) -> 
     if not columns or not len(ids):
         return out
     frame = store.materialize(list(dict.fromkeys(columns)), ids)
-    best: tuple[int, str] | None = None
+    best: tuple[int, int, str] | None = None
     for col in identifiers:
         values = frame[col]
         n_units = int(values.nunique(dropna=True))
-        if 0 < n_units < int(values.notna().sum()) and (best is None or n_units < best[0]):
-            best = (n_units, col)
+        rank = (cluster_rank(state, col), n_units, col)
+        if 0 < n_units < int(values.notna().sum()) and (best is None or rank < best):
+            best = rank
     if best is not None:
-        col = best[1]
+        col = best[2]
         values = frame[col].astype(object)
         # A missing identifier is its own unit per row: it cannot be matched to anyone.
         filled = [v if not _isna(v) else f"__missing_{rid}" for rid, v in zip(ids, values)]

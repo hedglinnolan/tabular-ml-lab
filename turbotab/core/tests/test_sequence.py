@@ -120,6 +120,10 @@ def test_dietary_recalls_repeat_per_person_and_are_combined_by_their_mean(projec
     menu = p.artifact("structure")["aggregation"]
     assert menu["kind"] == "repeats" and menu["recommended"] == "mean"
     assert "measurement error" in menu["reason"]
+    # BLUEPRINT §14.3: whole numbers that change within a person are codes or amounts by the user's
+    # answer alone, whatever their count; the answer comes from the fixture's own truth.
+    _answer_codes(p, refused(p.validate, {"kind": "set_aggregation", "method": "mean"}),
+                  ["energy_kcal", "sodium_mg"])
     p.validate({"kind": "set_aggregation", "method": "mean"})  # hba1c is one value per person
 
     p.at(p.state.model_copy(update={"aggregation": decisions.AggregationSpec(method="mean")}))
@@ -168,7 +172,26 @@ def test_clinical_visits_are_time_points_and_ask_about_temporal_prediction(proje
     assert {e["decision"]["outcome"] for e in which.exits} == {"first", "last"}  # binary: no mean
     assert refused(p.validate, {"kind": "set_aggregation", "method": "last",
                                 "outcome": "mean"}).code == "outcome_not_numeric"
+    _answer_codes(p, refused(p.validate, {"kind": "set_aggregation", "method": "change",
+                                          "outcome": "last"}),
+                  ["sbp", "dbp", "heart_rate", "glucose"])
     p.validate({"kind": "set_aggregation", "method": "change", "outcome": "last"})
+
+
+def _answer_codes(p: "Project", asked: Refusal, columns: list[str]) -> None:
+    """The combining's code-or-amount question lists exactly ``columns``, each once with its best
+    guess, and is answered from the fixture's declared truth (BLUEPRINT §14.3: never a constant)."""
+    from turbotab.core.tests.truths import asked as readings, fixture_truth
+
+    assert asked.code == "reading_unsettled"
+    listed = readings(asked.exits)
+    assert sorted(c for _, c in listed) == sorted(columns), listed
+    block = asked.exits[0]["decision"]
+    assert block["kind"] == "confirm_readings" and len(block["items"]) == len(columns)
+    truth = fixture_truth(p.run.source.name)
+    answers = {f"{k}:{c}": truth.answer(k, c) for k, c in listed}
+    p.at(p.state.model_copy(update={"shape_confirmations": {
+        **(p.state.shape_confirmations or {}), **answers}}))
 
 
 def test_the_event_names_a_level_of_the_binary_outcome(project):

@@ -65,6 +65,9 @@ def test_a_preview_names_the_rows_it_read(client):
     held = len(service.sealed_rows(pid, service.engine.status(pid)))
 
     rule = {"column": "energy_kcal", "low": 500, "high": 5000, "reason": "implausible intake"}
+    from turbotab.server.tests.conftest import settle_reads
+
+    settle_reads(client, pid, {"kind": "set_exclusions", "rules": [rule]})  # the days, as the truth
     counted = client.post(f"/api/projects/{pid}/preview",
                           json={"kind": "set_exclusions", "rules": [rule]}).json()
     assert counted["basis"] == (f"Counts on the {rows - held:,} rows not held out; held-out rows "
@@ -73,6 +76,8 @@ def test_a_preview_names_the_rows_it_read(client):
     energy = proposals["energy"]
     decision = {"kind": "set_energy_adjustment", "method": "residual",
                 "energy_column": energy["energy_column"], "nutrients": energy["nutrients"]}
+    settle_reads(client, pid, decision)  # the stages the recorded days reshaped, read again
+    split = client.get(f"/api/projects/{pid}/stages/split").json()["artifact"]
     sampled = client.post(f"/api/projects/{pid}/preview", json=decision).json()
     n_train = split["n_train"]
     assert f"all {n_train:,} training rows" in sampled["basis"], sampled["basis"]

@@ -11,6 +11,8 @@
 """
 from __future__ import annotations
 
+from typing import Any
+
 import math
 import os
 from pathlib import Path
@@ -141,24 +143,22 @@ def test_the_streamed_reading_is_the_orientation_modules_reading(tmp_path):
 # ── aggregation ───────────────────────────────────────────────────────────────
 
 
-def _kind(df: pd.DataFrame, key: str, c: str, numeric: bool) -> str:
+def _kind(df: pd.DataFrame, key: str, c: str, numeric: bool, truth: Any = None) -> str:
     """What a column holds, in plain pandas (audit MA-14): constant within every unit; a category
-    (text); a code (whole numbers, at most 10 values, each seen 3 times on average, not 0/1); an
-    amount."""
+    (text); fractional values an amount; whole numbers as the fixture's truth declares them, codes
+    or amounts (BLUEPRINT §14.3: whole numbers settle nothing by their values)."""
     if not (df.groupby(key)[c].nunique() > 1).any():
         return "constant"
     if not numeric:
         return "category"
     x = df[c].dropna().astype(float)
-    whole = bool((x == np.floor(x)).all())
-    indicator = bool(x.isin([0.0, 1.0]).all())
-    if whole and not indicator and x.nunique() <= 10 and len(x) >= 3 * x.nunique():
-        return "code"
+    if bool((x == np.floor(x)).all()) and truth is not None:
+        return truth.answer("code_or_count", c)
     return "amount"
 
 
 def reference(oriented: pd.DataFrame, info: dict, *, key: str, method: str, target: str,
-              outcome: str | None, order: str | None) -> pd.DataFrame:
+              outcome: str | None, order: str | None, truth: Any = None) -> pd.DataFrame:
     """The same combination in plain pandas: a unit's dated records ordered by time, then file
     order; undated ones after them, never first or last; each column by what it holds."""
     dtypes = {c["name"]: c["dtype"] for c in info["columns"]}
@@ -171,7 +171,7 @@ def reference(oriented: pd.DataFrame, info: dict, *, key: str, method: str, targ
     else:
         df["_t"] = df["_rid"]
     df = df.sort_values([key, "_t", "_rid"], kind="stable", na_position="last")
-    kinds = {c["name"]: _kind(df, key, c["name"], dtypes[c["name"]] in NUMERIC)
+    kinds = {c["name"]: _kind(df, key, c["name"], dtypes[c["name"]] in NUMERIC, truth)
              for c in info["columns"] if c["name"] not in (key, target, order)}
 
     def mode(g: pd.DataFrame, c: str):
@@ -236,14 +236,18 @@ CASES = [
 
 
 def settled(run: GraphRun, combined: ProjectState) -> ProjectState:
-    """``combined`` with the readings the combining reads confirmed one by one, as a user who knows
-    the table does (BLUEPRINT §14.1, the readings ledger): the repeats reading's column as the one
-    that orders each unit's records, and each whole-number column that may be a code or a count as
-    a code (the rule the pandas reference applies)."""
+    """``combined`` with the readings the combining reads confirmed, as a user who knows the table
+    does (BLUEPRINT §14.1, §14.3): the repeats reading's column as the one that orders each unit's
+    records, and each whole-number column the combining asks about as the fixture's own truth
+    declares it (``truths.FIXTURE_TRUTHS``, from the fixture's data card), never a constant."""
+    from turbotab.core.tests.truths import fixture_truth
+
+    truth = fixture_truth(run.source.name)
     structure = run.run(combined.model_copy(update={"aggregation": None}),
                         upto=["structure"])["structure"]
     proposed = structure.get("proposed_time_column")
-    confirmations = {f"code_or_count:{c}": "code" for c in structure.get("code_or_count") or []}
+    confirmations = {f"code_or_count:{c}": truth.answer("code_or_count", c)
+                     for c in structure.get("code_or_count") or []}
     if proposed:
         confirmations[f"time_column:{proposed}"] = "orders"
     return combined.model_copy(update={"shape_confirmations": confirmations})
@@ -267,8 +271,10 @@ def test_combining_each_units_rows_equals_pandas(graph, source, key, target, out
 
     with DataStore(run.raw, 1 << 30) as store:
         oriented = store.materialize()
+    from turbotab.core.tests.truths import fixture_truth
+
     want = reference(oriented, run.info, key=key, method=method, target=target, outcome=outcome,
-                     order=order)
+                     order=order, truth=fixture_truth(run.source.name))
     got = table(working)
     assert len(got) == len(want) == receipt["n_units"] and receipt["n_source_rows"] == 600
     assert list(got["__row_id"]) == list(range(len(got)))  # dense over its rows
@@ -345,6 +351,13 @@ def test_every_downstream_stage_reads_the_working_table(graph, monkeypatch):
     base = dict(lens=["dietary"], target="hba1c", purpose="prediction",
                 grain={"grain": "repeated", "id_column": "participant_id"}, unit="unit",
                 aggregation={"method": "mean"})
+    from turbotab.core.tests.truths import fixture_truth
+
+    # The fixture's declared truth for every whole-valued column the combining and the fit read.
+    base["shape_confirmations"] = {
+        **{k: v for k, v in fixture_truth(run.source.name).items()
+           if k.startswith("code_or_count:")},
+        **(settled(run, state(**base)).shape_confirmations or {})}
     roles = run.run(state(**base), upto=["roles"])["roles"]
     proposed = {c["column"]: c["proposed"] for c in roles["columns"]}
     out = run.run(state(**base, roles=proposed, exclusions=[], missing="impute",

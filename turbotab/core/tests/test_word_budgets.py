@@ -270,6 +270,12 @@ def representative_decisions():
         d.ConfirmReading(reading="code_or_count", column="age", value="code"),
         d.ConfirmReading(reading="time_column", column="age", value="orders"),
         d.ConfirmReading(reading="nested_in", column="protein_g", value="energy_kcal"),
+        d.ConfirmReading(reading="sex_coding", column="sex", value="female=2,male=1"),
+        # BLUEPRINT §14.2: a block confirmation, each listed reading with the value it showed
+        d.ConfirmReadings(items=[
+            d.ReadingItem(reading="code_or_count", column="age", value="amount"),
+            d.ReadingItem(reading="code_or_count", column="sodium_mg", value="amount"),
+            d.ReadingItem(reading="cluster", column="participant_id", value="yes")]),
         d.SetRoles(roles={"participant_id": "identifier", "energy_kcal": "energy",
                           "protein_g": "exposure", "fiber_g": "exposure"},
                    unconfirmed=["fiber_g"]),

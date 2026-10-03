@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from turbotab.core.stages.modeling import coded_outcome
-from turbotab.server.tests.conftest import SAMPLES, answer_settled, open_by_path, prepare, wait_for
+from turbotab.server.tests.conftest import SAMPLES, answer_settled, open_by_path, prepare, wait_for, settle_reads
 
 
 def decide(client, pid, decision, status=200):
@@ -152,6 +152,7 @@ def test_a_binary_outcome_is_coded_by_the_event_the_user_named():
 
 def preview(client, pid, decision):
     prepare(client, pid, decision)  # a question the Router has not reached refuses its preview too
+    settle_reads(client, pid, decision)  # the readings it asks about, answered from the truth
     response = client.post(f"/api/projects/{pid}/preview", json=decision)
     assert response.status_code == 200, response.text
     return response.json()

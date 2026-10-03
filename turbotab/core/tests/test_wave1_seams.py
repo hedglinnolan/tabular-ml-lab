@@ -23,6 +23,11 @@ from turbotab.core.tests import modeling_fixtures as mf
 from turbotab.core.tests.acceptance import references as ref
 
 
+
+# These fixtures' truth (BLUEPRINT §14.3: whole numbers settle nothing by their values): `age` is
+# drawn in whole years, an amount.
+AGE_IS_AN_AMOUNT = {"code_or_count:age": "amount"}
+
 def _stages(frame: pd.DataFrame, folder: Path, roles: dict[str, str], adjustment: Any, *,
             task: str = "regression", target: str = "y", holdout: float = 0.2,
             purpose: str = "inference", seed: int = 3) -> tuple[dict[str, Any], np.ndarray]:
@@ -645,7 +650,8 @@ def test_a_mixed_model_table_with_a_holdout_uses_every_analyzed_row_and_its_unit
     st = ProjectState(lens=["clinical"], target="sbp", task="regression", purpose="inference",
                       roles={"participant_id": "identifier", "sodium": "exposure", "age": "covariate"},
                       missing="complete_case", split=SplitSpec(holdout=0.2, seed=1, folds=5),
-                      models=["mixed"], grain=GrainSpec(grain="repeated", id_column="participant_id"))
+                      models=["mixed"], grain=GrainSpec(grain="repeated", id_column="participant_id"),
+                      shape_confirmations=AGE_IS_AN_AMOUNT)
     _, _, fit = _wp12b_stages(frame, st, ["sodium", "age"], "regression", tmp_path)
     assert fit.data["n_holdout"] > 0
     model = fit.data["models"][0]
@@ -691,7 +697,8 @@ def test_the_bootstrap_optimism_of_a_mixed_model_refits_a_mixed_model_on_each_re
                              "age": "covariate"}, missing="complete_case",
                       split=SplitSpec(holdout=0.0, seed=3, folds=5, validation="bootstrap",
                                       n_boot=n_boot),
-                      models=["mixed"], grain=GrainSpec(grain="repeated", id_column="participant_id"))
+                      models=["mixed"], grain=GrainSpec(grain="repeated", id_column="participant_id"),
+                      shape_confirmations=AGE_IS_AN_AMOUNT)
     split, _, fit = _wp12b_stages(frame, st, ["sodium_mg", "age"], "regression", tmp_path)
     optimism = fit.data["models"][0]["optimism"]
     assert optimism is not None and optimism["refused"] is None

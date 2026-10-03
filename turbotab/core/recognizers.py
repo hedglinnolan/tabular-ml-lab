@@ -673,7 +673,8 @@ def _in_kcal(energy: Any, unit: str | None) -> Any:
 
 
 def intake_check(name: Any, values: Any, *, energy: Any = None,
-                 energy_unit: str | None = None) -> IntakeCheck | None:
+                 energy_unit: str | None = None,
+                 proposed_unit: str | None = None) -> IntakeCheck | None:
     """The values' verdict on a column :func:`read_nutrient` reads as an energy-bearing
     macronutrient amount, or None when the name reads as none (nothing to corroborate), or as an
     amount per body weight, per energy, per week or per volume (no day's energy to check).
@@ -689,7 +690,13 @@ def intake_check(name: Any, values: Any, *, energy: Any = None,
     values, plausible as above, rise with ``energy`` at r ≥ 0.3. ``energy_unit`` is total energy's
     settled unit (``kcal``/``kj``); without it the floor and the ceiling are read leniently (the
     floor as if energy were kJ, the ceiling as if it were kcal). A name, a unit or a codebook with
-    nothing in the values to confirm it stands as a proposal, said as such."""
+    nothing in the values to confirm it stands as a proposal, said as such.
+
+    ``proposed_unit`` (BLUEPRINT §14.3): total energy's unit as only its name or median proposes
+    it. It may set the floor a contradiction reads (a contradiction only asks: the reading is
+    withdrawn to a proposal), never a corroboration: with the unit unsettled, a nutrient is
+    corroborated only when it clears the floor in the strictest reading (energy as kcal), so no
+    name decides that its amounts are plausible."""
     import numpy as np
     import pandas as pd
 
@@ -727,9 +734,14 @@ def intake_check(name: Any, values: Any, *, energy: Any = None,
                                   f"kcal a day as {reading.macro}, more than any day's intake")
     e_raw = pd.to_numeric(pd.Series(energy), errors="coerce") if energy is not None else None
     e_kcal = _in_kcal(energy, energy_unit)
+    e_floor = e_kcal if e_kcal is not None else _in_kcal(energy, proposed_unit)
+    strict = True  # the floor holds in the strictest reading (BLUEPRINT §14.3)
     if day_kcal is not None and reading.macro in _FLOORED and reading.part is None:
-        if e_kcal is not None and e_kcal.notna().any():
-            day, lenient = float(e_kcal.median()), 1.0
+        if e_kcal is None and e_raw is not None and e_raw.notna().any() \
+                and float(e_raw.median()) > 0:
+            strict = day_kcal / float(e_raw.median()) >= MIN_SHARE_BY_MACRO[reading.macro]
+        if e_floor is not None and e_floor.notna().any():
+            day, lenient = float(e_floor.median()), 1.0
         else:
             e_median = float(e_raw.median()) if e_raw is not None and e_raw.notna().any() \
                 else float("nan")
@@ -767,6 +779,10 @@ def intake_check(name: Any, values: Any, *, energy: Any = None,
     if energy is not None:
         r, rises, n = _rises_with(x, energy)
         shown = f"r = {r:.2f}" if math.isfinite(r) else "it cannot be compared"
+        if rises and reading.whole and not strict:
+            return IntakeCheck(True, f"it rises with total energy (r = {r:.2f}), but whether its "
+                                     f"amounts are a day's intake rests on total energy's unit, "
+                                     f"which is not settled", r)
         if rises and reading.whole:
             said = ("its codebook names it, and it rises with total energy" if codebook else
                     "its name and unit agree, and it rises with total energy"
@@ -1031,7 +1047,8 @@ def identity_members(frame: Any, energy: str | None, energy_unit: str | None = N
 
 
 def corroborated_nutrients(frame: Any, *, energy: str | None, energy_unit: str | None = None,
-                           skip: Iterable[str] = ()) -> dict[str, IntakeCheck]:
+                           skip: Iterable[str] = (),
+                           proposed_unit: str | None = None) -> dict[str, IntakeCheck]:
     """Every numeric column the name reads as a nutrient, with the values' verdict
     (:func:`intake_check`, :func:`nutrient_check`) and duplicates resolved
     (:func:`resolve_duplicates`): the one reading the roles, the energy card and the energy
@@ -1045,7 +1062,8 @@ def corroborated_nutrients(frame: Any, *, energy: str | None, energy_unit: str |
         if c in skipped or not pd.api.types.is_numeric_dtype(frame[c]) \
                 or pd.api.types.is_bool_dtype(frame[c]):
             continue
-        check = intake_check(c, frame[c], energy=e, energy_unit=energy_unit)
+        check = intake_check(c, frame[c], energy=e, energy_unit=energy_unit,
+                             proposed_unit=proposed_unit)
         if check is None:
             check = nutrient_check(c, frame[c], energy=e)
         if check is not None:

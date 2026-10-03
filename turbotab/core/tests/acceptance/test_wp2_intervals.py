@@ -158,11 +158,23 @@ def _six_by_forty() -> pd.DataFrame:
                          "sbp": y * 3 + 110})
 
 
+# These fixtures' truth (BLUEPRINT §14.3): age is drawn in whole years, an amount.
+def _age_truth() -> Any:
+    from turbotab.core.tests.truths import Truth
+
+    return Truth({"code_or_count:age": "amount"}, fixture="the audit's server scenario")
+
+
 class _Drive:
     """Answers the opening sequence through the real HTTP API, in the Router's order."""
 
-    def __init__(self, client: Any, pid: str):
+    def __init__(self, client: Any, pid: str, truth: Any = None):
+        from turbotab.core.tests.truths import Truth
+
         self.c, self.pid = client, pid
+        # The fixture's declared truth answers the readings asked (BLUEPRINT §14.3); the roles
+        # the test records are its truth for the role readings.
+        self.truth = truth if truth is not None else Truth(fixture="this fixture")
 
     def view(self) -> dict[str, Any]:
         return self.c.get(f"/api/projects/{self.pid}").json()
@@ -170,7 +182,10 @@ class _Drive:
     def decide(self, body: dict[str, Any]) -> None:
         from turbotab.core.tests.acceptance.server_drive import settle_post
 
-        r = settle_post(self.c, self.pid, body)  # each unsettled reading confirmed (§14.1)
+        if body.get("kind") == "set_roles":
+            for column, role in body["roles"].items():
+                self.truth.setdefault(f"role:{column}", role)
+        r = settle_post(self.c, self.pid, body, self.truth)  # the readings asked, from the truth
         assert r.status_code == 200, (body["kind"], r.text[:600])
 
     def reach(self, key: str, timeout: float = 120.0) -> dict[str, Any]:
@@ -219,7 +234,7 @@ def test_2_six_units_refuse_intervals_with_exits(tmp_path):
                     base_url="http://127.0.0.1") as client:
         r = client.post("/api/projects", json={"path": str(path)})
         assert r.status_code == 200, r.text
-        d = _Drive(client, r.json()["id"])
+        d = _Drive(client, r.json()["id"], _age_truth())
         d.artifact("ingest")
         d.decide({"kind": "set_lens", "lenses": ["clinical"]})
         d.reach("target")

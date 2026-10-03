@@ -376,7 +376,8 @@ def test_2b_on_the_nhanes_export_sugar_is_the_all_rows_estimate_whatever_the_see
                           grain=GrainSpec(grain="one_row_per_unit", id_column="SEQN"),
                           roles={"SEQN": "identifier", **{c: "covariate" for c in NHANES_PREDICTORS}},
                           missing="complete_case", exclusions=[],
-                          split=SplitSpec(holdout=0.2, seed=seed, folds=5), models=["linear"])
+                          split=SplitSpec(holdout=0.2, seed=seed, folds=5), models=["linear"],
+                          shape_confirmations=dict(mf.NHANES_TRUTH))  # the export's truth
         info = table.run(target_info_stage, st)
         cohort = table.run(cohort_stage, st, {"target_info": info})
         split = table.run(split_stage, st, {"cohort": cohort, "target_info": info})
@@ -424,7 +425,10 @@ def _fitted_project(client, models: list[str]) -> str:
         assert _post(client, pid, decision).status_code == 200
     models_decision = {"kind": "select_models", "models": models}
     prepare(client, pid, models_decision)
-    assert _post(client, pid, models_decision).status_code == 200
+    from turbotab.server.tests.conftest import answer_settled
+
+    # The readings the fit asks about, from dietary_recalls.csv's truth (BLUEPRINT §14.3).
+    assert answer_settled(client, pid, None, models_decision).status_code == 200
     wait_for(client, pid, {"fit": "fresh"}, timeout=240)
     prepare(client, pid, {"kind": "open_seal"})  # the questions after the models, as usual
     wait_for(client, pid, {"fit": "fresh"}, timeout=240)

@@ -323,9 +323,15 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
     predictors = [c for c in predictors]
     wanted = set(input_columns(predictors, adj))
     inputs = [c for c in frame.columns if c in wanted]
-    # Text is a category; so is a numeric column the user declared one (``set_categorical``,
-    # audit MA-15): RIDRETH3's codes 1, 2, 3, 4, 6, 7 are six groups, not one straight line.
-    declared = set(getattr(state, "categorical", None) or [])
+    # Text is a category; so is a numeric column the user said holds codes, wherever the answer
+    # is kept (BLUEPRINT §14.3, every confirmation is honored): ``set_categorical`` (audit MA-15:
+    # RIDRETH3's codes 1, 2, 3, 4, 6, 7 are six groups, not one straight line), the fit's own
+    # code-or-amount question (``confirm_reading`` / ``confirm_readings``), or a combining rule that
+    # took the most frequent value. A later "amount" answer for the column stands over an earlier
+    # declaration.
+    from turbotab.core.readings import confirmation
+
+    declared = {c for c in inputs if confirmation(state, "code_or_count", c) == "code"}
     categorical = [c for c in inputs if is_categorical(frame[c]) or c in declared]
     numeric = [c for c in inputs if c not in categorical]
     present = [c for c in predictors if c in inputs]

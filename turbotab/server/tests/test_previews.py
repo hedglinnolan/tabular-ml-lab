@@ -6,7 +6,9 @@ import pytest
 from turbotab.core import voice
 from turbotab.core.consequences import CAPTION_WORDS, TITLE_WORDS, words
 from turbotab.server import schemas
-from turbotab.server.tests.conftest import answer_settled, open_by_path, prepare, wait_for
+from turbotab.server.tests.conftest import (
+    answer_settled, open_by_path, prepare, settle_reads, wait_for,
+)
 
 
 def decide(client, pid, decision):
@@ -23,6 +25,7 @@ def recorded(client, pid) -> int:
 
 def preview(client, pid, decision):
     prepare(client, pid, decision)  # a question the Router has not reached refuses its preview too
+    settle_reads(client, pid, decision)  # the readings it asks about, answered from the truth
     before = recorded(client, pid)
     response = client.post(f"/api/projects/{pid}/preview", json=decision)
     assert response.status_code == 200, response.text

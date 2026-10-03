@@ -23,7 +23,10 @@ ROLES = {"id": "identifier", "age": "covariate", "sex": "covariate", "kcal": "en
 
 def ctx(**over):
     base = {"columns": COLUMNS, "column_info": INFO, "target": "y", "task": "regression",
-            "state": ProjectState(lens=["dietary"], target="y", roles=ROLES)}
+            # The fixture's truth: `age` holds whole years, an amount (BLUEPRINT §14.3: whole
+            # numbers settle nothing by their values).
+            "state": ProjectState(lens=["dietary"], target="y", roles=ROLES,
+                                  shape_confirmations={"code_or_count:age": "amount"})}
     return {**base, **over}
 
 

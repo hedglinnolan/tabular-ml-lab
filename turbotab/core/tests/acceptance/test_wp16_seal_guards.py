@@ -126,9 +126,13 @@ def post(client, pid: str, decision: dict) -> tuple[int, dict]:
 
 
 def accepted(client, pid: str, decision: dict) -> dict:
-    code, body = post(client, pid, decision)
-    assert code == 200, body
-    return body
+    """Record ``decision``; the readings it asks about are answered from the table's declared
+    truth (BLUEPRINT §14.3)."""
+    from turbotab.server.tests.conftest import answer_settled
+
+    response = answer_settled(client, pid, None, decision)
+    assert response.status_code == 200, response.json()
+    return response.json()
 
 
 def refused(client, pid: str, decision: dict, code: str) -> dict:
@@ -143,6 +147,12 @@ def open_project(client, path: Path, lens: str, target: str, purpose: str) -> st
     response = client.post("/api/projects", json={"path": str(path)})
     assert response.status_code == 200, response.text
     pid = response.json()["id"]
+    from turbotab.server.tests.conftest import declare
+    from turbotab.core.tests.truths import FIXTURE_TRUTHS
+
+    # These tables' truth: ages in whole years and the outcomes' whole values are amounts.
+    declare(pid, {**FIXTURE_TRUTHS.get(path.name, {}), "code_or_count:age": "amount"},
+            fixture=path.name)
     wait_for(client, pid, {"ingest": "fresh", "profile": "fresh"}, timeout=120)
     accepted(client, pid, {"kind": "set_lens", "lenses": [lens]})
     accepted(client, pid, {"kind": "set_target", "column": target})

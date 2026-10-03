@@ -344,24 +344,33 @@ def _aggregation_reads_settled_readings(decision: SetAggregation, ctx: Any) -> N
     * **The time column.** First, last and change take a value from a particular record; the order
       is the user's (named, or the reading's column confirmed on its own), never the reading's
       alone."""
-    from turbotab.core.readings import code_or_count_exits, confirm_exit, confirmation, listing
+    from turbotab.core.readings import (
+        ask_exits, ask_text, code_or_count_reading, confirm_exit, listing,
+    )
     from turbotab.core.stages.working import needs_order, proposed_time_column, time_column
 
     state = _state(ctx)
     structure = artifact(ctx, "structure") or {}
     if state is None or not structure:
         return
-    waiting = [c for c in structure.get("code_or_count") or []
-               if c not in decision.columns and confirmation(state, "code_or_count", c) is None]
-    if waiting:
+    facts = structure.get("code_or_count_facts") or {}
+    needed = []
+    for c in structure.get("code_or_count") or []:
+        if c in decision.columns:
+            continue
+        r = code_or_count_reading(state, c, facts.get(c) or {"whole": True, "n_values": 2},
+                                  scope="combine")
+        if r is not None and not r.settled:
+            needed.append(r)
+    if needed:
+        waiting = [r.column for r in needed]
         one = len(waiting) == 1
         raise Refusal(
             "reading_unsettled",
-            f"{listing(waiting)} {'holds' if one else 'hold'} a few whole-number values that "
-            f"change within units, which may be codes for categories (combined by the most "
-            f"frequent value) or counts (combined by the {decision.method}). Say which for "
-            f"{'it' if one else 'each'}, one at a time, then combine.",
-            exits=[e for c in waiting for e in code_or_count_exits(c)])
+            f"{listing(waiting)} {'holds' if one else 'hold'} whole numbers that change within "
+            f"units, which may be codes for categories (combined by the most frequent value) or "
+            f"counts (combined by the {decision.method}). {ask_text(needed)}",
+            exits=ask_exits(needed, state))
     if not needs_order(decision.method, decision.outcome, decision.columns):
         return
     if time_column(state, structure) is not None:

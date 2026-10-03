@@ -1381,6 +1381,7 @@ class DataStore:
         self._row_group_bounds: tuple[Any, list[tuple[int, int]]] | None = None
         self._cmap: dict[str, ColumnInfo] | None = None
         self._names: list[str] | None = None
+        self._whole: dict[str, dict[str, Any]] = {}  # whole_numbers, per column
 
     # ── connections ───────────────────────────────────────────────────────────
     @contextmanager
@@ -1755,6 +1756,36 @@ class DataStore:
         for b, n in rows:
             counts[int(b)] += int(n)
         return {"column": col, "edges": edges, "counts": counts, "n_missing": n_rows - n_ok}
+
+    def whole_numbers(self, columns: Sequence[str]) -> dict[str, dict[str, Any]]:
+        """For each numeric or integer column: whether its present, finite values are all whole
+        numbers (``whole``; an integer type is whole by its type), whether they are exactly 0 and 1
+        (``zero_one``), how many distinct values it holds (``n_values``) and its ``min`` and
+        ``max``. What the readings ledger asks a code-or-amount question about (BLUEPRINT §14.3:
+        a blank turns codes 1–5 into 1.0–5.0, so the type alone never says). Other columns are
+        left out. Cached per column."""
+        cmap = self._column_map()
+        cache = self._whole
+        todo = [c for c in dict.fromkeys(columns) if c in cmap and c not in cache
+                and cmap[c].dtype in ("numeric", "integer")]
+        for batch in _chunks(todo, BATCH_COLUMNS):
+            aggs: list[str] = []
+            for name in batch:
+                x = f"CAST({_ident(name)} AS DOUBLE)"
+                fin = f"{x} IS NOT NULL AND isfinite({x})"
+                aggs += [f"coalesce(bool_and({x} = floor({x})) FILTER (WHERE {fin}), true)",
+                         f"coalesce(bool_and({x} IN (0, 1)) FILTER (WHERE {fin}), false)",
+                         f"count(DISTINCT {x}) FILTER (WHERE {fin})",
+                         f"min({x}) FILTER (WHERE {fin})", f"max({x}) FILTER (WHERE {fin})"]
+            with self._cursor() as cur:
+                row = cur.execute(f"SELECT {', '.join(aggs)} FROM {self._rel}").fetchone()
+            for i, name in enumerate(batch):
+                whole, zero_one, k, lo, hi = row[5 * i: 5 * i + 5]
+                cache[name] = {"whole": bool(whole) or _is_int(cmap[name].physical_type),
+                               "zero_one": bool(zero_one), "n_values": int(k or 0),
+                               "min": None if lo is None else float(lo),
+                               "max": None if hi is None else float(hi)}
+        return {c: dict(cache[c]) for c in columns if c in cache}
 
     # ── modeling reads ────────────────────────────────────────────────────────
     def estimate_bytes(self, columns: Sequence[str] | None = None,

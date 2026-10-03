@@ -25,6 +25,9 @@ from turbotab.core.tests.test_row_previews import SpyStore
 ROLES = {"participant_id": "identifier", "recall_number": "time", "age": "covariate", "sex": "covariate",
          "bmi": "covariate", "energy_kcal": "energy", "protein_g": "exposure", "fat_g": "exposure",
          "carbohydrate_g": "exposure", "sodium_mg": "exposure"}
+# The fixture's truth (dietary_recalls.md: one 24-hour recall per row): each `energy_kcal` value is
+# one day's intake in kcal. BLUEPRINT §14.3: no band of values settles a day count, so it is recorded.
+UNITS = {"energy_kcal": d.ColumnUnitSpec(unit="kcal", days=1)}
 
 
 @pytest.fixture(scope="module")
@@ -66,7 +69,7 @@ def notes(result):
 # ── what the notes say ───────────────────────────────────────────────────────
 
 def test_the_exclusions_cut_names_its_tails_and_who_leaves(recalls):
-    state = ProjectState(lens=["dietary"], target="hba1c", roles=ROLES)
+    state = ProjectState(lens=["dietary"], target="hba1c", roles=ROLES, column_units=UNITS)
     rule = d.ExclusionRule(column="energy_kcal", low=500, high=5000, reason="implausible intakes")
     result = plan(d.SetExclusions(rules=[rule]), ctx_for(recalls, state), basis="")
     said = notes(result)
@@ -170,7 +173,7 @@ def test_an_outcome_that_varies_within_a_unit_is_said(tmp_path):
 def test_the_cards_get_one_line_each_and_never_the_energy_card(recalls):
     columns = [c.to_dict() for c in recalls.info().columns]
     proposals = build_proposals(recalls.materialize(), columns, lens=["dietary"], target="hba1c",
-                                roles=ROLES)
+                                roles=ROLES, units=UNITS)
     frame = recalls.materialize(["energy_kcal", "hba1c"])
     below = int(((frame["energy_kcal"] < 500) & frame["hba1c"].notna()).sum())
     assert proposals["coach"]["exclusions"] == {
@@ -183,7 +186,8 @@ def test_the_cards_get_one_line_each_and_never_the_energy_card(recalls):
 def test_implausible_intake_evidence_points_at_both_tails(recalls):
     finding = {"id": "pack::dietary::implausible_intake", "affected_columns": ["energy_kcal"],
                "summary": "x"}
-    result = evidence.evidence(finding, evidence.EvidenceContext(state=ProjectState(), datastore=recalls))
+    result = evidence.evidence(finding, evidence.EvidenceContext(
+        state=ProjectState(column_units=UNITS), datastore=recalls))
     texts = [n.text for v in result.views for n in v.coach]
     assert any(t.endswith("below `500` kcal: likely under-reporting.") for t in texts)
     assert any(t.endswith("above `5,000` kcal: likely over-reporting.") for t in texts)
@@ -230,24 +234,24 @@ def test_no_coach_note_reads_a_held_out_row(recalls, decision):
 @pytest.mark.parametrize("column, values, unit, proposed", [
     ("glucose", [99, 101, 110], (None, None), "mg/dL"),
     ("glucose", [5.2, 5.9, 6.1], (None, None), "mmol/L"),
-    ("glucose_mgdl", None, ("mg/dL", "name"), None),
-    ("ldl_mmol_l", None, ("mmol/L", "name"), None),
+    ("glucose_mgdl", None, (None, None), "mg/dL"),
+    ("ldl_mmol_l", None, (None, None), "mmol/L"),
     ("hba1c", [5.4, 5.9], (None, None), "%"),
     ("bp_sys", None, (None, None), "mmHg"),
     ("bmi", None, (None, None), "kg/m²"),
     ("progressed", [0, 1], (None, None), None),
     ("score", [1, 2, 3], (None, None), None),
 ])
-def test_the_outcome_unit_is_stated_from_the_name_and_proposed_from_the_pack(column, values, unit,
-                                                                               proposed):
-    """Audit IN-05: a unit is stated only when the name spells it out (or a decision records it);
-    the clinical pack's reading is a proposal, never a statement."""
-    from turbotab.core.units import from_pack, outcome_unit
+def test_the_outcome_unit_is_stated_only_as_recorded_and_proposed_from_the_name_or_the_pack(
+        column, values, unit, proposed):
+    """Audit IN-05 and BLUEPRINT §14.3: a unit is stated only once a decision records it; the
+    name's letters (``glucose_mgdl``) and the clinical pack's reading are proposals, never a
+    statement (names never count as corroboration: the gate's ``WBC (x10^3/uL)`` read "U/L")."""
+    from turbotab.core.units import from_name, from_pack, outcome_unit
 
     assert outcome_unit(column, values) == unit
     assert outcome_unit(column, values, recorded="mg/dL") == ("mg/dL", "decision")
-    if unit[0] is None:
-        assert from_pack(column, values) == proposed
+    assert (from_name(column) or from_pack(column, values)) == proposed
 
 
 def test_the_target_preview_shows_the_outcome_with_its_unit(tmp_path):
@@ -258,8 +262,13 @@ def test_the_target_preview_shows_the_outcome_with_its_unit(tmp_path):
                   "age": rng.integers(20, 80, 300)}).to_csv(src, index=False)
     ingest(src, tmp_path / "labs.parquet")
     with DataStore(tmp_path / "labs.parquet", 2 << 30) as store:
+        # BLUEPRINT §14.3: the header's letters state nothing until the unit is recorded.
         ctx = ctx_for(store, ProjectState())
         result = plan(d.SetTarget(column="glucose_mg_dl"), ctx, basis="")
+        dist = next(v for v in result.views if v.kind == "distribution")
+        assert "mg/dL" not in dist.caption.replace("`glucose_mg_dl`", "")
+        recorded = ProjectState(target="glucose_mg_dl", outcome_unit="mg/dL")
+        result = plan(d.SetTarget(column="glucose_mg_dl"), ctx_for(store, recorded), basis="")
         dist = next(v for v in result.views if v.kind == "distribution")
         assert " mg/dL, middle half " in dist.caption and dist.before_label.endswith("(mg/dL)")
         # A name that does not spell its unit out states none (audit IN-05: never guessed).

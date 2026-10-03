@@ -257,6 +257,9 @@ def rule_columns(rule: Any) -> list[str]:
     return list(dict.fromkeys(cols))
 
 
+LB_TO_KG = 0.45359237  # the international yard and pound agreement (1959): 1 lb = 0.45359237 kg
+
+
 def screen(frame: pd.DataFrame, rule: Any) -> pd.DataFrame:
     """Each row's screen under a Goldberg ``rule``, indexed like ``frame``.
 
@@ -270,6 +273,8 @@ def screen(frame: pd.DataFrame, rule: Any) -> pd.DataFrame:
     num = {c: pd.to_numeric(frame[c], errors="coerce").astype(float)
            for c in (rule.column, rule.age, rule.weight) if c in frame.columns}
     energy, age, weight = num[rule.column], num[rule.age], num[rule.weight]
+    if getattr(rule, "weight_unit", "kg") == "lb":
+        weight = weight * LB_TO_KG  # the international pound, exactly
     needs_height = EQUATIONS[rule.equation].height_unit is not None
     height = (pd.to_numeric(frame[rule.height], errors="coerce").astype(float)
               if needs_height and rule.height else pd.Series(np.nan, index=index))

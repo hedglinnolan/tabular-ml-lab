@@ -39,6 +39,8 @@ M2 keys (the opening sequence, the seal and findings; each optional like the res
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import logging
 import math
 import re
@@ -278,9 +280,10 @@ def _set_lens(d: Any, state: Any, ctx: Any) -> str:
 
 def _outcome_unit(ctx: Any, column: str, state: Any = None) -> str | None:
     """The outcome's unit a sentence may state: the one the user recorded
-    (``set_outcome_unit``), ``ctx["outcome_unit"]`` (the target stage's stated unit), or a full
-    unit the name spells out; None otherwise. A unit is never guessed from the values (audit IN-05;
-    CLINICAL_SURVEY_PACK §A1.1: "TurboTab will not guess")."""
+    (``set_outcome_unit``) or ``ctx["outcome_unit"]`` (the target stage's stated unit, itself only
+    a recorded one); None otherwise, and the sentence quotes the header verbatim. A unit is never
+    guessed from the values (audit IN-05; CLINICAL_SURVEY_PACK §A1.1: "TurboTab will not guess"),
+    nor read from a header's letters (BLUEPRINT §14.3: ``WBC (x10^3/uL)`` is no U/L)."""
     from turbotab.core.units import outcome_unit, recorded_unit
 
     recorded = recorded_unit(state, column) if state is not None else None
@@ -289,8 +292,8 @@ def _outcome_unit(ctx: Any, column: str, state: Any = None) -> str | None:
     given = _get(ctx, "outcome_unit")
     if given:
         return str(given)
-    # BLUEPRINT §14.1: a settled outcome-unit reading only (the gate: "`bmi_kg` was chosen as the
-    # outcome, in kg").
+    # BLUEPRINT §14.1, §14.3: a settled outcome-unit reading only, which a name never is (the
+    # gates: "`bmi_kg` was chosen as the outcome, in kg"; "`WBC (x10^3/uL)` …, in U/L").
     return outcome_unit(column)[0]
 
 
@@ -545,8 +548,32 @@ _UNIT_WORDS = {"kj": "kJ", "pct_energy": "percent of energy", "m": "meters", "in
 @register_sentence("confirm_reading")
 def _confirm_reading(d: Any, state: Any, ctx: Any) -> str:
     """BLUEPRINT §14.1: one reading of the data, confirmed on its own and recorded as one."""
-    col = tick(d.column)
-    value = str(d.value)
+    return f"{_confirmed(d.reading, d.column, d.value)}, on its own, after the evidence for its reading was read"
+
+
+@register_sentence("confirm_readings")
+def _confirm_readings(d: Any, state: Any, ctx: Any) -> str:
+    """BLUEPRINT §14.2: a block confirmation, each listed reading with the value it showed; a
+    homogeneous family (one kind, one value) said once with its count."""
+    groups: dict[tuple[str, str], list[str]] = {}
+    for item in d.items:
+        groups.setdefault((item.reading, item.value), []).append(item.column)
+    parts = []
+    for (reading, value), columns in groups.items():
+        if len(columns) >= 5:
+            parts.append(_confirmed(reading, f"__{len(columns)}__", value).replace(
+                f"`__{len(columns)}__` was", f"{tick(f'{len(columns):,}')} columns (from "
+                f"{tick(columns[0])}) were", 1))
+        else:
+            parts.extend(_confirmed(reading, c, value) for c in columns)
+    shown = "; ".join(parts[:6]) + (f"; and {len(parts) - 6} more" if len(parts) > 6 else "")
+    return f"Confirmed together, each as the question showed it: {shown}"
+
+
+def _confirmed(reading: str, column: str, value: Any) -> str:
+    col = tick(column)
+    value = str(value)
+    d = SimpleNamespace(reading=reading)
     if d.reading == "role":
         said = f"{col} was confirmed as {_ROLE_AS.get(value, tick(value))}"
     elif d.reading == "cluster":
@@ -567,9 +594,15 @@ def _confirm_reading(d: Any, state: Any, ctx: Any) -> str:
         said = f"{col} was confirmed as part of {tick(value)}"
     elif d.reading == "time_column":
         said = f"{col} was confirmed as the column that orders each unit's rows"
+    elif d.reading == "sex_coding":
+        from turbotab.core.readings import parse_sex_coding
+
+        coding = parse_sex_coding(value) or {}
+        said = (f"{col} was confirmed to code "
+                + " and ".join(f"{sex} as {tick(level)}" for level, sex in coding.items()))
     else:
         said = f"{col}'s {str(d.reading).replace('_', ' ')} was confirmed as {tick(value)}"
-    return f"{said}, on its own, after the evidence for its reading was read"
+    return said
 
 
 # set_exclusions

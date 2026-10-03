@@ -113,19 +113,30 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
     from turbotab.core.units import outcome_unit, proposed_unit, recorded_unit
 
     # The outcome's unit, for every outcome quantity the app shows (M2_CONTRACT §6). A class
-    # label has none. Stated only as recorded or as the name spells it out; the clinical pack's
-    # reading is a proposal for ``set_outcome_unit``, never stated (audit IN-05).
+    # label has none. Stated only as recorded (BLUEPRINT §14.3: a header's letters are a name);
+    # the name's letters and the clinical pack's reading are proposals for ``set_outcome_unit``,
+    # never stated (audit IN-05).
     regression = task == "regression"
     unit, unit_source = (outcome_unit(target, recorded=recorded_unit(ctx.state, target))
                          if regression else (None, None))
-    proposal = proposed_unit(target, series) if regression and unit is None else None
-    if regression and unit is None and proposal is None:
-        # The name's own unit, unsettled (a bare amount nothing confirms): offered, never stated.
-        from turbotab.core.readings import outcome_unit_reading
+    proposal = None
+    if regression and unit is None:
+        # The name's own letters first (the header's unit, never checked against the values),
+        # then the clinical pack's reading: each a proposal, never stated.
+        from turbotab.core.units import from_name
 
-        named = outcome_unit_reading(target)
+        from turbotab.core.readings import BARE_AMOUNTS
+
+        named = from_name(target)
+        pack = proposed_unit(target, series)
+        if named in BARE_AMOUNTS and (pack or {}).get("candidates") \
+                and named not in pack["candidates"]:
+            named = None  # ``ldl_mg``: a bare amount the quantity does not take (mg/dL, mmol/L)
         if named is not None:
-            proposal = {"unit": None, "candidates": [named.value], "source": "name"}
+            candidates = [named, *[u for u in (pack or {}).get("candidates") or [] if u != named]]
+            proposal = {"unit": named, "candidates": candidates, "source": "name"}
+        else:
+            proposal = pack
     return {
         "column": target,
         "task": task,

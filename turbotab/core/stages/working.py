@@ -1114,9 +1114,11 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
     # Whole-number columns that change within units and may be codes or counts (BLUEPRINT §14.1):
     # combining them takes the user's answer for each, never a guess (the gate: per-recall
     # ``coffee_cups`` and ``eating_occasions`` combined by their mode under "mean").
-    out["code_or_count"] = code_or_count_columns(
-        frame, unit, exclude=[c for c in (target, out["proposed_time_column"],
+    asked = code_or_count_facts(
+        frame, unit, exclude=[c for c in (target, out["time_column"], out["proposed_time_column"],
                                           *out["time_columns"]) if c])
+    out["code_or_count"] = list(asked)
+    out["code_or_count_facts"] = asked
     if out["time_column"] in as_written.columns:
         # Whether that column can put a unit's records in order: what combining by first, last
         # or change needs, and what the aggregation answer is refused on (sequence.py).
@@ -1325,15 +1327,15 @@ def repair_expressions(findings: Any, dispositions: Mapping[str, Any] | None) ->
 #   code            mode       first    last     first (the baseline value)
 #   category        mode       first    last     first
 #
-# A code is a whole-number column with at most CODE_LEVELS values, each seen CODE_REPEATS times
-# on average, other than a 0/1 indicator (whose mean is a share of records). "first" and "last" are the value AT the first and last dated
+# Whether a whole-valued number is a code or an amount is the user's answer (BLUEPRINT §14.3:
+# whole numbers fit both, whatever their count or type; fractional values are amounts by their
+# values); a 0/1's mean is a share of the records. "first" and "last" are the value AT the first and last dated
 # record, for predictors and the outcome alike: never a value from another visit standing in for a
 # missing one. Undated records are left out of first, last and change, and counted. The aggregation
 # answer's ``columns`` may set any column's rule; the receipt lists every column that varied within
 # a unit, with the rule it got.
 
 CODE_LEVELS = 10
-CODE_REPEATS = 3
 COMBINE_RULES = ("mean", "first", "last", "change", "mode")
 _RULE_WORDS = {"mean": "mean", "first": "first record", "last": "last record",
                "change": "last minus first", "mode": "most frequent", "constant": "its one value"}
@@ -1370,6 +1372,10 @@ def aggregation_plan(state: Any, columns: set[str], structure: Mapping[str, Any]
     codes = {c for c in columns if confirmation(state, "code_or_count", c) == "code"}
     amounts = {c for c in columns if confirmation(state, "code_or_count", c) == "amount"}
     return {"id_column": spec.id_column, "method": agg.method, "outcome_rule": agg.outcome,
+            # The whole-valued columns that change within units (the structure stage's reading of
+            # every row): each is combined only as the user said, codes or amounts.
+            "asked": [c for c in ((structure or {}).get("code_or_count") or []) if c in columns],
+            "read_asked": "code_or_count" in (structure or {}),
             "time_column": order if order in columns else None,
             "levels": declared_levels(state, order), "overrides": overrides,
             "codes": sorted(codes), "amounts": sorted(amounts),
@@ -1459,36 +1465,40 @@ def column_kinds(con: Any, columns: Sequence[str], physical: Mapping[str, str]) 
             numeric = _is_int(phys) or _is_float(phys) or _is_decimal(phys)
             n_values, whole, indicator, n_present = row[4 * i: 4 * i + 4]
             n_values = int(n_values or 0)
-            # A code repeats its few levels: whole numbers, at most CODE_LEVELS of them, each seen
-            # CODE_REPEATS times on average. Three weights of 80, 85 and 90 kg are amounts.
-            code = (whole and not indicator and n_values <= CODE_LEVELS
-                    and int(n_present or 0) >= CODE_REPEATS * n_values)
+            # BLUEPRINT §14.3: whole numbers are codes or amounts whatever their count (FIPS states
+            # hold 51 codes; NHANES ``DR1_030Z`` 21 eating occasions), so a whole-valued number that
+            # changes within units is "whole": combined only as the user says (``prepare_combine``).
+            # Fractional values are amounts by their values.
             if not int(varied[i] or 0) > 1:
                 kind = "constant"
             elif not numeric:
                 kind = "category"
-            elif code:
-                kind = "code"
+            elif whole:
+                kind = "whole"
             else:
                 kind = "amount"
-            out[c] = {"varied": int(varied[i] or 0) > 1, "kind": kind, "numeric": numeric}
+            out[c] = {"varied": int(varied[i] or 0) > 1, "kind": kind, "numeric": numeric,
+                      "whole": bool(numeric and whole), "zero_one": bool(numeric and indicator),
+                      "n_values": n_values}
     return out
 
 
-def code_or_count_columns(frame: Any, unit: str, exclude: Sequence[str] = ()) -> list[str]:
-    """The columns :func:`column_kinds` would read as codes, over ``frame`` with pandas: whole
-    numbers other than a 0/1 indicator, at most CODE_LEVELS values each seen CODE_REPEATS times on
-    average, changing within some unit. Their values fit a count as well as a code, so combining
-    them waits for the user's answer for each (``confirm_reading``)."""
+def code_or_count_facts(frame: Any, unit: str, exclude: Sequence[str] = ()) -> dict[str, dict[str, Any]]:
+    """The columns combining a unit's rows must ask about (BLUEPRINT §14.3, the consumer sets the
+    scope), over ``frame`` with pandas: every whole-valued number that changes within some unit,
+    whatever its count of values or its type (codes written 1.0–5.0 after a blank are whole; 0/1 is
+    too, a share under the mean and the majority under the mode), with what the values say
+    (``whole``, ``zero_one``, ``n_values``, ``min``, ``max``) for the question's best guess.
+    Fractional values are amounts by their values and are not asked."""
     import numpy as np
     import pandas as pd
 
     if unit not in frame.columns:
-        return []
-    out = []
+        return {}
+    out: dict[str, dict[str, Any]] = {}
     skip = {unit, ROW_ID, *exclude}
     for c in frame.columns:
-        if c in skip or names_an_order(c):
+        if c in skip:
             continue
         x = frame[c]
         if not pd.api.types.is_numeric_dtype(x) or pd.api.types.is_bool_dtype(x):
@@ -1497,28 +1507,18 @@ def code_or_count_columns(frame: Any, unit: str, exclude: Sequence[str] = ()) ->
         if present.empty:
             continue
         values = present.to_numpy(dtype=float)
-        if not np.all(np.isfinite(values)) or not np.all(values == np.floor(values)):
+        values = values[np.isfinite(values)]
+        if not len(values) or not np.all(values == np.floor(values)):
             continue
-        k = int(present.nunique())
-        if set(np.unique(values)) <= {0.0, 1.0} or k > CODE_LEVELS \
-                or len(present) < CODE_REPEATS * k:
+        distinct = np.unique(values)
+        if len(distinct) < 2:
             continue
         varied = frame.groupby(unit, dropna=True)[c].nunique(dropna=True)
         if len(varied) and int(varied.max()) > 1:
-            out.append(str(c))
+            out[str(c)] = {"whole": True, "zero_one": bool(set(distinct) <= {0.0, 1.0}),
+                           "n_values": int(len(distinct)), "min": float(distinct.min()),
+                           "max": float(distinct.max())}
     return out
-
-
-def names_an_order(column: str) -> bool:
-    """A column named as the order or occasion of a unit's records (``recall_number``, ``visit``,
-    ``wave``): a time reading, which leaves the model by its role; its combined value is the
-    record it came from, never a code or a count anyone analyzes."""
-    from turbotab.core.recognizers import id_kind, reads_as_time
-
-    try:
-        return bool(reads_as_time(column) or id_kind(column) == "visit")
-    except Exception:  # noqa: BLE001 - a name that cannot be read orders nothing
-        return False
 
 
 def column_rule(kind: str, method: str) -> str:
@@ -1637,6 +1637,7 @@ def prepare_combine(con: Any, src_sql: str, plan: Mapping[str, Any], target: str
     others = [c for c in names if c not in (key, target, order)]
     kinds = column_kinds(con, others, physical)
     codes, amounts = set(plan.get("codes") or ()), set(plan.get("amounts") or ())
+    asked = set(plan.get("asked") or ())
     waiting: list[str] = []
     rules: dict[str, str] = {c: "first" for c in others if c == index and c not in overrides}
     for c in others:
@@ -1651,24 +1652,38 @@ def prepare_combine(con: Any, src_sql: str, plan: Mapping[str, Any], target: str
                 raise StructureError(f"`{c}` is not a number, so its {chosen} is not one of its "
                                      f"values; keep the first, the last or the most frequent.")
             rules[c] = chosen
-        elif kinds[c]["kind"] == "code" and c in amounts:
-            rules[c] = column_rule("amount", method)
-        elif kinds[c]["kind"] == "code" and c not in codes and not names_an_order(c):
-            waiting.append(c)
-        else:
+        elif kinds[c]["kind"] in ("constant", "category"):
             rules[c] = column_rule(kinds[c]["kind"], method)
+        elif c in codes:
+            rules[c] = column_rule("code", method)
+            kinds[c] = {**kinds[c], "kind": "code"}
+        elif c in amounts:
+            rules[c] = column_rule("amount", method)
+            kinds[c] = {**kinds[c], "kind": "amount"}
+        elif kinds[c]["kind"] == "whole" and (c in asked or not plan.get("read_asked")):
+            waiting.append(c)
+        elif kinds[c]["kind"] == "whole":
+            # Whole numbers the structure reading did not ask about (a time column or the records'
+            # index, which leave the model by their role): the value at the record each rule takes.
+            rules[c] = column_rule("code", method)
+        else:
+            rules[c] = column_rule("amount", method)
     if waiting:
-        # BLUEPRINT §14.1: whole numbers with a few values each seen several times fit a count
-        # (cups of coffee per recall) as well as a code (smoking 1/2/3); combining them by a guess
-        # changed most people's values in the gate. Asked, one column at a time.
+        # BLUEPRINT §14.3: whole numbers fit a count (cups of coffee per recall) as well as a code
+        # (smoking 1/2/3; NHANES ``DR1_030Z``'s 21 eating occasions; FIPS states), whatever their
+        # count; combining them by a guess averaged eating occasions into 22.11 in the gate.
+        # Asked, each with its best guess.
         from turbotab.core.readings import listing
 
         one = len(waiting) == 1
         raise StructureError(
-            f"{listing(waiting)} {'holds' if one else 'hold'} a few whole-number values that "
-            f"change within units, which may be codes for categories (combined by the most "
-            f"frequent value) or counts (combined by the {method}). Say which for "
-            f"{'it' if one else 'each'} before combining.")
+            f"{listing(waiting)} {'holds' if one else 'hold'} whole numbers that change within "
+            f"units, which may be codes for categories (combined by the most frequent value) or "
+            f"counts (combined by the {method}). Say which for {'it' if one else 'each'} before "
+            f"combining.")
+    for c in others:
+        if kinds[c]["kind"] == "whole":  # the receipt's words: how it was combined
+            kinds[c] = {**kinds[c], "kind": "code" if rules.get(c) in ("mode", "first") else "amount"}
     return {"physical": physical, "names": names, "numeric": numeric, "target": target,
             "reading": reading, "ordered": reading is not None and bool(reading["orderable"]),
             "order_expr": order_expr, "varies": varies, "others": others, "kinds": kinds,

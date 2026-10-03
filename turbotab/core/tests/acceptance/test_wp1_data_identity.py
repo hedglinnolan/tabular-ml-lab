@@ -177,6 +177,9 @@ def labeled_visits() -> pd.DataFrame:
 # person may be codes or counts, and combining them waits for the user's answer for each; these
 # fixtures' smoking categories and weekday are codes, said one reading at a time.
 CODES = {f"code_or_count:{c}": "code" for c in ("smoking", "smoking_cat", "day_of_week")}
+# BLUEPRINT §14.3: whole numbers of any count are asked too; these fixtures' weights (whole kg),
+# ages (whole years) and per-visit yes/no events (whose mean is a share of visits) are amounts.
+CODES.update({f"code_or_count:{c}": "amount" for c in ("weight_kg", "age", "event")})
 COMBINE = dict(lens=["clinical"], grain={"grain": "repeated", "id_column": "pid"}, unit="unit",
                shape_confirmations=CODES)
 

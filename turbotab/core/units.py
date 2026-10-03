@@ -9,9 +9,11 @@ require explicit confirmation."
 
 So there are two readings, and only one of them is ever stated:
 
-1. **Stated** (:func:`outcome_unit`): a unit the user recorded (``set_outcome_unit``), else one the
-   name spells out in full as its suffix (``glucose_mg_dl``, ``ldl_mmol_l``, ``sbp_mmhg``,
-   ``weight_kg``). A sentence carries a unit only from here.
+1. **Stated** (:func:`outcome_unit`): a unit the user recorded (``set_outcome_unit``). A name
+   that spells a unit out (``glucose_mg_dl``, ``sbp_mmhg``) proposes it and settles nothing
+   (BLUEPRINT §14.3: names never count as corroboration; the fourth gate's ``WBC (x10^3/uL)`` was
+   stated "in U/L"); until a unit is recorded, a sentence quotes the header verbatim. A sentence
+   carries a unit only from here.
 2. **Proposed** (:func:`proposed_unit`): the clinical pack's analytes (§A1.1 and §A1.2), matched as
    whole words, never in an intake (``dietary_``, ``_intake``, ``per day``) or a specimen the
    reference values do not describe (urine). Where an analyte has one usual unit (BMI in kg/m²)
@@ -93,7 +95,16 @@ def from_name(column: str) -> str | None:
     The suffix must be the whole unit (audit WP13 gate repair): ``protein_g_kg`` is grams per kg,
     which ends in ``kg`` but is not kg, and ``wbc_k_ul`` is thousands per µL, which ends in ``ul``
     but is not U/L. A suffix after a unit, a multiplier or "per" is a denominator, so nothing is
-    stated (the unit is proposed, or recorded with ``set_outcome_unit``)."""
+    stated (the unit is proposed, or recorded with ``set_outcome_unit``).
+
+    A name settles no unit (BLUEPRINT §14.3): what this returns is the best guess a question leads
+    with. A header that writes a volume (``uL``, ``µL``: per microlitre, a count's denominator, as
+    in ``WBC (x10^3/uL)``) or a multiplier (``x10^3``) guesses nothing rather than U/L."""
+    raw = str(column)
+    if re.search(r"(?:^|[^A-Za-z])[uµ]L(?![A-Za-z])", raw) and "U/L" not in raw:
+        return None
+    if re.search(r"(?i)x\s*10\s*\^?\s*\d|10e\d", raw):
+        return None
     tokens = [t for t in re.split(r"[^a-z0-9]+", str(column).lower()) if t]
     if len(tokens) == 1 and tokens[0] in ("kcal", "kj"):
         return _SUFFIX[tokens[0]]
@@ -168,8 +179,9 @@ def from_pack(column: str, values: Any = None) -> str | None:
 def outcome_unit(column: str, values: Any = None,
                  recorded: str | None = None) -> tuple[str | None, str | None]:
     """The unit a sentence may state, ``(unit, source)``: the user's recorded unit (source
-    ``"decision"``), else a full unit the name spells out (``"name"``), else ``(None, None)``.
-    ``values`` are accepted for the callers' convenience and never read: a unit is not guessed."""
+    ``"decision"``), else ``(None, None)``: a unit the name spells out is a proposal (BLUEPRINT
+    §14.3). ``values`` are accepted for the callers' convenience and never read: a unit is not
+    guessed."""
     from turbotab.core.readings import stated_outcome_unit
 
     # BLUEPRINT §14.1 (the readings ledger): only a settled outcome-unit reading is stated. A bare

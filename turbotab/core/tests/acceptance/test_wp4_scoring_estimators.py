@@ -32,6 +32,7 @@ from turbotab.core.stages.seal import seal_plan_stage
 from turbotab.core.stages.target import target_info_stage
 from turbotab.core.tests import modeling_fixtures as mf
 from turbotab.core.tests.stage_harness import SAMPLES, Ingested
+from turbotab.core.tests.truths import FIXTURE_TRUTHS
 
 
 def _pipeline(family: str, task: str, columns: list[str], n: int):
@@ -240,7 +241,10 @@ def _clinical_state(**slots) -> ProjectState:
                 grain=GrainSpec(grain="repeated", id_column="subject_id"),
                 repeat_kind=RepeatSpec(repeat_kind="time_points", time_column="visit_date"),
                 unit="row", temporal=TemporalSpec(temporal=True, time_column="visit_date"),
-                models=["linear", "elastic_net"])
+                models=["linear", "elastic_net"],
+                # clinical_longitudinal.csv's truth (BLUEPRINT §14.3: whole numbers are asked)
+                shape_confirmations={k: v for k, v in FIXTURE_TRUTHS["clinical_longitudinal.csv"].items()
+                                     if k.startswith("code_or_count:")})
     base.update(slots)
     return ProjectState(**base)
 

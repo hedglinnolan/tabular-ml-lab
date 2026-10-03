@@ -56,6 +56,12 @@ def test_m2_sentences_coach_lines_and_units_over_http(client):
     wait_for(client, pid, {"target_info": "fresh"})
     info = client.get(f"/api/projects/{pid}/stages/target_info").json()["artifact"]
     assert (info["unit"], info["unit_source"]) == ("%", "decision")
+    # BLUEPRINT §14.3: a day count is recorded, never read from a band of values; the fixture's
+    # truth (one 24-hour recall per row) is recorded, and the misreporting words follow it.
+    record = client.post(f"/api/projects/{pid}/decisions", json={
+        "kind": "set_column_unit", "column": "energy_kcal", "unit": "kcal", "days": 1})
+    assert record.status_code == 200, record.text
+    wait_for(client, pid, {"proposals": "fresh", "findings": "fresh"})
     proposals = client.get(f"/api/projects/{pid}/stages/proposals").json()["artifact"]
     assert proposals["coach"]["exclusions"]["text"].endswith("kcal: likely under-reporting.")
     shown = client.get(f"/api/projects/{pid}/findings/pack::dietary::implausible_intake/evidence")

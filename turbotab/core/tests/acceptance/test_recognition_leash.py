@@ -501,10 +501,13 @@ def test_a2_the_case_control_inference_never_clusters_by_a_category(tmp_path):
     so no unit repeats)."""
     from turbotab.core.tests.acceptance.server_drive import local_server, open_project
 
+    from turbotab.core.tests.truths import Truth
+
     frame = _case_control()
     path = _write(frame, tmp_path, "cc.csv")
     with local_server(tmp_path / "home") as client:
-        drive = open_project(client, path)
+        # The fixture's truth (BLUEPRINT §14.3): age in whole years is an amount.
+        drive = open_project(client, path, Truth({"code_or_count:age": "amount"}, fixture="ids.py"))
         _drive_to_fit(drive, lens=["clinical"], target="crp",
                       grain={"kind": "set_grain", "grain": "one_row_per_unit",
                              "id_column": "study_no"})
@@ -778,8 +781,13 @@ def test_b1_a_bulk_confirm_records_what_rode_along_and_only_a_confirmation_settl
                 "energy_column": e["energy_column"], "nutrients": e["nutrients"],
                 "log_transform": False, "strata": None}
 
+    from turbotab.core.tests.truths import Truth
+
+    # The fixture's truth (BLUEPRINT §14.3): age in whole years and energy in whole kcal, amounts.
+    truth = Truth({"code_or_count:age": "amount", "code_or_count:energy_kcal": "amount"},
+                  fixture="inbody A2")
     with local_server(tmp_path / "home") as client:
-        drive = open_project(client, path)
+        drive = open_project(client, path, truth)
         _drive_to_fit(drive, lens=["dietary"], target="hba1c",
                       grain={"kind": "set_grain", "grain": "one_row_per_unit",
                              "id_column": "participant_id"},
@@ -830,10 +838,10 @@ def test_b1_a_bulk_confirm_records_what_rode_along_and_only_a_confirmation_settl
         models = {"kind": "select_models", "models": ["linear"]}
         r = drive.post(models)
         assert r.status_code == 409 and r.json()["error"]["code"] == "reading_unsettled", r.text
-        asked = [x["decision"] for x in r.json()["error"]["exits"] if x["decision"]]
+        asked = [x["decision"] for x in r.json()["error"]["exits"] if x["decision"]
+                 and x["decision"]["kind"] == "confirm_reading" and x["decision"]["reading"] == "role"]
         waiting = [c for c in below if c != "hba1c"]
-        assert [a["column"] for a in asked] == waiting
-        assert all(a["kind"] == "confirm_reading" and a["reading"] == "role" for a in asked)
+        assert sorted(a["column"] for a in asked) == sorted(waiting)
         # The user knows ``ALC`` is a lymphocyte count and ``Protein`` and ``Fat%`` body
         # composition: their own answer, then each other proposal confirmed on its own.
         mine = {c["column"]: c["proposed"] for c in roles["columns"]}

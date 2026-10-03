@@ -67,7 +67,7 @@ from scipy import stats
 from turbotab.core.methods.calibration import (CalibrationRefused, Replicates, logistic_fit,
                                                regression_calibration)
 from turbotab.core.tests.acceptance.references import hc3_by_definition
-from turbotab.core.tests.acceptance.server_drive import local_server, open_project
+from turbotab.core.tests.acceptance.server_drive import Truth, local_server, open_project
 
 
 def _people(rng: np.random.Generator, n: int, k: np.ndarray, *, beta: float = 0.5,
@@ -262,6 +262,13 @@ def up_to_the_models(d, purpose: str) -> None:
     d.decide({"kind": "select_models", "models": ["linear"]})
 
 
+def recall_truth() -> "Truth":
+    """The recall table's truth (BLUEPRINT §14.3): age in whole years, an amount; energy one
+    day's recall in kcal."""
+    return Truth({"code_or_count:age": "amount", "unit:energy_kcal": "kcal",
+                  "day_count:energy_kcal": "1"}, fixture="recall_table")
+
+
 @pytest.fixture(scope="module")
 def recalls(tmp_path_factory) -> tuple[pd.DataFrame, Path]:
     frame = recall_table()
@@ -277,7 +284,7 @@ def runs(recalls, tmp_path_factory) -> dict:
     _, path = recalls
     out = {}
     with local_server(tmp_path_factory.mktemp("wp12c_calibration_home")) as client:
-        d = open_project(client, path)
+        d = open_project(client, path, recall_truth())
         up_to_the_models(d, "inference")
         d.decide({"kind": "set_measurement_error", "method": "regression_calibration", "n_boot": 200})
         out["residual"] = d.artifact("calibration")
@@ -387,7 +394,7 @@ def test_6_under_prediction_calibration_is_refused_with_exits(recalls, tmp_path_
     same way, so the answer is refused, with "keep the mean uncorrected" as the way forward."""
     _, path = recalls
     with local_server(tmp_path_factory.mktemp("wp12c_prediction_home")) as client:
-        d = open_project(client, path)
+        d = open_project(client, path, recall_truth())
         d.decide({"kind": "set_lens", "lenses": ["dietary"]})
         d.reach("target")
         d.decide({"kind": "set_target", "column": "ldl"})
@@ -408,7 +415,7 @@ def test_6_rows_not_combined_from_recalls_are_not_calibrated(recalls, tmp_path_f
     the stage says what to change."""
     _, path = recalls
     with local_server(tmp_path_factory.mktemp("wp12c_rows_home")) as client:
-        d = open_project(client, path)
+        d = open_project(client, path, recall_truth())
         d.decide({"kind": "set_lens", "lenses": ["dietary"]})
         d.reach("target")
         d.decide({"kind": "set_target", "column": "ldl"})

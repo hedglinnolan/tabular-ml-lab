@@ -41,7 +41,7 @@ import pandas as pd
 import pytest
 
 from turbotab.core import decisions as d
-from turbotab.core.decisions import PREDICTOR_ROLES, ProjectState
+from turbotab.core.decisions import ColumnUnitSpec, PREDICTOR_ROLES, ProjectState
 from turbotab.core.stages.rows import roles_stage
 from turbotab.core.tests.stage_harness import SAMPLES, Ingested
 
@@ -241,7 +241,9 @@ def test_1e_energy_the_pack_could_not_name_still_raises_its_findings(tmp_path, e
                        "fat_g": F.round(1), "age": rng.integers(20, 70, n)})
     path = _write(df, tmp_path, "energy.csv")
     t = Ingested(path, tmp_path)
-    found = {f["id"]: f for f in t.run(findings_stage, ProjectState(lens=["dietary"]))["findings"]}
+    # The fixture's truth, recorded (BLUEPRINT §14.3: a day count is never read from a band).
+    state = ProjectState(lens=["dietary"], column_units={energy_name: ColumnUnitSpec(unit="kcal")})
+    found = {f["id"]: f for f in t.run(findings_stage, state)["findings"]}
     assert "pack::dietary::energy_adjustment" in found
     implausible = found["pack::dietary::implausible_intake"]
     expected = int(((E < 500) | (E > 5000)).sum())
@@ -504,7 +506,7 @@ UNIT_CASES = [
     ("weight", "lb (children)", lambda r: r.normal(60, 15, 500)),
     ("hba1c_mmol", "mmol/mol", lambda r: r.normal(40, 6, 500)),
 ]
-# Names that spell their unit out in full: the only units stated without a decision.
+# Names that spell their unit out in full: proposed, and stated once recorded (BLUEPRINT §14.3).
 SPELLED = {"glucose_mg_dl": "mg/dL", "ldl_mmol_l": "mmol/L", "sbp_mmhg": "mmHg", "weight_kg": "kg",
            "choline_mg_day": "mg/day", "energy_kcal": "kcal"}
 
@@ -528,12 +530,18 @@ def test_4a_no_unit_is_stated_that_the_name_does_not_spell_out(tmp_path):
         assert sentence == f"`{name}` was chosen as the outcome.", sentence
         if name in ("dietary_choline", "dietary_cholesterol", "cholesterol_intake"):
             assert info["proposed_unit"] is None, (name, info["proposed_unit"])
+    # BLUEPRINT §14.3 (names never count as corroboration): a name that spells its unit out
+    # proposes it, the question's best guess; it is stated only once recorded.
     for name, unit in SPELLED.items():
         one = pd.DataFrame({name: rng.normal(100, 10, 200)})
         path = _write(one, tmp_path, f"{name}.csv")
         info = Ingested(path, Path(tempfile.mkdtemp())).run(
             target_info_stage, ProjectState(target=name, task="regression"))
-        assert (info["unit"], info["unit_source"]) == (unit, "name"), name
+        assert (info["unit"], info["unit_source"]) == (None, None), name
+        assert info["proposed_unit"] == unit, (name, info["proposed_unit"])
+        recorded = ProjectState(target=name, task="regression", outcome_unit=unit)
+        info = Ingested(path, Path(tempfile.mkdtemp())).run(target_info_stage, recorded)
+        assert (info["unit"], info["unit_source"]) == (unit, "decision"), name
 
 
 def test_4b_a_proposed_unit_reaches_a_sentence_only_once_recorded(tmp_path):
@@ -597,7 +605,9 @@ def test_4c_the_substitution_estimand_states_only_a_recorded_unit(tmp_path):
     for unit in (None, "mg/day"):
         st = mf.state(roles=roles, target="dietary_choline", models=["linear"], purpose="inference",
                       substitution=SubstitutionSpec(donor="protein_g", recipient="fat_g"),
-                      outcome_unit=unit)
+                      outcome_unit=unit,
+                      # the diet's truth: energy in whole kcal is an amount (BLUEPRINT §14.3)
+                      shape_confirmations={"code_or_count:energy_kcal": "amount"})
         split = mf.split_bundle(np.arange(len(frame)), holdout=0.0)
         ti = mf.target_info("regression", "dietary_choline")
         design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
@@ -713,7 +723,11 @@ def test_5b_the_atwater_reconstruction_still_reads_kj_and_the_counts_agree():
         expected = int(((kcal < 500) | (kcal > 5000)).sum())
         with tempfile.TemporaryDirectory() as folder:
             path = _write(frame, Path(folder), "t.csv")
-            found = Ingested(path, Path(folder)).run(findings_stage, ProjectState(lens=["dietary"]))
+            # The day count is the fixture's truth, recorded (BLUEPRINT §14.3); the unit is the
+            # Atwater identity's, as read above.
+            state = ProjectState(lens=["dietary"],
+                                 column_units={energy: ColumnUnitSpec(unit="kj", days=1)})
+            found = Ingested(path, Path(folder)).run(findings_stage, state)
         f = next(x for x in found["findings"] if x["id"] == "pack::dietary::implausible_intake")
         said = 0 if f["title"].startswith("No record") else int(f["title"].split()[0].replace(",", ""))
         assert said == expected, (energy, f["title"], expected)

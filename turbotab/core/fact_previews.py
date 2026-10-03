@@ -230,12 +230,13 @@ def target_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     # predict may look at it; choosing who is in the study may not (lockbox constitution §04).
     if numeric is not None and values.dtype.kind != "b" and numeric.notna().sum() > 1 \
             and numeric.nunique() > 2:
-        from turbotab.core.units import outcome_unit, with_unit
+        from turbotab.core.units import outcome_unit, recorded_unit, with_unit
 
         x = numeric.to_numpy(dtype=float, na_value=np.nan)
         hist, _ = _histogram_pair(x, x)
         finite = x[np.isfinite(x)]
-        unit, _ = outcome_unit(column, finite)
+        # Only a recorded unit is stated (BLUEPRINT §14.3: a header's letters are a name).
+        unit, _ = outcome_unit(column, finite, recorded=recorded_unit(ctx.state, column))
         median = with_unit(f"{np.median(finite):,.4g}", unit)
         views.append(DistributionView(
             title=clip_words(f"Values of `{column}`", TITLE_WORDS),

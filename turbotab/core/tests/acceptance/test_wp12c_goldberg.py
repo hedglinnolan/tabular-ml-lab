@@ -420,11 +420,21 @@ ROLES = {"participant_id": "identifier", "sex": "covariate", "age": "covariate",
          "fiber_g": "exposure", "height": "excluded", "weight": "excluded", "activity": "excluded"}
 
 
+def goldberg_truth() -> Any:
+    """The misreporting table's truth (BLUEPRINT §14.3): energy the mean of two recalls, one day's
+    intake in kcal; weight in kg, height in cm, age in whole years."""
+    from turbotab.core.tests.truths import Truth
+
+    return Truth({"unit:kcal": "kcal", "day_count:kcal": "1", "unit:weight": "kg",
+                  "unit:height": "cm", "unit:age": "years", "code_or_count:age": "amount"},
+                 fixture="misreporting_table")
+
+
 def run_sensitivity(path: Path, home: Path, purpose: str) -> tuple[dict, dict, set[int]]:
     """The opening sequence with the Goldberg screen as the primary rule, then the sensitivity
     answer naming a fixed 500–3,500 kcal screen; returns (sensitivity, fit, sealed rows)."""
     with local_server(home) as client:
-        d = open_project(client, path)
+        d = open_project(client, path, goldberg_truth())
         d.decide({"kind": "set_lens", "lenses": ["dietary"]})
         d.reach("target")
         d.decide({"kind": "set_target", "column": "ldl"})
@@ -571,7 +581,7 @@ def test_5_a_goldberg_rule_that_reads_the_outcome_is_refused(table, tmp_path_fac
     inside a sensitivity analysis (audit RO-01), each with a way forward."""
     _, path = table
     with local_server(tmp_path_factory.mktemp("wp12c_outcome_home")) as client:
-        d = open_project(client, path)
+        d = open_project(client, path, goldberg_truth())
         d.decide({"kind": "set_lens", "lenses": ["dietary"]})
         d.reach("target")
         d.decide({"kind": "set_target", "column": "weight"})

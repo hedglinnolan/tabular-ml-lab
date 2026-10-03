@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from turbotab.core.decisions import ExclusionRule, GoldbergRule, ProjectState, RangeByLevel
+from turbotab.core.decisions import ColumnUnitSpec, ExclusionRule, GoldbergRule, ProjectState, RangeByLevel
 from turbotab.core.graph import Bundle
 from turbotab.core.stages.proposals import proposals_stage, roles_from, rule_excludes
 from turbotab.core.tests.stage_harness import NHANES, SAMPLES, Ingested
@@ -55,7 +55,11 @@ def nhanes(tmp_path_factory):
     if not NHANES.is_file():
         pytest.skip("the real NHANES export is not on this machine")
     table = Ingested(NHANES, tmp_path_factory.mktemp("nhanes"))
-    artifact = table.run(proposals_stage, ProjectState(lens=["dietary", "clinical"], target="glucose"))
+    # The export's truth (NHANES DR1TKCAL: the first day's recall, in kcal): BLUEPRINT §14.3, a day
+    # count is recorded, never read from a band of values.
+    truth = {"kcal": ColumnUnitSpec(unit="kcal", days=1)}
+    artifact = table.run(proposals_stage, ProjectState(lens=["dietary", "clinical"], target="glucose",
+                                                       column_units=truth))
     return table, artifact
 
 

@@ -143,11 +143,13 @@ def build_graph() -> Graph:
             # in an energy name is asked; the outcome's dispute reads value-corroborated readings.
             # findings 12 (the readings ledger, BLUEPRINT §14.1): an energy column only its name reads
             # counts no misreport, and a day count the values do not settle is asked.
+            # findings 13 (corroboration must discriminate, BLUEPRINT §14.3): a numeric sex column is
+            # read for the growth charts only as the user confirmed its coding.
             Stage(
                 "findings",
-                12,
+                13,
                 ("oriented",),
-                ("lens", "target", "column_units"),
+                ("lens", "target", "column_units", "sex_codings"),
                 findings_stage,
                 heavy=True,
                 requires=("lens",),
@@ -166,13 +168,16 @@ def build_graph() -> Graph:
             # spacing evidence; a recall index beside an occasion that changes within units is asked.
             # structure 10 (the readings ledger, BLUEPRINT §14.1): the time column is the settled
             # one (the reading's is proposed); the whole numbers that may be codes or counts.
-            Stage("structure", 10, ("oriented",),
+            # structure 11 (BLUEPRINT §14.3): every whole-valued number that changes within units is
+            # asked as codes or amounts, whatever its count or type.
+            Stage("structure", 11, ("oriented",),
                   ("grain", "target", "lens", "repeat_kind", "findings", "temporal",
                    "shape_confirmations"),
                   structure_stage, heavy=True, label="Reading how the rows repeat"),
             # working 3 (the readings ledger): a code or a count is combined only as the user said,
             # and first, last and change only by a settled time column.
-            Stage("working", 3, ("oriented", "findings", "structure"),
+            # working 4 (BLUEPRINT §14.3): as structure 11.
+            Stage("working", 4, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind", "temporal",
                    "shape_confirmations", "categorical"),
                   working_stage, heavy=True, label="Building the working table"),
@@ -182,9 +187,11 @@ def build_graph() -> Graph:
             # is g/kg, not kg; ``wbc_k_ul`` thousands per µL, not U/L).
             # target_info 5 (the readings ledger, BLUEPRINT §14.1): three or more labels are asked
             # (ordered or not); a bare amount the quantity does not take is no stated unit.
+            # target_info 6 (BLUEPRINT §14.3): no unit is stated from a header (a name); the header's
+            # letters are the proposal.
             Stage(
                 "target_info",
-                5,
+                6,
                 ("working",),
                 ("target", "task", "outcome_unit"),
                 target_info_stage,
@@ -205,7 +212,10 @@ def build_graph() -> Graph:
             # payload lists ``needs_confirmation``.
             # roles 6 (the readings ledger, BLUEPRINT §14.1): a repeating ``*_id`` read by its name
             # (a stratum, a PSU, an interviewer) is medium, unless the grain answer names it the unit.
-            Stage("roles", 6, ("working",), ("lens", "target", "purpose", "grain"), roles_stage,
+            # roles 7 (corroboration must discriminate, BLUEPRINT §14.3): high only where a value test
+            # rejects every alternative: a repeating identifier, a time-named number, a visit index,
+            # a many-label text column and a design name are asked.
+            Stage("roles", 7, ("working",), ("lens", "target", "purpose", "grain"), roles_stage,
                   heavy=True, label="Reading what each column is"),
             # proposals 3: the declared purpose orders the energy methods by soundness (audit WP6);
             # the survey question (WP10) and the Goldberg screen's recall days (WP12c).
@@ -231,8 +241,12 @@ def build_graph() -> Graph:
             # values or recorded (the Atwater identity says nothing of days); the Goldberg screen's
             # body measures and the sex-specific screens' sex column wait for settled units and
             # roles; a design the user set by role is offered, placed by its values.
-            Stage("proposals", 13, ("working", "roles"),
-                  ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind"),
+            # proposals 14 (corroboration must discriminate, BLUEPRINT §14.3): a day count and a body
+            # measure's unit are settled only as recorded (a header is a name); a recorded pound is
+            # converted exactly; a numeric sex column is read as the user confirmed its coding.
+            Stage("proposals", 14, ("working", "roles"),
+                  ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
+                   "sex_codings"),
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             # cohort 3 (the readings ledger, BLUEPRINT §14.1): complete cases read settled roles.
@@ -243,13 +257,15 @@ def build_graph() -> Graph:
             # split 4 (audit WP15, IN-24): the chronology counts held-out rows that predate training.
             # split 5 (WP13 + WP15 merged): both of the above in one stage.
             # split 6 (recognition's leash): the draw groups by a settled identifier only.
-            Stage("split", 6, ("working", "cohort", "target_info", "structure"),
+            # split 7 (BLUEPRINT §14.3): as fit 14.
+            Stage("split", 7, ("working", "cohort", "target_info", "structure"),
                   ("split", *ROLE_READS, "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
             # shelf 7 (methods gate): under inference it ranks for every analyzed row and its basis
             # says so (BLUEPRINT §12 ruling 3); timing stays on the training rows.
             # shelf 8 (the readings ledger): its predictors are the settled roles'.
-            Stage("shelf", 8, ("working", "cohort", "target_info", "split"),
+            # shelf 9 (BLUEPRINT §14.3): a predictor's codes counted as the user answered, wherever kept.
+            Stage("shelf", 9, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
                    "outcome_order", "exposure_forms"),
@@ -277,7 +293,9 @@ def build_graph() -> Graph:
             # roles only (BLUEPRINT §14).
             # design 15 (the readings ledger, BLUEPRINT §14.1): the fit reads settled readings only;
             # a role that rode along, or a whole-number predictor's code-or-amount reading, is asked.
-            Stage("design", 15, ("working", "split", "target_info"),
+            # design 16 (BLUEPRINT §14.3): codes or amounts asked for every whole-valued predictor, and
+            # the user's code answer read wherever it is kept.
+            Stage("design", 16, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up"),
                   design_stage,
@@ -297,7 +315,9 @@ def build_graph() -> Graph:
             # fit 12 (audit WP15, IN-22): under inference the table carries its measurement-error line.
             # fit 13 (gate repair): a design whose strata or PSUs are read with no weight asks the
             # survey question too, so the inference table waits for its answer.
-            Stage("fit", 13, ("working", "design", "split", "target_info", "cohort"),
+            # fit 14 (BLUEPRINT §14.3): the intervals cluster by the grain's unit or a grouping the
+            # user confirmed, never by a reader's identifier over the grain answer.
+            Stage("fit", 14, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up"),
                   fit_stage, heavy=True, requires=("models",),
                   label="Fitting the models"),
@@ -323,7 +343,8 @@ def build_graph() -> Graph:
             # seal_plan 4 (audit WP15, IN-24): the chronology's held-out rows that predate training.
             # seal_plan 5 (WP13 + WP15 merged): both of the above in one stage.
             # seal_plan 6 (recognition's leash): as split 6.
-            Stage("seal_plan", 6, ("working", "cohort", "target_info", "structure"),
+            # seal_plan 7 (BLUEPRINT §14.3): as split 7.
+            Stage("seal_plan", 7, ("working", "cohort", "target_info", "structure"),
                   (*ROLE_READS, "task", "event", "purpose", *SEAL_READS), seal_plan_stage,
                   requires=("target",),
                   label="Reading what a held-out set can measure"),

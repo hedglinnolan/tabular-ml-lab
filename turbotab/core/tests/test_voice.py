@@ -289,9 +289,13 @@ def test_reverting_a_disposition_or_a_structural_answer(tmp_path):
 
 
 def test_the_outcome_sentence_carries_its_unit():
-    """Only a unit the name spells out or the user recorded (audit IN-05: never guessed)."""
+    """Only a unit the user recorded (audit IN-05: never guessed; BLUEPRINT §14.3: a header's
+    letters are a name, so the sentence quotes the header and adds no unit)."""
     frame = RECALLS.assign(glucose_mg_dl=RECALLS["glucose"])
     assert voice.sentence_for(d.SetTarget(column="glucose_mg_dl"), None, {"frame": frame}) == \
+        "`glucose_mg_dl` was chosen as the outcome."
+    named = ProjectState(target="glucose_mg_dl", outcome_unit="mg/dL")
+    assert voice.sentence_for(d.SetTarget(column="glucose_mg_dl"), named, {"frame": frame}) == \
         "`glucose_mg_dl` was chosen as the outcome, in mg/dL."
     assert voice.sentence_for(d.SetTarget(column="glucose"), None, {"frame": RECALLS}) == \
         "`glucose` was chosen as the outcome."

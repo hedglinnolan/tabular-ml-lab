@@ -53,9 +53,14 @@ def wait_for(client: TestClient, pid: str, want: dict[str, str], timeout: float 
 
 
 def open_by_path(client: TestClient, path: Path = DIETARY) -> str:
+    """Open ``path`` as a project; its fixture's declared truth answers the readings asked."""
+    from turbotab.core.tests.truths import FIXTURE_TRUTHS
+
     response = client.post("/api/projects", json={"path": str(path)})
     assert response.status_code == 200, response.text
-    return response.json()["id"]
+    pid = response.json()["id"]
+    declare(pid, FIXTURE_TRUTHS.get(Path(path).name, {}), fixture=Path(path).name)
+    return pid
 
 
 @pytest.fixture(scope="session")
@@ -164,56 +169,73 @@ def prepare(client: TestClient, pid: str, decision: dict, timeout: float = 120.0
         assert response.status_code == 200, (first["key"], response.text)
 
 
-# The readings ledger (BLUEPRINT §14.1): a reading below high is confirmed on its own. A test that
-# answers the usual way confirms each, one decision per reading, keeping the reading the engine
-# applied before the ledger (a predictor's whole numbers as an amount; a unit's repeating whole
-# numbers combined as codes; the repeats reading's column as the order).
-_KEEPS = {"models": "amount", "aggregation": "code"}
+# The readings ledger (BLUEPRINT §14.1, §14.3): a reading the server asks about is answered from
+# the fixture's declared truth (``turbotab.core.tests.truths``), never a constant: each test that
+# opens a project declares what its readings really are (:func:`declare`), and a reading it declares
+# nothing for fails the test, named.
+TRUTHS: dict[str, Any] = {}
 
 
-def confirm_each(client: TestClient, pid: str, exits: list, key: str) -> int:
-    """Record each ``confirm_reading`` exit of a refusal, one per reading; returns how many."""
-    done = 0
-    seen: set[tuple[str, str]] = set()
-    for item in exits:
-        d = item.get("decision") or {}
-        if d.get("kind") != "confirm_reading":
-            continue
-        if d["reading"] == "code_or_count" and d["value"] != _KEEPS.get(key, "amount"):
-            continue
-        if d["reading"] == "cluster" and d["value"] != "yes":
-            continue
-        if (d["reading"], d["column"]) in seen:
-            continue
-        seen.add((d["reading"], d["column"]))
-        r = client.post(f"/api/projects/{pid}/decisions", json=d)
-        assert r.status_code == 200, (d, r.text)
-        done += 1
-    return done
+def declare(pid: str, readings: dict[str, Any], fixture: str | None = None) -> None:
+    """Declare (or extend) the truth of the fixture project ``pid`` was opened on."""
+    from turbotab.core.tests.truths import Truth
+
+    truth = TRUTHS.setdefault(pid, Truth(fixture=fixture or f"project {pid}"))
+    truth.update({k: str(v) for k, v in readings.items()})
+    if fixture:
+        truth.fixture = fixture
+
+
+def truth_of(pid: str) -> Any:
+    from turbotab.core.tests.truths import Truth
+
+    return TRUTHS.setdefault(pid, Truth(fixture=f"project {pid}"))
 
 
 def answer_settled(client: TestClient, pid: str, key: str | None, answer: dict) -> Any:
-    """Post ``answer``; after roles, confirm each one that rode along; when the answer is refused
-    only for readings to confirm, confirm each and post it again."""
-    if key is None:
-        from turbotab.core.sequence import question_of
+    """Post ``answer``; after roles, confirm in one block each one that rode along, with the role
+    the answer gave it; when the answer is refused only for readings to settle, answer them from
+    the fixture's truth and post it again."""
+    from turbotab.core.tests.truths import answer_refusal
 
-        key = question_of(str(answer.get("kind"))) or ""
-    response = client.post(f"/api/projects/{pid}/decisions", json=answer)
+    url = f"/api/projects/{pid}/decisions"
+    response = when_reached(lambda: client.post(url, json=answer))
     if response.status_code == 200 and answer.get("kind") == "set_roles":
         record = client.get(f"/api/projects/{pid}").json()["decisions"][-1]
-        for column in record["decision"].get("unconfirmed") or []:
-            r = client.post(f"/api/projects/{pid}/decisions", json={
-                "kind": "confirm_reading", "reading": "role", "column": column,
-                "value": answer["roles"][column]})
+        waiting = record["decision"].get("unconfirmed") or []
+        if waiting:
+            r = client.post(url, json={"kind": "confirm_readings", "items": [
+                {"reading": "role", "column": c, "value": answer["roles"][c]} for c in waiting]})
             assert r.status_code == 200, r.text
-    for _ in range(4):
-        if response.status_code != 409:
-            break
-        error = response.json().get("error") or {}
-        if error.get("code") not in ("reading_unsettled", "role_unconfirmed"):
-            break
-        if not confirm_each(client, pid, error.get("exits") or [], key):
-            break
-        response = client.post(f"/api/projects/{pid}/decisions", json=answer)
-    return response
+    truth = truth_of(pid)
+    if answer.get("kind") == "set_roles":
+        for column, role in answer["roles"].items():
+            truth.setdefault(f"role:{column}", role)
+    return answer_refusal(lambda d: client.post(url, json=d), response, truth,
+                          lambda: when_reached(lambda: client.post(url, json=answer)))
+
+
+def when_reached(post: Any, timeout: float = 240.0) -> Any:
+    """``post()``, again while the Router holds its question behind one a recomputing stage owes
+    (a recorded unit or code reshapes the working table, so the target's questions recompute)."""
+    end = time.monotonic() + timeout
+    while True:
+        response = post()
+        if response.status_code != 409 or time.monotonic() > end:
+            return response
+        if (response.json().get("error") or {}).get("code") != "not_yet":
+            return response
+        time.sleep(0.1)
+
+
+def settle_reads(client: TestClient, pid: str, decision: dict) -> None:
+    """Answer, from the fixture's truth, the readings a decision's preview (or the decision itself)
+    asks about before it can be drawn: the user answering the ask first (BLUEPRINT §14.2). Records
+    those answers only; the decision itself is not recorded."""
+    from turbotab.core.tests.truths import answer_refusal
+
+    url = f"/api/projects/{pid}/preview"
+    response = when_reached(lambda: client.post(url, json=decision))
+    answer_refusal(lambda d: client.post(f"/api/projects/{pid}/decisions", json=d), response,
+                   truth_of(pid), lambda: when_reached(lambda: client.post(url, json=decision)))
+    when_reached(lambda: client.post(url, json=decision))  # the stages its answers reshaped

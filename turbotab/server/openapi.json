@@ -427,6 +427,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/ConfirmReading"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmReadings"
                   }
                 ],
                 "discriminator": {
@@ -466,7 +469,8 @@
                     "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
                     "set_column_unit": "#/components/schemas/SetColumnUnit-Input",
                     "confirm_role": "#/components/schemas/ConfirmRole",
-                    "confirm_reading": "#/components/schemas/ConfirmReading"
+                    "confirm_reading": "#/components/schemas/ConfirmReading",
+                    "confirm_readings": "#/components/schemas/ConfirmReadings"
                   }
                 },
                 "title": "Decision"
@@ -771,6 +775,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/ConfirmReading"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmReadings"
                   }
                 ],
                 "discriminator": {
@@ -810,7 +817,8 @@
                     "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
                     "set_column_unit": "#/components/schemas/SetColumnUnit-Input",
                     "confirm_role": "#/components/schemas/ConfirmRole",
-                    "confirm_reading": "#/components/schemas/ConfirmReading"
+                    "confirm_reading": "#/components/schemas/ConfirmReading",
+                    "confirm_readings": "#/components/schemas/ConfirmReadings"
                   }
                 },
                 "title": "Decision"
@@ -1903,7 +1911,8 @@
               "day_count",
               "code_or_count",
               "time_column",
-              "nested_in"
+              "nested_in",
+              "sex_coding"
             ],
             "title": "Reading"
           },
@@ -1930,6 +1939,33 @@
         ],
         "title": "ConfirmReading",
         "description": "One reading of the data, confirmed on its own after its evidence was read (BLUEPRINT §14.1:\n\"Confirmation is one reading at a time, never a bulk confirm of uncertain readings\"). One\ncolumn, one kind and one value per record: a role (``exposure``), whether a column's\nrepeating values cluster the rows (``yes``/``no``), a unit (``kg``), the days a total-energy\nvalue spans (``2``), whether whole numbers are codes or amounts, or that a column orders a\nunit's rows. ``confirm_role`` records stay valid: each is this decision's role kind."
+      },
+      "ConfirmReadings": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "confirm_readings",
+            "title": "Kind",
+            "default": "confirm_readings"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingItem"
+            },
+            "type": "array",
+            "maxItems": 100000,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "items"
+        ],
+        "title": "ConfirmReadings",
+        "description": "A block confirmation (BLUEPRINT §14.2: \"A block confirmation settles exactly the readings\nit lists, each with the value it shows. It never settles a reading it does not list.\"): the\nreadings a question listed, each with its best guess as shown (or as the user changed it),\nrecorded exactly as ``confirm_reading`` records each one. One record, so one revert undoes it."
       },
       "ConfirmRole": {
         "properties": {
@@ -2134,6 +2170,9 @@
               },
               {
                 "$ref": "#/components/schemas/ConfirmReading"
+              },
+              {
+                "$ref": "#/components/schemas/ConfirmReadings"
               }
             ],
             "title": "Decision",
@@ -2142,6 +2181,7 @@
               "mapping": {
                 "apply_repair": "#/components/schemas/ApplyRepair-Output",
                 "confirm_reading": "#/components/schemas/ConfirmReading",
+                "confirm_readings": "#/components/schemas/ConfirmReadings",
                 "confirm_role": "#/components/schemas/ConfirmRole",
                 "defer_finding": "#/components/schemas/DeferFinding",
                 "dismiss_finding": "#/components/schemas/DismissFinding-Output",
@@ -2789,6 +2829,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/ConfirmReading"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmReadings"
                   }
                 ],
                 "discriminator": {
@@ -2796,6 +2839,7 @@
                   "mapping": {
                     "apply_repair": "#/components/schemas/ApplyRepair-Output",
                     "confirm_reading": "#/components/schemas/ConfirmReading",
+                    "confirm_readings": "#/components/schemas/ConfirmReadings",
                     "confirm_role": "#/components/schemas/ConfirmRole",
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Output",
@@ -3286,6 +3330,15 @@
             "minLength": 1,
             "title": "Weight"
           },
+          "weight_unit": {
+            "type": "string",
+            "enum": [
+              "kg",
+              "lb"
+            ],
+            "title": "Weight Unit",
+            "default": "kg"
+          },
           "height": {
             "anyOf": [
               {
@@ -3473,6 +3526,15 @@
             "minLength": 1,
             "title": "Weight"
           },
+          "weight_unit": {
+            "type": "string",
+            "enum": [
+              "kg",
+              "lb"
+            ],
+            "title": "Weight Unit",
+            "default": "kg"
+          },
           "height": {
             "anyOf": [
               {
@@ -3586,6 +3648,7 @@
           "male",
           "age",
           "weight",
+          "weight_unit",
           "height",
           "height_unit",
           "equation",
@@ -4922,6 +4985,20 @@
               }
             ],
             "title": "Shape Confirmations"
+          },
+          "sex_codings": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sex Codings"
           }
         },
         "type": "object",
@@ -4959,7 +5036,8 @@
           "roles_unconfirmed",
           "role_confirmations",
           "reading_confirmations",
-          "shape_confirmations"
+          "shape_confirmations",
+          "sex_codings"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -5124,6 +5202,45 @@
         ],
         "title": "RangeByLevel",
         "description": "Different plausible ranges per level of another column (e.g. by sex)."
+      },
+      "ReadingItem": {
+        "properties": {
+          "reading": {
+            "type": "string",
+            "enum": [
+              "role",
+              "cluster",
+              "unit",
+              "day_count",
+              "code_or_count",
+              "time_column",
+              "nested_in",
+              "sex_coding"
+            ],
+            "title": "Reading"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^`\\n\\r]+$",
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reading",
+          "column",
+          "value"
+        ],
+        "title": "ReadingItem",
+        "description": "One reading a block confirmation lists, with the value it shows."
       },
       "Refusal": {
         "properties": {
@@ -11691,6 +11808,15 @@
             "title": "Weight",
             "type": "string"
           },
+          "weight_unit": {
+            "default": "kg",
+            "enum": [
+              "kg",
+              "lb"
+            ],
+            "title": "Weight Unit",
+            "type": "string"
+          },
           "height": {
             "anyOf": [
               {
@@ -11805,6 +11931,7 @@
           "male",
           "age",
           "weight",
+          "weight_unit",
           "height",
           "height_unit",
           "equation",

@@ -8,7 +8,9 @@ import pytest
 from turbotab.core.consequences import CAPTION_WORDS, FRAME_WORDS, TITLE_WORDS, words
 from turbotab.core.tests.stage_harness import NHANES
 from turbotab.server import schemas
-from turbotab.server.tests.conftest import answer_settled, open_by_path, prepare, wait_for
+from turbotab.server.tests.conftest import (
+    answer_settled, open_by_path, prepare, settle_reads, wait_for,
+)
 
 pytestmark = pytest.mark.skipif(not NHANES.is_file(), reason="the NHANES export is not on this machine")
 
@@ -142,7 +144,9 @@ def test_the_missing_question_previews_the_rows_leaving_the_blank_columns_out_sa
 def test_a_by_sex_rule_marks_each_level(client, nhanes):
     rule = {"column": "kcal", "by": {"column": "gender", "ranges": {"female": [500, 3500], "male": [800, 4200]}},
             "reason": "Willett"}
-    body = client.post(f"/api/projects/{nhanes}/preview", json={"kind": "set_exclusions", "rules": [rule]}).json()
+    decision = {"kind": "set_exclusions", "rules": [rule]}
+    settle_reads(client, nhanes, decision)  # `kcal`'s days, answered from the export's truth
+    body = client.post(f"/api/projects/{nhanes}/preview", json=decision).json()
     dist = valid(body).views[1]
     assert [(m.value, m.label, m.group) for m in dist.marks] == [
         (500.0, "500 kcal", "female"), (3500.0, "3,500 kcal", "female"),

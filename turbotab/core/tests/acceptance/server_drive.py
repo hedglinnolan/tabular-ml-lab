@@ -2,7 +2,8 @@
 
 Shared by the WP12 acceptance tests: :class:`Drive` answers the opening sequence in the Router's
 order and waits for a stage's artifact; :func:`local_server` is a local-mode server with two
-workers over a fresh home.
+workers over a fresh home. A reading the server asks about is answered from the fixture's declared
+:class:`Truth`, never a constant (BLUEPRINT §14.3).
 """
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ from typing import Any, Iterator
 import pandas as pd
 
 from turbotab.core.graph import artifact_dir
+from turbotab.core.tests.truths import Truth, answer_refusal, asked  # noqa: F401 - re-exported
 
 
 @contextmanager
@@ -29,54 +31,46 @@ def local_server(home: Path) -> Iterator[Any]:
         yield client
 
 
-def open_project(client: Any, path: Path) -> "Drive":
+def open_project(client: Any, path: Path, truth: "Truth | None" = None) -> "Drive":
     r = client.post("/api/projects", json={"path": str(path)})
     assert r.status_code == 200, r.text
-    drive = Drive(client, r.json()["id"])
+    drive = Drive(client, r.json()["id"], truth)
     drive.artifact("ingest")
     return drive
 
 
-# The readings ledger (BLUEPRINT §14.1): an answer refused only because a reading it rests on is
-# not settled (a predictor's whole numbers, a unit's repeating counts, a body measure's unit, the
-# records' order) is answered as its author would, one ``confirm_reading`` per reading, keeping the
-# reading the engine applied before the ledger, then posted again. Role confirmations the leash
-# tests drive themselves (``role_unconfirmed``) are never taken here.
-_KEEPS = {"select_models": "amount", "set_aggregation": "code"}
-
-
-def settle_post(client: Any, pid: str, body: dict[str, Any]) -> Any:
+def settle_post(client: Any, pid: str, body: dict[str, Any], truth: Truth | None = None) -> Any:
+    """Post ``body``; while it is refused only for readings to settle, answer every reading it
+    asks about from the fixture's ``truth`` (one block confirmation, ``confirm_readings``, which
+    settles exactly the readings it lists; an energy column's unit and days as declared), then
+    post it again."""
     url = f"/api/projects/{pid}/decisions"
-    response = client.post(url, json=body)
-    for _ in range(4):
-        if response.status_code != 409:
-            return response
-        error = response.json().get("error") or {}
-        if error.get("code") != "reading_unsettled":
-            return response
-        seen: set[tuple[str, str]] = set()
-        for item in error.get("exits") or []:
-            d = item.get("decision") or {}
-            if d.get("kind") != "confirm_reading" or (d["reading"], d["column"]) in seen:
-                continue
-            if d["reading"] == "code_or_count" and d["value"] != _KEEPS.get(body["kind"], "amount"):
-                continue
-            if d["reading"] == "cluster" and d["value"] != "yes":
-                continue
-            seen.add((d["reading"], d["column"]))
-            r = client.post(url, json=d)
-            assert r.status_code == 200, (d, r.text[:600])
-        if not seen:
-            return response
+    truth = truth if truth is not None else Truth(fixture="the test (no truth given)")
+    response = _post_when_reached(client, url, body)
+    return answer_refusal(lambda d: client.post(url, json=d), response, truth,
+                          lambda: _post_when_reached(client, url, body))
+
+
+def _post_when_reached(client: Any, url: str, body: dict[str, Any], timeout: float = 240.0) -> Any:
+    """Post ``body``; while the Router holds its question behind an earlier one that a reshaped
+    table is recomputing (a code-or-amount answer rebuilds the working table), wait and post
+    again."""
+    end = time.monotonic() + timeout
+    while True:
         response = client.post(url, json=body)
-    return response
+        if response.status_code != 409 or time.monotonic() > end:
+            return response
+        if (response.json().get("error") or {}).get("code") != "not_yet":
+            return response
+        time.sleep(0.1)
 
 
 class Drive:
     """Answers the opening sequence through the real HTTP API, in the Router's order."""
 
-    def __init__(self, client: Any, pid: str):
+    def __init__(self, client: Any, pid: str, truth: Truth | None = None):
         self.c, self.pid = client, pid
+        self.truth = truth if truth is not None else Truth()
 
     def view(self) -> dict[str, Any]:
         return self.c.get(f"/api/projects/{self.pid}").json()
@@ -85,19 +79,23 @@ class Drive:
         return self.c.post(f"/api/projects/{self.pid}/decisions", json=body)
 
     def decide(self, body: dict[str, Any]) -> None:
-        r = settle_post(self.c, self.pid, body)
+        r = settle_post(self.c, self.pid, body, self.truth)
         assert r.status_code == 200, (body["kind"], r.text[:900])
 
     def decide_roles(self, roles: dict[str, str]) -> None:
-        """Record the roles as their author answers them, column by column (BLUEPRINT §14,
-        recognition's leash): the ``set_roles`` answer, then each role the server recorded
-        unconfirmed (proposed below high confidence) confirmed on its own, as a user who knows the
-        table does. A bulk ``set_roles`` alone confirms none of them."""
+        """Record the roles as their author answers them (BLUEPRINT §14, recognition's leash):
+        the ``set_roles`` answer, then every role the server recorded unconfirmed (proposed below
+        high confidence) confirmed in one block, each with the role the author gave it, as a user
+        who knows the table does. A bulk ``set_roles`` alone confirms none of them. The author's
+        roles are the fixture's truth for its role readings."""
+        for column, role in roles.items():
+            self.truth.setdefault(f"role:{column}", role)
         self.decide({"kind": "set_roles", "roles": roles})
         record = self.view()["decisions"][-1]
-        for column in record["decision"].get("unconfirmed") or []:
-            self.decide({"kind": "confirm_reading", "reading": "role", "column": column,
-                         "value": roles[column]})
+        waiting = record["decision"].get("unconfirmed") or []
+        if waiting:
+            self.decide({"kind": "confirm_readings", "items": [
+                {"reading": "role", "column": c, "value": roles[c]} for c in waiting]})
 
     def reach(self, key: str, timeout: float = 120.0) -> dict[str, Any]:
         end = time.monotonic() + timeout

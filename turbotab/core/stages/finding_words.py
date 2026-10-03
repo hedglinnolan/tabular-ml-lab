@@ -391,7 +391,7 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
         evidence = (reading.get("days_reading") or {}).get("evidence") or "nothing settles it"
         p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": word,
                   "unit_question": True, "unit_unconfirmed": True, "n_present": present,
-                  "days_question": spanned,
+                  "days_question": spanned, "read_days": 1,
                   "other_unit": f"{word} over {spanned} days",
                   "other_n_flagged": t_below + t_above})
         f["severity"] = "warning" if (n or t_below + t_above) else "info"
@@ -499,6 +499,12 @@ def _implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Vo
     lo, hi = p.get("minimum"), p.get("maximum")
     if n is None or lo is None or hi is None:
         return Voice(finish(f["title"]), "exclusions", "Choose an exclusion rule")
+    if p.get("days_question") and p.get("read_days") == 1:
+        # The counts are the one-day reading's (its bounds a day's); the days are asked.
+        return Voice(f"Read as one day's intake, {count(n)} of "
+                     f"{count(p.get('n_present') or fc.n_rows)} rows fall outside "
+                     f"{tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')}: record {tick(col)}'s days first.",
+                     "exclusions", "Record the days first")
     if p.get("days_question"):
         return Voice(f"Read as a total over {tick(str(p['days_question']))} days, {count(n)} of "
                      f"{count(p.get('n_present') or fc.n_rows)} rows fall outside "
@@ -1023,7 +1029,7 @@ def restate_energy(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: F
     why = ENERGY_WHY
     unit = energy_unit_of(fc, energy)
     relation = (outcome_relation(fc.target, fc.frame, energy=energy,
-                                 energy_unit=unit["unit"] if unit and unit.get("confirmed") else None)
+                                 energy_unit=unit["unit"] if unit and unit.get("unit_settled") else None)
                 if fc.target is not None else None)
     if relation is not None and relation["kind"] is not None:
         how = (f" It tracks {tick(relation['via'])} (r = {relation['r']:.2f})."

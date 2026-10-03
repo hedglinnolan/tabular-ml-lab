@@ -442,10 +442,19 @@ def _refused(drive, body: dict) -> dict:
 
 def _one_reading_each(exits: list[dict]) -> list[dict]:
     """The exits' decisions, each confirming one reading of one column (never several)."""
-    out = [x["decision"] for x in exits if x.get("decision")]
+    out = [x["decision"] for x in exits if x.get("decision")
+           and x["decision"]["kind"] != "confirm_readings"]
     for decision in out:
         if decision["kind"] == "confirm_reading":
             assert set(decision) == {"kind", "reading", "column", "value"}, decision
+    # BLUEPRINT §14.2: a block confirmation lists exactly the readings asked, each once.
+    for x in exits:
+        block = x.get("decision") or {}
+        if block.get("kind") == "confirm_readings":
+            listed = [(i["reading"], i["column"]) for i in block["items"]]
+            assert len(listed) == len(set(listed)), listed
+            assert set(listed) <= {(o["reading"], o["column"]) for o in out
+                                   if o["kind"] == "confirm_reading"}, listed
     return out
 
 
@@ -465,11 +474,16 @@ def test_g1_a_repeating_id_code_clusters_no_interval_unasked_through_the_server(
     Reference (pandas): 16 strata over 480 rows; ``participant_id`` unique."""
     from turbotab.core.tests.acceptance.server_drive import local_server, open_project
 
+    from turbotab.core.tests.truths import Truth
+
     frame = _strata()
     assert frame["stratum_id"].nunique() == 16 and frame["participant_id"].is_unique
     path = _write(frame, tmp_path, "strata.csv")
+    # The trial's truth (BLUEPRINT §14.3): the strata are codes, age and baseline SBP amounts.
+    truth = Truth({"code_or_count:stratum_id": "code", "code_or_count:age": "amount",
+                   "code_or_count:sbp_baseline": "amount"}, fixture="s2_strata")
     with local_server(tmp_path / "home") as client:
-        drive = open_project(client, path)
+        drive = open_project(client, path, truth)
         _drive(drive, lens=["clinical"], target="sbp_6m", stop_before="models",
                grain={"kind": "set_grain", "grain": "one_row_per_unit",
                       "id_column": "participant_id"}, confirm_roles=False)
@@ -484,6 +498,7 @@ def test_g1_a_repeating_id_code_clusters_no_interval_unasked_through_the_server(
         assert {"kind": "confirm_reading", "reading": "role", "column": "stratum_id",
                 "value": "identifier"} in asked
         # The user's answer: the strata are adjusted for, not clustered by.
+        truth["role:stratum_id"] = "covariate"
         mine = {p["column"]: p["proposed"] for p in roles["columns"]}
         mine["stratum_id"] = "covariate"
         drive.decide_roles(mine)
@@ -514,9 +529,18 @@ def test_g1_repeating_codes_named_like_ids_are_asked_not_clustered_by(tmp_path):
     by = {p["column"]: p for p in art["columns"]}
     for c in codes:
         assert by[c]["confidence"] != "high" and by[c]["attention"], by[c]
+    rows = frame.set_index(pd.Index(np.arange(len(frame)), name="row_id"))
+    # BLUEPRINT §14.3: the grain answer always wins. Naming ``participant_id`` as the unit, it
+    # settles that rows are independent units, and the repeating codes cluster nothing unasked
+    # (said in the note).
     named = GrainSpec(grain="one_row_per_unit", id_column="participant_id")
     state = _bulk(art, lens=["clinical"], target="sbp", purpose="inference", grain=named)
-    rows = frame.set_index(pd.Index(np.arange(len(frame)), name="row_id"))
+    clusters = resolve_clusters(state, rows[cluster_columns(state, list(rows.columns))])
+    assert not clusters.clustered and not clusters.refusal
+    assert "The grain answer names `participant_id` as the unit" in (clusters.note or "")
+    # With no column named by the grain answer, which rows belong together is asked.
+    state = _bulk(art, lens=["clinical"], target="sbp", purpose="inference",
+                  grain=GrainSpec(grain="one_row_per_unit"))
     clusters = resolve_clusters(state, rows[cluster_columns(state, list(rows.columns))])
     assert clusters.refusal and not clusters.clustered
     asked = _one_reading_each(list(clusters.exits))
@@ -627,13 +651,19 @@ def test_g3_a_weight_in_pounds_never_sets_the_goldberg_screen_unasked(tmp_path):
     from turbotab.core.tests.acceptance.server_drive import local_server, open_project
 
     assert NHANES_BMX["BMXWT"].endswith("(kg)")
+    from turbotab.core.tests.truths import Truth
+
     frame = _women_lb()
     assert 140 < float(frame["weight"].median()) < 170  # pounds: a kg median here is implausible
     path = _write(frame, tmp_path, "women_lb.csv")
+    # The cohort's truth: energy one day's kcal (BLUEPRINT §14.3: a day count is recorded).
+    truth = Truth({"code_or_count:age": "amount"}, fixture="b6b_goldberg")
     with local_server(tmp_path / "home") as client:
-        drive = open_project(client, path)
+        drive = open_project(client, path, truth)
         _drive(drive, lens=["dietary"], target="ldl", stop_before="exclusions",
                grain={"kind": "set_grain", "grain": "one_row_per_unit", "id_column": "pid"})
+        drive.decide({"kind": "set_column_unit", "column": "energy_kcal", "unit": "kcal", "days": 1})
+        drive.reach("exclusions", timeout=300)
         prop = drive.artifact("proposals")
         gold = next(x for x in prop["exclusions"] if x["key"] == "goldberg_schofield")
         assert gold["refused"] and "`weight`" in gold["refused"] and "recorded" in gold["refused"]
@@ -644,13 +674,16 @@ def test_g3_a_weight_in_pounds_never_sets_the_goldberg_screen_unasked(tmp_path):
                 "value": "kg"} in asked
         assert {"kind": "confirm_reading", "reading": "unit", "column": "age",
                 "value": "years"} in asked
-        # The user knows the weights are in pounds: the screen reads kg, so it stays refused.
+        # The user knows the weights are in pounds: the rule offered before read kg, so it is
+        # refused, with the rule that reads lb (converted exactly) as an exit (BLUEPRINT §14.3).
         drive.decide({"kind": "confirm_reading", "reading": "unit", "column": "weight",
                       "value": "lb"})
         drive.decide({"kind": "confirm_reading", "reading": "unit", "column": "age",
                       "value": "years"})
         error = _refused(drive, {"kind": "set_exclusions", "rules": [gold["rule"]]})
         assert error["code"] == "reading_unsettled" and "`weight` is in lb" in error["message"]
+        assert any((x["decision"] or {}).get("rules", [{}])[0].get("weight_unit") == "lb"
+                   for x in error["exits"] if x.get("decision"))
         drive.decide({"kind": "set_exclusions", "rules": []})
         assert drive.artifact("cohort")["n_final"] == len(frame)
 
@@ -731,11 +764,14 @@ def test_g5_a_bare_amount_is_no_outcome_unit_any_sentence_states(tmp_path):
                                   {"frame": frame, "outcome_unit": out["unit"]})
         assert ", in " not in said, said
     rng = np.random.default_rng(1)
+    # BLUEPRINT §14.3 (names never count as corroboration): a whole unit the name spells out is
+    # the best guess a question leads with, stated only once recorded.
     for name, unit in (("weight_kg", "kg"), ("sbp_mmhg", "mmHg")):
         frame = pd.DataFrame({"pid": np.arange(50), name: rng.normal(80, 10, 50).round(1)})
         out = _table(_write(frame, tmp_path, f"{name}.csv")).run(
             target_info_stage, ProjectState(lens=["clinical"], target=name))
-        assert (out["unit"], out["unit_source"]) == (unit, "name"), (name, out["unit"])
+        assert (out["unit"], out["unit_source"]) == (None, None), (name, out["unit"])
+        assert out["proposed_unit"] == unit, (name, out["proposed_unit"])
 
 
 def test_g5_ldl_mg_through_the_server_states_no_unit_until_recorded(tmp_path):
@@ -744,10 +780,12 @@ def test_g5_ldl_mg_through_the_server_states_no_unit_until_recorded(tmp_path):
     fit until the user records one; recorded (mg/dL), the record states it."""
     from turbotab.core.tests.acceptance.server_drive import local_server, open_project
 
+    from turbotab.core.tests.truths import Truth
+
     frame = _ldl_mg()
     path = _write(frame, tmp_path, "ldl.csv")
     with local_server(tmp_path / "home") as client:
-        drive = open_project(client, path)
+        drive = open_project(client, path, Truth({"code_or_count:age": "amount"}, fixture="s6"))
         _drive(drive, lens=["clinical"], target="ldl_mg",
                grain={"kind": "set_grain", "grain": "one_row_per_unit", "id_column": "pid"})
         info = drive.artifact("target_info")
@@ -772,11 +810,14 @@ def test_g6_whole_number_counts_are_combined_as_the_user_says_through_the_server
     from turbotab.core.graph import artifact_dir
     from turbotab.core.tests.acceptance.server_drive import local_server, open_project
 
+    from turbotab.core.tests.truths import Truth, asked as readings
+
     frame = _recalls_with_counts()
     truth = frame.groupby("participant_id")[["coffee_cups", "eating_occasions"]].mean()
     path = _write(frame, tmp_path, "recalls.csv")
     with local_server(tmp_path / "home") as client:
-        drive = open_project(client, path)
+        drive = open_project(client, path, Truth({"code_or_count:energy_kcal": "amount"},
+                                                 fixture="s7_combine"))
         _drive(drive, lens=["dietary"], target="hba1c", stop_before="aggregation",
                grain={"kind": "set_grain", "grain": "repeated", "id_column": "participant_id"},
                answers={"repeat_kind": {"kind": "set_repeat_kind", "repeat_kind": "repeats"}})
@@ -784,10 +825,15 @@ def test_g6_whole_number_counts_are_combined_as_the_user_says_through_the_server
         error = _refused(drive, {"kind": "set_aggregation", "method": "mean"})
         assert error["code"] == "reading_unsettled"
         asked = _one_reading_each(error["exits"])
+        # BLUEPRINT §14.3: every whole-valued column that changes within a person is asked (the
+        # whole kcal too), each with its pair of exits.
         assert sorted((a["column"], a["value"]) for a in asked) == [
             ("coffee_cups", "amount"), ("coffee_cups", "code"),
-            ("eating_occasions", "amount"), ("eating_occasions", "code")]
-        for column in ("coffee_cups", "eating_occasions"):
+            ("eating_occasions", "amount"), ("eating_occasions", "code"),
+            ("energy_kcal", "amount"), ("energy_kcal", "code")]
+        assert sorted(c for _, c in readings(error["exits"])) == [
+            "coffee_cups", "eating_occasions", "energy_kcal"]
+        for column in ("coffee_cups", "eating_occasions", "energy_kcal"):
             drive.decide({"kind": "confirm_reading", "reading": "code_or_count", "column": column,
                           "value": "amount"})
         drive.reach("aggregation", timeout=300)  # the table re-reads the answers first
@@ -864,7 +910,8 @@ def test_g7_a_design_the_user_set_by_role_is_asked_and_offered(tmp_path):
         with pytest.raises(d.Refusal) as refused:
             d.validate({"kind": "select_models", "models": ["linear"]}, {**ctx, "state": waiting})
         assert refused.value.code == "reading_unsettled"
-        assert {x["decision"]["column"] for x in refused.value.exits if x["decision"]} >= set(design)
+        assert {x["decision"]["column"] for x in refused.value.exits if x["decision"]
+                and "column" in x["decision"]} >= set(design)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -921,7 +968,9 @@ def test_b2_one_confirmation_decision_one_reading_per_record_and_old_records_sta
                                          "time_column:visit_date": "orders"}
     assert state.reading_confirmations == {"unit:weight": "kg"}
     assert role_reading(state, "weight").settled and role_reading(state, "smoker").settled
-    assert not role_reading(state, "visit_date").settled
+    # Naming ``visit_date`` as the column that orders a unit's records is the user's own answer
+    # that it is the time (BLUEPRINT §14.3: the time role is settled by the user, never by values).
+    assert role_reading(state, "visit_date").settled
     assert confirmation(state, "unit", "weight") == "kg"
     assert code_or_count_reading(state, "smoker", dtype="integer", n_unique=3).settled
     assert time_column_reading(state, None).column == "visit_date"
@@ -962,16 +1011,21 @@ def test_b4_the_fit_asks_for_each_whole_number_predictor_it_would_read_as_an_amo
     confirmed one is not, two values and many values are settled by the values."""
     roles = {"education": "covariate", "smoker": "exposure", "age": "covariate", "male": "covariate"}
     info = {"education": {"dtype": "integer", "n_unique": 5}, "smoker": {"dtype": "integer", "n_unique": 3},
-            "age": {"dtype": "integer", "n_unique": 52}, "male": {"dtype": "integer", "n_unique": 2}}
+            "age": {"dtype": "integer", "n_unique": 52},
+            "male": {"dtype": "integer", "n_unique": 2, "whole": True, "zero_one": True}}
     state = ProjectState(target="y", roles=roles)
     ctx = {"state": state, "columns": [*roles, "y"], "target": "y", "column_info": info}
     with pytest.raises(d.Refusal) as refused:
         d.validate({"kind": "select_models", "models": ["linear"]}, ctx)
     asked = _one_reading_each(refused.value.exits)
+    # BLUEPRINT §14.3 (the consumer sets the scope): every whole-valued predictor is asked, any
+    # count of values (age's 52 too); exactly 0/1 is one indicator either way.
     assert sorted((a["column"], a["value"]) for a in asked) == [
-        ("education", "amount"), ("education", "code"), ("smoker", "amount"), ("smoker", "code")]
+        ("age", "amount"), ("age", "code"), ("education", "amount"), ("education", "code"),
+        ("smoker", "amount"), ("smoker", "code")]
     said = state.model_copy(update={"categorical": ["education"],
-                                    "shape_confirmations": {"code_or_count:smoker": "amount"}})
+                                    "shape_confirmations": {"code_or_count:smoker": "amount",
+                                                            "code_or_count:age": "amount"}})
     d.validate({"kind": "select_models", "models": ["linear"]}, {**ctx, "state": said})
 
 

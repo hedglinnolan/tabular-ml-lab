@@ -129,13 +129,17 @@ def resolve_clusters(state: Any, frame: pd.DataFrame, also: Sequence[str | None]
     grain = getattr(state, "grain", None)
     answer = getattr(grain, "grain", None) if grain is not None else None
     named = getattr(grain, "id_column", None) if grain is not None else None
-    repeating: list[tuple[int, str]] = []
+    repeating: list[tuple[int, int, str]] = []
     waiting_repeats: list[tuple[int, str]] = []
-    # BLUEPRINT §14.1 (the readings ledger): which rows belong together is a cluster reading, and
-    # the intervals read it only settled: the grain's named column and the split's grouping are the
-    # user's own answers, an identifier or cluster role is settled once confirmed (or corroborated),
-    # and a column the user said does not cluster the rows is passed over.
-    from turbotab.core.readings import cluster_reading
+    # BLUEPRINT §14.3: which rows belong together is a cluster reading no value test settles (a
+    # household's line number, a stratum, an interviewer repeat as a unit's identifier does), so
+    # the intervals read it only from the user: the grain's named column and the split's grouping
+    # (both the user's answers), a cluster or identifier role the user confirmed, or the column's
+    # own confirmation. The grain answer always wins: an identifier on another column does not
+    # cluster the intervals over the unit the grain names (the gate: MEPS ``PID``, G = 19, over
+    # ``DUPERSID``), and a group of units the user named (a household) wins over an identifier
+    # (the gate: a roster's ``person_no`` over the household the user confirmed).
+    from turbotab.core.readings import cluster_exits, cluster_rank, cluster_reading
 
     answered = {named, *[c for c in also if c]}
     for column in cluster_columns(state, list(frame.columns), also):
@@ -144,37 +148,30 @@ def resolve_clusters(state: Any, frame: pd.DataFrame, also: Sequence[str | None]
         if not 0 < units < int(values.notna().sum()):
             continue
         if column in answered:
-            repeating.append((units, column))
+            repeating.append((0 if column == named else cluster_rank(state, column), units, column))
             continue
         found = cluster_reading(state, column)
         if not found.settled:
             waiting_repeats.append((units, column))
         elif found.value == "yes":
-            repeating.append((units, column))
+            repeating.append((cluster_rank(state, column), units, column))
     repeating.sort()
-    chosen = next((c for _, c in repeating if c == named), repeating[0][1] if repeating else None)
-    if chosen is None and waiting_repeats:
-        from turbotab.core.readings import confirm_exit, confirm_exits
-
+    chosen = repeating[0][2] if repeating else None
+    if chosen is None and waiting_repeats and not named:
         units, column = sorted(waiting_repeats)[0]
         roles = getattr(state, "roles", None) or {}
+        role = roles.get(column)
         return Clusters(
-            refusal=(f"`{column}` repeats ({units:,} values over {n:,} rows), but its role "
-                     f"({roles.get(column)}) was proposed below high confidence and not confirmed "
-                     f"on its own, so whether its rows belong together is asked, not assumed: "
-                     f"intervals that cluster by it, or that ignore it, would each rest on a "
-                     f"guess."),
-            exits=tuple([*confirm_exits(state, [column]),
-                         confirm_exit("cluster", column, "yes",
-                                      f"Rows sharing a `{column}` belong together: cluster the "
-                                      f"intervals by it"),
-                         confirm_exit("cluster", column, "no",
-                                      f"`{column}` groups nothing the intervals must keep "
-                                      f"together (a stratum, an interviewer)"),
-                         {"label": "Name the column that identifies the unit (the grain question)",
-                          "decision": None}]))
+            refusal=(f"`{column}` repeats ({units:,} values over {n:,} rows), and whether rows "
+                     f"sharing it belong together is asked, not assumed: a unit's identifier, a "
+                     f"household's line number, a stratum and an interviewer all repeat this way"
+                     + (f" (its role, {role}, was not confirmed on its own)" if role else "")
+                     + ". Intervals that cluster by it, or that ignore it, would each rest on a "
+                       "guess."),
+            exits=tuple([*(confirm_exits_for(state, column)), *cluster_exits(state, column)]))
+    passed_over = [c for _, c in sorted(waiting_repeats)] if named else []
     if chosen is not None:
-        units = next(u for u, c in repeating if c == chosen)
+        units = next(u for _, u, c in repeating if c == chosen)
         values = frame[chosen].astype(object)
         missing = _missing(values)
         keys = np.asarray(values, dtype=object).copy()
@@ -186,8 +183,11 @@ def resolve_clusters(state: Any, frame: pd.DataFrame, also: Sequence[str | None]
         if answer == "unknown":
             note = (f"Whether a unit can appear in more than one row was answered as not known, "
                     f"but {seen}, {so}")
-        elif answer == "one_row_per_unit":
+        elif answer == "one_row_per_unit" and chosen == named:
             note = f"Each row was said to be a different unit, but {seen}, {so}"
+        elif answer == "one_row_per_unit":
+            note = (f"Each row was said to be a different unit, and {seen}, a grouping you "
+                    f"confirmed, {so}")
         elif answer is None:
             note = f"{seen[0].upper()}{seen[1:]}, {so}"
         return Clusters(column=chosen, codes=codes, n_clusters=int(codes.max()) + 1 if n else 0,
@@ -200,11 +200,25 @@ def resolve_clusters(state: Any, frame: pd.DataFrame, also: Sequence[str | None]
                      f"unknown, and intervals that treat them as independent would be too narrow."),
             exits=({"label": "Name the column that identifies the unit (the grain question)",
                     "decision": None},))
+    if passed_over:
+        one = len(passed_over) == 1
+        shown = ", ".join(f"`{c}`" for c in passed_over[:3])
+        return Clusters(note=(f"The grain answer names `{named}` as the unit, so the intervals "
+                              f"follow it; {shown} also repeat{'s' if one else ''} and "
+                              f"cluster{'s' if one else ''} nothing unless you confirm that rows "
+                              f"sharing {'it' if one else 'one'} belong together."))
     if answer == "unknown":
         return Clusters(note=("Whether a unit can appear in more than one row was answered as not "
                               "known, and no identifier repeats, so the intervals assume every row "
                               "is a different unit."))
     return INDEPENDENT
+
+
+def confirm_exits_for(state: Any, column: str) -> list[dict[str, Any]]:
+    """The column's role confirmation, when its role waits for one (the ledger's exits)."""
+    from turbotab.core.readings import confirm_exits, unsettled
+
+    return confirm_exits(state, [column]) if column in unsettled(state, [column]) else []
 
 
 def _combined(state: Any) -> bool:

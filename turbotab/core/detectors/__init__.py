@@ -34,9 +34,11 @@ import pandas as pd
 from turbotab.core.detectors import codes, scales
 
 
-def _superseding(units: Any = None) -> dict[str, Callable[[pd.DataFrame], list[dict[str, Any]]]]:
+def _superseding(units: Any = None, codings: Any = None
+                 ) -> dict[str, Callable[[pd.DataFrame], list[dict[str, Any]]]]:
     """Legacy detector name -> the reading served in its place (a list: one may become two).
-    ``units`` are the columns' recorded units (``set_column_unit``: an age in months)."""
+    ``units`` are the columns' recorded units (``set_column_unit``: an age in months);
+    ``codings`` the sex columns' codings the user confirmed (BLUEPRINT §14.3)."""
     from turbotab.core.detectors import assay, genomics, plausibility
 
     def one(fn: Callable[[pd.DataFrame], dict[str, Any] | None]) -> Callable[[pd.DataFrame], list]:
@@ -48,19 +50,21 @@ def _superseding(units: Any = None) -> dict[str, Callable[[pd.DataFrame], list[d
         "_acquisition_order": one(assay.run_order_finding),
         "_redundancy": one(assay.redundancy_finding),
         "_clinical_impossible_vs_extreme": one(
-            lambda df: plausibility.impossible_vs_extreme_finding(df, units=units)),
+            lambda df: plausibility.impossible_vs_extreme_finding(df, units=units,
+                                                                  codings=codings)),
         "_genomics_data_type": genomics.findings,
     }
 
 
-def pack_findings(df: pd.DataFrame, lens: Sequence[str], units: Any = None) -> list[dict[str, Any]]:
+def pack_findings(df: pd.DataFrame, lens: Sequence[str], units: Any = None,
+                  codings: Any = None) -> list[dict[str, Any]]:
     """``packs.findings``, with the superseded detectors read here instead."""
     from turbotab import packs
 
     out: list[dict[str, Any]] = []
     if df is None or df.empty:
         return out
-    replaced = _superseding(units)
+    replaced = _superseding(units, codings)
     for key in packs.normalize_quiet(lens):
         pack = packs.PACKS.get(key)
         if pack is None:

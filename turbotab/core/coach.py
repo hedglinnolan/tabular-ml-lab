@@ -158,12 +158,21 @@ def _is_energy(column: str, state: Any = None, datastore: Any = None) -> bool:
     return verdict is not None and bool(verdict.by_values)
 
 
-def _unit_suffix(column: str) -> str:
-    """A unit beside a count only from a settled unit reading: a whole unit the name spells out
-    (``energy_kcal``), never a bare amount the quantity does not take (``bmi_kg``)."""
-    from turbotab.core.readings import stated_outcome_unit
+_UNIT_WORDS = {"kcal": "kcal", "kj": "kJ"}
 
-    unit, _ = stated_outcome_unit(column)
+
+def _unit_suffix(column: str, state: Any = None) -> str:
+    """A unit beside a count only from a settled unit reading, which a name never is (BLUEPRINT
+    §14.3: ``bmi_kg`` is kg/m², ``WBC (x10^3/uL)`` no U/L): the unit the user recorded for the
+    column (``set_column_unit``, ``confirm_reading``) or for the outcome; else the header itself is
+    quoted and no unit is added."""
+    from turbotab.core.readings import confirmation, stated_outcome_unit
+    from turbotab.core.units import recorded_unit
+
+    recorded = confirmation(state, "unit", column) if state is not None else None
+    if recorded:
+        return f" {_UNIT_WORDS.get(str(recorded), str(recorded))}"
+    unit, _ = stated_outcome_unit(column, recorded_unit(state, column))
     return f" {unit}" if unit else ""
 
 
@@ -209,7 +218,7 @@ def range_notes(column: str, below: int, above: int, lows: Sequence[float], high
     """"`194` rows below `500` kcal: likely under-reporting" and its mirror, anchored to the tails.
     The misreporting words need ``column``'s energy reading settled (:func:`_is_energy`)."""
     energy = _is_energy(column, state, datastore)
-    suffix = _unit_suffix(column)
+    suffix = _unit_suffix(column, state)
     lo_axis, hi_axis = axis
     out: list[CoachNote | None] = []
     if below and lows:

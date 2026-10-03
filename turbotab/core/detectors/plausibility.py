@@ -42,7 +42,7 @@ import json
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
@@ -190,16 +190,30 @@ def age_in_months(df: pd.DataFrame, units: Any = None, *,
     return months
 
 
-def sex_codes(df: pd.DataFrame) -> pd.Series | None:
-    """1 (male) or 2 (female) per row, the CDC tables' coding, or None without a sex column."""
+def sex_codes(df: pd.DataFrame, codings: Mapping[str, Any] | None = None) -> pd.Series | None:
+    """1 (male) or 2 (female) per row, the CDC tables' coding, or None without a sex column whose
+    coding is settled. Numeric codes are read only as the user confirmed them (``codings``:
+    column -> ``"female=2,male=1"``; BLUEPRINT §14.3: NHANES and the CDC code 1 male, 2 female,
+    other studies 1 female); until then no row's sex is known, and a child's value is flagged only
+    where both sexes' charts flag it. Labels that spell the sexes (``F``/``M``) are read as they
+    say."""
+    from turbotab.core.readings import parse_sex_coding
+
     for c in df.columns:
         if _normal(c) not in {_normal(n) for n in _SEX_NAMES}:
             continue
         s = df[c]
         if pd.api.types.is_numeric_dtype(s) and not pd.api.types.is_bool_dtype(s):
-            values = set(pd.to_numeric(s, errors="coerce").dropna().unique())
-            if values <= {1.0, 2.0} and values:
-                return pd.to_numeric(s, errors="coerce")
+            coding = parse_sex_coding((codings or {}).get(str(c)))
+            if not coding:
+                continue
+            from turbotab.core.readings import _level
+
+            code = {"female": 2.0, "male": 1.0}
+            mapped = s.map(lambda v: code.get(coding.get(_level(v)) or "", np.nan)
+                           if pd.notna(v) else np.nan)
+            if mapped.notna().any():
+                return mapped.astype(float)
             continue
         text = s.astype("string").str.strip().str.lower()
         mapped = text.map({"male": 1.0, "m": 1.0, "man": 1.0, "boy": 1.0,
@@ -290,7 +304,7 @@ def _in_question(entry: dict[str, Any]) -> str | None:
     return None
 
 
-def read(df: pd.DataFrame, units: Any = None) -> dict[str, Any]:
+def read(df: pd.DataFrame, units: Any = None, codings: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Per recognized column: the impossible values, the values outside the reference sample's
     central 98% (adult rows), the children's growth-chart flags, and what was set aside.
 
@@ -302,7 +316,7 @@ def read(df: pd.DataFrame, units: Any = None) -> dict[str, Any]:
     any-age limits apply), ``age["in_question"]`` says why, and ``age["as_months"]`` what the
     months reading would flag. A column whose own judgment flags most of its rows is set aside
     the same way, as a question about its unit or population."""
-    first = _read(df, age_in_months(df, units))
+    first = _read(df, age_in_months(df, units), codings=codings)
     age = age_reading(df, units)
     first["age"] = age
     if age is None:
@@ -313,7 +327,7 @@ def read(df: pd.DataFrame, units: Any = None) -> dict[str, Any]:
         return first
     # The age's unit is the likelier error: judge nothing by age, and say what months would read.
     months = age_in_months(df, units, unit="months")
-    alternative = _read(df, months) if months is not None else None
+    alternative = _read(df, months, codings=codings) if months is not None else None
     if alternative is not None:
         alt_body = [e for e in alternative["columns"] if e["variable"] in BODY_SIZE]
         still = next((w for w in (_in_question(e) for e in alt_body) if w), None)
@@ -325,12 +339,13 @@ def read(df: pd.DataFrame, units: Any = None) -> dict[str, Any]:
                      "n_children": alternative["n_children"]}
     else:
         as_months = None
-    neutral = _read(df, None, ages_unknown=True)
+    neutral = _read(df, None, ages_unknown=True, codings=codings)
     neutral["age"] = {**age, "in_question": why, "as_months": as_months}
     return neutral
 
 
-def _read(df: pd.DataFrame, months: pd.Series | None, *, ages_unknown: bool = False) -> dict[str, Any]:
+def _read(df: pd.DataFrame, months: pd.Series | None, *, ages_unknown: bool = False,
+          codings: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """:func:`read` for one reading of the ages (``months``, or None for no age column).
     ``ages_unknown``: the table has an age column whose unit is in question, so no row is judged
     by age and body sizes take the any-age limits."""
@@ -338,7 +353,7 @@ def _read(df: pd.DataFrame, months: pd.Series | None, *, ages_unknown: bool = Fa
     from ml.clinical_units import infer_unit
 
     ref = reference()
-    sex = sex_codes(df)
+    sex = sex_codes(df, codings)
     adult = months >= ADULT_AGE * 12 if months is not None else pd.Series(not ages_unknown,
                                                                          index=df.index)
     child = ((months >= CHILD_MIN_AGE * 12) & (months < ADULT_AGE * 12)) if months is not None \
@@ -514,14 +529,15 @@ def _age_unit_finding(df: pd.DataFrame, r: dict[str, Any]) -> dict[str, Any]:
         fix_label="", fix_kind="none")
 
 
-def impossible_vs_extreme_finding(df: pd.DataFrame, units: Any = None) -> dict[str, Any] | None:
+def impossible_vs_extreme_finding(df: pd.DataFrame, units: Any = None,
+                                  codings: Mapping[str, Any] | None = None) -> dict[str, Any] | None:
     """``pack::clinical::impossible_vs_extreme``: impossible values beside values that are only
     unusual, from sourced bands, adults and children each judged by their own rule. When the age's
     unit is in question (:func:`read`), the finding asks for it instead of judging by age."""
     from turbotab.clinical import CLINICAL, IMPOSSIBLE_VS_EXTREME_EVIDENCE
     from turbotab.packs import _finding
 
-    r = read(df, units)
+    r = read(df, units, codings)
     if (r.get("age") or {}).get("in_question"):
         return _age_unit_finding(df, r)
     flagged = [e for e in r["columns"] if e["n_impossible"] or e.get("unit_question")

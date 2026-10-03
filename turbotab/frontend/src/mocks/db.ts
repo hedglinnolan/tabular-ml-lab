@@ -646,6 +646,8 @@ function slotOf(d: Decision): Slot | null {
       return "role_confirmations";
     case "confirm_reading":
       return "reading_confirmations";
+    case "confirm_readings":
+      return "reading_confirmations";
     case "set_follow_up":
       return "follow_up";
     case "set_sensitivity":
@@ -654,6 +656,34 @@ function slotOf(d: Decision): Slot | null {
       return "measurement_error";
     case "revert":
       return null;
+  }
+}
+
+/** Where one reading's confirmation is kept (decisions.py reading_slot): a role's beside
+ * confirm_role's, a sex coding's by column, the two that shape the working table apart, every
+ * other in reading_confirmations. */
+function confirmOne(
+  state: Pick<
+    ProjectState,
+    "role_confirmations" | "sex_codings" | "shape_confirmations" | "reading_confirmations"
+  >,
+  reading: string,
+  column: string,
+  value: string,
+): void {
+  if (reading === "role") {
+    state.role_confirmations = {
+      ...(state.role_confirmations ?? {}),
+      [column]: value as NonNullable<ProjectState["role_confirmations"]>[string],
+    };
+  } else if (reading === "sex_coding") {
+    state.sex_codings = { ...(state.sex_codings ?? {}), [column]: value };
+  } else if (reading === "code_or_count" || reading === "time_column") {
+    const key = `${reading}:${column}`;
+    state.shape_confirmations = { ...(state.shape_confirmations ?? {}), [key]: value };
+  } else {
+    const key = `${reading}:${column}`;
+    state.reading_confirmations = { ...(state.reading_confirmations ?? {}), [key]: value };
   }
 }
 
@@ -748,6 +778,7 @@ function valueOf(d: Decision): ProjectState[Slot] {
     case "set_column_unit": // keyed by column; the fold merges it
     case "confirm_role": // keyed by column; the fold merges it
     case "confirm_reading": // keyed by kind and column; the fold merges it
+    case "confirm_readings": // each listed reading where its own confirmation goes
     case "apply_repair":
     case "defer_finding":
     case "dismiss_finding":
@@ -822,19 +853,40 @@ export function fold(records: DecisionRecord[]): ProjectState {
     role_confirmations: null,
     reading_confirmations: null,
     shape_confirmations: null,
+    sex_codings: null,
   };
-  const before = new Map<string, { slot: Slot; prior: Slots[Slot] }>();
+  // Each record's slots as they stood before it (a block confirmation writes several).
+  const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();
+  const confirmSlots: Slot[] = [
+    "role_confirmations",
+    "shape_confirmations",
+    "reading_confirmations",
+    "sex_codings",
+  ];
   for (const r of [...records].sort((a, b) => a.seq - b.seq)) {
     const d = r.decision;
     if (d.kind === "revert") {
       const undone = before.get(d.decision_id);
       if (!undone) continue;
-      before.set(r.id, { slot: undone.slot, prior: state[undone.slot] });
-      (state as Record<Slot, unknown>)[undone.slot] = undone.prior;
+      before.set(
+        r.id,
+        undone.map(({ slot }) => ({ slot, prior: state[slot] })),
+      );
+      for (const { slot, prior } of undone) (state as Record<Slot, unknown>)[slot] = prior;
       continue;
     }
     const slot = slotOf(d)!;
-    before.set(r.id, { slot, prior: state[slot] });
+    const touched: Slot[] = d.kind === "confirm_readings" ? confirmSlots : [slot];
+    before.set(
+      r.id,
+      touched.map((s) => ({ slot: s, prior: state[s] })),
+    );
+    if (d.kind === "confirm_readings") {
+      // A block confirmation: each listed reading exactly where its own confirmation would go
+      // (decisions.py reading_slot; BLUEPRINT §14.2), and nothing else.
+      for (const item of d.items) confirmOne(state, item.reading, item.column, item.value);
+      continue;
+    }
     if (d.kind === "apply_repair" || d.kind === "defer_finding" || d.kind === "dismiss_finding") {
       // A keyed slot: one disposition per finding, the latest write winning (M2_CONTRACT §4).
       state.findings = { ...(state.findings ?? {}), [d.finding_id]: disposition(d) };
@@ -851,27 +903,8 @@ export function fold(records: DecisionRecord[]): ProjectState {
       state.role_confirmations = { ...(state.role_confirmations ?? {}), [d.column]: d.role };
       continue;
     }
-    if (d.kind === "confirm_reading" && d.reading === "role") {
-      // A role's confirmation is kept beside confirm_role's, by column (decisions.py slot_for).
-      state.role_confirmations = {
-        ...(state.role_confirmations ?? {}),
-        [d.column]: d.value as NonNullable<ProjectState["role_confirmations"]>[string],
-      };
-      continue;
-    }
-    if (
-      d.kind === "confirm_reading" &&
-      (d.reading === "code_or_count" || d.reading === "time_column")
-    ) {
-      // The readings that shape the working table are kept apart (decisions.py slot_for).
-      const key = `${d.reading}:${d.column}`;
-      state.shape_confirmations = { ...(state.shape_confirmations ?? {}), [key]: d.value };
-      continue;
-    }
     if (d.kind === "confirm_reading") {
-      // A keyed slot: one confirmation per reading (BLUEPRINT §14.1; reading_confirmations).
-      const key = `${d.reading}:${d.column}`;
-      state.reading_confirmations = { ...(state.reading_confirmations ?? {}), [key]: d.value };
+      confirmOne(state, d.reading, d.column, d.value);
       continue;
     }
     if (d.kind === "set_roles") {

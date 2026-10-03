@@ -52,7 +52,10 @@ def test_energy_adjustment_routes_to_its_question(nhanes):
 def test_implausible_intake_routes_to_exclusions(nhanes):
     f, = by_family(nhanes[1])["pack::dietary::implausible_intake"]
     assert f["routes_to"] == "exclusions"
-    assert f["summary"] == ("`501` of `21,849` rows report `kcal` below `500` or above `5000` a day.")
+    # BLUEPRINT §14.3: no band of values settles the days a total-energy value spans, so the count
+    # is the one-day reading's and the days are asked first.
+    assert f["summary"] == ("Read as one day's intake, `501` of `21,849` rows fall outside "
+                            "`500`–`5,000`: record `kcal`'s days first.")
     impossible, = by_family(nhanes[1])["pack::clinical::impossible_vs_extreme"]
     assert impossible["routes_to"] == "exclusions"
 

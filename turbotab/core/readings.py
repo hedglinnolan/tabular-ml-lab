@@ -23,6 +23,19 @@ the user's confirmed roles). So the invariant lives here, once:
   combining rule for a column whose code-or-count reading is unsettled, no fit while a role the
   predictor set reads waits for its confirmation.
 
+**Corroboration must discriminate** (BLUEPRINT §14.3). Each kind of reading declares its plausible
+alternatives in :data:`KIND_RULES`, and the values settle it only through a test that rejects every
+one of them (a household's line number repeats as a subject's identifier does; a measurement varies
+within units as a time does; FIPS states hold 51 codes and a blank writes codes 1–5 as 1.0–5.0; a
+country of birth has 70 labels; ``uL`` is no U/L; studies code sex 1/2 either way). A kind with no
+such test is settled only by the user. Names never count as corroboration. The consumer sets the
+question's scope, not the reader (:func:`code_question`: every whole-valued predictor, any type, any
+count of values), and every confirmation is honored wherever it is stored (:func:`confirmation`).
+The ask stays light (:func:`ask_exits`): the unsettled readings a consumer needs are listed once,
+ordered by consequence, a homogeneous family grouped, each led by its best guess and its evidence,
+and one block confirmation (``confirm_readings``) settles exactly the readings it lists, each with
+the value it shows.
+
 The structural acceptance test enumerates :data:`CONSUMERS` against the independent census of
 readers and consumers, and checks that each number-changing consumer calls into this module.
 """
@@ -48,10 +61,11 @@ KINDS: dict[str, str] = {
     "design": "the part of a survey design the column is",
     "nested_in": "the total the column is a part of",
     "orientation": "whether the table holds one row per sample",
+    "sex_coding": "which level of a sex column is female",
 }
 # The kinds ``confirm_reading`` records (the others are answered by their own decisions).
 CONFIRMABLE = ("role", "cluster", "unit", "day_count", "code_or_count", "time_column",
-               "nested_in")
+               "nested_in", "sex_coding")
 # The values a confirmation may record, per kind (``day_count``: a whole number of days).
 UNIT_VALUES = ("kcal", "kj", "g", "kg", "lb", "cm", "m", "in", "years", "months", "weeks", "days",
                "pct_energy")
@@ -149,6 +163,8 @@ def confirmation(state: Any, kind: str, column: str | None) -> Any:
     own = _confirmations(state).get(key(kind, column))
     if own is not None:
         return own
+    if kind == "sex_coding":
+        return (_get(state, "sex_codings") or {}).get(column)
     if kind == "role":
         legacy = (getattr(state, "role_confirmations", None) or {}).get(column)  # confirm_role
         return legacy
@@ -193,6 +209,420 @@ class Unsettled(ValueError):
         super().__init__(message)
         self.readings = list(readings)
         self.exits = [dict(e) for e in exits]
+
+
+# ── the kind registry (BLUEPRINT §14.3: corroboration must discriminate) ─────
+#
+# The fourth gate found the ledger held, but six readers settled themselves on evidence that fits
+# the alternatives as well: repeating values read as a subject's identifier (a household's line
+# number repeats too), a value that varies within units read as time (so does any measurement),
+# "integer, at most 10 levels" read as the only codes worth asking about (FIPS states have 51; a
+# blank turns 1–5 into 1.0–5.0), a label count read as free text (country of birth has 70), `uL`
+# read as U/L, and `sex` coded 1/2 read as the CDC's coding. So each kind of reading declares its
+# plausible alternatives, and the values settle it only through a test that rejects every one of
+# them; a kind with no such test is settled by the user (or, later, a codebook). Names are never
+# corroboration: a name chooses what is proposed and what is asked, never what is settled.
+
+
+@dataclass(frozen=True)
+class Verdict:
+    """A value test's answer: whether the values settle the reading, the value they settle it at,
+    and the evidence a question or a sentence shows."""
+
+    settles: bool
+    value: Any = None
+    evidence: str = ""
+
+
+@dataclass(frozen=True)
+class KindRule:
+    """One kind of reading as the registry declares it. ``alternatives``: every plausible other
+    meaning of what the reader saw. ``test``: the value test that rejects each of them
+    (``rejects``: how, one line per alternative), or None when no honest test exists and the
+    reading is settled only by ``settled_by``."""
+
+    kind: str
+    reads: str
+    alternatives: tuple[str, ...]
+    test: Any = None
+    rejects: tuple[tuple[str, str], ...] = ()
+    settled_by: str = "the user's own answer"
+
+    @property
+    def value_settleable(self) -> bool:
+        return self.test is not None
+
+
+# Whole numbers all different on n rows within a span this many times narrower than n² / 2: a
+# measurement spread as widely as any distribution can be over that span (uniformly) would repeat
+# this many times on average, so P(no repeat) ≤ e^-10 (the birthday bound).
+ROWS_COLLISIONS = 10.0
+
+
+def _present(values: Any) -> Any:
+    import pandas as pd
+
+    return pd.Series(values).dropna()
+
+
+def _numbers(s: Any) -> Any:
+    import numpy as np
+    import pandas as pd
+
+    if pd.api.types.is_bool_dtype(s) or not pd.api.types.is_numeric_dtype(s):
+        return None
+    x = pd.to_numeric(s, errors="coerce").to_numpy(dtype=float)
+    return x[np.isfinite(x)]
+
+
+def _fmt_value(v: float) -> str:
+    return f"{int(v):,}" if float(v).is_integer() else f"{v:,.4g}"
+
+
+def names_rows(values: Any) -> Verdict:
+    """The identifier role of a column that names rows: one value per row, and values no
+    measurement would take. Rejects a repeating code (a household's line number 1…k, a stratum, an
+    interviewer, a subject's identifier in a long table: whether rows sharing one belong together is
+    the cluster reading, the user's to settle) and a measurement whose values happen to differ (text
+    labels never are one; whole numbers all different within a span narrow enough that a
+    measurement would repeat :data:`ROWS_COLLISIONS` times)."""
+    import numpy as np
+    import pandas as pd
+
+    s = _present(values)
+    n, k = int(len(s)), int(s.nunique())
+    if n < 3:
+        return Verdict(False, None, f"only `{n}` values")
+    if k < n:
+        most = int(s.value_counts().max())
+        return Verdict(False, None, f"`{k:,}` values on `{n:,}` rows, up to `{most:,}` rows each: "
+                                    f"a value that repeats may name a unit, or number people "
+                                    f"within a household, a stratum or an interviewer")
+    x = _numbers(s)
+    if x is None:
+        if pd.api.types.is_bool_dtype(s):
+            return Verdict(False, None, "yes/no values")
+        return Verdict(True, "identifier", f"`{n:,}` labels, one per row")
+    if len(x) < n or not np.all(x == np.floor(x)):
+        return Verdict(False, None, "fractional values, as a measurement's are")
+    span = float(x.max() - x.min() + 1)
+    expected = n * (n - 1) / (2.0 * span)
+    if expected >= ROWS_COLLISIONS:
+        return Verdict(True, "identifier",
+                       f"`{n:,}` whole numbers, each on one row, within a span of `{span:,.0f}`: a "
+                       f"measurement spread over so narrow a span would repeat about "
+                       f"`{expected:,.0f}` times")
+    return Verdict(False, None, f"`{n:,}` whole numbers, each on one row, over a span of "
+                                f"`{span:,.0f}`, wide enough for a measurement's values to differ")
+
+
+def dates_order_rows(values: Any, units: Any = None, *, varies: float = 0.5) -> Verdict:
+    """The time role: dates that change within units (a date is no amount, and it changes within
+    a unit's rows only as the rows' own times do). Numbers and labels never settle it: a
+    measurement in a time unit (hours slept, days active) or a crossover's treatment varies within
+    units as readily as a visit index does; a date constant within units (a birth or randomization
+    date) orders nothing."""
+    import pandas as pd
+
+    from turbotab.core.recognizers import within_unit_variation
+
+    s = pd.Series(values)
+    if not pd.api.types.is_datetime64_any_dtype(s):
+        return Verdict(False, None, "numbers or labels, which a measurement in a time unit or a "
+                                    "within-unit treatment changes as a time does")
+    if units is None:
+        return Verdict(False, None, "no unit repeats here, so nothing shows it orders a unit's rows")
+    share = within_unit_variation(s, units)
+    if share is None:
+        return Verdict(False, None, "no unit repeats here, so nothing shows it orders a unit's rows")
+    if share >= varies:
+        return Verdict(True, "time", f"dates that change within `{share:.0%}` of units")
+    return Verdict(False, None, f"dates that change within only `{share:.0%}` of units: a date "
+                                f"of an event (birth, randomization), not of each row")
+
+
+def amounts_by_values(values: Any) -> Verdict:
+    """Codes or amounts: labels are codes by their type, and fractional values are amounts (codes
+    are whole numbers). Whole numbers settle nothing, whatever their count or type: FIPS states
+    hold 51 codes, UK Biobank's ethnic background 22 from -3 to 4003, and a blank writes codes 1–5
+    as 1.0–5.0."""
+    import numpy as np
+    import pandas as pd
+
+    s = _present(values)
+    if s.empty:
+        return Verdict(False, None, "no values")
+    if pd.api.types.is_bool_dtype(s) or not pd.api.types.is_numeric_dtype(s):
+        return Verdict(True, "code", "labels, not numbers")
+    x = _numbers(s)
+    fractional = x[x != np.floor(x)] if x is not None else x
+    if fractional is not None and len(fractional):
+        return Verdict(True, "amount",
+                       f"fractional values (`{_fmt_value(float(fractional[0]))}`): codes are whole")
+    k = int(len(np.unique(x))) if x is not None else 0
+    lo = _fmt_value(float(x.min())) if x is not None and len(x) else "?"
+    hi = _fmt_value(float(x.max())) if x is not None and len(x) else "?"
+    return Verdict(False, None, f"`{k:,}` whole-number values from {lo} to {hi}")
+
+
+def labels_spell_sex(values: Any) -> Verdict:
+    """Which level of a sex column is female: settled when the values are the words themselves
+    (``F``/``M``, ``female``/``male``), never from numeric codes, which studies write either way
+    (NHANES RIAGENDR codes 1 male, 2 female; others code 1 female, or 0/1)."""
+    import pandas as pd
+
+    s = _present(values)
+    if s.empty or (pd.api.types.is_numeric_dtype(s) and not pd.api.types.is_bool_dtype(s)):
+        levels = ", ".join(f"`{_level(v)}`" for v in sorted(pd.unique(s))[:4]) if len(s) else ""
+        return Verdict(False, None, f"numeric codes ({levels}), which studies assign to female "
+                                    f"and male either way")
+    found: dict[str, str] = {}
+    for v in pd.unique(s):
+        word = str(v).strip().lower()
+        if word in FEMALE_WORDS:
+            found[_level(v)] = "female"
+        elif word in MALE_WORDS:
+            found[_level(v)] = "male"
+        else:
+            return Verdict(False, None, f"`{v}` is no word for female or male")
+    if sorted(found.values()) != ["female", "male"]:
+        return Verdict(False, None, "the labels do not hold both sexes")
+    female = next(k for k, v in found.items() if v == "female")
+    return Verdict(True, f"female={female}", f"the labels spell the sexes (`{female}` female)")
+
+
+FEMALE_WORDS = frozenset({"f", "female", "woman", "women", "w", "girl", "fem"})
+MALE_WORDS = frozenset({"m", "male", "man", "men", "boy", "masc"})
+
+
+def _level(value: Any) -> str:
+    """A level as a rule names it: ``1.0`` and ``1`` are one level; text is stripped."""
+    import math
+
+    if isinstance(value, bool):
+        return str(value)
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return str(value).strip()
+    if math.isnan(f):
+        return ""
+    return str(int(f)) if f.is_integer() else repr(f)
+
+
+def energy_follows_macronutrients(frame: Any, column: str) -> Verdict:
+    """Total energy intake: its values follow the energy the macronutrients in grams carry (FAO
+    factors 4/4/9/7) at r ≥ 0.7 (``recognizers.energy_against_macros``). A device's energy
+    expenditure (Fitbit ``Calories``) or an energy requirement computed from body size does not."""
+    from turbotab.core.recognizers import energy_against_macros, macro_candidates
+
+    check = energy_against_macros(frame, column,
+                                  candidates=macro_candidates(frame, exclude=[column]))
+    if check is None:
+        return Verdict(False, None, "no macronutrients to read it against")
+    return Verdict(bool(check.by_values), "energy" if check.by_values else None, check.why)
+
+
+def characteristic_predictor(name: Any, values: Any, units: Any = None) -> Verdict:
+    """A person's characteristic kept as a predictor: values that fit what the name says
+    (``stages.rows.characteristic_fits``: a sex with 2–3 levels, an age from 0 to 120 at its
+    median, a BMI's median within 10–80), which no identifier or constant has, and that do not
+    change within most units (an age at each visit may be the time axis)."""
+    from turbotab.core.recognizers import within_unit_variation
+    from turbotab.core.stages.rows import characteristic_fits
+
+    if not characteristic_fits(str(name), values):
+        return Verdict(False, None, "its values do not fit the characteristic its name says")
+    if units is not None:
+        share = within_unit_variation(values, units)
+        if share is not None and share >= 0.5:
+            return Verdict(False, None, f"it changes within `{share:.0%}` of units: the time axis?")
+    return Verdict(True, "covariate", "its values fit the characteristic")
+
+
+def constant_values(values: Any) -> Verdict:
+    """Left out because every row holds one value: no reading of a constant explains anything."""
+    s = _present(values)
+    if int(s.nunique()) <= 1:
+        return Verdict(True, "excluded", "every row holds the same value")
+    return Verdict(False, None, f"`{int(s.nunique()):,}` different values")
+
+
+def height_in_band(values: Any) -> Verdict:
+    """A height's unit by its median: 100–230 is a human height only in cm, 1.0–2.3 only in m (no
+    one is 100–230 inches or 1–2.3 cm tall). A child's height in cm, or anyone's in inches, falls
+    in neither band and is asked."""
+    import numpy as np
+
+    x = _numbers(_present(values))
+    x = x[x > 0] if x is not None else None
+    if x is None or not len(x):
+        return Verdict(False, None, "no values")
+    median = float(np.median(x))
+    for unit, (lo, hi) in HEIGHT_BANDS.items():
+        if lo <= median <= hi:
+            return Verdict(True, unit, f"its median, {median:,.1f}, is a human height only in {unit}")
+    return Verdict(False, None, f"its median, {median:,.1f}, is no adult height in cm or m")
+
+
+def atwater_unit(frame: Any, energy: str) -> Verdict:
+    """Total energy's unit by the Atwater identity (NUTRITION_PACK §01): its values against the
+    energy its macronutrients in grams carry, a ratio near 1 for kcal and near 4.18 for kJ. With
+    the macronutrients in another unit, or too few, it settles nothing."""
+    from turbotab.core.methods.energy import atwater_check
+
+    try:
+        check = atwater_check(frame, energy)
+    except Exception:  # noqa: BLE001 - a check that cannot run settles nothing
+        check = None
+    if check is not None and check.verdict == "pass":
+        return Verdict(True, "kcal", "matches the energy its macronutrients carry")
+    if check is not None and check.verdict == "energy_in_kj":
+        return Verdict(True, "kj", f"is about {check.ratio:.2f}× the energy its macronutrients "
+                                   f"carry")
+    return Verdict(False, None, "the macronutrients do not reconstruct it")
+
+
+def flag_marks_blanks(values: Any, base: Any = None) -> Verdict:
+    """A flag on another column: two values, one of which marks exactly where that column is blank
+    (``recognizers.flag_values``). A yes/no characteristic marks no column's blanks; continuous
+    values (an imputed copy) are no marker."""
+    from turbotab.core.recognizers import flag_values
+
+    check = flag_values(values, base)
+    return Verdict(check.verdict == "flag", "flag" if check.verdict == "flag" else None, check.why)
+
+
+def intake_rises_with_energy(name: Any, values: Any, energy: Any = None) -> Verdict:
+    """A nutrient intake: amounts plausible as a day's intake of the nutrient the name proposes,
+    rising with total energy at r ≥ 0.3 (``recognizers.intake_check``). A lab count named like a
+    nutrient (``ALC``, lymphocytes), a body measure (BIA ``Fat%``) or a yes/no does not rise with
+    energy, or is no day's intake."""
+    from turbotab.core.recognizers import intake_check
+
+    check = intake_check(name, values, energy=energy)
+    if check is None:
+        return Verdict(False, None, "its name reads as no energy-bearing nutrient")
+    return Verdict(bool(check.by_values), "exposure" if check.by_values else None, check.why)
+
+
+KIND_RULES: dict[str, KindRule] = {r.kind: r for r in (
+    KindRule("role:identifier", "the column names each row",
+             ("a code that repeats: a household's line number, a stratum, an interviewer",
+              "a measurement whose values happen to all differ"),
+             names_rows,
+             (("a code that repeats: a household's line number, a stratum, an interviewer",
+               "any value on two rows fails it"),
+              ("a measurement whose values happen to all differ",
+               "text never is one; whole numbers pass only within a span a measurement would repeat "
+               "in; fractional values fail"))),
+    KindRule("cluster", "rows sharing the column's value belong together (the unit, or a group of "
+                        "units the intervals must keep together)",
+             ("each unit's identifier", "a line number within a household (MEPS PID, a roster's "
+              "person number)", "a stratum, a sampling unit or an interviewer",
+              "a code for a group the intervals need not keep together"),
+             settled_by="the grain answer naming the unit, the user's confirmation, or an "
+                        "identifier or cluster role the user confirmed"),
+    KindRule("role:time", "the column is when each row was measured, so it leaves the predictors",
+             ("a measurement in a time unit that changes within units (hours slept, days active)",
+              "a crossover's treatment, which changes within units",
+              "a date constant within units (a birth or randomization date)"),
+             dates_order_rows,
+             (("a measurement in a time unit that changes within units (hours slept, days active)",
+               "numbers never settle it"),
+              ("a crossover's treatment, which changes within units", "labels or codes never do"),
+              ("a date constant within units (a birth or randomization date)",
+               "a date must change within most units"))),
+    KindRule("role:free_text", "the column is free text, so it leaves the predictors",
+             ("a category with many labels (country of birth, occupation)",
+              "an identifier written as text"),
+             settled_by="the user's confirmation of the role"),
+    KindRule("role:design", "the column is part of a survey design, so it leaves the predictors",
+             ("a measurement with positive values", "a code for groups that is a predictor"),
+             settled_by="the user's confirmation of the role, and the survey answer"),
+    KindRule("role:flag", "the column marks another column's blanks, so it leaves the predictors",
+             ("a yes/no characteristic", "an imputed copy of a measurement"),
+             flag_marks_blanks,
+             (("a yes/no characteristic", "it must mark the base column's blanks on 99% of them"),
+              ("an imputed copy of a measurement", "more than two values fail"))),
+    KindRule("role:exposure", "the column is a nutrient intake",
+             ("a lab count named like a nutrient (ALC: lymphocytes)",
+              "a body measure named like a nutrient (BIA Fat%)", "a yes/no named like a nutrient"),
+             intake_rises_with_energy,
+             (("a lab count named like a nutrient (ALC: lymphocytes)",
+               "it does not rise with total energy (r < 0.3)"),
+              ("a body measure named like a nutrient (BIA Fat%)",
+               "no day's intake, or no rise with energy"),
+              ("a yes/no named like a nutrient", "two values are no intake"))),
+    KindRule("role:energy", "the column is total energy intake",
+             ("a device's energy expenditure (Fitbit Calories)",
+              "an energy requirement computed from body size"),
+             energy_follows_macronutrients,
+             (("a device's energy expenditure (Fitbit Calories)",
+               "it does not follow the macronutrients' energy (r < 0.7)"),
+              ("an energy requirement computed from body size",
+               "it follows them only loosely (r < 0.7)"))),
+    KindRule("role:covariate", "the column is a person's characteristic in the model (a sex, an "
+                               "age, a BMI)",
+             ("a column left out of the model (an identifier, a constant)",
+              "the time axis of repeated rows (an age at each visit)"),
+             characteristic_predictor,
+             (("a column left out of the model (an identifier, a constant)",
+               "a sex holds 2–3 levels, an age's or a BMI's median sits in a human range"),
+              ("the time axis of repeated rows (an age at each visit)",
+               "it must not change within most units"))),
+    KindRule("role:excluded", "the column holds one value, so it explains nothing",
+             ("a predictor",), constant_values,
+             (("a predictor", "a constant has no variation for any model to use"),)),
+    KindRule("code_or_count", "the column's numbers are codes for categories, or amounts",
+             ("codes for categories (one indicator per level; a unit's rows take the most "
+              "frequent)", "amounts (one slope; a unit's rows averaged)"),
+             amounts_by_values,
+             (("codes for categories (one indicator per level; a unit's rows take the most "
+               "frequent)", "codes are whole numbers: fractional values settle amounts"),
+              ("amounts (one slope; a unit's rows averaged)",
+               "labels settle codes; whole numbers, of any count or type, settle nothing"))),
+    KindRule("outcome_unit", "the unit the outcome's values are in",
+             ("another unit the header's letters spell (`uL`: per microlitre, not U/L)",
+              "a unit with a denominator the header leaves out (`IU` for IU/L)",
+              "a multiplier (x10^3)"),
+             settled_by="the user's recorded unit (until then a sentence quotes the header)"),
+    KindRule("unit:height", "the unit a height's values are in (cm or m)",
+             ("inches", "metres, against centimetres"),
+             height_in_band,
+             (("inches", "no one is 100–230 or 1.0–2.3 inches tall: an inch median falls in no band"),
+              ("metres, against centimetres", "the two bands do not overlap")),
+             settled_by="the user's recorded unit when the median is in neither band (a child's "
+                        "height, inches)"),
+    KindRule("unit:weight", "the unit a body weight's values are in",
+             ("kg", "lb (a heavy cohort's kg is a light one's lb)"),
+             settled_by="the user's recorded unit (lb is converted exactly)"),
+    KindRule("unit:age", "the unit an age's values are in",
+             ("years", "months (a child's age in months)"),
+             settled_by="the user's recorded unit"),
+    KindRule("unit:energy", "the unit total energy's values are in (kcal or kJ)",
+             ("kJ, against kcal", "macronutrients in another unit than grams"),
+             atwater_unit,
+             (("kJ, against kcal", "the identity's ratio is 4.18 for kJ and 1 for kcal"),
+              ("macronutrients in another unit than grams",
+               "the identity fails, so it settles nothing")),
+             settled_by="the user's recorded unit (a name's kcal or kJ only proposes it)"),
+    KindRule("sex_coding", "which level of a sex column is female",
+             ("1 male, 2 female (NHANES, the CDC growth charts)", "1 female, 2 male",
+              "0/1 either way"),
+             labels_spell_sex,
+             (("1 male, 2 female (NHANES, the CDC growth charts)", "numeric codes never settle it"),
+              ("1 female, 2 male", "numeric codes never settle it"),
+              ("0/1 either way", "numeric codes never settle it")),
+             settled_by="the user's confirmation (text labels settle it by their words)"),
+    KindRule("day_count", "how many days each total-energy value spans",
+             ("a total over two or more days", "a mean over several days (one day's intake)",
+              "a child's total over several days, inside an adult's one-day band"),
+             settled_by="the user's recorded day count"),
+    KindRule("time_column", "the column that orders a unit's records",
+             ("an index of the records in file order", "another column that orders them"),
+             settled_by="the user naming it (the repeats answer, or its own confirmation)"),
+)}
 
 
 # ── exits: one confirmation per reading ───────────────────────────────────────
@@ -256,11 +686,23 @@ def role_reading(state: Any, column: str) -> Reading | None:
         return None
     role = roles[column]
     waiting = column in set(getattr(state, "roles_unconfirmed", None) or [])
-    if not waiting or confirmation(state, "role", column) == role:
+    if not waiting or confirmation(state, "role", column) == role or _answered_role(state, column, role):
         return Reading((column,), "role", role, "high", "recorded", True, "confirmed")
     return Reading((column,), "role", role, "medium",
                    "proposed below high confidence and recorded with the other roles", False,
                    "proposed")
+
+
+def _answered_role(state: Any, column: str, role: str) -> bool:
+    """A role another of the user's own answers states: the grain answer names the column as the
+    unit (its identifier), or the repeats or temporal answer (or a confirmation of its own) names it
+    as the column that orders a unit's rows (its time)."""
+    if role == "identifier":
+        grain = _get(state, "grain")
+        return grain is not None and _get(grain, "id_column") == column
+    if role == "time":
+        return confirmation(state, "time_column", column) == "orders"
+    return False
 
 
 def unsettled(state: Any, columns: Iterable[str] | None = None) -> list[str]:
@@ -345,22 +787,99 @@ def listing(columns: Sequence[str]) -> str:
 
 
 # ── whole numbers: codes or amounts (the fit's predictors, a unit's combined rows) ──
+#
+# BLUEPRINT §14.3: the consumer sets the question's scope, not the reader. The values settle the
+# reading only where they leave no doubt (:func:`amounts_by_values`: labels are codes, fractional
+# values amounts); whole numbers never do, whatever their type or count (FIPS states hold 51 codes;
+# UK Biobank's ethnic background 22 from -3 to 4003; NHANES ``DR1_030Z`` 21 eating occasions; a
+# blank turns codes 1–5 into 1.0–5.0). So every whole-valued column a number-changing consumer reads
+# as codes or as amounts is asked, unless its alternatives give the consumer the same numbers.
 
 
-def code_or_count_reading(state: Any, column: str, *, dtype: str | None, n_unique: int | None,
-                          fewest: int = 3) -> Reading | None:
-    """Whether ``column``'s numbers are codes for categories or amounts, for a fit or for
-    combining a unit's rows. Values settle it only where they leave no doubt: text and booleans
-    are categories, and many distinct values (or a constant, or two values: one indicator is its
-    own slope) are amounts. Whole numbers with ``fewest``–:data:`CODE_LEVELS` values may be either
-    (smoking 1/2/3 or cups of coffee 0–6), so the user says which; None when it is no question."""
-    if dtype not in ("integer",):
+def whole_facts(columns: Iterable[str], info: Mapping[str, Any] | None = None,
+                store: Any = None) -> dict[str, dict[str, Any]]:
+    """What the values say about each numeric column's whole numbers (``whole``, ``zero_one``,
+    ``n_values``, ``min``, ``max``): the store's reading (``DataStore.whole_numbers``) where a
+    store is at hand; else an integer column's type and distinct count (whether its two values are
+    0 and 1 unknown, so it is asked). A float column with no store to read is left out: its values
+    are not known here, and the stage that reads them asks."""
+    names = [str(c) for c in columns]
+    out: dict[str, dict[str, Any]] = {}
+    if store is not None:
+        try:
+            out.update(store.whole_numbers(names))
+        except Exception:  # noqa: BLE001 - a store that cannot answer leaves the info's reading
+            out = {}
+    for c in names:
+        if c in out:
+            continue
+        entry = (info or {}).get(c) or {}
+        get = entry.get if isinstance(entry, Mapping) else (lambda k, e=entry: getattr(e, k, None))
+        if get("whole") is not None:
+            out[c] = {"whole": bool(get("whole")), "zero_one": bool(get("zero_one")),
+                      "n_values": int(get("n_values") or get("n_unique") or 0),
+                      "min": get("min"), "max": get("max")}
+        elif get("dtype") == "integer":
+            out[c] = {"whole": True, "zero_one": None, "n_values": int(get("n_unique") or 0),
+                      "min": None, "max": None}
+    return out
+
+
+def code_question(facts: Mapping[str, Any] | None, *, scope: str = "fit") -> bool:
+    """Whether a consumer needs the column's code-or-amount reading settled. Every whole-valued
+    numeric column with two or more values. Under the fit and its imputation model a column of
+    exactly 0 and 1 is one indicator either way (a code's one indicator is the amount itself, and
+    either is imputed as a yes/no), so it asks nothing; combining a unit's rows takes a 0/1's mean
+    (a share of the records) or its most frequent value, so there it asks."""
+    if not facts or not facts.get("whole"):
+        return False
+    if int(facts.get("n_values") or 0) < 2:
+        return False
+    return not (scope == "fit" and facts.get("zero_one") is True)
+
+
+def code_guess(facts: Mapping[str, Any] | None) -> tuple[str, str]:
+    """The best guess a code-or-amount question leads with, and its evidence: codes when the
+    values are few (at most :data:`CODE_LEVELS`), sit far apart for their count (UK Biobank's
+    1001–4003), or include negative sentinels; else amounts. A guess the user confirms or changes,
+    never a settlement."""
+    f = dict(facts or {})
+    k = int(f.get("n_values") or 0)
+    lo, hi = f.get("min"), f.get("max")
+    shown = (f"from {_fmt_value(float(lo))} to {_fmt_value(float(hi))}"
+             if lo is not None and hi is not None else "")
+    evidence = f"`{k:,}` whole-number values {shown}".strip()
+    if f.get("zero_one"):
+        return "amount", f"{evidence}: a yes/no, whose mean is a share"
+    # Far apart for their count, or negative beside positive, among a code list's few dozen values
+    # (UK Biobank's 1001–4003, sentinels -1 and -3); a measurement's hundreds of whole values sit
+    # far apart too, and are guessed amounts.
+    few = k <= GUESS_CODES_UP_TO
+    sparse = few and lo is not None and hi is not None and (float(hi) - float(lo) + 1) / k >= 10
+    negative = few and lo is not None and float(lo) < 0 < float(hi or 0)
+    if k <= CODE_LEVELS or sparse or negative:
+        why = ("few of them" if k <= CODE_LEVELS else "far apart for their count" if sparse
+               else "negative beside positive")
+        return "code", f"{evidence}, {why}"
+    return "amount", evidence
+
+
+GUESS_CODES_UP_TO = 60  # a code list's size the guess considers (codes, never a settlement)
+
+
+def code_or_count_reading(state: Any, column: str, facts: Mapping[str, Any] | None = None, *,
+                          scope: str = "fit", dtype: str | None = None,
+                          n_unique: int | None = None) -> Reading | None:
+    """Whether ``column``'s numbers are codes for categories or amounts, as the ledger holds it for
+    a consumer (``scope``: ``fit`` or ``combine``); None when that consumer needs no answer
+    (:func:`code_question`). Never settled by the values: whole numbers fit both. ``dtype`` and
+    ``n_unique`` stand in for ``facts`` where only a column's summary is known."""
+    if facts is None and dtype is not None:
+        facts = whole_facts([column], {column: {"dtype": dtype, "n_unique": n_unique}}).get(column)
+    if not code_question(facts, scope=scope):
         return None
-    k = int(n_unique or 0)
-    if k < fewest or k > CODE_LEVELS:
-        return None
-    return reading("code_or_count", column, "amount", confidence="medium",
-                   evidence=f"`{k}` whole-number values: codes for categories, or a count",
+    guess, evidence = code_guess(facts)
+    return reading("code_or_count", column, guess, confidence="medium", evidence=evidence,
                    corroborated=False, state=state)
 
 
@@ -376,47 +895,53 @@ ASSAY_LENSES = ("metabolomics", "genomics")
 
 
 def unsettled_codes(state: Any, columns: Iterable[str],
-                    info: Mapping[str, Mapping[str, Any]] | None) -> list[str]:
-    """The predictors whose code-or-amount reading the fit may not read yet. Under an assay lens
-    (the user's answer that the table is an assay), an exposure is a measured feature (a count or
-    an intensity), an amount by that answer; its other columns are read as any table's."""
+                    facts: Mapping[str, Mapping[str, Any]] | None, *,
+                    scope: str = "fit") -> list[Reading]:
+    """The code-or-amount readings the fit (or combining) may not read yet, as readings with their
+    best guesses. Under an assay lens (the user's answer that the table is an assay), an exposure
+    is a measured feature (a count or an intensity), an amount by that answer; its other columns
+    are read as any table's."""
     assay = any(k in ASSAY_LENSES for k in (_get(state, "lens") or []))
     roles = settled_roles(state) if assay else {}
     out = []
     for c in columns:
         if assay and roles.get(c) == "exposure":
             continue
-        entry = (info or {}).get(c) or {}
-        dtype = entry.get("dtype") if isinstance(entry, Mapping) else getattr(entry, "dtype", None)
-        n_unique = (entry.get("n_unique") if isinstance(entry, Mapping)
-                    else getattr(entry, "n_unique", None))
-        r = code_or_count_reading(state, c, dtype=dtype, n_unique=n_unique)
+        r = code_or_count_reading(state, c, (facts or {}).get(c), scope=scope)
         if r is not None and not r.settled:
-            out.append(c)
+            out.append(r)
     return out
 
 
-def predictors_or_ask(state: Any, info: Mapping[str, Mapping[str, Any]] | None = None,
-                      order: Sequence[str] | None = None,
-                      drop: Iterable[str] = ()) -> list[str]:
+def predictors_or_ask(state: Any, info: Mapping[str, Any] | None = None,
+                      order: Sequence[str] | None = None, drop: Iterable[str] = (), *,
+                      store: Any = None) -> list[str]:
     """The fit's predictor set, once every reading it rests on is settled; else :class:`Unsettled`
-    with one exit per reading: every recorded role (a role that rode along decides whether its
-    column is in the model or out), and each whole-number predictor's code-or-amount reading."""
+    with the ask (:func:`ask_exits`): every recorded role that rode along (it decides whether its
+    column is in the model or out), and each whole-valued predictor's code-or-amount reading
+    (:func:`code_question`: one indicator per level or one slope), the roles first. A column whose
+    role is waiting is asked its code-or-amount reading too when its proposed role is a predictor,
+    so one answer settles both."""
+    gone = set(drop)
     waiting = unsettled(state)
-    if waiting:
-        raise Unsettled(
-            unsettled_message(waiting, "the model's predictors") + " The fit waits for them: a "
-            "column whose role nobody confirmed would enter or leave the model on a guess.",
-            [role_reading(state, c) for c in waiting], confirm_exits(state, waiting))
+    roles = getattr(state, "roles", None) or {}
+    role_readings = [role_reading(state, c) for c in waiting]
     preds = predictor_columns(state, order, drop)
-    codes = unsettled_codes(state, preds, info)
-    if codes:
-        exits = [e for c in codes for e in code_or_count_exits(c)]
-        raise Unsettled(
-            f"{listing(codes)} {'holds' if len(codes) == 1 else 'hold'} a few whole-number values, "
-            f"which may be codes for categories (one indicator per level) or amounts (one slope); "
-            f"the fit waits for the answer for each.",
-            [], exits)
+    pending = [c for c in waiting if roles.get(c) in PREDICTOR_ROLES and c not in gone]
+    facts = whole_facts([*preds, *pending], info, store)
+    codes = unsettled_codes(state, [*preds, *pending], facts)
+    if role_readings or codes:
+        needed = [r for r in role_readings if r is not None] + codes
+        if role_readings:
+            message = (unsettled_message(waiting, "the model's predictors") + " The fit waits for "
+                       "them: a column whose role nobody confirmed would enter or leave the model "
+                       "on a guess.")
+        else:
+            names = [r.column for r in codes]
+            message = (f"{listing(names)} {'holds' if len(names) == 1 else 'hold'} whole numbers, "
+                       f"which may be codes for categories (one indicator per level) or amounts "
+                       f"(one slope); the fit waits for the answer for each.")
+        raise Unsettled(f"{message} {ask_text(needed)}", needed, ask_exits(needed, state))
     return preds
 
 
@@ -446,20 +971,68 @@ def task_reading(column: str, detected: str, confidence: Any, evidence: str = ""
 
 
 def cluster_reading(state: Any, column: str) -> Reading:
-    """Whether ``column``'s repeating values mark rows the intervals must keep together. Settled
-    only by the user: the grain's named unit, its own ``confirm_reading``, or a settled identifier
-    or cluster role. A repeating ``*_id`` read by name (a stratum, a PSU, an interviewer) is no
-    unit until then (BLUEPRINT §14.1, the gate's ``stratum_id``)."""
-    recorded = confirmation(state, "cluster", column)
+    """Whether ``column``'s repeating values mark rows the intervals (and the seal, the folds, a
+    mixed or GEE model's units) must keep together. No value test settles it (BLUEPRINT §14.3: a
+    household's line number, a stratum or an interviewer repeats exactly as a subject's identifier
+    in a long table does), so only the user does:
+
+    * the column's own confirmation (``confirm_reading`` cluster yes/no);
+    * the grain answer naming it as the unit;
+    * a cluster role the user confirmed (a household, a site: a group of units);
+    * an identifier role the user confirmed, unless the grain answer names another column as the
+      unit: the grain answer always wins over any other reading of which rows belong together
+      (the gate: MEPS ``PID`` clustered the intervals over the grain's ``DUPERSID``)."""
+    recorded = _confirmations(state).get(key("cluster", column))
     if recorded is not None:
         return Reading((column,), "cluster", recorded, "high", "recorded by the user", True,
                        "confirmed")
+    grain = _get(state, "grain")
+    named = _get(grain, "id_column") if grain is not None else None
+    if named == column:
+        return Reading((column,), "cluster", "yes", "high", "the grain answer names it as the unit",
+                       True, "confirmed")
     role = role_reading(state, column)
-    if role is not None and role.settled and role.value in ("identifier", "cluster"):
-        return Reading((column,), "cluster", "yes", "high", f"its {role.value} role is settled",
+    if role is not None and role.settled and role.value == "cluster":
+        return Reading((column,), "cluster", "yes", "high", "its cluster role is the user's", True,
+                       "confirmed")
+    if role is not None and role.settled and role.value == "identifier":
+        if named:
+            return Reading((column,), "cluster", "yes", "medium",
+                           f"the grain answer names `{named}` as the unit; whether rows sharing "
+                           f"`{column}` belong together too is yours to say", False, "proposed")
+        return Reading((column,), "cluster", "yes", "high", "its identifier role is the user's",
                        True, "confirmed")
     return Reading((column,), "cluster", "yes", "medium",
-                   "its role was proposed below high confidence", False, "proposed")
+                   "its values repeat, as a unit's identifier, a household's line number, a stratum "
+                   "or an interviewer's do", False, "proposed")
+
+
+CLUSTER_PRIORITY = {"grain": 0, "cluster": 1, "identifier": 2}
+
+
+def cluster_rank(state: Any, column: str) -> int:
+    """Which settled grouping wins when several repeat: the grain's unit, then a group of units the
+    user named (a cluster role or confirmation), then an identifier the user confirmed."""
+    grain = _get(state, "grain")
+    if grain is not None and _get(grain, "id_column") == column:
+        return CLUSTER_PRIORITY["grain"]
+    if _confirmations(state).get(key("cluster", column)) == "yes":
+        return CLUSTER_PRIORITY["cluster"]
+    role = role_reading(state, column)
+    if role is not None and role.value == "cluster":
+        return CLUSTER_PRIORITY["cluster"]
+    return CLUSTER_PRIORITY["identifier"]
+
+
+def cluster_exits(state: Any, column: str) -> list[dict[str, Any]]:
+    """The ways to settle whether ``column``'s rows belong together, one reading each."""
+    return [confirm_exit("cluster", column, "yes",
+                         f"Rows sharing a `{column}` belong together: cluster the intervals by it"),
+            confirm_exit("cluster", column, "no",
+                         f"`{column}` groups nothing the intervals must keep together (a line "
+                         f"number within a household, a stratum, an interviewer)"),
+            {"label": "Name the column that identifies the unit (the grain question)",
+             "decision": None}]
 
 
 # ── a time column, a repeat kind ─────────────────────────────────────────────
@@ -507,12 +1080,14 @@ def time_column_reading(state: Any, structure: Mapping[str, Any] | None) -> Read
 def confirmed_codes(state: Any) -> list[str]:
     """The columns the user said hold codes: declared categorical, given the mode as their
     combining rule, or confirmed as codes on their own."""
-    out = list(getattr(state, "categorical", None) or [])
-    agg = getattr(state, "aggregation", None)
-    out += [c for c, r in (getattr(agg, "columns", None) or {}).items() if r == "mode"]
+    out = list(_get(state, "categorical") or [])
+    agg = _get(state, "aggregation")
+    out += [c for c, r in (_get(agg, "columns") or {}).items() if r == "mode"]
     out += [name.split(":", 1)[1] for name, value in _confirmations(state).items()
             if name.startswith("code_or_count:") and value == "code"]
-    return list(dict.fromkeys(out))
+    # Each answer is read as the ledger holds it: a later "amount" stands over an earlier
+    # declaration (BLUEPRINT §14.3, every confirmation is honored).
+    return [c for c in dict.fromkeys(out) if confirmation(state, "code_or_count", c) == "code"]
 
 
 # ── units ─────────────────────────────────────────────────────────────────────
@@ -524,32 +1099,28 @@ BARE_AMOUNTS = ("mg", "g", "kg", "µg", "lb")
 
 
 def outcome_unit_reading(column: str, recorded: str | None = None) -> Reading | None:
-    """The outcome's unit (audit IN-05; BLUEPRINT §14.1). Settled when recorded
-    (``set_outcome_unit``), or when the name spells out a whole unit the quantity can carry: a
-    unit with its denominator (``glucose_mg_dl``), a unit of its own (``sbp_mmhg``,
-    ``energy_kcal``, ``age_years``), or a bare amount the clinical pack lists for that quantity
-    (``weight_kg``). A bare amount anywhere else is the name's proposal: no sentence carries it."""
+    """The outcome's unit (audit IN-05; BLUEPRINT §14.3). Settled only when the user recorded it
+    (``set_outcome_unit``): a header's letters are a name, and a name never settles a unit (the
+    fourth gate: ``WBC (x10^3/uL)`` stated "in U/L" where NHANES gives 1000 cells/uL; ``ALT (IU)``
+    stated "in IU" where NHANES gives U/L). The unit the letters spell, else the clinical pack's
+    proposal, is the best guess a question leads with; until it is recorded a sentence quotes the
+    header verbatim, which reads nothing into it. None when nothing proposes a unit."""
     from turbotab.core.units import from_name, proposed_unit
 
     if recorded:
         return Reading((column,), "outcome_unit", str(recorded), "high", "recorded by the user",
                        True, "confirmed")
     unit = from_name(column)
-    if unit is None:
-        return None
-    if unit not in BARE_AMOUNTS:
-        return Reading((column,), "outcome_unit", unit, "high", "the name spells out a whole unit",
-                       True, "proposed")
+    if unit is not None:
+        return Reading((column,), "outcome_unit", unit, "medium",
+                       f"the header's letters read as {unit}, and a header is never checked "
+                       f"against the values", False, "proposed")
     pack = proposed_unit(column)
-    candidates = list((pack or {}).get("candidates") or [])
-    if unit in candidates:
-        return Reading((column,), "outcome_unit", unit, "high",
-                       f"the name's {unit} is one of the clinical pack's units for it", True,
-                       "proposed")
-    why = (f"the name ends in {unit}, but the clinical pack reads this quantity in "
-           f"{' or '.join(candidates)}" if candidates else
-           f"the name ends in {unit}, a bare amount that says neither per what nor of what")
-    return Reading((column,), "outcome_unit", unit, "medium", why, False, "proposed")
+    if pack and pack.get("unit"):
+        return Reading((column,), "outcome_unit", pack["unit"], "low",
+                       f"the clinical pack reads this quantity in "
+                       f"{' or '.join(pack.get('candidates') or [pack['unit']])}", False, "proposed")
+    return None
 
 
 def stated_outcome_unit(column: str, recorded: str | None = None) -> tuple[str | None, str | None]:
@@ -581,39 +1152,44 @@ HEIGHT_BANDS = {"cm": (100.0, 230.0), "m": (1.0, 2.3)}
 
 
 def body_unit_reading(column: str, measure: str, state: Any = None, values: Any = None) -> Reading:
-    """The unit of a body measure the Goldberg screen reads (weight in kg, height in cm or m, age
-    in years). Settled when the name spells the unit (``weight_kg``, ``BMXWT``, ``age_years``),
-    the user recorded it, or (height only) its median sits in the one unit's human band; a weight's
-    or an age's median is a magnitude, which tells kg from lb, or years from a child's months, no
-    better than a heavy cohort from a light one, so it only proposes (the gate: a US cohort's
-    ``weight`` in pounds, median 154, read as kg)."""
-    import numpy as np
-    import pandas as pd
-
+    """The unit of a body measure the Goldberg screen reads (weight in kg or lb, height in cm or
+    m, age in years). Settled when the user recorded it, or (height only) when its median sits in
+    one unit's human band (:func:`height_in_band`). A header that spells a unit (``weight_kg``,
+    ``BMXWT``) proposes it and settles nothing (BLUEPRINT §14.3: names never corroborate); a
+    weight's or an age's median tells kg from lb, or years from a child's months, no better than a
+    heavy cohort from a light one (the gate: a US cohort's ``weight`` in pounds, median 154, read as
+    kg)."""
     from turbotab.core.recognizers import tokens
 
     recorded = confirmation(state, "unit", column)
     if recorded is not None:
         return Reading((column,), "unit", str(recorded), "high", "recorded by the user", True,
                        "confirmed")
+    if measure == "height" and values is not None:
+        verdict = height_in_band(values)
+        if verdict.settles:
+            return Reading((column,), "unit", verdict.value, "high", verdict.evidence, True,
+                           "proposed")
     words = tokens(column)
     joined = "".join(words)
     for unit, spelled in _BODY_SPELLED.get(measure, {}).items():
         if (words and words[-1] in spelled) or joined in spelled:
-            return Reading((column,), "unit", unit, "high", "the name spells out the unit", True,
-                           "proposed")
-    if measure == "height" and values is not None:
-        x = pd.to_numeric(pd.Series(values), errors="coerce").to_numpy(dtype=float)
-        x = x[np.isfinite(x) & (x > 0)]
-        median = float(np.median(x)) if len(x) else None
-        for unit, (lo, hi) in HEIGHT_BANDS.items():
-            if median is not None and lo <= median <= hi:
-                return Reading((column,), "unit", unit, "high",
-                               f"its median, {median:,.1f}, is a human height only in {unit}",
-                               True, "proposed")
+            return Reading((column,), "unit", unit, "medium",
+                           f"the header says {unit}, and a header is never checked against the "
+                           f"values", False, "proposed")
     default = BODY_UNITS[measure][0]
     return Reading((column,), "unit", default, "medium",
                    f"only its median says {default}", False, "proposed")
+
+
+# The units a body measure may be recorded in, and their exact factor to the unit the Goldberg
+# screen reads (1 lb = 0.45359237 kg exactly: the international yard and pound agreement, 1959;
+# 1 in = 2.54 cm exactly).
+BODY_CONVERSIONS: dict[str, dict[str, float]] = {
+    "weight": {"kg": 1.0, "lb": 0.45359237},
+    "height": {"cm": 1.0, "m": 100.0, "in": 2.54},
+    "age": {"years": 1.0},
+}
 
 
 # ── energy: the day count ────────────────────────────────────────────────────
@@ -647,11 +1223,14 @@ def names_several_days(name: Any) -> bool:
 
 def day_count_reading(column: str, values: Any = None, *, unit: str = "kcal",
                       state: Any = None) -> Reading:
-    """How many days each value of a total-energy column spans. Recorded (``set_column_unit``),
-    or one day corroborated by the values: a median inside the field's one-day band for the unit
-    (NUTRITION_PACK §01's prior: 1,600–2,600 kcal, 7,000–11,000 kJ) and a name that says nothing
-    of several days. The Atwater identity settles kcal against kJ and says nothing about days
-    (the gate: 2-day totals beside 2-day macronutrients passed it and were read as one day)."""
+    """How many days each value of a total-energy column spans. Settled only when recorded
+    (``set_column_unit``, or its own confirmation; BLUEPRINT §14.3). The values propose: a median
+    inside the field's one-day band for the unit (NUTRITION_PACK §01's prior for adults:
+    1,600–2,600 kcal, 7,000–11,000 kJ) under a name that says nothing of several days is the best
+    guess, one day; but a young child's total over two days sits in an adult's one-day band too (the
+    fourth gate's ``kcal_total``, median 2,227), so no band rejects every alternative. The Atwater
+    identity settles kcal against kJ and says nothing about days (the third gate: 2-day totals
+    beside 2-day macronutrients passed it and were read as one day)."""
     import numpy as np
     import pandas as pd
 
@@ -675,8 +1254,9 @@ def day_count_reading(column: str, values: Any = None, *, unit: str = "kcal",
         median = float(np.median(x)) if len(x) else None
     band = KJ_PRIOR if unit == "kj" else KCAL_PRIOR
     if median is not None and band[0] <= median <= band[1]:
-        return Reading((column,), "day_count", 1, "high",
-                       f"its median, {median:,.0f}, is a day's intake", True, "proposed")
+        return Reading((column,), "day_count", 1, "medium",
+                       f"its median, {median:,.0f}, is an adult's day's intake (a child's total "
+                       f"over two days sits there too)", False, "proposed")
     word = "kJ" if unit == "kj" else "kcal"
     said = (f"its median, {median:,.0f}, is outside a day's {band[0]:,.0f}–{band[1]:,.0f} {word}"
             if median is not None else "its values were not read")
@@ -762,6 +1342,233 @@ def unsettled_factors(state: Any, columns: Iterable[str], store: Any = None) -> 
     return waiting
 
 
+# ── a sex column's coding ────────────────────────────────────────────────────
+
+
+def sex_coding_value(female: Any, male: Any) -> str:
+    return f"female={_level(female)},male={_level(male)}"
+
+
+def parse_sex_coding(value: Any) -> dict[str, str] | None:
+    """``"female=2,male=1"`` -> ``{"2": "female", "1": "male"}``; None when it is no coding."""
+    import re
+
+    m = re.fullmatch(r"female=([^,]+),male=([^,]+)", str(value or "").strip())
+    if not m or m.group(1) == m.group(2):
+        return None
+    return {m.group(1).strip(): "female", m.group(2).strip(): "male"}
+
+
+def sex_coding_reading(state: Any, column: str, values: Any = None) -> Reading:
+    """Which level of a sex column is female and which male. Settled when the user confirmed it
+    (``confirm_reading`` sex_coding ``female=2,male=1``), or when the values are the words
+    themselves (:func:`labels_spell_sex`). Numeric codes never settle it: NHANES and the CDC growth
+    charts code 1 male and 2 female, other studies 1 female, or 0/1 either way. The best guess for
+    two numeric codes is the CDC's order (the lower code male)."""
+    import pandas as pd
+
+    recorded = confirmation(state, "sex_coding", column)
+    if recorded is not None and parse_sex_coding(recorded):
+        return Reading((column,), "sex_coding", str(recorded), "high", "recorded by the user",
+                       True, "confirmed")
+    if values is None:
+        return Reading((column,), "sex_coding", None, "low", "its values were not read", False,
+                       "proposed")
+    verdict = labels_spell_sex(values)
+    if verdict.settles:
+        mapping = {}
+        for v in pd.unique(_present(values)):
+            word = str(v).strip().lower()
+            mapping[_level(v)] = "female" if word in FEMALE_WORDS else "male"
+        female = next(k for k, v in mapping.items() if v == "female")
+        male = next(k for k, v in mapping.items() if v == "male")
+        return Reading((column,), "sex_coding", sex_coding_value(female, male), "high",
+                       verdict.evidence, True, "proposed")
+    levels = sorted({_level(v) for v in pd.unique(_present(values))}, key=_sort_key)
+    if len(levels) == 2:
+        guess = sex_coding_value(levels[1], levels[0])
+        return Reading((column,), "sex_coding", guess, "medium",
+                       f"{verdict.evidence}; NHANES and the CDC growth charts code "
+                       f"`{levels[0]}` male and `{levels[1]}` female", False, "proposed")
+    return Reading((column,), "sex_coding", None, "low", verdict.evidence, False, "proposed")
+
+
+def _sort_key(level: str) -> tuple[int, Any]:
+    try:
+        return (0, float(level))
+    except ValueError:
+        return (1, level)
+
+
+def sex_levels(state: Any, column: str, values: Any = None) -> dict[str, str]:
+    """``{level: "female" | "male"}`` from a settled sex coding; empty while it is not settled."""
+    r = sex_coding_reading(state, column, values)
+    if not r.settled:
+        return {}
+    return parse_sex_coding(r.value) or {}
+
+
+def sex_coding_exits(column: str, values: Any) -> list[dict[str, Any]]:
+    """One confirmation per way the two levels may be coded."""
+    import pandas as pd
+
+    levels = sorted({_level(v) for v in pd.unique(_present(values))}, key=_sort_key)
+    if len(levels) != 2:
+        return [{"label": f"Say which level of `{column}` is female (the roles question)",
+                 "decision": None}]
+    a, b = levels
+    return [confirm_exit("sex_coding", column, sex_coding_value(b, a),
+                         f"`{column}`: {b} female, {a} male"),
+            confirm_exit("sex_coding", column, sex_coding_value(a, b),
+                         f"`{column}`: {a} female, {b} male")]
+
+
+# ── the ask: what a consumer needs, listed once, by consequence (BLUEPRINT §14.2) ──
+
+# How much a reading changes, by kind (lower first): which rows belong together moves every
+# interval; a role puts a column in or out of the model; codes or amounts reshape the design matrix
+# (one slope or an indicator per level); a unit or a day count moves a screen's bounds; a sex
+# coding the sex-specific references; the order of records the values first, last and change take.
+CONSEQUENCE = {"cluster": 0, "role": 1, "code_or_count": 2, "unit": 3, "day_count": 3,
+               "sex_coding": 4, "time_column": 5, "outcome_unit": 6, "nested_in": 6}
+FAMILY_MIN = 5  # this many readings of one kind, one guess and one name pattern are one family
+
+
+def _weight(r: Reading) -> int:
+    """Within a kind, the readings that change more come first (more levels: more indicators)."""
+    import re
+
+    if r.kind == "code_or_count":
+        m = re.search(r"`([\d,]+)` whole-number values", r.evidence or "")
+        return -int(m.group(1).replace(",", "")) if m else 0
+    return 0
+
+
+def _pattern(column: str) -> str:
+    """A family's name pattern: the name's first word, digits as ``#`` (``ENSG00000141510`` →
+    ``ENSG#``, ``imputed_bmi`` → ``imputed``, ``item_07`` → ``item``)."""
+    import re
+
+    first = re.split(r"[^0-9A-Za-z]+", str(column).strip())[0] or str(column)
+    return re.sub(r"\d+", "#", first)
+
+
+def ordered(readings: Iterable[Reading]) -> list[Reading]:
+    """Each reading once (by kind and column), ordered by consequence."""
+    seen: dict[tuple[str, str], Reading] = {}
+    for r in readings:
+        if r is None:
+            continue
+        seen.setdefault((r.kind, r.column), r)
+    return sorted(seen.values(), key=lambda r: (CONSEQUENCE.get(r.kind, 9), _weight(r), r.column))
+
+
+def families(readings: Iterable[Reading]) -> list[list[Reading]]:
+    """The readings in order, a homogeneous family (one kind, one guess, one name pattern, at
+    least :data:`FAMILY_MIN` of them: 20,000 genes proposed as exposures) as one group."""
+    groups: dict[tuple[str, str, str], list[Reading]] = {}
+    order: list[tuple[str, str, str]] = []
+    for r in ordered(readings):
+        k = (r.kind, str(r.value), _pattern(r.column))
+        if k not in groups:
+            groups[k] = []
+            order.append(k)
+        groups[k].append(r)
+    out: list[list[Reading]] = []
+    for k in order:
+        g = groups[k]
+        if len(g) >= FAMILY_MIN:
+            out.append(g)
+        else:
+            out.extend([r] for r in g)
+    return out
+
+
+_GUESS_WORDS = {"code": "codes for categories", "amount": "an amount", "yes": "rows belong together",
+                "no": "groups nothing", "orders": "orders the records"}
+
+
+def guess_words(r: Reading) -> str:
+    if r.kind == "role":
+        return role_words(r.value)
+    if r.kind == "day_count":
+        return f"{r.value} day{'s' if str(r.value) != '1' else ''}" if r.value else "how many days?"
+    if r.kind == "sex_coding" and r.value:
+        coding = parse_sex_coding(r.value) or {}
+        return ", ".join(f"{k} {v}" for k, v in coding.items())
+    return _GUESS_WORDS.get(str(r.value), str(r.value))
+
+
+def ask_text(readings: Iterable[Reading]) -> str:
+    """The question in words: each reading (or family) once, by consequence, its best guess and its
+    evidence."""
+    lines = []
+    for group in families(readings):
+        r = group[0]
+        if len(group) > 1:
+            lines.append(f"{len(group):,} columns like `{r.column}`: {guess_words(r)}?")
+        else:
+            why = f" ({r.evidence})" if r.evidence else ""
+            lines.append(f"`{r.column}`: {guess_words(r)}?{why}")
+    return ("Tell me about " + ("this column" if len(lines) == 1 else "these columns") + ": "
+            + "; ".join(lines) + ".") if lines else ""
+
+
+def _alternatives(r: Reading, state: Any = None) -> list[str]:
+    if r.kind == "code_or_count":
+        return ["amount", "code"] if r.value != "code" else ["code", "amount"]
+    if r.kind == "cluster":
+        return ["yes", "no"]
+    if r.kind == "role":
+        return [str(r.value)]
+    if r.kind == "time_column":
+        return ["orders"]
+    return [str(r.value)] if r.value is not None else []
+
+
+def block_exit(readings: Iterable[Reading], label: str | None = None) -> dict[str, Any] | None:
+    """One ``confirm_readings`` decision that settles exactly the readings listed, each with the
+    value it shows (BLUEPRINT §14.2): never a reading it does not list. None when no reading has a
+    guess to confirm."""
+    from turbotab.core.decisions import ConfirmReadings
+
+    items = [{"reading": r.kind, "column": r.column, "value": str(r.value)}
+             for r in ordered(readings) if r.value is not None and r.kind in CONFIRMABLE]
+    if not items:
+        return None
+    n = len(items)
+    decision = ConfirmReadings(items=items)
+    return {"label": label or (f"Confirm {'it' if n == 1 else f'each of the {n:,}'} as shown"),
+            "decision": decision.model_dump(mode="json")}
+
+
+def ask_exits(readings: Iterable[Reading], state: Any = None) -> list[dict[str, Any]]:
+    """The ask's ways forward: one block confirmation of every best guess as shown (it settles
+    exactly those readings), then each reading's own alternatives, one confirmation each, in the
+    ask's order."""
+    listed = ordered(readings)
+    out: list[dict[str, Any]] = []
+    block = block_exit(listed)
+    if block is not None and len(listed) > 1:
+        out.append(block)
+    for r in listed:
+        if r.kind == "code_or_count":
+            for value in _alternatives(r):
+                out.append(code_or_count_exits(r.column)[0 if value == "amount" else 1])
+        elif r.kind == "role":
+            roles = getattr(state, "roles", None) or {}
+            out += confirm_exits(state, [r.column]) if r.column in roles else [
+                confirm_exit("role", r.column, r.value, f"Confirm `{r.column}` as "
+                                                        f"{role_words(r.value)}")]
+        elif r.kind == "cluster":
+            out += cluster_exits(state, r.column)[:2]
+        else:
+            for value in _alternatives(r, state):
+                out.append(confirm_exit(r.kind, r.column, value,
+                                        f"`{r.column}`: {guess_words(r)}"))
+    return out
+
+
 # ── the registry of consumers (BLUEPRINT §14.1: the gate checks the invariant structurally) ──
 
 
@@ -783,6 +1590,9 @@ class Consumer:
     changes: bool
     path: str
     via: str | None = None
+    # The registry kinds (:data:`KIND_RULES`, BLUEPRINT §14.3) it reads: confirming each
+    # alternative of each must produce that alternative's behavior (the property test).
+    kinds: tuple[str, ...] = ()
 
 
 ASK = "asks: a refusal with one confirmation exit per reading"
@@ -796,15 +1606,17 @@ _C = "turbotab.core."
 CONSUMERS: tuple[Consumer, ...] = (
     # ── roles: the fit's predictor set, the energy card, the screens, the survey, the clusters ──
     Consumer(_C + "models.pipeline:model_predictors", ("roles", "covariates"), True,
-             SETTLED_ONLY),
+             SETTLED_ONLY,
+             kinds=("role",)),
     Consumer(_C + "models.pipeline:design_spec", ("roles", "predictor_codes", "energy_fill"),
-             True, SETTLED_ONLY),
+             True, SETTLED_ONLY, kinds=("code_or_count",)),
     Consumer(_C + "stages.modeling:design_stage",
              ("roles", "predictor_codes", "design_role", "acquisition", "flag", "time_role",
               "covariates", "nesting", "free_text", "total_energy_names"), True, ASK),
     Consumer(_C + "decisions:_models_read_settled_readings",
              ("roles", "predictor_codes", "design_role", "acquisition", "flag", "time_role",
-              "covariates"), True, ASK),
+              "covariates"), True, ASK,
+             kinds=("code_or_count",)),
     Consumer(_C + "stages.rows:cohort_inputs", ("roles", "missing_not_asked"), True,
              SETTLED_ONLY),
     Consumer(_C + "stages.modeling:shelf_stage", ("roles",), True, SETTLED_ONLY),
@@ -812,6 +1624,9 @@ CONSUMERS: tuple[Consumer, ...] = (
              via=_C + "models.pipeline:design_spec"),
     Consumer(_C + "methods.omics:design_normalization", ("roles", "assay_scale"), True,
              SETTLED_ONLY),
+    # BLUEPRINT §14.3: the imputation model reads the codes the design settled (``spec.categorical``).
+    Consumer(_C + "methods.missing:imputation_frame", ("predictor_codes",), True, SETTLED_ONLY,
+             via=_C + "stages.modeling:fit_stage", kinds=("code_or_count",)),
     Consumer(_C + "decisions:_roles_record_what_rode_along", ("roles",), True, ASK),
     Consumer(_C + "decisions:_answers_keep_settled_roles", ("roles",), True, ASK),
     Consumer(_C + "decisions:_answers_keep_settled_readings",
@@ -828,13 +1643,16 @@ CONSUMERS: tuple[Consumer, ...] = (
              via=_C + "stages.proposals:proposals_stage"),
     Consumer(_C + "stages.modeling:_measurement_error_line", ("roles", "total_energy_names"),
              True, SETTLED_ONLY),
-    Consumer(_C + "models.inference:resolve_clusters", ("identifier", "roles"), True, ASK),
+    Consumer(_C + "models.inference:resolve_clusters", ("identifier", "roles"), True, ASK,
+             kinds=("cluster",)),
     Consumer(_C + "stages.modeling:fit_stage", ("identifier",), True, ASK,
              via=_C + "models.inference:resolve_clusters"),
     Consumer(_C + "methods.survey:for_fit", ("identifier", "survey_design"), True, ASK),
     Consumer(_C + "seal:seal_inputs", ("identifier", "roles", "grain_stated"), True,
-             SETTLED_ONLY),
-    Consumer(_C + "stages.rows:split_inputs", ("split_inputs",), True, SETTLED_ONLY),
+             SETTLED_ONLY,
+             kinds=("cluster",)),
+    Consumer(_C + "stages.rows:split_inputs", ("split_inputs",), True, SETTLED_ONLY,
+             kinds=("cluster",)),
     Consumer(_C + "stages.rows:value_facts", ("identifier", "time_role"), False, WORDS_ONLY),
     # ── the grain, stated by values; its suggestions offered ──
     Consumer(_C + "stages.working:stated_grain", ("grain_stated",), True, VALUES_SETTLE),
@@ -849,7 +1667,8 @@ CONSUMERS: tuple[Consumer, ...] = (
              via=_C + "stages.working:effective_repeat_kind"),
     Consumer(_C + "stages.proposals:recall_days", ("recall_days", "repeat_kind"), True,
              SETTLED_ONLY),
-    Consumer(_C + "stages.working:time_column", ("time_column",), True, SETTLED_ONLY),
+    Consumer(_C + "stages.working:time_column", ("time_column",), True, SETTLED_ONLY,
+             kinds=("time_column",)),
     Consumer(_C + "stages.working:aggregation_plan", ("time_column", "combine_codes"), True,
              ASK),
     Consumer(_C + "sequence:_aggregation_reads_settled_readings",
@@ -866,11 +1685,14 @@ CONSUMERS: tuple[Consumer, ...] = (
     Consumer(_C + "stages.target:target_info_stage", ("task", "outcome_unit"), True, ASK),
     Consumer(_C + "sequence:_event_is_a_level_of_the_outcome", ("event_level",), False,
              USER_APPLIED),
-    Consumer(_C + "units:outcome_unit", ("outcome_unit",), True, NO_UNIT),
+    Consumer(_C + "units:outcome_unit", ("outcome_unit",), True, NO_UNIT,
+             kinds=("outcome_unit",)),
     Consumer(_C + "voice:_outcome_unit", ("outcome_unit",), True, NO_UNIT,
-             via=_C + "units:outcome_unit"),
+             via=_C + "units:outcome_unit",
+             kinds=("outcome_unit",)),
     # ── total energy, its unit, its day count, the body measures and sex the screens read ──
-    Consumer(_C + "stages.proposals:energy_unit_reading", ("energy_unit_days",), True, ASK),
+    Consumer(_C + "stages.proposals:energy_unit_reading", ("energy_unit_days",), True, ASK,
+             kinds=("day_count",)),
     Consumer(_C + "decisions:_screens_wait_for_the_unit", ("energy_unit_days",), True, ASK,
              via=_C + "stages.proposals:energy_unit_reading"),
     Consumer(_C + "stages.finding_words:restate_implausible",
@@ -881,12 +1703,18 @@ CONSUMERS: tuple[Consumer, ...] = (
     Consumer(_C + "coach:card_lines", ("energy_column", "energy_unit_days"), True, NO_UNIT,
              via=_C + "stages.proposals:build_proposals"),
     Consumer(_C + "stages.proposals:goldberg_proposal", ("body_columns", "sex_column"), True,
-             ASK),
+             ASK,
+             kinds=("unit:weight",)),
     Consumer(_C + "stages.proposals:body_refusal", ("body_columns", "sex_column"), True, ASK),
+    Consumer(_C + "stages.proposals:sex_column", ("sex_column",), True, SETTLED_ONLY,
+             kinds=("sex_coding",)),
+    Consumer(_C + "detectors.plausibility:sex_codes", ("plausibility",), True, SETTLED_ONLY,
+             kinds=("sex_coding",)),
     Consumer(_C + "decisions:_screens_read_settled_body_measures",
              ("body_columns", "sex_column"), True, ASK),
     Consumer(_C + "coach:range_notes", ("coach_names", "energy_column"), True, NO_UNIT),
-    Consumer(_C + "coach:_unit_suffix", ("coach_names",), True, NO_UNIT),
+    Consumer(_C + "coach:_unit_suffix", ("coach_names",), True, NO_UNIT,
+             kinds=("unit:energy",)),
     Consumer(_C + "coach:exclusions_coach", ("coach_names",), False, WORDS_ONLY),
     # ── the survey design ──
     Consumer(_C + "survey:reading_of", ("survey_design", "design_role"), True, SETTLED_ONLY),

@@ -190,7 +190,11 @@ class GoldbergRule(_Value):
     female: list[str] = Field(default_factory=list)  # levels of ``sex`` read as female
     male: list[str] = Field(default_factory=list)
     age: str = Field(min_length=1)  # years
-    weight: str = Field(min_length=1)  # kg
+    weight: str = Field(min_length=1)
+    # The unit ``weight`` is recorded in; pounds are converted to kilograms exactly (1 lb =
+    # 0.45359237 kg) before the BMR equation reads them (BLUEPRINT §14.3: a recorded unit is
+    # honored, never read as kg).
+    weight_unit: Literal["kg", "lb"] = "kg"
     height: str | None = None
     height_unit: Literal["cm", "m"] = "cm"
     equation: BmrEquation
@@ -378,7 +382,7 @@ class ConfirmRole(_DecisionModel):
 # The readings ledger (BLUEPRINT §14.1): the kinds of reading ``confirm_reading`` records. The
 # others are answered by their own decisions (``set_outcome_unit``, ``set_repeat_kind``, …).
 ReadingKind = Literal["role", "cluster", "unit", "day_count", "code_or_count", "time_column",
-                      "nested_in"]
+                      "nested_in", "sex_coding"]
 
 
 class ConfirmReading(_DecisionModel):
@@ -393,6 +397,37 @@ class ConfirmReading(_DecisionModel):
     reading: ReadingKind
     column: str = Field(min_length=1)
     value: str = Field(min_length=1, max_length=200, pattern=r"^[^`\n\r]+$")
+
+
+class ReadingItem(BaseModel):
+    """One reading a block confirmation lists, with the value it shows."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reading: ReadingKind
+    column: str = Field(min_length=1)
+    value: str = Field(min_length=1, max_length=200, pattern=r"^[^`\n\r]+$")
+
+
+class ConfirmReadings(_DecisionModel):
+    """A block confirmation (BLUEPRINT §14.2: "A block confirmation settles exactly the readings
+    it lists, each with the value it shows. It never settles a reading it does not list."): the
+    readings a question listed, each with its best guess as shown (or as the user changed it),
+    recorded exactly as ``confirm_reading`` records each one. One record, so one revert undoes it."""
+
+    kind: Literal["confirm_readings"] = "confirm_readings"
+    items: list[ReadingItem] = Field(min_length=1, max_length=100_000)
+
+    @model_validator(mode="after")
+    def _each_reading_once(self) -> "ConfirmReadings":
+        seen: set[tuple[str, str]] = set()
+        for item in self.items:
+            pair = (item.reading, item.column)
+            if pair in seen:
+                raise ValueError(f"the {item.reading.replace('_', ' ')} reading of "
+                                 f"{item.column!r} is listed twice")
+            seen.add(pair)
+        return self
 
 
 class SetEnergyAdjustment(_DecisionModel):
@@ -844,7 +879,7 @@ Decision = Annotated[
         SetFeatureTable, SetCategorical, SetSurvey,
         SetExposureForm, SetOutcomeOrder, SetFollowUp,
         SetSensitivity, SetMeasurementError, SetOutcomeUnit, SetColumnUnit, ConfirmRole,
-        ConfirmReading,
+        ConfirmReading, ConfirmReadings,
     ],
     Field(discriminator="kind"),
 ]
@@ -936,6 +971,10 @@ class ProjectState(BaseModel):
     # column that orders a unit's records), kept apart so that confirming a unit or a role never
     # rebuilds it
     shape_confirmations: dict[str, str] | None = None
+    # BLUEPRINT §14.3: which level of a sex column is female and which male, as the user confirmed
+    # it (``"female=2,male=1"``, by column), kept apart so the detectors that read it (the CDC
+    # growth charts' z-scores) recompute alone
+    sex_codings: dict[str, str] | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -999,6 +1038,9 @@ _ALSO: dict[str, dict[str, Callable[[Any], Any]]] = {}
 _HOLDS: dict[str, Callable[[Any, Mapping[str, Any]], bool]] = {}
 _KEYS: dict[str, Callable[[Any], str]] = {}
 _SLOT_FOR: dict[str, Callable[[Any], str]] = {}
+# kind -> its writes as ``[(slot, key, value), …]``: one answer that writes several keyed entries
+# (``confirm_readings``: each listed reading where ``confirm_reading`` would write it).
+_ENTRIES: dict[str, Callable[[Any], list[tuple[str, str, Any]]]] = {}
 _VALIDATORS: dict[str, list[Callable[[Any, Any], None]]] = {}
 _COMPLETIONS: dict[str, list[Callable[[Any, Any], Any]]] = {}
 
@@ -1019,6 +1061,7 @@ def register_kind(
     key: Callable[[Any], str] | None = None,
     also: Mapping[str, Callable[[Any], Any]] | None = None,
     slot_for: Callable[[Any], str] | None = None,
+    entries: Callable[[Any], list[tuple[str, str, Any]]] | None = None,
 ) -> type[BaseModel]:
     """Declare that decisions of ``model_cls`` write ``slot``.
 
@@ -1073,6 +1116,10 @@ def register_kind(
         _SLOT_FOR[kind] = slot_for
     else:
         _SLOT_FOR.pop(kind, None)
+    if entries is not None:
+        _ENTRIES[kind] = entries
+    else:
+        _ENTRIES.pop(kind, None)
     return model_cls
 
 
@@ -1188,12 +1235,26 @@ register_kind(SetRoles, "roles", value=lambda d: d.roles,
 register_kind(ConfirmRole, "role_confirmations", value=lambda d: d.role, key=lambda d: d.column)
 # A role's confirmation is kept where ``confirm_role`` keeps it (by column), so the stages that read
 # roles read it and the table-shaping stages, which read the other confirmations, never recompute.
+def reading_slot(reading: str, column: str) -> tuple[str, str]:
+    """Where a reading's confirmation is kept, ``(slot, key)``: a role's beside ``confirm_role``'s
+    (by column), the two that shape the working table apart, every other in
+    ``reading_confirmations`` (``"<kind>:<column>"``)."""
+    if reading == "role":
+        return "role_confirmations", column
+    if reading == "sex_coding":
+        return "sex_codings", column
+    if reading in ("code_or_count", "time_column"):
+        return "shape_confirmations", f"{reading}:{column}"
+    return "reading_confirmations", f"{reading}:{column}"
+
+
 register_kind(ConfirmReading, "reading_confirmations", value=lambda d: d.value,
-              key=lambda d: d.column if d.reading == "role" else f"{d.reading}:{d.column}",
-              slot_for=lambda d: ("role_confirmations" if d.reading == "role"
-                                  else "shape_confirmations"
-                                  if d.reading in ("code_or_count", "time_column")
-                                  else "reading_confirmations"))
+              key=lambda d: reading_slot(d.reading, d.column)[1],
+              slot_for=lambda d: reading_slot(d.reading, d.column)[0])
+# A block confirmation writes each listed reading exactly where its own confirmation would, and
+# nothing else (BLUEPRINT §14.2).
+register_kind(ConfirmReadings, "reading_confirmations", value=lambda d: None,
+              entries=lambda d: [(*reading_slot(i.reading, i.column), i.value) for i in d.items])
 register_kind(SetEnergyAdjustment, "energy_adjustment",
               value=lambda d: EnergyAdjustment(**d.model_dump(exclude={"kind"})))
 register_kind(SetExclusions, "exclusions")
@@ -1272,6 +1333,17 @@ def _info(ctx: Any, column: str) -> Mapping[str, Any] | None:
 
 def _state(ctx: Any) -> "ProjectState | None":
     return _ctx(ctx, "state")
+
+
+def _store_of(ctx: Any) -> Any:
+    """The table's DataStore when ``ctx`` can open it (the server's context), else None."""
+    opener = _ctx(ctx, "store")
+    if callable(opener):
+        try:
+            return opener()
+        except Exception:  # noqa: BLE001 - no store: the stage that reads the values asks
+            return None
+    return opener
 
 
 def _and(items: Sequence[str]) -> str:
@@ -1502,6 +1574,11 @@ def _reading_names_a_column(decision: "ConfirmReading", ctx: Any) -> None:
     if decision.reading == "day_count":
         ok = decision.value.isdigit() and 1 <= int(decision.value) <= 366
         allowed_words = "a whole number of days from 1 to 366"
+    elif decision.reading == "sex_coding":
+        from turbotab.core.readings import parse_sex_coding
+
+        ok = parse_sex_coding(decision.value) is not None
+        allowed_words = "`female=<level>,male=<level>`, two different levels"
     else:
         ok = allowed is None or decision.value in allowed
         allowed_words = ", ".join(f"`{v}`" for v in allowed or ())
@@ -1510,6 +1587,21 @@ def _reading_names_a_column(decision: "ConfirmReading", ctx: Any) -> None:
                       f"`{decision.value}` is not a value a {decision.reading.replace('_', ' ')} "
                       f"reading takes; it takes {allowed_words}.",
                       exits=[{"label": "Choose one of its values", "decision": None}])
+
+
+def _readings_name_columns(decision: "ConfirmReadings", ctx: Any) -> None:
+    """Each reading a block confirmation lists passes the checks its own confirmation would; a
+    reading that fails is named, and the block without it offered."""
+    for i, item in enumerate(decision.items):
+        try:
+            _reading_names_a_column(ConfirmReading(reading=item.reading, column=item.column,
+                                                   value=item.value), ctx)
+        except Refusal as refused:
+            rest = [it for j, it in enumerate(decision.items) if j != i]
+            exits = ([{"label": f"Confirm the others, leaving `{item.column}` out",
+                       "decision": ConfirmReadings(items=rest)}] if rest else [])
+            raise Refusal(refused.code, refused.message,
+                          exits=[*exits, *refused.exits]) from None
 
 
 def _models_read_settled_readings(decision: Any, ctx: Any) -> None:
@@ -1522,7 +1614,8 @@ def _models_read_settled_readings(decision: Any, ctx: Any) -> None:
     if state is None or not state.roles:
         return
     try:
-        predictors_or_ask(state, _ctx(ctx, "column_info"), drop=left_out(state))
+        predictors_or_ask(state, _ctx(ctx, "column_info"), drop=left_out(state),
+                          store=_store_of(ctx))
     except Unsettled as waiting:
         raise Refusal("reading_unsettled", str(waiting), exits=[
             *waiting.exits,
@@ -1636,25 +1729,32 @@ def _screens_read_a_settled_energy_column(decision: SetExclusions, ctx: Any) -> 
                           "decision": SetExclusions(rules=kept)}])
 
 
-_BODY_EXPECTED = (("age", "age", "years"), ("weight", "weight", "kg"), ("height", "height", None))
+_BODY_EXPECTED = (("age", "age", "years"), ("weight", "weight", None), ("height", "height", None))
+_SEX_WORDS = ("sex", "gender")
+
+
+def _sex_named(column: str) -> bool:
+    from turbotab.core.recognizers import tokens
+
+    return column.lower() == "riagendr" or bool(set(tokens(column)) & set(_SEX_WORDS))
 
 
 def _screens_read_settled_body_measures(decision: SetExclusions, ctx: Any) -> None:
-    """BLUEPRINT §14.1 (the readings ledger): the Goldberg screen reads a weight in kg, a height in
-    cm or m and an age in years, and a sex-specific screen reads the sex column's levels. Each is a
-    reading the screen changes numbers by: a unit known only from its median (the gate's US
-    women's ``weight`` in pounds, read as kg: 136 of 500 rows excluded against 5) or a role that
-    rode along unconfirmed is asked first, one exit per reading."""
+    """BLUEPRINT §14.1, §14.3: the Goldberg screen reads a weight in the unit its rule records (kg,
+    or lb converted exactly), a height in cm or m and an age in years, and each screen that reads
+    a sex column reads which of its levels is female. Each is a reading the screen changes numbers
+    by. A unit nobody recorded (a header's ``kg`` is a name; a weight's median tells kg from lb no
+    better than a heavy cohort from a light one: the gate's US women's ``weight`` in pounds, 136 of
+    500 rows excluded against 5), a sex column's numeric codes nobody confirmed (NHANES codes 1
+    male, 2 female; other studies 1 female), or a role that rode along unconfirmed is asked first,
+    one exit per reading; a rule whose unit or levels contradict the recorded reading is refused."""
     from turbotab.core.readings import (
-        body_unit_reading, confirm_exit, confirm_exits, listing, unsettled,
+        BODY_CONVERSIONS, body_unit_reading, confirm_exit, confirm_exits, listing,
+        parse_sex_coding, sex_coding_exits, sex_coding_reading, unsettled,
     )
 
     state = _state(ctx)
-    opener = _ctx(ctx, "store")
-    try:
-        store = opener() if callable(opener) else None
-    except Exception:  # noqa: BLE001 - no values: a unit is settled by its name or the user only
-        store = None
+    store = _store_of(ctx)
 
     def values(column: str) -> Any:
         if store is None or column not in set(store.columns):
@@ -1663,8 +1763,24 @@ def _screens_read_settled_body_measures(decision: SetExclusions, ctx: Any) -> No
 
     exits: list[dict[str, Any]] = []
     units: list[str] = []
+    codings: list[str] = []
     wrong: list[str] = []
     roles_waiting: list[str] = []
+
+    def sex_levels_settled(column: str, female: Sequence[Any], male: Sequence[Any]) -> None:
+        found = sex_coding_reading(state, column, values(column))
+        if not found.settled:
+            if column not in codings:
+                codings.append(column)
+                exits.extend(sex_coding_exits(column, values(column)))
+            return
+        coding = parse_sex_coding(found.value) or {}
+        said = {**{str(v): "female" for v in female}, **{str(v): "male" for v in male}}
+        clash = [lv for lv, sx in said.items() if coding.get(lv) not in (None, sx)]
+        if clash:
+            wrong.append(f"`{column}`'s level `{clash[0]}` is {coding.get(clash[0])}, as "
+                         f"recorded, and the rule reads it as {said[clash[0]]}")
+
     for rule in decision.rules:
         columns: list[str] = []
         if getattr(rule, "kind", "range") == "goldberg":
@@ -1673,35 +1789,52 @@ def _screens_read_settled_body_measures(decision: SetExclusions, ctx: Any) -> No
                 if not column:
                     continue
                 columns.append(column)
-                want = expected or rule.height_unit
+                want = expected or (rule.weight_unit if measure == "weight" else rule.height_unit)
                 found = body_unit_reading(column, measure, state,
                                           values(column) if measure == "height" else None)
                 if found.settled and found.value != want:
-                    wrong.append(f"`{column}` is in {found.value}, and the screen reads {want}")
+                    if found.value in BODY_CONVERSIONS.get(measure, {}) and measure == "weight":
+                        exits.append({"label": f"Read `{column}` in {found.value}, as recorded",
+                                      "decision": SetExclusions(rules=[
+                                          r.model_copy(update={"weight_unit": found.value})
+                                          if r is rule else r for r in decision.rules])})
+                    wrong.append(f"`{column}` is in {found.value}, and the rule reads {want}")
                 elif not found.settled and column not in units:
                     units.append(column)
-                    exits.append(confirm_exit("unit", column, want, f"`{column}` is in {want}"))
+                    choices = ([want] + [u for u in BODY_CONVERSIONS.get(measure, {})
+                                         if u != want and (measure != "height" or u != "in")])
+                    exits.extend(confirm_exit("unit", column, u, f"`{column}` is in {u}")
+                                 for u in choices)
             columns.append(rule.sex)
+            sex_levels_settled(rule.sex, rule.female, rule.male)
         elif getattr(rule, "by", None) is not None:
             columns.append(rule.by.column)
+            if _sex_named(rule.by.column):
+                # Which level takes women's range and which men's rests on the sex coding.
+                sex_levels_settled(rule.by.column, [], [])
         if state is not None and state.roles:
             roles_waiting += [c for c in unsettled(state, columns) if c not in roles_waiting]
-    if not (units or wrong or roles_waiting):
+    if not (units or codings or wrong or roles_waiting):
         return
     kept = [r for r in decision.rules if getattr(r, "kind", "range") != "goldberg"
-            and not (getattr(r, "by", None) is not None and r.by.column in roles_waiting)]
+            and not (getattr(r, "by", None) is not None
+                     and (r.by.column in roles_waiting or r.by.column in codings))]
     leave = {"label": "Keep only the screens that read settled columns",
              "decision": SetExclusions(rules=kept)}
     if wrong:
         raise Refusal("reading_unsettled",
-                      f"The Goldberg screen cannot read these columns: {'; '.join(wrong)}.",
-                      exits=[leave])
+                      f"The screen cannot read these columns as the rule says: {'; '.join(wrong)}.",
+                      exits=[*exits, leave])
     said = []
     if units:
         one = len(units) == 1
-        said.append(f"{listing(units)}'s {'unit is' if one else 'units are'} known only from "
-                    f"{'its median' if one else 'their medians'}, which tells kg from lb no better "
-                    f"than a heavy cohort from a light one")
+        said.append(f"{listing(units)}'s {'unit is' if one else 'units are'} not recorded: a "
+                    f"header or a median tells kg from lb, or years from months, no better than a "
+                    f"heavy cohort from a light one")
+    if codings:
+        one = len(codings) == 1
+        said.append(f"which level of {listing(codings)} is female is not confirmed: studies code "
+                    f"1 and 2 either way")
     if roles_waiting:
         one = len(roles_waiting) == 1
         said.append(f"{listing(roles_waiting)} {'was' if one else 'were'} proposed below high "
@@ -1744,13 +1877,14 @@ def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
                 readers.append(("combining answer", before_t.column))
     if now.models:
         info = _ctx(ctx, "column_info")
+        store = _store_of(ctx)
         try:
-            predictors_or_ask(now, info, drop=left_out(now))
+            predictors_or_ask(now, info, drop=left_out(now), store=store)
         except Unsettled:
             pass  # already waiting: the fit asks for it
         else:
             try:
-                predictors_or_ask(after, info, drop=left_out(after))
+                predictors_or_ask(after, info, drop=left_out(after), store=store)
             except Unsettled as waiting:
                 column = (waiting.exits[0].get("decision") or {}).get("column", "a predictor")
                 readers.append(("models answer", str(column)))
@@ -1961,11 +2095,13 @@ def _screens_wait_for_the_unit(decision: SetExclusions, ctx: Any) -> None:
             # ``energy_kcal_day1_day2``: the Atwater identity held for 2-day totals).
             evidence = (reading.get("days_reading") or {}).get("evidence") or "nothing settles it"
             spans = [d for d in reading.get("days_candidates") or [1, 2] if d > 1] or [2]
+            named = (f" (only its name says {word[proposed]})" if reading.get("basis") == "name"
+                     else "")
             raise Refusal(
                 "energy_unit_unconfirmed",
-                f"The rule on `{column}` reads its bounds in a day's {word[proposed]}, but how many "
-                f"days each value spans is not settled: {evidence}. Record it first; then the "
-                f"screen's bounds are read in it.",
+                f"The rule on `{column}` reads its bounds in a day's {word[proposed]}{named}, but "
+                f"how many days each value spans is not settled: {evidence}. Record it first; then "
+                f"the screen's bounds are read in it.",
                 exits=[{"label": f"`{column}` is one day's intake, in {word[proposed]}",
                         "decision": SetColumnUnit(column=column, unit=proposed)},
                        *({"label": f"`{column}` is a total over {d} days, in {word[proposed]}",
@@ -3017,7 +3153,9 @@ def _form_fits_the_column(decision: SetExposureForm, ctx: Any) -> None:
             f"`{decision.column}` is not an exposure, a covariate or energy, so it does not enter "
             f"the models.",
             exits=[{"label": "Choose a predictor", "decision": None}])
-    declared = set((state.categorical if state is not None else None) or [])
+    from turbotab.core.readings import confirmed_codes
+
+    declared = set(confirmed_codes(state) if state is not None else [])
     info = _info(ctx, decision.column)
     if decision.column in declared or (info is not None and info.get("dtype") not in NUMERIC_DTYPES):
         raise Refusal(
@@ -3111,6 +3249,7 @@ register_validator("set_roles", _roles_name_real_columns)
 register_completion("set_roles", _roles_record_what_rode_along)
 register_validator("confirm_role", _confirmed_role_names_a_column)
 register_validator("confirm_reading", _reading_names_a_column)
+register_validator("confirm_readings", _readings_name_columns)
 register_validator("set_exclusions", _screens_read_a_settled_energy_column)
 register_validator("set_feature_table", _feature_table_names_the_files_columns)
 register_validator("set_categorical", _categorical_names_predictors)
@@ -3186,6 +3325,13 @@ def fold(records: Sequence[DecisionRecord]) -> ProjectState:
     slots: dict[str, Any] = {}
     for decision in live:
         if decision.kind in _HOLDS:
+            continue
+        written = _ENTRIES.get(decision.kind)
+        if written is not None:
+            for slot, entry, value in written(decision):
+                entries = dict(slots.get(slot) or {})
+                entries[entry] = value
+                slots[slot] = entries
             continue
         keyed = _KEYS.get(decision.kind)
         if keyed is not None:

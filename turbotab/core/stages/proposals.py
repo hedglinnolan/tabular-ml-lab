@@ -347,9 +347,16 @@ def not_adjusted(columns: Mapping[str, Mapping[str, Any]], roles: Mapping[str, s
 
 
 def sex_column(columns: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame | None,
-               roles: Mapping[str, str], *, screen: bool = False) -> tuple[str | None, dict[str, str]]:
-    """The sex column and which of its levels are ``female`` and ``male``. For a screen
-    (``screen``), a column left out of the model still counts."""
+               roles: Mapping[str, str], *, screen: bool = False, state: Any = None,
+               guess: bool = False) -> tuple[str | None, dict[str, str]]:
+    """The sex column and which of its levels are ``female`` and ``male``, as the readings ledger
+    holds them (BLUEPRINT §14.3): labels that spell the sexes, or numeric codes as the user
+    confirmed them (``confirm_reading`` sex_coding). Numeric codes nobody confirmed are no sex
+    column here (NHANES RIAGENDR codes 1 male, 2 female; other studies 1 female), unless ``guess``
+    asks for the best guess a question leads with. For a screen (``screen``), a column left out of
+    the model still counts."""
+    from turbotab.core.readings import parse_sex_coding, sex_coding_reading
+
     skip = (("identifier", "cluster", "flag", "design") if screen
             else ("identifier", "cluster", "flag", "design", "excluded"))
     for c in columns:
@@ -359,16 +366,12 @@ def sex_column(columns: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame | N
             continue
         if frame is None or c not in frame.columns:
             continue
-        mapping: dict[str, str] = {}
-        for value in frame[c].dropna().unique():
-            key = level_key(value)
-            low = key.lower()
-            if c.lower() == "riagendr" and key in _NHANES_SEX:
-                mapping[key] = _NHANES_SEX[key]
-            elif low in _FEMALE:
-                mapping[key] = "female"
-            elif low in _MALE:
-                mapping[key] = "male"
+        found = sex_coding_reading(state, c, frame[c])
+        if found.value is None or not (found.settled or guess):
+            continue
+        mapping = {level_key(k): v for k, v in (parse_sex_coding(found.value) or {}).items()}
+        present = {level_key(v) for v in frame[c].dropna().unique()}
+        mapping = {k: v for k, v in mapping.items() if k in present}
         if set(mapping.values()) == {"female", "male"}:
             return c, mapping
     return None, {}
@@ -474,7 +477,10 @@ def recorded_energy_unit(state: Any, energy: str | None) -> Any:
 # The bases that settle the energy unit; a magnitude prior or nothing at all only proposes one
 # (audit WP13 gate repair: the toddlers' 4,040 kJ read as kcal set the screens' bounds, the
 # implausible-intake count and the coach's "likely over-reporting", and no decision confirmed it).
-SETTLED_UNIT_BASES = ("decision", "name", "atwater")
+# The bases that settle an energy column's unit (BLUEPRINT §14.3): the user's record, and the
+# Atwater identity (kcal and kJ sit 4.184× apart against the macronutrients' energy). A name's
+# ``kcal`` or ``_kj`` is the best guess a question leads with, never a settlement.
+SETTLED_UNIT_BASES = ("decision", "atwater")
 
 
 def energy_unit_reading(frame: pd.DataFrame, energy: str, recorded: Any = None) -> dict[str, Any]:
@@ -528,7 +534,7 @@ def _energy_unit_named(frame: pd.DataFrame, energy: str, recorded: Any = None) -
     ``confirmed`` is True for the first three. A magnitude or an assumption is a proposal: the
     screens are offered with their counts but refused until the unit is recorded, and no line
     calls a row an under- or over-report in it (the leash, BLUEPRINT §11.3)."""
-    from turbotab.core.methods.energy import atwater_check, unit_of
+    from turbotab.core.methods.energy import unit_of
     from turbotab.core.recognizers import (
         ENERGY_PRIOR_SOURCE, day_count, energy_unit, energy_unit_by_magnitude,
     )
@@ -541,11 +547,11 @@ def _energy_unit_named(frame: pd.DataFrame, energy: str, recorded: Any = None) -
         word = "kJ" if unit == "kj" else "kcal"
         over = f", a total over {days} days" if days > 1 else ""
         return {"unit": unit, "basis": "decision", "days": days, "confirmed": True,
-                "sentence": f"{col} is in {word}{over}, as recorded."}
+                "unit_settled": True, "sentence": f"{col} is in {word}{over}, as recorded."}
 
     def out(unit: str, basis: str, sentence: str) -> dict[str, Any]:
         return {"unit": unit, "basis": basis, "days": 1, "confirmed": basis in SETTLED_UNIT_BASES,
-                "sentence": sentence}
+                "unit_settled": basis in SETTLED_UNIT_BASES, "sentence": sentence}
 
     if unit_of(energy) == "per_period":
         # ``kcal_week``: the name says a total over a period, not a day's intake; how many days it
@@ -568,15 +574,14 @@ def _energy_unit_named(frame: pd.DataFrame, energy: str, recorded: Any = None) -
         return reading
     if unit_of(energy) == "kj":
         return out("kj", "name", f"{col} says kJ in its name.")
-    try:
-        reading = atwater_check(frame, energy) if energy in frame.columns else None
-    except Exception:  # noqa: BLE001 - a diagnostic that cannot run is not a verdict
-        reading = None
-    if reading is not None and reading.verdict == "energy_in_kj":
-        return out("kj", "atwater", f"{col} is about {reading.ratio:.2f}× the energy its "
-                                    f"macronutrients carry: kilojoules.")
-    if reading is not None and reading.verdict == "pass":
-        return out("kcal", "atwater", f"{col} matches the energy its macronutrients carry: kcal.")
+    # The registry's value test for the unit (BLUEPRINT §14.3: ``readings.KIND_RULES
+    # ["unit:energy"]``): kcal and kJ sit 4.184× apart against the macronutrients' energy.
+    from turbotab.core.readings import atwater_unit
+
+    verdict = atwater_unit(frame, energy) if energy in frame.columns else None
+    if verdict is not None and verdict.settles:
+        word = "kilojoules" if verdict.value == "kj" else "kcal"
+        return out(str(verdict.value), "atwater", f"{col} {verdict.evidence}: {word}.")
     if unit_of(energy) == "kcal" or energy_unit(energy) == "kcal":
         return out("kcal", "name", f"{col} says kcal in its name.")
     if energy in frame.columns:
@@ -619,6 +624,9 @@ def unit_refusal(energy: str, reading: Mapping[str, Any] | None) -> str | None:
         return (f"Refused until {tick(energy)}'s days are recorded: {evidence}, so whether each "
                 f"value is one day's intake or a total over several is not settled, and the "
                 f"screen's bounds are read in a day's.")
+    if reading.get("basis") == "name":
+        return (f"Refused until {tick(energy)}'s unit and days are recorded: only its name says "
+                f"{word}, and the screen's bounds are read in a day's {word}.")
     if reading.get("basis") == "days":
         return (f"Refused until {tick(energy)}'s days are recorded: its name carries "
                 f"{tick(str(reading.get('days_in_name')))} days, a total or a mean, and the "
@@ -750,6 +758,15 @@ def body_refusal(body: Mapping[str, Any], sex: str | None, settled: Iterable[str
     return None
 
 
+def sex_refusal(column: str) -> str:
+    """Why a screen that reads a numeric sex column nobody's coding settled is refused."""
+    from turbotab.core.voice import tick
+
+    return (f"Refused until {tick(column)}'s coding is confirmed: which code is female is a "
+            f"guess (NHANES codes 1 male, 2 female; other studies 1 female), and the counts "
+            f"shown read the guess.")
+
+
 def screen_refusal(energy: str, affected: int, present: int) -> str | None:
     """Why an intake screen is refused (it would remove more than half the rows that hold energy),
     or None. The sentence sends the user to the unit, the likelier error (audit IN-07)."""
@@ -797,7 +814,8 @@ def _named(info: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame, names: se
 
 
 def body_columns(info: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame,
-                 roles: Mapping[str, str], units: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                 roles: Mapping[str, str], units: Mapping[str, Any] | None = None,
+                 state: Any = None) -> dict[str, Any]:
     """Age (years), weight (kg) and height (cm or m) columns, when their names and values agree.
     An age recorded in another unit (``set_column_unit``: months) is no age in years."""
     age = _named(info, frame, _AGE_NAMES, roles, 10, 100)
@@ -805,6 +823,18 @@ def body_columns(info: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame,
     if recorded is not None and getattr(recorded, "unit", "years") != "years":
         age = None
     weight = _named(info, frame, _WEIGHT_NAMES, roles, 25, 200)
+    from turbotab.core.readings import confirmation
+
+    recorded_weight = None
+    for c in info:
+        spec = (units or {}).get(c)
+        said = confirmation(state, "unit", c) if state is not None else getattr(spec, "unit", None)
+        if str(c).lower() in _WEIGHT_NAMES and said == "lb" and c in frame.columns:
+            recorded_weight = c
+    if recorded_weight is not None:
+        # A weight recorded in pounds: its median read in kilograms (1 lb = 0.45359237 kg).
+        median = pd.to_numeric(frame[recorded_weight], errors="coerce").median() * 0.45359237
+        weight = recorded_weight if 25 <= float(median) <= 200 else None
     height = _named(info, frame, _HEIGHT_NAMES, roles, 100, 230)
     unit = "cm"
     if height is None:
@@ -829,23 +859,32 @@ def goldberg_proposal(frame: pd.DataFrame, info: Mapping[str, Mapping[str, Any]]
     """
     from turbotab.core.decisions import GoldbergRule
 
-    body = body_columns(info, frame, roles, units)
+    body = body_columns(info, frame, roles, units, state)
     if sex is None or body["age"] is None or body["weight"] is None:
         return None
     if unit_reading is not None and int(unit_reading.get("days") or 1) > 1:
         return None  # Goldberg reads a day's mean intake; a total over days is not one
     height = body["height"]
+    from turbotab.core.readings import body_unit_reading
+
+    # The weight's unit as the ledger holds it (BLUEPRINT §14.3): a recorded pound is converted to
+    # kilograms exactly, so the count shown is the screen's own, never one read in the wrong unit.
+    weight_reading = body_unit_reading(body["weight"], "weight", state)
+    weight_unit = "lb" if weight_reading.value == "lb" else "kg"
     rule = GoldbergRule(
         column=energy, energy_unit="kj" if unit == "kj" else "kcal", days=days, sex=sex,
         female=[k for k, v in sex_levels.items() if v == "female"],
         male=[k for k, v in sex_levels.items() if v == "male"],
-        age=body["age"], weight=body["weight"], height=height, height_unit=body["height_unit"],
+        age=body["age"], weight=body["weight"], weight_unit=weight_unit, height=height,
+        height_unit=body["height_unit"],
         equation="schofield_height" if height else "schofield", pal=GOLDBERG_PAL,
         reason="implausible energy reports (Goldberg cut-offs, Black 2000)")
     if target is not None and target in rule.reads():
         return None
     affected = int((rule_excludes(frame, rule) & base).sum())
     eq = "weight and height" if height else "weight"
+    if weight_unit == "lb":
+        eq = eq.replace("weight", "weight converted from lb", 1)
     n_days = f"{days:g} {'day' if days == 1 else 'days'}"
     label = (f"Goldberg: energy over Schofield BMR ({eq}) outside the 95% cut-offs for PAL "
              f"{GOLDBERG_PAL} and {n_days} of intake" + (f" ({days_note})" if days_note else ""))
@@ -1080,7 +1119,9 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
         recorded = (units or {}).get(energy)
         recorded = recorded if getattr(recorded, "unit", None) in ("kcal", "kj") else None
         first = energy_unit_reading(frame, energy, recorded)
-        settled_unit = first["unit"] if first.get("confirmed") else None
+        # A share of a day's energy reads the unit alone: settled by the record or the Atwater
+        # identity, whatever the days (BLUEPRINT §14.3).
+        settled_unit = first["unit"] if first.get("unit_settled") else None
     nutrients = nutrient_candidates(info, roles, energy=energy, target=target, frame=frame,
                                     settled=settled, energy_unit=settled_unit)
     # With no record of confirmations (a caller holding roles alone), the energy column sets the
@@ -1094,7 +1135,7 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
                                          candidates=macro_candidates(frame, exclude=[energy]))
                    if energy in frame.columns else None)
         energy_settled = {energy} if verdict is not None and verdict.by_values else set()
-    sex, sex_levels = sex_column(info, frame, roles)
+    sex, sex_levels = sex_column(info, frame, roles, state=state)
     if target and target in frame.columns:
         base = frame[target].notna()
         # Every row with the outcome, held-out rows included, and the basis says so: these
@@ -1116,7 +1157,15 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
             # A screen reads a column whatever its model role: sex left out of the model still
             # serves Willett's sex-specific cut-offs, as it serves the Goldberg screen (the methods
             # gate, item E: the menu was too tight, BLUEPRINT §11.3).
-            screen_sex, screen_levels = sex_column(info, frame, roles, screen=True)
+            screen_sex, screen_levels = sex_column(info, frame, roles, screen=True, state=state)
+            guessed_sex = None
+            if screen_sex is None:
+                # A numeric sex column nobody's coding settled: the screens that read it are
+                # offered under the best guess and refused until it is confirmed (BLUEPRINT §14.2).
+                guessed_sex, guessed_levels = sex_column(info, frame, roles, screen=True,
+                                                         state=state, guess=True)
+                if guessed_sex is not None:
+                    screen_sex, screen_levels = guessed_sex, guessed_levels
             by_sex = screen_sex if screen_sex != target else None  # never a rule on the outcome
             exclusions = exclusion_proposals(frame, energy=energy, unit=unit, sex=by_sex,
                                              sex_levels=screen_levels, base=base,
@@ -1132,6 +1181,12 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
                                          settled=energy_settled, state=state)
             if goldberg is not None:
                 exclusions.append(goldberg)
+            if guessed_sex is not None:
+                why = sex_refusal(guessed_sex)
+                for offer in exclusions:
+                    reads = offer["rule"].get("sex") or (offer["rule"].get("by") or {}).get("column")
+                    if reads == guessed_sex and not offer.get("refused"):
+                        offer["refused"] = why
     reading = None
     if energy is not None or nutrients:
         # What the card would read that waits for its own confirmation (BLUEPRINT §14 rule 2):

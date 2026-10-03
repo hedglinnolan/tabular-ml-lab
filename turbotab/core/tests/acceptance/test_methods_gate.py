@@ -650,8 +650,13 @@ def test_e_the_sex_specific_screen_stays_on_the_menu_when_sex_is_left_out(tmp_pa
     assert expected == 24 and expected != int(((e < 500) | (e > 3500)).sum())
     offered: dict[str, Any] = {}
     with local_server(tmp_path / "home") as client:
+        from turbotab.core.tests.truths import Truth
+
         for sex_role in ("covariate", "excluded"):
-            drive = open_project(client, path)
+            # The fixture's truth (BLUEPRINT §14.3): one day's energy in kcal; age whole years.
+            drive = open_project(client, path, Truth({
+                "unit:energy_kcal": "kcal", "day_count:energy_kcal": "1",
+                "code_or_count:age": "amount"}, fixture="_intakes"))
             _answer_until(drive, "roles", {
                 "lens": {"kind": "set_lens", "lenses": ["dietary"]},
                 "target": {"kind": "set_target", "column": "ldl"},
