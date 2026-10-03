@@ -187,6 +187,9 @@ def open_project(client, path: Path, lens: str, target: str, purpose: str) -> st
     pid = response.json()["id"]
     wait_for(client, pid, {"ingest": "fresh", "profile": "fresh"}, timeout=120)
     accepted(client, pid, {"kind": "set_lens", "lenses": [lens]})
+    # The readings ledger (BLUEPRINT §14.1): under an assay lens the orientation reading is never
+    # high, so the question is asked; these tables are one row per sample, as the reading proposes.
+    prepare(client, pid, {"kind": "set_target", "column": target})
     accepted(client, pid, {"kind": "set_target", "column": target})
     prepare(client, pid, {"kind": "set_purpose", "purpose": purpose})
     accepted(client, pid, {"kind": "set_purpose", "purpose": purpose})

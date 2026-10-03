@@ -332,6 +332,58 @@ def _aggregation_can_order_the_records(decision: SetAggregation, ctx: Any) -> No
     raise Refusal("cannot_order", order_refusal(order, decision.method), exits=exits)
 
 
+def _aggregation_reads_settled_readings(decision: SetAggregation, ctx: Any) -> None:
+    """BLUEPRINT §14.1 (the readings ledger): combining a unit's rows is a number-changing
+    consumer of two readings, each settled before it is read.
+
+    * **Code or count.** Whole numbers with a few values each seen several times fit a count (cups
+      of coffee per recall) as well as a code (smoking 1/2/3); under "mean" one is averaged and the
+      other takes its most frequent value. The gate's ``coffee_cups`` and ``eating_occasions`` were
+      combined by their mode unasked, changing 112 and 130 of 150 people's values. Asked per
+      column (a code or a count), unless the answer gives the column its own rule.
+    * **The time column.** First, last and change take a value from a particular record; the order
+      is the user's (named, or the reading's column confirmed on its own), never the reading's
+      alone."""
+    from turbotab.core.readings import code_or_count_exits, confirm_exit, confirmation, listing
+    from turbotab.core.stages.working import needs_order, proposed_time_column, time_column
+
+    state = _state(ctx)
+    structure = artifact(ctx, "structure") or {}
+    if state is None or not structure:
+        return
+    waiting = [c for c in structure.get("code_or_count") or []
+               if c not in decision.columns and confirmation(state, "code_or_count", c) is None]
+    if waiting:
+        one = len(waiting) == 1
+        raise Refusal(
+            "reading_unsettled",
+            f"{listing(waiting)} {'holds' if one else 'hold'} a few whole-number values that "
+            f"change within units, which may be codes for categories (combined by the most "
+            f"frequent value) or counts (combined by the {decision.method}). Say which for "
+            f"{'it' if one else 'each'}, one at a time, then combine.",
+            exits=[e for c in waiting for e in code_or_count_exits(c)])
+    if not needs_order(decision.method, decision.outcome, decision.columns):
+        return
+    if time_column(state, structure) is not None:
+        return
+    proposed = proposed_time_column(state, structure)
+    if proposed is None:
+        return  # no reading proposes an order: the records keep the file's, as the record says
+    exits: list[dict[str, Any]] = [
+        confirm_exit("time_column", proposed, "orders",
+                     f"`{proposed}` orders each unit's records")]
+    if decision.method != "mean" and decision.outcome != "first" and decision.outcome != "last":
+        exits.append({"label": "Combine by the mean",
+                      "decision": SetAggregation(method="mean", outcome=decision.outcome)})
+    exits.append({"label": "Choose another time column (the repeats question)", "decision": None})
+    raise Refusal(
+        "reading_unsettled",
+        f"Combining by the first, last or change takes each unit's values from a particular record, "
+        f"and only the repeats reading orders the records, by `{proposed}`. Confirm that it orders "
+        f"them, or name the column that does.",
+        exits=exits)
+
+
 def _temporal_needs_time_points_as_rows(decision: SetTemporal, ctx: Any) -> None:
     from turbotab.core.stages.working import time_column
 
@@ -352,7 +404,13 @@ def _temporal_needs_time_points_as_rows(decision: SetTemporal, ctx: Any) -> None
     structure = artifact(ctx, "structure")
     if decision.time_column or time_column(state, structure):
         return
-    candidates = [c for c in (structure or {}).get("time_columns") or []][:3]
+    # BLUEPRINT §14.1: a bare "yes" is never completed by the repeats reading's column alone; the
+    # reading's column is offered first, to be named.
+    from turbotab.core.stages.working import proposed_time_column
+
+    proposed = proposed_time_column(state, structure)
+    candidates = list(dict.fromkeys([*([proposed] if proposed else []),
+                                     *((structure or {}).get("time_columns") or [])]))[:3]
     raise Refusal(
         "no_time_column",
         "A chronological split needs a column that says when each row was taken, and none is known.",
@@ -468,6 +526,7 @@ register_validator("set_repeat_kind", _repeat_kind_follows_the_grain)
 register_validator("set_unit", _unit_follows_the_grain)
 register_validator("set_aggregation", _aggregation_knows_the_outcome)
 register_validator("set_aggregation", _aggregation_can_order_the_records)
+register_validator("set_aggregation", _aggregation_reads_settled_readings)
 register_validator("set_temporal", _temporal_needs_time_points_as_rows)
 
 __all__ = ["ATTEST", "artifact", "question_of"]

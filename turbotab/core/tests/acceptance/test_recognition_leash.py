@@ -705,9 +705,12 @@ ORDER = ["lens", "orientation", "target", "event", "task", "purpose", "grain", "
          "energy_adjustment", "models"]
 
 
-def _drive_to_fit(drive, *, lens, target, grain, energy=None) -> None:
+def _drive_to_fit(drive, *, lens, target, grain, energy=None, confirm=True,
+                  stop_before=None) -> None:
     """Answer the Router in order as the verifier did, the roles confirmed exactly as proposed
-    (the roles card's one-click "Confirm the roles of N columns")."""
+    (the roles card's one-click "Confirm the roles of N columns"). With ``confirm`` each role that
+    rode along is then confirmed on its own, as the readings ledger asks before any fit (BLUEPRINT
+    §14.1); ``stop_before`` leaves that question and the rest unanswered."""
     answers = {
         "lens": {"kind": "set_lens", "lenses": lens},
         "target": {"kind": "set_target", "column": target},
@@ -721,13 +724,18 @@ def _drive_to_fit(drive, *, lens, target, grain, energy=None) -> None:
         "models": {"kind": "select_models", "models": ["linear"]},
     }
     for key in ORDER:
+        if key == stop_before:
+            return
         step = drive.reach(key, timeout=240)
         if step["status"] not in ("open", "waiting"):
             continue
         if key == "roles":
             roles = drive.artifact("roles")
-            body = {"kind": "set_roles", "roles": {c["column"]: c["proposed"]
-                                                   for c in roles["columns"]}}
+            proposed = {c["column"]: c["proposed"] for c in roles["columns"]}
+            if confirm:
+                drive.decide_roles(proposed)
+                continue
+            body = {"kind": "set_roles", "roles": proposed}
         elif key == "energy_adjustment":
             body = energy(drive) if energy else {"kind": "set_energy_adjustment", "method": "none"}
         else:
@@ -748,10 +756,13 @@ def test_b1_a_bulk_confirm_records_what_rode_along_and_only_a_confirmation_settl
     * the energy card's nutrients are the three gram totals; an energy decision naming ``ALC`` is
       refused (409) with one exit per unsettled column (a ``confirm_role`` each) and none that
       confirms them together;
-    * ``confirm_role`` for ``ALC`` settles it, and the same decision is then recorded; undoing the
-      confirmation is refused while the adjustment reads ``ALC``, and once the adjustment changes
-      the undo unsettles it again;
-    * the fit's measurement-error line names no unsettled column as a self-reported intake."""
+    * a confirmation for ``ALC`` (``confirm_reading``, the readings ledger's one decision per
+      reading) settles it, and the same decision is then recorded; undoing the confirmation is
+      refused while the adjustment reads ``ALC``, and once the adjustment changes the undo
+      unsettles it again;
+    * the fit asks (BLUEPRINT §14.1): the models answer is refused while any role rode along, one
+      ``confirm_reading`` exit per column and none for all; once each is settled the fit's
+      measurement-error line names no column the user did not settle as an exposure."""
     from turbotab.core.tests.acceptance.server_drive import local_server, open_project
 
     frame = _inbody()["A2"]
@@ -772,7 +783,7 @@ def test_b1_a_bulk_confirm_records_what_rode_along_and_only_a_confirmation_settl
         _drive_to_fit(drive, lens=["dietary"], target="hba1c",
                       grain={"kind": "set_grain", "grain": "one_row_per_unit",
                              "id_column": "participant_id"},
-                      energy=as_the_card_sends)
+                      energy=as_the_card_sends, confirm=False, stop_before="models")
         roles = drive.artifact("roles")
         below = [p["column"] for p in roles["columns"] if p["confidence"] != "high"]
         assert all(p["attention"] == (p["confidence"] != "high") for p in roles["columns"])
@@ -794,9 +805,11 @@ def test_b1_a_bulk_confirm_records_what_rode_along_and_only_a_confirmation_settl
         error = r.json()["error"]
         assert error["code"] == "role_unconfirmed"
         confirms = [x["decision"] for x in error["exits"]
-                    if (x["decision"] or {}).get("kind") == "confirm_role"]
-        assert confirms == [{"kind": "confirm_role", "column": "ALC", "role": "exposure"}]
-        drive.decide({"kind": "confirm_role", "column": "ALC", "role": "exposure"})
+                    if (x["decision"] or {}).get("kind") == "confirm_reading"]
+        assert confirms == [{"kind": "confirm_reading", "reading": "role", "column": "ALC",
+                             "value": "exposure"}]
+        drive.decide({"kind": "confirm_reading", "reading": "role", "column": "ALC",
+                      "value": "exposure"})
         confirmation = drive.view()["decisions"][-1]
         drive.decide(body)
         assert drive.view()["state"]["energy_adjustment"]["nutrients"][-1] == "ALC"
@@ -813,7 +826,24 @@ def test_b1_a_bulk_confirm_records_what_rode_along_and_only_a_confirmation_settl
         assert drive.view()["state"]["role_confirmations"] in (None, {})
         r = drive.post(body)
         assert r.status_code == 409 and r.json()["error"]["code"] == "role_unconfirmed"
-        # The fit: its intake line names settled columns only.
+        # The fit asks first (BLUEPRINT §14.1): one confirmation per column that rode along.
+        models = {"kind": "select_models", "models": ["linear"]}
+        r = drive.post(models)
+        assert r.status_code == 409 and r.json()["error"]["code"] == "reading_unsettled", r.text
+        asked = [x["decision"] for x in r.json()["error"]["exits"] if x["decision"]]
+        waiting = [c for c in below if c != "hba1c"]
+        assert [a["column"] for a in asked] == waiting
+        assert all(a["kind"] == "confirm_reading" and a["reading"] == "role" for a in asked)
+        # The user knows ``ALC`` is a lymphocyte count and ``Protein`` and ``Fat%`` body
+        # composition: their own answer, then each other proposal confirmed on its own.
+        mine = {c["column"]: c["proposed"] for c in roles["columns"]}
+        mine.update({"ALC": "covariate", "Protein": "covariate", "Fat%": "covariate"})
+        drive.decide({"kind": "set_roles", "roles": mine})
+        for column in drive.view()["decisions"][-1]["decision"]["unconfirmed"]:
+            drive.decide({"kind": "confirm_reading", "reading": "role", "column": column,
+                          "value": mine[column]})
+        drive.decide(models)
+        # The fit: its intake line names settled exposures only.
         fit = drive.artifact("fit")
         text = str(fit)
         assert "self-reported" in text
@@ -863,7 +893,7 @@ def test_b2_number_changing_decisions_on_unsettled_roles_are_refused_one_column_
             d.validate(decision, ctx)
         assert refused.value.code == "role_unconfirmed", decision
         confirms = [x["decision"]["column"] for x in refused.value.exits
-                    if (x["decision"] or {}).get("kind") == "confirm_role"]
+                    if (x["decision"] or {}).get("kind") == "confirm_reading"]
         assert confirms == waiting
     settled = state.model_copy(update={"role_confirmations": {"energy": "energy", "ALC": "exposure",
                                                               "Protein": "exposure",
@@ -906,8 +936,8 @@ def test_b3_the_grouping_identifier_is_read_from_settled_roles_only(tmp_path):
                            grain=GrainSpec(grain="one_row_per_unit"))
     clusters = resolve_clusters(waiting, frame[cluster_columns(waiting, list(frame.columns))])
     assert clusters.refusal and not clusters.clustered
-    assert {"kind": "confirm_role", "column": "subject", "role": "identifier"} in [
-        x["decision"] for x in clusters.exits]
+    assert {"kind": "confirm_reading", "reading": "role", "column": "subject",
+            "value": "identifier"} in [x["decision"] for x in clusters.exits]
     settled = waiting.model_copy(update={"role_confirmations": {"subject": "identifier"}})
     clusters = resolve_clusters(settled, frame[cluster_columns(settled, list(frame.columns))])
     assert clusters.clustered and clusters.column == "subject" and clusters.n_clusters == 40

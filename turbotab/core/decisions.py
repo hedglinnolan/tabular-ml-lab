@@ -375,6 +375,26 @@ class ConfirmRole(_DecisionModel):
     role: Role
 
 
+# The readings ledger (BLUEPRINT §14.1): the kinds of reading ``confirm_reading`` records. The
+# others are answered by their own decisions (``set_outcome_unit``, ``set_repeat_kind``, …).
+ReadingKind = Literal["role", "cluster", "unit", "day_count", "code_or_count", "time_column",
+                      "nested_in"]
+
+
+class ConfirmReading(_DecisionModel):
+    """One reading of the data, confirmed on its own after its evidence was read (BLUEPRINT §14.1:
+    "Confirmation is one reading at a time, never a bulk confirm of uncertain readings"). One
+    column, one kind and one value per record: a role (``exposure``), whether a column's
+    repeating values cluster the rows (``yes``/``no``), a unit (``kg``), the days a total-energy
+    value spans (``2``), whether whole numbers are codes or amounts, or that a column orders a
+    unit's rows. ``confirm_role`` records stay valid: each is this decision's role kind."""
+
+    kind: Literal["confirm_reading"] = "confirm_reading"
+    reading: ReadingKind
+    column: str = Field(min_length=1)
+    value: str = Field(min_length=1, max_length=200, pattern=r"^[^`\n\r]+$")
+
+
 class SetEnergyAdjustment(_DecisionModel):
     kind: Literal["set_energy_adjustment"] = "set_energy_adjustment"
     method: EnergyMethod
@@ -824,6 +844,7 @@ Decision = Annotated[
         SetFeatureTable, SetCategorical, SetSurvey,
         SetExposureForm, SetOutcomeOrder, SetFollowUp,
         SetSensitivity, SetMeasurementError, SetOutcomeUnit, SetColumnUnit, ConfirmRole,
+        ConfirmReading,
     ],
     Field(discriminator="kind"),
 ]
@@ -905,9 +926,16 @@ class ProjectState(BaseModel):
     column_units: dict[str, ColumnUnitSpec] | None = None
     # BLUEPRINT §14 (Recognition's leash): the proposals below high the roles answer recorded as
     # proposed (written by ``set_roles``), and each column's own confirmation (``confirm_role``):
-    # a number-changing default reads a role only once it is settled (turbotab.core.leash)
+    # a number-changing default reads a role only once it is settled (turbotab.core.readings)
     roles_unconfirmed: list[str] | None = None
     role_confirmations: dict[str, Role] | None = None
+    # BLUEPRINT §14.1 (the readings ledger): each reading the user confirmed on its own
+    # (``confirm_reading``), keyed ``"<kind>:<column>"`` -> the value recorded for it
+    reading_confirmations: dict[str, str] | None = None
+    # ... and the two that shape the working table (whether whole numbers are codes or amounts, the
+    # column that orders a unit's records), kept apart so that confirming a unit or a role never
+    # rebuilds it
+    shape_confirmations: dict[str, str] | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -970,6 +998,7 @@ _SLOT_VALUE: dict[str, Callable[[Any], Any]] = {}
 _ALSO: dict[str, dict[str, Callable[[Any], Any]]] = {}
 _HOLDS: dict[str, Callable[[Any, Mapping[str, Any]], bool]] = {}
 _KEYS: dict[str, Callable[[Any], str]] = {}
+_SLOT_FOR: dict[str, Callable[[Any], str]] = {}
 _VALIDATORS: dict[str, list[Callable[[Any, Any], None]]] = {}
 _COMPLETIONS: dict[str, list[Callable[[Any, Any], Any]]] = {}
 
@@ -989,6 +1018,7 @@ def register_kind(
     holds: Callable[[Any, Mapping[str, Any]], bool] | None = None,
     key: Callable[[Any], str] | None = None,
     also: Mapping[str, Callable[[Any], Any]] | None = None,
+    slot_for: Callable[[Any], str] | None = None,
 ) -> type[BaseModel]:
     """Declare that decisions of ``model_cls`` write ``slot``.
 
@@ -1003,6 +1033,9 @@ def register_kind(
     ``also`` (``{slot: value(decision)}``) names further slots an unconditional,
     unkeyed kind writes with its own: ``set_roles`` records which proposals it
     carried unconfirmed (BLUEPRINT §14) beside the roles themselves.
+    ``slot_for(decision)``, for a keyed kind, names the slot one decision writes where
+    it is not ``slot`` (``confirm_reading`` keeps a role's confirmation beside the
+    others ``confirm_role`` wrote, so confirming a role reshapes no table).
     Returns the class, so it also works as a decorator via ``functools.partial``.
     """
     kind = kind_of(model_cls)
@@ -1036,6 +1069,10 @@ def register_kind(
         _HOLDS[kind] = holds
     else:
         _HOLDS.pop(kind, None)
+    if slot_for is not None:
+        _SLOT_FOR[kind] = slot_for
+    else:
+        _SLOT_FOR.pop(kind, None)
     return model_cls
 
 
@@ -1149,6 +1186,14 @@ register_kind(SetPurpose, "purpose")
 register_kind(SetRoles, "roles", value=lambda d: d.roles,
               also={"roles_unconfirmed": lambda d: list(d.unconfirmed)})
 register_kind(ConfirmRole, "role_confirmations", value=lambda d: d.role, key=lambda d: d.column)
+# A role's confirmation is kept where ``confirm_role`` keeps it (by column), so the stages that read
+# roles read it and the table-shaping stages, which read the other confirmations, never recompute.
+register_kind(ConfirmReading, "reading_confirmations", value=lambda d: d.value,
+              key=lambda d: d.column if d.reading == "role" else f"{d.reading}:{d.column}",
+              slot_for=lambda d: ("role_confirmations" if d.reading == "role"
+                                  else "shape_confirmations"
+                                  if d.reading in ("code_or_count", "time_column")
+                                  else "reading_confirmations"))
 register_kind(SetEnergyAdjustment, "energy_adjustment",
               value=lambda d: EnergyAdjustment(**d.model_dump(exclude={"kind"})))
 register_kind(SetExclusions, "exclusions")
@@ -1411,16 +1456,77 @@ def _roles_record_what_rode_along(decision: SetRoles, ctx: Any) -> SetRoles:
     the server showed (the fresh ``roles`` artifact): what a bulk "confirm all" carried without the
     user's own look. The server's, never the client's; with no roles artifact to read, the answer
     is the user's own and nothing rode along."""
-    from turbotab.core.leash import proposals_of, rode_along
+    from turbotab.core.readings import proposals_of, rode_along
 
     opener = _ctx(ctx, "artifact")
     try:
         proposals = proposals_of(opener("roles")) if callable(opener) else []
-    except Exception:  # noqa: BLE001 - no proposals to read: the answer stands as given
+    except Exception:  # noqa: BLE001 - no proposals to read
         proposals = []
     if not proposals:
-        return decision.model_copy(update={"unconfirmed": []})
-    return decision.model_copy(update={"unconfirmed": rode_along(decision.roles, proposals)})
+        # BLUEPRINT §14.1 (the census: "a set_roles recorded with no fresh roles artifact settles
+        # everything"): while the roles stage recomputes, the proposals a client was shown are the
+        # newest it computed, stale or not, and a bulk answer is read against them.
+        shown = _ctx(ctx, "shown")
+        try:
+            proposals = proposals_of(shown("roles")) if callable(shown) else []
+        except Exception:  # noqa: BLE001 - nothing was shown
+            proposals = []
+    if proposals:
+        return decision.model_copy(update={"unconfirmed": rode_along(decision.roles, proposals)})
+    # No proposal was ever computed, so none was shown and none could ride along: the roles are
+    # the user's own answer (a script, a unit test, or a client that names them itself).
+    return decision.model_copy(update={"unconfirmed": []})
+
+
+def _reading_names_a_column(decision: "ConfirmReading", ctx: Any) -> None:
+    """A confirmation names one of the dataset's columns, never the outcome (whose unit and kind
+    have their own answers), with a value its kind can take."""
+    from turbotab.core.readings import VALUES
+
+    columns = _columns_of(ctx)
+    if columns is not None and (decision.column not in columns or decision.column == ROW_ID):
+        raise Refusal("unknown_column", f"This dataset has no column named `{decision.column}`.",
+                      exits=[{"label": "Choose one of the dataset's columns", "decision": None}])
+    target = _target_of(ctx)
+    if target is not _UNKNOWN and target is not None and decision.column == target:
+        raise Refusal("target_has_role",
+                      f"`{target}` is the outcome; its unit and kind have their own questions.",
+                      exits=[{"label": "Confirm another column", "decision": None}])
+    allowed = VALUES.get(decision.reading)
+    if decision.reading == "nested_in":
+        if columns is not None and decision.value not in columns:
+            raise Refusal("unknown_column", f"This dataset has no column named `{decision.value}`.",
+                          exits=[{"label": "Name the total it is part of", "decision": None}])
+        return
+    if decision.reading == "day_count":
+        ok = decision.value.isdigit() and 1 <= int(decision.value) <= 366
+        allowed_words = "a whole number of days from 1 to 366"
+    else:
+        ok = allowed is None or decision.value in allowed
+        allowed_words = ", ".join(f"`{v}`" for v in allowed or ())
+    if not ok:
+        raise Refusal("not_a_value",
+                      f"`{decision.value}` is not a value a {decision.reading.replace('_', ' ')} "
+                      f"reading takes; it takes {allowed_words}.",
+                      exits=[{"label": "Choose one of its values", "decision": None}])
+
+
+def _models_read_settled_readings(decision: Any, ctx: Any) -> None:
+    """BLUEPRINT §14.1: a fit is a number-changing consumer of every role (a column enters the
+    model or leaves it by its role) and of each whole-number predictor's code-or-amount reading.
+    While one rode along unconfirmed, the fit asks, one exit per reading."""
+    from turbotab.core.readings import Unsettled, predictors_or_ask
+
+    state = _state(ctx)
+    if state is None or not state.roles:
+        return
+    try:
+        predictors_or_ask(state, _ctx(ctx, "column_info"), drop=left_out(state))
+    except Unsettled as waiting:
+        raise Refusal("reading_unsettled", str(waiting), exits=[
+            *waiting.exits,
+            {"label": "Change the roles (the roles question)", "decision": None}]) from None
 
 
 def _confirmed_role_names_a_column(decision: ConfirmRole, ctx: Any) -> None:
@@ -1458,7 +1564,7 @@ def _answers_keep_settled_roles(decision: Any, ctx: Any) -> None:
     recorded number-changing answer reads (reverting its confirmation, or recording the roles
     again so that it rides along unconfirmed) is refused until that answer changes; the default
     is never kept silently on a role nobody confirmed."""
-    from turbotab.core.leash import unsettled
+    from turbotab.core.readings import unsettled
 
     if decision.kind == "set_roles":
         decision = _roles_record_what_rode_along(decision, ctx)
@@ -1491,7 +1597,7 @@ def _energy_reads_settled_roles(decision: SetEnergyAdjustment, ctx: Any) -> None
     state = _state(ctx)
     if state is None or not state.roles:
         return
-    from turbotab.core.leash import confirm_exits, unsettled, unsettled_message
+    from turbotab.core.readings import confirm_exits, unsettled, unsettled_message
 
     named = [c for c in (decision.energy_column, *decision.nutrients) if c]
     waiting = unsettled(state, list(dict.fromkeys(named)))
@@ -1517,7 +1623,7 @@ def _screens_read_a_settled_energy_column(decision: SetExclusions, ctx: Any) -> 
     state = _state(ctx)
     if state is None or not state.roles:
         return
-    from turbotab.core.leash import confirm_exits, unsettled, unsettled_message
+    from turbotab.core.readings import confirm_exits, unsettled, unsettled_message
 
     on_energy = [r.column for r in decision.rules if state.roles.get(r.column) == "energy"]
     waiting = unsettled(state, list(dict.fromkeys(on_energy)))
@@ -1528,6 +1634,134 @@ def _screens_read_a_settled_energy_column(decision: SetExclusions, ctx: Any) -> 
                   exits=[*confirm_exits(state, waiting),
                          {"label": "Keep the rules on confirmed columns only",
                           "decision": SetExclusions(rules=kept)}])
+
+
+_BODY_EXPECTED = (("age", "age", "years"), ("weight", "weight", "kg"), ("height", "height", None))
+
+
+def _screens_read_settled_body_measures(decision: SetExclusions, ctx: Any) -> None:
+    """BLUEPRINT §14.1 (the readings ledger): the Goldberg screen reads a weight in kg, a height in
+    cm or m and an age in years, and a sex-specific screen reads the sex column's levels. Each is a
+    reading the screen changes numbers by: a unit known only from its median (the gate's US
+    women's ``weight`` in pounds, read as kg: 136 of 500 rows excluded against 5) or a role that
+    rode along unconfirmed is asked first, one exit per reading."""
+    from turbotab.core.readings import (
+        body_unit_reading, confirm_exit, confirm_exits, listing, unsettled,
+    )
+
+    state = _state(ctx)
+    opener = _ctx(ctx, "store")
+    try:
+        store = opener() if callable(opener) else None
+    except Exception:  # noqa: BLE001 - no values: a unit is settled by its name or the user only
+        store = None
+
+    def values(column: str) -> Any:
+        if store is None or column not in set(store.columns):
+            return None
+        return store.materialize([column])[column]
+
+    exits: list[dict[str, Any]] = []
+    units: list[str] = []
+    wrong: list[str] = []
+    roles_waiting: list[str] = []
+    for rule in decision.rules:
+        columns: list[str] = []
+        if getattr(rule, "kind", "range") == "goldberg":
+            for attr, measure, expected in _BODY_EXPECTED:
+                column = getattr(rule, attr, None)
+                if not column:
+                    continue
+                columns.append(column)
+                want = expected or rule.height_unit
+                found = body_unit_reading(column, measure, state,
+                                          values(column) if measure == "height" else None)
+                if found.settled and found.value != want:
+                    wrong.append(f"`{column}` is in {found.value}, and the screen reads {want}")
+                elif not found.settled and column not in units:
+                    units.append(column)
+                    exits.append(confirm_exit("unit", column, want, f"`{column}` is in {want}"))
+            columns.append(rule.sex)
+        elif getattr(rule, "by", None) is not None:
+            columns.append(rule.by.column)
+        if state is not None and state.roles:
+            roles_waiting += [c for c in unsettled(state, columns) if c not in roles_waiting]
+    if not (units or wrong or roles_waiting):
+        return
+    kept = [r for r in decision.rules if getattr(r, "kind", "range") != "goldberg"
+            and not (getattr(r, "by", None) is not None and r.by.column in roles_waiting)]
+    leave = {"label": "Keep only the screens that read settled columns",
+             "decision": SetExclusions(rules=kept)}
+    if wrong:
+        raise Refusal("reading_unsettled",
+                      f"The Goldberg screen cannot read these columns: {'; '.join(wrong)}.",
+                      exits=[leave])
+    said = []
+    if units:
+        one = len(units) == 1
+        said.append(f"{listing(units)}'s {'unit is' if one else 'units are'} known only from "
+                    f"{'its median' if one else 'their medians'}, which tells kg from lb no better "
+                    f"than a heavy cohort from a light one")
+    if roles_waiting:
+        one = len(roles_waiting) == 1
+        said.append(f"{listing(roles_waiting)} {'was' if one else 'were'} proposed below high "
+                    f"confidence and not confirmed on {'its' if one else 'their'} own")
+    raise Refusal("reading_unsettled",
+                  f"The screen reads {'; and '.join(said)}. Confirm each first.",
+                  exits=[*exits, *confirm_exits(state, roles_waiting), leave])
+
+
+def _answers_keep_settled_readings(decision: Any, ctx: Any) -> None:
+    """BLUEPRINT §14.1 (and §13's "invalidates"): undoing a reading's confirmation while a recorded
+    answer reads it (a screen's body measure, the order a unit's records were combined in, a
+    predictor's code-or-amount reading) would leave a number resting on a reading nobody settled;
+    refused until that answer changes, never kept silently."""
+    from turbotab.core.readings import (
+        Unsettled, body_unit_reading, predictors_or_ask, time_column_reading,
+    )
+
+    now = _state(ctx)
+    after = state_after(decision, ctx)
+    if now is None or after is None:
+        return
+    readers: list[tuple[str, str]] = []
+    rules = [*(now.exclusions or []), *(r for a in (now.sensitivity or []) for r in a.rules)]
+    for rule in rules:
+        if getattr(rule, "kind", "range") != "goldberg":
+            continue
+        for attr, measure, _ in _BODY_EXPECTED:
+            column = getattr(rule, attr, None)
+            if column and body_unit_reading(column, measure, now).settled \
+                    and not body_unit_reading(column, measure, after).settled:
+                readers.append(("exclusion rules", column))
+    agg = now.aggregation
+    if agg is not None:
+        from turbotab.core.stages.working import needs_order
+
+        if needs_order(agg.method, agg.outcome, agg.columns):
+            before_t, after_t = time_column_reading(now, None), time_column_reading(after, None)
+            if before_t is not None and before_t.settled and (after_t is None or not after_t.settled):
+                readers.append(("combining answer", before_t.column))
+    if now.models:
+        info = _ctx(ctx, "column_info")
+        try:
+            predictors_or_ask(now, info, drop=left_out(now))
+        except Unsettled:
+            pass  # already waiting: the fit asks for it
+        else:
+            try:
+                predictors_or_ask(after, info, drop=left_out(after))
+            except Unsettled as waiting:
+                column = (waiting.exits[0].get("decision") or {}).get("column", "a predictor")
+                readers.append(("models answer", str(column)))
+    if not readers:
+        return
+    what, column = readers[0]
+    raise Refusal(
+        "role_unconfirmed",
+        f"The recorded {what} reads `{column}`, which would then rest on a reading nobody "
+        f"settled. Change the {what} first, or keep the confirmation.",
+        exits=[{"label": "Keep the answers as they are", "decision": None}])
 
 
 def _rule_without(decision: SetExclusions, index: int) -> SetExclusions:
@@ -1722,6 +1956,21 @@ def _screens_wait_for_the_unit(decision: SetExclusions, ctx: Any) -> None:
                         "decision": SetColumnUnit(column=column, unit=proposed)},
                        {"label": f"`{column}` is a total over {spanned} days, in {word[other]}",
                         "decision": SetColumnUnit(column=column, unit=other, days=int(spanned))}])
+        if reading.get("days_unsettled") and reading.get("basis") in ("name", "atwater"):
+            # BLUEPRINT §14.1: the unit is settled, the days are not (the gate's
+            # ``energy_kcal_day1_day2``: the Atwater identity held for 2-day totals).
+            evidence = (reading.get("days_reading") or {}).get("evidence") or "nothing settles it"
+            spans = [d for d in reading.get("days_candidates") or [1, 2] if d > 1] or [2]
+            raise Refusal(
+                "energy_unit_unconfirmed",
+                f"The rule on `{column}` reads its bounds in a day's {word[proposed]}, but how many "
+                f"days each value spans is not settled: {evidence}. Record it first; then the "
+                f"screen's bounds are read in it.",
+                exits=[{"label": f"`{column}` is one day's intake, in {word[proposed]}",
+                        "decision": SetColumnUnit(column=column, unit=proposed)},
+                       *({"label": f"`{column}` is a total over {d} days, in {word[proposed]}",
+                          "decision": SetColumnUnit(column=column, unit=proposed, days=int(d))}
+                         for d in spans[:3])])
         raise Refusal(
             "energy_unit_unconfirmed",
             f"The rule on `{column}` reads its bounds in {word[proposed]}, but "
@@ -1920,7 +2169,7 @@ def _energy_adjustment_fits_the_roles(decision: SetEnergyAdjustment, ctx: Any) -
     if not decision.nutrients:
         # BLUEPRINT §14 rule 2: the card pre-fills only settled nutrients; when every candidate is
         # waiting for its own confirmation, say which, one exit each.
-        from turbotab.core.leash import confirm_exits, unsettled, unsettled_message
+        from turbotab.core.readings import confirm_exits, unsettled, unsettled_message
         from turbotab.core.stages.proposals import energy_bearing
 
         waiting = unsettled(state, [c for c, r in roles.items()
@@ -2157,6 +2406,75 @@ def _substitution_swaps_energy(decision: SetSubstitution, ctx: Any) -> None:
         )
 
 
+def _substitution_reads_settled_readings(decision: SetSubstitution, ctx: Any) -> None:
+    """BLUEPRINT §14.1 (the readings ledger): a substitution moves energy between two columns by
+    three readings of each, every one settled before a curve reads it: its exposure role, its kcal
+    per unit (an Atwater factor needs the column in grams: stated by the name or its codebook,
+    agreed by the Atwater identity, or confirmed), and, on the share-of-energy scale, that its
+    values are percentages of energy (0 to 100, not fractions)."""
+    from turbotab.core.methods.percent_energy import check_percent_values, is_percent_of_energy
+    from turbotab.core.readings import confirm_exit, confirm_exits, unsettled, unsettled_factors
+
+    state = _state(ctx)
+    if state is None or not state.roles:
+        return
+    moved = [decision.donor, decision.recipient]
+    waiting = unsettled(state, moved)
+    if waiting:
+        raise Refusal("role_unconfirmed",
+                      f"{_and(waiting)} {'was' if len(waiting) == 1 else 'were'} proposed below "
+                      f"high confidence and recorded with the other roles; a substitution moves "
+                      f"energy through {'it' if len(waiting) == 1 else 'them'} only once confirmed "
+                      f"on {'its' if len(waiting) == 1 else 'their'} own.",
+                      exits=[*confirm_exits(state, waiting),
+                             {"label": "Choose two confirmed nutrients", "decision": None}])
+    shares = [c for c in moved if is_percent_of_energy(c)]
+    opener = _ctx(ctx, "store")
+    try:
+        store = opener() if callable(opener) else None
+    except Exception:  # noqa: BLE001 - no data: only stated or confirmed units settle
+        store = None
+    factors = unsettled_factors(state, [c for c in moved if c not in shares], store)
+    if factors:
+        raise Refusal(
+            "reading_unsettled",
+            f"{_and(factors)} {'reads' if len(factors) == 1 else 'read'} as an energy-bearing "
+            f"nutrient, but {'its' if len(factors) == 1 else 'their'} unit is unstated, so the kcal "
+            f"each unit carries is a guess. Confirm the unit first.",
+            exits=[*(confirm_exit("unit", c, "g", f"`{c}` is in grams") for c in factors),
+                   {"label": "Choose two nutrients whose units are stated", "decision": None}])
+    # A total moves with its parts (and a part with its total) by the nesting reading: the values
+    # agree (a part never exceeds its total), which is necessary, not sufficient; confirmed once.
+    from turbotab.core.readings import confirmation as _confirmed
+
+    nested = nesting_of(ctx)
+    pairs = [(child, parent) for child, parent in nested.items()
+             if child in moved or parent in moved]
+    open_pairs = [(c, p) for c, p in pairs if _confirmed(state, "nested_in", c) != p]
+    if open_pairs:
+        raise Refusal(
+            "reading_unsettled",
+            "Moving energy here moves parts with their totals: "
+            + "; ".join(f"`{c}` reads as part of `{p}`" for c, p in open_pairs)
+            + ". Their values agree (a part never exceeds its total), which a part must, but does "
+              "not prove it. Confirm each before the curve moves them together.",
+            exits=[*(confirm_exit("nested_in", c, p, f"`{c}` is part of `{p}`")
+                     for c, p in open_pairs),
+                   {"label": "Choose two nutrients that are not parts of each other",
+                    "decision": None}])
+    if decision.scale == "percent_energy" and shares:
+        if store is not None:
+            present = [c for c in shares if c in set(store.columns)]
+            try:
+                check_percent_values(store.materialize(present), present)
+            except ValueError as wrong:
+                raise Refusal("reading_unsettled",
+                              f"{wrong} A share of energy moves in percentage points, so its "
+                              f"values are read before any curve.",
+                              exits=[{"label": "Choose two columns that hold percentages of energy",
+                                      "decision": None}]) from None
+
+
 def nesting_of(ctx: Any) -> dict[str, str]:
     """Child column -> the column it is part of, as the design (else the roles stage) found it."""
     artifact = _ctx(ctx, "artifact")
@@ -2333,8 +2651,11 @@ def _substitution_has_every_energy_source(decision: SetSubstitution, ctx: Any) -
                 "decision": SetRoles(roles={**roles, **{c: "exposure" for c in rest},
                                             reference: "excluded"})})
     elif addable:
-        exits.append({"label": f"Add {_and(addable)} to the model",
-                      "decision": SetRoles(roles={**roles, **{c: "exposure" for c in addable}})})
+        # BLUEPRINT §14.1: each column the names read as an energy source is added on its own,
+        # one reading per answer, never several at once.
+        for c in addable[:4]:
+            exits.append({"label": f"Add `{c}` to the model as an exposure",
+                          "decision": SetRoles(roles={**roles, c: "exposure"})})
     exits += [
         {"label": "Keep this swap; the curve carries their confounding",
          "decision": SetSubstitution(**{**base, "acknowledged": True})},
@@ -2735,12 +3056,14 @@ def _sensitivity_rules_are_eligibility_rules(decision: SetSensitivity, ctx: Any)
             _exclusions_are_ranges_on_numbers(probe, ctx)
             _screens_wait_for_the_unit(probe, ctx)
             _screens_read_a_settled_energy_column(probe, ctx)
+            _screens_read_settled_body_measures(probe, ctx)
         except Refusal as refused:
             # A unit to record or a role to confirm is answered where it is asked (its own exits),
             # or the analysis left out.
             kept = ([e for e in refused.exits if (e.get("decision") or {}).get("kind")
-                     in ("set_column_unit", "confirm_role")]
-                    if refused.code in ("energy_unit_unconfirmed", "role_unconfirmed") else [])
+                     in ("set_column_unit", "confirm_role", "confirm_reading")]
+                    if refused.code in ("energy_unit_unconfirmed", "role_unconfirmed",
+                                        "reading_unsettled") else [])
             raise Refusal(refused.code, f"In “{analysis.label}”: {refused.message}",
                           exits=[*kept, {"label": f"Leave out “{analysis.label}”",
                                          "decision": rest}]) from None
@@ -2787,6 +3110,7 @@ register_validator("set_follow_up", _follow_up_belongs_to_the_outcome)
 register_validator("set_roles", _roles_name_real_columns)
 register_completion("set_roles", _roles_record_what_rode_along)
 register_validator("confirm_role", _confirmed_role_names_a_column)
+register_validator("confirm_reading", _reading_names_a_column)
 register_validator("set_exclusions", _screens_read_a_settled_energy_column)
 register_validator("set_feature_table", _feature_table_names_the_files_columns)
 register_validator("set_categorical", _categorical_names_predictors)
@@ -2796,18 +3120,22 @@ register_validator("set_missing", _non_detections_are_not_filled_by_the_median)
 register_validator("set_substitution", _substitution_moves_between_separate_nutrients)
 register_validator("set_exclusions", _exclusions_are_ranges_on_numbers)
 register_validator("set_exclusions", _screens_wait_for_the_unit)
+register_validator("set_exclusions", _screens_read_settled_body_measures)
 register_validator("set_exclusions", _screens_keep_most_rows)
 # first: a rule on the outcome is refused for that reason, whatever else is wrong with its bounds
 register_validator("set_exclusions", _exclusions_leave_the_outcome_alone, first=True)
 register_validator("set_target", _new_outcome_has_no_rule)
 register_validator("revert", _revert_leaves_no_rule_on_the_outcome)
 register_validator("revert", _answers_keep_settled_roles)
+register_validator("revert", _answers_keep_settled_readings)
 register_validator("set_roles", _answers_keep_settled_roles)
 register_validator("set_energy_adjustment", _energy_adjustment_fits_the_roles)
 register_validator("set_energy_adjustment", _energy_reads_settled_roles)
 register_validator("select_models", _models_can_fit_the_task)
+register_validator("select_models", _models_read_settled_readings)
 register_validator("set_substitution", _substitution_swaps_energy)
 register_validator("set_substitution", _substitution_has_every_energy_source)
+register_validator("set_substitution", _substitution_reads_settled_readings)
 
 
 # ── the fold ─────────────────────────────────────────────────────────────────
@@ -2861,9 +3189,11 @@ def fold(records: Sequence[DecisionRecord]) -> ProjectState:
             continue
         keyed = _KEYS.get(decision.kind)
         if keyed is not None:
-            entries = dict(slots.get(SLOTS[decision.kind]) or {})
+            slot = _SLOT_FOR[decision.kind](decision) if decision.kind in _SLOT_FOR \
+                else SLOTS[decision.kind]
+            entries = dict(slots.get(slot) or {})
             entries[keyed(decision)] = _SLOT_VALUE[decision.kind](decision)
-            slots[SLOTS[decision.kind]] = entries
+            slots[slot] = entries
         else:
             slots[SLOTS[decision.kind]] = _SLOT_VALUE[decision.kind](decision)
             for extra, fn in _ALSO.get(decision.kind, {}).items():

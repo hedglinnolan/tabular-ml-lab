@@ -594,9 +594,15 @@ def test_5b_the_shape_alone_reads_a_log_scale_matrix_by_its_own_spreads(tmp_path
     assert legacy.read(frame)["reading"] == "undetermined"
 
 
-def test_5c_a_sample_major_assay_is_not_asked(tmp_path):
+def test_5c_a_sample_major_assay_is_asked_with_its_reading_as_the_proposal(tmp_path):
+    """Superseded by the readings ledger (BLUEPRINT §14.1, 2026-10-03): WP14 skipped the question on
+    a sample-major reading, but the orientation reader is never high (its evidence is the header's
+    grammar and the shape), and a consumer reads only settled readings. The reading stands as the
+    question's proposal; a settled (high) one would still skip it."""
     reading = _reading(pd.read_csv(SAMPLES / "metabolomics_untargeted.csv"), tmp_path, "met")
-    assert reading["reading"] == "sample_major" and not _asked(reading, ["metabolomics"])
+    assert reading["reading"] == "sample_major" and reading["confidence"] != "high"
+    assert _asked(reading, ["metabolomics"])
+    assert not _asked({**reading, "confidence": "high"}, ["metabolomics"])
 
 
 # ═════════════════════════════════════════════════════════════════════════════

@@ -8,13 +8,16 @@ import numpy as np
 import pandas as pd
 
 from turbotab.core.stages.modeling import coded_outcome
-from turbotab.server.tests.conftest import SAMPLES, open_by_path, prepare, wait_for
+from turbotab.server.tests.conftest import SAMPLES, answer_settled, open_by_path, prepare, wait_for
 
 
 def decide(client, pid, decision, status=200):
     if status == 200:
         prepare(client, pid, decision)  # the questions before it, answered as usual (M2 §12.2)
-    response = client.post(f"/api/projects/{pid}/decisions", json=decision)
+        # each reading below high confirmed on its own (BLUEPRINT §14.1, the readings ledger)
+        response = answer_settled(client, pid, None, decision)
+    else:
+        response = client.post(f"/api/projects/{pid}/decisions", json=decision)
     assert response.status_code == status, response.text
     return response.json()
 
@@ -110,6 +113,12 @@ def test_the_aggregation_coach_reads_the_stated_repeats_and_their_dates(client):
     decide(client, pid, {"kind": "set_lens", "lenses": ["dietary"]})
     decide(client, pid, {"kind": "set_target", "column": "hba1c"})
     decide(client, pid, {"kind": "set_grain", "grain": "repeated", "id_column": "participant_id"})
+    # The readings ledger (BLUEPRINT §14.1): the stated repeats are the question's proposal, and
+    # the reading's date orders the records once confirmed on its own.
+    wait_for(client, pid, {"structure": "fresh"})
+    assert client.get(f"/api/projects/{pid}/stages/structure").json()["artifact"]["repeats"][
+        "reading"] == "repeats"
+    decide(client, pid, {"kind": "set_repeat_kind", "repeat_kind": "repeats"})
     decide(client, pid, {"kind": "set_unit", "unit": "unit"})
     wait_for(client, pid, {"structure": "fresh"})
 
@@ -117,7 +126,13 @@ def test_the_aggregation_coach_reads_the_stated_repeats_and_their_dates(client):
         body = preview(client, pid, {"kind": "set_aggregation", "method": method})
         return [n["text"] for v in body["views"] for n in v.get("coach") or []]
 
-    assert any("replicates" in t for t in coach("mean"))  # stated repeats, not only answered
+    assert any("replicates" in t for t in coach("mean"))  # the answered repeats
+    refused = client.post(f"/api/projects/{pid}/preview",
+                          json={"kind": "set_aggregation", "method": "first"})
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "reading_unsettled"
+    decide(client, pid, {"kind": "confirm_reading", "reading": "time_column",
+                         "column": "recall_date", "value": "orders"})
+    wait_for(client, pid, {"structure": "fresh"})
     assert not any("No time column" in t for t in coach("first"))  # recall_date orders them
     # M2_CONTRACT §12.4: once combined, the notes still read the rows before combining
     decide(client, pid, {"kind": "set_aggregation", "method": "mean"})
@@ -157,10 +172,16 @@ def test_every_structural_answer_previews_its_picture(client, tmp_path):
     decide(client, pid, {"kind": "set_grain", "grain": "repeated", "id_column": "subject_id"})
     decide(client, pid, {"kind": "set_unit", "unit": "row"})
     wait_for(client, pid, {"structure": "fresh", "cohort": "fresh"})
-    yes = preview(client, pid, {"kind": "set_temporal", "temporal": True})  # the stated column
+    # The readings ledger (BLUEPRINT §14.1): a bare "yes" is never completed by the reading's column;
+    # the refusal's first exit names it, and the answer that names it is recorded.
+    bare = client.post(f"/api/projects/{pid}/preview", json={"kind": "set_temporal", "temporal": True})
+    assert bare.status_code == 409
+    named = bare.json()["error"]["exits"][0]["decision"]
+    assert named["time_column"] == "visit_date"
+    yes = preview(client, pid, named)
     flow = yes["views"][0]
     assert flow["after"][-1]["key"] == "holdout" and "`visit_date`" in flow["caption"]
-    recorded = decide(client, pid, {"kind": "set_temporal", "temporal": True})
+    recorded = decide(client, pid, named)
     assert recorded["state"]["temporal"]["time_column"] == "visit_date"  # the record names it
 
     m = pd.read_csv(SAMPLES / "metabolomics_untargeted.csv").set_index("sample_id")

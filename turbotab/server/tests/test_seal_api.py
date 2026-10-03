@@ -18,7 +18,7 @@ import pytest
 
 from turbotab.core import seal
 from turbotab.server.service import ProjectService
-from turbotab.server.tests.conftest import DIETARY, open_by_path, prepare, wait_for
+from turbotab.server.tests.conftest import DIETARY, answer_settled, open_by_path, prepare, wait_for
 
 FAMILIES = ["linear", "elastic_net", "boosted_trees"]
 # The event stream never ends, so it is spied on where it starts: every event the bus publishes.
@@ -28,7 +28,10 @@ EXEMPT = {"/api/projects/{pid}/events"}
 def decide(client, pid, decision, status=200):
     if status == 200:
         prepare(client, pid, decision)  # the questions before it, answered as usual (M2 §12.2)
-    response = client.post(f"/api/projects/{pid}/decisions", json=decision)
+        # each reading below high confirmed on its own (BLUEPRINT §14.1, the readings ledger)
+        response = answer_settled(client, pid, None, decision)
+    else:
+        response = client.post(f"/api/projects/{pid}/decisions", json=decision)
     assert response.status_code == status, response.text
     return response.json()
 

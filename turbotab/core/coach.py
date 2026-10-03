@@ -132,19 +132,38 @@ def _measured(frame: pd.DataFrame, target: str | None) -> pd.Series:
     return pd.Series(True, index=frame.index)
 
 
-def _is_energy(column: str) -> bool:
-    from turbotab.core.stages.proposals import is_energy_name
+def _is_energy(column: str, state: Any = None, datastore: Any = None) -> bool:
+    """Whether a line may call ``column``'s tails under- and over-reporting: only when its total-
+    energy reading is settled (BLUEPRINT §14.1, the readings ledger): its energy role, once roles
+    are recorded; before that, its values following the energy its macronutrients carry. A name
+    alone never says so (the gate: "likely over-reporting" on a 2-day total and on a device's
+    energy expenditure)."""
+    from turbotab.core.readings import role_reading
+
+    if state is not None and getattr(state, "roles", None):
+        found = role_reading(state, column)
+        return found is not None and found.settled and found.value == "energy"
+    if datastore is None or column not in set(getattr(datastore, "columns", ()) or ()):
+        return False
+    from turbotab.core.decisions import _names_a_macro_total
+    from turbotab.core.recognizers import energy_against_macros, macro_candidates
 
     try:
-        return is_energy_name(column)
-    except Exception:  # noqa: BLE001 - a name that cannot be read is not energy
+        names = [c for c in datastore.columns if c != column and _names_a_macro_total(c)]
+        frame = datastore.materialize([column, *names])
+        verdict = energy_against_macros(frame, column,
+                                        candidates=macro_candidates(frame, exclude=[column]))
+    except Exception:  # noqa: BLE001 - nothing to corroborate it by
         return False
+    return verdict is not None and bool(verdict.by_values)
 
 
 def _unit_suffix(column: str) -> str:
-    from turbotab.core.stages.rows import _unit
+    """A unit beside a count only from a settled unit reading: a whole unit the name spells out
+    (``energy_kcal``), never a bare amount the quantity does not take (``bmi_kg``)."""
+    from turbotab.core.readings import stated_outcome_unit
 
-    unit = _unit(column)
+    unit, _ = stated_outcome_unit(column)
     return f" {unit}" if unit else ""
 
 
@@ -185,9 +204,11 @@ def _bounds(rule: Any) -> tuple[list[float], list[float]]:
 
 
 def range_notes(column: str, below: int, above: int, lows: Sequence[float], highs: Sequence[float],
-                axis: tuple[float, float], *, by: str | None = None) -> list[CoachNote | None]:
-    """"`194` rows below `500` kcal: likely under-reporting" and its mirror, anchored to the tails."""
-    energy = _is_energy(column)
+                axis: tuple[float, float], *, by: str | None = None,
+                state: Any = None, datastore: Any = None) -> list[CoachNote | None]:
+    """"`194` rows below `500` kcal: likely under-reporting" and its mirror, anchored to the tails.
+    The misreporting words need ``column``'s energy reading settled (:func:`_is_energy`)."""
+    energy = _is_energy(column, state, datastore)
     suffix = _unit_suffix(column)
     lo_axis, hi_axis = axis
     out: list[CoachNote | None] = []
@@ -236,7 +257,8 @@ def exclusions_coach(decision: Any, views: list, ctx: PreviewContext) -> None:
             below, above = _below_above(frame, rule, base)
             lows, highs = _bounds(rule)
             attach(cut, range_notes(rule.column, below, above, lows, highs, _axis(cut),
-                                    by=rule.by.column if rule.by is not None else None))
+                                    by=rule.by.column if rule.by is not None else None,
+                                    state=ctx.state))
     if flow is not None and bmi is not None and bmi in frame.columns:
         from turbotab.core.stages.proposals import rule_excludes
 
@@ -352,8 +374,8 @@ def _structure(ctx: PreviewContext) -> dict[str, Any] | None:
 
 
 def _time_column(state: Any, structure: Mapping[str, Any] | None = None) -> str | None:
-    """The column that orders a unit's rows, as the working stage reads it: the answers' time
-    column, else the one the stated reading spaced the rows by."""
+    """The column that orders a unit's rows, as the working stage reads it: the settled one only
+    (named with an answer, or the reading's column confirmed on its own; BLUEPRINT §14.1)."""
     from turbotab.core.stages.working import time_column
 
     return time_column(state, structure)
@@ -410,7 +432,7 @@ def aggregation_coach(decision: Any, views: list, ctx: PreviewContext) -> None:
     from turbotab.core.stages.working import effective_repeat_kind
 
     structure = _structure(ctx)
-    kind = effective_repeat_kind(ctx.state, structure)  # answered, else stated (a skip)
+    kind = effective_repeat_kind(ctx.state, structure)  # answered (the ledger: never stated)
     primary = views[0]
     anchor = _anchor_for(primary, unit)
     notes: list[CoachNote | None] = []
@@ -470,7 +492,9 @@ def implausible_evidence_coach(finding: dict, views: list, ctx: Any) -> None:
     values = pd.to_numeric(ctx.datastore.materialize([cut.column])[cut.column], errors="coerce")
     below = int((values < min(lows)).sum()) if lows else 0
     above = int((values > max(highs)).sum()) if highs else 0
-    attach(cut, range_notes(cut.column, below, above, lows[:1], highs[-1:], _axis(cut)))
+    attach(cut, range_notes(cut.column, below, above, lows[:1], highs[-1:], _axis(cut),
+                            state=getattr(ctx, "state", None),
+                            datastore=getattr(ctx, "datastore", None)))
 
 
 def energy_evidence_coach(finding: dict, views: list, ctx: Any) -> None:
@@ -529,7 +553,8 @@ register_evidence_coach("voice::identifier", lambda finding, views, ctx: None)
 
 def card_lines(frame: pd.DataFrame, *, target: str | None, energy: str | None, unit: str,
                missing: Mapping[str, Any],
-               unit_reading: Mapping[str, Any] | None = None) -> dict[str, CoachNote]:
+               unit_reading: Mapping[str, Any] | None = None,
+               settled: bool = True) -> dict[str, CoachNote]:
     """At most one line per decision card, from the proposals' own reading of the data as loaded.
 
     ``exclusions``: rows outside the pack's plausible-intake range (the detector's own bounds), in
@@ -554,8 +579,19 @@ def card_lines(frame: pd.DataFrame, *, target: str | None, energy: str | None, u
         present = int((e.notna() & base).sum())
         from turbotab.core.stages.proposals import MOST_ROWS
 
-        confirmed = (unit_reading or {}).get("confirmed", True)
-        if not confirmed and (below or above) and (unit_reading or {}).get("basis") == "days":
+        confirmed = (unit_reading or {}).get("confirmed", True) and settled
+        if not settled and (below or above):
+            # BLUEPRINT §14.1: the column's energy role is not settled, so no tail is a misreport.
+            line = note(f"If {tick(energy)} is total energy, {count(below + above)} rows fall "
+                        f"outside {value(round(low))}–{value(round(high))}: confirm it",
+                        "column", energy)
+        elif not confirmed and (below or above) and (unit_reading or {}).get("days_unsettled") \
+                and (unit_reading or {}).get("basis") in ("name", "atwater"):
+            # BLUEPRINT §14.1: the unit is settled, the days are not (the gate's ``day1_day2``).
+            line = note(f"If {tick(energy)} is one day's, {count(below + above)} rows fall outside "
+                        f"{value(round(low))}–{value(round(high))}: record days",
+                        "column", energy)
+        elif not confirmed and (below or above) and (unit_reading or {}).get("basis") == "days":
             # BLUEPRINT §14 rule 3: the days a name carries are asked; the count is conditional.
             line = note(f"If {tick(energy)} spans {value(days)} days, {count(below + above)} rows "
                         f"fall outside {value(round(low))}–{value(round(high))}: record it",

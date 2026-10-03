@@ -206,9 +206,15 @@ def test_the_grain_sentence_counts_the_units_it_names():
 
 
 def test_the_aggregation_sentence_says_how_and_what_it_did_to_n():
+    # The readings ledger (BLUEPRINT §14.1): a column combined as a code is one the user said holds
+    # codes, and the sentence names it; none said, none named (the gate: "any codes" named no
+    # column while per-recall counts took their mode).
     assert say(d.SetAggregation(method="mean")) == (
+        "Each `participant_id`'s rows were combined into one by their mean: `7` rows became `4`.")
+    coded = REPEATED.model_copy(update={"shape_confirmations": {"code_or_count:smoker": "code"}})
+    assert say(d.SetAggregation(method="mean"), coded) == (
         "Each `participant_id`'s rows were combined into one by their mean: `7` rows became `4`; "
-        "any codes took their most frequent value.")
+        "`smoker` holds codes and took its most frequent value.")
     timed = REPEATED.model_copy(update={"repeat_kind": d.RepeatSpec(repeat_kind="time_points",
                                                                     time_column="recall_date")})
     assert say(d.SetAggregation(method="last", outcome="last"), timed) == (

@@ -182,11 +182,21 @@ def _energy_applicability(state: Any, bearing: Callable[[str], bool]) -> str | N
         return "The dietary lens is off, so energy adjustment does not apply."
     if state.roles is None:
         return None
+    from turbotab.core.readings import unsettled
+
+    if unsettled(state):
+        # BLUEPRINT §14.1: whether a column is total energy, or an exposure, may still change with
+        # a role nobody confirmed; the question is not removed on an unsettled reading.
+        return None
     roles = state.roles
     if not any(r == "energy" for r in roles.values()):
         return "No column has the energy role, so there is no total energy to adjust against."
-    if not any(r == "exposure" and bearing(c) for c, r in roles.items()):
-        return "No exposure is a nutrient that carries energy, so there is nothing to adjust."
+    if not any(r == "exposure" for r in roles.values()):
+        return "No column is an exposure, so there is nothing to adjust."
+    # BLUEPRINT §14.1 (the readings ledger): "carries no energy" is a reading of the name, never
+    # settled by it; an exposure no name reads as a nutrient (``Energykcal``'s NDNS ``Protein``,
+    # a food group) may still carry energy, so the estimand question is asked rather than
+    # removed. The energy card says which exposures it reads as nutrients.
     return None
 
 
@@ -217,8 +227,15 @@ def _orientation_gate(state: Any, oriented: Any) -> Gate:
                 "No assay lens is on, and other tables are not exported turned around.")
     reading = _get(oriented, "reading") or {}
     # WP14 (audit IN-11): under an assay lens it is asked unless the table reads as one row per
-    # sample; an undetermined reading is a question, never a silent "rows are samples".
-    if oriented is None or _get(reading, "reading") != "sample_major":
+    # sample; an undetermined reading is a question, never a silent "rows are samples". BLUEPRINT
+    # §14.1 (the readings ledger): only a settled reading answers it, and the orientation reader is
+    # never high (its evidence is the header's grammar and the shape), so under an assay lens the
+    # question is asked with the reading as its proposal.
+    from turbotab.core.readings import stated_reading
+
+    found = stated_reading("orientation", "__table__", _get(reading, "reading"),
+                           _get(reading, "confidence"))
+    if oriented is None or found.value != "sample_major" or not found.settled:
         return None
     sentence = _get(reading, "sentence") or ""
     return ("not_applicable", sentence or "The table reads as one row per sample.")
@@ -275,11 +292,16 @@ def _repeat_kind_gate(state: Any, structure: Any) -> Gate:
         return ("not_applicable", f"{UNKNOWN_GRAIN}, so there are no repeats to tell apart.")
     if grain != "repeated":
         return ("not_applicable", "Each unit appears once, so there are no repeats to tell apart.")
-    reading = _get(structure, "repeats") or {}
+    # BLUEPRINT §14.1 (the readings ledger): the repeat kind is skipped only on a settled reading.
+    # The structure stage's stated reading is medium at most, so it is the question's proposal,
+    # never its answer (the gate: recalls numbered across an ``assessment``'s occasions).
+    from turbotab.core.readings import repeat_kind_reading
+
     units = _get(structure, "units") or {}
-    if (_get(reading, "stated") and _get(reading, "reading")
+    found = repeat_kind_reading(state, structure if isinstance(structure, Mapping) else None)
+    if (found is not None and found.settled
             and _get(units, "column") == _get(state.grain, "id_column")):
-        return ("skipped", _skip_reason(_get(reading, "sentence")))
+        return ("skipped", _skip_reason(found.evidence))
     return None
 
 

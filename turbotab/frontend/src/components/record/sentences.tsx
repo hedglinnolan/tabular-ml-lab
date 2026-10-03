@@ -105,6 +105,8 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "column_units";
     case "confirm_role":
       return "role_confirmations";
+    case "confirm_reading":
+      return "reading_confirmations";
     case "set_follow_up":
       return "follow_up";
     case "set_sensitivity":

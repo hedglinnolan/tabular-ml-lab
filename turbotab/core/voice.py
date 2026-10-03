@@ -281,7 +281,7 @@ def _outcome_unit(ctx: Any, column: str, state: Any = None) -> str | None:
     (``set_outcome_unit``), ``ctx["outcome_unit"]`` (the target stage's stated unit), or a full
     unit the name spells out; None otherwise. A unit is never guessed from the values (audit IN-05;
     CLINICAL_SURVEY_PACK §A1.1: "TurboTab will not guess")."""
-    from turbotab.core.units import from_name, recorded_unit
+    from turbotab.core.units import outcome_unit, recorded_unit
 
     recorded = recorded_unit(state, column) if state is not None else None
     if recorded:
@@ -289,7 +289,9 @@ def _outcome_unit(ctx: Any, column: str, state: Any = None) -> str | None:
     given = _get(ctx, "outcome_unit")
     if given:
         return str(given)
-    return from_name(column)
+    # BLUEPRINT §14.1: a settled outcome-unit reading only (the gate: "`bmi_kg` was chosen as the
+    # outcome, in kg").
+    return outcome_unit(column)[0]
 
 
 @register_sentence("set_target")
@@ -535,6 +537,39 @@ def _confirm_role(d: Any, state: Any, ctx: Any) -> str:
     """BLUEPRINT §14 rule 2: an individual confirmation, recorded as one."""
     return (f"{tick(d.column)} was confirmed as {_ROLE_AS.get(d.role, tick(d.role))} on its own, "
             f"after the evidence for its proposal was read")
+
+
+_UNIT_WORDS = {"kj": "kJ", "pct_energy": "percent of energy", "m": "meters", "in": "inches"}
+
+
+@register_sentence("confirm_reading")
+def _confirm_reading(d: Any, state: Any, ctx: Any) -> str:
+    """BLUEPRINT §14.1: one reading of the data, confirmed on its own and recorded as one."""
+    col = tick(d.column)
+    value = str(d.value)
+    if d.reading == "role":
+        said = f"{col} was confirmed as {_ROLE_AS.get(value, tick(value))}"
+    elif d.reading == "cluster":
+        said = (f"{col} was confirmed as marking rows that belong together, so the intervals "
+                f"cluster by it" if value == "yes" else
+                f"{col} was confirmed as not marking rows that belong together, so the intervals "
+                f"do not cluster by it")
+    elif d.reading == "unit":
+        said = f"{col} was confirmed to be in {_UNIT_WORDS.get(value, value)}"
+    elif d.reading == "day_count":
+        days = int(value) if value.isdigit() else value
+        said = (f"{col} was confirmed as one day's intake" if days == 1 else
+                f"{col} was confirmed as a total over {tick(str(days))} days")
+    elif d.reading == "code_or_count":
+        said = (f"{col} was confirmed to hold codes for categories" if value == "code" else
+                f"{col} was confirmed to hold amounts or counts")
+    elif d.reading == "nested_in":
+        said = f"{col} was confirmed as part of {tick(value)}"
+    elif d.reading == "time_column":
+        said = f"{col} was confirmed as the column that orders each unit's rows"
+    else:
+        said = f"{col}'s {str(d.reading).replace('_', ' ')} was confirmed as {tick(value)}"
+    return f"{said}, on its own, after the evidence for its reading was read"
 
 
 # set_exclusions
@@ -1294,12 +1329,12 @@ _OUTCOME_HOW = {"mean": "mean", "first": "first value", "last": "last value"}
 
 
 def _time_order(state: Any) -> str | None:
-    for slot in ("repeat_kind", "temporal"):
-        value = getattr(state, slot, None)
-        column = _attr(value, "time_column") if value is not None else None
-        if column:
-            return column
-    return None
+    """The column that ordered a unit's records: a settled time-column reading only (named, or
+    confirmed on its own), the one the working table ordered them by (BLUEPRINT §14.1)."""
+    from turbotab.core.readings import time_column_reading
+
+    found = time_column_reading(state, None)
+    return found.column if found is not None and found.settled else None
 
 
 @register_sentence("set_aggregation")
@@ -1316,12 +1351,26 @@ def _set_aggregation(d: Any, state: Any, ctx: Any) -> str:
     target = getattr(state, "target", None)
     if d.outcome and target:
         text += f"; the outcome {tick(target)} was taken as their {_OUTCOME_HOW[d.outcome]}"
-    # Codes and unchanging columns are never averaged or differenced (stages.working.column_rule).
+    # Codes and unchanging columns are never averaged or differenced (stages.working.column_rule);
+    # a column is a code only as the user said (BLUEPRINT §14.1), and the sentence names each.
+    from turbotab.core.readings import confirmed_codes
+
+    codes = [c for c in confirmed_codes(state) if c not in (d.columns or {})]
     if d.method == "mean":
-        text += "; any codes took their most frequent value"
+        one = len(codes) == 1
+        text += (f"; {listing(codes)} {'holds' if one else 'hold'} codes and "
+                 f"{'took' if one else 'each took'} its most frequent value" if codes else "")
     elif d.method == "change":
-        text += "; any codes and unchanging columns kept their first value"
+        text += (f"; {listing(codes)} (codes) and unchanging columns kept their first value"
+                 if codes else "; unchanging columns kept their first value")
+    for column, rule in (d.columns or {}).items():
+        text += f"; {tick(column)} took its {_RULE_WORDS_SENTENCE.get(rule, rule)}"
     return text
+
+
+_RULE_WORDS_SENTENCE = {"mean": "mean", "first": "first record's value",
+                        "last": "last record's value", "change": "last minus first",
+                        "mode": "most frequent value"}
 
 
 @register_sentence("set_temporal")

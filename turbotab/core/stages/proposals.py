@@ -281,7 +281,7 @@ def nutrient_candidates(columns: Mapping[str, Mapping[str, Any]], roles: Mapping
     total energy at r ≥ 0.3, duplicates resolved; read on ``frame`` when given).
 
     ``settled`` (BLUEPRINT §14 rule 2): the columns whose roles a number-changing default may read
-    (:func:`turbotab.core.leash.settled_columns`); an exposure outside it, carried by a bulk
+    (:func:`turbotab.core.readings.settled_columns`); an exposure outside it, carried by a bulk
     confirm below high confidence, is no default nutrient until confirmed on its own."""
     from turbotab.core.recognizers import corroborated_nutrients
 
@@ -478,6 +478,37 @@ SETTLED_UNIT_BASES = ("decision", "name", "atwater")
 
 
 def energy_unit_reading(frame: pd.DataFrame, energy: str, recorded: Any = None) -> dict[str, Any]:
+    """The energy column's unit and day count as the readings ledger holds them (BLUEPRINT §14.1):
+    the unit (:func:`_energy_unit_named`), and how many days each value spans
+    (:func:`turbotab.core.readings.day_count_reading`). ``confirmed`` only when both are settled.
+
+    The Atwater identity settles kcal against kJ and says nothing about days: the gate's 2-day
+    totals (``energy_kcal_day1_day2``, ``kcal_sum_d1_d2``, ``Energy (kcal) - 2 recalls``) followed
+    their 2-day macronutrients, were read as one day's intake, and a 5,000 kcal screen removed 135
+    of 500 rows where one true daily value exceeded it. One day is settled by the values only: a
+    median inside a day's band for the unit (NUTRITION_PACK §01), under a name that says nothing
+    of several days."""
+    from turbotab.core.readings import day_count_candidates, day_count_reading
+
+    reading = _energy_unit_named(frame, energy, recorded)
+    if reading["basis"] in ("decision", "days"):
+        return reading
+    values = frame[energy] if energy in frame.columns else None
+    days = day_count_reading(energy, values, unit=str(reading["unit"]))
+    reading["days_reading"] = days.to_dict()
+    if not days.settled:
+        reading["confirmed"] = False
+        reading["days_unsettled"] = True
+        reading["days_candidates"] = day_count_candidates(energy, values, unit=str(reading["unit"]))
+        from turbotab.core.voice import tick
+
+        reading["sentence"] = (f"{reading['sentence']} How many days each value spans is not "
+                               f"settled: {days.evidence}; record it before screening by "
+                               f"{tick(energy)}.")
+    return reading
+
+
+def _energy_unit_named(frame: pd.DataFrame, energy: str, recorded: Any = None) -> dict[str, Any]:
     """The energy column's unit, how it was read, and whether that settles it (audit IN-07), first
     signal that speaks:
 
@@ -583,6 +614,11 @@ def unit_refusal(energy: str, reading: Mapping[str, Any] | None) -> str | None:
     if reading is None or reading.get("confirmed", True):
         return None
     word = "kJ" if reading.get("unit") == "kj" else "kcal"
+    if reading.get("days_unsettled") and reading.get("basis") in SETTLED_UNIT_BASES:
+        evidence = (reading.get("days_reading") or {}).get("evidence") or "nothing settles it"
+        return (f"Refused until {tick(energy)}'s days are recorded: {evidence}, so whether each "
+                f"value is one day's intake or a total over several is not settled, and the "
+                f"screen's bounds are read in a day's.")
     if reading.get("basis") == "days":
         return (f"Refused until {tick(energy)}'s days are recorded: its name carries "
                 f"{tick(str(reading.get('days_in_name')))} days, a total or a mean, and the "
@@ -612,7 +648,8 @@ SEX_SPECIFIC_SCREENS: tuple[tuple[str, str, float, str], ...] = (
 def exclusion_proposals(frame: pd.DataFrame, *, energy: str, unit: str, sex: str | None,
                         sex_levels: Mapping[str, str], base: pd.Series, days: int = 1,
                         unit_reading: Mapping[str, Any] | None = None,
-                        settled: Iterable[str] | None = None) -> list[dict[str, Any]]:
+                        settled: Iterable[str] | None = None,
+                        settled_sex: Iterable[str] | None = None) -> list[dict[str, Any]]:
     """The pack's fixed kcal screens, each with the rows it would remove from ``base``, read in
     ``unit`` (a value totalling ``days`` days is screened at ``days`` times a day's bounds). While
     the unit is only proposed (``unit_reading`` not confirmed) every screen is refused with the
@@ -660,11 +697,18 @@ def exclusion_proposals(frame: pd.DataFrame, *, energy: str, unit: str, sex: str
     out = []
     present = int((pd.to_numeric(frame[energy], errors="coerce").notna() & base).sum())
     unsettled = role_refusal(energy, settled) or unit_refusal(energy, unit_reading)
+    # BLUEPRINT §14.1: a sex-specific screen reads the sex column's levels by its role too.
+    sex_waiting = (f"Refused until `{sex}`'s role is confirmed on its own: it was proposed below "
+                   f"high confidence, and the screen reads its levels."
+                   if sex is not None and settled_sex is not None and sex not in set(settled_sex)
+                   else None)
     for key, label, rule in screens:
         affected = int((rule_excludes(frame, rule) & base).sum())
+        by_sex = getattr(rule, "by", None) is not None
         out.append({"key": key, "rule": rule.model_dump(mode="json"), "label": label,
                     "affected": affected, "evidence": dict(EXCLUSION_EVIDENCE),
-                    "refused": unsettled or screen_refusal(energy, affected, present)})
+                    "refused": unsettled or (sex_waiting if by_sex else None)
+                    or screen_refusal(energy, affected, present)})
     return out
 
 
@@ -677,6 +721,33 @@ def role_refusal(energy: str, settled: Iterable[str] | None) -> str | None:
         return None
     return (f"Refused until {tick(energy)} is confirmed as total energy intake on its own: it was "
             f"proposed below high confidence.")
+
+
+def body_refusal(body: Mapping[str, Any], sex: str | None, settled: Iterable[str] | None,
+                 state: Any = None, frame: pd.DataFrame | None = None) -> str | None:
+    """Why the Goldberg screen may not be chosen yet (BLUEPRINT §14.1, the readings ledger): a body
+    measure's unit is known only from its median (kg and lb overlap there; the gate's US women's
+    ``weight`` in pounds excluded 136 of 500 rows against 5 in kg), or its role, or the sex
+    column's, rode along unconfirmed. None once each is settled."""
+    from turbotab.core.readings import body_unit_reading, listing
+
+    def values(c: str) -> Any:
+        return frame[c] if frame is not None and c in frame.columns else None
+
+    units = [c for c, m in ((body.get("age"), "age"), (body.get("weight"), "weight"),
+                            (body.get("height"), "height")) if c
+             and not body_unit_reading(c, m, state, values(c)).settled]
+    roles = ([c for c in (body.get("age"), body.get("weight"), body.get("height"), sex)
+              if c and c not in set(settled)] if settled is not None else [])
+    if units:
+        one = len(units) == 1
+        return (f"Refused until {listing(units)}'s {'unit is' if one else 'units are'} recorded: "
+                f"only {'its median says' if one else 'their medians say'} kg, cm or years, which "
+                f"tells kg from lb no better than a heavy cohort from a light one.")
+    if roles:
+        return (f"Refused until {listing(roles)} {'is' if len(roles) == 1 else 'are'} confirmed "
+                f"on {'its' if len(roles) == 1 else 'their'} own: proposed below high confidence.")
+    return None
 
 
 def screen_refusal(energy: str, affected: int, present: int) -> str | None:
@@ -748,7 +819,8 @@ def goldberg_proposal(frame: pd.DataFrame, info: Mapping[str, Mapping[str, Any]]
                       days_note: str | None = None,
                       unit_reading: Mapping[str, Any] | None = None,
                       units: Mapping[str, Any] | None = None,
-                      settled: Iterable[str] | None = None) -> dict[str, Any] | None:
+                      settled: Iterable[str] | None = None,
+                      state: Any = None) -> dict[str, Any] | None:
     """The Goldberg screen with Schofield's BMR, offered with its count when the columns are read.
 
     PAL 1.55 and the days of intake each row's energy averages (``recall_days``: one, unless the
@@ -781,6 +853,8 @@ def goldberg_proposal(frame: pd.DataFrame, info: Mapping[str, Mapping[str, Any]]
     return {"key": "goldberg_schofield", "rule": rule.model_dump(mode="json"), "label": label,
             "affected": affected, "evidence": dict(GOLDBERG_EVIDENCE),
             "refused": role_refusal(energy, settled) or unit_refusal(energy, unit_reading)
+            or body_refusal(body, sex, settled if state is not None and getattr(state, "roles", None)
+                            else None, state, frame)
             or screen_refusal(energy, affected, present)}
 
 
@@ -969,7 +1043,8 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
                     purpose: str | None = None,
                     days: tuple[float, str | None] = (1.0, None),
                     units: Mapping[str, Any] | None = None,
-                    settled: Iterable[str] | None = None) -> dict[str, Any]:
+                    settled: Iterable[str] | None = None,
+                    state: Any = None) -> dict[str, Any]:
     """The proposals artifact from a frame holding (at least) the columns it reads.
 
     ``columns`` are the ingest's column records (``name``, ``dtype``, ``n_unique``,
@@ -977,7 +1052,7 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     ``purpose`` the declared purpose, which orders the energy methods by soundness; ``days`` the
     recall days each row's energy averages, with a note when they differ (``recall_days``);
     ``units`` the columns' recorded units (``set_column_unit``); ``settled`` the columns whose
-    roles a number-changing default may read (:func:`turbotab.core.leash.settled_columns`;
+    roles a number-changing default may read (:func:`turbotab.core.readings.settled_columns`;
     BLUEPRINT §14), every role as given when None.
     """
     from turbotab.core.voice import tick
@@ -1046,12 +1121,15 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
             exclusions = exclusion_proposals(frame, energy=energy, unit=unit, sex=by_sex,
                                              sex_levels=screen_levels, base=base,
                                              days=int(unit_reading.get("days") or 1),
-                                             unit_reading=unit_reading, settled=energy_settled)
+                                             unit_reading=unit_reading, settled=energy_settled,
+                                             settled_sex=(settled if state is not None
+                                                          and getattr(state, "roles", None)
+                                                          else None))
             goldberg = goldberg_proposal(frame, info, energy=energy, unit=unit, sex=screen_sex,
                                          sex_levels=screen_levels, roles=roles, target=target,
                                          base=base, days=days[0], days_note=days[1],
                                          unit_reading=unit_reading, units=units,
-                                         settled=energy_settled)
+                                         settled=energy_settled, state=state)
             if goldberg is not None:
                 exclusions.append(goldberg)
     reading = None
@@ -1067,18 +1145,21 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
                                  energy_unit=settled_unit, waiting=waiting)
     return {"exclusions": exclusions, "energy": reading, "missing": missing, "n_base": n_base,
             "coach": _card_lines(frame, target=target, energy=energy, unit=unit, missing=missing,
-                                 unit_reading=unit_reading),
+                                 unit_reading=unit_reading,
+                                 settled=(energy is None or energy_settled is None
+                                          or energy in energy_settled)),
             "basis": basis, "energy_unit": unit_reading}
 
 
 def _card_lines(frame: pd.DataFrame, *, target: str | None, energy: str | None, unit: str,
                 missing: Mapping[str, Any],
-                unit_reading: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                unit_reading: Mapping[str, Any] | None = None,
+                settled: bool = True) -> dict[str, Any]:
     """The decision cards' coach lines, at most one per question (turbotab.core.coach)."""
     from turbotab.core.coach import card_lines
 
     lines = card_lines(frame, target=target, energy=energy, unit=unit, missing=missing,
-                       unit_reading=unit_reading)
+                       unit_reading=unit_reading, settled=settled)
     return {key: line.model_dump(mode="json") for key, line in lines.items()}
 
 
@@ -1146,12 +1227,13 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
         frame = store.materialize(wanted)
         survey = _survey_proposal(state, store)
     ctx.progress(0.6, "Counting what each exclusion rule would remove")
-    from turbotab.core.leash import settled_columns
+    from turbotab.core.readings import settled_columns
 
     out = build_proposals(frame, columns, lens=state.lens, target=target, roles=roles,
-                          purpose=state.purpose, days=recall_days(ctx.inputs.get("working")),
+                          purpose=state.purpose,
+                          days=recall_days(ctx.inputs.get("working"), state),
                           units=getattr(state, "column_units", None) or {},
-                          settled=settled_columns(state, ctx.inputs.get("roles")))
+                          settled=settled_columns(state, ctx.inputs.get("roles")), state=state)
     out["survey"] = survey
     # WP12a (repair round): the exposure-form question's options, ordered by soundness for the
     # declared purpose, each with its "customary in" and "sound for" labels (north star 5).
@@ -1168,7 +1250,7 @@ def _survey_proposal(state: Any, store: Any) -> dict[str, Any] | None:
     return proposal(state, store) if state.roles is not None else None
 
 
-def recall_days(working: Any) -> tuple[float, str | None]:
+def recall_days(working: Any, state: Any = None) -> tuple[float, str | None]:
     """How many recalls each analysis row's values average: one, unless the working table combined
     each person's rows by the mean, then the number of rows each person had. When that number
     differs between people the smallest is used (the Goldberg limits widen as days fall, so no one
@@ -1180,6 +1262,15 @@ def recall_days(working: Any) -> tuple[float, str | None]:
     aggregation = data.get("aggregation") or {}
     if aggregation.get("method") != "mean":
         return 1.0, None
+    if state is not None:
+        # BLUEPRINT §14.1: a combined row averages recall days only when the user answered that a
+        # unit's rows are repeats (replicate recalls); averaged time points are no recall days, and
+        # one day is the conservative reading (the Goldberg limits widen as days fall).
+        from turbotab.core.readings import repeat_kind_reading
+
+        found = repeat_kind_reading(state, None)
+        if found is None or not found.settled or found.value != "repeats":
+            return 1.0, None
     counts = row_map(working).groupby("row_id").size()
     if counts.empty:
         return 1.0, None

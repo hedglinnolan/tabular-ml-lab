@@ -65,6 +65,36 @@ class FindingContext:
                 for c in self.columns if c != self.target}
         return energy_column_reading(_with_medians(info, self.frame), {}, self.frame)
 
+    def energy_settled(self, column: str | None) -> bool:
+        """Whether ``column``'s total-energy reading is settled here: the findings are read before
+        any role is recorded, so only by its values (BLUEPRINT §14.1): it tracks the energy its
+        macronutrients carry (r ≥ 0.7), or the Atwater identity holds on its typical row (the
+        pack's reconstruction ratio; a few implausible rows, the very ones the finding counts,
+        lower r without breaking the identity). Under any other lens the pack's finding stands."""
+        if "dietary" not in self.lens:
+            return True
+        from turbotab.core.readings import stated_reading
+
+        reading = self.energy or {}
+        if reading.get("column") != column:
+            return False
+        recorded = (self.units or {}).get(column)
+        if getattr(recorded, "unit", None) in ("kcal", "kj"):
+            # The user recorded its energy unit (``set_column_unit``): their own answer that it is a
+            # day's, or several days', energy intake.
+            return True
+        by_values = reading.get("basis") == "values"
+        if not by_values and column in self.frame.columns:
+            from turbotab.core.methods.energy import atwater_check
+
+            try:
+                check = atwater_check(self.frame, str(column))
+            except Exception:  # noqa: BLE001 - a check that cannot run corroborates nothing
+                check = None
+            by_values = check is not None and check.verdict in ("pass", "energy_in_kj")
+        found = stated_reading("role", str(column), "energy", "high" if by_values else "medium")
+        return found.settled
+
     @cached_property
     def columns(self) -> list[str]:
         return [str(c) for c in self.frame.columns]
@@ -349,6 +379,32 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
     low, high, below, above = counted(reading["unit"])
     n = below + above
     word = "kJ" if reading["unit"] == "kj" else "kcal"
+    if not reading.get("confirmed", True) and reading.get("days_unsettled") \
+            and reading.get("basis") in ("name", "atwater"):
+        # BLUEPRINT §14.1: the unit is settled (Atwater or the name), the days are not: the gate's
+        # ``energy_kcal_day1_day2`` (2-day totals) had 135 rows called implausible daily intakes.
+        spans = [d for d in reading.get("days_candidates") or [] if d > 1] or [2]
+        spanned = int(spans[0])
+        days = spanned
+        t_low, t_high, t_below, t_above = counted(reading["unit"])
+        days = 1
+        evidence = (reading.get("days_reading") or {}).get("evidence") or "nothing settles it"
+        p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": word,
+                  "unit_question": True, "unit_unconfirmed": True, "n_present": present,
+                  "days_question": spanned,
+                  "other_unit": f"{word} over {spanned} days",
+                  "other_n_flagged": t_below + t_above})
+        f["severity"] = "warning" if (n or t_below + t_above) else "info"
+        f["title"] = f"The days in `{col}` are not settled"
+        f["detail"] = (
+            f"{tick(col)} is in {word}, but how many days each value spans is not settled: "
+            f"{evidence}. Read as one day's intake, {n:,} of {present:,} rows fall outside "
+            f"{low:,.0f}–{high:,.0f} {word}; read as a total over {spanned} days, "
+            f"{t_below + t_above:,} fall outside {t_low:,.0f}–{t_high:,.0f} {word}. Which rows are "
+            f"implausible depends on it, so none is counted as a misreport until it is recorded, "
+            f"and the intake screens wait for it. Observed range {float(s.min()):,.0f} to "
+            f"{float(s.max()):,.0f}, median {float(s.median()):,.0f}.")
+        return
     if not reading.get("confirmed", True) and reading.get("basis") == "days":
         # BLUEPRINT §14 rule 3: a day count in the name (``kcal_2d``) reads as a total over the days
         # or a mean of them; the count is made under each reading and no row is called a misreport.
@@ -405,6 +461,22 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
             f"like this. The intake screens refuse to remove more than half the rows; say what "
             f"unit {tick(col)} is in first. Observed range {float(s.min()):,.0f} to "
             f"{float(s.max()):,.0f}, median {float(s.median()):,.0f}.")
+        return
+    if not fc.energy_settled(col):
+        # BLUEPRINT §14.1 (the readings ledger): only the name reads this column as total energy
+        # intake (its values could not be checked against the macronutrients), so no row is
+        # counted as a misreport in it; the energy card asks for its role first.
+        p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": word,
+                  "role_question": True, "n_present": present})
+        f["severity"] = "info"
+        f["title"] = f"Whether `{col}` is total energy intake is not settled"
+        f["detail"] = (
+            f"Only {tick(col)}'s name reads it as total energy intake: its values could not be "
+            f"checked against the energy its macronutrients carry. Read as a day's intake in "
+            f"{word}, {n:,} of {present:,} rows fall outside {low:,.0f}–{high:,.0f} {word}, but no "
+            f"row is counted as a misreport until its role is confirmed, and the intake screens "
+            f"wait for it. Observed range {float(s.min()):,.0f} to {float(s.max()):,.0f}, median "
+            f"{float(s.median()):,.0f}.")
         return
     if reading["unit"] != "kj" and days == 1:
         return
@@ -921,12 +993,17 @@ def restate_energy(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: F
     params = dict((raw or {}).get("params") or {})
     energy = params.get("energy_column") or (finding["affected_columns"] or [None])[0]
     rs = energy_correlations(fc.frame, energy, target=fc.target)
+    # BLUEPRINT §14.1: "is total energy" only where the values settle it; a name's reading is said
+    # as one.
+    is_energy = (f"{tick(energy)} is total energy" if fc.energy_settled(energy) else
+                 f"{tick(energy)} reads as total energy by its name (its role is confirmed with "
+                 f"the energy question)")
     if rs:
         lo, hi = min(rs.values()), max(rs.values())
         spread = f"{lo:.2f}" if round(lo, 2) == round(hi, 2) else f"{lo:.2f} to {hi:.2f}"
         n = len(rs)
         finding["detail"] = (
-            f"{tick(energy)} is total energy. {listing(list(rs), limit=6)} "
+            f"{is_energy}. {listing(list(rs), limit=6)} "
             f"{plural(n, 'carries', 'carry')} energy, and {plural(n, 'it correlates', 'each correlates')} "
             f"{spread} with {tick(energy)}.")
         finding["affected_columns"] = [energy, *rs]
@@ -936,9 +1013,9 @@ def restate_energy(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: F
         named = [str(c) for c in fc.frame.columns if c not in (energy, fc.target)
                  and energy_bearing(str(c))]
         finding["detail"] = (
-            f"{tick(energy)} is total energy; no energy-bearing nutrient column was recognized by "
+            f"{is_energy}; no energy-bearing nutrient column was recognized by "
             f"name." if not named else
-            f"{tick(energy)} is total energy; {listing(named, limit=6)} "
+            f"{is_energy}; {listing(named, limit=6)} "
             f"{plural(len(named), 'is', 'are')} named like {plural(len(named), 'a nutrient', 'nutrients')} "
             f"that {plural(len(named), 'carries', 'carry')} energy, but the values do not corroborate "
             f"{plural(len(named), 'it', 'them')} as {plural(len(named), 'an intake', 'intakes')}.")

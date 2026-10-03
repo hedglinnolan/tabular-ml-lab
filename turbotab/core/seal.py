@@ -489,11 +489,15 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
     ids = np.asarray(universe, dtype=np.int64)
     columns = set(store.columns)
     roles = getattr(state, "roles", None) or {}
-    from turbotab.core.leash import unsettled
+    # BLUEPRINT §14.1: the draw groups by a settled cluster reading only (a confirmed or
+    # corroborated identifier role, or the column's own confirmation); one the user said groups
+    # nothing is passed over.
+    from turbotab.core.readings import cluster_reading
 
     every = [c for c, r in roles.items() if r == "identifier" and c in columns]
-    waiting = set(unsettled(state, every))
-    identifiers = [c for c in every if c not in waiting]
+    found = {c: cluster_reading(state, c) for c in every}
+    waiting = {c for c, r in found.items() if not r.settled}
+    identifiers = [c for c in every if c not in waiting and found[c].value == "yes"]
     grain = getattr(state, "grain", None)
     named = getattr(grain, "id_column", None) if grain is not None else None
     requested, time_column = temporal_request(state)

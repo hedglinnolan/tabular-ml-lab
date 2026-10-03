@@ -538,7 +538,10 @@ def test_3d_the_optimism_corrected_auc_matches_an_independent_bootstrap_on_asah(
                       roles={"id": "identifier", "gos6": "excluded", **{c: "covariate" for c in predictors}},
                       missing="complete_case", grain=GrainSpec(grain="one_row_per_unit", id_column="id"),
                       models=["linear"],
-                      split=SplitSpec(holdout=0.0, seed=17, folds=5, validation="bootstrap", n_boot=200))
+                      split=SplitSpec(holdout=0.0, seed=17, folds=5, validation="bootstrap", n_boot=200),
+                      # The readings ledger (BLUEPRINT §14.1): WFNS grade 1–5 is a code or an amount,
+                      # and the reference below enters it as one slope, so that is recorded.
+                      shape_confirmations={"code_or_count:wfns": "amount"})
     _, split, _, fit = _stages(table, st)
     optimism = fit.data["models"][0]["optimism"]
     assert optimism["n_boot"] == 200 and optimism["n_ok"] == 200 and optimism["resampled"] == "rows"

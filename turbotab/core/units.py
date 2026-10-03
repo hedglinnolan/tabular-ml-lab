@@ -170,12 +170,12 @@ def outcome_unit(column: str, values: Any = None,
     """The unit a sentence may state, ``(unit, source)``: the user's recorded unit (source
     ``"decision"``), else a full unit the name spells out (``"name"``), else ``(None, None)``.
     ``values`` are accepted for the callers' convenience and never read: a unit is not guessed."""
-    if recorded:
-        return str(recorded), "decision"
-    unit = from_name(column)
-    if unit is not None:
-        return unit, "name"
-    return None, None
+    from turbotab.core.readings import stated_outcome_unit
+
+    # BLUEPRINT §14.1 (the readings ledger): only a settled outcome-unit reading is stated. A bare
+    # amount the quantity does not take (``bmi_kg``: kg/m²; ``ldl_mg``: mg/dL or mmol/L; ``hb_g``:
+    # g/dL or g/L) is the name's proposal, never a sentence's unit.
+    return stated_outcome_unit(column, recorded)
 
 
 def recorded_unit(state: Any, column: str | None) -> str | None:

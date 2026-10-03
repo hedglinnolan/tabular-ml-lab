@@ -199,9 +199,20 @@ def proposal(state: Any, store: Any) -> dict[str, Any] | None:
         # The values place a subsample's variables the names cannot (the least-common-denominator
         # rule; audit WP13 gate repair).
         frame = store.materialize(list(dict.fromkeys(read)), None)
-    return {"weights": reading.weights, "strata": reading.strata, "psu": reading.psu,
+    placed = None
+    unplaced = [c for c in reading.unplaced if c in columns]
+    if unplaced:
+        # Design columns the user set by role, which no name reads: their values say which is a
+        # weight, and which are codes (BLUEPRINT §14.1).
+        from turbotab.core.survey import place_design
+
+        frame = store.materialize(unplaced, None)
+        placed = place_design(frame, unplaced)
+    return {"weights": reading.weights or list((placed or {}).get("weights") or []),
+            "strata": reading.strata, "psu": reading.psu,
             "cycle": pooled_cycle, "cycles": [str(v) for v in cycles],
-            "four_year": reading.four_year, "options": offered(state, pooled_cycle, frame)}
+            "four_year": reading.four_year,
+            "options": offered(state, pooled_cycle, frame, placed)}
 
 
 __all__ = ["FitSurvey", "PooledWeight", "UNANSWERED", "analysis_weights", "for_fit", "proposal"]

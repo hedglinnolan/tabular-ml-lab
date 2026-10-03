@@ -466,7 +466,9 @@ class _Drive:
         return self.c.get(f"/api/projects/{self.pid}").json()
 
     def decide(self, body: dict[str, Any]) -> None:
-        r = self.c.post(f"/api/projects/{self.pid}/decisions", json=body)
+        from turbotab.core.tests.acceptance.server_drive import settle_post
+
+        r = settle_post(self.c, self.pid, body)  # each unsettled reading confirmed (§14.1)
         assert r.status_code == 200, (body["kind"], r.text[:600])
 
     def reach(self, key: str, timeout: float = 120.0) -> dict[str, Any]:

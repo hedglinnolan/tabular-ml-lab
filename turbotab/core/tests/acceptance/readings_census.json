@@ -1,0 +1,615 @@
+{
+ "source": "the independent census of readers and consumers handed to the readings ledger's builder (BLUEPRINT §14.1), 2026-10-03; verbatim, ids added",
+ "census": [
+  {
+   "id": "roles",
+   "reader": "propose_roles (turbotab/core/stages/rows.py:368) with value_facts :787, intake_checks :763, _energy_info :718, _fractional_identifiers :855 — the role proposal as a whole",
+   "kind": "role (exposure/covariate/energy/identifier/cluster/design/time/flag/excluded)",
+   "inputs": "both: column names via recognizers.tokens, plus profile summaries (dtype, n_unique, median) and selected values",
+   "consumers": [
+    "turbotab/core/models/pipeline.py:70 predictors_from_roles / :82 model_predictors: which columns enter every fit, coefficient table and CV score",
+    "turbotab/core/models/pipeline.py:312 design_spec: roles copied into the spec (energy step, energy_fill, normalization)",
+    "turbotab/core/stages/rows.py cohort_flow + proposals.py:932 missing_reading: which predictors' blanks drop rows under complete cases",
+    "turbotab/core/leash.py:61 unsettled: read by proposals.py:273 nutrient_candidates, proposals.py:671 role_refusal (screens/Goldberg), decisions.py:1486 set_energy_adjustment, decisions.py:1514 set_exclusions (and :2727 set_sensitivity), survey.py:360 set_survey, inference.py:120 resolve_clusters, seal.py:475 seal_inputs, modeling.py:737 measurement-error line",
+    "turbotab/core/methods/missing.py:221 energy_fill: energy role and name-read exposures, no leash check",
+    "turbotab/core/methods/omics.py:641 design_normalization: normalized columns ∩ exposure roles, no leash check",
+    "turbotab/core/decisions.py:1409 _roles_record_what_rode_along: with no fresh roles artifact unconfirmed=[]"
+   ],
+   "settled_today": "partly. Eight number-changing defaults call leash.unsettled. The fit's predictor set, energy-aware imputation and omics normalization read every recorded role, so a medium/low exposure or covariate carried by a bulk confirm changes the fit (the gate's NDNS/MEPS design columns proposed covariate low enter the model). A set_roles recorded with no fresh roles artifact settles everything."
+  },
+  {
+   "id": "identifier",
+   "reader": "recognizers.id_kind (turbotab/core/recognizers.py:1348) + identifier_values (:1422) + rows.py branches :504–545 + value_facts 'repeating' :838–847 + rows._repeats :872",
+   "kind": "identifier-or-cluster (subject/record/cluster/visit) and unit structure",
+   "inputs": "both: name words (id tails, subject/cluster/visit vocabularies) and distinct-value counts",
+   "consumers": [
+    "turbotab/core/models/inference.py:100 cluster_columns / :120 resolve_clusters: CR2 cluster-robust intervals, G, t df; clusters by the repeating identifier with the fewest units even when the named grain column does not repeat",
+    "turbotab/core/stages/modeling.py:1124–1130 fit_stage: clusters and unit_models (mixed-model random intercept, bootstrap resampling units :1164)",
+    "turbotab/core/stages/modeling.py:1139 _survey → turbotab/core/methods/survey.py:115 for_fit: the cluster column becomes the design's sampling unit when no PSU is named",
+    "turbotab/core/seal.py:475 seal_inputs / :192 decide_basis: groups the held-out draw by repeating[0] when grain is 'repeated' without a named column",
+    "turbotab/core/stages/rows.py:843 value_facts: the fewest-unit identifier is the unit against which every 'time' reading's within-unit variation is measured",
+    "turbotab/core/stages/rows.py:965 roles reason 'Names each unit; N units' (sentence)",
+    "turbotab/core/stages/finding_words.py:1009 identifier_findings (sentences)"
+   ],
+   "settled_today": "partly. resolve_clusters and the seal exclude leash-unsettled identifiers. But 'high' is earned by k > FEW_UNITS (10) repeating values for any *_id 'record' name (recognizers.py:1447), which is no unit-structure evidence. Gate #1 is still live: stratum_id (16 strata), HCHS/SOL PSU_ID, recruiter_id, interviewer_id, EA_ID, provider_id and Transmitter ID are 'identifier (high)', and the intervals cluster by them unasked."
+  },
+  {
+   "id": "grain_stated",
+   "reader": "working.stated_grain (turbotab/core/stages/working.py:881) / _stated_grain_reading (:936) / person_identifiers (:910 → recognizers.names_a_person :1391), with turbotab/grain.py:234 contradiction",
+   "kind": "grain (one row per unit)",
+   "inputs": "both: a person-identifier name and uniqueness on every row, with no roster-like repetition",
+   "consumers": [
+    "turbotab/core/interview.py:248 _grain_gate: the grain question is skipped (stated)",
+    "turbotab/core/stages/working.py:900 with_effective_grain → turbotab/core/seal.py:513 seal_inputs: basis one_row_per_unit, held out by row",
+    "turbotab/core/sequence.py:222 and :433: downstream questions treat the stated grain as answered"
+   ],
+   "settled_today": "yes. Value-corroborated: unique and non-blank on every row, and suppressed whenever grain.contradiction finds a roster. The name only gates which columns are tried."
+  },
+  {
+   "id": "grain_suggestion",
+   "reader": "turbotab/grain.py:158 suggestion (utils/test_lockbox.py:397 rank_grouping_candidates + repetition_evidence) + working.unit_suggestions :919 + _without_assay_block :978 (packs.count_matrix packs.py:3288)",
+   "kind": "identifier candidates for the grain question",
+   "inputs": "both: name heuristic ranking and repetition shape",
+   "consumers": [
+    "turbotab/core/sequence.py:164 _grain_is_consistent: exits 'Rows repeat per X' and the data_repeats refusal",
+    "turbotab/core/stages/working.py:1043 structure grain.suggested (offered list)"
+   ],
+   "settled_today": "yes. Candidates appear only as exits the user records; the contradiction is a refusal with an attest exit."
+  },
+  {
+   "id": "repeat_kind",
+   "reader": "detectors.repeats.read (turbotab/core/detectors/repeats.py:242) over legacy turbotab/repeats.py:217 read, :181 spacing, :146 _replicate_index, :111 _date_columns, with occasion_column :200 (_OCCASION_WORDS :197), recall_evidence :132, trend :68, period_column :122, constant_dates :212, within_day_order :170, intake_varies :225",
+   "kind": "repeat kind (repeats vs time points)",
+   "inputs": "both: date spacing (pandas-parsed dates), integer index shape, recall and occasion names, within-unit trends",
+   "consumers": [
+    "turbotab/core/stages/working.py:872 effective_repeat_kind: the stated reading stands in for an answer",
+    "turbotab/core/interview.py:270 _repeat_kind_gate: question skipped when stated",
+    "turbotab/core/interview.py:306 _temporal_gate: temporal not applicable when 'repeats'",
+    "turbotab/core/stages/working.py:1093 repeats.menu (turbotab/repeats.py:350): aggregation recommends the mean",
+    "turbotab/core/coach.py:393 aggregation_coach: 'Averaging k replicates cuts within-person variance'",
+    "turbotab/core/stages/calibration.py:284: regression calibration applies unless the effective kind is time_points"
+   ],
+   "settled_today": "no. A stated reading (medium) skips the question with no confirmation. Gate #4 is still live: recall_no 1–4 across occasions named assessment/time/month/stage/year/trimester are stated 'repeats' and the mean is recommended; the trend demotion misses a change in one arm only. Same-date records with no within-day order, and a recall index with no dates, are also stated."
+  },
+  {
+   "id": "time_column",
+   "reader": "working.time_column (turbotab/core/stages/working.py:957): falls back to the structure reading's spacing column or replicate_index",
+   "kind": "time-ordering column",
+   "inputs": "values: the date or integer-index shape picked by the repeats reading",
+   "consumers": [
+    "turbotab/core/stages/working.py:1323 aggregation_plan → :1375 rank_units: the order for first/last/change combining (which value each unit keeps)",
+    "turbotab/core/sequence.py:296 _aggregation_can_order_the_records (refusal check on that column)",
+    "turbotab/core/sequence.py:365 _temporal_names_its_time_column: a bare temporal 'yes' is completed with this column → seal.py:532 chronological holdout and time-ordered folds",
+    "turbotab/core/coach.py:354 _time_column",
+    "turbotab/core/voice.py:1306 _set_aggregation: says 'in file order' from the answers alone, contradicting the order actually used"
+   ],
+   "settled_today": "no. The user never names or confirms the column; it is filled from an unstated reading, and the methods sentence misdescribes the order."
+  },
+  {
+   "id": "combine_codes",
+   "reader": "working.column_kinds (turbotab/core/stages/working.py:1395) + column_rule :1439 (CODE_LEVELS 10, CODE_REPEATS 3)",
+   "kind": "code-or-count (combining rule)",
+   "inputs": "values: whole numbers, at most 10 distinct, each seen 3+ times on average",
+   "consumers": [
+    "turbotab/core/stages/working.py:1470 combine_sql: mode instead of mean, first instead of change",
+    "turbotab/core/stages/working.py:1513 prepare_combine (shared with the structure previews)",
+    "turbotab/core/voice.py:1321: 'any codes took their most frequent value' (names no column)"
+   ],
+   "settled_today": "no. Gate #6 is still live: per-recall counts (coffee_cups, eating_occasions) combine by mode, ties to the first recall, unasked; only an aggregation 'columns' override changes it."
+  },
+  {
+   "id": "predictor_codes",
+   "reader": "pipeline.is_categorical (turbotab/core/models/pipeline.py:143, dtype only) with rows.categorical_proposals (turbotab/core/stages/rows.py:684, NHANES_CODED)",
+   "kind": "code-or-amount for predictors",
+   "inputs": "values (dtype); names for NHANES_CODED",
+   "consumers": [
+    "turbotab/core/models/pipeline.py:312 design_spec: categorical vs numeric (one-hot vs a single slope)",
+    "turbotab/core/stages/modeling.py:192 predictor_parameters: the sample-size parameter count",
+    "turbotab/core/methods/imputation.py:111 column_kind via the declared set"
+   ],
+   "settled_today": "no. Every integer column enters the fit as an amount unless set_categorical is recorded. No interview question asks, and the categorical proposals (even NHANES_CODED at high) are never applied or asked."
+  },
+  {
+   "id": "task",
+   "reader": "ml/triage.py:150 detect_task_type via turbotab/engine.py:158, in target_info_stage (turbotab/core/stages/target.py:63)",
+   "kind": "outcome kind (task: regression/binary/multiclass)",
+   "inputs": "values: dtype, distinct count, unique ratio",
+   "consumers": [
+    "turbotab/core/interview.py:405: the task question is skipped when confidence is high",
+    "turbotab/core/stages/modeling.py:82 _task: family choice, outcome coding, metrics, inference table form"
+   ],
+   "settled_today": "partly. High only for text/bool dtype, exact 0/1, or many-valued floats. A text outcome with ordered labels (none/mild/severe) is 'classification high', so the task is skipped and it is fit as multinomial; ordinal is never proposed."
+  },
+  {
+   "id": "event_level",
+   "reader": "stages.modeling.coded_outcome / outcome_levels (turbotab/core/stages/modeling.py:651/:685)",
+   "kind": "event level",
+   "inputs": "values: True/False outcomes",
+   "consumers": [
+    "every binary fit and metric (modeling.py) and captions"
+   ],
+   "settled_today": "yes. The event is asked (interview _event_gate); only a boolean outcome defaults to True = 1, which the values fix."
+  },
+  {
+   "id": "energy_column",
+   "reader": "proposals.energy_column_reading (turbotab/core/stages/proposals.py:156) + recognizers.reads_as_total_energy :1097, energy_against_macros :1263, energy_median_contradicts :1140, macro_candidates :1219, proposals._codebook_energy :146",
+   "kind": "role: total energy column",
+   "inputs": "both: name and codebook, median band 500–20,920, r with the macronutrients' energy",
+   "consumers": [
+    "turbotab/core/stages/rows.py:547 role 'energy' high/medium",
+    "turbotab/core/stages/proposals.py:1003 build_proposals: energy card, screens (:612 exclusion_proposals, :744 goldberg_proposal) through role_refusal",
+    "turbotab/core/stages/finding_words.py:57 FindingContext.energy (roles={}) → :1187 repoint_energy, :1220 energy_findings, :318 restate_implausible counts, :907 restate_energy ('`X` is total energy')",
+    "turbotab/core/coach.py:530 card_lines (exclusions card line)",
+    "turbotab/core/coach.py:135 _is_energy → :187 range_notes 'likely under/over-reporting' (by name only)",
+    "turbotab/core/decisions.py:1612 _screens_keep_most_rows / :1679 _screens_wait_for_the_unit (energy role or name)",
+    "turbotab/core/evidence.py:194 energy_evidence; turbotab/core/detectors/lenses.py:166 dietary hint"
+   ],
+   "settled_today": "partly. The energy card and its screens read role settlement (or the values' own corroboration when no record exists). The findings stage reads with roles={} and states implausible-intake counts and 'X is total energy' for a medium reading. The coach's 'likely under-/over-reporting' needs only the name."
+  },
+  {
+   "id": "energy_unit_days",
+   "reader": "proposals.energy_unit_reading (turbotab/core/stages/proposals.py:480) + recognizers.day_count :88, energy_unit :1158, energy_unit_by_magnitude :1179 + methods.energy.atwater_check (turbotab/core/methods/energy.py:1387 → turbotab/nutrition.py:242 _reconstruct); SETTLED_UNIT_BASES :476",
+   "kind": "unit (kcal/kJ) and day count",
+   "inputs": "both: suffix and words, Atwater ratio to the macronutrients, median prior",
+   "consumers": [
+    "turbotab/core/stages/proposals.py:612 exclusion_proposals: screen bounds ×4.184 × days; :577 unit_refusal",
+    "turbotab/core/stages/proposals.py:744 goldberg_proposal (days > 1 withdraws it)",
+    "turbotab/core/decisions.py:1679 _screens_wait_for_the_unit (set_exclusions and set_sensitivity)",
+    "turbotab/core/stages/finding_words.py:318 restate_implausible: implausible-intake counts and title",
+    "turbotab/core/coach.py:530 card_lines: 'likely under/over-reporting'",
+    "turbotab/core/stages/rows.py:778 intake_checks / proposals.py:1008: energy unit for nutrient corroboration",
+    "turbotab/core/evidence.py:250: the kJ marks on the evidence view"
+   ],
+   "settled_today": "partly. Magnitude, assumed and parsed-day-count readings are refused until recorded. days = 1 is 'confirmed' by a 'kcal' name or an Atwater pass, neither of which says anything about days, and the KCAL_PRIOR is not consulted then. day_count parses only ^\\d+(d|dy|day|days)$: probed, energy_kcal_day1_day2, kcal_sum_d1_d2 and 'Energy (kcal) - 2 recalls' return None. Gate #2 is still live."
+  },
+  {
+   "id": "nutrients",
+   "reader": "recognizers.read_nutrient (:485) + intake_check (:675) / nutrient_check (:796) / corroborated_nutrients (:1033) / identity_members (:996) / resolve_duplicates (:930)",
+   "kind": "role: energy-bearing nutrient intake",
+   "inputs": "both: whole-name nutrient words and codebooks; plausibility, r ≥ 0.3 with energy or the Atwater identity",
+   "consumers": [
+    "turbotab/core/stages/rows.py:597–625 exposure high/medium/low",
+    "turbotab/core/stages/proposals.py:273 nutrient_candidates: the energy card's pre-filled nutrients",
+    "turbotab/core/stages/finding_words.py:873 energy_correlations (finding detail)",
+    "turbotab/core/stages/proposals.py:314 not_adjusted"
+   ],
+   "settled_today": "yes for the energy card: only settled or values-high nutrients pre-fill, and set_energy_adjustment refuses unsettled ones. This is the leash's best-covered reader."
+  },
+  {
+   "id": "energy_factor",
+   "reader": "methods.energy.energy_factor (turbotab/core/methods/energy.py:408) + unit_of :363 (recognizers.amount_unit :149, codebook_unit :444) + nutrient_role :384 (recognizers :566)",
+   "kind": "macronutrient identity and unit → Atwater factor (kcal per unit)",
+   "inputs": "names only (suffix, codebook, words)",
+   "consumers": [
+    "turbotab/core/methods/energy.py:824 EnergyAdjuster._fit_partition: kcal subtracted per nutrient",
+    "turbotab/core/stages/modeling.py:1615 substitution_stage kcal_per_unit: the kcal moved, so every substitution estimate",
+    "turbotab/core/stages/modeling.py:284 substitution_pairs",
+    "turbotab/core/methods/energy.py:1475 energy_terms → :1560 describe_model (each coefficient's substitution meaning)",
+    "turbotab/core/methods/energy.py:1735 omitted_energy → decisions.py:2196 refusal and exits",
+    "turbotab/core/methods/energy.py:1854 _unit_word (relative-effect labels)",
+    "turbotab/core/stages/proposals.py:252 / rows.py:55 energy_bearing (card membership, interview applicability)"
+   ],
+   "settled_today": "partly. The partition requires a declared unit or an Atwater 'pass'. Substitution, omitted_energy and energy_terms(exposure) take an undeclared factor as given (Protein, carb, total_fat: declared=False, factor used). A column named exactly fat/protein/carbohydrate/alcohol/fiber hits `if str(column) in factors` (energy.py:419) and is treated as a user-declared factor (declared=True), skipping the grams check. Confirming a role never settles the factor or unit."
+  },
+  {
+   "id": "percent_energy",
+   "reader": "methods.percent_energy.is_percent_of_energy (turbotab/core/methods/percent_energy.py:40)",
+   "kind": "unit (share of energy)",
+   "inputs": "names (suffix _pct_kcal/_pct_energy/_percent_energy + nutrient word)",
+   "consumers": [
+    "turbotab/core/stages/modeling.py:1600–1606 substitution scale percent_energy (PercentEnergyShift)",
+    "turbotab/core/decisions.py:2104 / :2196 substitution validators (scale refusal, reference exits)",
+    "turbotab/core/interview.py:193 _substitution_applicability",
+    "turbotab/core/methods/energy.py:1735 omitted_energy shares"
+   ],
+   "settled_today": "partly. The name sets the scale; check_percent_values refuses values outside 0–100 or all ≤ 1 only when the curve runs."
+  },
+  {
+   "id": "nesting",
+   "reader": "methods.nesting.candidates (turbotab/core/methods/nesting.py:90) + nested_components :108 + compositions :146; rows._nesting :889, _composition_reference :902",
+   "kind": "nesting (part of a total) and composition",
+   "inputs": "both: subtype words, part ≤ total on 99% of rows, shares summing to 100",
+   "consumers": [
+    "turbotab/core/stages/rows.py:942 nested_in; :959 composition reference proposed 'excluded' (medium)",
+    "turbotab/core/stages/modeling.py design nested → turbotab/core/methods/energy.py:1560 describe_model (remainder estimand) and pipeline.py:601 warnings_for",
+    "substitution Shift moves parts with their total (modeling.py:1573 substitution_stage) and substitution_pairs :284",
+    "turbotab/core/stages/proposals.py partition_check / nested_reason (partition refusal)"
+   ],
+   "settled_today": "partly. The values must agree (necessary, not sufficient), but nothing asks or records it. The reference share's 'excluded' role leaves the fit even when it rode along unconfirmed."
+  },
+  {
+   "id": "outcome_unit",
+   "reader": "units.from_name (turbotab/core/units.py:90) / outcome_unit :168",
+   "kind": "outcome unit",
+   "inputs": "names: the final 1–3 tokens as a unit",
+   "consumers": [
+    "turbotab/core/stages/target.py:111 target_info unit/unit_source",
+    "turbotab/core/voice.py:279/:296 _set_target: '... chosen as the outcome, in kg'",
+    "turbotab/server/service.py:249 outcome_unit (voice context)",
+    "turbotab/core/stages/modeling.py:1665/:1721/:1808 substitution effect labels and 'predicted … (in kg)' caption",
+    "turbotab/core/fact_previews.py:238 target view median 'in unit'"
+   ],
+   "settled_today": "no. Gate #5 is still live (probed: bmi_kg→kg, ldl_mg→mg, hb_g→g) and stated with no proposal shown. units.proposed_unit (:128) by contrast is only proposed (settled)."
+  },
+  {
+   "id": "survey_design",
+   "reader": "survey.read_design (turbotab/core/survey.py:83) + _STRATA/_PSU/_CYCLE regexes :58–63 + recognizers.reads_as_survey_weight :1706; reading_of :120",
+   "kind": "survey design (weights, strata, PSU, cycles)",
+   "inputs": "names only (recorded roles ignored)",
+   "consumers": [
+    "turbotab/core/survey.py:126 not_applicable_reason → turbotab/core/interview.py:324 survey question asked or not",
+    "turbotab/core/survey.py:174 offered: one option per name-read weight, with strata[0]/psu[0] by name (:184)",
+    "turbotab/core/methods/survey.py:115 for_fit: UNANSWERED refusal or the population design (weights, Taylor intervals)",
+    "turbotab/core/stages/modeling.py:764 _survey: UNWEIGHTED_SCORES note under prediction (:733)",
+    "turbotab/core/voice.py:1374 _set_survey; survey.py:167 sample_concern ('… recorded and not used')"
+   ],
+   "settled_today": "no. Gate #7 is still live: a design the names miss (NDNS wti_Y911/astrata1/area, MEPS PERWT19F/VARSTR/VARPSU) is never asked even after the user records role 'design'. _design_is_settled (:360) refuses only unsettled roles of the chosen columns."
+  },
+  {
+   "id": "design_role",
+   "reader": "rows._design_role (turbotab/core/stages/rows.py:209) + _design_named :259 + design_values_fit :291 + _design_in_table",
+   "kind": "role: design",
+   "inputs": "both: NHANES names and survey vocabulary; non-negative and whole-number codes",
+   "consumers": [
+    "turbotab/core/stages/rows.py:482 design high/medium: the column leaves the predictors",
+    "turbotab/core/survey.py:202–205 offered needs_confirmation"
+   ],
+   "settled_today": "partly. High needs a published name and fitting values; medium is leash-marked for set_survey, but the 'design' role still removes the column from the fit unconfirmed."
+  },
+  {
+   "id": "survey_weight_rank",
+   "reader": "recognizers.least_common_denominator (:1895) + weight_tier :1803 + subsample_variables :1870 + FASTING_ANALYTES :1795 + rank_weights :1828",
+   "kind": "design: which weight suits the variables",
+   "inputs": "both: NHANES names and missingness where the subsample weight is zero",
+   "consumers": [
+    "turbotab/core/survey.py:189–204 offered: option order (dietary WTDR first, then LCD)",
+    "turbotab/core/stages/finding_words.py:541 restate_survey_weights / :634 weight_findings: 'Use the fasting subsample weight'"
+   ],
+   "settled_today": "yes. Only order and a finding; the user records the weight, and unconfirmed subsample weights are named as such."
+  },
+  {
+   "id": "survey_cycle",
+   "reader": "survey.cycle_number (turbotab/core/survey.py:141) + _CYCLE regex :63",
+   "kind": "design: pooled survey cycles",
+   "inputs": "both: name (SDDSRVYR/cycle) and values (1999/2001 labels)",
+   "consumers": [
+    "turbotab/core/methods/survey.py:49 analysis_weights: weight ÷ k and the four-year weight",
+    "turbotab/core/methods/survey.py:175 proposal: pooled_cycle filled into every population option's decision",
+    "turbotab/core/survey.py:320 _pools_cycles_by_the_rule (refusal)",
+    "turbotab/core/stages/finding_words.py:1131 cycle_findings"
+   ],
+   "settled_today": "partly. The cycle column is pre-filled into each option by name and recorded when the option is taken, never confirmed separately; the 1999–2002 rule refuses rather than guesses."
+  },
+  {
+   "id": "body_columns",
+   "reader": "proposals.body_columns (turbotab/core/stages/proposals.py:728) / _named :713 (_AGE_NAMES, _WEIGHT_NAMES, _HEIGHT_NAMES; median bands age 10–100, weight 25–200, height 100–230 or 1.0–2.3)",
+   "kind": "role + unit of body columns (age in years, weight in kg, height in cm or m)",
+   "inputs": "both: exact names and a median band",
+   "consumers": [
+    "turbotab/core/stages/proposals.py:744 goldberg_proposal → GoldbergRule (BMR via methods/misreporting.py:185, screen :260)",
+    "turbotab/core/decisions.py:1514 / :2727 set_exclusions and set_sensitivity: only energy-role columns are checked for settlement"
+   ],
+   "settled_today": "no. Gate #3 is still live (probed: weight in lb, median 154, read as kg; role and unit never asked). An age in months whose median falls in 10–100 is read as years unless set_column_unit records months."
+  },
+  {
+   "id": "sex_column",
+   "reader": "proposals.sex_column (turbotab/core/stages/proposals.py:349)",
+   "kind": "role + level coding (sex)",
+   "inputs": "both: sex/gender names, f/m words, RIAGENDR 1/2",
+   "consumers": [
+    "turbotab/core/stages/proposals.py:612 exclusion_proposals: Willett and NHS/HPFS sex-specific ranges (RangeByLevel)",
+    "turbotab/core/stages/proposals.py:744 goldberg_proposal female/male",
+    "turbotab/core/stages/proposals.py:377 strata_candidates (sex first)"
+   ],
+   "settled_today": "partly. Levels must map to both female and male by their words (RIAGENDR by codebook); the role is never checked (a screen reads it whatever its role)."
+  },
+  {
+   "id": "recall_days",
+   "reader": "proposals.recall_days (turbotab/core/stages/proposals.py:1171)",
+   "kind": "day count (recalls averaged per row)",
+   "inputs": "values: rows per unit after aggregation by mean",
+   "consumers": [
+    "turbotab/core/stages/proposals.py:1050 goldberg_proposal days (cut-offs widen with days)",
+    "turbotab/core/stages/modeling.py:760 measurement_error_line reports"
+   ],
+   "settled_today": "partly. It follows the user's aggregation=mean, but each combined row is assumed to be one day's recall; when the repeat kind was only stated, that is never asked."
+  },
+  {
+   "id": "missing_not_asked",
+   "reader": "proposals.missing_reading (turbotab/core/stages/proposals.py:932): _MEDICATION tokens, _yes_no (≤ 2 values), ≥ 50% blank",
+   "kind": "missing codes (blank = not asked)",
+   "inputs": "both",
+   "consumers": [
+    "proposals.missing.leave_out → frontend ChoiceQuestions.tsx 'Leave them out first' (set_missing drop_columns)",
+    "frontend 'Blanks as a level' tagged recommended",
+    "turbotab/core/coach.py:264 missing_coach"
+   ],
+   "settled_today": "partly. Offered, never pre-selected, but one choice drops every likely-not-asked column (a bulk confirmation of per-column readings)."
+  },
+  {
+   "id": "below_detection",
+   "reader": "methods.missing.censored_columns (turbotab/core/methods/missing.py:200) from packs._left_censored (turbotab/packs.py:625) and the nondetect repair; imputation.censoring_of (turbotab/core/methods/imputation.py:123) LOD = smallest detected, log_scale_fits_better",
+   "kind": "missing codes (below detection) and the detection limit",
+   "inputs": "values",
+   "consumers": [
+    "turbotab/core/decisions.py:2477 _non_detections_are_not_filled_by_the_median: refusal; exit 'Those columns' (:2509) names all of them",
+    "turbotab/core/methods/missing.py:423 imputation_frame: half-minimum fill or Tobit draws below the limit",
+    "pipeline BelowDetectionFill (detect step)"
+   ],
+   "settled_today": "partly. The user must name the columns, but one exit names every finding's column at once. The detection limit is read as the smallest detected value and never asked."
+  },
+  {
+   "id": "imputation_kind",
+   "reader": "methods.imputation.column_kind (turbotab/core/methods/imputation.py:111)",
+   "kind": "code-or-count for imputation (binary/categorical/numeric)",
+   "inputs": "values (0/1, dtype, declared categorical)",
+   "consumers": [
+    "turbotab/core/methods/imputation.py:399 chained_equations: logistic, categorical or normal draws"
+   ],
+   "settled_today": "yes. Exact 0/1 values or text/declared only."
+  },
+  {
+   "id": "missing_level",
+   "reader": "pipeline.takes_level / level_columns / frame_level_columns (turbotab/core/models/pipeline.py:152/:157/:180)",
+   "kind": "code-or-count (a blank as a level)",
+   "inputs": "values (dtype, n_unique ≤ 2)",
+   "consumers": [
+    "MissingLevelEncoder in shared_steps (pipeline.py): which predictors keep blanks as 'Missing'",
+    "cohort complete cases (the same columns are exempt)"
+   ],
+   "settled_today": "partly. The user chose missing_category; which columns qualify is value-read, so a two-valued numeric column is treated as a category."
+  },
+  {
+   "id": "energy_fill",
+   "reader": "methods.missing.energy_fill (turbotab/core/methods/missing.py:221)",
+   "kind": "role (energy and energy-bearing nutrients) for imputation",
+   "inputs": "names and roles",
+   "consumers": [
+    "turbotab/core/models/pipeline.py:312 design_spec energy_fill → EnergyAwareImputer: nutrients filled from their line on energy (every imputed value)"
+   ],
+   "settled_today": "no. Reads the energy role and name-read energy_bearing exposures with no leash check when no adjustment names the nutrients."
+  },
+  {
+   "id": "total_energy_names",
+   "reader": "methods.energy.total_energy_columns (turbotab/core/methods/energy.py:1456) and energy_terms :1475",
+   "kind": "role: total energy by name when no energy role; covariates with a declared unit as energy sources",
+   "inputs": "names and roles",
+   "consumers": [
+    "turbotab/core/methods/energy.py:1560 describe_model → design estimand text (modeling.py:384)",
+    "turbotab/core/stages/modeling.py:389 warning 'reads as total energy … standard model'",
+    "turbotab/core/stages/modeling.py:411 substitution_pairs totals",
+    "turbotab/core/stages/modeling.py:757 measurement-error line (filters unsettled)"
+   ],
+   "settled_today": "partly. Only the measurement-error line filters unsettled roles; the estimand sentence and the substitution totals read names and unconfirmed roles."
+  },
+  {
+   "id": "energy_related_outcome",
+   "reader": "methods.dietary_caveats.energy_related (turbotab/core/methods/dietary_caveats.py:133), outcome_relation :240, recognized_otherwise :183 (units.analyte_of :150)",
+   "kind": "outcome kind (energy-related outcome)",
+   "inputs": "both: names, and r with body-size columns",
+   "consumers": [
+    "turbotab/core/stages/proposals.py:804 energy_reading outcome_dispute (DISPUTED line)",
+    "turbotab/core/stages/finding_words.py:907 restate_energy (DISPUTED badge)",
+    "recognizers.reads_as_survey_weight :1745 (denies BMXWT)"
+   ],
+   "settled_today": "yes for numbers (sentence only; an unplaced outcome gets the conditional dispute). Analyte outcomes (HbA1c, FPG) read 'other' with no dispute, a policy the verifier called debatable."
+  },
+  {
+   "id": "date_format",
+   "reader": "dates.read_text_dates (turbotab/core/dates.py:118) / read_series :176; datastore._spellings (turbotab/core/datastore.py:796); working.read_date_columns (turbotab/core/stages/working.py:1241, _DATEISH, 90%); working.time_order :1145",
+   "kind": "date format (month-first vs day-first)",
+   "inputs": "values",
+   "consumers": [
+    "datastore ingest types (dates kept as text when both orders read)",
+    "turbotab/core/stages/working.py:1000 structure_stage (repeats reading, time columns)",
+    "turbotab/core/stages/working.py:1375 rank_units ordering",
+    "turbotab/core/repairs.py:833 ambiguous_date_finding → date_reading repair"
+   ],
+   "settled_today": "yes. Ambiguous and mixed columns stay text until the user answers. The legacy turbotab/repeats.py:111 _date_columns spacing evidence still uses pandas' lenient parse (partly)."
+  },
+  {
+   "id": "ingest_values",
+   "reader": "datastore ingest readers: NULL_TOKENS (turbotab/core/datastore.py:51), _spellings decimal comma :796, _protect_leading_zeros :757, _protect_big_integers :862; repairs.read_text_numbers (turbotab/core/repairs.py:613)",
+   "kind": "missing codes and number format",
+   "inputs": "values",
+   "consumers": [
+    "every column value of the working table (types and blanks)",
+    "turbotab/core/repairs.py:742 text-number repair (user-applied)"
+   ],
+   "settled_today": "partly. Decimal comma, leading zeros and big integers are value-corroborated and noted. NULL_TOKENS turns 'NA', 'NULL', 'NaN' and similar text into blanks silently (a level 'NA' is lost)."
+  },
+  {
+   "id": "free_text",
+   "reader": "datastore.logical_dtype (turbotab/core/datastore.py:209)",
+   "kind": "code-or-text (categorical vs free text)",
+   "inputs": "values (n_unique ≤ max(50, 5% of rows))",
+   "consumers": [
+    "turbotab/core/stages/rows.py:654 'excluded (high): free text'; :545 identifier medium",
+    "pipeline one-hot of text columns"
+   ],
+   "settled_today": "partly. A many-level category is 'excluded high' from distinct counts alone."
+  },
+  {
+   "id": "orientation",
+   "reader": "working.orientation_reading (turbotab/core/stages/working.py:295, turbotab/orientation.py) + detectors.orientation.cue/shape (turbotab/core/detectors/orientation.py:58/:87) + named_reading :383; turn_plan :549 (label_column :410, is_feature_annotation :459, _incoherent :504)",
+   "kind": "orientation and feature annotations",
+   "inputs": "both: header grammar, row and column spread",
+   "consumers": [
+    "turbotab/core/interview.py:212 _orientation_gate: not applicable when the reading is sample_major",
+    "turbotab/core/stages/working.py:842 oriented_stage: transposes only on set_orientation; turn_plan picks the label and annotations",
+    "turbotab/core/sequence.py turn refusals with exits"
+   ],
+   "settled_today": "partly. Never high, and a turn needs the user's answer. But a medium 'sample_major' reading under an assay lens makes the question not applicable."
+  },
+  {
+   "id": "lens_hints",
+   "reader": "detectors.lenses.hints (turbotab/core/detectors/lenses.py:190), count_signature :139, total_energy_column :166, metabolomics_evidence, gene_vocabulary; packs.contradiction (turbotab/packs.py:6133)",
+   "kind": "lens hint",
+   "inputs": "both",
+   "consumers": [
+    "turbotab/core/stages/data.py:88 profile_stage hints",
+    "turbotab/core/detectors/lenses.py:242 contradiction_finding (critical finding)"
+   ],
+   "settled_today": "yes. Never pre-selected; the lens is the user's answer (gate: accepted limitation)."
+  },
+  {
+   "id": "acquisition",
+   "reader": "recognizers.acquisition_kind (:1551) + rows.acquisition_corroborated (turbotab/core/stages/rows.py:348) + _acquisition_values_fit :337",
+   "kind": "role: acquisition/batch",
+   "inputs": "both: whole-name acquisition phrases, distinct values, assay lens",
+   "consumers": [
+    "turbotab/core/stages/rows.py:493 'excluded' under prediction / covariate under inference (medium)"
+   ],
+   "settled_today": "partly. Medium and leash-marked, but the fit drops it under prediction as recorded."
+  },
+  {
+   "id": "flag",
+   "reader": "rows._flag_base (turbotab/core/stages/rows.py:122) + recognizers.flag_values (:1466); proposals._FLAG regex :142",
+   "kind": "role: flag",
+   "inputs": "both: imputed_/_flag names; binary values tied to the base's blanks",
+   "consumers": [
+    "turbotab/core/stages/rows.py:464–481 flag high/medium (leaves the predictors)",
+    "turbotab/core/stages/proposals.py:291/:321/:383: flag-named columns never offered as nutrients or strata",
+    "turbotab/core/stages/finding_words.py:1079 flag_findings"
+   ],
+   "settled_today": "partly. High only when tied to the base's blanks; a medium flag rides along and leaves the fit."
+  },
+  {
+   "id": "time_role",
+   "reader": "recognizers.reads_as_time (:1622) + within_unit_variation (:1500) + visit id_kind",
+   "kind": "role: time",
+   "inputs": "both: time words, variation within the 'repeating' unit",
+   "consumers": [
+    "turbotab/core/stages/rows.py:580–646 time high/medium/excluded (leaves the predictors)"
+   ],
+   "settled_today": "partly. High needs variation within units, but the unit is the fewest-unit identifier (possibly a stratum: rows.py:843)."
+  },
+  {
+   "id": "covariates",
+   "reader": "rows covariate/characteristic readers: _COVARIATE_TOKENS + characteristic_fits (turbotab/core/stages/rows.py:269), _FASTING_TOKENS, recognizers.study_group :1576 / has_id_tail :1585, _intake_by_unit :186, is_rate :1615",
+   "kind": "role: covariate, exposure (arm), cluster (group_id > 10), intake by unit",
+   "inputs": "both",
+   "consumers": [
+    "turbotab/core/stages/rows.py:625–653 role proposals → fit predictor set (pipeline.py:70)"
+   ],
+   "settled_today": "partly. Only age/sex/BMI earn high from values; the rest are medium/low, and the fit reads them as recorded."
+  },
+  {
+   "id": "plausibility",
+   "reader": "detectors.plausibility.read (turbotab/core/detectors/plausibility.py:293/_read :333) + variable_of :131, age_reading :145, sex_codes :193, ml/clinical_units.py:173 infer_unit, ml.card_evidence.interpretation_verdict",
+   "kind": "plausibility (impossible vs extreme), analyte unit, age unit, sex coding",
+   "inputs": "both: exact names and aliases; unit by magnitude; age unit by name or assumed years; any sex-named {1,2} read as 1 = male",
+   "consumers": [
+    "turbotab/core/detectors/plausibility.py:517 impossible_vs_extreme_finding (counts, children's BIV flags)",
+    "turbotab/core/repairs.py:264 _offer_impossible: set_missing / exclude_rows / unusable bands"
+   ],
+   "settled_today": "partly. Values change only through apply_repair; doubtful units are set aside; an age unit flagging most rows becomes a question. The coded sex (1 = male assumed) and the reference-unit band are not confirmed."
+  },
+  {
+   "id": "sentinels",
+   "reader": "detectors.codes.read (turbotab/core/detectors/codes.py:92) + design_column :67 (ml.import_doctor NUMERIC_SENTINELS); detectors.scales.sentinel_finding (turbotab/core/detectors/scales.py:317)",
+   "kind": "missing codes (sentinels)",
+   "inputs": "values and names (design columns skipped)",
+   "consumers": [
+    "turbotab/core/repairs.py:349 _offer_sentinels → set_missing (user-applied)"
+   ],
+   "settled_today": "yes. A warning only; values are blanked only by the user's apply_repair."
+  },
+  {
+   "id": "scales",
+   "reader": "detectors.scales.blocks (turbotab/core/detectors/scales.py:222) / findings :412",
+   "kind": "response scale and instrument",
+   "inputs": "both: name stems, response runs",
+   "consumers": [
+    "survey lens hint (lenses.py:197)",
+    "ordinal finding and reframe (detectors/__init__.py:114)"
+   ],
+   "settled_today": "yes. Sentences and hints only."
+  },
+  {
+   "id": "assay_scale",
+   "reader": "methods.omics.scale_reading (turbotab/core/methods/omics.py:143) + candidate_columns :120 / _excluded_by_name :109",
+   "kind": "assay scale (raw counts or intensities)",
+   "inputs": "both: values; names exclude ids and covariates",
+   "consumers": [
+    "turbotab/core/methods/omics.py omics_scale repair (TMM/log-CPM etc., user-applied)",
+    "turbotab/core/methods/omics.py:641 design_normalization (columns ∩ exposure roles)",
+    "turbotab/core/stages/modeling.py:207 library-size concern; linear-family refusals"
+   ],
+   "settled_today": "partly. Normalization runs only after the user applies the repair; the normalized columns are intersected with exposure roles without a settlement check."
+  },
+  {
+   "id": "assay_type",
+   "reader": "detectors.genomics.card (turbotab/core/detectors/genomics.py:188); detectors.assay run_order_finding :127 / redundancy_finding :222",
+   "kind": "assay data type, run order, redundancy",
+   "inputs": "values and names",
+   "consumers": [
+    "findings, hints, reframe notes (detectors/__init__.py:114), omics.restate_raw_counts"
+   ],
+   "settled_today": "yes. Sentences and findings only."
+  },
+  {
+   "id": "repairs",
+   "reader": "repairs-only readers: sas_zero_finding (turbotab/core/repairs.py:422), infinite_finding :935, ambiguous_date_finding :833, text_number_findings :678, packs atwater energy_in_kj → _offer_kj :528, packs._zeros_or_missing (turbotab/packs.py:2261) → _offer_zeros :1000, below_detection → :788",
+   "kind": "missing codes and units (SAS zeros, ±inf, kJ, zeros as non-detections, <LOD)",
+   "inputs": "values",
+   "consumers": [
+    "turbotab/core/repairs.py:1190 column_expressions → the working table's values, after apply_repair"
+   ],
+   "settled_today": "yes. Each acts only on the user's apply_repair with its params shown."
+  },
+  {
+   "id": "measurement",
+   "reader": "recognizers.reads_as_measurement (:1642)",
+   "kind": "identifier-or-measurement",
+   "inputs": "both: fractional values, unit and measure words",
+   "consumers": [
+    "turbotab/core/seal.py:158 _measurement: the grouped seal called exploratory",
+    "turbotab/core/stages/working.py:919 unit_suggestions (excludes candidates)",
+    "turbotab/core/stages/rows.py:855 _fractional_identifiers"
+   ],
+   "settled_today": "yes. Conservative only (demotes or excludes)."
+  },
+  {
+   "id": "energy_applicability",
+   "reader": "interview._energy_applicability / _substitution_applicability (turbotab/core/interview.py:179/:193) via energy_bearing",
+   "kind": "role (energy-bearing exposure) gating questions",
+   "inputs": "names (via roles)",
+   "consumers": [
+    "energy_adjustment and substitution questions marked not_applicable → no adjustment asked; energy stays in as a covariate"
+   ],
+   "settled_today": "no. An unrecognized nutrient name silently removes the energy-adjustment question (the estimand choice) for the whole analysis."
+  },
+  {
+   "id": "coach_names",
+   "reader": "coach name readers: _is_energy (turbotab/core/coach.py:135), _unit_suffix :144 (rows._unit :132), _BMI regex :216",
+   "kind": "role (energy), unit in a sentence, BMI column",
+   "inputs": "names",
+   "consumers": [
+    "turbotab/core/coach.py:187 range_notes 'likely under/over-reporting' + unit suffix",
+    "turbotab/core/coach.py:219 exclusions_coach: 'Excluded rows' median bmi …'"
+   ],
+   "settled_today": "no. Names only, and they reach sentences beside counts."
+  },
+  {
+   "id": "substitution_validators",
+   "reader": "decisions substitution validators (turbotab/core/decisions.py:2104 _substitution_swaps_energy, :2196 _substitution_has_every_energy_source)",
+   "kind": "role + factor (energy sources, references)",
+   "inputs": "names (nutrient_role, energy_factor, is_percent_of_energy) and values (shares, omitted share)",
+   "consumers": [
+    "refusal omitted_energy_sources (:2344) with SetRoles exits that add name-read columns as exposures in one bulk decision; reference-share exits"
+   ],
+   "settled_today": "partly. Refusals are conservative, but the exits confirm several name-read readings in one SetRoles."
+  },
+  {
+   "id": "split_inputs",
+   "reader": "rows.split_inputs (turbotab/core/stages/rows.py:1633) — dormant",
+   "kind": "identifier-or-cluster",
+   "inputs": "roles and values",
+   "consumers": [
+    "no caller in core/server (exported in __all__)"
+   ],
+   "settled_today": "no (latent). Reads every identifier role with no leash check; harmless only while uncalled."
+  }
+ ]
+}

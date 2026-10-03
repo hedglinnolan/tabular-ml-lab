@@ -7,13 +7,16 @@ import pandas as pd
 
 from turbotab.core.consequences import CAPTION_WORDS, FRAME_WORDS, TITLE_WORDS, words
 from turbotab.server import schemas
-from turbotab.server.tests.conftest import SAMPLES, open_by_path, prepare, wait_for
+from turbotab.server.tests.conftest import SAMPLES, answer_settled, open_by_path, prepare, wait_for
 
 
 def decide(client, pid, decision, status=200):
     if status == 200:
         prepare(client, pid, decision)  # the questions before it, answered as usual (M2 §12.2)
-    response = client.post(f"/api/projects/{pid}/decisions", json=decision)
+        # each reading below high confirmed on its own (BLUEPRINT §14.1, the readings ledger)
+        response = answer_settled(client, pid, None, decision)
+    else:
+        response = client.post(f"/api/projects/{pid}/decisions", json=decision)
     assert response.status_code == status, response.text
     return response.json()
 
@@ -47,7 +50,14 @@ def test_combining_a_persons_recalls_reaches_the_table_the_previews_and_the_rout
     decide(client, pid, {"kind": "set_grain", "grain": "repeated", "id_column": "participant_id"})
     view = wait_for(client, pid, {"structure": "fresh"})
     steps = {s["key"]: s for s in client.get(f"/api/projects/{pid}").json()["interview"]}
-    assert steps["repeat_kind"]["status"] == "skipped" and "`recall_date`" in steps["repeat_kind"]["reason"]
+    # The readings ledger (BLUEPRINT §14.1): the reading states repeats from the recall spacing at
+    # medium confidence, so the question is asked with it as the proposal.
+    assert steps["repeat_kind"]["status"] in ("open", "waiting")  # waiting: the event's stage
+    structure = client.get(f"/api/projects/{pid}/stages/structure").json()["artifact"]
+    assert structure["repeats"]["reading"] == "repeats"
+    assert "`recall_date`" in structure["repeats"]["sentence"]
+    decide(client, pid, {"kind": "set_repeat_kind", "repeat_kind": "repeats"})
+    wait_for(client, pid, {"structure": "fresh"})
     structure = client.get(f"/api/projects/{pid}/stages/structure").json()["artifact"]
     schemas.StructureArtifact.model_validate(structure)
     assert structure["aggregation"]["recommended"] == "mean"
@@ -82,6 +92,11 @@ def test_combining_a_persons_recalls_reaches_the_table_the_previews_and_the_rout
         (p, [2 * i + k]) for i, p in enumerate(people) for k in (0, 1)]
     assert [(r["unit"], r["sources"]) for r in combined["rows"]] == [
         (p, [2 * i, 2 * i + 1]) for i, p in enumerate(people)]
+    # The last recall is the last by `recall_date` once that order is confirmed on its own (the
+    # readings ledger, BLUEPRINT §14.1); until then the answer is refused with that exit.
+    decide(client, pid, {"kind": "confirm_reading", "reading": "time_column",
+                         "column": "recall_date", "value": "orders"})
+    wait_for(client, pid, {"structure": "fresh"})
     lasts = preview(client, pid, {"kind": "set_aggregation", "method": "last"})["views"]
     kept = raw.sort_values(["recall_date"], kind="stable").groupby("participant_id")[col].last()
     edges = np.asarray(lasts[2]["after"]["edges"])

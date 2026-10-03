@@ -685,8 +685,10 @@ def test_wp13_5_through_the_api_the_screen_is_refused_until_the_unit_is_recorded
         assert r.status_code == 409, r.text
         error = r.json()["error"]
         assert error["code"] == "role_unconfirmed"
-        assert {"kind": "confirm_role", "column": "energy", "role": "energy"} in [
-            x["decision"] for x in error["exits"]]
+        # The readings ledger (BLUEPRINT §14.1): one confirmation decision for every reading;
+        # ``confirm_role`` records stay valid, and this one is recorded as the ledger's.
+        assert {"kind": "confirm_reading", "reading": "role", "column": "energy",
+                "value": "energy"} in [x["decision"] for x in error["exits"]]
         drive.decide({"kind": "confirm_role", "column": "energy", "role": "energy"})
         r = drive.post({"kind": "set_exclusions", "rules": [rule]})
         assert r.status_code == 409, r.text

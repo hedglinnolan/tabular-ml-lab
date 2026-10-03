@@ -79,6 +79,8 @@ function view(): ProjectView {
       column_units: null,
       roles_unconfirmed: null,
       role_confirmations: null,
+      reading_confirmations: null,
+      shape_confirmations: null,
     },
     decisions: [record(1)],
     stages: {
@@ -350,9 +352,21 @@ describe("reconcileStages", () => {
   it("reads again a result fetched while the stage ran, once the view says it is fresh", () => {
     // The race behind "the file is still being read" forever: the result was fetched while
     // ingest ran, and the event that it finished never refetched it.
-    const running: StageResult = { stage: "ingest", key: null, fresh: false, status: "running", artifact: null };
+    const running: StageResult = {
+      stage: "ingest",
+      key: null,
+      fresh: false,
+      status: "running",
+      artifact: null,
+    };
     qc.setQueryData(keys.stage(PID, "ingest"), running);
-    const current: StageResult = { stage: "target_info", key: "t1", fresh: true, status: "fresh", artifact: {} };
+    const current: StageResult = {
+      stage: "target_info",
+      key: "t1",
+      fresh: true,
+      status: "fresh",
+      artifact: {},
+    };
     qc.setQueryData(keys.stage(PID, "target_info"), current);
     expect(reconcileStages(qc, PID, cachedView())).toEqual(["ingest"]);
     expect(isInvalid(keys.stage(PID, "ingest"))).toBe(true);
@@ -360,10 +374,22 @@ describe("reconcileStages", () => {
   });
 
   it("reads again a fresh result under another key, and leaves a stage that is not fresh", () => {
-    qc.setQueryData(keys.stage(PID, "ingest"), { stage: "ingest", key: "old", fresh: true, status: "fresh", artifact: {} });
+    qc.setQueryData(keys.stage(PID, "ingest"), {
+      stage: "ingest",
+      key: "old",
+      fresh: true,
+      status: "fresh",
+      artifact: {},
+    });
     const v = cachedView();
     v.stages.target_info = status("target_info", { status: "running", fresh: false });
-    qc.setQueryData(keys.stage(PID, "target_info"), { stage: "target_info", key: null, fresh: false, status: "running", artifact: null });
+    qc.setQueryData(keys.stage(PID, "target_info"), {
+      stage: "target_info",
+      key: null,
+      fresh: false,
+      status: "running",
+      artifact: null,
+    });
     expect(reconcileStages(qc, PID, v)).toEqual(["ingest"]);
     expect(isInvalid(keys.stage(PID, "target_info"))).toBe(false);
   });

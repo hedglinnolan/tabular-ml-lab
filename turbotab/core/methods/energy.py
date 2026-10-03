@@ -416,8 +416,11 @@ def energy_factor(column: str, atwater: Optional[Mapping[str, float]] = None) ->
     if atwater:
         factors.update({str(k): float(v) for k, v in atwater.items()})
     unit = unit_of(column)
-    if str(column) in factors:
-        factor = factors[str(column)]
+    if atwater and str(column) in atwater:
+        # Only a factor the caller gives for this exact column is the user's declaration. A column
+        # named exactly ``fat`` or ``protein`` matched the default factors' own keys and was taken as
+        # declared, skipping the grams check (BLUEPRINT §14.1, the census).
+        factor = float(atwater[str(column)])
         return FactorReading(column, factor, None, unit, True,
                              f"{column}: {factor:g} kcal per unit, as given for this column")
     if unit == "density":

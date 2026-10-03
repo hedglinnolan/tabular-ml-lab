@@ -235,6 +235,20 @@ CASES = [
 ]
 
 
+def settled(run: GraphRun, combined: ProjectState) -> ProjectState:
+    """``combined`` with the readings the combining reads confirmed one by one, as a user who knows
+    the table does (BLUEPRINT §14.1, the readings ledger): the repeats reading's column as the one
+    that orders each unit's records, and each whole-number column that may be a code or a count as
+    a code (the rule the pandas reference applies)."""
+    structure = run.run(combined.model_copy(update={"aggregation": None}),
+                        upto=["structure"])["structure"]
+    proposed = structure.get("proposed_time_column")
+    confirmations = {f"code_or_count:{c}": "code" for c in structure.get("code_or_count") or []}
+    if proposed:
+        confirmations[f"time_column:{proposed}"] = "orders"
+    return combined.model_copy(update={"shape_confirmations": confirmations})
+
+
 @pytest.mark.parametrize("source,key,target,outcome", CASES, ids=["dietary", "clinical"])
 @pytest.mark.parametrize("method", ["mean", "first", "last", "change"])
 def test_combining_each_units_rows_equals_pandas(graph, source, key, target, outcome, method):
@@ -242,6 +256,7 @@ def test_combining_each_units_rows_equals_pandas(graph, source, key, target, out
     combined = state(lens=["dietary" if source == DIETARY else "clinical"], target=target,
                      grain={"grain": "repeated", "id_column": key}, unit="unit",
                      aggregation={"method": method, "outcome": outcome})
+    combined = settled(run, combined)
     out = run.run(combined, upto=["working"])
     working, structure = out["working"], out["structure"]
     receipt = working.data["aggregation"]
@@ -266,17 +281,19 @@ def test_combining_each_units_rows_equals_pandas(graph, source, key, target, out
 
 def test_an_outcome_that_varies_within_a_unit_must_say_which_to_keep(graph):
     run = graph(CLINICAL)
+    unsure = state(lens=["clinical"], target="progressed",
+                   grain={"grain": "repeated", "id_column": "subject_id"}, unit="unit",
+                   aggregation={"method": "first"})
     with pytest.raises(StructureError, match="which value to keep"):
-        run.run(state(lens=["clinical"], target="progressed",
-                      grain={"grain": "repeated", "id_column": "subject_id"}, unit="unit",
-                      aggregation={"method": "first"}), upto=["working"])
+        run.run(settled(run, unsure), upto=["working"])
 
 
 def test_the_row_map_sends_every_source_row_to_its_units_one_row(graph):
     run = graph(DIETARY)
-    out = run.run(state(lens=["dietary"], target="hba1c",
-                        grain={"grain": "repeated", "id_column": "participant_id"}, unit="unit",
-                        aggregation={"method": "mean"}), upto=["working"])
+    out = run.run(settled(run, state(lens=["dietary"], target="hba1c",
+                                     grain={"grain": "repeated", "id_column": "participant_id"},
+                                     unit="unit", aggregation={"method": "mean"})),
+                  upto=["working"])
     working = out["working"]
     mapping = row_map(working)
     source = pd.read_parquet(run.raw, columns=["participant_id", "__row_id"]).set_index("__row_id")

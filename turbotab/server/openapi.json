@@ -424,6 +424,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/ConfirmRole"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmReading"
                   }
                 ],
                 "discriminator": {
@@ -462,7 +465,8 @@
                     "set_measurement_error": "#/components/schemas/SetMeasurementError-Input",
                     "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
                     "set_column_unit": "#/components/schemas/SetColumnUnit-Input",
-                    "confirm_role": "#/components/schemas/ConfirmRole"
+                    "confirm_role": "#/components/schemas/ConfirmRole",
+                    "confirm_reading": "#/components/schemas/ConfirmReading"
                   }
                 },
                 "title": "Decision"
@@ -764,6 +768,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/ConfirmRole"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmReading"
                   }
                 ],
                 "discriminator": {
@@ -802,7 +809,8 @@
                     "set_measurement_error": "#/components/schemas/SetMeasurementError-Input",
                     "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
                     "set_column_unit": "#/components/schemas/SetColumnUnit-Input",
-                    "confirm_role": "#/components/schemas/ConfirmRole"
+                    "confirm_role": "#/components/schemas/ConfirmRole",
+                    "confirm_reading": "#/components/schemas/ConfirmReading"
                   }
                 },
                 "title": "Decision"
@@ -1878,6 +1886,51 @@
         "title": "ColumnUnitSpec",
         "description": "A column's recorded unit; for total energy, the number of days each value totals."
       },
+      "ConfirmReading": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "confirm_reading",
+            "title": "Kind",
+            "default": "confirm_reading"
+          },
+          "reading": {
+            "type": "string",
+            "enum": [
+              "role",
+              "cluster",
+              "unit",
+              "day_count",
+              "code_or_count",
+              "time_column",
+              "nested_in"
+            ],
+            "title": "Reading"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^`\\n\\r]+$",
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "reading",
+          "column",
+          "value"
+        ],
+        "title": "ConfirmReading",
+        "description": "One reading of the data, confirmed on its own after its evidence was read (BLUEPRINT §14.1:\n\"Confirmation is one reading at a time, never a bulk confirm of uncertain readings\"). One\ncolumn, one kind and one value per record: a role (``exposure``), whether a column's\nrepeating values cluster the rows (``yes``/``no``), a unit (``kg``), the days a total-energy\nvalue spans (``2``), whether whole numbers are codes or amounts, or that a column orders a\nunit's rows. ``confirm_role`` records stay valid: each is this decision's role kind."
+      },
       "ConfirmRole": {
         "properties": {
           "kind": {
@@ -2078,6 +2131,9 @@
               },
               {
                 "$ref": "#/components/schemas/ConfirmRole"
+              },
+              {
+                "$ref": "#/components/schemas/ConfirmReading"
               }
             ],
             "title": "Decision",
@@ -2085,6 +2141,7 @@
               "propertyName": "kind",
               "mapping": {
                 "apply_repair": "#/components/schemas/ApplyRepair-Output",
+                "confirm_reading": "#/components/schemas/ConfirmReading",
                 "confirm_role": "#/components/schemas/ConfirmRole",
                 "defer_finding": "#/components/schemas/DeferFinding",
                 "dismiss_finding": "#/components/schemas/DismissFinding-Output",
@@ -2729,12 +2786,16 @@
                   },
                   {
                     "$ref": "#/components/schemas/ConfirmRole"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmReading"
                   }
                 ],
                 "discriminator": {
                   "propertyName": "kind",
                   "mapping": {
                     "apply_repair": "#/components/schemas/ApplyRepair-Output",
+                    "confirm_reading": "#/components/schemas/ConfirmReading",
                     "confirm_role": "#/components/schemas/ConfirmRole",
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Output",
@@ -4833,6 +4894,34 @@
               }
             ],
             "title": "Role Confirmations"
+          },
+          "reading_confirmations": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reading Confirmations"
+          },
+          "shape_confirmations": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shape Confirmations"
           }
         },
         "type": "object",
@@ -4868,7 +4957,9 @@
           "outcome_unit",
           "column_units",
           "roles_unconfirmed",
-          "role_confirmations"
+          "role_confirmations",
+          "reading_confirmations",
+          "shape_confirmations"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."

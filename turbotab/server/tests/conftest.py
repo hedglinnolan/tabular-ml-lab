@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import time
 from pathlib import Path
 
@@ -158,5 +160,60 @@ def prepare(client: TestClient, pid: str, decision: dict, timeout: float = 120.0
             time.sleep(0.05)
             continue
         answer = usual_answer(client, pid, first["key"], view)
-        response = client.post(f"/api/projects/{pid}/decisions", json=answer)
+        response = answer_settled(client, pid, first["key"], answer)
         assert response.status_code == 200, (first["key"], response.text)
+
+
+# The readings ledger (BLUEPRINT §14.1): a reading below high is confirmed on its own. A test that
+# answers the usual way confirms each, one decision per reading, keeping the reading the engine
+# applied before the ledger (a predictor's whole numbers as an amount; a unit's repeating whole
+# numbers combined as codes; the repeats reading's column as the order).
+_KEEPS = {"models": "amount", "aggregation": "code"}
+
+
+def confirm_each(client: TestClient, pid: str, exits: list, key: str) -> int:
+    """Record each ``confirm_reading`` exit of a refusal, one per reading; returns how many."""
+    done = 0
+    seen: set[tuple[str, str]] = set()
+    for item in exits:
+        d = item.get("decision") or {}
+        if d.get("kind") != "confirm_reading":
+            continue
+        if d["reading"] == "code_or_count" and d["value"] != _KEEPS.get(key, "amount"):
+            continue
+        if d["reading"] == "cluster" and d["value"] != "yes":
+            continue
+        if (d["reading"], d["column"]) in seen:
+            continue
+        seen.add((d["reading"], d["column"]))
+        r = client.post(f"/api/projects/{pid}/decisions", json=d)
+        assert r.status_code == 200, (d, r.text)
+        done += 1
+    return done
+
+
+def answer_settled(client: TestClient, pid: str, key: str | None, answer: dict) -> Any:
+    """Post ``answer``; after roles, confirm each one that rode along; when the answer is refused
+    only for readings to confirm, confirm each and post it again."""
+    if key is None:
+        from turbotab.core.sequence import question_of
+
+        key = question_of(str(answer.get("kind"))) or ""
+    response = client.post(f"/api/projects/{pid}/decisions", json=answer)
+    if response.status_code == 200 and answer.get("kind") == "set_roles":
+        record = client.get(f"/api/projects/{pid}").json()["decisions"][-1]
+        for column in record["decision"].get("unconfirmed") or []:
+            r = client.post(f"/api/projects/{pid}/decisions", json={
+                "kind": "confirm_reading", "reading": "role", "column": column,
+                "value": answer["roles"][column]})
+            assert r.status_code == 200, r.text
+    for _ in range(4):
+        if response.status_code != 409:
+            break
+        error = response.json().get("error") or {}
+        if error.get("code") not in ("reading_unsettled", "role_unconfirmed"):
+            break
+        if not confirm_each(client, pid, error.get("exits") or [], key):
+            break
+        response = client.post(f"/api/projects/{pid}/decisions", json=answer)
+    return response

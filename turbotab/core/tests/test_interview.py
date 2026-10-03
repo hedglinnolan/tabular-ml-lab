@@ -89,9 +89,15 @@ def test_energy_adjustment_says_which_ingredient_is_missing():
     no_energy = {k: v for k, v in DIET_ROLES.items() if v != "energy"}
     step = _by_key(route(ProjectState(roles=no_energy, **base), _stages()))["energy_adjustment"]
     assert step.status == "not_applicable" and "energy role" in step.reason
+    # The readings ledger (BLUEPRINT §14.1): "carries no energy" is a name's reading, never settled
+    # by it, so an exposure no name reads as a nutrient keeps the estimand question asked; with no
+    # exposure at all there is nothing to adjust.
     no_bearing = {"energy_kcal": "energy", "sodium_mg": "exposure", "age": "covariate"}
     step = _by_key(route(ProjectState(roles=no_bearing, **base), _stages()))["energy_adjustment"]
-    assert step.status == "not_applicable" and "carries energy" in step.reason
+    assert step.status in ("open", "waiting")
+    no_exposure = {"energy_kcal": "energy", "age": "covariate"}
+    step = _by_key(route(ProjectState(roles=no_exposure, **base), _stages()))["energy_adjustment"]
+    assert step.status == "not_applicable" and "exposure" in step.reason
 
 
 def test_substitution_waits_for_a_fresh_fit_and_needs_two_energy_nutrients():
@@ -123,8 +129,14 @@ def test_the_opening_sequence_fires_only_on_its_conditions():
     assert steps["target"].status == "waiting" and steps["target"].waiting_on == ["orientation"]
     steps = _by_key(route(ProjectState(lens=["dietary"]), _stages(), {"oriented": turned}))
     assert steps["orientation"].status == "not_applicable" and steps["target"].status == "open"
-    plain = {"reading": {"reading": "sample_major", "sentence": "One row per sample."}}
+    # The readings ledger (BLUEPRINT §14.1): a medium "one row per sample" reading is the question's
+    # proposal under an assay lens, never its answer; only a settled (high) reading skips it.
+    plain = {"reading": {"reading": "sample_major", "confidence": "medium",
+                         "sentence": "One row per sample."}}
     steps = _by_key(route(ProjectState(lens=["genomics"]), _stages(), {"oriented": plain}))
+    assert steps["orientation"].status == "open"
+    settled = {"reading": {**plain["reading"], "confidence": "high"}}
+    steps = _by_key(route(ProjectState(lens=["genomics"]), _stages(), {"oriented": settled}))
     assert steps["orientation"].status == "not_applicable"
     assert steps["orientation"].reason == "One row per sample."
     # once answered it stays answered whatever the lens: the slot turns the table
@@ -137,11 +149,16 @@ def test_the_opening_sequence_fires_only_on_its_conditions():
                          grain={"grain": "repeated", "id_column": "pid"})
     steps = _by_key(route(state, _stages(), {"structure": structure}))
     assert steps["event"].status == "not_applicable"  # a regression outcome has no event level
-    # the reason is the clause after the client's own "Not asked:" label, never doubled
-    assert steps["repeat_kind"].status == "skipped" and steps["repeat_kind"].reason == "visits."
+    # The readings ledger (BLUEPRINT §14.1): a stated reading is medium at most (its evidence is
+    # spacing, an index or a name), so the question is asked with it as the proposal.
+    assert steps["repeat_kind"].status == "open"
+    state = state.model_copy(update={"repeat_kind": {"repeat_kind": "time_points"}})
+    steps = _by_key(route(state, _stages(), {"structure": structure}))
+    assert steps["repeat_kind"].status == "answered"
     assert steps["unit"].status == "open" and steps["temporal"].status == "waiting"
     rows = _by_key(route(state.model_copy(update={"unit": "row"}), _stages(), {"structure": structure}))
     assert rows["aggregation"].status == "not_applicable" and rows["temporal"].status == "open"
+    state = state.model_copy(update={"repeat_kind": None})
     other = {**structure, "units": {"column": "visit"}}  # read for another unit: not stated for it
     assert _by_key(route(state, _stages(), {"structure": other}))["repeat_kind"].status == "open"
     computing = _by_key(route(state, _stages(structure="running")))

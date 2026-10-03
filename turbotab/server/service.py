@@ -85,6 +85,9 @@ class DecisionContext:
     records: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
     # The Router's steps as the project stands (answers in order, M2_CONTRACT §12.2).
     interview: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
+    # A stage's newest public artifact, fresh or stale: what a client may have been shown (the
+    # readings ledger reads which roles a bulk answer carried against it; BLUEPRINT §14.1).
+    shown: Callable[[str], Any] | None = field(default=None, repr=False, compare=False)
 
 
 def _target_needs_columns(decision: Any, ctx: Any) -> None:
@@ -633,6 +636,7 @@ class ProjectService:
             analyzed=lambda: self.analyzed_rows(pid, stages, self._cohort_ids(pid, stages)),
             records=lambda: self.log(pid).records(),
             interview=lambda: self.interview(pid, state, stages, self.log(pid).records()),
+            shown=lambda stage: self._shown(pid, stage),
         )
 
     def decide(self, pid: str, decision: Any) -> dict[str, Any]:
@@ -844,6 +848,13 @@ class ProjectService:
             while len(self._artifacts) > MAX_CACHED_ARTIFACTS:
                 self._artifacts.popitem(last=False)
         return value
+
+    def _shown(self, pid: str, stage: str) -> Any:
+        """The stage's newest artifact, fresh or stale, or None when none was ever computed."""
+        try:
+            return self.engine.get(pid, stage).artifact
+        except Exception:  # noqa: BLE001 - nothing computed: nothing was shown
+            return None
 
     def _fresh(self, pid: str, stage: str, public: bool = False) -> Any:
         status = self.engine.status(pid).get(stage)

@@ -131,20 +131,30 @@ def resolve_clusters(state: Any, frame: pd.DataFrame, also: Sequence[str | None]
     named = getattr(grain, "id_column", None) if grain is not None else None
     repeating: list[tuple[int, str]] = []
     waiting_repeats: list[tuple[int, str]] = []
-    # BLUEPRINT §14 rule 2: the grouping identifier is a number-changing default, read only from a
-    # settled role (the grain's named column and the split's grouping are the user's own answers).
-    from turbotab.core.leash import unsettled
+    # BLUEPRINT §14.1 (the readings ledger): which rows belong together is a cluster reading, and
+    # the intervals read it only settled: the grain's named column and the split's grouping are the
+    # user's own answers, an identifier or cluster role is settled once confirmed (or corroborated),
+    # and a column the user said does not cluster the rows is passed over.
+    from turbotab.core.readings import cluster_reading
 
-    waiting = set(unsettled(state)) - {named, *[c for c in also if c]}
+    answered = {named, *[c for c in also if c]}
     for column in cluster_columns(state, list(frame.columns), also):
         values = frame[column]
         units = int(values.nunique(dropna=True))
-        if 0 < units < int(values.notna().sum()):
-            (waiting_repeats if column in waiting else repeating).append((units, column))
+        if not 0 < units < int(values.notna().sum()):
+            continue
+        if column in answered:
+            repeating.append((units, column))
+            continue
+        found = cluster_reading(state, column)
+        if not found.settled:
+            waiting_repeats.append((units, column))
+        elif found.value == "yes":
+            repeating.append((units, column))
     repeating.sort()
     chosen = next((c for _, c in repeating if c == named), repeating[0][1] if repeating else None)
     if chosen is None and waiting_repeats:
-        from turbotab.core.leash import confirm_exits
+        from turbotab.core.readings import confirm_exit, confirm_exits
 
         units, column = sorted(waiting_repeats)[0]
         roles = getattr(state, "roles", None) or {}
@@ -155,6 +165,12 @@ def resolve_clusters(state: Any, frame: pd.DataFrame, also: Sequence[str | None]
                      f"intervals that cluster by it, or that ignore it, would each rest on a "
                      f"guess."),
             exits=tuple([*confirm_exits(state, [column]),
+                         confirm_exit("cluster", column, "yes",
+                                      f"Rows sharing a `{column}` belong together: cluster the "
+                                      f"intervals by it"),
+                         confirm_exit("cluster", column, "no",
+                                      f"`{column}` groups nothing the intervals must keep "
+                                      f"together (a stratum, an interviewer)"),
                          {"label": "Name the column that identifies the unit (the grain question)",
                           "decision": None}]))
     if chosen is not None:

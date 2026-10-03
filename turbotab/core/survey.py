@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 # The attestation the "these participants" answer records, word for word (AUDIT_REPORT §5 WP10.1).
 ATTESTATION = "unweighted, sample-only estimand; standard errors ignore strata and PSUs"
@@ -70,14 +70,18 @@ class DesignReading:
     psu: list[str] = field(default_factory=list)
     cycles: list[str] = field(default_factory=list)
     four_year: dict[str, str] = field(default_factory=dict)  # 2-year weight -> its 4-year column
+    # Columns the user settled as part of the design whose names say nothing of which part
+    # (NDNS ``wti_Y911``, ``astrata1``, ``area``; MEPS ``PERWT19F``, ``VARSTR``, ``VARPSU``):
+    # their values place them (:func:`place_design`) and the survey question names each placement.
+    unplaced: list[str] = field(default_factory=list)
 
     @property
     def present(self) -> bool:
-        return bool(self.weights or self.strata or self.psu)
+        return bool(self.weights or self.strata or self.psu or self.unplaced)
 
     def columns(self) -> list[str]:
         return list(dict.fromkeys([*self.weights, *self.four_year.values(), *self.strata,
-                                   *self.psu, *self.cycles]))
+                                   *self.psu, *self.cycles, *self.unplaced]))
 
 
 def read_design(columns: Sequence[str], target: str | None = None) -> DesignReading:
@@ -118,9 +122,66 @@ def read_design(columns: Sequence[str], target: str | None = None) -> DesignRead
 
 
 def reading_of(state: Any) -> DesignReading:
-    """The design the confirmed roles' columns read as (every column but the outcome)."""
+    """The design the roles' columns read as (every column but the outcome): by their names, and
+    every column whose ``design`` role is settled (BLUEPRINT §14.1, the readings ledger: the user's
+    confirmed role outranks a name the reader does not know; the gate's NDNS and MEPS designs,
+    each set to ``design`` by the user, were "no surveyed population")."""
+    from dataclasses import replace
+
+    from turbotab.core.readings import settled_roles
+
     roles = getattr(state, "roles", None) or {}
-    return read_design(list(roles), getattr(state, "target", None))
+    target = getattr(state, "target", None)
+    reading = read_design(list(roles), target)
+    named = set(reading.columns())
+    unplaced = [c for c, r in settled_roles(state).items()
+                if r == "design" and c != target and c not in named]
+    return replace(reading, unplaced=unplaced) if unplaced else reading
+
+
+def place_design(frame: Any, columns: Sequence[str]) -> dict[str, list[str]]:
+    """Where the values place each design column the names do not: a weight is non-negative with
+    fractional values or many distinct ones (a survey weight is a reciprocal of a selection
+    probability, rarely whole); strata and sampling units are whole-number codes. Which code is the
+    stratum and which the PSU is read only when one nests in the other (each PSU in one stratum);
+    otherwise both orders are offered, each named, and the user's answer records which."""
+    import numpy as np
+    import pandas as pd
+
+    weights: list[str] = []
+    codes: list[str] = []
+    for c in columns:
+        if frame is None or c not in frame.columns:
+            continue
+        x = pd.to_numeric(frame[c], errors="coerce").dropna()
+        if x.empty or (x < 0).any():
+            continue
+        whole = bool(np.all(np.isclose(x.to_numpy(dtype=float), np.round(x.to_numpy(dtype=float)))))
+        if not whole or x.nunique() > 0.5 * len(x):
+            weights.append(str(c))
+        else:
+            codes.append(str(c))
+    return {"weights": weights, "codes": codes}
+
+
+def _code_pairs(frame: Any, codes: Sequence[str]) -> list[tuple[str | None, str | None]]:
+    """(strata, psu) pairs the whole-number design codes may form, nested ones read, else both
+    orders; one code may be either."""
+    if not codes:
+        return [(None, None)]
+    if len(codes) == 1:
+        return [(codes[0], None), (None, codes[0])]
+    a, b = codes[0], codes[1]
+    pairs: list[tuple[str | None, str | None]] = []
+    if frame is not None and a in frame.columns and b in frame.columns:
+        both = frame[[a, b]].dropna()
+        if len(both):
+            if int(both.groupby(b)[a].nunique().max()) == 1 and both[a].nunique() < both[b].nunique():
+                return [(a, b)]
+            if int(both.groupby(a)[b].nunique().max()) == 1 and both[b].nunique() < both[a].nunique():
+                return [(b, a)]
+    pairs = [(a, b), (b, a)]
+    return pairs
 
 
 def not_applicable_reason(state: Any) -> str | None:
@@ -171,16 +232,21 @@ def sample_concern(reading: DesignReading) -> str:
             f"used).")
 
 
-def offered(state: Any, pooled_cycle: str | None = None, frame: Any = None) -> list[dict[str, Any]]:
+def offered(state: Any, pooled_cycle: str | None = None, frame: Any = None,
+            placed: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
     """The answers the survey question offers, each with the decision it records.
 
     One "surveyed population" option per weight the names read as, with the strata, PSU (and, when
     ``pooled_cycle`` names a cycle column holding more than one cycle, the cycle and the four-year
-    weight) filled in from the reading, then "these participants".
+    weight) filled in from the reading, then "these participants". Design columns the user settled
+    whose names say nothing of their part are placed by their values (``placed``:
+    :func:`place_design`), and an option names each placement it takes.
     """
     reading = reading_of(state)
     if not reading.present:
         return []
+    if reading.unplaced and not (reading.weights or reading.strata or reading.psu):
+        return _offered_by_values(reading, placed or {}, frame)
     strata = reading.strata[0] if reading.strata else None
     psu = reading.psu[0] if reading.psu else None
     weights = list(reading.weights)
@@ -191,7 +257,7 @@ def offered(state: Any, pooled_cycle: str | None = None, frame: Any = None) -> l
     # IN-19; the NHANES weighting tutorial: "use the weight of the smallest subpopulation that
     # includes all the variables you want to include in your analysis"): it is offered first, then
     # the samples that contain its sample (fasting, then examination, then dietary: BLUEPRINT §14).
-    from turbotab.core.leash import unsettled
+    from turbotab.core.readings import unsettled
     from turbotab.core.recognizers import least_common_denominator, rank_weights
 
     roles = getattr(state, "roles", None) or {}
@@ -216,9 +282,43 @@ def offered(state: Any, pooled_cycle: str | None = None, frame: Any = None) -> l
         # BLUEPRINT §14 rule 2: a design role that rode along unconfirmed is marked, and the
         # server refuses the option until the role is confirmed on its own.
         needs = [c for c in (w, strata, psu) if c and c in waiting]
+        # The cycle column the option pools by is said where it is taken (BLUEPRINT §14.1): it
+        # divides each weight by the cycles pooled, so the answer records it seen.
+        pooled = (f"; pooled over the survey cycles `{pooled_cycle}` names, each weight divided by "
+                  f"their number" if pooled_cycle else "")
         out.append({"key": f"population:{w}", "label": label,
-                    "consequence": f"Weighted by `{w}`{within}; intervals by Taylor linearization.",
+                    "consequence": f"Weighted by `{w}`{within}{pooled}; intervals by Taylor "
+                                   f"linearization.",
                     "decision": decision, "needs_confirmation": needs})
+    out.append({"key": "sample", "label": "These participants",
+                "consequence": "Unweighted; the methods state the estimand is this sample's.",
+                "decision": {"kind": "set_survey", "estimand": "sample"}})
+    return out
+
+
+def _offered_by_values(reading: DesignReading, placed: Mapping[str, Any],
+                       frame: Any) -> list[dict[str, Any]]:
+    """The options for a design the user set by role and the names do not read: each weight the
+    values place, with each (strata, PSU) placement of the codes, every column named in its label;
+    then "these participants". With nothing placed, the question is still asked."""
+    weights = [w for w in placed.get("weights") or [] if w in reading.unplaced]
+    codes = [c for c in placed.get("codes") or [] if c in reading.unplaced]
+    out: list[dict[str, Any]] = []
+    for w in weights[:2]:
+        for strata, psu in _code_pairs(frame, codes)[:2]:
+            parts = [f"strata `{strata}`" if strata else None, f"PSU `{psu}`" if psu else None]
+            within = (" over " + " and ".join(p for p in parts if p)) if any(parts) else \
+                "; no strata or PSU named"
+            out.append({"key": f"population:{w}:{strata}:{psu}",
+                        "label": f"Population by {w}" + (f", strata {strata}" if strata else "")
+                                 + (f", PSU {psu}" if psu else ""),
+                        "consequence": (f"Weighted by `{w}`{within}, as you set their roles to "
+                                        f"design and their values place them; intervals by Taylor "
+                                        f"linearization."),
+                        "decision": {"kind": "set_survey", "estimand": "population", "weight": w,
+                                     "strata": strata, "psu": psu, "cycle": None,
+                                     "four_year_weight": None, "acknowledged": False},
+                        "needs_confirmation": []})
     out.append({"key": "sample", "label": "These participants",
                 "consequence": "Unweighted; the methods state the estimand is this sample's.",
                 "decision": {"kind": "set_survey", "estimand": "sample"}})
@@ -362,7 +462,7 @@ def _design_is_settled(decision: Any, ctx: Any) -> None:
     defaults; a design role that rode along unconfirmed in a bulk confirm is confirmed on its own
     first."""
     from turbotab.core.decisions import Refusal, _state
-    from turbotab.core.leash import confirm_exits, unsettled, unsettled_message
+    from turbotab.core.readings import confirm_exits, unsettled, unsettled_message
 
     if decision.estimand != "population":
         return

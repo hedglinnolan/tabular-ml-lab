@@ -80,10 +80,13 @@ def predictors_from_roles(roles: Mapping[str, str] | None, target: str | None,
 
 
 def model_predictors(state: ProjectState) -> list[str]:
-    """The predictors the models get under ``state``: by role, less the columns left out."""
+    """The predictors the models get under ``state``: by settled role, less the columns left out.
+    A role that rode along unconfirmed puts no column in a model (BLUEPRINT §14.1; the fit asks
+    first, ``readings.predictors_or_ask``)."""
     from turbotab.core.decisions import left_out
+    from turbotab.core.readings import settled_roles
 
-    return predictors_from_roles(state.roles, state.target, left_out(state))
+    return predictors_from_roles(settled_roles(state), state.target, left_out(state))
 
 
 def modeling_frame(store: Any, columns: Sequence[str], row_ids: Any, *,
@@ -335,7 +338,11 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
 
     forms = {str(c): f.model_dump() for c, f in (getattr(state, "exposure_forms", None) or {}).items()
              if c in present and c in numeric and f.form != "linear"}
-    roles = {str(k): str(v) for k, v in (state.roles or {}).items()}
+    # The roles the spec copies (the energy step, the energy-aware fill, the normalization) are the
+    # settled ones only (BLUEPRINT §14.1, the readings ledger).
+    from turbotab.core.readings import settled_roles
+
+    roles = {str(k): str(v) for k, v in settled_roles(state).items()}
     spec_missing = state.missing.model_dump(mode="json") if getattr(state, "missing", None) else None
     censored = None
     if spec_missing and spec_missing.get("below_detection") in ("half_minimum", "censoring_aware"):

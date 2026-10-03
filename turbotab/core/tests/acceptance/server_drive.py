@@ -37,6 +37,41 @@ def open_project(client: Any, path: Path) -> "Drive":
     return drive
 
 
+# The readings ledger (BLUEPRINT §14.1): an answer refused only because a reading it rests on is
+# not settled (a predictor's whole numbers, a unit's repeating counts, a body measure's unit, the
+# records' order) is answered as its author would, one ``confirm_reading`` per reading, keeping the
+# reading the engine applied before the ledger, then posted again. Role confirmations the leash
+# tests drive themselves (``role_unconfirmed``) are never taken here.
+_KEEPS = {"select_models": "amount", "set_aggregation": "code"}
+
+
+def settle_post(client: Any, pid: str, body: dict[str, Any]) -> Any:
+    url = f"/api/projects/{pid}/decisions"
+    response = client.post(url, json=body)
+    for _ in range(4):
+        if response.status_code != 409:
+            return response
+        error = response.json().get("error") or {}
+        if error.get("code") != "reading_unsettled":
+            return response
+        seen: set[tuple[str, str]] = set()
+        for item in error.get("exits") or []:
+            d = item.get("decision") or {}
+            if d.get("kind") != "confirm_reading" or (d["reading"], d["column"]) in seen:
+                continue
+            if d["reading"] == "code_or_count" and d["value"] != _KEEPS.get(body["kind"], "amount"):
+                continue
+            if d["reading"] == "cluster" and d["value"] != "yes":
+                continue
+            seen.add((d["reading"], d["column"]))
+            r = client.post(url, json=d)
+            assert r.status_code == 200, (d, r.text[:600])
+        if not seen:
+            return response
+        response = client.post(url, json=body)
+    return response
+
+
 class Drive:
     """Answers the opening sequence through the real HTTP API, in the Router's order."""
 
@@ -50,7 +85,7 @@ class Drive:
         return self.c.post(f"/api/projects/{self.pid}/decisions", json=body)
 
     def decide(self, body: dict[str, Any]) -> None:
-        r = self.post(body)
+        r = settle_post(self.c, self.pid, body)
         assert r.status_code == 200, (body["kind"], r.text[:900])
 
     def decide_roles(self, roles: dict[str, str]) -> None:
@@ -61,7 +96,8 @@ class Drive:
         self.decide({"kind": "set_roles", "roles": roles})
         record = self.view()["decisions"][-1]
         for column in record["decision"].get("unconfirmed") or []:
-            self.decide({"kind": "confirm_role", "column": column, "role": roles[column]})
+            self.decide({"kind": "confirm_reading", "reading": "role", "column": column,
+                         "value": roles[column]})
 
     def reach(self, key: str, timeout: float = 120.0) -> dict[str, Any]:
         end = time.monotonic() + timeout

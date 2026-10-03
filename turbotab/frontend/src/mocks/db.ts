@@ -644,6 +644,8 @@ function slotOf(d: Decision): Slot | null {
       return "column_units";
     case "confirm_role":
       return "role_confirmations";
+    case "confirm_reading":
+      return "reading_confirmations";
     case "set_follow_up":
       return "follow_up";
     case "set_sensitivity":
@@ -745,6 +747,7 @@ function valueOf(d: Decision): ProjectState[Slot] {
     case "set_exposure_form": // keyed by column; the fold merges it
     case "set_column_unit": // keyed by column; the fold merges it
     case "confirm_role": // keyed by column; the fold merges it
+    case "confirm_reading": // keyed by kind and column; the fold merges it
     case "apply_repair":
     case "defer_finding":
     case "dismiss_finding":
@@ -817,6 +820,8 @@ export function fold(records: DecisionRecord[]): ProjectState {
     column_units: null,
     roles_unconfirmed: null,
     role_confirmations: null,
+    reading_confirmations: null,
+    shape_confirmations: null,
   };
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }>();
   for (const r of [...records].sort((a, b) => a.seq - b.seq)) {
@@ -844,6 +849,29 @@ export function fold(records: DecisionRecord[]): ProjectState {
     if (d.kind === "confirm_role") {
       // A keyed slot: one confirmation per column (BLUEPRINT §14; decisions.py role_confirmations).
       state.role_confirmations = { ...(state.role_confirmations ?? {}), [d.column]: d.role };
+      continue;
+    }
+    if (d.kind === "confirm_reading" && d.reading === "role") {
+      // A role's confirmation is kept beside confirm_role's, by column (decisions.py slot_for).
+      state.role_confirmations = {
+        ...(state.role_confirmations ?? {}),
+        [d.column]: d.value as NonNullable<ProjectState["role_confirmations"]>[string],
+      };
+      continue;
+    }
+    if (
+      d.kind === "confirm_reading" &&
+      (d.reading === "code_or_count" || d.reading === "time_column")
+    ) {
+      // The readings that shape the working table are kept apart (decisions.py slot_for).
+      const key = `${d.reading}:${d.column}`;
+      state.shape_confirmations = { ...(state.shape_confirmations ?? {}), [key]: d.value };
+      continue;
+    }
+    if (d.kind === "confirm_reading") {
+      // A keyed slot: one confirmation per reading (BLUEPRINT §14.1; reading_confirmations).
+      const key = `${d.reading}:${d.column}`;
+      state.reading_confirmations = { ...(state.reading_confirmations ?? {}), [key]: d.value };
       continue;
     }
     if (d.kind === "set_roles") {

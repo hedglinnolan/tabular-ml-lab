@@ -103,11 +103,14 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
     from turbotab.core.models import Situation, rank
     from turbotab.core.models.artifacts import ShelfArtifact, ShelfFamily
     from turbotab.core.models.pipeline import predictors_from_roles
+    from turbotab.core.readings import settled_roles
 
     cohort = ctx.inputs["cohort"]
     data = cohort.data if isinstance(cohort, Bundle) else cohort
     task = _task(ctx)
-    predictors = list(data.get("predictors") or predictors_from_roles(ctx.state.roles, ctx.state.target))
+    # The settled roles only (BLUEPRINT §14.1), as the cohort counts them.
+    predictors = list(data.get("predictors")
+                      or predictors_from_roles(settled_roles(ctx.state), ctx.state.target))
     n = int(data["n_final"])
     rows = row_ids_of(cohort.frames["rows"]) if isinstance(cohort, Bundle) and "rows" in cohort.frames else None
     # Under prediction the shelf informs a modeling choice made after the seal, so it reads the
@@ -322,6 +325,16 @@ def design_stage(ctx: StageContext) -> Bundle:
     state = ctx.state
     task = _task(ctx)
     families = _families(ctx, task)
+    # BLUEPRINT §14.1: the fit is a number-changing consumer of every role and of each
+    # whole-number predictor's code-or-amount reading; while one is unsettled it asks (the
+    # ``select_models`` refusal carries one exit per reading) and fits nothing.
+    from turbotab.core.decisions import left_out
+    from turbotab.core.readings import predictors_or_ask
+
+    with open_store(ctx) as store:
+        summaries = {c.name: {"dtype": c.dtype, "n_unique": c.n_unique}
+                     for c in store.info().columns}
+    predictors_or_ask(state, summaries, drop=left_out(state))
     predictors = model_predictors(state)
     if not predictors:
         raise ValueError("No column has the role exposure, covariate or energy, so there is "
@@ -741,7 +754,7 @@ def _measurement_error_line(ctx: StageContext, spec: Any) -> str | None:
     counts as one more error-prone intake while it stays in the outcome model. ``reports`` is how
     many rows each analysis row averages (the working table's combining, ``recall_days``).
     """
-    from turbotab.core.leash import unsettled
+    from turbotab.core.readings import unsettled
     from turbotab.core.methods.dietary_caveats import measurement_error_line
     from turbotab.core.methods.energy import total_energy_columns
     from turbotab.core.stages.proposals import energy_bearing, recall_days
@@ -1616,6 +1629,17 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     for c, reading in readings.items():
         if reading.factor is None:
             raise ValueError(f"{c} carries no energy in a known unit: {reading.reason}.")
+    # BLUEPRINT §14.1 (the readings ledger): each kcal-per-unit factor is read settled only (a unit
+    # stated, corroborated by the Atwater identity, or confirmed); the substitution answer's
+    # refusal asks it, and a curve recorded before the rule is not drawn on a guess.
+    from turbotab.core.readings import Unsettled, confirm_exit, listing, unsettled_factors
+
+    with open_store(ctx) as store:
+        waiting = unsettled_factors(ctx.state, list(readings), store)
+    if waiting:
+        raise Unsettled(f"{listing(waiting)}'s unit is unstated, so the kcal each unit carries is a "
+                        f"guess; confirm it before the curve is drawn.",
+                        exits=[confirm_exit("unit", c, "g", f"`{c}` is in grams") for c in waiting])
     kcal_per_unit = {c: float(r.factor) for c, r in readings.items()}
 
     # The rows and fits the curve reads: under inference every analyzed row and the families refit

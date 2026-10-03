@@ -379,6 +379,7 @@ def propose_roles(
     energy_info: Mapping[str, Any] | None = None,
     facts: Mapping[str, Mapping[str, Any]] | None = None,
     repeating: str | None = None,
+    named_unit: str | None = None,
 ) -> list[dict[str, Any]]:
     """One proposal per column (the outcome and the row identity excepted), in table order.
 
@@ -513,9 +514,23 @@ def propose_roles(
                                             f"units.")
         elif kind == "record" and n_unique > 2 and (n_unique > CATEGORY_LEVELS or unique):
             confirmed = unit_check is not None and unit_check.verdict == "units"
-            put("identifier", "high" if confirmed else "medium",
-                "Named like an identifier; it names rows or samples, not traits."
-                if confirmed else "Named like an identifier; its values are not read yet.")
+            if confirmed and (unique or name == named_unit):
+                # One value per row names each row; a repeating code the grain answer names is the
+                # user's own unit.
+                put("identifier", "high",
+                    "Named like an identifier; it names rows or samples, not traits."
+                    if unique else "The grain answer names it as the unit; "
+                                   f"{unit_check.why}.")
+            elif confirmed:
+                # BLUEPRINT §14.1 (the gate's ``stratum_id``, HCHS/SOL ``PSU_ID``, ``recruiter_id``):
+                # more than ten repeating codes are no unit structure by themselves; a stratum, a
+                # sampling unit or an interviewer repeats the same way. Whether its rows belong
+                # together, and so whether the intervals cluster by it, is the user's to say.
+                put("identifier", "medium",
+                    f"Named like an identifier, and {unit_check.why}: whether it names each unit, "
+                    f"or groups units (a stratum, a sampling unit, an interviewer), is asked.")
+            else:
+                put("identifier", "medium", "Named like an identifier; its values are not read yet.")
         elif kind == "record" and n_unique > 2 and n_present and n_unique < n_present:
             # An identifier names units; a ``trt_id`` or ``tx_id`` holding three values on 312
             # rows is a code for groups, such as a trial's arms or a study's sites (audit WP13
@@ -785,10 +800,14 @@ def intake_checks(store: Any, columns: Sequence[Mapping[str, Any]], *, energy: s
 
 
 def value_facts(store: Any, columns: Sequence[Mapping[str, Any]], *, target: str | None,
-                fractional: Iterable[str] = ()) -> tuple[dict[str, dict[str, Any]], str | None]:
+                fractional: Iterable[str] = (), named_unit: str | None = None,
+                ) -> tuple[dict[str, dict[str, Any]], str | None]:
     """What the values say about the columns named like an identifier, a flag, a time or a survey
-    design (BLUEPRINT §14 rule 1), and the identifier whose values name repeating units (the one
-    with the fewest, as the seal reads it), or None.
+    design (BLUEPRINT §14 rule 1), and the identifier whose values name repeating units, or None:
+    the unit the grain answer names (``named_unit``), else a person's repeating identifier (the one
+    with the fewest units). A repeating ``*_id`` read only by its name (a stratum, a PSU, an
+    interviewer) is no unit a time is measured within (BLUEPRINT §14.1: the cluster reading is the
+    user's to settle).
 
     ``id``: :func:`turbotab.core.recognizers.identifier_values`; ``flag``:
     :func:`~turbotab.core.recognizers.flag_values` against the column it would mark; ``time``: the
@@ -840,9 +859,12 @@ def value_facts(store: Any, columns: Sequence[Mapping[str, Any]], *, target: str
     best = None
     for name in ids:
         check = facts[name]["id"]
+        named = name == named_unit
         if check.verdict == "units" and check.n_units < check.n_rows \
-                and id_kind(name) in ("subject", "record", None):
-            if best is None or check.n_units < best:
+                and (named or id_kind(name) == "subject" or _norm(name) == "seqn"):
+            if named:
+                repeating, best = name, -1
+            elif best is None or (best >= 0 and check.n_units < best):
                 repeating, best = name, check.n_units
     for name in times:
         if name == repeating:
@@ -931,8 +953,11 @@ def roles_stage(ctx: StageContext) -> dict[str, Any]:
         fractional = _fractional_identifiers(store, columns)
         intake = (intake_checks(store, columns, energy=energy, target=ctx.state.target)
                   if dietary else {})
+        grain = ctx.state.grain
+        named_unit = (grain.id_column if grain is not None and grain.grain == "repeated"
+                      else None)
         facts, repeating = value_facts(store, columns, target=ctx.state.target,
-                                       fractional=fractional)
+                                       fractional=fractional, named_unit=named_unit)
     proposals = propose_roles(
         columns,
         lens=ctx.state.lens,
@@ -946,6 +971,7 @@ def roles_stage(ctx: StageContext) -> dict[str, Any]:
         energy_info=energy_info,
         facts=facts,
         repeating=repeating,
+        named_unit=named_unit,
     )
     ctx.progress(0.6, "Checking whether identifiers repeat")
     with open_store(ctx) as store:
@@ -964,7 +990,7 @@ def roles_stage(ctx: StageContext) -> dict[str, Any]:
             if p["column"] == repeats["column"]:
                 p["reason"] = (f"Names each unit; `{repeats['n_units']:,}` units, up to "
                                f"`{repeats['max_rows_per_unit']}` rows each.")
-    from turbotab.core.leash import attention_columns
+    from turbotab.core.readings import attention_columns
 
     for p in proposals:
         p["attention"] = p["confidence"] != "high"
@@ -1222,7 +1248,11 @@ def cohort_inputs(state: Any, ingest: Mapping[str, Any]) -> tuple[list[str], lis
     from turbotab.core.models.pipeline import level_columns
 
     order = [str(c["name"]) for c in ingest.get("columns", [])]
-    preds = predictors(state.roles, order, drop=left_out(state))
+    # The settled roles only (BLUEPRINT §14.1): a role that rode along unconfirmed drops no row by
+    # its blanks; the fit waits for its confirmation (``readings.predictors_or_ask``).
+    from turbotab.core.readings import predictor_columns
+
+    preds = predictor_columns(state, order, drop=left_out(state))
     needed = [state.target] if state.target is not None else []
     for rule in [*(state.exclusions or []), *repair_rules(state)]:
         needed.extend(_as_rule(rule).reads())
@@ -1634,7 +1664,12 @@ def split_inputs(state: Any, cohort_rows: Any, store: Any, task: str | None) -> 
     """The labels and groups ``draw_split`` needs for these cohort rows."""
     ids = np.asarray(cohort_rows, dtype=np.int64)
     out: dict[str, Any] = {"y": None, "groups": None, "grouped_by": None}
-    identifiers = [c for c, r in (state.roles or {}).items() if r == "identifier"]
+    # BLUEPRINT §14.1: the groups are a settled cluster reading only (a confirmed identifier, or one
+    # the values corroborate); an identifier that rode along unconfirmed groups nothing.
+    from turbotab.core.readings import cluster_reading
+
+    identifiers = [c for c, r in (state.roles or {}).items() if r == "identifier"
+                   and cluster_reading(state, c).settled and cluster_reading(state, c).value == "yes"]
     columns = list(identifiers)
     # Classes, levels or a time-to-event outcome's events are kept in proportion by the folds.
     classify = task in ("binary", "multiclass", "ordinal", "time_to_event")

@@ -870,12 +870,15 @@ def oriented_stage(ctx: StageContext) -> Bundle:
 
 
 def effective_repeat_kind(state: Any, structure: Mapping[str, Any] | None) -> str | None:
-    """The answered repeat kind, else the stated reading (a skip the user has not reopened)."""
-    spec = getattr(state, "repeat_kind", None)
-    if spec is not None:
-        return str(spec.repeat_kind)
-    reading = (structure or {}).get("repeats") or {}
-    return str(reading["reading"]) if reading.get("stated") and reading.get("reading") else None
+    """The repeat kind a consumer may read: the answered one, or a reading the ledger holds
+    settled. The structure stage's stated reading is medium at most (spacing, an index, a recall
+    or occasion word), so it is the question's proposal, never its answer (BLUEPRINT §14.1; the
+    gate: recalls numbered across an ``assessment``'s occasions were stated repeats and the mean
+    erased an arm's change)."""
+    from turbotab.core.readings import repeat_kind_reading
+
+    found = repeat_kind_reading(state, structure)
+    return str(found.value) if found is not None and found.settled else None
 
 
 def stated_grain(structure: Mapping[str, Any] | None) -> Any:
@@ -955,14 +958,23 @@ def _stated_grain_reading(frame: Any, candidates: Sequence[str], n_rows: int,
 
 
 def time_column(state: Any, structure: Mapping[str, Any] | None) -> str | None:
-    """The column that orders a unit's rows: as answered, else the one the reading spaced them by."""
-    for spec in (getattr(state, "repeat_kind", None), getattr(state, "temporal", None)):
-        column = getattr(spec, "time_column", None) if spec is not None else None
-        if column:
-            return str(column)
-    reading = (structure or {}).get("repeats") or {}
-    spacing = reading.get("spacing") or {}
-    return spacing.get("column") or reading.get("replicate_index")
+    """The column that orders a unit's rows, settled: named with the repeat kind or the temporal
+    answer, or the reading's column confirmed on its own (``confirm_reading``). The repeats
+    reading's spacing column or index is only proposed (:func:`proposed_time_column`): first, last
+    and change take no value by a column nobody named (BLUEPRINT §14.1)."""
+    from turbotab.core.readings import time_column_reading
+
+    found = time_column_reading(state, structure)
+    return found.column if found is not None and found.settled else None
+
+
+def proposed_time_column(state: Any, structure: Mapping[str, Any] | None) -> str | None:
+    """The column the repeats reading would order a unit's rows by, settled or not: what the
+    questions offer to confirm."""
+    from turbotab.core.readings import time_column_reading
+
+    found = time_column_reading(state, structure)
+    return found.column if found is not None else None
 
 
 def _quiet_streamlit() -> None:
@@ -1098,6 +1110,13 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
             "options": [_MENU_KEY.get(o["key"], o["key"]) for o in menu["options"]],
         }
     out["time_column"] = time_column(state, out)
+    out["proposed_time_column"] = proposed_time_column(state, out)
+    # Whole-number columns that change within units and may be codes or counts (BLUEPRINT §14.1):
+    # combining them takes the user's answer for each, never a guess (the gate: per-recall
+    # ``coffee_cups`` and ``eating_occasions`` combined by their mode under "mean").
+    out["code_or_count"] = code_or_count_columns(
+        frame, unit, exclude=[c for c in (target, out["proposed_time_column"],
+                                          *out["time_columns"]) if c])
     if out["time_column"] in as_written.columns:
         # Whether that column can put a unit's records in order: what combining by first, last
         # or change needs, and what the aggregation answer is refused on (sequence.py).
@@ -1336,9 +1355,29 @@ def aggregation_plan(state: Any, columns: set[str], structure: Mapping[str, Any]
     if unknown:
         raise StructureError(f"The combining answer sets a rule for `{unknown[0]}`, which is not a "
                              f"column.")
+    from turbotab.core.readings import confirmation
+
+    if order is None and needs_order(agg.method, agg.outcome, overrides):
+        proposed = proposed_time_column(state, structure)
+        if proposed is not None:
+            # BLUEPRINT §14.1: first, last and change take values by an order nobody confirmed
+            # only by asking (the aggregation answer's refusal carries the exits).
+            raise StructureError(
+                f"Combining by {agg.method if agg.method != 'mean' else agg.outcome} takes each "
+                f"unit's values from a particular record, and the repeats reading would order the "
+                f"records by `{proposed}`, which nobody has confirmed. Confirm `{proposed}` as the "
+                f"column that orders them, or name another, before combining.")
+    codes = {c for c in columns if confirmation(state, "code_or_count", c) == "code"}
+    amounts = {c for c in columns if confirmation(state, "code_or_count", c) == "amount"}
     return {"id_column": spec.id_column, "method": agg.method, "outcome_rule": agg.outcome,
             "time_column": order if order in columns else None,
-            "levels": declared_levels(state, order), "overrides": overrides}
+            "levels": declared_levels(state, order), "overrides": overrides,
+            "codes": sorted(codes), "amounts": sorted(amounts),
+            # The column the repeats reading would order by, unconfirmed: an index of the records,
+            # never a code or a count to combine (it keeps its first record's value).
+            "index_column": (proposed_time_column(state, structure)
+                             if order is None and proposed_time_column(state, structure) in columns
+                             else None)}
 
 
 def needs_order(method: str, outcome_rule: str | None, overrides: Mapping[str, str] | None = None) -> bool:
@@ -1434,6 +1473,52 @@ def column_kinds(con: Any, columns: Sequence[str], physical: Mapping[str, str]) 
                 kind = "amount"
             out[c] = {"varied": int(varied[i] or 0) > 1, "kind": kind, "numeric": numeric}
     return out
+
+
+def code_or_count_columns(frame: Any, unit: str, exclude: Sequence[str] = ()) -> list[str]:
+    """The columns :func:`column_kinds` would read as codes, over ``frame`` with pandas: whole
+    numbers other than a 0/1 indicator, at most CODE_LEVELS values each seen CODE_REPEATS times on
+    average, changing within some unit. Their values fit a count as well as a code, so combining
+    them waits for the user's answer for each (``confirm_reading``)."""
+    import numpy as np
+    import pandas as pd
+
+    if unit not in frame.columns:
+        return []
+    out = []
+    skip = {unit, ROW_ID, *exclude}
+    for c in frame.columns:
+        if c in skip or names_an_order(c):
+            continue
+        x = frame[c]
+        if not pd.api.types.is_numeric_dtype(x) or pd.api.types.is_bool_dtype(x):
+            continue
+        present = x.dropna()
+        if present.empty:
+            continue
+        values = present.to_numpy(dtype=float)
+        if not np.all(np.isfinite(values)) or not np.all(values == np.floor(values)):
+            continue
+        k = int(present.nunique())
+        if set(np.unique(values)) <= {0.0, 1.0} or k > CODE_LEVELS \
+                or len(present) < CODE_REPEATS * k:
+            continue
+        varied = frame.groupby(unit, dropna=True)[c].nunique(dropna=True)
+        if len(varied) and int(varied.max()) > 1:
+            out.append(str(c))
+    return out
+
+
+def names_an_order(column: str) -> bool:
+    """A column named as the order or occasion of a unit's records (``recall_number``, ``visit``,
+    ``wave``): a time reading, which leaves the model by its role; its combined value is the
+    record it came from, never a code or a count anyone analyzes."""
+    from turbotab.core.recognizers import id_kind, reads_as_time
+
+    try:
+        return bool(reads_as_time(column) or id_kind(column) == "visit")
+    except Exception:  # noqa: BLE001 - a name that cannot be read orders nothing
+        return False
 
 
 def column_rule(kind: str, method: str) -> str:
@@ -1548,10 +1633,15 @@ def prepare_combine(con: Any, src_sql: str, plan: Mapping[str, Any], target: str
     if problem:
         raise StructureError(problem)
 
+    index = plan.get("index_column")
     others = [c for c in names if c not in (key, target, order)]
     kinds = column_kinds(con, others, physical)
-    rules: dict[str, str] = {}
+    codes, amounts = set(plan.get("codes") or ()), set(plan.get("amounts") or ())
+    waiting: list[str] = []
+    rules: dict[str, str] = {c: "first" for c in others if c == index and c not in overrides}
     for c in others:
+        if c in rules:
+            continue
         chosen = overrides.get(c)
         if chosen is not None:
             if chosen not in COMBINE_RULES:
@@ -1561,8 +1651,24 @@ def prepare_combine(con: Any, src_sql: str, plan: Mapping[str, Any], target: str
                 raise StructureError(f"`{c}` is not a number, so its {chosen} is not one of its "
                                      f"values; keep the first, the last or the most frequent.")
             rules[c] = chosen
+        elif kinds[c]["kind"] == "code" and c in amounts:
+            rules[c] = column_rule("amount", method)
+        elif kinds[c]["kind"] == "code" and c not in codes and not names_an_order(c):
+            waiting.append(c)
         else:
             rules[c] = column_rule(kinds[c]["kind"], method)
+    if waiting:
+        # BLUEPRINT §14.1: whole numbers with a few values each seen several times fit a count
+        # (cups of coffee per recall) as well as a code (smoking 1/2/3); combining them by a guess
+        # changed most people's values in the gate. Asked, one column at a time.
+        from turbotab.core.readings import listing
+
+        one = len(waiting) == 1
+        raise StructureError(
+            f"{listing(waiting)} {'holds' if one else 'hold'} a few whole-number values that "
+            f"change within units, which may be codes for categories (combined by the most "
+            f"frequent value) or counts (combined by the {method}). Say which for "
+            f"{'it' if one else 'each'} before combining.")
     return {"physical": physical, "names": names, "numeric": numeric, "target": target,
             "reading": reading, "ordered": reading is not None and bool(reading["orderable"]),
             "order_expr": order_expr, "varies": varies, "others": others, "kinds": kinds,

@@ -75,7 +75,9 @@ def test_the_seal_waits_for_the_grain_and_i_dont_know_draws_an_undetermined_one(
     wait_for(client, pid, {"ingest": "fresh"})
     decide(client, pid, {"kind": "set_lens", "lenses": ["genomics"]})
     prepare(client, pid, {"kind": "set_target"})  # an assay lens: the table's shape is read first
-    assert steps(client, pid)["orientation"]["status"] == "not_applicable"
+    # The readings ledger (BLUEPRINT §14.1): the orientation reading is never high, so under an
+    # assay lens the question is asked, "one row per sample" its proposal (prepare answers it).
+    assert steps(client, pid)["orientation"]["status"] == "answered"
     decide(client, pid, {"kind": "set_target", "column": "condition"})
     prepare(client, pid, {"kind": "set_grain"})
     assert steps(client, pid)["grain"]["status"] == "open"  # sample_id names samples, not people

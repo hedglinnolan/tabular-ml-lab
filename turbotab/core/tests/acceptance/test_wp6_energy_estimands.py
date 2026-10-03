@@ -622,9 +622,13 @@ def test_5_a_two_nutrient_swap_lists_the_omitted_sources_and_inference_blocks_it
         assert refused.value.code == "omitted_energy_sources"
         assert "fat, alcohol, other energy" in str(refused.value) and f"{share:.0%}" in str(refused.value)
         exits = {e["label"]: e["decision"] for e in refused.value.exits}
-        added = parse_decision(exits["Add `fat_g` and `alcohol_g` to the model"])
-        assert isinstance(added, SetRoles)
-        assert added.roles["fat_g"] == added.roles["alcohol_g"] == "exposure"
+        # The readings ledger (BLUEPRINT §14.1): each source the names read is added on its own,
+        # one reading per answer, never several in one decision.
+        for column in ("fat_g", "alcohol_g"):
+            added = parse_decision(exits[f"Add `{column}` to the model as an exposure"])
+            assert isinstance(added, SetRoles)
+            assert added.roles[column] == "exposure"
+            assert {c: r for c, r in added.roles.items() if c != column} == roles
         kept = parse_decision(exits["Keep this swap; the curve carries their confounding"])
         assert kept.acknowledged is True
         validate(kept, ctx)  # the recorded attestation is accepted

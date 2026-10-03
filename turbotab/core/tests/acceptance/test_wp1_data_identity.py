@@ -173,7 +173,12 @@ def labeled_visits() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-COMBINE = dict(lens=["clinical"], grain={"grain": "repeated", "id_column": "pid"}, unit="unit")
+# The readings ledger (BLUEPRINT §14.1): whole numbers with a few values that change within a
+# person may be codes or counts, and combining them waits for the user's answer for each; these
+# fixtures' smoking categories and weekday are codes, said one reading at a time.
+CODES = {f"code_or_count:{c}": "code" for c in ("smoking", "smoking_cat", "day_of_week")}
+COMBINE = dict(lens=["clinical"], grain={"grain": "repeated", "id_column": "pid"}, unit="unit",
+               shape_confirmations=CODES)
 
 
 def test_2_text_visit_labels_are_refused_until_their_order_is_declared(graph):

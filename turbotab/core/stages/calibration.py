@@ -409,7 +409,8 @@ def calibration_stage(ctx: StageContext) -> Bundle:
 
 
 CALIBRATION_READS = ("measurement_error", "purpose", "models", "task", "event", "target", "roles",
-                     "roles_unconfirmed", "role_confirmations",
+                     "roles_unconfirmed", "role_confirmations", "reading_confirmations",
+                     "shape_confirmations",
                      "survey",
                      "energy_adjustment", "aggregation", "repeat_kind", "grain", "split", "findings")
 

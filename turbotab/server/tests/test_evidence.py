@@ -8,7 +8,7 @@ import pytest
 from turbotab.core.consequences import CAPTION_WORDS, FRAME_WORDS, TITLE_WORDS, words
 from turbotab.core.tests.stage_harness import NHANES
 from turbotab.server import schemas
-from turbotab.server.tests.conftest import open_by_path, prepare, wait_for
+from turbotab.server.tests.conftest import answer_settled, open_by_path, prepare, wait_for
 
 pytestmark = pytest.mark.skipif(not NHANES.is_file(), reason="the NHANES export is not on this machine")
 
@@ -25,7 +25,8 @@ LEADS = {
 
 def decide(client, pid, decision):
     prepare(client, pid, decision)  # the questions before it, answered as usual (M2 §12.2)
-    response = client.post(f"/api/projects/{pid}/decisions", json=decision)
+    # each reading below high confirmed on its own (BLUEPRINT §14.1, the readings ledger)
+    response = answer_settled(client, pid, None, decision)
     assert response.status_code == 200, response.text
     return response.json()
 

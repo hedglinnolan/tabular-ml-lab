@@ -644,7 +644,11 @@ def design_normalization(state: Any, inputs: Sequence[str]) -> dict[str, Any] | 
     found = normalization_of(state)
     if found is None:
         return None
-    roles = getattr(state, "roles", None) or {}
+    # The settled exposures only (BLUEPRINT §14.1): an exposure role that rode along unconfirmed
+    # normalizes nothing.
+    from turbotab.core.readings import settled_roles
+
+    roles = settled_roles(state)
     present = set(inputs)
     columns = [c for c in found["columns"] if c in present and roles.get(c) == "exposure"]
     return {"method": found["method"], "kind": found["kind"], "columns": columns}

@@ -102,9 +102,15 @@ def test_dietary_recalls_repeat_per_person_and_are_combined_by_their_mean(projec
                                                                  id_column="participant_id")}))
     steps = p.steps()
     assert steps["grain"].status == "answered"
-    assert steps["repeat_kind"].status == "skipped"  # stated: repeats, from the recall spacing
-    assert steps["repeat_kind"].reason.startswith("these look like repeated")  # after "Not asked:"
-    assert "`recall_date`" in steps["repeat_kind"].reason
+    # The readings ledger (BLUEPRINT §14.1): the reading states repeats from the recall spacing, at
+    # medium confidence, so it is the question's proposal, never its answer: asked.
+    assert steps["repeat_kind"].status == "open"
+    reading = p.artifact("structure")["repeats"]
+    assert reading["reading"] == "repeats" and reading["stated"] and reading["confidence"] == "medium"
+    assert "these look like repeated" in reading["sentence"]
+    assert "`recall_date`" in reading["sentence"]
+    p.at(p.state.model_copy(update={"repeat_kind": decisions.RepeatSpec(repeat_kind="repeats")}))
+    steps = p.steps()
     assert steps["unit"].status == "open"  # no default
     assert steps["temporal"].status == "not_applicable"  # repeats, not time points
 
@@ -130,17 +136,29 @@ def test_clinical_visits_are_time_points_and_ask_about_temporal_prediction(proje
         grain={"grain": "repeated", "id_column": "subject_id"}))
     steps = p.steps()
     assert steps["event"].status == "open"  # progressed is binary: which level is the event
-    assert steps["repeat_kind"].status == "skipped"
-    assert "different time points" in steps["repeat_kind"].reason
-    assert "90 days apart" in steps["repeat_kind"].reason
+    # The readings ledger (BLUEPRINT §14.1): stated time points are the question's proposal.
+    assert steps["repeat_kind"].status == "waiting"
+    reading = p.artifact("structure")["repeats"]
+    assert reading["reading"] == "time_points" and reading["confidence"] == "medium"
+    assert "different time points" in reading["sentence"]
+    assert "90 days apart" in reading["sentence"]
 
-    rows = p.at(p.state.model_copy(update={"event": "1", "unit": "row"})).steps()
+    rows = p.at(p.state.model_copy(update={
+        "event": "1", "unit": "row",
+        "repeat_kind": decisions.RepeatSpec(repeat_kind="time_points")})).steps()
     assert rows["aggregation"].status == "not_applicable"
     assert rows["temporal"].status == "open"  # time points stay as rows
-    p.validate({"kind": "set_temporal", "temporal": True})  # the visit date orders them
-    assert p.artifact("structure")["time_column"] == "visit_date"
+    # A bare "yes" is never completed by the reading's column alone: its exit names it.
+    bare = refused(p.validate, {"kind": "set_temporal", "temporal": True})
+    assert bare.code == "no_time_column"
+    assert bare.exits[0]["decision"]["time_column"] == "visit_date"
+    p.validate({"kind": "set_temporal", "temporal": True, "time_column": "visit_date"})
+    assert p.artifact("structure")["proposed_time_column"] == "visit_date"
+    assert p.artifact("structure")["time_column"] is None  # nobody named it yet
 
-    units = p.at(p.state.model_copy(update={"unit": "unit"})).steps()
+    units = p.at(p.state.model_copy(update={
+        "unit": "unit", "shape_confirmations": {"time_column:visit_date": "orders"}})).steps()
+    assert p.artifact("structure")["time_column"] == "visit_date"  # confirmed on its own
     assert units["aggregation"].status == "open" and units["temporal"].status == "not_applicable"
     menu = p.artifact("structure")["aggregation"]
     assert menu["kind"] == "time_points" and menu["recommended"] is None  # no default
@@ -169,8 +187,13 @@ def test_the_event_names_a_level_of_the_binary_outcome(project):
 def test_orientation_fires_only_on_a_feature_major_assay_table(project, tmp_path):
     plain = project("metabolomics_untargeted.csv").at(state(lens=["metabolomics"]))
     steps = plain.steps()
-    assert steps["orientation"].status == "not_applicable"
-    assert steps["target"].status == "open"
+    # The readings ledger (BLUEPRINT §14.1): the orientation reader is never high, so under an assay
+    # lens the question is asked, with "one row per sample" as its proposal.
+    assert steps["orientation"].status == "open"
+    reading = plain.artifact("oriented")["reading"]
+    assert reading["reading"] == "sample_major" and reading["confidence"] != "high"
+    steps = plain.at(state(lens=["metabolomics"], orientation="sample_major")).steps()
+    assert steps["orientation"].status == "answered" and steps["target"].status == "open"
     assert plain.artifact("structure")["grain"]["suggested"] == []  # one row per subject
 
     m = pd.read_csv(SAMPLES / "metabolomics_untargeted.csv").set_index("sample_id")
@@ -206,9 +229,10 @@ def test_orientation_fires_only_on_a_feature_major_assay_table(project, tmp_path
 def test_genomics_reads_one_row_per_sample_and_the_repeats_chain_stays_quiet(project):
     p = project("genomics_expression.csv").at(state(lens=["genomics"], target="age",
                                                     purpose="prediction",
-                                                    grain={"grain": "one_row_per_unit"}))
+                                                    grain={"grain": "one_row_per_unit"},
+                                                    orientation="sample_major"))
     steps = p.steps()
-    assert steps["orientation"].status == "not_applicable"
+    assert steps["orientation"].status == "answered"  # asked under an assay lens (§14.1)
     for key in ("repeat_kind", "unit", "aggregation", "temporal"):
         assert steps[key].status == "not_applicable", key
     assert p.artifact("working")["pass_through"] is True

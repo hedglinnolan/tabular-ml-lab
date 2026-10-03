@@ -88,6 +88,14 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
         else:
             detected_task = "regression"
         confidence = _CONFIDENCE.get(str(detection.get("confidence")), "low")
+        # BLUEPRINT §14.1 (the readings ledger): the task is skipped only on a settled reading. Two
+        # levels or a continuous number leave no doubt; three or more labels may be ordered (none,
+        # mild, severe: an ordinal outcome) or not, which no dtype says, so it is asked.
+        from turbotab.core.readings import task_reading
+
+        found = task_reading(target, detected_task, confidence)
+        unordered_doubt = found.confidence != confidence
+        confidence = found.confidence
         task = ctx.state.task or detected_task
 
         histogram = None
@@ -111,12 +119,21 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
     unit, unit_source = (outcome_unit(target, recorded=recorded_unit(ctx.state, target))
                          if regression else (None, None))
     proposal = proposed_unit(target, series) if regression and unit is None else None
+    if regression and unit is None and proposal is None:
+        # The name's own unit, unsettled (a bare amount nothing confirms): offered, never stated.
+        from turbotab.core.readings import outcome_unit_reading
+
+        named = outcome_unit_reading(target)
+        if named is not None:
+            proposal = {"unit": None, "candidates": [named.value], "source": "name"}
     return {
         "column": target,
         "task": task,
         "detected_task": detected_task,
         "confidence": confidence,
-        "reason": task_reason(series, detection, detected_task),
+        "reason": task_reason(series, detection, detected_task)
+        + (" Whether its levels are ordered (an ordinal outcome) is yours to say."
+           if unordered_doubt else ""),
         "histogram": histogram,
         "classes": classes,
         "unit": unit,

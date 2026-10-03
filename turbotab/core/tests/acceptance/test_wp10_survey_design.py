@@ -228,6 +228,12 @@ def open_project(client, path: Path, target: str, purpose: str, roles: dict[str,
     accepted(client, pid, {"kind": "set_target", "column": target})
     accepted(client, pid, {"kind": "set_purpose", "purpose": purpose})
     accepted(client, pid, {"kind": "set_roles", "roles": roles})
+    # The readings ledger (BLUEPRINT §14.1): a role recorded exactly as a proposal below high
+    # confidence is confirmed on its own, as the roles' author does, column by column.
+    record = client.get(f"/api/projects/{pid}").json()["decisions"][-1]
+    for column in record["decision"].get("unconfirmed") or []:
+        accepted(client, pid, {"kind": "confirm_reading", "reading": "role", "column": column,
+                               "value": roles[column]})
     return pid
 
 

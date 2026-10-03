@@ -300,7 +300,25 @@ def test_a_total_and_its_own_part_are_refused_as_a_substitution():
     with pytest.raises(Refusal) as refused:
         validate({"kind": "set_substitution", "donor": "fat_total", "recipient": "fat_sat"}, ctx)
     assert refused.value.code == "part_of_the_other"
-    validate({"kind": "set_substitution", "donor": "fat_sat", "recipient": "carb"}, ctx)
+    # The readings ledger (BLUEPRINT §14.1): ``fat_sat`` and ``carb`` say no unit, so their kcal per
+    # unit is asked, one confirmation each; ``fat_sat`` moves with its total, which is asked too.
+    swap = {"kind": "set_substitution", "donor": "fat_sat", "recipient": "carb"}
+    with pytest.raises(Refusal) as refused:
+        validate(swap, ctx)
+    assert refused.value.code == "reading_unsettled"
+    assert [e["decision"] for e in refused.value.exits if e["decision"]] == [
+        {"kind": "confirm_reading", "reading": "unit", "column": "fat_sat", "value": "g"},
+        {"kind": "confirm_reading", "reading": "unit", "column": "carb", "value": "g"}]
+    units = {"unit:fat_sat": "g", "unit:carb": "g"}
+    ctx["state"] = mf.state().model_copy(update={"reading_confirmations": units})
+    with pytest.raises(Refusal) as refused:
+        validate(swap, ctx)
+    assert [e["decision"] for e in refused.value.exits if e["decision"]] == [
+        {"kind": "confirm_reading", "reading": "nested_in", "column": "fat_sat",
+         "value": "fat_total"}]
+    ctx["state"] = mf.state().model_copy(update={"reading_confirmations": {
+        **units, "nested_in:fat_sat": "fat_total"}})
+    validate(swap, ctx)
 
 
 def test_energy_adjustment_cannot_use_a_column_the_missing_values_left_out():
