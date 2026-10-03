@@ -126,6 +126,9 @@ export function targetInfo(
     unit_source: null,
     proposed_unit: null,
     unit_candidates: [],
+    fits: [],
+    order_question: null,
+    scale_question: null,
   };
 }
 

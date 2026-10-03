@@ -134,6 +134,8 @@ def speak_for(frame: Any, lens: list[str], target: str | None, structural: list[
 
 
 def _lens_phrase(lens: list[str]) -> str:
+    if not lens:  # "Something else, or not sure" (audit RO-11, WP18): the generic checks alone
+        return "no field's lens (the generic checks only)"
     if len(lens) == 1:
         return f"the {lens[0]} lens"
     return "the " + ", ".join(lens[:-1]) + f" and {lens[-1]} lenses"

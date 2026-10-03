@@ -106,12 +106,37 @@ class Drive:
             ready = step["status"] not in ("open", "waiting") or first is None or first["key"] == key
             if ready and not (step["status"] == "waiting" and step.get("waiting_on")):
                 return step
+            if (key != "task" and first is not None and first["key"] == "task"
+                    and first["status"] == "open" and first.get("followup")):
+                # WP18: a driver passing the task question answers what it still asks, as usual.
+                self.task_followups()
+                continue
             assert time.monotonic() < end, f"{key} held behind {first}"
             time.sleep(0.05)
 
     def answer(self, key: str, body: dict[str, Any]) -> None:
         if self.reach(key)["status"] in ("open", "waiting"):
             self.decide(body)
+        if key == "task":
+            self.task_followups()
+
+    def task_followups(self) -> None:
+        """WP18 (audit RO-10): what the task question still asks after its task, answered as the
+        fixture declares (``outcome_scale:<column>``), else as usual: the original scale, and an
+        ordinal text outcome's levels in the order their words propose."""
+        for _ in range(3):
+            step = self.reach("task")
+            follow = step.get("followup")
+            if step["status"] not in ("open", "waiting") or follow is None:
+                return
+            target = self.view()["state"]["target"]
+            if follow == "scale":
+                scale = self.truth.get(f"outcome_scale:{target}", "original")
+                self.decide({"kind": "set_outcome_scale", "column": target, "scale": scale})
+            else:
+                question = self.artifact("target_info").get("order_question") or {}
+                self.decide({"kind": "set_outcome_order", "column": target,
+                             "levels": question.get("proposed_order") or question.get("levels")})
 
     def artifact(self, stage: str, timeout: float = 240.0) -> dict[str, Any]:
         end = time.monotonic() + timeout

@@ -238,6 +238,35 @@ def intake_varies(df: pd.DataFrame, unit: str) -> str | None:
     return None
 
 
+# Audit I18 (WP18): the names multiply-imputed files number their copies by: NHANES DXA's
+# ``_MULT_``, SAS PROC MI's ``_Imputation_``, Stata's ``_mi_m``, R mice's ``.imp``, and the words.
+_IMPLICATE = re.compile(r"^_?mult_?$|^_?imputation_?$|^_mi_m$|^\.?imp$|^imp_?(?:no|num|number)$|"
+                        r"implicate|^imputation_(?:no|num|number)$", re.IGNORECASE)
+IMPLICATE_MAX = 100
+IMPLICATE_SHARE = 0.95  # of units holding every copy number once
+
+
+def implicate_column(df: pd.DataFrame, unit: str) -> tuple[str, int] | None:
+    """The column numbering each unit's imputed copies, and how many there are: a name the
+    multiple-imputation tools write, holding the numbers 1 to m once in (nearly) every unit. A
+    visit index holds 1 to m too, so the name is required and the reading is asked, never stated
+    as the answer (BLUEPRINT §14: a name is a proposal)."""
+    for c in df.columns:
+        if c == unit or not _IMPLICATE.search(str(c).strip()):
+            continue
+        x = pd.to_numeric(df[c], errors="coerce")
+        if x.isna().any() or len(x) == 0 or not (x == x.round()).all():
+            continue
+        m = int(x.max())
+        if int(x.min()) != 1 or not 2 <= m <= IMPLICATE_MAX:
+            continue
+        g = pd.DataFrame({"u": df[unit], "k": x}).dropna(subset=["u"]).groupby("u")["k"]
+        whole = (g.nunique() == m) & (g.size() == m)
+        if len(whole) and float(whole.mean()) >= IMPLICATE_SHARE:
+            return str(c), m
+    return None
+
+
 def read(df: pd.DataFrame, unit: str | None, lens: Sequence[str] | None = None) -> dict[str, Any]:
     """Question 4's reading: ``turbotab.repeats.read``'s measurements, stated only when
     unambiguous (see the module docstring)."""
@@ -252,6 +281,17 @@ def read(df: pd.DataFrame, unit: str | None, lens: Sequence[str] | None = None) 
     if dated_units:
         df = df.drop(columns=dated_units)
     out = repeats.read(df, unit)
+    copies = implicate_column(df, unit)
+    if copies is not None:
+        column, m = copies
+        said = (f"`{column}` numbers {m} copies of each unit's record, 1 to {m} once in every unit, "
+                f"as multiply-imputed files number their imputations (NHANES DXA's `_MULT_`)")
+        out.update(reading="imputed_copies", stated=True, confidence="medium", evidence=[said],
+                   trend=None, period_column=None, recall_column=None, implicate_column=column,
+                   replicate_index=None)
+        out["sentence"] = (f"Read as imputed copies, to be confirmed: {said}. Copies are neither "
+                           f"repeats nor time points, and are analyzed apart, then pooled.")
+        return out
     dietary = "dietary" in (lens or [])
     gaps = out.get("spacing")
     index = out.get("replicate_index")
@@ -361,5 +401,5 @@ def read(df: pd.DataFrame, unit: str | None, lens: Sequence[str] | None = None) 
     return out
 
 
-__all__ = ["constant_dates", "occasion_column", "period_column", "read", "recall_evidence",
-           "trend"]
+__all__ = ["constant_dates", "implicate_column", "occasion_column", "period_column", "read",
+           "recall_evidence", "trend"]

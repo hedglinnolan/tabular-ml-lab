@@ -1798,3 +1798,7 @@ __all__ = [
     "read_text_numbers", "register_family", "repair_views", "sas_zero_counts", "sas_zero_finding",
     "text_number_findings", "unusable_columns",
 ]
+
+# Audit RO-13 (WP18): pooled QC injections leave as reference rows before the seal; that family
+# registers itself, its validator and its reading of the pooled-QC level on import.
+from turbotab.core import reference_rows as _reference_rows  # noqa: E402,F401

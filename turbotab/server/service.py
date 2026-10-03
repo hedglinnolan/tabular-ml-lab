@@ -593,11 +593,30 @@ class ProjectService:
                   records: list[Any]) -> list[InterviewStep]:
         """The Router's answer (turbotab/core/interview.py) for this project now."""
         artifacts: dict[str, Any] = {}
-        for stage in ("target_info", "oriented", "structure"):  # what the Router reads, when fresh
+        # what the Router reads, when fresh; the proposals for the ask card (audit WP18)
+        for stage in ("target_info", "oriented", "structure", "proposals"):
             status = stages.get(stage)
             if status is not None and status.status == "fresh" and status.key:
                 artifacts[stage] = self._artifact(pid, stage, status.key, public=True)
-        return route(state, stages, artifacts, records)
+
+        def column_info() -> Any:
+            ingest = stages.get("ingest")
+            if ingest is None or ingest.status != "fresh" or not ingest.key:
+                return None
+            return self._table_facts(pid, stages, ingest.key).column_info
+
+        def store() -> Any:
+            try:
+                return self.store(pid)
+            except ApiError:
+                return None
+
+        # BLUEPRINT §14.2 (audit WP18): the open question's ask card reads the table's summaries
+        # and its whole numbers (cached per column), only for the question it sits in.
+        from turbotab.core.ask import AskContext
+
+        ask = AskContext(state, artifacts, column_info=column_info, store=store)
+        return route(state, stages, artifacts, records, ask=ask)
 
     # ── deciding ──
 

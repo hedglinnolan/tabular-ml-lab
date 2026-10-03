@@ -34,6 +34,13 @@ Rules:
   is ``seal_opened``.
 * A skip's ``reason`` is the clause after the client's own "Not asked:" label, so it never begins
   with those words itself.
+* ``task`` (audit WP18, RO-10) stays open while its answer is incomplete (``followup``): a positive,
+  markedly skewed outcome's scale (``"scale"``), or the order of an ordinal text outcome's levels
+  (``"order"``); a task the detection reads at high confidence is skipped only when neither waits
+  (``turbotab.core.structural.task_followup``).
+* The open question carries the ledger's one ask card (``ask``; BLUEPRINT §14.2): the unsettled
+  readings the consumer its answer feeds will read, placed where that consumer needs them, never
+  as a wall at upload (``turbotab.core.ask``).
 * At most one question is ``open``: the first applicable unanswered one. It is ``waiting``
   instead while a stage it needs is still being computed (``waiting_on`` names the stage) —
   ``substitution`` waits until ``fit`` is fresh. Every later unanswered question is ``waiting``
@@ -46,6 +53,8 @@ from __future__ import annotations
 from typing import Any, Callable, Literal, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict
+
+from turbotab.core.ask import AskCard, AskContext
 
 QuestionKey = Literal[
     "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
@@ -103,6 +112,13 @@ class InterviewStep(BaseModel):
     waiting_on: list[str] = []
     # M2_CONTRACT §4: findings deferred to this question, which resurface inside it, attributed.
     deferred_findings: list[str] = []
+    # WP18 (audit RO-10): what an open task question still needs after its task ("scale": the
+    # outcome's scale; "order": an ordinal text outcome's order). Its options are the target
+    # stage's ``scale_question`` and ``order_question``.
+    followup: Literal["scale", "order"] | None = None
+    # WP18 (BLUEPRINT §14.2): the one ask card, on the open question whose answer feeds a consumer
+    # of unsettled readings.
+    ask: AskCard | None = None
 
 
 def _get(obj: Any, name: str, default: Any = None) -> Any:
@@ -338,6 +354,8 @@ def _temporal_gate(state: Any, structure: Any) -> Gate:
     kind = effective_repeat_kind(state, structure if isinstance(structure, Mapping) else None)
     if kind == "repeats":
         return ("not_applicable", "The rows are repeats of one measurement, not different time points.")
+    if kind == "imputed_copies":  # audit I18 (WP18)
+        return ("not_applicable", "The rows are imputed copies of one record, not time points.")
     if state.unit == "unit":
         return ("not_applicable", "Each unit's rows are combined, so no time points stay as rows.")
     return None
@@ -367,13 +385,16 @@ def route(
     *,
     deps: Mapping[str, Sequence[str]] | None = None,
     energy_bearing: Callable[[str], bool] | None = None,
+    ask: AskContext | None = None,
 ) -> list[InterviewStep]:
     """The interview, in asking order.
 
     ``stages``: stage name -> StageStatus (or its dict). ``artifacts``: the fresh public artifacts
     the Router reads — ``target_info`` (the task skip, the event's binary outcome), ``oriented``
     (the shape reading orientation fires on) and ``structure`` (the stated repeats reading).
-    ``records``: the decision log, for each answered step's ``decision_id``.
+    ``records``: the decision log, for each answered step's ``decision_id``. ``ask``: what the
+    open question's ask card may read (the table's summaries and store); without it the card reads
+    the state and the artifacts alone.
     """
     if energy_bearing is None:
         from turbotab.core.stages.rows import energy_bearing as bearing
@@ -418,27 +439,52 @@ def route(
             steps.append(InterviewStep(key=key, status="not_applicable", reason=not_applicable,
                                        decision_id=decision_id if value is not None else None))
             continue
-        if value is not None:
+        followup = None
+        undecided = False
+        if key == "task":
+            from turbotab.core.structural import task_followup, task_followup_possible
+
+            followup = task_followup(state, target_info)
+            # While the outcome is re-read (a new task recomputes it), an answer that may still
+            # need its scale or its order waits for the reading rather than standing answered.
+            undecided = (followup is None and value is not None and "target_info" in pending
+                         and task_followup_possible(state))
+        if value is not None and followup is None and not undecided:
             steps.append(InterviewStep(key=key, status="answered", decision_id=decision_id))
             continue
         if gate is not None and gate[0] == "skipped":
             steps.append(InterviewStep(key=key, status="skipped", reason=gate[1]))
             continue
-        if (key == "task" and state.target is not None and target_info is not None
+        if (key == "task" and followup is None and state.target is not None
+                and target_info is not None
                 and _get(target_info, "column") == state.target
                 and _get(target_info, "confidence") == "high"):
             steps.append(InterviewStep(key=key, status="skipped", reason=_get(target_info, "reason")))
             continue
         own = [s for s in NEEDS.get(key, ()) if s in pending]
+        if (key in ("event", "task") and state.target is not None
+                and _get(target_info, "column") != state.target and "target_info" not in own
+                and _get(stages.get("target_info"), "status") != "error"
+                and not _get(stages.get("target_info"), "cancelled", False)):
+            # The outcome is not read yet for the outcome chosen (its stage is about to start):
+            # whether an event or a task is asked at all depends on that reading.
+            own.append("target_info")
         fresh_stage = MUST_BE_FRESH.get(key)
         if fresh_stage and _get(stages.get(fresh_stage), "status") != "fresh" and fresh_stage not in own:
             own.append(fresh_stage)
         if first_unanswered is None:
             first_unanswered = key
             status = "waiting" if own else "open"
-            steps.append(InterviewStep(key=key, status=status, waiting_on=own))
+            card = None
+            if status == "open":
+                from turbotab.core.ask import card as ask_card
+
+                card = ask_card(key, ask if ask is not None else AskContext(state, artifacts))
+            steps.append(InterviewStep(key=key, status=status, waiting_on=own, followup=followup,
+                                       ask=card))
         else:
-            steps.append(InterviewStep(key=key, status="waiting", waiting_on=[first_unanswered, *own]))
+            steps.append(InterviewStep(key=key, status="waiting", waiting_on=[first_unanswered, *own],
+                                       followup=followup))
     return with_deferred(steps, state)
 
 

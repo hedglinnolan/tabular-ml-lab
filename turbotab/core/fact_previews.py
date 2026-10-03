@@ -140,6 +140,24 @@ def lens_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     from turbotab.core.stages.rows import PREDICTOR_ROLES
 
     lens = list(decision.lenses)
+    if lens == ["other"]:  # audit RO-11 (WP18): no field's lens, the generic checks only
+        new = _roles_under(ctx, [])
+        order = [c for c in ctx.datastore.columns if c != ROW_ID and c in new]
+        n_pred = sum(1 for c in order if new[c] in PREDICTOR_ROLES)
+        ctx.read["note"] = ("Only the generic checks run on this table; no field's defaults are "
+                            "applied, and the record says so.")
+        return [LineageView(
+            title=clip_words("Columns as the generic rules read them", TITLE_WORDS),
+            caption=clip_words(f"With no field's lens, {fmt_count(n_pred)} columns are read as "
+                               f"predictors.", CAPTION_WORDS),
+            emphasis=[],
+            before=None,
+            after=lineage_of([("raw", c, None) for c in order]
+                             + [("matrix", c, None) for c in order if new[c] in PREDICTOR_ROLES],
+                             [(f"raw:{c}", f"matrix:{c}", "kept") for c in order
+                              if new[c] in PREDICTOR_ROLES],
+                             touched=set(), roles=dict(new), max_nodes=MAX_LINEAGE),
+        )]
     new = _roles_under(ctx, lens)
     old = _roles_under(ctx, list(ctx.state.lens)) if ctx.state.lens else None
     order = [c for c in ctx.datastore.columns if c != ROW_ID and c in new]

@@ -138,6 +138,10 @@ LENS = {
                "Reads what the values are, counts or normalized, and plans for few samples."),
         option("survey", "Survey or questionnaire instruments",
                "Finds shared response scales and codes outside them, such as 9 for no answer."),
+        # Audit RO-11 (WP18): a first-class answer; the app is fully functional with no lens.
+        option("other", "Something else, not sure",
+               "Runs the generic checks only; no field's defaults are applied, and the record "
+               "says so."),
     ],
     "terms": [
         term("lens", "A field's way of reading a table: which checks run and which choices are "
@@ -492,6 +496,10 @@ REPEAT_KIND = {
                "first."),
         option("time_points", "Time points",
                "Different moments in time; averaging is not offered first, and order matters."),
+        # Audit I18 (WP18): NHANES DXA's five imputations, numbered by _MULT_.
+        option("imputed_copies", "Imputed copies",
+               "Copies of one record from multiple imputation; under inference kept only as a "
+               "recorded limitation."),
     ],
     "terms": [
         term("replicate", "A repeated measurement of the same quantity under the same "

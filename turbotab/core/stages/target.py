@@ -83,11 +83,21 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
         detection = engine.detect_task_type(frame, target)
         series = frame[target]
         n_classes = int(series.nunique(dropna=True))
+        numeric = column["dtype"] in NUMERIC
+        from turbotab.core.decisions import MAX_CLASSES_MULTICLASS, task_fits
+
+        # Audit RO-10 (WP18): the tasks the explicit answer accepts, by the one rule both share.
+        fits = task_fits(n_classes, numeric)
         if detection.get("detected") == "classification":
             detected_task = "binary" if n_classes <= 2 else "multiclass"
         else:
             detected_task = "regression"
         confidence = _CONFIDENCE.get(str(detection.get("confidence")), "low")
+        too_many = detected_task == "multiclass" and n_classes > MAX_CLASSES_MULTICLASS
+        if too_many and "regression" in fits:
+            # More classes than multiclass takes: a number with that many values is a quantity
+            # read on a coarse grid, proposed (never skipped) as regression.
+            detected_task, confidence = "regression", "low"
         # BLUEPRINT §14.1 (the readings ledger): the task is skipped only on a settled reading. Two
         # levels or a continuous number leave no doubt; three or more labels may be ordered (none,
         # mild, severe: an ordinal outcome) or not, which no dtype says, so it is asked.
@@ -96,7 +106,20 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
         found = task_reading(target, detected_task, confidence)
         unordered_doubt = found.confidence != confidence
         confidence = found.confidence
+        if detected_task not in fits:
+            confidence = "low"  # a task the answer would refuse is never stated (the 20-class rule)
         task = ctx.state.task or detected_task
+        from turbotab.core.structural import log_outcome, order_question, scale_question
+
+        levels_question = None
+        if detected_task == "multiclass" or task in ("multiclass", "ordinal"):
+            listed = sorted(series.dropna().unique(), key=lambda v: (str(type(v)), str(v)))
+            levels_question = order_question([json_safe(v) for v in listed], target,
+                                             numeric)
+        # A positive, markedly skewed outcome is asked its scale (RO-10); the log of one already
+        # chosen is not asked again.
+        scale = (scale_question(series, target) if task == "regression" and numeric
+                 and log_outcome(ctx.state) is None else None)
 
         histogram = None
         classes = None
@@ -137,14 +160,25 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
             proposal = {"unit": named, "candidates": candidates, "source": "name"}
         else:
             proposal = pack
+    reason = task_reason(series, detection, detected_task)
+    if too_many:
+        reason += (f" Multiclass takes at most {MAX_CLASSES_MULTICLASS} classes, so "
+                   + ("it is proposed as a number on a coarse grid." if "regression" in fits else
+                      "it cannot be modeled as it is: group its levels, or choose another "
+                      "outcome."))
+    elif unordered_doubt:
+        reason += " Whether its levels are ordered (an ordinal outcome) is yours to say."
+    if scale is not None:
+        reason += f" {scale['evidence']} Its scale is yours to choose."
     return {
         "column": target,
         "task": task,
         "detected_task": detected_task,
         "confidence": confidence,
-        "reason": task_reason(series, detection, detected_task)
-        + (" Whether its levels are ordered (an ordinal outcome) is yours to say."
-           if unordered_doubt else ""),
+        "reason": reason,
+        "fits": fits,
+        "order_question": levels_question,
+        "scale_question": scale,
         "histogram": histogram,
         "classes": classes,
         "unit": unit,

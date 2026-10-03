@@ -274,6 +274,10 @@ _PURPOSE_CLAUSE = {
 
 @register_sentence("set_lens")
 def _set_lens(d: Any, state: Any, ctx: Any) -> str:
+    if list(d.lenses) == ["other"]:  # audit RO-11 (WP18): a first-class answer, stated
+        return ("The measurements were described as none of the offered fields (\"Something else, "
+                "or not sure\"), so only the generic checks ran and no field's defaults were "
+                "applied")
     noun = plural(len(d.lenses), "lens", "lenses")
     return f"The table was read through the {listing(d.lenses, limit=5)} {noun}"
 
@@ -409,7 +413,9 @@ def _slot_value(slot: str, value: Any) -> str | None:
             return f"repeated rows by {tick(id_column)}" if id_column else "repeated rows"
         return "one row per participant"
     if slot == "repeat_kind":
-        return ("repeated measurements of one quantity" if _attr(value, "repeat_kind") == "repeats"
+        kind = _attr(value, "repeat_kind")
+        return ("repeated measurements of one quantity" if kind == "repeats"
+                else "imputed copies of one record" if kind == "imputed_copies"
                 else "different time points")
     if slot == "unit":
         return "one row per unit" if value == "unit" else "one row per record"
@@ -1202,6 +1208,26 @@ def _set_column_unit(d: Any, state: Any, ctx: Any) -> str:
     return f"{tick(d.column)} was recorded as an age in {unit}"
 
 
+@register_sentence("set_outcome_scale")
+def _set_outcome_scale(d: Any, state: Any, ctx: Any) -> str:
+    """Audit RO-10 (WP18): the scale a positive, skewed outcome is analyzed on, and what its
+    coefficient then is."""
+    from turbotab.core.decisions import log_outcome_name
+
+    column = tick(d.column)
+    if d.scale == "original":
+        return (f"{column} was analyzed on its original scale, so a coefficient is a difference "
+                f"in its mean")
+    text = (f"{column} was analyzed on the natural-log scale, as {tick(log_outcome_name(d.column))}: "
+            f"a coefficient is a difference in its mean log, and its exponential a ratio of "
+            f"geometric means")
+    if getattr(state, "purpose", None) == "prediction":
+        text += ("; predictions and their scores are on the log scale, and the exponential of a "
+                 "prediction estimates the geometric mean (the median when the log is normal), "
+                 "not the mean")
+    return text
+
+
 @register_sentence("set_outcome_order")
 def _set_outcome_order(d: Any, state: Any, ctx: Any) -> str:
     return (f"The levels of {tick(d.column)} were ordered {' < '.join(tick(v) for v in d.levels)}, "
@@ -1334,6 +1360,15 @@ def _set_repeat_kind(d: Any, state: Any, ctx: Any) -> str:
     if d.repeat_kind == "repeats":
         return (f"{whose[:1].upper()}{whose[1:]} rows were taken as repeated measurements of the "
                 f"same quantity, not different time points")
+    if d.repeat_kind == "imputed_copies":  # audit I18 (WP18)
+        from turbotab.core.structural import COPIES_CONCERN
+
+        by = f", numbered by {tick(d.implicate_column)}" if d.implicate_column else ""
+        text = f"{whose[:1].upper()}{whose[1:]} rows were taken as imputed copies of one record{by}"
+        if getattr(d, "acknowledged", False):
+            return (text + f"; recorded as a limitation: they were not pooled by Rubin's rules, "
+                           f"and {COPIES_CONCERN}")
+        return text + f"; they were not pooled by Rubin's rules, and {COPIES_CONCERN}"
     text = f"{whose[:1].upper()}{whose[1:]} rows were taken as different time points"
     if d.time_column:
         text += f", ordered by {tick(d.time_column)}"
@@ -1398,6 +1433,10 @@ def _set_aggregation(d: Any, state: Any, ctx: Any) -> str:
                  if codes else "; unchanging columns kept their first value")
     for column, rule in (d.columns or {}).items():
         text += f"; {tick(column)} took its {_RULE_WORDS_SENTENCE.get(rule, rule)}"
+    if getattr(d, "acknowledged", False):  # audit RO-09 (WP18): blocked, and recorded
+        text += ("; recorded as a limitation: predictors were summarized from records later than "
+                 "the outcome's, so a later value may follow from the outcome rather than cause it "
+                 "(reverse causation)")
     return text
 
 

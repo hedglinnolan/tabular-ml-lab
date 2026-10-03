@@ -15,6 +15,7 @@ finding                                legacy reading                           
 ``pack::metabolomics::redundancy``     ``packs._redundancy``                        :mod:`.assay`
 ``pack::clinical::impossible_vs_…``    ``clinical.impossible_vs_extreme_finding``   :mod:`.plausibility`
 ``pack::genomics::data_type``          ``packs._genomics_data_type``                :mod:`.genomics`
+``pack::metabolomics::pooled_qc``      ``packs._pooled_qc``                         ``reference_rows``
 =====================================  ===========================================  ==============
 
 :func:`pack_findings` runs every other pack detector exactly as ``packs.findings`` does (same
@@ -53,7 +54,16 @@ def _superseding(units: Any = None, codings: Any = None
             lambda df: plausibility.impossible_vs_extreme_finding(df, units=units,
                                                                   codings=codings)),
         "_genomics_data_type": genomics.findings,
+        # Audit RO-13 (WP18): the pooled-QC level of a Case/Control/QC label, read by variance,
+        # with text that no longer says the rows are already out of the model.
+        "_pooled_qc": one(_pooled_qc_reading),
     }
+
+
+def _pooled_qc_reading(df: pd.DataFrame) -> dict[str, Any] | None:
+    from turbotab.core.reference_rows import pooled_qc_finding
+
+    return pooled_qc_finding(df)
 
 
 def pack_findings(df: pd.DataFrame, lens: Sequence[str], units: Any = None,

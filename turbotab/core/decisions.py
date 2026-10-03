@@ -46,7 +46,9 @@ except ImportError:  # pragma: no cover - exercised on Windows only
 
 log = logging.getLogger(__name__)
 
-Lens = Literal["metabolomics", "genomics", "dietary", "clinical", "survey"]
+# "other" is "Something else, or not sure" (audit RO-11, WP18): a first-class answer that runs the
+# generic checks only, recorded and stated; it stands alone (``turbotab.core.structural``).
+Lens = Literal["metabolomics", "genomics", "dietary", "clinical", "survey", "other"]
 # "ordinal": ordered levels (a 1–5 rating, none < mild < severe), modeled by a cumulative-link
 # family that keeps the order (audit ME-19, RO-10). The order is declared, never inferred.
 # time_to_event: the outcome column is the event; its follow-up is named by ``set_follow_up``.
@@ -570,7 +572,9 @@ class SetSubstitution(_DecisionModel):
 # The opening sequence (OPENING_SEQUENCE.md), the seal, and findings with dispositions.
 
 Orientation = Literal["sample_major", "feature_major"]
-RepeatKind = Literal["repeats", "time_points"]
+# "imputed_copies" (audit I18, WP18): each unit's rows are multiply-imputed copies of one record
+# (NHANES DXA ships five, numbered by ``_MULT_``), neither repeats nor time points.
+RepeatKind = Literal["repeats", "time_points", "imputed_copies"]
 AggregationMethod = Literal["mean", "first", "last", "change"]
 FindingAction = Literal["applied", "deferred", "dismissed"]
 
@@ -597,6 +601,10 @@ class RepeatSpec(_Value):
     # The order of a text time column's levels ("baseline", "month_6", "month_12"): what puts a
     # unit's records in order when the labels do not say it themselves (audit MA-03).
     levels: list[str] | None = None
+    # Imputed copies (audit I18): the column numbering each unit's copies (``_MULT_``), and the
+    # attestation under inference that they are analyzed without Rubin's rules (block and record).
+    implicate_column: str | None = None
+    acknowledged: bool = False
 
 
 class AggregationSpec(_Value):
@@ -605,6 +613,9 @@ class AggregationSpec(_Value):
     # A column's own rule, over the one the method and the column's kind give it (audit MA-14):
     # e.g. age at every visit kept at baseline under "change".
     columns: dict[str, CombineRule] = Field(default_factory=dict)
+    # Audit RO-09 (WP18): under inference, predictors summarized from records later than the
+    # outcome's are blocked and recorded; this is the attestation the methods sentence carries.
+    acknowledged: bool = False
 
 
 class FeatureTableSpec(_Value):
@@ -673,6 +684,8 @@ class SetRepeatKind(_DecisionModel):
     repeat_kind: RepeatKind
     time_column: str | None = None
     levels: list[str] | None = None  # the declared order of a text time column's levels
+    implicate_column: str | None = None  # imputed copies: the column numbering them (``_MULT_``)
+    acknowledged: bool = False  # imputed copies under inference: analyzed without Rubin's rules
 
     @field_validator("levels")
     @classmethod
@@ -694,6 +707,7 @@ class SetAggregation(_DecisionModel):
     method: AggregationMethod
     outcome: Literal["mean", "first", "last"] | None = None
     columns: dict[str, CombineRule] = Field(default_factory=dict)  # a column's own rule
+    acknowledged: bool = False  # predictors summarized after the outcome, kept under inference
 
 
 class SetFeatureTable(_DecisionModel):
@@ -756,6 +770,33 @@ class SetOutcomeOrder(_DecisionModel):
         if len(set(value)) != len(value):
             raise ValueError("each level may be placed only once")
         return value
+
+
+# Audit RO-10 (WP18): the scale a positive, markedly skewed outcome is analyzed on. "log" analyzes
+# its natural logarithm, a column of its own (``ln_<outcome>``, :func:`log_outcome_name`) derived
+# row by row in the working table: a coefficient is then a difference in mean log outcome, and its
+# exponential a ratio of geometric means.
+OutcomeScale = Literal["original", "log"]
+
+
+def log_outcome_name(column: str) -> str:
+    """The column a log-scale outcome is analyzed as."""
+    return f"ln_{column}"
+
+
+class OutcomeScaleSpec(_Value):
+    column: str  # the outcome as the table spells it
+    scale: OutcomeScale
+
+
+class SetOutcomeScale(_DecisionModel):
+    """The scale the outcome ``column`` is analyzed on. "log" makes ``ln_<column>`` the outcome
+    (the target slot), so every stage, score and sentence reads the column it names; "original"
+    keeps ``column``, its estimand a difference in means."""
+
+    kind: Literal["set_outcome_scale"] = "set_outcome_scale"
+    column: str = Field(min_length=1)
+    scale: OutcomeScale
 
 
 class SetOutcomeUnit(_DecisionModel):
@@ -879,7 +920,7 @@ Decision = Annotated[
         SetFeatureTable, SetCategorical, SetSurvey,
         SetExposureForm, SetOutcomeOrder, SetFollowUp,
         SetSensitivity, SetMeasurementError, SetOutcomeUnit, SetColumnUnit, ConfirmRole,
-        ConfirmReading, ConfirmReadings,
+        ConfirmReading, ConfirmReadings, SetOutcomeScale,
     ],
     Field(discriminator="kind"),
 ]
@@ -975,6 +1016,9 @@ class ProjectState(BaseModel):
     # it (``"female=2,male=1"``, by column), kept apart so the detectors that read it (the CDC
     # growth charts' z-scores) recompute alone
     sex_codings: dict[str, str] | None = None
+    # Audit RO-10 (WP18): the scale the user chose for a positive, markedly skewed outcome; under
+    # "log" the target slot names the derived ``ln_<column>`` (``SetOutcomeScale``)
+    outcome_scale: OutcomeScaleSpec | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -1297,6 +1341,12 @@ register_kind(SetOutcomeUnit, "outcome_unit", value=lambda d: d.unit,
 register_kind(SetColumnUnit, "column_units", key=lambda d: d.column,
               value=lambda d: ColumnUnitSpec(unit=d.unit, days=d.days))
 register_kind(SetSensitivity, "sensitivity")
+# The outcome's scale writes the target: "log" makes the derived log column the outcome, so every
+# consumer of the target reads the column it names (and the task, event and unit answered for the
+# original column stop holding); the answer itself is kept beside it.
+register_kind(SetOutcomeScale, "target",
+              value=lambda d: log_outcome_name(d.column) if d.scale == "log" else d.column,
+              also={"outcome_scale": lambda d: OutcomeScaleSpec(column=d.column, scale=d.scale)})
 register_kind(SetMeasurementError, "measurement_error",
               value=lambda d: MeasurementErrorSpec(**d.model_dump(exclude={"kind"})))
 register_validator("set_target", _target_is_a_column)
@@ -1375,21 +1425,40 @@ def _cluster_is_a_column_with_levels(decision: "SetSplit", ctx: Any) -> None:
                       exits=[{"label": "Choose a column with two or more levels", "decision": None}])
 
 
+def task_fits(n_unique: int, numeric: bool) -> list[str]:
+    """The tasks an outcome with ``n_unique`` distinct values may be answered as: the one rule
+    the explicit answer (:func:`_task_fits_the_outcome`) and the detection's skip
+    (``stages.target``) share, so a task the Router would state is one the answer accepts (audit
+    RO-10: a text outcome above 20 classes was skipped as multiclass, an explicit multiclass
+    refused)."""
+    fits: list[str] = []
+    if n_unique == 2:
+        fits.extend(["binary", "time_to_event"])
+    if 2 < n_unique <= MAX_CLASSES_MULTICLASS:
+        fits.extend(["multiclass", "ordinal"])
+    if numeric and n_unique >= 2:
+        fits.append("regression")
+    return fits
+
+
 def _task_fits_the_outcome(decision: SetTask, ctx: Any) -> None:
     info = _info(ctx, decision.column)
     if info is None:
         return
     n_unique = int(info.get("n_unique") or 0)
     numeric = info.get("dtype") in NUMERIC_DTYPES
-    fits: list[str] = []
-    if n_unique == 2:
-        fits.append("binary")
-    if 2 < n_unique <= MAX_CLASSES_MULTICLASS:
-        fits.extend(["multiclass", "ordinal"])
-    if numeric and n_unique > 2:
-        fits.append("regression")
+    fits = task_fits(n_unique, numeric)
     exits = [{"label": f"Treat it as {task}", "decision": SetTask(column=decision.column, task=task)}
-             for task in fits]
+             for task in fits if task != "time_to_event"
+             and not (task == "regression" and n_unique <= 2)]
+    if decision.task == "regression" and not numeric:
+        # WP18 (audit RO-10): the answer refuses what the skip never states, so the two agree.
+        raise Refusal(
+            "task_mismatch",
+            f"`{decision.column}` holds labels, not numbers, so it has no mean to model as a "
+            f"regression outcome.",
+            exits=exits or [{"label": "Choose another outcome", "decision": None}],
+        )
     if decision.task == "binary" and n_unique != 2:
         raise Refusal(
             "task_mismatch",
@@ -3468,3 +3537,7 @@ class DecisionLog:
 from turbotab.core import sequence as _sequence  # noqa: E402,F401
 # The survey question's refusals (``set_survey``; audit §5 WP10) live with its name reading.
 from turbotab.core import survey as _survey  # noqa: E402,F401
+# The structural questions that ask where evidence is thin (audit §5 WP18): the lens that is none
+# of the five, predictors summarized after the outcome, the outcome's order and scale, reference
+# rows, and imputed copies.
+from turbotab.core import structural as _structural  # noqa: E402,F401

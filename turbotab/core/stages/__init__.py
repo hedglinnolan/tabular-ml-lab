@@ -145,9 +145,12 @@ def build_graph() -> Graph:
             # counts no misreport, and a day count the values do not settle is asked.
             # findings 13 (corroboration must discriminate, BLUEPRINT §14.3): a numeric sex column is
             # read for the growth charts only as the user confirmed its coding.
+            # findings 14 (audit WP18, RO-13): the pooled-QC level of a Case/Control/QC label is read by
+            # variance, with a lever (exclude the reference rows) and text that is true; "something
+            # else, or not sure" runs the generic checks alone (RO-11).
             Stage(
                 "findings",
-                13,
+                14,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings"),
                 findings_stage,
@@ -170,16 +173,20 @@ def build_graph() -> Graph:
             # one (the reading's is proposed); the whole numbers that may be codes or counts.
             # structure 11 (BLUEPRINT §14.3): every whole-valued number that changes within units is
             # asked as codes or amounts, whatever its count or type.
-            Stage("structure", 11, ("oriented",),
+            # structure 12 (audit WP18): imputed copies read by their copy number (I18); a log-scale
+            # outcome read within units through the column it is the log of (RO-10).
+            Stage("structure", 12, ("oriented",),
                   ("grain", "target", "lens", "repeat_kind", "findings", "temporal",
-                   "shape_confirmations"),
+                   "shape_confirmations", "outcome_scale"),
                   structure_stage, heavy=True, label="Reading how the rows repeat"),
             # working 3 (the readings ledger): a code or a count is combined only as the user said,
             # and first, last and change only by a settled time column.
             # working 4 (BLUEPRINT §14.3): as structure 11.
-            Stage("working", 4, ("oriented", "findings", "structure"),
+            # working 5 (audit WP18): reference rows a recorded repair excludes leave here, before
+            # the outcome is read and the seal drawn (RO-13); a log-scale outcome is derived (RO-10).
+            Stage("working", 5, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind", "temporal",
-                   "shape_confirmations", "categorical"),
+                   "shape_confirmations", "categorical", "outcome_scale"),
                   working_stage, heavy=True, label="Building the working table"),
             # target_info 3 (WP13, audit IN-05): the unit is stated only as recorded or spelled out
             # by the name; the clinical pack's reading is a proposal.
@@ -189,11 +196,14 @@ def build_graph() -> Graph:
             # (ordered or not); a bare amount the quantity does not take is no stated unit.
             # target_info 6 (BLUEPRINT §14.3): no unit is stated from a header (a name); the header's
             # letters are the proposal.
+            # target_info 7 (audit WP18, RO-10): the tasks the answer accepts (one 20-class rule), "are
+            # these levels ordered?" for 3–10 levels, and the scale of a positive, markedly skewed
+            # outcome; the reference rows have left the table it reads (RO-13).
             Stage(
                 "target_info",
-                6,
+                7,
                 ("working",),
-                ("target", "task", "outcome_unit"),
+                ("target", "task", "outcome_unit", "outcome_scale"),
                 target_info_stage,
                 requires=("target",),
                 label="Reading the outcome column",
@@ -215,7 +225,10 @@ def build_graph() -> Graph:
             # roles 7 (corroboration must discriminate, BLUEPRINT §14.3): high only where a value test
             # rejects every alternative: a repeating identifier, a time-named number, a visit index,
             # a many-label text column and a design name are asked.
-            Stage("roles", 7, ("working",), ("lens", "target", "purpose", "grain"), roles_stage,
+            # roles 8 (audit WP18): the column a log-scale outcome is the log of is the outcome, so
+            # it is proposed excluded (RO-10).
+            Stage("roles", 8, ("working",), ("lens", "target", "purpose", "grain", "outcome_scale"),
+                  roles_stage,
                   heavy=True, label="Reading what each column is"),
             # proposals 3: the declared purpose orders the energy methods by soundness (audit WP6);
             # the survey question (WP10) and the Goldberg screen's recall days (WP12c).
@@ -250,7 +263,8 @@ def build_graph() -> Graph:
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             # cohort 3 (the readings ledger, BLUEPRINT §14.1): complete cases read settled roles.
-            Stage("cohort", 3, ("working", "target_info"),
+            # cohort 4 (audit WP18, RO-13): reference rows the working table excluded are counted first.
+            Stage("cohort", 4, ("working", "target_info"),
                   ("target", *ROLE_READS, "exclusions", "missing", "findings"), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
             # split 4 (WP13): a measurement named as the unit groups the draw but is exploratory.

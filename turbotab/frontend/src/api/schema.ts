@@ -93,7 +93,7 @@ type Exactly<L extends readonly unknown[], U> = [U] extends [L[number]]
     : never
   : never;
 
-const lenses = ["metabolomics", "genomics", "dietary", "clinical", "survey"] as const;
+const lenses = ["metabolomics", "genomics", "dietary", "clinical", "survey", "other"] as const;
 export const LENSES: Exactly<typeof lenses, Lens> = lenses;
 
 const dtypes = ["numeric", "integer", "boolean", "categorical", "datetime", "text"] as const;

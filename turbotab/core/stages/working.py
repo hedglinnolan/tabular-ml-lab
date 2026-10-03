@@ -1019,7 +1019,12 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
     columns = [str(c["name"]) for c in info["columns"]]
     dtypes = {str(c["name"]): str(c["dtype"]) for c in info["columns"]}
     state = ctx.state
-    target = state.target if state.target in dtypes else None
+    # The outcome as the table spells it: a log-scale outcome (WP18) is derived in the working
+    # table, so its rows are read through the column it is the log of.
+    from turbotab.core.structural import outcome_source
+
+    source = outcome_source(state)
+    target = source if source in dtypes else None
     spec = state.grain
     unit = spec.id_column if (spec is not None and spec.grain == "repeated"
                               and spec.id_column in dtypes) else None
@@ -1089,7 +1094,8 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
 
     reading = repeat_reading.read(sampled, unit, list(state.lens or []))
     out["repeats"] = {k: reading.get(k) for k in ("reading", "stated", "confidence", "evidence",
-                                                   "sentence", "spacing", "replicate_index")}
+                                                   "sentence", "spacing", "replicate_index",
+                                                   "implicate_column")}
     out["repeats"]["n_units_read"] = int(min(len(known), READING_UNITS))
     out["time_columns"] = [c for c in repeats._date_columns(sampled) if c != unit]
     if reading.get("replicate_index") and reading["replicate_index"] not in out["time_columns"]:
@@ -1097,10 +1103,18 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
     if target is not None:
         varying = frame.groupby(ids, dropna=True)[target].nunique(dropna=True)
         n_varying = int((varying > 1).sum())
-        out["outcome"] = {"column": target, "varies": n_varying > 0, "n_units_varying": n_varying,
-                          "numeric": dtypes.get(target) in NUMERIC}
+        out["outcome"] = {"column": state.target, "varies": n_varying > 0,
+                          "n_units_varying": n_varying, "numeric": dtypes.get(target) in NUMERIC}
     kind = effective_repeat_kind(state, out)
-    if kind is not None:
+    if kind == "imputed_copies":
+        # Audit I18 (WP18): copies of one imputed record have no order and no recommended summary;
+        # their mean, or each copy as a row, is what the menu holds, with its concern.
+        from turbotab.core.structural import COPIES_CONCERN
+
+        out["aggregation"] = {"kind": kind, "recommended": None, "reason": COPIES_CONCERN[:1].upper()
+                              + COPIES_CONCERN[1:] + ".", "marker": "offered",
+                              "from_pack": None, "options": ["mean"]}
+    elif kind is not None:
         menu = repeats.menu(kind, list(state.lens or []))
         out["aggregation"] = {
             "kind": kind,
@@ -1114,9 +1128,11 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
     # Whole-number columns that change within units and may be codes or counts (BLUEPRINT §14.1):
     # combining them takes the user's answer for each, never a guess (the gate: per-recall
     # ``coffee_cups`` and ``eating_occasions`` combined by their mode under "mean").
+    # (An imputed copy's number, WP18's I18, numbers the copies; it is no value to combine.)
     asked = code_or_count_facts(
         frame, unit, exclude=[c for c in (target, out["time_column"], out["proposed_time_column"],
-                                          *out["time_columns"]) if c])
+                                          reading.get("implicate_column"), *out["time_columns"])
+                              if c])
     out["code_or_count"] = list(asked)
     out["code_or_count_facts"] = asked
     if out["time_column"] in as_written.columns:
@@ -1739,11 +1755,36 @@ def _aggregate(ctx: StageContext, con: Any, src_sql: str, info: Mapping[str, Any
     }
 
 
-def source_sql(source: Path, names: Sequence[str], repairs: Mapping[str, str]) -> str:
-    """The oriented table with the row-local repairs applied, as a subquery."""
+def source_sql(source: Path, names: Sequence[str], repairs: Mapping[str, str],
+               where: str | None = None, derived: Mapping[str, str] | None = None) -> str:
+    """The oriented table with the row-local repairs applied, as a subquery. ``where`` keeps only
+    the rows it holds for (reference rows leave, audit RO-13); ``derived`` adds columns computed
+    row by row (``{name: SQL}``: the log-scale outcome, audit RO-10)."""
     select = ", ".join([*(f"{repairs[c]} AS {_ident(c)}" if c in repairs else _ident(c)
-                          for c in names), ROW_ID])
-    return f"(SELECT {select} FROM read_parquet({_lit(source)}))"
+                          for c in names),
+                        *(f"{sql} AS {_ident(name)}" for name, sql in (derived or {}).items()),
+                        ROW_ID])
+    clause = f" WHERE {where}" if where else ""
+    return f"(SELECT {select} FROM read_parquet({_lit(source)}){clause})"
+
+
+def row_local_additions(state: Any, findings: Any, names: Sequence[str],
+                        repairs: Mapping[str, str]) -> tuple[str | None, dict[str, str],
+                                                             list[dict[str, Any]]]:
+    """What the working table takes from WP18's row-local answers: the condition that keeps every
+    row but the reference rows a recorded repair excludes, the derived log-scale outcome (each
+    value's natural log, blank at or below 0), and the reference rules themselves."""
+    from turbotab.core.reference_rows import reference_filter, reference_rules
+    from turbotab.core.structural import derived_columns
+
+    rules = [r for r in reference_rules(getattr(state, "findings", None), findings)
+             if r["column"] in names]
+    derived: dict[str, str] = {}
+    for name, column in derived_columns(state).items():
+        if column in names and name not in names:
+            x = f"TRY_CAST({repairs.get(column, _ident(column))} AS DOUBLE)"
+            derived[name] = f"CASE WHEN {x} > 0 THEN ln({x}) END"
+    return reference_filter(rules), derived, rules
 
 
 def working_stage(ctx: StageContext) -> Bundle:
@@ -1764,16 +1805,35 @@ def working_stage(ctx: StageContext) -> Bundle:
     unknown = [c for c in repairs if c not in names]
     if unknown:
         raise StructureError(f"A recorded repair names `{unknown[0]}`, which is not a column.")
-    plan = aggregation_plan(ctx.state, set(names), structure)
+    from turbotab.core.structural import derived_columns
+
+    where, derived, rules = row_local_additions(ctx.state, findings, names, repairs)
+    plan = aggregation_plan(ctx.state, set(names) | set(derived), structure)
     base = {"transposed": transposed, "n_source_rows": int(info["n_rows"]),
-            "repairs": [{"column": c, "expression": e} for c, e in repairs.items()]}
-    if not repairs and plan is None:
+            "repairs": [{"column": c, "expression": e} for c, e in repairs.items()],
+            # WP18: the reference rows that left (RO-13) and the columns derived row by row (RO-10)
+            "reference_rows": [],
+            "derived": [{"column": name, "source": src, "expression": "ln"}
+                        for name, src in derived_columns(ctx.state).items() if name in derived]}
+    if rules:
+        from turbotab.core.reference_rows import reference_filter
+
+        con, temp = _connect(ctx, "working")
+        try:
+            for rule in rules:
+                gone = con.execute(f"SELECT count(*) FROM read_parquet({_lit(source)}) WHERE NOT "
+                                   f"({reference_filter([rule])})").fetchone()[0]
+                base["reference_rows"].append({**rule, "n": int(gone or 0)})
+        finally:
+            con.close()
+            _cleanup(temp)
+    if not repairs and plan is None and not where and not derived:
         data = {**_dataset_fields(info), **base, "pass_through": True, "aggregation": None,
                 "row_map": "identity"}
         return Bundle(data=data, files={TABLE: _reference(source, ctx, "working")})
 
     started = time.perf_counter()
-    src_sql = source_sql(source, names, repairs)
+    src_sql = source_sql(source, names, repairs, where=where, derived=derived)
     table_out = _scratch(ctx, "working", TABLE)
     sidecar = _scratch(ctx, "working", SIDECAR)
     map_out = _scratch(ctx, "working", ROW_MAP)
@@ -1781,7 +1841,21 @@ def working_stage(ctx: StageContext) -> Bundle:
     files: dict[str, Path] = {TABLE: table_out, SIDECAR: sidecar}
     try:
         aggregation = None
-        if plan is None:
+        if plan is None and where:
+            # Reference rows left (WP18, RO-13): the rows that stay are numbered 0…n − 1 again, as
+            # every reader of the working table expects, and the row map says which source row
+            # each one is.
+            renumbered = f"CAST(row_number() OVER (ORDER BY {ROW_ID}) - 1 AS BIGINT)"
+            _execute(con, ctx, f"COPY (SELECT * REPLACE ({renumbered} AS {ROW_ID}) FROM "
+                               f"{src_sql} ORDER BY {ROW_ID}) TO {_lit(table_out)} "
+                               f"(FORMAT parquet, COMPRESSION zstd)",
+                     0.1, 0.7, "Applying the repairs and leaving out the reference rows")
+            _execute(con, ctx, f"COPY (SELECT {renumbered} AS row_id, {ROW_ID} AS source_row_id "
+                               f"FROM {src_sql} ORDER BY row_id) TO {_lit(map_out)} "
+                               f"(FORMAT parquet, COMPRESSION zstd)",
+                     0.7, 0.8, "Writing which rows stayed")
+            files[ROW_MAP] = map_out
+        elif plan is None:
             _execute(con, ctx, f"COPY (SELECT * FROM {src_sql} ORDER BY {ROW_ID}) TO "
                                f"{_lit(table_out)} (FORMAT parquet, COMPRESSION zstd)",
                      0.1, 0.8, "Applying the repairs")
@@ -1797,7 +1871,7 @@ def working_stage(ctx: StageContext) -> Bundle:
         con.close()
         _cleanup(temp)
     data = {**described, **base, "pass_through": False, "aggregation": aggregation,
-            "row_map": ROW_MAP if aggregation is not None else "identity"}
+            "row_map": ROW_MAP if ROW_MAP in files else "identity"}
     return Bundle(data=data, files=files)
 
 
