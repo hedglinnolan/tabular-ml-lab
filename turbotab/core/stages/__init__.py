@@ -20,7 +20,7 @@ M1 (docs/turbotab-next/M1_CONTRACT.md):
                                                               exposure_forms; requires models, roles
     fit          heavy   deps: design, split, target_info,    reads models, purpose, task, survey, outcome_order,
                                cohort                         follow_up; requires models
-    substitution heavy   deps: fit, design                    reads substitution; requires substitution
+    substitution heavy   deps: fit, design                    reads substitution, purpose; requires substitution
 
 M2 (docs/turbotab-next/M2_CONTRACT.md §2) — the table the analysis reads:
 
@@ -132,7 +132,9 @@ def build_graph() -> Graph:
             # proposals 3: the declared purpose orders the energy methods by soundness (audit WP6);
             # the survey question (WP10) and the Goldberg screen's recall days (WP12c).
             # proposals 4: the missing-data methods ordered by purpose (audit WP7).
-            Stage("proposals", 4, ("working", "roles"), ("lens", "roles", "target", "purpose"),
+            # proposals 5 (repair round): the Goldberg screen reads body measures left out of the
+            # model; the exposure-form options with their two labels (WP12a).
+            Stage("proposals", 5, ("working", "roles"), ("lens", "roles", "target", "purpose"),
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             Stage("cohort", 2, ("working", "target_info"),
@@ -151,7 +153,9 @@ def build_graph() -> Graph:
             # normalization step reads the lens and the findings (audit WP11); each formed
             # exposure's spline or quintiles (audit WP12a); a follow-up is no predictor (WP12b).
             # design 7: the energy-aware single fill and the below-detection step (WP7).
-            Stage("design", 7, ("working", "split", "target_info"),
+            # design 8 (repair round): total energy kept as a covariate reads as the standard model
+            # (ME-02); exposures in percent of energy carry their own meaning and pairs (B24).
+            Stage("design", 8, ("working", "split", "target_info"),
                   ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up"),
                   design_stage,
@@ -162,20 +166,28 @@ def build_graph() -> Graph:
             # follow-up and the families that model the unit).
             # fit 9: missing data by purpose (WP7): under inference the table is pooled over
             # multiple imputations with the outcome, or held, or carries complete cases' cost.
-            Stage("fit", 9, ("working", "design", "split", "target_info", "cohort"),
+            # fit 10 (repair round): under inference each family's every-row refit is kept for the
+            # substitution curve; the Cox, mixed and GEE tables declare their scale; Harrell's
+            # bootstrap is not applied to a family that declares it unsound for it.
+            Stage("fit", 10, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up"),
                   fit_stage, heavy=True, requires=("models",),
                   label="Fitting the models"),
             # substitution 6: a swap can move a share of energy (WP12a); a random intercept's band
             # refits one intercept per resampled unit (WP12b); a curve says it is not pooled over
             # multiple imputations (WP7).
-            Stage("substitution", 6, ("working", "fit", "design"),
-                  ("substitution", "event", "outcome_order"),
+            # substitution 7 (repair round): under inference the curve reads every analyzed row and
+            # the families refit on them (BLUEPRINT §12 ruling 3), as the coefficient table does.
+            Stage("substitution", 7, ("working", "fit", "design"),
+                  ("substitution", "event", "outcome_order", "purpose"),
                   substitution_stage, heavy=True, requires=("substitution",),
                   label="Drawing the substitution curves"),
             # ── M2: the seal (docs/turbotab-next/M2_CONTRACT.md §3) ──
-            Stage("seal_plan", 2, ("working", "cohort", "target_info", "structure"),
-                  ("roles", "task", "event", *SEAL_READS), seal_plan_stage, requires=("target",),
+            # seal_plan 3 (repair round): the declared purpose orders the split question (under
+            # inference no holdout leads; BLUEPRINT §12 ruling 3), and the validation options.
+            Stage("seal_plan", 3, ("working", "cohort", "target_info", "structure"),
+                  ("roles", "task", "event", "purpose", *SEAL_READS), seal_plan_stage,
+                  requires=("target",),
                   label="Reading what a held-out set can measure"),
             # ── WP12: methods a reviewer expects (AUDIT_REPORT §5) ──
             # sensitivity 2: each analysis fit as the fit stage fits the primary (scale, survey

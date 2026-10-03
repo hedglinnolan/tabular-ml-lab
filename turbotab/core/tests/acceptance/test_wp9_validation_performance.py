@@ -429,8 +429,14 @@ def test_3b_the_seal_plan_orders_the_split_question_by_purpose_and_size(tmp_path
     """The real seal-plan stage on a 1,000-row table, where a 20% holdout clears the floor of 100
     rows: under prediction the plan's validation options lead with the bootstrap, and
     "Cross-validation only" leads the holdout options (it trailed them before WP9, ME-11) with
-    the reason and the holdout's tension; under inference the holdout order is the floor's alone
-    (the 20% holdout first)."""
+    the reason and the holdout's tension.
+
+    Under inference "no holdout" leads too, with one k-fold run first among the validations.
+    (Rewritten in the repair round: this test once pinned the 20% holdout first under inference,
+    the opposite of BLUEPRINT §12 ruling 3, "a holdout is a prediction concept", and of ME-12's
+    recommendation, "lead the split with 'no holdout'". Source check, Shmueli 2010, Statistical
+    Science 25:289, as the audit quotes it: "In explanatory modeling, data partitioning is less
+    common because of the reduction in statistical power.") The holdout stays on offer."""
     rng = np.random.default_rng(8)
     X = pd.DataFrame(rng.normal(size=(1000, 3)), columns=["x0", "x1", "x2"])
     frame = X.assign(id=np.arange(1000), y=X["x0"] + rng.normal(size=1000))
@@ -454,6 +460,9 @@ def test_3b_the_seal_plan_orders_the_split_question_by_purpose_and_size(tmp_path
     assert inf["validation"]["options"][0]["validation"] == "kfold"
     assert not inf["validation"]["resampling_first"]
     assert "Harrell" not in inf["reason"]
+    assert inf["cv_first"] and inf["options"][0]["holdout"] == 0
+    assert {o["holdout"] for o in inf["options"]} == {o["holdout"] for o in pred["options"]}
+    assert inf["reason"].startswith("Under inference every analyzed row estimates the coefficients")
 
 
 def test_3c_repeated_kfold_averages_its_repeats_each_scored_as_scikit_learn_scores_it(tmp_path):
@@ -562,6 +571,78 @@ def test_3d_the_optimism_corrected_auc_matches_an_independent_bootstrap_on_asah(
     text = voice.sentence_for(d.SetSplit(holdout=0.0, seed=17, folds=5, validation="bootstrap", n_boot=200),
                               st, {})
     assert "Harrell's bootstrap (`200` resamples, the whole pipeline refit on each)" in text
+
+
+def _harrell(make, X: np.ndarray, y: np.ndarray, B: int, rng: np.random.Generator) -> tuple[float, float]:
+    """Harrell's bootstrap optimism correction written out with scikit-learn (apparent AUC, then
+    the mean of each resample's own AUC less its AUC on the original rows): (apparent, corrected)."""
+    full = make().fit(X, y)
+    apparent = roc_auc_score(y, full.predict_proba(X)[:, 1])
+    gaps = []
+    for _ in range(B):
+        i = rng.integers(0, len(y), len(y))
+        m = make().fit(X[i], y[i])
+        gaps.append(roc_auc_score(y[i], m.predict_proba(X[i])[:, 1])
+                    - roc_auc_score(y, m.predict_proba(X)[:, 1]))
+    return apparent, apparent - float(np.mean(gaps))
+
+
+def test_3e_the_bootstrap_is_not_applied_to_a_near_interpolating_learner(tmp_path):
+    """Repair round (verifier's regression): Harrell's bootstrap was applied to every family, and
+    for boosted trees served a corrected AUC of 0.912 (apparent 0.9999) against a 5-fold CV of
+    0.686.
+
+    **Independent replication** (scikit-learn alone, as the verifier ran it): on the
+    ``_logistic_table`` model, n = 1,600, boosted trees' Harrell-corrected AUC (B = 30) sits more
+    than 0.1 above its AUC on 20,000 fresh rows, while logistic regression's is within 0.02 of its
+    own. Monte Carlo: B = 30 resamples put an SE of about 0.002 on the mean optimism, far inside
+    both bounds. Source check — Coley et al., BMC Med Res Methodol 2023;23:33 (PMC9890785):
+    "While previous literature demonstrated the validity of bootstrap optimism correction for
+    parametric models in small samples, this approach did not accurately validate performance of a
+    rare-event prediction model estimated with random forests in a large clinical dataset."
+
+    **The app**: boosted trees declare ``bootstrap_optimism = False``; through the real split and
+    fit stages with ``validation = bootstrap``, logistic regression gets its corrected AUC and
+    boosted trees get none, with the reason as a concern; the plan's bootstrap option carries its
+    caution, and the split sentence says which families it was applied to."""
+    from sklearn.ensemble import HistGradientBoostingClassifier
+    from sklearn.linear_model import LogisticRegression
+
+    rng = np.random.default_rng(5)
+    X, y, _ = _logistic_table(1_600, seed=21)
+    fresh, y_fresh, _ = _logistic_table(20_000, seed=22)
+    for make, gap in ((lambda: HistGradientBoostingClassifier(random_state=0), "large"),
+                      (lambda: LogisticRegression(C=np.inf, max_iter=5_000), "small")):
+        apparent, corrected = _harrell(make, X.to_numpy(), y, 30, rng)
+        truth = roc_auc_score(y_fresh, make().fit(X.to_numpy(), y).predict_proba(fresh.to_numpy())[:, 1])
+        if gap == "large":
+            assert apparent > 0.97 and corrected - truth > 0.1, (apparent, corrected, truth)
+        else:
+            assert abs(corrected - truth) < 0.02, (apparent, corrected, truth)
+
+    assert get_family("boosted_trees").bootstrap_optimism is False
+    assert get_family("linear").bootstrap_optimism is True
+    frame = X.iloc[:600].assign(id=np.arange(600), event=np.where(y[:600] == 1, "case", "control"))
+    source = tmp_path / "t.csv"
+    frame.to_csv(source, index=False)
+    table = Ingested(source, tmp_path / "i")
+    st = ProjectState(lens=["clinical"], target="event", task="binary", event="case",
+                      purpose="prediction", roles={"id": "identifier", **{c: "covariate" for c in X}},
+                      missing="complete_case", grain=GrainSpec(grain="one_row_per_unit", id_column="id"),
+                      models=["linear", "boosted_trees"],
+                      split=SplitSpec(holdout=0.0, seed=3, folds=5, validation="bootstrap", n_boot=20))
+    _, _, _, fit = _stages(table, st)
+    linear, trees = fit.data["models"]
+    assert linear["optimism"]["n_ok"] == 20 and linear["optimism"]["estimates"]["auc"]["corrected"]
+    assert trees["optimism"]["estimates"] == {} and trees["optimism"]["refused"]
+    assert "Coley et al. 2023" in trees["optimism"]["refused"]
+    assert trees["optimism"]["refused"] in trees["concerns"]
+    assert trees["cv"]["auc"]["estimate"] is not None  # its cross-validated score stands
+    bootstrap = validation_plan("prediction", 600).options[0]
+    assert bootstrap.validation == "bootstrap" and "boosted trees" in bootstrap.caution
+    said = voice.sentence_for(d.SetSplit(holdout=0.0, seed=3, folds=5, validation="bootstrap",
+                                         n_boot=20), st, {})
+    assert "except for a family that nearly memorizes its rows (boosted trees)" in said
 
 
 # ── 4 · the banner and the primary metric ────────────────────────────────────

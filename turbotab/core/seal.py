@@ -505,6 +505,13 @@ TIME_TO_EVENT_FLOOR_SOURCE = "Collins, Ogundimu & Altman, Stat Med 2016;35:214�
 # The R² a plan assumes, as the AUC's width assumes 0.75: a held-out R²'s precision depends on the
 # R² itself, and a plan comes before any fit. 0.2 is a modest prediction R² for a diet outcome.
 PLAN_R2 = 0.2
+# Audit ME-12's recommendation ("lead the split with 'no holdout'"), and the source it quotes:
+# Shmueli, "To explain or to predict?", Statistical Science 2010;25:289–310: "In explanatory
+# modeling, data partitioning is less common because of the reduction in statistical power."
+INFERENCE_SPLIT_REASON = ("Under inference every analyzed row estimates the coefficients, so no "
+                          "holdout comes first: a holdout is a prediction concept (Shmueli 2010), "
+                          "and one stays on offer for a final prediction score; it does not change "
+                          "the estimates.")
 PRECISION_NOTE = ("Widths are approximate 95% intervals of a score on that many held-out rows: "
                   "R² by its large-sample standard error 2·√R²·(1 − R²)/√n at an R² of 0.2, AUC by "
                   "Hanley & McNeil (1982) at an AUC of 0.75, macro-F1 by a proportion's interval "
@@ -724,7 +731,12 @@ def plan(state: Any, universe: Any, store: Any, task: str | None,
         getattr(state, "purpose", None),
         min(int(draw.basis.n_units), int(len(analyzed))) if grouped else int(len(analyzed)),
         time_ordered=draw.order is not None, unit="units" if grouped else "rows")
-    if validation.resampling_first and not cv_first:  # audit ME-11: the holdout keeps its tension
+    if getattr(state, "purpose", None) == "inference":
+        # Audit ME-12 and BLUEPRINT §12 ruling 3: under inference every analyzed row estimates the
+        # coefficients whatever is held out, so no holdout leads; a holdout stays on offer.
+        options = [o for o in options if o.holdout == 0] + [o for o in options if o.holdout > 0]
+        cv_first, reason = True, INFERENCE_SPLIT_REASON
+    elif validation.resampling_first and not cv_first:  # audit ME-11: the holdout keeps its tension
         options = [o for o in options if o.holdout == 0] + [o for o in options if o.holdout > 0]
         cv_first, reason = True, f"{validation.reason} {validation.holdout_note}"
     return SealPlan(

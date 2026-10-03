@@ -21,6 +21,18 @@ resample — imputation, energy adjustment, scaling and any inner tuning:
 3. the resample's *optimism* is the difference; repeat ``B`` times and average;
 4. the *optimism-corrected* performance is the apparent performance minus the mean optimism.
 
+**Not for a near-interpolating learner.** A family that nearly memorizes its rows (boosted trees)
+scores the original rows almost perfectly inside each resample, since about 63% of them were in it,
+so the resample's "test" score is inflated and the optimism understated: the corrected score stays
+too high. Coley et al., BMC Med Res Methodol 2023;23:33 (read at PMC9890785 on 2026-10-02): "While
+previous literature demonstrated the validity of bootstrap optimism correction for parametric
+models in small samples, this approach did not accurately validate performance of a rare-event
+prediction model estimated with random forests in a large clinical dataset." The repair round's
+replication with scikit-learn (``test_wp9_validation_performance.py``): boosted trees' corrected AUC
+about 0.91 against a true 0.69–0.71 on fresh rows. Such a family declares
+``bootstrap_optimism = False`` (``models/base.py``) and the fit keeps its cross-validated score
+(:func:`not_applied`).
+
 Resample b draws ``rng.integers(0, U, U)`` from ``numpy.random.default_rng(seed)`` (U units, in
 order of first appearance), one draw per resample in turn, so an independent implementation can
 replay the same resamples. A resample missing a class cannot be fit; it is skipped (its draw still
@@ -231,6 +243,25 @@ class ValidationOption(_Model):
     measures: str  # what it gives, in one line
     cost: str  # what it costs, in refits
     needs_cluster: bool = False  # internal–external: the user names the column whose levels fold
+    caution: str | None = None  # where it is not sound, in one line (north star 5)
+
+
+BOOTSTRAP_CAUTION = ("Sound for regression-type families; a near-interpolating one (boosted trees) "
+                     "keeps its cross-validated score, since the bootstrap overstates it (Coley et "
+                     "al. 2023).")
+
+
+def not_applied(family_label: str, n_boot: int, unit: str | None = None) -> Optimism:
+    """The optimism record of a family that declares Harrell's bootstrap unsound for it: nothing
+    estimated, and the reason, which the fit states as a concern (module docstring)."""
+    return Optimism(n_boot=int(n_boot), n_ok=0, failed=0, seconds=0.0,
+                    resampled=f"{unit} units" if unit else "rows", estimates={},
+                    refused=(f"Harrell's bootstrap optimism correction is not applied to "
+                             f"{family_label}: a learner that nearly memorizes its rows scores the "
+                             f"original rows inside each resample (about 63% of them) almost "
+                             f"perfectly, so the bootstrap understates its optimism and overstates "
+                             f"its performance (Coley et al. 2023). Its cross-validated score is its "
+                             f"internal validation."))
 
 
 class ValidationPlan(_Model):
@@ -258,7 +289,8 @@ def validation_plan(purpose: str | None, n_units: int, *, time_ordered: bool = F
             validation="bootstrap", label="Bootstrap optimism correction",
             measures=f"Every row trains and scores; {b} whole-pipeline refits on resamples "
                      f"estimate the optimism.",
-            cost=f"about {b} refits of each family, besides one {folds}-fold run"),
+            cost=f"about {b} refits of each family, besides one {folds}-fold run",
+            caution=BOOTSTRAP_CAUTION),
         "repeated_kfold": ValidationOption(
             validation="repeated_kfold", label=f"Repeated cross-validation ({r} × {folds})",
             measures=f"The folds are drawn {r} times, so the score no longer rests on one "
@@ -441,4 +473,5 @@ def family_differences(task: str, results: dict[str, CrossValidated],
 __all__ = ["CALIBRATION_KEYS", "ClusterScore", "FamilyDifference", "InternalExternal",
            "MIN_OK_SHARE", "Optimism", "OptimismEstimate", "RESAMPLE_BELOW", "RESAMPLE_SOURCE",
            "ValidationOption", "ValidationPlan", "family_differences", "internal_external",
-           "optimism_bootstrap", "performance_points", "validation_plan", "METRICS"]
+           "optimism_bootstrap", "performance_points", "validation_plan", "METRICS",
+           "BOOTSTRAP_CAUTION", "not_applied"]

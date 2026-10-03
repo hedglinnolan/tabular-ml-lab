@@ -155,6 +155,13 @@ def test_3_cox_on_the_staggered_entry_fixture_matches_lifelines(tmp_path):
     assert (round(hr, 3), round(low, 3), round(high, 3)) == (1.012, 0.997, 1.027)
     assert low == pytest.approx(reference.summary.loc["fiber_g", "exp(coef) lower 95%"], rel=1e-6)
     assert high == pytest.approx(reference.summary.loc["fiber_g", "exp(coef) upper 95%"], rel=1e-6)
+    # Repair round (WP12b × WP8): the table declares the hazard-ratio scale, drawn on a log axis,
+    # and carries each hazard ratio and its interval, lifelines' exp(coef) and its 95% limits.
+    assert info["scale"] == "hazard_ratio" and info["axis"] == "log"
+    assert "Hazard ratio of `cvd_event`" in info["effect"]
+    assert fiber["ratio"] == pytest.approx(reference.summary.loc["fiber_g", "exp(coef)"], rel=1e-6)
+    assert fiber["ratio_low"] == pytest.approx(low, rel=1e-12)
+    assert fiber["ratio_high"] == pytest.approx(high, rel=1e-12)
     assert fiber["p"] == pytest.approx(0.12, abs=0.01)
     # Cross-validated Harrell's C beats one risk for everyone (age carries the hazard).
     assert model["cv"]["c_index"]["estimate"] > 0.55
@@ -174,6 +181,37 @@ def test_3_a_time_to_event_outcome_gets_only_a_family_that_declares_it():
     assert validate(SelectModels(models=["cox"]), {"task": "time_to_event"})
 
 
+def test_3_a_follow_up_is_refused_while_the_outcome_is_not_a_time_to_event():
+    """Repair round (verifier, RO-03 reproduced): the task question is skipped as binary for a 0/1
+    outcome, and ``set_follow_up`` was accepted beside it; the record then said "`cvd_event` was
+    analyzed as a time to event" over a logistic fit (fiber log-odds −0.069, p = 1.7 × 10⁻¹⁷).
+
+    The follow-up is refused while the task, answered or detected, is anything but time to event,
+    with the exit that sets it; the sentences say what is used when a follow-up stands beside
+    another task. Reference: the task itself (the families that read a follow-up are the
+    time-to-event ones, test above)."""
+    from turbotab.core import voice
+    from turbotab.core.decisions import SetFollowUp, SetTask, parse_decision
+
+    follow = {"kind": "set_follow_up", "column": "cvd_event", "time_column": "followup_years"}
+    for task in ("binary", "regression"):
+        with pytest.raises(Refusal) as refused:
+            validate(follow, {"target": "cvd_event", "task": task})
+        assert refused.value.code == "not_time_to_event"
+        exit_ = parse_decision(refused.value.exits[0]["decision"])
+        assert isinstance(exit_, SetTask) and exit_.task == "time_to_event"
+        assert exit_.column == "cvd_event"
+    validate(follow, {"target": "cvd_event", "task": "time_to_event"})
+
+    binary = ProjectState(target="cvd_event", task="binary")
+    said = voice.sentence_for(SetFollowUp(**{k: v for k, v in follow.items() if k != "kind"}), binary)
+    assert "analyzed as a time to event" not in said and "not used" in said
+    standing = ProjectState(target="cvd_event", task="time_to_event",
+                            follow_up=FollowUpSpec(time_column="followup_years"))
+    said = voice.sentence_for(SetTask(column="cvd_event", task="binary"), standing)
+    assert "`followup_years` recorded for it is not used" in said
+
+
 def test_3_the_cox_model_is_reached_through_the_server(tmp_path):
     """The same fixture driven through the real HTTP API: the outcome is declared a time to event
     (``set_task``), its event level named (the event question, asked for a time-to-event outcome as
@@ -191,6 +229,11 @@ def test_3_the_cox_model_is_reached_through_the_server(tmp_path):
         d.reach("target")
         d.decide({"kind": "set_target", "column": "cvd_event"})
         d.reach("task")
+        assert d.artifact("target_info")["task"] == "binary"  # 0/1: detected as yes/no
+        early = client.post(f"/api/projects/{d.pid}/decisions",
+                            json={"kind": "set_follow_up", "column": "cvd_event",
+                                  "time_column": "followup_years"})
+        assert early.status_code == 409 and "not_time_to_event" in early.text
         d.decide({"kind": "set_task", "column": "cvd_event", "task": "time_to_event"})
         d.answer("event", {"kind": "set_event", "column": "cvd_event", "level": "1"})
         wrong = client.post(f"/api/projects/{d.pid}/decisions",
@@ -229,6 +272,7 @@ def test_3_the_cox_model_is_reached_through_the_server(tmp_path):
     fiber = _row(model["coefficients"], "fiber_g")
     assert round(math.exp(fiber["estimate"]), 3) == 1.012
     assert (round(math.exp(fiber["ci_low"]), 3), round(math.exp(fiber["ci_high"]), 3)) == (0.997, 1.027)
+    assert model["inference"]["scale"] == "hazard_ratio" and round(fiber["ratio"], 3) == 1.012
 
 
 def _tied_delayed_entry(seed: int = 3, n: int = 800, G: int = 40) -> pd.DataFrame:
@@ -818,6 +862,36 @@ def test_gee_sandwich_is_statsmodels_and_its_cr2_is_the_definition(binary):
     np.testing.assert_allclose([row["se"] for row in table.rows], np.sqrt(np.diag(V_ref)), rtol=1e-8)
     assert "exchangeable working correlation" in table.info["caption"]
     assert table.info["covariance"] == "CR2"
+
+
+def test_gee_a_binary_table_is_on_the_odds_ratio_scale_through_the_fit_stage(tmp_path):
+    """Repair round (WP12b × WP8, ME-07 again): a binary GEE table declared the difference scale,
+    gave no odds ratios, and its caption never said log-odds. Through the real stages under
+    inference, the outcome spelled "case"/"control" with "case" named the event: the estimates
+    are statsmodels' ``GEE`` (binomial, exchangeable) log-odds, each row's ratio is exp(estimate),
+    the table says odds ratio of `event` being `case` rather than `control`, on a log axis."""
+    import statsmodels.api as sm
+
+    M, y, codes = _exchangeable(seed=6, G=40, m=6, binary=True)
+    frame = M.assign(pid=codes, event=np.where(y == 1, "case", "control"))
+    st = ProjectState(lens=["clinical"], target="event", task="binary", event="case",
+                      purpose="inference", roles={"pid": "identifier", "x": "exposure",
+                                                  "z": "covariate"},
+                      missing="complete_case", split=SplitSpec(holdout=0.0, seed=0, folds=5),
+                      models=["gee"], grain=GrainSpec(grain="repeated", id_column="pid"))
+    _, _, fit = _stages(frame, st, ["x", "z"], "binary", tmp_path)
+    model = fit.data["models"][0]
+    info = model["inference"]
+    reference = sm.GEE(y, sm.add_constant(M).to_numpy(float), groups=codes,
+                       family=sm.families.Binomial(),
+                       cov_struct=sm.cov_struct.Exchangeable()).fit(maxiter=200, ctol=1e-10)
+    x = _row(model["coefficients"], "x")
+    assert x["estimate"] == pytest.approx(reference.params[1], rel=1e-6)
+    assert info["scale"] == "odds_ratio" and info["axis"] == "log"
+    assert info["event"] == "case" and info["reference"] == "control"
+    assert info["caption"].startswith("Estimates are log-odds of `case` against `control`")
+    assert x["ratio"] == pytest.approx(math.exp(reference.params[1]), rel=1e-6)
+    assert x["ratio_low"] == pytest.approx(math.exp(x["ci_low"]), rel=1e-12)
 
 
 def test_gee_below_the_unit_floor_refuses_and_names_the_mixed_model_exit():

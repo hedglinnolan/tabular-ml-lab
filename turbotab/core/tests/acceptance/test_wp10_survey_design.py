@@ -394,7 +394,11 @@ def test_2_the_design_based_estimate_reproduces_the_reference(client, tables, fi
     G = int(frame.groupby("SDMVSTRA")["SDMVPSU"].nunique().sum())
     H = int(frame["SDMVSTRA"].nunique())
     assert f"(`{G}` PSUs in `{H}` strata)" in said, said
-    assert "Taylor series linearization" in said and "domain analysis" in said
+    assert "Taylor series linearization" in said
+    # Nothing is restricted when the survey is answered, so its sentence claims no domain analysis
+    # (repair round: it said "a restriction keeps every row in the design" whatever was restricted;
+    # the exclusions and missing-values sentences say it where they restrict, test 3).
+    assert "domain analysis" not in said
     model = finish(client, pid)  # the usual 20% holdout
     info = model["inference"]
     assert info["covariance"] == "design" and info["survey"]["n_domain"] == len(frame)
@@ -496,6 +500,19 @@ def test_3_exclusions_under_a_design_are_domains(client, tables):
     model = finish(client, pid, rules=[rule])
     assert "keep their strata and PSUs in the variance (a domain analysis)" in \
         sentence(client, pid, "set_exclusions")
+    # Said again when the survey is answered after a restriction (the voice, on that state).
+    from turbotab.core import voice
+    from turbotab.core.decisions import ProjectState, SetSurvey
+
+    restricted = ProjectState(target="y", purpose="inference",
+                              exclusions=[{"kind": "range", **rule}])
+    after = voice.sentence_for(SetSurvey(estimand="population", weight="WTMEC2YR",
+                                         strata="SDMVSTRA", psu="SDMVPSU"), restricted)
+    assert after.endswith("stay in the design for the variance (a domain analysis).")
+    unrestricted = voice.sentence_for(SetSurvey(estimand="population", weight="WTMEC2YR",
+                                                strata="SDMVSTRA", psu="SDMVPSU"),
+                                      ProjectState(target="y", purpose="inference"))
+    assert "domain analysis" not in unrestricted
 
     domain = frame["age"].between(20, 39.99).to_numpy()
     assert frame.loc[domain].groupby("SDMVSTRA")["SDMVPSU"].nunique().eq(1).sum() == 4

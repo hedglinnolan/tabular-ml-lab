@@ -92,6 +92,8 @@ __all__ = [
     "fiber_beside_carbohydrate",
     "omitted_energy",
     "partition_refusal",
+    "reads_as_total_energy",
+    "total_energy_columns",
     "describe_method",
     "energy_factor",
     "nutrient_role",
@@ -1353,11 +1355,55 @@ def _atwater_reading(X: pd.DataFrame, energy_column: str) -> Any:
 
 @dataclass(frozen=True)
 class EnergyTerm:
-    """A predictor that carries a diet's energy: its column, its source, its kcal per unit."""
+    """A predictor that carries a diet's energy: its column, its source, its kcal per unit.
+
+    ``share``: the column is the source's percent of total energy (``fat_pct_kcal``), so it
+    carries ``value/100`` of each row's own energy and has no constant kcal per unit (``factor``
+    is NaN)."""
 
     column: str
     source: str  # protein | carbohydrate | fat | alcohol | fiber, else the column's own name
     factor: float
+    share: bool = False
+
+
+# A column named like total energy (``energy_kcal``, ``DR1TKCAL``, ``total_kj``): the proposals'
+# recognizer (``stages.proposals.is_energy_name``), less what names an expenditure or a target.
+_TOTAL_ENERGY_NAME = re.compile(r"kcal|(?:^|[^a-z])kj(?:$|[^a-z])|energy|calor", re.I)
+_NOT_INTAKE = re.compile(r"expend|\btee\b|\bree\b|\bbmr\b|\bpal\b|burn|basal|requirement|"
+                         r"goal|target|^kcal from\b", re.I)
+
+
+def reads_as_total_energy(column: str) -> bool:
+    """Whether ``column``'s name reads as a total energy intake (audit ME-02: the estimand is read
+    off the fitted matrix, so total energy in it is recognized whatever its role).
+
+    Not a macronutrient's amount or share (``protein_kcal``, ``fat_pct_kcal``), and not an energy
+    expenditure, requirement or basal rate."""
+    name = str(column)
+    if not _TOTAL_ENERGY_NAME.search(name) or unit_of(name) == "density":
+        return False
+    if _NOT_INTAKE.search(re.sub(r"[_\-.]+", " ", name)):
+        return False
+    try:
+        return nutrient_role(name) is None
+    except ValueError:
+        return False
+
+
+def total_energy_columns(predictors: Sequence[str], roles: Mapping[str, str]) -> List[str]:
+    """The predictors that are total energy: the energy role's, then any exposure or covariate
+    whose name reads as total energy intake (:func:`reads_as_total_energy`)."""
+    named = [str(c) for c in predictors if roles.get(c) == "energy"]
+    by_name = [str(c) for c in predictors if roles.get(c) in ("exposure", "covariate")
+               and str(c) not in named and reads_as_total_energy(c)]
+    return named + by_name
+
+
+def _is_share(column: str) -> bool:
+    from turbotab.core.methods.percent_energy import is_percent_of_energy
+
+    return is_percent_of_energy(column)
 
 
 def energy_terms(predictors: Sequence[str], roles: Mapping[str, str],
@@ -1366,14 +1412,18 @@ def energy_terms(predictors: Sequence[str], roles: Mapping[str, str],
     """The predictors that carry energy in a known unit, in the order given.
 
     Exposures with an energy factor, and covariates whose name states their unit (``fat_g``): a
-    covariate's name alone (``body_fat``) is not read as an energy source. Total-energy columns
-    (``energy_columns`` and the energy role) are not sources.
+    covariate's name alone (``body_fat``) is not read as an energy source. An exposure in percent
+    of energy (``fat_pct_kcal``) carries its share of each row's energy (``share``; audit B24).
+    Total-energy columns (``energy_columns`` and the energy role) are not sources.
     """
     skip = set(_as_list(energy_columns))
     out: List[EnergyTerm] = []
     for c in predictors:
         role = roles.get(c)
         if c in skip or role not in ("exposure", "covariate"):
+            continue
+        if role == "exposure" and _is_share(c):
+            out.append(EnergyTerm(str(c), _role_or_none(c) or str(c), float("nan"), share=True))
             continue
         reading = energy_factor(c, atwater)
         if reading.factor is None or (role == "covariate" and not reading.declared):
@@ -1464,14 +1514,19 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
     matrix = [str(c) for c in matrix_columns]
     in_matrix = set(matrix)
     method = getattr(adjustment, "method", None)
-    energy_cols = [c for c in predictors if roles.get(c) == "energy"]
+    # Total energy by its role, or by its name when it sits in the model as a covariate or an
+    # exposure (ME-02's recommendation: the estimand comes from the fitted matrix, not the method's
+    # name nor the role alone, so an energy column kept as a covariate reads as the standard model).
+    energy_cols = total_energy_columns(predictors, roles)
     E = getattr(adjustment, "energy_column", None) or (energy_cols[0] if energy_cols else None)
     if E and E not in energy_cols:
         energy_cols = [E, *energy_cols]
     terms = energy_terms(predictors, roles, energy_cols, atwater)
-    if method is None and not energy_cols and not terms:
-        return ModelEstimand(form="none", text=None)
     energy_in = [c for c in energy_cols if c in in_matrix]
+    if method is None and not terms:
+        # No nutrient carries energy: there is no energy estimand to state.
+        return ModelEstimand(form="standard" if energy_in else "none", text=None,
+                             energy_in_model=bool(energy_in))
     form = _form(method, bool(energy_in))
     adjusted = (list(getattr(adjustment, "nutrients", None) or [])
                 if form not in ("none", "standard") else [])
@@ -1528,6 +1583,16 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
         if form == "all_components":
             text += (" Each nutrient's average relative effect is reported beside its "
                      "coefficient, per unit of the nutrient.")
+    shares = [t.column for t, _ in present if t.share]
+    if shares and not energy_in:
+        text = ("Nutrients enter as shares of energy with total energy not in the model: a share "
+                "is a nutrient density, so each coefficient mixes a swap between energy sources "
+                f"with any effect of total energy, an obscure quantity ({_TOMOVA}).")
+    elif shares:
+        text += (f" {_and(shares)} {'is a share' if len(shares) == 1 else 'are shares'} of energy: "
+                 "a coefficient is per percentage point of energy, and with every source but one "
+                 "in the model, plus total energy, it is the field's leave-one-out model (Hu et al. "
+                 "1997, NEJM 337:1491).")
     for parent, kids in groups.items():
         source = next((t.source for t, _ in present if t.column == parent), parent)
         text += (f" {parent} sits beside its own parts {_and(kids)}, so its coefficient is "
@@ -1537,6 +1602,15 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
     meanings: Dict[str, str] = {}
     parent_of = {c: p for p, kids in groups.items() for c in kids}
     for t, m in present:
+        if t.share:
+            # One percentage point of energy from the source (audit B24): with total energy in the
+            # model it comes from the sources not in it; without, energy is not held fixed.
+            if energy_in and form not in PARTITION_METHODS:
+                meanings[m] = f"one point of energy from {t.source} {swap}, total energy fixed"
+            else:
+                meanings[m] = (f"{t.source}'s share of energy; total energy not in the model "
+                               f"(a nutrient density)")
+            continue
         if t.column in parent_of:
             meanings[m] = (f"{t.column} in place of the rest of {parent_of[t.column]} "
                            f"({parent_of[t.column]} fixed)")
@@ -1556,8 +1630,12 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
         else:
             meanings[m] = f"adding kcal from {what}, every other source fixed (total effect)"
     rest = _and([*omitted[:-1], "other energy"])
+    only_shares = bool(present) and all(t.share for t, _ in present)
     for c in energy_in:
-        if form == "standard" and sources:
+        if only_shares and form in ("standard", "residual"):
+            # Every share fixed, more total energy scales every source alike (audit B24).
+            meanings[c] = "more total energy with each nutrient's share of it fixed"
+        elif form == "standard" and sources:
             meanings[c] = (f"more energy from {rest} (the sources not in the model), the named "
                            f"nutrients fixed")
         elif form == "residual":
@@ -1576,24 +1654,36 @@ def omitted_energy(frame: pd.DataFrame, energy_column: Optional[str], columns: S
                    atwater: Optional[Mapping[str, float]] = None) -> Optional[Dict[str, Any]]:
     """How much of total energy the model's energy-bearing columns leave out, on ``frame``'s rows.
 
-    Each row's remainder is ``(E − Σ kcal per unit × amount) / E`` over ``columns`` that carry
-    energy (a part beside its own total counted once, through the total). Returns the sources in
-    the model, the ones left out ("other" last), the mean remainder, and the rows whose remainder
-    exceeds :data:`OMITTED_ROW_SHARE`; None without a usable energy column.
+    Each row's remainder is ``(E − Σ kcal per unit × amount) / E − Σ share / 100`` over
+    ``columns`` that carry energy, as an amount or as a percent of energy (``fat_pct_kcal``, audit
+    B24), a part beside its own total counted once, through the total. Returns the sources in the
+    model, the ones left out ("other" last), the mean remainder, and the rows whose remainder
+    exceeds :data:`OMITTED_ROW_SHARE`; None without a usable energy column. (Shares alone do not
+    read it: their remainder is ``1 − Σ share / 100`` on every row.)
     """
     if not energy_column or energy_column not in frame.columns:
         return None
     nested = dict(nested or {})
     cols = [str(c) for c in columns if c in frame.columns and c != energy_column]
-    readings = {c: energy_factor(c, atwater) for c in cols}
-    carriers = [c for c in cols if readings[c].factor is not None and nested.get(c) not in cols]
+    shares = [c for c in cols if _is_share(c) and nested.get(c) not in cols]
+    readings = {c: energy_factor(c, atwater) for c in cols if c not in shares}
+    amounts = [c for c in readings if readings[c].factor is not None and nested.get(c) not in cols]
+    carriers = [c for c in cols if c in amounts or c in shares]
+    n = len(frame)
     e = pd.to_numeric(frame[energy_column], errors="coerce").to_numpy(dtype=float)
-    named = np.zeros(len(e))
-    for c in carriers:
+    named = np.zeros(n)
+    for c in amounts:
         named = named + float(readings[c].factor) * pd.to_numeric(
             frame[c], errors="coerce").to_numpy(dtype=float)
-    ok = np.isfinite(e) & np.isfinite(named) & (e > 0)
-    share = (e[ok] - named[ok]) / e[ok]
+    in_shares = np.zeros(n)
+    for c in shares:
+        in_shares = in_shares + pd.to_numeric(frame[c], errors="coerce").to_numpy(dtype=float) / 100.0
+    if amounts:
+        ok = np.isfinite(e) & np.isfinite(named) & np.isfinite(in_shares) & (e > 0)
+        share = (e[ok] - named[ok]) / e[ok] - in_shares[ok]
+    else:
+        ok = np.isfinite(in_shares)
+        share = 1.0 - in_shares[ok]
     sources = list(dict.fromkeys(r for r in (_role_or_none(c) for c in carriers)
                                  if r in ENERGY_SOURCES))
     return {
@@ -1657,7 +1747,15 @@ def rank_methods(purpose: Optional[str],
     if applicability:
         ok = [m for m in order if m == "none" or applicability.get(m, {}).get("ok")]
         order = ok + [m for m in order if m not in ok]
-    return {"order": order, "first": order[0] if order else None, "line": TENSION.get(str(purpose))}
+    line = TENSION.get(str(purpose))
+    if purpose == "inference" and order and order[0] != "all_components":
+        # The line never says all components ranks first when it cannot run here and the order
+        # lists it last (repair round): it says which method leads instead, and why.
+        lead = METHOD_TABLE[order[0]]["label"]
+        line = (f"All components would rank first for substitution questions (Tomova 2022), but it "
+                f"cannot run on these columns; the {lead[0].lower() + lead[1:]} leads among those "
+                f"that can.")
+    return {"order": order, "first": order[0] if order else None, "line": line}
 
 
 def _unit_word(column: str) -> str:

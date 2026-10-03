@@ -677,7 +677,15 @@ def _on_scale(table: InferenceTable, task: str, classes: Sequence[Any] | None,
         return table
     labels = list(classes or [])
     reference = outcome.level(labels[0]) if labels else None
-    if task == "binary":
+    if task == "time_to_event":
+        # WP12b × WP8 (repair round): a Cox table's rows are log hazard ratios, drawn on a log
+        # axis like every other ratio scale; the event is the level coded 1.
+        event = outcome.level(labels[1]) if len(labels) > 1 else None
+        what = f"{who} being {_tick(event)}" if event is not None else f"the event in {who}"
+        table.info.update(scale="hazard_ratio", axis="log", event=event, reference=None,
+                          effect=f"Hazard ratio of {what} at any time during follow-up, {per}.")
+        lead = "Estimates are log hazard ratios; each hazard ratio is exp(estimate)."
+    elif task == "binary":
         event = outcome.level(labels[1]) if len(labels) > 1 else None
         table.info.update(scale="odds_ratio", axis="log", event=event, reference=reference,
                           effect=f"Odds ratio of {who} being {_tick(event)} rather than "
@@ -696,7 +704,8 @@ def _on_scale(table: InferenceTable, task: str, classes: Sequence[Any] | None,
             continue
         row.update(ratio=_ratio(row["estimate"]), ratio_low=_ratio(row["ci_low"]),
                    ratio_high=_ratio(row["ci_high"]))
-    table.info["caption"] = f"{lead} {table.info['caption']}"
+    if lead not in table.info["caption"]:
+        table.info["caption"] = f"{lead} {table.info['caption']}"
     return table
 
 

@@ -266,17 +266,22 @@ def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[
 # ── design ────────────────────────────────────────────────────────────────────
 
 
-def substitution_pairs(predictors: Sequence[str], energy_column: str | None,
+def substitution_pairs(predictors: Sequence[str], energy_column: str | Sequence[str] | None,
                        nested: Mapping[str, str] | None = None) -> list[dict[str, str]]:
-    """Ordered (donor, recipient) pairs of predictors that carry energy in a known unit.
+    """Ordered (donor, recipient) pairs of predictors that carry energy in a known unit, or as a
+    share of energy (``fat_pct_kcal``: audit B24). ``energy_column``: the total-energy column or
+    columns, never a donor or a recipient.
 
     A total is never paired with its own part (``nested``: child -> parent): kcal moved between
     them go nowhere.
     """
     from turbotab.core.methods.energy import energy_factor
+    from turbotab.core.methods.percent_energy import is_percent_of_energy
 
     nested = nested or {}
-    bearing = [c for c in predictors if c != energy_column and energy_factor(c).factor is not None]
+    totals = {energy_column} if isinstance(energy_column, str) else set(energy_column or ())
+    bearing = [c for c in predictors if c not in totals
+               and (energy_factor(c).factor is not None or is_percent_of_energy(c))]
     return [{"donor": d, "recipient": r} for d, r in permutations(bearing, 2)
             if nested.get(d) != r and nested.get(r) != d][:MAX_PAIRS]
 
@@ -344,7 +349,7 @@ def design_stage(ctx: StageContext) -> Bundle:
         warnings_list.extend(_energy_warnings(shared.named_steps["energy"]))
     # The estimand and each coefficient's meaning, read off the matrix the models will see: the
     # label equals the model fitted (audit WP6; methods.energy.describe_model).
-    from turbotab.core.methods.energy import describe_model
+    from turbotab.core.methods.energy import describe_model, total_energy_columns
     from turbotab.core.methods.exposure_form import form_columns, form_step, formed_meanings
 
     # A formed exposure (WP12a) is read as the term it was before its spline or quintiles, and
@@ -355,6 +360,17 @@ def design_stage(ctx: StageContext) -> Bundle:
     described = describe_model(adj, spec.predictors, spec.roles, seen, nested=nested,
                                step=shared.named_steps.get("energy"))
     described.terms = formed_meanings(described.terms, form)
+    seen_set = set(seen)
+    for c in total_energy_columns(spec.predictors, spec.roles):
+        role = spec.roles.get(c)
+        if role != "energy" and c in seen_set and described.text:
+            # Audit ME-02 (repair round): total energy kept as a covariate is the standard model,
+            # whatever the energy question says; the estimand above is read off this matrix.
+            warnings_list.append(
+                f"{c} reads as total energy and is in the model as {'an' if role == 'exposure' else 'a'} "
+                f"{role}, so each nutrient's coefficient is at fixed total energy (the standard "
+                f"model), not an absolute intake. Give {c} the energy role to choose the energy "
+                f"model, or leave it out for the unadjusted one.")
     if y_train is not None:
         warnings_list.extend(_residual_gap(state, task, spec, X, matrix, y_train, info))
 
@@ -363,13 +379,14 @@ def design_stage(ctx: StageContext) -> Bundle:
     pipelines = {f.key: build_pipeline(spec, f, task, state.purpose, n_rows, n_cols) for f in families}
     models = [{"family": f.key, "label": f.label,
                "steps": describe_steps(spec, f, task, state.purpose, n_cols)} for f in families]
-    energy_column = adj.energy_column if adj is not None else None
+    totals = [*([adj.energy_column] if adj is not None and adj.energy_column else []),
+              *total_energy_columns(spec.predictors, spec.roles)]
     artifact = DesignArtifact(
         lineage=lineage,
         matrix={"n_rows": n_rows, "n_cols": n_cols},
         models=models,
         estimand=described.text,
-        substitution_pairs=substitution_pairs(spec.predictors, energy_column, nested),
+        substitution_pairs=substitution_pairs(spec.predictors, totals, nested),
         warnings=warnings_list,
         nested=[{"column": c, "parent": p} for c, p in nested.items()],
         left_out=[c for c in left_out(state) if c in (state.roles or {})],
@@ -626,10 +643,11 @@ def coded_outcome(task: str | None, y: Any, event: str | None,
 def outcome_levels(task: str | None, y: Any, event: str | None) -> dict[Any, Any] | None:
     """Each class as the models hold it, mapped to its level as the data spell it.
 
-    A binary outcome whose event was named is coded 1 for that level and 0 for the other
-    (:func:`coded_outcome`); otherwise the models hold the levels themselves. None for regression.
+    A binary or time-to-event outcome whose event was named is coded 1 for that level and 0 for
+    the other (:func:`coded_outcome`); otherwise the models hold the levels themselves. None for
+    regression.
     """
-    if task not in ("binary", "multiclass"):
+    if task not in ("binary", "multiclass", "time_to_event"):
         return None
     values = [v for v in pd.unique(pd.Series(np.asarray(y, dtype=object))) if not pd.isna(v)]
     coded = coded_outcome(task, y, event)
@@ -964,7 +982,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.models.selection import OutOfFold, selection_optimism
     from turbotab.core.models.survival import follow_up_columns, time_to_event_outcome
     from turbotab.core.models.validation import (family_differences, internal_external,
-                                                 optimism_bootstrap)
+                                                 not_applied, optimism_bootstrap)
     from turbotab.core.seal import SEALED_DETAIL, SEALED_SCORES, sealed_detail_frame, sealed_scores_frame
 
     state = ctx.state
@@ -1088,6 +1106,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
 
     models: list[dict[str, Any]] = []
     fitted: dict[str, Any] = {}
+    every_row: dict[str, Any] = {}  # under inference: each family refit on every analyzed row
     sealed: dict[str, Any] = {}  # held-out scores: kept out of the public data (M2_CONTRACT §3)
     # Each family's out-of-fold predictions, for the selection's optimism (models/selection.py):
     # one repeat's, so each scored row is predicted once (repeated k-fold scores every row again).
@@ -1146,7 +1165,11 @@ def fit_stage(ctx: StageContext) -> Bundle:
                                             groups=hold_groups, where="on the held-out rows"),
                 ).model_dump(mode="json")
             optimism = None
-            if n_boot:
+            if n_boot and not getattr(family, "bootstrap_optimism", True):
+                # A near-interpolating family: the bootstrap would overstate it (Coley et al. 2023).
+                optimism = not_applied(family.label, n_boot, grouped_by)
+                done += n_boot
+            elif n_boot:
                 def boot_progress(b: int, total: int, _label: str = family.label) -> None:
                     nonlocal done
                     done += 1
@@ -1163,10 +1186,14 @@ def fit_stage(ctx: StageContext) -> Bundle:
             on_all = inference and reports_coefficients(family)
             form_tests: list[dict[str, Any]] = []
             pooled = None  # the coefficient rows pooled over the imputations (multiple imputation)
+            table_fit = None
             try:
                 if on_all and not same_rows:
                     ctx.progress(share(done), f"{family.label}: coefficients on every analyzed row")
-                table_fit = ((final if same_rows else fit_table(with_units(clone(pipelines[key]), unit_of)))
+                # The every-row refit names an ordinal fit's cut-points by the declared levels, as
+                # ``final`` does: unnamed, they would read by the internal codes (0 | 1 for 1 | 2).
+                table_fit = ((final if same_rows else _with_levels(
+                    fit_table(with_units(clone(pipelines[key]), unit_of)), levels))
                              if on_all else final)
                 X_c, y_c = (X_tab, y_tab) if on_all else (X, y)
                 if clusters is not None and hasattr(family, "inference"):
@@ -1277,6 +1304,11 @@ def fit_stage(ctx: StageContext) -> Bundle:
             concerns.append(survey_note)
         results[key], summaries[key] = result, cv
         fitted[key] = final
+        if inference and (same_rows or (on_all and table_fit is not None)):
+            # Under inference every estimate reads the fit on every analyzed row (BLUEPRINT §12
+            # ruling 3): the substitution curve too, so it agrees with the coefficient table. A
+            # family with no table is refit on them by the substitution stage, if a curve is asked.
+            every_row[key] = table_fit if on_all and table_fit is not None else final
         sealed[key] = holdout
         models.append({
             "family": key,
@@ -1317,7 +1349,10 @@ def fit_stage(ctx: StageContext) -> Bundle:
     if n_holdout and sealed_detail:
         frames[SEALED_DETAIL] = sealed_detail_frame(sealed_detail)
     return Bundle(data=artifact.model_dump(mode="json"), frames=frames,
-                  objects={"fitted": fitted, "grouped_by": grouped_by})
+                  objects={"fitted": fitted, "grouped_by": grouped_by,
+                           "every_row": every_row if inference else None,
+                           "every_row_ids": (assignment.index[table_rows].to_numpy(dtype=np.int64)
+                                             if inference else None)})
 
 
 def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, family: Any,
@@ -1454,11 +1489,13 @@ def _predictor(task: str, pipeline: Any) -> Any:
 def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     """Move k kcal from the donor to the recipient and follow each fitted model's prediction.
 
-    The curve averages over at most 5,000 training rows; its support checks amounts and, when the
-    total-energy column is a model input, each moved nutrient's share of energy. With
-    ``n_boot > 0`` each family is also refit on that many bootstrap resamples of the rows it was
-    fit on (whole units when rows repeat; resamples of every training row up to ``BAND_ROWS``,
-    rescaled beyond), and the band is drawn from the refits' curves
+    The curve averages over at most 5,000 of the rows the models were fit on: under prediction the
+    training rows and their fits; under inference every analyzed row and each family refit on them
+    (the fit stage's ``every_row``), as the coefficient table is (BLUEPRINT §12 ruling 3). Its
+    support checks amounts and, when the total-energy column is a model input, each moved
+    nutrient's share of energy. With ``n_boot > 0`` each family is also refit on that many
+    bootstrap resamples of the rows it was fit on (whole units when rows repeat; resamples of
+    every such row up to ``BAND_ROWS``, rescaled beyond), and the band is drawn from the refits' curves
     (:func:`~turbotab.core.methods.substitution.refit_band`). Without one, a single refit per
     family is timed, so the offer of a band can say what it costs.
     """
@@ -1497,13 +1534,27 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
             raise ValueError(f"{c} carries no energy in a known unit: {reading.reason}.")
     kcal_per_unit = {c: float(r.factor) for c, r in readings.items()}
 
-    all_train = row_ids_of(design.frames["training"])
+    # The rows and fits the curve reads: under inference every analyzed row and the families refit
+    # on them, as the coefficient table is (BLUEPRINT §12 ruling 3: a holdout is a prediction
+    # concept); under prediction the training rows and the training fits.
+    objects = fit.objects or {}
+    every_ids = objects.get("every_row_ids")
+    on_every_row = ctx.state.purpose == "inference" and every_ids is not None
+    trained = objects["fitted"]
+    if on_every_row:
+        all_train = np.asarray(every_ids, dtype=np.int64)
+        fitted = dict(objects.get("every_row") or {})  # a copy: the fit's objects stay as cached
+        rows_word = "analyzed rows"
+    else:
+        all_train = row_ids_of(design.frames["training"])
+        fitted = trained
+        rows_word = "training rows"
     train_ids = all_train
     if len(train_ids) > SUBSTITUTION_ROWS:
         train_ids = np.sort(np.random.default_rng(0).choice(train_ids, SUBSTITUTION_ROWS, replace=False))
     target = ctx.state.target
-    grouped_by = (fit.objects or {}).get("grouped_by")
-    ctx.progress(0.02, "Reading training rows")
+    grouped_by = objects.get("grouped_by")
+    ctx.progress(0.02, f"Reading the {rows_word}")
     extra = [target] + ([grouped_by] if grouped_by and grouped_by not in spec.inputs
                         and grouped_by != target else [])
     with open_store(ctx) as store:
@@ -1530,9 +1581,8 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     note = None
     support = None
     skipped = []
-    fitted = fit.objects["fitted"]
     pipelines = design.objects["pipelines"]
-    keys = [m["family"] for m in fit.data["models"] if m["family"] in fitted]
+    keys = [m["family"] for m in fit.data["models"] if m["family"] in trained]
     undrawn = ("multiclass", "ordinal", "time_to_event")  # a curve per class or level; a hazard
     drawable = [k for k in keys if task not in undrawn]
     slot = 0.93 / max(1, len(keys))  # each family's share of the progress bar, in order
@@ -1557,6 +1607,15 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         if task in undrawn:
             skipped.append(family.label)
             continue
+        if key not in fitted:
+            # Under inference, a family with no coefficient table (boosted trees) was fit on the
+            # training rows only; its curve reads its refit on every analyzed row.
+            from turbotab.core.models.inner_cv import fit_pipeline
+
+            ctx.progress(start, f"{family.label}: refitting on every analyzed row")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                fitted[key] = fit_pipeline(clone(pipelines[key]), X_fit, y_fit, groups=groups)
         curve = substitution_curve(_predictor(task, fitted[key]), X, donor=sub.donor,
                                    recipient=sub.recipient, kcal_per_unit=kcal_per_unit, ks=ks,
                                    total_kind="variable", nested=nested, total=total_energy,
@@ -1632,9 +1691,11 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                          f"name does not state the unit.")
     if spec.multiple_imputation() and X_fit.isna().any().any():
         # WP7: the coefficient table pools the multiple imputations; the curve does not.
-        notes.append("The curve follows the training fit, whose blanks are filled once in each "
-                     "fold without the outcome; it is not pooled over the multiple imputations the "
-                     "coefficient table uses, so its band leaves out their uncertainty.")
+        which = ("the fit on every analyzed row, whose blanks are filled once without the outcome"
+                 if on_every_row else "the training fit, whose blanks are filled once in each "
+                                      "fold without the outcome")
+        notes.append(f"The curve follows {which}; it is not pooled over the multiple imputations "
+                     f"the coefficient table uses, so its band leaves out their uncertainty.")
     if skipped and task in ("multiclass", "ordinal"):
         kind = "An ordinal" if task == "ordinal" else "A multiclass"
         notes.append(f"{kind} outcome has one curve per level, which is not drawn yet.")
@@ -1644,7 +1705,8 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     band = None
     if n_boot and bands:
         first = bands[0][1]
-        caption = _band_caption(n_boot, interval, first, len(X_fit), grouped_by, bands)
+        caption = _band_caption(n_boot, interval, first, len(X_fit), grouped_by, bands,
+                                rows_word=rows_word)
         notes.append(caption.replace("Shaded bands: ", "The shaded bands are ", 1))
         band = {"n_boot": n_boot, "n_rows": int(len(X_fit)), "grouped_by": grouped_by,
                 "seconds": round(band_seconds, 3), "failed": band_failed,
@@ -1674,7 +1736,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     artifact = SubstitutionArtifact(
         donor=sub.donor, recipient=sub.recipient, step_kcal=float(sub.step_kcal),
         ks=[float(k) for k in ks], total_kind="variable", estimand=estimand, note=" ".join(notes),
-        basis=f"Averaged over {len(X):,} training rows.", models=models,
+        basis=f"Averaged over {len(X):,} {rows_word}.", models=models,
         carried=list(shift.carried), band=band,
         band_estimate=({"n_boot": BAND_BOOT, "seconds": round(estimate, 1)}
                        if not n_boot and drawable and estimate else None),
@@ -1722,7 +1784,8 @@ def _total_energy_column(state: Any, X: pd.DataFrame, moved: Sequence[str]) -> s
 
 
 def _band_caption(n_boot: int, interval: str, first: Mapping[str, Any], n_rows: int,
-                  grouped_by: str | None, bands: Sequence[tuple[str, Mapping[str, Any]]]) -> str:
+                  grouped_by: str | None, bands: Sequence[tuple[str, Mapping[str, Any]]],
+                  rows_word: str = "training rows") -> str:
     """The saved figure's caption for the band: how it was drawn, on how many rows, from how many
     refits, and how many of each family's succeeded."""
     from statistics import NormalDist
@@ -1737,12 +1800,12 @@ def _band_caption(n_boot: int, interval: str, first: Mapping[str, Any], n_rows: 
                f"its curve")
     n_units, m, scale = first["n_units"], first["resample_size"], first["scale"]
     if grouped_by:
-        drawn = (f"whole {grouped_by} units ({n_units:,} units, {n_rows:,} training rows)"
+        drawn = (f"whole {grouped_by} units ({n_units:,} units, {n_rows:,} {rows_word})"
                  if m == n_units else f"{m:,} of the {n_units:,} {grouped_by} units "
-                 f"({n_rows:,} training rows)")
+                 f"({n_rows:,} {rows_word})")
     else:
-        drawn = (f"all {n_rows:,} training rows" if m == n_units
-                 else f"{m:,} of the {n_rows:,} training rows")
+        drawn = (f"all {n_rows:,} {rows_word}" if m == n_units
+                 else f"{m:,} of the {n_rows:,} {rows_word}")
     where = f"on bootstrap resamples of {drawn}"
     if m < n_units:
         where += (f", the spread rescaled by √({m:,}/{n_units:,}) = {scale:.3f} to the full sample "

@@ -405,7 +405,8 @@ def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any) -> Any:
     X = matrix.to_numpy(dtype=float)
     y = np.asarray(y)
     estimator = "Cox proportional hazards (partial likelihood, Efron ties)"
-    scale = " Estimates are log hazard ratios: exp(estimate) is the hazard ratio per unit."
+    # The scale (log hazard ratios, each hazard ratio exp(estimate)) is declared by the family's
+    # ``inference`` through ``inference._on_scale``, as every inference table's is (WP8).
     try:
         singular = collinearity_concern(matrix)
     except Exception:  # noqa: BLE001 - a diagnostic that cannot run is not a verdict
@@ -444,7 +445,7 @@ def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any) -> Any:
         missing = (f", {clusters.n_missing:,} rows with no `{clusters.column}` counted as units of "
                    f"their own" if clusters.n_missing else "")
         caption = (f"95% intervals from the Lin–Wei cluster-robust sandwich by `{clusters.column}`, "
-                   f"G = {G:,} clusters{missing}, on t({G - 1:,}).{scale}")
+                   f"G = {G:,} clusters{missing}, on t({G - 1:,}).")
         if clusters.note is None:
             concerns.append(f"Intervals are cluster-robust by `{clusters.column}` (Lin–Wei, G = "
                             f"{G:,}), because its rows repeat.")
@@ -455,7 +456,7 @@ def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any) -> Any:
         covariance = "CR0"
     else:
         rows = _z_rows(names, fit.beta, np.sqrt(np.clip(np.diag(fit.cov), 0, None)))
-        caption = f"95% Wald intervals from the Cox partial likelihood's information (Efron ties).{scale}"
+        caption = "95% Wald intervals from the Cox partial likelihood's information (Efron ties)."
         covariance = "model"
     p = ph_test(X, y, fit)
     threshold = PH_ALPHA / max(1, len(names))
@@ -505,10 +506,15 @@ class Cox(FamilyBase):
         model = pipeline[-1]
         return coefficient_rows([str(f) for f in model.feature_names_in_], model.coef_)
 
-    def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any) -> Any:
+    def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
+                  outcome: Any = None, rows: Any = None) -> Any:
+        """The Cox table on the hazard-ratio scale (WP8's ``_on_scale``: each row's hazard ratio
+        and its interval, drawn on a log axis, the event named), and the rows it was fit on."""
+        from turbotab.core.models.inference import _on_rows, _on_scale
         from turbotab.core.models.linear import model_matrix
 
-        return cox_table(model_matrix(pipeline, X), y, clusters)
+        table = cox_table(model_matrix(pipeline, X), y, clusters)
+        return _on_rows(_on_scale(table, "time_to_event", [0, 1], outcome), len(X), rows)
 
     def assess(self, s: Situation) -> Assessment:
         from turbotab.core.models.inference import min_clusters

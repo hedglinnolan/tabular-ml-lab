@@ -582,10 +582,14 @@ class Mixed(FamilyBase):
         return coefficient_rows([str(f) for f in model.feature_names_in_], model.coef_,
                                 intercept=model.intercept_)
 
-    def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any) -> Any:
+    def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
+                  outcome: Any = None, rows: Any = None) -> Any:
+        """The mixed model's table, its scale declared (a difference in the mean outcome; WP8)."""
+        from turbotab.core.models.inference import _on_rows, _on_scale
         from turbotab.core.models.linear import model_matrix
 
-        return mixed_table(model_matrix(pipeline, X), y, clusters)
+        table = mixed_table(model_matrix(pipeline, X), y, clusters)
+        return _on_rows(_on_scale(table, task, None, outcome), len(X), rows)
 
     def assess(self, s: Situation) -> Assessment:
         from turbotab.core.models.inference import FEW_CLUSTERS
@@ -649,11 +653,17 @@ class GEE(FamilyBase):
         return coefficient_rows([str(f) for f in model.feature_names_in_], model.coef_,
                                 intercept=model.intercept_)
 
-    def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any) -> Any:
+    def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
+                  outcome: Any = None, rows: Any = None) -> Any:
+        """The GEE table on the outcome's scale (WP8's ``_on_scale``, closing ME-07 for this
+        family): log-odds with odds ratios, the event and reference named, for a yes/no outcome;
+        a difference in the mean for a number."""
+        from turbotab.core.models.inference import _on_rows, _on_scale
         from turbotab.core.models.linear import model_matrix
 
         classes = list(getattr(pipeline[-1], "classes_", [])) or None
-        return gee_table(model_matrix(pipeline, X), y, clusters, task, classes)
+        table = gee_table(model_matrix(pipeline, X), y, clusters, task, classes)
+        return _on_rows(_on_scale(table, task, classes, outcome), len(X), rows)
 
     def assess(self, s: Situation) -> Assessment:
         from turbotab.core.models.inference import FEW_CLUSTERS, min_clusters

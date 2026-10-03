@@ -344,6 +344,7 @@ export function proposalsArtifact(ds: MockDataset, state: ProjectState): Proposa
       n_base: ds.nRows,
       basis: "Nothing is proposed: the dietary lens is not chosen.",
       survey: null,
+      exposure_forms: [],
     };
   }
   const energy =
@@ -488,6 +489,7 @@ export function proposalsArtifact(ds: MockDataset, state: ProjectState): Proposa
     n_base: base.filter(Boolean).length,
     basis: `Counted on the ${fmt(base.filter(Boolean).length)} rows with \`${state.target ?? "the outcome"}\` measured.`,
     survey: null,
+    exposure_forms: [],
   };
 }
 

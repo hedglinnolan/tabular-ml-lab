@@ -12,7 +12,8 @@ Rules:
   answer overrides it; ``reason`` is the detection. The client's "Ask me anyway" reopens it.
 * ``energy_adjustment`` is ``not_applicable`` unless the lens includes ``dietary``, a column has
   the ``energy`` role and an ``exposure`` carries energy; ``reason`` names what is missing.
-  ``substitution`` is ``not_applicable`` with fewer than two energy-bearing exposures.
+  ``substitution`` is ``not_applicable`` with fewer than two exposures that carry energy, as an
+  amount or as a share of energy.
 * The opening sequence (M2_CONTRACT §1, OPENING_SEQUENCE §01/§03), nothing resequenced:
   ``orientation`` fires only when the lens includes an assay pack and the oriented stage's shape
   reading is feature-major (and, while it is open, the target question waits behind it);
@@ -189,9 +190,15 @@ def _energy_applicability(state: Any, bearing: Callable[[str], bool]) -> str | N
 
 
 def _substitution_applicability(state: Any, bearing: Callable[[str], bool]) -> str | None:
+    """Why a substitution does not apply, or None. An exposure carries energy as an amount
+    (``fat_g``) or as a share of energy (``fat_pct_kcal``: the field's "5% of energy from X
+    replaced by Y", audit B24 and D19); a swap moves energy between two of them."""
+    from turbotab.core.methods.percent_energy import is_percent_of_energy
+
     if state.roles is None:
         return None
-    n = sum(1 for c, r in state.roles.items() if r == "exposure" and bearing(c))
+    n = sum(1 for c, r in state.roles.items()
+            if r == "exposure" and (bearing(c) or is_percent_of_energy(c)))
     if n < 2:
         return (f"Only {n} exposure carries energy; a substitution swaps kcal between two."
                 if n == 1 else "No exposure carries energy; a substitution swaps kcal between two.")

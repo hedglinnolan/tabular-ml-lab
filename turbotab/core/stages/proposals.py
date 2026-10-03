@@ -208,12 +208,14 @@ def not_adjusted(columns: Mapping[str, Mapping[str, Any]], roles: Mapping[str, s
 
 
 def sex_column(columns: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame | None,
-               roles: Mapping[str, str]) -> tuple[str | None, dict[str, str]]:
-    """The sex column and which of its levels are ``female`` and ``male``."""
+               roles: Mapping[str, str], *, screen: bool = False) -> tuple[str | None, dict[str, str]]:
+    """The sex column and which of its levels are ``female`` and ``male``. For a screen
+    (``screen``), a column left out of the model still counts."""
+    skip = ("identifier", "flag", "design") if screen else ("identifier", "flag", "design", "excluded")
     for c in columns:
         if c.lower() not in _SEX_NAMES and not ({"sex", "gender"} & set(_tokens(c))):
             continue
-        if roles.get(c) in ("identifier", "flag", "design", "excluded"):
+        if roles.get(c) in skip:
             continue
         if frame is None or c not in frame.columns:
             continue
@@ -254,6 +256,7 @@ def strata_candidates(columns: Mapping[str, Mapping[str, Any]], roles: Mapping[s
 
 OPTION_REASON_WORDS = 20  # teaching.COMPOSED_BUDGETS["option_reason"]
 _UNIT_UNSAID = re.compile(r"does not say what unit|could not confirm it is grams")
+_MIXED_UNITS = re.compile(r"no single factor to apply")
 _TICKED = re.compile(r"`([^`]+)`")
 
 
@@ -270,6 +273,11 @@ def option_reason(reason: str) -> str:
 
     if words(reason) <= OPTION_REASON_WORDS:
         return reason
+    if _MIXED_UNITS.search(reason):
+        # The Atwater reading's mixed-units verdict (turbotab/nutrition.py): restated whole, never
+        # cut mid-clause (repair round: it read "…; the rows have.").
+        return finish("Declared and reconstructed energy differ by no single factor across rows, a "
+                      "multi-source merge: separate the rows by source first")
     if _UNIT_UNSAID.search(reason):
         head = reason.split(" does not say", 1)[0].split(" could not", 1)[0]
         columns = _TICKED.findall(head)
@@ -281,7 +289,18 @@ def option_reason(reason: str) -> str:
     for sentence in (sentences[-1], sentences[0]):
         if words(sentence) <= OPTION_REASON_WORDS and _TICKED.search(sentence):
             return finish(sentence)
-    return finish(clip_words(sentences[-1], OPTION_REASON_WORDS))
+    # Clipped at a clause, never inside one: the longest run of whole clauses within the budget.
+    last = sentences[-1]
+    clauses = re.split(r"(?<=[;:])\s+", last.rstrip("."))
+    kept = ""
+    for clause in clauses:
+        joined = f"{kept} {clause}".strip()
+        if words(joined) > OPTION_REASON_WORDS:
+            break
+        kept = joined
+    if kept:
+        return finish(kept.rstrip(";:"))
+    return finish(clip_words(last, OPTION_REASON_WORDS))
 
 
 def nested_reason(nested: Mapping[str, str], nutrients: Sequence[str]) -> str | None:
@@ -386,13 +405,19 @@ GOLDBERG_EVIDENCE = {
 }
 
 
+# A screen reads a column whatever its model role, so a weight or height left out of the model
+# ("excluded") still serves the Goldberg screen (repair round: the menu was too tight); a column
+# that names rows, flags others or describes the design is never read as a body measure.
+_NOT_A_MEASURE = ("identifier", "flag", "design")
+
+
 def _named(info: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame, names: set[str],
            roles: Mapping[str, str], lo: float, hi: float) -> str | None:
     """The column whose whole name is one of ``names`` and whose median is within [lo, hi]."""
     for c in info:
         if str(c).lower() not in names or c not in frame.columns:
             continue
-        if roles.get(c) in ("identifier", "flag", "design", "excluded"):
+        if roles.get(c) in _NOT_A_MEASURE:
             continue
         values = pd.to_numeric(frame[c], errors="coerce")
         median = values.median()
@@ -635,8 +660,9 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
         if energy != target:  # an eligibility rule never reads the outcome (audit RO-01)
             exclusions = exclusion_proposals(frame, energy=energy, unit=unit, sex=sex,
                                              sex_levels=sex_levels, base=base)
-            goldberg = goldberg_proposal(frame, info, energy=energy, unit=unit, sex=sex,
-                                         sex_levels=sex_levels, roles=roles, target=target,
+            screen_sex, screen_levels = sex_column(info, frame, roles, screen=True)
+            goldberg = goldberg_proposal(frame, info, energy=energy, unit=unit, sex=screen_sex,
+                                         sex_levels=screen_levels, roles=roles, target=target,
                                          base=base, days=days[0], days_note=days[1])
             if goldberg is not None:
                 exclusions.append(goldberg)
@@ -704,6 +730,11 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
     out = build_proposals(frame, columns, lens=state.lens, target=target, roles=roles,
                           purpose=state.purpose, days=recall_days(ctx.inputs.get("working")))
     out["survey"] = survey
+    # WP12a (repair round): the exposure-form question's options, ordered by soundness for the
+    # declared purpose, each with its "customary in" and "sound for" labels (north star 5).
+    from turbotab.core.methods.exposure_form import options as form_options
+
+    out["exposure_forms"] = form_options(state.purpose)
     return out
 
 

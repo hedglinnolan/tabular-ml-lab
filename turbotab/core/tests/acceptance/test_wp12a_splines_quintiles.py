@@ -449,3 +449,26 @@ def test_1_under_inference_the_spline_ranks_first_and_quintiles_are_tagged_custo
     pack = (REPO / "docs" / "turbotab" / "research" / "NUTRITION_PACK.md").read_text()
     assert "now near-default; quintiles remain expected alongside" in pack
     assert "using the median of each quintile as a continuous score, not the quintile number" in pack
+
+
+def test_1_the_labeled_options_are_served_with_the_proposals(tmp_path):
+    """Repair round (verifier minor 3): the exposure-form options with their "customary in" and
+    "sound for" labels were never served by the API. The proposals stage serves them, ordered for
+    the declared purpose, in the published shape (``ProposalsArtifact``)."""
+    from turbotab.core.decisions import ProjectState
+    from turbotab.core.stages.proposals import proposals_stage
+    from turbotab.core.tests.stage_harness import Ingested
+    from turbotab.server.schemas import ProposalsArtifact
+
+    rng = np.random.default_rng(1)
+    frame = pd.DataFrame({"age": rng.uniform(20, 80, 200), "protein_g": rng.gamma(9, 9, 200),
+                          "energy_kcal": rng.normal(2000, 300, 200), "y": rng.normal(size=200)})
+    source = tmp_path / "t.csv"
+    frame.to_csv(source, index=False)
+    table = Ingested(source, tmp_path / "i")
+    for purpose in ("inference", "prediction"):
+        st = ProjectState(lens=["dietary"], target="y", purpose=purpose,
+                          roles={"age": "covariate", "protein_g": "exposure",
+                                 "energy_kcal": "energy"})
+        served = ProposalsArtifact.model_validate(table.run(proposals_stage, st, {"roles": None}))
+        assert [o.model_dump() for o in served.exposure_forms] == ef.options(purpose)

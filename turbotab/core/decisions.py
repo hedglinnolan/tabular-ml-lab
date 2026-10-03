@@ -1230,6 +1230,22 @@ def _follow_up_belongs_to_the_outcome(decision: SetFollowUp, ctx: Any) -> None:
                 f"The outcome is `{target}`, not `{decision.column}`; a follow-up answers for the "
                 f"outcome.",
                 exits=[{"label": f"Answer the follow-up question for `{target}`", "decision": None}])
+    # A follow-up is read only by a time-to-event model: recorded beside a yes/no task, the record
+    # would say the outcome "was analyzed as a time to event" over a logistic fit (the verifier's
+    # RO-03 repro). The task, answered or detected, must be time to event first.
+    task = _ctx(ctx, "task")
+    state = _state(ctx)
+    if task is None and state is not None:
+        task = getattr(state, "task", None)
+    if task is not None and task != "time_to_event":
+        raise Refusal(
+            "not_time_to_event",
+            f"`{decision.column}` is analyzed as a {str(task).replace('_', '-')} outcome, and only a "
+            f"time-to-event model reads a follow-up time. Analyze it as a time to event first.",
+            exits=[{"label": f"Analyze `{decision.column}` as a time to event",
+                    "decision": SetTask(column=decision.column, task="time_to_event")},
+                   {"label": f"Keep `{decision.column}` as it is, without a follow-up",
+                    "decision": None}])
     named = [decision.time_column] + ([decision.entry_column] if decision.entry_column else [])
     columns = _columns_of(ctx)
     if columns is not None:
@@ -1822,10 +1838,21 @@ def _substitution_has_every_energy_source(decision: SetSubstitution, ctx: Any) -
         except ValueError:
             return None
 
+    from turbotab.core.methods.percent_energy import is_percent_of_energy
+
+    # A missing source is added in the form the model holds its sources: as a share of energy
+    # (``alcohol_pct_kcal``) beside shares, as an amount beside amounts (audit B24).
+    in_shares = any(is_percent_of_energy(c) for c in reading["columns"])
+    in_amounts = any(not is_percent_of_energy(c) for c in reading["columns"]) or not in_shares
+
+    def carries(column: str) -> bool:
+        if is_percent_of_energy(column):
+            return in_shares
+        return in_amounts and energy_factor(column).factor is not None
+
     target = getattr(state, "target", None)
     addable = [c for c in store.columns if c not in exposures and c not in (E, target)
-               and roles.get(c) != "energy" and source(c) in reading["omitted"]
-               and energy_factor(c).factor is not None]
+               and roles.get(c) != "energy" and source(c) in reading["omitted"] and carries(c)]
     base = decision.model_dump(exclude={"kind"})
     held = _and(reading["columns"]) if reading["columns"] else "no energy source"
     missing = [s for s in reading["omitted"] if s != "other"]

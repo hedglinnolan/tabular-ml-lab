@@ -10090,6 +10090,45 @@
         "title": "ExclusionRule",
         "type": "object"
       },
+      "ExposureFormOption": {
+        "description": "One form an exposure can enter the model in (WP12a; ``turbotab/core/methods/exposure_form.py``\n``options``), with north star 5's two labels, in the order of soundness for the purpose.",
+        "properties": {
+          "value": {
+            "enum": [
+              "spline",
+              "linear",
+              "quintiles"
+            ],
+            "title": "Value",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "customary": {
+            "title": "Customary",
+            "type": "string"
+          },
+          "sound": {
+            "title": "Sound",
+            "type": "string"
+          },
+          "consequence": {
+            "title": "Consequence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label",
+          "customary",
+          "sound",
+          "consequence"
+        ],
+        "title": "ExposureFormOption",
+        "type": "object"
+      },
       "ExposureTest": {
         "additionalProperties": false,
         "description": "A test an exposure's form carries under inference (``methods/exposure_form.py``): a\nspline's overall and nonlinear Wald tests, or quintiles' trend across their medians.",
@@ -11416,7 +11455,8 @@
             "enum": [
               "difference",
               "odds_ratio",
-              "relative_risk_ratio"
+              "relative_risk_ratio",
+              "hazard_ratio"
             ],
             "title": "Scale",
             "type": "string"
@@ -12826,6 +12866,14 @@
               }
             ],
             "default": null
+          },
+          "exposure_forms": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ExposureFormOption"
+            },
+            "title": "Exposure Forms",
+            "type": "array"
           }
         },
         "required": [
@@ -12835,7 +12883,8 @@
           "n_base",
           "basis",
           "coach",
-          "survey"
+          "survey",
+          "exposure_forms"
         ],
         "title": "ProposalsArtifact",
         "type": "object"
@@ -15332,6 +15381,18 @@
             "default": false,
             "title": "Needs Cluster",
             "type": "boolean"
+          },
+          "caution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Caution"
           }
         },
         "required": [
@@ -15339,7 +15400,8 @@
           "label",
           "measures",
           "cost",
-          "needs_cluster"
+          "needs_cluster",
+          "caution"
         ],
         "title": "ValidationOption",
         "type": "object"

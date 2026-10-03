@@ -3483,6 +3483,26 @@ export interface components {
             missing: "exclude" | "keep";
         };
         /**
+         * ExposureFormOption
+         * @description One form an exposure can enter the model in (WP12a; ``turbotab/core/methods/exposure_form.py``
+         *     ``options``), with north star 5's two labels, in the order of soundness for the purpose.
+         */
+        ExposureFormOption: {
+            /**
+             * Value
+             * @enum {string}
+             */
+            value: "spline" | "linear" | "quintiles";
+            /** Label */
+            label: string;
+            /** Customary */
+            customary: string;
+            /** Sound */
+            sound: string;
+            /** Consequence */
+            consequence: string;
+        };
+        /**
          * ExposureTest
          * @description A test an exposure's form carries under inference (``methods/exposure_form.py``): a
          *     spline's overall and nonlinear Wald tests, or quintiles' trend across their medians.
@@ -3964,7 +3984,7 @@ export interface components {
              * @default difference
              * @enum {string}
              */
-            scale: "difference" | "odds_ratio" | "relative_risk_ratio";
+            scale: "difference" | "odds_ratio" | "relative_risk_ratio" | "hazard_ratio";
             /**
              * Axis
              * @default linear
@@ -4538,6 +4558,11 @@ export interface components {
             };
             /** @default null */
             survey: components["schemas"]["SurveyProposal"] | null;
+            /**
+             * Exposure Forms
+             * @default []
+             */
+            exposure_forms: components["schemas"]["ExposureFormOption"][];
         };
         /** Repair */
         Repair: {
@@ -5395,6 +5420,11 @@ export interface components {
              * @default false
              */
             needs_cluster: boolean;
+            /**
+             * Caution
+             * @default null
+             */
+            caution: string | null;
         };
         /**
          * ValidationPlan

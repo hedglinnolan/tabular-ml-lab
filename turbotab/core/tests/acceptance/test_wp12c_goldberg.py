@@ -326,6 +326,49 @@ def efsa_keeps(frame: pd.DataFrame, pal: Any = 1.6) -> np.ndarray:
     return (ratio >= lower) & (ratio <= upper)
 
 
+def test_5_the_screen_is_offered_when_body_measures_are_left_out_of_the_model():
+    """Repair round (verifier, WP12c proposals): the Goldberg screen was offered only while body
+    weight, age and height kept a model role; with weight and height "excluded" it disappeared from
+    the exclusions menu, a leash too tight (BLUEPRINT §11.3: a defensible choice hidden). An
+    eligibility screen reads a column whatever its model role.
+
+    Reference: the screen offered with the body measures in the model (covariates), the rule read
+    from the same columns, and EFSA's procedure computed longhand at the offered PAL and days for
+    its count. A weight column that names rows (identifier) is still never read as body weight."""
+    from turbotab.core.stages.proposals import build_proposals
+
+    frame = misreporting_table()
+    columns = [{"name": c, "dtype": "numeric" if pd.api.types.is_numeric_dtype(frame[c]) else "text",
+                "n_unique": int(frame[c].nunique()), "n_missing": 0} for c in frame.columns]
+    base = {"participant_id": "identifier", "kcal": "energy", "fiber_g": "exposure",
+            "activity": "covariate", "age": "covariate"}
+
+    def offered(roles: dict[str, str]) -> dict[str, Any] | None:
+        out = build_proposals(frame, columns, lens=["dietary"], target="ldl", roles=roles,
+                              purpose="inference")
+        return next((e for e in out["exclusions"] if e["key"] == "goldberg_schofield"), None)
+
+    kept = offered({**base, "sex": "covariate", "weight": "covariate", "height": "covariate"})
+    left = offered({**base, "sex": "excluded", "weight": "excluded", "height": "excluded"})
+    assert kept is not None and left is not None
+    assert left["rule"] == kept["rule"] and left["affected"] == kept["affected"]
+    rule = left["rule"]
+    assert (rule["weight"], rule["height"], rule["sex"]) == ("weight", "height", "sex")
+    ratio = frame["kcal"].to_numpy() / efsa_bmr_kcal(frame["sex"].to_numpy(), frame["age"].to_numpy(),
+                                                     frame["weight"].to_numpy(),
+                                                     frame["height"].to_numpy())
+    # Black 2000's cut-offs for one person, written out: PAL × exp(±2 · (S/100) / √n) with
+    # S = √(CV_wEI²/d + CV_wB² + CV_tP²) = √(23²/d + 8.5² + 15²) and n = 1.
+    S = math.sqrt(23.0 ** 2 / rule["days"] + 8.5 ** 2 + 15.0 ** 2)
+    lower, upper = (rule["pal"] * math.exp(z * S / 100) for z in (-2.0, 2.0))
+    outside = int(((ratio < lower) | (ratio > upper)).sum())
+    # EFSA's printed kcal equations are rounded, and the fixture moves rows off the PAL 1.6 cut-offs,
+    # not these: a row or two may sit on the line (289 against 288 here).
+    assert abs(left["affected"] - outside) <= 3
+    named_rows = offered({**base, "sex": "covariate", "weight": "identifier", "height": "excluded"})
+    assert named_rows is None
+
+
 def test_5_the_screen_classifies_every_row_as_efsa_procedure_does():
     """Each row's status is EFSA's individual-level procedure computed longhand: Schofield (kcal/d)
     from weight and height, EI:BMR against Table 4's printed cut-offs for PAL 1.6 and d = 2; the

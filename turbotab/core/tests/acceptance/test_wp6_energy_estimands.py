@@ -176,6 +176,55 @@ def test_1_none_fits_the_truly_unadjusted_model(tmp_path):
     assert "`energy_kcal` was left out of the models" in said
 
 
+@pytest.mark.parametrize("role", ["covariate", "exposure"])
+def test_1c_total_energy_kept_by_another_role_reads_as_the_standard_model(tmp_path, role):
+    """Repair round (verifier, ME-02 residual path): with `energy_kcal`'s role changed from the
+    proposed "energy" to "covariate", the energy question does not apply, the model is the
+    standard one (protein 0.0299), and the app labeled it "Not energy-adjusted … absolute intake".
+    ME-02's recommendation: "build the estimand sentence from the fitted matrix, not from the
+    method's name".
+
+    Reference: statsmodels OLS on the fixture's own columns, with and without `energy_kcal` (the
+    roles say which columns the model holds). Measured: the design and fit stages with no energy
+    answer recorded, as the interview leaves it. The coefficient is the standard model's, and the
+    estimand, the row meaning and a design warning say so; leaving the column out ("excluded")
+    gives the unadjusted 0.0561 with its absolute-intake label."""
+    frame = _none_fixture()
+    standard = _ols(frame["y"], frame[["protein_g", "energy_kcal", "age"]]).params["protein_g"]
+    unadjusted = _ols(frame["y"], frame[["protein_g", "age"]]).params["protein_g"]
+
+    kept = _stages(frame, tmp_path / "kept", {**NONE_ROLES, "energy_kcal": role}, None)
+    assert "energy_kcal" in _matrix_columns(kept["design"])
+    assert kept["rows"]["protein_g"]["estimate"] == pytest.approx(standard, rel=1e-9)
+    assert kept["design"]["energy_form"] == "standard"
+    assert "absolute intake" not in kept["design"]["estimand"]
+    assert kept["design"]["estimand"] == METHOD_TABLE["standard"]["estimand"]
+    assert kept["rows"]["protein_g"]["meaning"] == (
+        "protein in place of the average of all other energy sources, total energy fixed")
+    assert any(w.startswith("energy_kcal reads as total energy and is in the model as")
+               and "(the standard model), not an absolute intake" in w
+               for w in kept["design"]["warnings"])
+
+    left = _stages(frame, tmp_path / "left", {**NONE_ROLES, "energy_kcal": "excluded"}, None)
+    assert "energy_kcal" not in _matrix_columns(left["design"])
+    assert left["rows"]["protein_g"]["estimate"] == pytest.approx(unadjusted, rel=1e-9)
+    assert left["design"]["energy_form"] == "none"
+    assert left["rows"]["protein_g"]["meaning"] == ("absolute intake of protein; total energy not in "
+                                                    "the model")
+
+
+def test_1d_an_expenditure_or_a_macronutrient_is_not_read_as_total_energy():
+    """The recognizer behind 1c reads total energy intake only: an energy expenditure, a basal
+    rate, a macronutrient's own kcal or share, and a partition's term are not total energy."""
+    from turbotab.core.methods.energy import reads_as_total_energy
+
+    for name in ("energy_kcal", "kcal", "DR1TKCAL", "total_energy", "energy_kj", "calories"):
+        assert reads_as_total_energy(name), name
+    for name in ("energy_expenditure_kcal", "tee_kcal", "bmr_kcal", "protein_kcal", "fat_pct_kcal",
+                 "kcal_from_fat", "energy_requirement", "kcal_goal", "age"):
+        assert not reads_as_total_energy(name), name
+
+
 def _matrix(frame: pd.DataFrame, roles: dict[str, str], adjustment: Any, **slots: Any) -> pd.DataFrame:
     """The model matrix the models see: the state's predictors through the shared steps."""
     st = ProjectState(target="y", roles=roles, energy_adjustment=adjustment, **slots)
@@ -739,14 +788,60 @@ def test_6b_under_inference_all_components_ranks_first_with_its_cost_in_one_line
     assert set(first) == keeps_energy  # the energy-dropping models rank after every one that keeps it
     assert prediction["order"].index("residual_energy_dropped") > prediction["order"].index("residual")
 
-    # An inapplicable method never leads: without fat the all-components model cannot run.
+    # An inapplicable method never leads: without fat the all-components model cannot run. The
+    # line then says so instead of claiming it ranks first (repair round: the line said "ranks
+    # first" while the order listed it last).
     applicability = applicable_methods(list(frame.columns), "kcal", ["protein_g", "carb_g"])
-    assert rank_methods("inference", applicability)["first"] == "standard"
+    ranked = rank_methods("inference", applicability)
+    assert ranked["first"] == "standard" and ranked["order"][-1] == "all_components"
+    assert ranked["line"].startswith("All components would rank first")
+    assert "cannot run on these columns" in ranked["line"] and "standard" in ranked["line"]
+    assert "\n" not in ranked["line"] and ranked["line"].count(".") == 1
     # The option is taught under its own name, with its dispute badged.
     taught = entry("energy_adjustment")
     assert "all_components" in {o.value for o in taught.options}
     drawer = next(s for s in taught.drawer.sections if s.heading == "All components")
     assert drawer.evidence.status == "DISPUTED"
+
+
+def test_6c_a_refused_partition_says_why_in_a_whole_sentence():
+    """Repair round (verifier minor 4): on a table whose energy is in kcal on some rows and kJ on
+    others, the partition and all-components options read "There is no single factor to apply, so
+    this is not a conversion the app can offer; the rows have." — the reason cut inside a clause.
+
+    Reference: the fixture's own arithmetic, declared over reconstructed energy (4·protein +
+    4·carbohydrate + 9·fat) per row, which sits near 1 on half the rows and near 4.184 on the
+    other half, so no single factor converts it. Measured: the energy card's reasons, each a whole
+    sentence within the card's 20-word budget, and the ranking line, which names the method that
+    leads instead of claiming all components does."""
+    from turbotab.core.teaching import COMPOSED_BUDGETS
+    from turbotab.core.voice import words
+
+    rng = np.random.default_rng(1)
+    n = 400
+    protein, carb, fat = rng.normal(80, 15, n), rng.normal(250, 40, n), rng.normal(70, 15, n)
+    kcal = 4 * protein + 4 * carb + 9 * fat + rng.normal(0, 30, n)
+    kcal[: n // 2] *= 4.184  # half the rows in kilojoules
+    frame = pd.DataFrame({"protein_g": protein, "carb_g": carb, "fat_g": fat, "energy_kcal": kcal,
+                          "y": rng.normal(size=n)})
+    ratio = kcal / (4 * protein + 4 * carb + 9 * fat)
+    assert np.median(ratio[: n // 2]) == pytest.approx(4.184, rel=0.02)
+    assert np.median(ratio[n // 2:]) == pytest.approx(1.0, rel=0.02)
+    columns = [{"name": c, "dtype": "numeric", "n_unique": n, "n_missing": 0} for c in frame]
+    roles = {"protein_g": "exposure", "carb_g": "exposure", "fat_g": "exposure",
+             "energy_kcal": "energy"}
+    reading = build_proposals(frame, columns, lens=["dietary"], target="y", roles=roles,
+                              purpose="inference")["energy"]
+    for method in ("partition", "all_components"):
+        verdict = reading["applicability"][method]
+        assert not verdict["ok"]
+        reason = verdict["reason"]
+        assert "no single factor" in reason and reason.endswith("separate the rows by source first.")
+        assert words(reason) <= COMPOSED_BUDGETS["option_reason"]
+        assert not reason.endswith("the rows have.")
+    ranking = reading["ranking"]
+    assert ranking["order"][0] == "standard" and ranking["order"][-2:] == ["all_components", "partition"]
+    assert "cannot run on these columns" in ranking["line"]
 
 
 # ── 7 · Nested totals ────────────────────────────────────────────────────────

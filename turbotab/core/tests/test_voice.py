@@ -144,6 +144,15 @@ def test_the_residual_sentence_says_where_it_was_fit():
         method="residual_energy_dropped", energy_column="kcal", nutrients=["protein"]))
     assert "total energy left out of the outcome model" in dropped
     assert "`kcal` then left the models" in dropped
+    # Under inference the table is refit on every analyzed row, the residual regression with it
+    # (BLUEPRINT §12 ruling 3), so the sentence does not say "training rows" (repair round).
+    inference = voice.sentence_for(
+        d.SetEnergyAdjustment(method="residual", energy_column="kcal",
+                              nutrients=["protein", "fat_total"], strata="gender"),
+        ProjectState(purpose="inference"))
+    assert "within levels of `gender` on every analyzed row" in inference
+    assert "the nutrient's mean over all analyzed rows" in inference
+    assert "training rows" not in inference
 
 
 # ── the task reason ──────────────────────────────────────────────────────────

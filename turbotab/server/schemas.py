@@ -473,6 +473,17 @@ class SurveyProposal(Model):
     options: list[SurveyOption]
 
 
+class ExposureFormOption(Model):
+    """One form an exposure can enter the model in (WP12a; ``turbotab/core/methods/exposure_form.py``
+    ``options``), with north star 5's two labels, in the order of soundness for the purpose."""
+
+    value: Literal["spline", "linear", "quintiles"]
+    label: str
+    customary: str  # customary in the field, with a source
+    sound: str  # sound for the declared purpose, with the reason
+    consequence: str
+
+
 class ProposalsArtifact(Model):
     """The ``proposals`` artifact: offered for the exclusions, missing-values and energy questions."""
 
@@ -485,6 +496,8 @@ class ProposalsArtifact(Model):
     coach: dict[str, CoachNote] = {}
     # WP10: the survey question's options, when a column reads as a survey weight.
     survey: SurveyProposal | None = None
+    # WP12a: the exposure-form options, soundest first for the declared purpose.
+    exposure_forms: list[ExposureFormOption] = []
 
 
 # ── the table the analysis reads (M2_CONTRACT §2; turbotab/core/stages/working.py) ──────────

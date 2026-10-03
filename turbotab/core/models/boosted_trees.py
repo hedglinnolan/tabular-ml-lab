@@ -22,9 +22,14 @@ class BoostedTrees(FamilyBase):
     cautions = (
         "No coefficients: effects are read from curves.",
         "Overfits easily and needs many rows.",
+        "Validated by cross-validation: Harrell's bootstrap overstates a near-interpolating "
+        "learner's performance.",
     )
     needs_scaling = False
     handles_missing = True
+    # Near-interpolating: its apparent AUC approaches 1, and Harrell's bootstrap leaves about 0.2 of
+    # AUC uncorrected (the repair round's replication; Coley et al. 2023), so it is not applied.
+    bootstrap_optimism = False
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         if task == "regression":

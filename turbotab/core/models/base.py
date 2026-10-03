@@ -195,6 +195,11 @@ class FamilyBase:
     # Its model is a weighted sum of the values as given, so their scale (raw counts or log) is part
     # of what it assumes; raw omics values wait for a normalization (``methods.omics``).
     linear_in_values: bool = False
+    # Whether Harrell's bootstrap optimism correction is sound for it (``models.validation``). A
+    # learner that nearly memorizes its rows scores the original rows inside each resample almost
+    # perfectly, so the bootstrap understates its optimism (Coley et al. 2023): it declares False,
+    # and the fit keeps its cross-validated score as its internal validation.
+    bootstrap_optimism: bool = True
 
     def coefficients(self, pipeline: Any, X: Any, y: Any, *, task: Task,
                      purpose: Purpose | None, groups: Any = None) -> list[dict[str, Any]] | None:

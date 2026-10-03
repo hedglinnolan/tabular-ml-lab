@@ -225,10 +225,10 @@ class Inference(_Model):
     refused: str | None = None  # why no interval or p-value is reported
     exits: list[InferenceExit] = []
     # The scale a row's effect is read on (AUDIT_REPORT §5 WP8, ME-07): a difference in the mean
-    # outcome (drawn on a linear axis), or an odds ratio or relative-risk ratio (the rows' ``ratio``
-    # fields, drawn on a log axis). ``effect`` says it in a sentence that names the outcome, and
+    # outcome (drawn on a linear axis), or an odds ratio, relative-risk ratio or (a Cox model's,
+    # WP12b) hazard ratio (the rows' ``ratio`` fields, drawn on a log axis). ``effect`` says it in a sentence that names the outcome, and
     # for a ratio the ``event`` (binary) and the ``reference`` level it is against.
-    scale: Literal["difference", "odds_ratio", "relative_risk_ratio"] = "difference"
+    scale: Literal["difference", "odds_ratio", "relative_risk_ratio", "hazard_ratio"] = "difference"
     axis: Literal["linear", "log"] = "linear"
     effect: str | None = None
     event: str | None = None

@@ -325,6 +325,11 @@ def _set_task(d: Any, state: Any, ctx: Any) -> str:
     detected = _get(ctx, "detected_task")
     if detected and detected != d.task:
         text += f", overriding the detected {tick(detected)}"
+    follow_up = getattr(state, "follow_up", None)
+    if follow_up is not None and d.task != "time_to_event" and getattr(state, "target", None) == d.column:
+        # The follow-up recorded for a time-to-event analysis no longer applies (WP12b).
+        text += (f"; the follow-up time {tick(follow_up.time_column)} recorded for it is not used, "
+                 f"so it is no longer analyzed as a time to event")
     return text
 
 
@@ -782,7 +787,8 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
     if validation == "bootstrap":
         boot = (f"; the optimism of each model's apparent performance was estimated by Harrell's "
                 f"bootstrap ({tick(d.n_boot)} resamples, the whole pipeline refit on each) and "
-                f"subtracted")
+                f"subtracted, except for a family that nearly memorizes its rows (boosted trees), "
+                f"whose cross-validated score stands because the bootstrap overstates it")
     # How a cross-validated or held-out R² is measured (audit MA-09; models/metrics.py).
     r2 = ("; R² was measured against the training rows' mean and pooled over every out-of-fold "
           "prediction" if task == "regression" else "")
@@ -843,19 +849,25 @@ def _set_energy_adjustment(d: Any, state: Any, ctx: Any) -> str:
     where = f" within levels of {tick(d.strata)}" if d.strata else ""
     name = _METHOD_NAME[d.method]
     if d.method in ("residual", "residual_energy_dropped"):
+        # Under inference the table is refit on every analyzed row, the residual regression with
+        # it (BLUEPRINT §12 ruling 3); under prediction it is learned on training rows only.
+        on = ("on every analyzed row" if getattr(state, "purpose", None) == "inference"
+              else "on training rows")
+        scope = ("all analyzed rows" if getattr(state, "purpose", None) == "inference"
+                 else "all training rows")
         many = len(d.nutrients) > 1
         who = f"{nutrients} were each" if many else (f"{nutrients} was" if nutrients else "each nutrient was")
         if d.log_transform:
             # The log variant adds back the predicted log nutrient at the mean log energy, then
             # back-transforms: the nutrient at the geometric-mean energy (audit G17).
-            pooled = "all training rows' " if d.strata else ""
-            how = (f"regressed on {energy} with both logged{where} on training rows and replaced "
+            pooled = f"{scope}' " if d.strata else ""
+            how = (f"regressed on {energy} with both logged{where} {on} and replaced "
                    f"by exp(the log residual plus the predicted log nutrient at {pooled}mean log "
                    f"energy), the nutrient at the geometric-mean energy")
         else:
             # Under strata, one constant for every level (StratifiedEnergyAdjuster), not each level's.
-            mean = "the nutrient's mean over all training rows" if d.strata else "the nutrient's mean"
-            how = (f"regressed on {energy}{where} on training rows and replaced by the residual "
+            mean = f"the nutrient's mean over {scope}" if d.strata else "the nutrient's mean"
+            how = (f"regressed on {energy}{where} {on} and replaced by the residual "
                    f"plus {mean}")
         if d.method == "residual":
             # The log variant rescales each row by its own energy, so its coefficient is per unit
@@ -948,8 +960,11 @@ def _set_substitution(d: Any, state: Any, ctx: Any) -> str:
                 f"steps of {tick(number(d.step_kcal))} kcal {fixed}")
     n_boot = int(getattr(d, "n_boot", 0) or 0)
     if n_boot:
+        # Under inference the curve and its refits read every analyzed row (BLUEPRINT §12 ruling 3).
+        rows = ("every analyzed row" if getattr(state, "purpose", None) == "inference"
+                else "training rows")
         text += (f"; its band comes from {count(n_boot)} refits of each model on bootstrap "
-                 f"resamples of training rows")
+                 f"resamples of {rows}")
     if getattr(d, "acknowledged", False):
         # The recorded attestation of the omitted-sources block under inference (audit ME-05).
         text += ("; it was kept although energy sources are missing from the model, so the curve "
@@ -1135,6 +1150,12 @@ def _set_event(d: Any, state: Any, ctx: Any) -> str:
 
 @register_sentence("set_follow_up")
 def _set_follow_up(d: Any, state: Any, ctx: Any) -> str:
+    # The validator refuses a follow-up beside any other task; should one stand anyway, the
+    # sentence does not claim a time-to-event analysis the fit never made.
+    task = getattr(state, "task", None) or _get(ctx, "detected_task")
+    if task is not None and task != "time_to_event":
+        return (f"A follow-up time {tick(d.time_column)} was named for {tick(d.column)}, but the "
+                f"outcome is analyzed as a {tick(task)} task, so the follow-up is not used")
     text = (f"{tick(d.column)} was analyzed as a time to event, each row followed until "
             f"{tick(d.time_column)}, at the event or when follow-up ended without it")
     if d.entry_column:
@@ -1315,10 +1336,17 @@ def _set_survey(d: Any, state: Any, ctx: Any) -> str:
                  "its own")
         within = f"within {tick(d.strata)}" if d.strata else "with no strata"
         over = f"{within} and no PSU column, {units}, as recorded"
+    # The domain clause only where rows are already restricted (repair round: it was said with no
+    # restriction at all); a later exclusion or missing-values sentence says it where it restricts.
+    rules = getattr(state, "exclusions", None) or []
+    missing = getattr(getattr(state, "missing", None), "strategy", None)
+    restricted = bool(rules) or missing == "complete_case"
+    domain = ("; the rows the eligibility rules or missing values leave out stay in the design for "
+              "the variance (a domain analysis)" if restricted else "")
     return (f"The estimates describe the surveyed population: rows were {weight}, and standard "
             f"errors were estimated by Taylor series linearization {over}, first-stage units taken "
             f"as sampled with replacement, with t intervals on the PSUs minus the strata that hold "
-            f"the analysis rows; a restriction keeps every row in the design (a domain analysis)")
+            f"the analysis rows{domain}")
 
 
 # ── M2: findings, answered (M2_CONTRACT §4) ──────────────────────────────────

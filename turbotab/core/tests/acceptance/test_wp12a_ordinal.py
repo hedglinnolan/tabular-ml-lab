@@ -170,6 +170,42 @@ def test_2_the_fit_stage_reproduces_polr_on_the_housing_table(tmp_path):
     np.testing.assert_allclose(ours, theirs, atol=2e-6)
 
 
+def test_2_cut_points_keep_their_level_names_when_inference_draws_a_holdout(tmp_path):
+    """Repair round (verifier, WP12a × WP8): under inference with a 20% holdout drawn, the table is
+    refit on every analyzed row, and that refit named its cut-points by the internal codes, so on a
+    1–5 Likert outcome "(cut-point 1 | 2)" carried the 2|3 threshold.
+
+    Reference: statsmodels ``OrderedModel`` (logit) on all 800 rows, its thresholds converted by
+    ``transform_threshold_params``. Measured: the fit stage's inference table, with a holdout of
+    160 rows. Each "(cut-point j | j+1)" row must equal statsmodels' threshold between the levels
+    ``j`` and ``j + 1``, and the coefficients come from every row (n = 800)."""
+    rng = np.random.default_rng(55)
+    n = 800
+    frame = pd.DataFrame({"age": rng.normal(50, 10, n), "fiber_g": rng.gamma(3, 5, n)})
+    latent = 0.03 * frame["age"] - 0.05 * frame["fiber_g"] + rng.logistic(size=n)
+    frame["likert"] = np.digitize(latent, [0.0, 1.0, 2.0, 3.0]) + 1  # levels 1 to 5
+    reference = _ordered_model(frame[["age", "fiber_g"]], frame["likert"].to_numpy() - 1)
+    params = reference.params.to_numpy()
+    thresholds = reference.model.transform_threshold_params(params)[1:-1]
+
+    paths = mf.ingest_frame(frame, tmp_path)
+    st = mf.state(roles={"age": "covariate", "fiber_g": "exposure"}, target="likert",
+                  task="ordinal", models=["proportional_odds"], purpose="inference", lens=["survey"])
+    split = mf.split_bundle(np.arange(n), holdout=0.2, seed=1)
+    assert split.data["n_holdout"] == 160
+    ti = mf.target_info("ordinal", "likert")
+    design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
+    fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
+    model = fit.data["models"][0]
+    assert model["coefficients_n"] == n and model["inference"]["rows"] == "all"
+    rows = {r["feature"]: r for r in model["coefficients"]}
+    names = [f"(cut-point {j} | {j + 1})" for j in range(1, 5)]
+    assert [r for r in rows if r.startswith("(cut-point")] == names
+    for name, expected in zip(names, thresholds):
+        assert rows[name]["estimate"] == pytest.approx(expected, abs=1e-5), name
+    assert rows["fiber_g"]["estimate"] == pytest.approx(params[1], abs=1e-5)
+
+
 def test_2_text_levels_are_never_ordered_by_their_labels():
     with pytest.raises(ValueError, match="must be declared"):
         ordinal_outcome(pd.Series(["mild", "severe", "none", "moderate"]))
