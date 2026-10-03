@@ -267,7 +267,11 @@ def test_b24_shares_of_energy_are_energy_sources_to_the_router_the_validator_and
         assert "the model holds `fat_pct_kcal` and `carb_pct_kcal`" in said
         assert "no energy source" not in said and f"{left:.0%}" in said
         labels = [e["label"] for e in refused.value.exits]
-        assert labels[0] == "Add `protein_pct_kcal` and `alcohol_pct_kcal` to the model"
+        # The four shares sum to 100%, so the exits add the missing ones but one, the reference
+        # (the methods gate, item C; test_gate_methods_repair.py holds it to Hu's model).
+        assert labels[:2] == [
+            "Add `alcohol_pct_kcal` to the model, with `protein_pct_kcal` left out as the reference",
+            "Add `protein_pct_kcal` to the model, with `alcohol_pct_kcal` left out as the reference"]
     finally:
         store.close()
 

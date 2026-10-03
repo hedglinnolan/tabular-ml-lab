@@ -35,8 +35,9 @@ M2 (docs/turbotab-next/M2_CONTRACT.md §2) — the table the analysis reads:
     (``stages.working.table_path``).
 
 M2, the seal (M2_CONTRACT.md §3): ``split`` also reads the grain, unit, aggregation, temporal and
-repeat_kind answers (its basis and the chronological draw); ``shelf`` ranks on the training rows,
-so it waits for the split; ``fit`` keeps its held-out scores out of its public data.
+repeat_kind answers (its basis and the chronological draw); ``shelf`` ranks on the training rows
+(every analyzed row under inference, BLUEPRINT §12 ruling 3), so it waits for the split; ``fit``
+keeps its held-out scores out of its public data.
 
     seal_plan    light   deps: working, cohort, target_info, structure   reads roles, task + the seal's; requires target
 
@@ -134,7 +135,9 @@ def build_graph() -> Graph:
             # proposals 4: the missing-data methods ordered by purpose (audit WP7).
             # proposals 5 (repair round): the Goldberg screen reads body measures left out of the
             # model; the exposure-form options with their two labels (WP12a).
-            Stage("proposals", 5, ("working", "roles"), ("lens", "roles", "target", "purpose"),
+            # proposals 6 (methods gate): Willett's sex-specific screen reads sex left out of the
+            # model, as the Goldberg screen does.
+            Stage("proposals", 6, ("working", "roles"), ("lens", "roles", "target", "purpose"),
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             Stage("cohort", 2, ("working", "target_info"),
@@ -143,7 +146,9 @@ def build_graph() -> Graph:
             Stage("split", 3, ("working", "cohort", "target_info", "structure"),
                   ("split", "roles", "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
-            Stage("shelf", 6, ("working", "cohort", "target_info", "split"),
+            # shelf 7 (methods gate): under inference it ranks for every analyzed row and its basis
+            # says so (BLUEPRINT §12 ruling 3); timing stays on the training rows.
+            Stage("shelf", 7, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", "roles", "missing", "categorical", "lens", "findings", "event",
                    "outcome_order", "exposure_forms"),
                   shelf_stage, heavy=True,
@@ -155,7 +160,10 @@ def build_graph() -> Graph:
             # design 7: the energy-aware single fill and the below-detection step (WP7).
             # design 8 (repair round): total energy kept as a covariate reads as the standard model
             # (ME-02); exposures in percent of energy carry their own meaning and pairs (B24).
-            Stage("design", 8, ("working", "split", "target_info"),
+            # design 9 (methods gate): under inference the estimand's fitted elasticity, the energy
+            # step's warnings, the residual gap, the lineage and the matrix read every analyzed row
+            # (ruling 3); the pipelines are still sized for the training rows.
+            Stage("design", 9, ("working", "split", "target_info"),
                   ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up"),
                   design_stage,
@@ -169,7 +177,10 @@ def build_graph() -> Graph:
             # fit 10 (repair round): under inference each family's every-row refit is kept for the
             # substitution curve; the Cox, mixed and GEE tables declare their scale; Harrell's
             # bootstrap is not applied to a family that declares it unsound for it.
-            Stage("fit", 10, ("working", "design", "split", "target_info", "cohort"),
+            # fit 11 (methods gate): the outcome keeps the values the table spells, so a True/False
+            # outcome's event is coded and named as declared; under inference the event's share
+            # is of every analyzed row.
+            Stage("fit", 11, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up"),
                   fit_stage, heavy=True, requires=("models",),
                   label="Fitting the models"),
@@ -178,7 +189,8 @@ def build_graph() -> Graph:
             # multiple imputations (WP7).
             # substitution 7 (repair round): under inference the curve reads every analyzed row and
             # the families refit on them (BLUEPRINT §12 ruling 3), as the coefficient table does.
-            Stage("substitution", 7, ("working", "fit", "design"),
+            # substitution 8 (methods gate): the outcome keeps its own values (a True/False event).
+            Stage("substitution", 8, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose"),
                   substitution_stage, heavy=True, requires=("substitution",),
                   label="Drawing the substitution curves"),
@@ -193,11 +205,13 @@ def build_graph() -> Graph:
             # sensitivity 2: each analysis fit as the fit stage fits the primary (scale, survey
             # design, units, ordinal order, follow-up).
             # sensitivity 3: under inference each analysis pools its own multiple imputations.
-            Stage("sensitivity", 3, ("working", "design", "split", "target_info"),
+            # sensitivity 4 (methods gate): the outcome keeps its own values (a True/False event).
+            Stage("sensitivity", 4, ("working", "design", "split", "target_info"),
                   SENSITIVITY_READS, sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),
-            Stage("calibration", 3,
+            # calibration 4 (methods gate): the outcome keeps its own values (a True/False event).
+            Stage("calibration", 4,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   CALIBRATION_READS, calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),

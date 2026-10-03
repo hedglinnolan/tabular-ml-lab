@@ -658,9 +658,13 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     if energy is not None and energy in frame.columns:
         unit = _energy_unit(frame, energy)
         if energy != target:  # an eligibility rule never reads the outcome (audit RO-01)
-            exclusions = exclusion_proposals(frame, energy=energy, unit=unit, sex=sex,
-                                             sex_levels=sex_levels, base=base)
+            # A screen reads a column whatever its model role: sex left out of the model still
+            # serves Willett's sex-specific cut-offs, as it serves the Goldberg screen (the methods
+            # gate, item E: the menu was too tight, BLUEPRINT §11.3).
             screen_sex, screen_levels = sex_column(info, frame, roles, screen=True)
+            by_sex = screen_sex if screen_sex != target else None  # never a rule on the outcome
+            exclusions = exclusion_proposals(frame, energy=energy, unit=unit, sex=by_sex,
+                                             sex_levels=screen_levels, base=base)
             goldberg = goldberg_proposal(frame, info, energy=energy, unit=unit, sex=screen_sex,
                                          sex_levels=screen_levels, roles=roles, target=target,
                                          base=base, days=days[0], days_note=days[1])

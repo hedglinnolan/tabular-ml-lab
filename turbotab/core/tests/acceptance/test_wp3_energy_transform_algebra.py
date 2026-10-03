@@ -413,6 +413,8 @@ def test_4_a_stratum_under_the_floor_uses_the_pooled_slope_and_the_lineage_says_
     b = np.format_float_positional(pooled_slope, precision=4, unique=False, fractional=False, trim="-")
     assert f"X the pooled slope b = {b} on its own means (29 rows; fewer than 30 fitting rows)" in formula
     assert "Y b = " in formula and "(30 rows)" in formula
-    assert any(w.startswith("Level X of sex has 29 training rows, fewer than the 30") and "pooled slope" in w
+    # Under inference the design's rows are every analyzed row (BLUEPRINT §12 ruling 3; the
+    # methods gate), and the note names them so; with no holdout they are the same 29.
+    assert any(w.startswith("Level X of sex has 29 analyzed rows, fewer than the 30") and "pooled slope" in w
                for w in design.data["warnings"]), design.data["warnings"]
     assert not any("Level Y" in w for w in design.data["warnings"])

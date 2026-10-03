@@ -166,7 +166,10 @@ def test_selection_optimism_under_repeated_kfold_bootstraps_one_repeats_predicti
     # elastic net's inner folds are keyed by the rows' stored contents).
     assignment = read_assignment(split)
     with table.store() as store:
-        stored = modeling_frame(store, [*X.columns, "event"], assignment.index.to_numpy())
+        # the outcome as stored (``outcome=``): the CSV's yes/no reads as True/False, which the
+        # fit stage codes 1/0, and the outcome is part of each row's inner-fold key
+        stored = modeling_frame(store, [*X.columns, "event"], assignment.index.to_numpy(),
+                                outcome="event")
     Xs = stored[list(X.columns)]
     ys = np.asarray(coded_outcome("binary", stored["event"].to_numpy(), "yes"))
     assert set(np.unique(ys)) == {0, 1}

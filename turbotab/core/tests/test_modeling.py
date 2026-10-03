@@ -301,8 +301,13 @@ def test_every_fitted_step_sees_only_training_fold_rows(tmp_path, monkeypatch, p
     st = mf.state(energy_adjustment=mf.energy("residual"), missing=missing, purpose=purpose)
     seen.clear()
     run(st, paths, split)
-    design_rows = seen.pop("energy")[0]  # the design's shared steps: every training row, once
-    assert design_rows == frozenset(train_ids.tolist())
+    # The design's shared steps, once: every training row under prediction; under inference every
+    # analyzed row, as the coefficient table its estimand and warnings describe (ruling 3, the
+    # methods gate). They only describe: the fit stage refits every pipeline it scores.
+    design_rows = seen.pop("energy")[0]
+    expected = (frozenset(train_ids.tolist()) | frozenset(hold_ids.tolist()) if purpose == "inference"
+                else frozenset(train_ids.tolist()))
+    assert design_rows == expected
     seen.clear()
     ols_rows.clear()
     design = design_stage(mf.context(st, {"split": split, "target_info": mf.target_info("regression")}, paths))

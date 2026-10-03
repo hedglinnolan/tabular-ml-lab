@@ -78,6 +78,9 @@ class DecisionContext:
     # The newest split's held-out row ids (None before any split): what a check on the data
     # made while validating (a partition's units) must not read.
     sealed: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
+    # Every row the analysis reads under inference (the split's rows on both sides of the seal, or
+    # the cohort's before a split): what an inference check on the data reads (ruling 3).
+    analyzed: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
     # The decision log as it stands (the seal's checks: who drew the seal, what a revert undoes).
     records: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
     # The Router's steps as the project stands (answers in order, M2_CONTRACT §12.2).
@@ -315,6 +318,7 @@ def _write_json_atomic(path: Path, payload: Any) -> None:
 
 POOL_WORDS = {
     "training": "training rows",
+    "analyzed": "analyzed rows",
     "cohort": "rows in the analysis",
     "unsealed": "rows not held out",
     "all": "rows",
@@ -626,6 +630,7 @@ class ProjectService:
             store=store,
             artifact=lambda stage: self._fresh(pid, stage, public=True),
             sealed=lambda: self.sealed_rows(pid, stages),
+            analyzed=lambda: self.analyzed_rows(pid, stages, self._cohort_ids(pid, stages)),
             records=lambda: self.log(pid).records(),
             interview=lambda: self.interview(pid, state, stages, self.log(pid).records()),
         )
@@ -693,6 +698,12 @@ class ProjectService:
         cohort = artifact("cohort")
         cohort_ids = cohort.frames["rows"]["row_id"].to_numpy(dtype="int64") if cohort is not None else None
         training = self.training_rows(pid, stages, sealed, cohort_ids)
+        kind = "training"
+        if getattr(state, "purpose", None) == "inference" and training is not None:
+            # The seal is purpose-scoped (BLUEPRINT §12 ruling 3): under inference the coefficient
+            # table is estimated from every analyzed row, so a preview of a modeling choice reads
+            # them too, and no row is sealed from it (the methods gate: previews read training rows).
+            training, sealed, kind = self.analyzed_rows(pid, stages, cohort_ids), None, "analyzed"
         used: dict[str, int] = {}
         pctx = consequences.PreviewContext(
             project_id=pid,
@@ -702,6 +713,7 @@ class ProjectService:
             training_row_ids=training,
             cohort_row_ids=cohort_ids,
             sealed_row_ids=sealed,
+            training_kind=kind,
         )
         pctx.before = lambda: self._before_frame(pid, pctx, stages, used)
         result = consequences.plan(parsed, pctx, basis="")
@@ -742,6 +754,28 @@ class ProjectService:
             return None
         return np.setdiff1d(cohort_ids, np.asarray(sealed, dtype="int64"))
 
+    def _cohort_ids(self, pid: str, stages: dict[str, StageStatus]) -> Any:
+        """The fresh cohort's row ids, or None."""
+        status = stages.get("cohort")
+        if status is None or status.status != "fresh" or not status.key:
+            return None
+        try:
+            frame = self._artifact(pid, "cohort", status.key).frames["rows"]
+        except (OSError, ValueError, KeyError):
+            return None
+        return frame["row_id"].to_numpy(dtype="int64")
+
+    def analyzed_rows(self, pid: str, stages: dict[str, StageStatus], cohort_ids: Any) -> Any:
+        """Every row the analysis reads under inference: the split's rows on both sides of the seal
+        (the current cohort's while the split recomputes)."""
+        import numpy as np
+
+        status = stages.get("split")
+        if status is not None and status.status == "fresh" and status.key:
+            frame = self._artifact(pid, "split", status.key).frames["assignment"]
+            return np.sort(frame["row_id"].to_numpy(dtype="int64"))
+        return cohort_ids
+
     def _before_frame(self, pid: str, ctx: consequences.PreviewContext,
                       stages: dict[str, StageStatus], used: dict[str, int]) -> Any:
         """The sampled working frame: the columns the models would get now, on sampled pool rows."""
@@ -754,7 +788,8 @@ class ProjectService:
                    or [c for c in order if c != state.target])
         n = max(200, min(ctx.sample_size, PREVIEW_CELLS // max(1, len(columns))))
         pool_key = tuple((stages[s].key, stages[s].status) for s in ("split", "cohort") if s in stages)
-        key = (pid, str(store.parquet), pool_key, tuple(columns), n)
+        # The pool is purpose-scoped (training rows, or every analyzed row under inference).
+        key = (pid, str(store.parquet), pool_key, ctx.training_kind, tuple(columns), n)
         with self._lock:
             frame = self._frames.get(key)
             if frame is not None:

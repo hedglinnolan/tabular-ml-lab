@@ -294,7 +294,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
 
     ctx.progress(0.05, "Reading the analysis rows and each person's recalls")
     with open_store(ctx) as store:
-        frame = modeling_frame(store, [*spec.inputs, state.target], rows)
+        frame = modeling_frame(store, [*spec.inputs, state.target], rows, outcome=state.target)
     y = coded_outcome(task, frame[state.target].to_numpy(), state.event)
     X = frame[list(spec.inputs)]
     raw_columns = list(dict.fromkeys([*spec.inputs, *([energy] if energy else [])]))

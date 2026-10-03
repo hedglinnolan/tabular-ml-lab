@@ -133,8 +133,9 @@ def estimate_fits(store: Any, state: Any, task: str, train_ids: Any, families: S
     chosen = (sorted(rng.choice(n_columns, size=columns, replace=False).tolist())
               if columns < n_columns else list(range(n_columns)))
     sampled = [predictors[i] for i in chosen]
-    # read as the fit stage reads them (booleans as 0/1, the named event coded 1)
-    frame = modeling_frame(store, [*sampled, target], sample_ids)
+    # read as the fit stage reads them (boolean inputs as 0/1, the outcome as spelled, the named
+    # event coded 1)
+    frame = modeling_frame(store, [*sampled, target], sample_ids, outcome=target)
     frame = frame.loc[frame[target].notna()]
     if not len(frame):
         return out

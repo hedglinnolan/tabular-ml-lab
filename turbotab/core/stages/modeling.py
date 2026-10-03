@@ -110,13 +110,23 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
     predictors = list(data.get("predictors") or predictors_from_roles(ctx.state.roles, ctx.state.target))
     n = int(data["n_final"])
     rows = row_ids_of(cohort.frames["rows"]) if isinstance(cohort, Bundle) and "rows" in cohort.frames else None
-    # The shelf informs a modeling choice made after the seal, so it reads the training rows only
-    # (M2_CONTRACT §3, the held-out discipline audit): never the held-out rows' outcomes.
+    # Under prediction the shelf informs a modeling choice made after the seal, so it reads the
+    # training rows only (M2_CONTRACT §3, the held-out discipline audit): never the held-out rows'
+    # outcomes. Under inference the seal is a prediction concept (BLUEPRINT §12 ruling 3): the
+    # coefficient table is estimated from every analyzed row, so its sample-size criteria and the
+    # basis line count those rows (the methods gate: "Ranked for 2,400 training rows … 526 with the
+    # event" beside a table from 3,000).
     split = ctx.inputs.get("split")
+    inference = ctx.state.purpose == "inference"
     trained = rows is not None and split is not None
+    train_rows = rows
     if trained:
         assignment = read_assignment(split)
-        rows = np.intersect1d(rows, assignment.index[assignment["train"]].to_numpy())
+        train_rows = np.intersect1d(rows, assignment.index[assignment["train"]].to_numpy())
+        if inference:
+            rows = np.intersect1d(rows, assignment.index.to_numpy())
+        else:
+            rows = train_rows
         n = int(len(rows))
     n_events = n_classes = n_units = None
     outcome_mean = outcome_sd = None
@@ -153,11 +163,14 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
                           lenses=tuple(ctx.state.lens or ()), class_counts=class_counts,
                           n_units=n_units)
     ranked = rank(situation)
-    # WP11: raw counts or intensities whose totals track the outcome, on the training rows only
+    # WP11: raw counts or intensities whose totals track the outcome, on the same rows (the
+    # training rows under prediction, every analyzed row under inference)
     assay = _assay_concern(ctx, task, rows if trained else None)
     events = ("" if n_events is None else f", {n_events:,} with the event" if task == "time_to_event"
               else f", {n_events:,} in the rarer class")
-    estimates = _estimates(ctx, task, rows if trained else None, [f for f, _ in ranked])
+    # Each family's fit time is measured on the training rows, which cross-validation fits on.
+    estimates = _estimates(ctx, task, train_rows if trained else None, [f for f, _ in ranked])
+    rows_word = ("analyzed " if inference else "training ") if trained else ""
     artifact = ShelfArtifact(
         families=[
             ShelfFamily(key=f.key, label=f.label, rank=i + 1, fit=a.fit,
@@ -167,7 +180,7 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
                         estimate=estimates[f.key].text if estimates.get(f.key) else None)
             for i, (f, a) in enumerate(ranked)
         ],
-        basis=f"Ranked for {n:,} {'training ' if trained else ''}rows and {len(predictors):,} "
+        basis=f"Ranked for {n:,} {rows_word}rows and {len(predictors):,} "
               f"predictors{_terms_clause(terms, len(predictors))}{events}.",
     )
     return artifact.model_dump(mode="json")
@@ -191,14 +204,15 @@ def predictor_parameters(predictors: Sequence[str], column_info: Mapping[str, An
     return total
 
 
-def _assay_concern(ctx: StageContext, task: str, train_ids: Any) -> str | None:
-    """The library-size check (``methods.omics.check_on``) on the training rows: a sentence when the
+def _assay_concern(ctx: StageContext, task: str, row_ids: Any) -> str | None:
+    """The library-size check (``methods.omics.check_on``) on the shelf's rows: a sentence when the
     exposures are raw counts or intensities, no normalization is recorded, and their per-sample
-    totals track the outcome. Never reads a held-out row."""
+    totals track the outcome. Under prediction those are the training rows and it never reads a
+    held-out row; under inference every analyzed row, as the coefficient table (ruling 3)."""
     from turbotab.core.methods.omics import OMICS_LENSES, check_on
 
     state = ctx.state
-    if train_ids is None or not len(train_ids) or not state.target:
+    if row_ids is None or not len(row_ids) or not state.target:
         return None
     if not any(k in OMICS_LENSES for k in state.lens or []):
         return None
@@ -207,10 +221,11 @@ def _assay_concern(ctx: StageContext, task: str, train_ids: Any) -> str | None:
         return None
     with open_store(ctx) as store:
         present = [c for c in exposures if c in set(store.columns)]
-        frame = store.materialize([*present, state.target], train_ids)
+        frame = store.materialize([*present, state.target], row_ids)
     frame = frame.loc[frame[state.target].notna()]
     y = coded_outcome(task, frame[state.target].to_numpy(), state.event)
-    check = check_on(frame[present], state, y, task)
+    rows = "analyzed rows" if state.purpose == "inference" else "training rows"
+    check = check_on(frame[present], state, y, task, rows)
     return check["sentence"] if check and check["flagged"] else None
 
 
@@ -320,15 +335,25 @@ def design_stage(ctx: StageContext) -> Bundle:
                              f"a predictor: give it the role time.")
     assignment = read_assignment(ctx.inputs["split"])
     train_ids = assignment.index[assignment["train"]].to_numpy()
+    # The rows the design describes: under inference every analyzed row, held-out ones included,
+    # because the coefficient table beside it is estimated from all of them (BLUEPRINT §12 ruling
+    # 3; the methods gate: the log residual's printed elasticity, the residual gap and the energy
+    # step's warnings were the training rows' while the table was every row's). Under prediction
+    # the training rows, where everything the held-out score depends on is learned. The pipelines
+    # themselves are unfitted templates either way; the fit stage fits them on the rows each use
+    # needs (cross-validation on training folds, the table on every analyzed row).
+    inference = state.purpose == "inference"
+    design_ids = assignment.index.to_numpy() if inference else train_ids
+    rows_word = "analyzed rows" if inference else "training rows"
     adj = state.energy_adjustment
-    ctx.progress(0.05, "Reading the training rows")
-    y_train = None
+    ctx.progress(0.05, f"Reading the {rows_word}")
+    y_rows = None
     with open_store(ctx) as store:
-        X = modeling_frame(store, input_columns(predictors, adj), train_ids)
+        X = modeling_frame(store, input_columns(predictors, adj), design_ids)
         info = {c.name: c for c in store.info().columns}  # every row's summary: as the cohort reads it
         if adj is not None and adj.method == "residual_energy_dropped" and state.target in store.columns:
-            # The gap the energy-dropped residual opens on these training rows (audit ME-03).
-            y_train = store.materialize([state.target], train_ids)[state.target]
+            # The gap the energy-dropped residual opens on these rows (audit ME-03).
+            y_rows = store.materialize([state.target], design_ids)[state.target]
     spec = design_spec(state, X, predictors, column_info=info)
     from turbotab.core.methods.omics import design_refusal
 
@@ -337,16 +362,16 @@ def design_stage(ctx: StageContext) -> Bundle:
         raise ValueError(refused)
     numeric_set = set(spec.numeric)  # a set: 20,000 predictors made the list test quadratic
     numeric = [c for c in spec.predictors if c in numeric_set]
-    nested = nested_components(X, numeric)  # on training rows: what the substitution will move
+    nested = nested_components(X, numeric)  # on the design's rows: what the substitution will move
     warnings_list = warnings_for(spec, X, [f.key for f in families], {f.key: f for f in families},
-                                 nested)
+                                 nested, rows_word=rows_word)
 
-    ctx.progress(0.3, "Fitting the shared steps on training rows")
+    ctx.progress(0.3, f"Fitting the shared steps on the {rows_word}")
     shared = transformer(shared_steps(spec))
     matrix = shared.fit_transform(X[spec.inputs])
     lineage = trace(shared.steps, spec.inputs, spec.roles, missing_counts(X[spec.inputs]))
     if "energy" in shared.named_steps:
-        warnings_list.extend(_energy_warnings(shared.named_steps["energy"]))
+        warnings_list.extend(_energy_warnings(shared.named_steps["energy"], rows_word))
     # The estimand and each coefficient's meaning, read off the matrix the models will see: the
     # label equals the model fitted (audit WP6; methods.energy.describe_model).
     from turbotab.core.methods.energy import describe_model, total_energy_columns
@@ -371,12 +396,15 @@ def design_stage(ctx: StageContext) -> Bundle:
                 f"{role}, so each nutrient's coefficient is at fixed total energy (the standard "
                 f"model), not an absolute intake. Give {c} the energy role to choose the energy "
                 f"model, or leave it out for the unadjusted one.")
-    if y_train is not None:
-        warnings_list.extend(_residual_gap(state, task, spec, X, matrix, y_train, info))
+    if y_rows is not None:
+        warnings_list.extend(_residual_gap(state, task, spec, X, matrix, y_rows, info, rows_word))
 
     ctx.progress(0.8, "Building each model's pipeline")
     n_rows, n_cols = int(matrix.shape[0]), int(matrix.shape[1])
-    pipelines = {f.key: build_pipeline(spec, f, task, state.purpose, n_rows, n_cols) for f in families}
+    # A family sizes its own choices (elastic net's inner folds) for the rows cross-validation
+    # trains on, under either purpose.
+    n_train = int(len(train_ids))
+    pipelines = {f.key: build_pipeline(spec, f, task, state.purpose, n_train, n_cols) for f in families}
     models = [{"family": f.key, "label": f.label,
                "steps": describe_steps(spec, f, task, state.purpose, n_cols)} for f in families]
     totals = [*([adj.energy_column] if adj is not None and adj.energy_column else []),
@@ -406,8 +434,9 @@ def _coef(value: float) -> str:
 
 
 def _residual_gap(state: Any, task: str, spec: Any, X: pd.DataFrame, matrix: pd.DataFrame,
-                  y: Any, info: Mapping[str, Any]) -> list[str]:
-    """The energy-dropped residual against the standard model, on the training rows (ME-03).
+                  y: Any, info: Mapping[str, Any], rows_word: str = "training rows") -> list[str]:
+    """The energy-dropped residual against the standard model, on the design's rows (ME-03):
+    every analyzed row under inference, as the coefficient table beside it, else the training rows.
 
     The model kept with total energy is the residual with energy (identical to the standard
     model's coefficient); both are fit with the same family of least squares or logistic
@@ -432,14 +461,15 @@ def _residual_gap(state: Any, task: str, spec: Any, X: pd.DataFrame, matrix: pd.
     E = adj.energy_column
     out = []
     for g in sorted(gaps, key=lambda g: -abs(g["dropped"] - g["standard"]))[:3]:
-        out.append(f"{E} left the outcome model: on {g['n_rows']:,} training rows "
+        out.append(f"{E} left the outcome model: on {g['n_rows']:,} {rows_word} "
                    f"{g['nutrient']}'s coefficient is {_coef(g['dropped'])}, against "
                    f"{_coef(g['standard'])} with {E} kept (the standard model's). The two agree "
                    f"only when no covariate correlates with {E}.")
     return out
 
 
-def _energy_warnings(step: Any) -> list[str]:
+def _energy_warnings(step: Any, rows_word: str = "training rows") -> list[str]:
+    """The energy step's plain statements, on the rows it was fit on (``rows_word``)."""
     out = []
     adjuster = getattr(step, "pooled_", step)
     other = getattr(adjuster, "params_", {}).get("__other__")
@@ -453,19 +483,20 @@ def _energy_warnings(step: Any) -> list[str]:
                 and median is not None and median > -PARTITION_SLACK):
             # Slightly negative only: the general factors' own error, said as such.
             typical = f"{median:+.1%}".replace("-", "−")
-            out.append(f"kcal_from_other is slightly negative on {n:,} of {of:,} training rows "
+            out.append(f"kcal_from_other is slightly negative on {n:,} of {of:,} {rows_word} "
                        f"(median {typical} of total energy): the general Atwater factors (4, 4, 9 "
                        f"kcal/g) run a little above this table's own, and everything else absorbs "
                        f"the difference.")
         else:
-            out.append(f"{n:,} training row{'s' if n != 1 else ''} get a negative kcal_from_other: "
+            row = rows_word if n != 1 else rows_word[:-1]
+            out.append(f"{n:,} {row} get{'s' if n == 1 else ''} a negative kcal_from_other: "
                        f"the chosen nutrients carry more energy than the recorded total.")
     for n, p in getattr(adjuster, "params_", {}).items():
         if n != "__other__" and isinstance(p, Mapping) and p.get("r2") is not None and p["r2"] < 0.05:
             out.append(f"Energy explains {p['r2']:.0%} of {n}'s variation, so adjusting it barely "
                        f"changes it.")
     # Within strata: the levels too small for a slope of their own (StratifiedEnergyAdjuster).
-    out.extend(step.notes() if hasattr(step, "notes") else [])
+    out.extend(step.notes(rows_word) if hasattr(step, "notes") else [])
     return out
 
 
@@ -576,7 +607,8 @@ def ranking_phrase(metric: str) -> str:
         f"{'highest' if higher_is_better(metric) else 'lowest'} {LABELS.get(metric, metric)}")
 
 
-def imbalance_sentence(task: str, y: Any, event: str | None) -> str | None:
+def imbalance_sentence(task: str, y: Any, event: str | None,
+                       rows_word: str = "training rows") -> str | None:
     """A binary outcome's event share, and why nothing was resampled (audit E15; BLUEPRINT north
     star 5: "SMOTE versus calibration-preserving weighting"). Van den Goorbergh et al. (JAMIA
     2022;29:1525): "The use of random undersampling, random oversampling, or SMOTE yielded poorly
@@ -591,7 +623,7 @@ def imbalance_sentence(task: str, y: Any, event: str | None) -> str | None:
     else:  # no event named: the rarer class
         values, counts = np.unique(y.astype(str), return_counts=True)
         name, share = f"The rarer class, `{values[counts.argmin()]}`,", float(counts.min() / len(y))
-    return (f"{name} is {share:.0%} of the training rows. No resampling (SMOTE, over- or "
+    return (f"{name} is {share:.0%} of the {rows_word}. No resampling (SMOTE, over- or "
             f"undersampling) or class weighting was applied: customary in machine-learning "
             f"papers, resampling overestimates the rarer class's probability without raising the "
             f"AUC (van den Goorbergh et al. 2022); a decision moves the threshold instead.")
@@ -623,7 +655,9 @@ def coded_outcome(task: str | None, y: Any, event: str | None,
 
     The event is never guessed (M2_CONTRACT §1), and its methods sentence says that level was
     coded 1; the models, their metrics and coefficients must then be about that level, not about
-    whichever level sorts last. Unchanged when there is no event or it is not a level here.
+    whichever level sorts last. Unchanged when there is no event or it is not a level here, except
+    that a True/False outcome is then coded True = 1 (an estimator types a 0/1 array, not one of
+    Python booleans; ``outcome_levels`` names the codes ``True`` and ``False``).
 
     An ordinal outcome becomes the codes 0…K − 1 of its order (``order``, the declared one; numbers
     by value), so every family and metric reads the levels in that order (WP12a).
@@ -632,34 +666,46 @@ def coded_outcome(task: str | None, y: Any, event: str | None,
         from turbotab.core.models.ordinal import ordinal_outcome
 
         return ordinal_outcome(y, order)[0]
-    if task not in ("binary", "time_to_event") or event is None:
+    if task not in ("binary", "time_to_event"):
         return y
-    from turbotab.core.stages.rows import _level_key
+    if event is not None:
+        from turbotab.core.stages.rows import _level_key
 
-    hit = pd.Series(np.asarray(y, dtype=object)).map(_level_key).to_numpy() == _level_key(event)
-    return hit.astype(int) if hit.any() else y
+        hit = pd.Series(np.asarray(y, dtype=object)).map(_level_key).to_numpy() == _level_key(event)
+        if hit.any():
+            return hit.astype(int)
+    values = np.asarray(y)
+    if values.dtype == bool:
+        # A True/False outcome with no event named among its levels: True is 1, as every family
+        # and metric reads a 0/1 outcome (``modeling_frame`` keeps the outcome's own booleans).
+        return values.astype(int)
+    return y
 
 
 def outcome_levels(task: str | None, y: Any, event: str | None) -> dict[Any, Any] | None:
     """Each class as the models hold it, mapped to its level as the data spell it.
 
     A binary or time-to-event outcome whose event was named is coded 1 for that level and 0 for
-    the other (:func:`coded_outcome`); otherwise the models hold the levels themselves. None for
-    regression.
+    the other (:func:`coded_outcome`), each named by its one spelling (``_level_key``: the event as
+    ``set_event`` names it and its methods sentence prints it; ``True``, not ``1.0``), so every
+    caption names the declared level. A True/False outcome with no event named among its levels is
+    coded True = 1. Otherwise the models hold the levels themselves. None for regression.
     """
     if task not in ("binary", "multiclass", "time_to_event"):
         return None
     values = [v for v in pd.unique(pd.Series(np.asarray(y, dtype=object))) if not pd.isna(v)]
-    coded = coded_outcome(task, y, event)
-    if coded is y:
+    if task == "multiclass":
         return {v: v for v in values}
     from turbotab.core.stages.rows import _level_key
 
-    key = _level_key(event)
-    hit = [v for v in values if _level_key(v) == key]
-    others = [v for v in values if _level_key(v) != key]
-    reference = others[0] if len(others) == 1 else (" or ".join(str(o) for o in others) or None)
-    return {1: hit[0], 0: reference}
+    key = _level_key(event) if event is not None else None
+    if key is not None and any(_level_key(v) == key for v in values):
+        others = [_level_key(v) for v in values if _level_key(v) != key]
+        reference = others[0] if len(others) == 1 else (" or ".join(others) or None)
+        return {1: key, 0: reference}
+    if values and all(isinstance(v, (bool, np.bool_)) for v in values):
+        return {1: "True", 0: "False"}
+    return {v: v for v in values}
 
 
 def _accepts(fn: Any, name: str) -> bool:
@@ -1014,7 +1060,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
         unit_columns = (cluster_columns(state, store.columns, [grouped_by])
                         if inference or unit_models else [])
         columns += [c for c in unit_columns if c not in columns]
-        frame = modeling_frame(store, columns, assignment.index.to_numpy())
+        frame = modeling_frame(store, columns, assignment.index.to_numpy(), outcome=target)
     train = assignment["train"].to_numpy()
     y_all = frame[target]
     if y_all.isna().any():
@@ -1336,6 +1382,10 @@ def fit_stage(ctx: StageContext) -> Bundle:
     ctx.progress(1.0, "Done")
     n_holdout = int((~train).sum())
     comparisons = family_differences(task, results, summaries, labels) if len(results) > 1 else []
+    # The event's share beside the table: every analyzed row under inference (ruling 3), the
+    # training rows the models learn from under prediction.
+    imbalance = (imbalance_sentence(task, y_tab, state.event, "analyzed rows") if inference
+                 else imbalance_sentence(task, y, state.event))
     artifact = FitArtifact(task=task, primary_metric=PRIMARY[task], metric_labels=metric_labels(task),
                            n_train=int(train.sum()), n_holdout=n_holdout, models=models,
                            holdout_sealed=n_holdout > 0, fold_scheme=scheme,
@@ -1343,8 +1393,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                            repeats=len(fold_columns), ranking=ranking_phrase(primary),
                            se_definition=SE_DEFINITION, comparisons=comparisons,
                            precision=precision_sentence(primary, summaries, labels, int(train.sum())),
-                           imbalance=imbalance_sentence(task, y, state.event), selection=selection,
-                           levels=levels)
+                           imbalance=imbalance, selection=selection, levels=levels)
     frames = {SEALED_SCORES: sealed_scores_frame(models, sealed)} if n_holdout else {}
     if n_holdout and sealed_detail:
         frames[SEALED_DETAIL] = sealed_detail_frame(sealed_detail)
@@ -1559,7 +1608,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                         and grouped_by != target else [])
     with open_store(ctx) as store:
         # Every row the models were fit on: the band's refits resample them all.
-        fit_frame = modeling_frame(store, [*spec.inputs, *extra], all_train)
+        fit_frame = modeling_frame(store, [*spec.inputs, *extra], all_train, outcome=target)
     X_fit = fit_frame[spec.inputs]
     curve_rows = X_fit.index.get_indexer(pd.Index(train_ids))
     X = X_fit.iloc[curve_rows]

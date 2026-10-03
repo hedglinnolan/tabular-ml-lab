@@ -86,14 +86,32 @@ def model_predictors(state: ProjectState) -> list[str]:
     return predictors_from_roles(state.roles, state.target, left_out(state))
 
 
-def modeling_frame(store: Any, columns: Sequence[str], row_ids: Any) -> pd.DataFrame:
+def modeling_frame(store: Any, columns: Sequence[str], row_ids: Any, *,
+                   outcome: str | None = None) -> pd.DataFrame:
     """The raw inputs, as every modeling stage and preview reads them.
 
     Booleans become 0/1 floats (missing stays missing); text stays object with ``NaN`` for
     missing, which is what scikit-learn's imputer and encoder recognize.
+
+    ``outcome`` (the target) keeps the values the table spells: it is never a model input, and its
+    event is named by one of those levels (``set_event``). A True/False outcome turned into 1.0 and
+    0.0 matched no declared level, so the event was not coded and every caption read "`1.0` against
+    `0.0`" (the methods gate, item D); declared False, the model would have estimated the odds of
+    True under a sentence saying False was coded 1.
     """
     frame = store.materialize(list(columns), row_ids)
-    return normalize_frame(frame)
+    if outcome is None or outcome not in frame.columns:
+        return normalize_frame(frame)
+    out = normalize_frame(frame.drop(columns=[outcome]))
+    values = frame[outcome]
+    if pd.api.types.is_bool_dtype(values) and not values.isna().any():
+        # True and False as booleans (an estimator reads a bool array as two classes; an object
+        # array of bools it cannot type).
+        values = pd.Series(values.to_numpy(dtype=bool), index=frame.index, name=outcome)
+    elif not pd.api.types.is_numeric_dtype(values) or pd.api.types.is_bool_dtype(values):
+        values = values.astype(object).where(values.notna(), np.nan)
+    out.insert(list(frame.columns).index(outcome), outcome, values)
+    return out
 
 
 def normalize_frame(frame: pd.DataFrame) -> pd.DataFrame:
@@ -580,10 +598,12 @@ def detect_detail(spec: DesignSpec) -> str:
 
 def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[str],
                  families_by_key: Mapping[str, ModelFamily],
-                 nested: Mapping[str, str] | None = None) -> list[str]:
+                 nested: Mapping[str, str] | None = None,
+                 rows_word: str = "training rows") -> list[str]:
     """Plain statements about the design a reader should know before trusting the results.
 
-    ``nested``: child -> parent among the predictors (``turbotab.core.methods.nesting``).
+    ``nested``: child -> parent among the predictors (``turbotab.core.methods.nesting``);
+    ``rows_word`` names ``frame``'s rows (every analyzed row under inference).
     """
     from turbotab.core.methods.energy import nutrient_role
     from turbotab.core.methods.nesting import parts_of
@@ -648,7 +668,7 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
                       if not families_by_key[k].handles_missing]
             if cannot:
                 raise ValueError(
-                    f"{n_bad:,} training rows have a missing predictor value and no missing-values "
+                    f"{n_bad:,} {rows_word} have a missing predictor value and no missing-values "
                     f"strategy was chosen; {', '.join(cannot)} cannot use them. Choose complete "
                     f"cases or imputation first.")
     return out

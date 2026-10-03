@@ -1150,10 +1150,15 @@ def _set_event(d: Any, state: Any, ctx: Any) -> str:
 
 @register_sentence("set_follow_up")
 def _set_follow_up(d: Any, state: Any, ctx: Any) -> str:
-    # The validator refuses a follow-up beside any other task; should one stand anyway, the
-    # sentence does not claim a time-to-event analysis the fit never made.
+    # The validator refuses a follow-up beside any other task, and while the task is not settled;
+    # should one stand anyway, the sentence does not claim a time-to-event analysis the fit never
+    # made. Only a recorded answer makes an outcome a time to event (detection never does), so
+    # the claim needs that answer, not merely the absence of a detected task (the gate's race).
     task = getattr(state, "task", None) or _get(ctx, "detected_task")
-    if task is not None and task != "time_to_event":
+    if task is None:
+        return (f"A follow-up time {tick(d.time_column)} was named for {tick(d.column)}; it is used "
+                f"only if the outcome is analyzed as a time to event, which was not yet declared")
+    if task != "time_to_event":
         return (f"A follow-up time {tick(d.time_column)} was named for {tick(d.column)}, but the "
                 f"outcome is analyzed as a {tick(task)} task, so the follow-up is not used")
     text = (f"{tick(d.column)} was analyzed as a time to event, each row followed until "

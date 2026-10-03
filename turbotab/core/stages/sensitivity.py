@@ -311,7 +311,7 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
         every = np.unique(np.concatenate([r for r in rows_by if r is not None] or [np.empty(0, np.int64)]))
         columns = list(dict.fromkeys([*spec.inputs, target, *unit_columns, *follow_up,
                                       *[c for a in analyses for r in a["rules"] for c in r.reads()]]))
-        frame = modeling_frame(store, columns, every)
+        frame = modeling_frame(store, columns, every, outcome=target)
 
     # The outcome as the fit stage codes it: the event as 1, an ordinal outcome's declared order
     # (WP12a), a time-to-event outcome with its follow-up (WP12b), named for the table's scale (WP8).

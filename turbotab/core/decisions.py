@@ -1232,16 +1232,28 @@ def _follow_up_belongs_to_the_outcome(decision: SetFollowUp, ctx: Any) -> None:
                 exits=[{"label": f"Answer the follow-up question for `{target}`", "decision": None}])
     # A follow-up is read only by a time-to-event model: recorded beside a yes/no task, the record
     # would say the outcome "was analyzed as a time to event" over a logistic fit (the verifier's
-    # RO-03 repro). The task, answered or detected, must be time to event first.
-    task = _ctx(ctx, "task")
+    # RO-03 repro). The task must be time to event first, and only an answer makes it one:
+    # detection reads a 0/1 column as binary and never as a time to event
+    # (``stages.target.target_info_stage``). So the recorded answer decides, and while none is
+    # recorded the follow-up is refused whether detection has finished or not (the gate's race:
+    # posted before ``target_info`` was fresh, the task read as None and the follow-up was
+    # accepted, then the task step was skipped as binary and the fit was logistic).
     state = _state(ctx)
-    if task is None and state is not None:
-        task = getattr(state, "task", None)
-    if task is not None and task != "time_to_event":
+    answered = getattr(state, "task", None) if state is not None else None
+    task = answered if answered is not None else _ctx(ctx, "task", _UNKNOWN)
+    if task is _UNKNOWN and state is not None:
+        task = None  # the state is known and holds no answer: the task is not settled
+    if task is not _UNKNOWN and task != "time_to_event":
+        if task is None:
+            message = (f"`{decision.column}`'s task is not settled yet, and only a time-to-event "
+                       f"model reads a follow-up time; a yes/no column is read as binary unless it "
+                       f"is declared a time to event. Analyze it as a time to event first.")
+        else:
+            message = (f"`{decision.column}` is analyzed as a {str(task).replace('_', '-')} outcome, "
+                       f"and only a time-to-event model reads a follow-up time. Analyze it as a "
+                       f"time to event first.")
         raise Refusal(
-            "not_time_to_event",
-            f"`{decision.column}` is analyzed as a {str(task).replace('_', '-')} outcome, and only a "
-            f"time-to-event model reads a follow-up time. Analyze it as a time to event first.",
+            "not_time_to_event", message,
             exits=[{"label": f"Analyze `{decision.column}` as a time to event",
                     "decision": SetTask(column=decision.column, task="time_to_event")},
                    {"label": f"Keep `{decision.column}` as it is, without a follow-up",
@@ -1790,16 +1802,31 @@ def _substitution_has_every_energy_source(decision: SetSubstitution, ctx: Any) -
 
     A substitution curve with only some energy sources in the model is confounded through the
     implicit "other" composite total energy carries (Tomova, Gilthorpe & Tennant 2022). Above
-    :data:`~turbotab.core.methods.energy.MAX_OMITTED_SHARE` of total energy on average, on the
-    rows outside the held-out set, the swap is refused with its exits: add the missing sources to
-    the model, or keep it with the recorded attestation that the curve carries their confounding.
-    Under prediction the curve is a model contrast and the substitution artifact states the
-    concern instead.
+    :data:`~turbotab.core.methods.energy.MAX_OMITTED_SHARE` of total energy on average, on every
+    analyzed row (BLUEPRINT §12 ruling 3: under inference no row is sealed from the estimate), the
+    swap is refused with its exits: add the missing sources to the model, or keep it with the
+    recorded attestation that the curve carries their confounding. Under prediction the curve is a
+    model contrast and the substitution artifact states the concern instead.
+
+    Shares of energy (``fat_pct_kcal``) sum to 100%, so they cannot all be in the model beside its
+    intercept: the field's model in percent of energy leaves exactly one source out as the
+    reference, and each coefficient is a point of energy from its source in place of that one (Hu
+    et al. 1997; NUTRITION_PACK §05, "all components except one, plus total energy"). So, for
+    shares (the methods gate, item C):
+
+    * every share in the model, summing to 100% on every row, leaves no reference (a rank-deficient
+      model): refused, with one exit per source that could be left out as the reference;
+    * one named source left out, with nothing beyond it (the shares with it sum to within
+      ``MAX_OMITTED_SHARE`` of 100%), is that leave-one-out model: accepted, whatever the reference's
+      own share;
+    * two or more left out: the exits add the rest *but one*, one exit per choice of reference,
+      never every share.
     """
     import numpy as np
 
     from turbotab.core.methods.energy import MAX_OMITTED_SHARE, energy_factor, nutrient_role, omitted_energy
-    from turbotab.core.methods.nesting import nested_components
+    from turbotab.core.methods.nesting import compositions, nested_components
+    from turbotab.core.methods.percent_energy import is_percent_of_energy
 
     state = _state(ctx)
     if state is None or state.purpose != "inference" or decision.acknowledged:
@@ -1817,20 +1844,17 @@ def _substitution_has_every_energy_source(decision: SetSubstitution, ctx: Any) -
     exposures = [c for c, r in roles.items() if r == "exposure" and c not in gone]
     if store is None or E is None or E not in store.columns:
         return
-    pool = np.arange(int(store.n_rows), dtype=np.int64)
-    sealed_of = _ctx(ctx, "sealed")
-    sealed = sealed_of() if callable(sealed_of) else None
-    if sealed is not None and len(sealed):
-        pool = np.setdiff1d(pool, np.asarray(sealed, dtype=np.int64), assume_unique=True)
+    # Every analyzed row when the project knows them (the split's rows on both sides of the seal),
+    # else every row: under inference the estimate reads held-out rows too (ruling 3).
+    analyzed_of = _ctx(ctx, "analyzed")
+    try:
+        analyzed = analyzed_of() if callable(analyzed_of) else None
+    except Exception:  # noqa: BLE001 - not known yet: every row
+        analyzed = None
+    pool = (np.asarray(analyzed, dtype=np.int64) if analyzed is not None and len(analyzed)
+            else np.arange(int(store.n_rows), dtype=np.int64))
     if len(pool) > OMITTED_CHECK_ROWS:
         pool = np.sort(np.random.default_rng(0).choice(pool, size=OMITTED_CHECK_ROWS, replace=False))
-    present = [c for c in exposures if c in store.columns]
-    frame = store.materialize([E, *present], pool)
-    nested = nesting_of(ctx) or nested_components(frame, present)
-    reading = omitted_energy(frame, E, present, nested=nested)
-    share = None if reading is None else reading["mean_share"]
-    if share is None or share <= MAX_OMITTED_SHARE:
-        return
 
     def source(column: str) -> str | None:
         try:
@@ -1838,33 +1862,86 @@ def _substitution_has_every_energy_source(decision: SetSubstitution, ctx: Any) -
         except ValueError:
             return None
 
-    from turbotab.core.methods.percent_energy import is_percent_of_energy
+    target = getattr(state, "target", None)
+    present = [c for c in exposures if c in store.columns]
+    # The table's other share-of-energy columns, by source: the candidates for a reference.
+    spare_shares = [c for c in store.columns if c not in exposures and c not in (E, target)
+                    and roles.get(c) != "energy" and is_percent_of_energy(c)]
+    frame = store.materialize(list(dict.fromkeys([E, *present, *spare_shares])), pool)
+    base = decision.model_dump(exclude={"kind"})
+    another = {"label": "Choose another swap", "decision": None}
+    moved = (decision.donor, decision.recipient)
 
-    # A missing source is added in the form the model holds its sources: as a share of energy
-    # (``alcohol_pct_kcal``) beside shares, as an amount beside amounts (audit B24).
+    def by_share(columns: Sequence[str]) -> list[str]:
+        """Largest mean share first: the roles stage's reference (``nesting.reference_share``)."""
+        means = {c: float(np.nanmean(frame[c].to_numpy(dtype=float))) for c in columns}
+        return sorted(columns, key=lambda c: (-means[c], c))
+
+    shares_in = [c for c in present if is_percent_of_energy(c)]
+    composed = compositions(frame, shares_in) if len(shares_in) >= 2 else []
+    if composed:
+        candidates = by_share([c for c in composed if c not in moved])
+        raise Refusal(
+            "no_reference_share",
+            f"{_and(composed)} sum to 100% of energy on every row, so beside the intercept each is "
+            f"fixed by the others and the model cannot estimate them all. The field's model leaves "
+            f"one source out as the reference; each coefficient is then a point of energy from its "
+            f"source in place of that one (Hu et al. 1997).",
+            exits=[{"label": f"Leave `{c}` out as the reference",
+                    "decision": SetRoles(roles={**roles, c: "excluded"})} for c in candidates]
+            + [another])
+
+    nested = nesting_of(ctx) or nested_components(frame[present], present)
+    reading = omitted_energy(frame[[E, *present]], E, present, nested=nested)
+    share = None if reading is None else reading["mean_share"]
+    if share is None or share <= MAX_OMITTED_SHARE:
+        return
+
+    # A model holding its sources as shares of energy adds a missing one as a share
+    # (``alcohol_pct_kcal``), a model holding amounts adds an amount (audit B24).
     in_shares = any(is_percent_of_energy(c) for c in reading["columns"])
     in_amounts = any(not is_percent_of_energy(c) for c in reading["columns"]) or not in_shares
+    missing = [s for s in reading["omitted"] if s != "other"]
+    if in_shares and not in_amounts and len(missing) == 1:
+        # The leave-one-out model: the one source left out is the reference, when the shares with
+        # it leave nothing beyond (its column measures that; without one, the remainder stands).
+        reference = [c for c in spare_shares if source(c) == missing[0]]
+        if reference:
+            held = np.zeros(len(frame))
+            for c in [*reading["columns"], reference[0]]:
+                held = held + frame[c].to_numpy(dtype=float) / 100.0
+            beyond = 1.0 - held[np.isfinite(held)]
+            if beyond.size and float(beyond.mean()) <= MAX_OMITTED_SHARE:
+                return
 
     def carries(column: str) -> bool:
         if is_percent_of_energy(column):
             return in_shares
         return in_amounts and energy_factor(column).factor is not None
 
-    target = getattr(state, "target", None)
     addable = [c for c in store.columns if c not in exposures and c not in (E, target)
                and roles.get(c) != "energy" and source(c) in reading["omitted"] and carries(c)]
-    base = decision.model_dump(exclude={"kind"})
     held = _and(reading["columns"]) if reading["columns"] else "no energy source"
-    missing = [s for s in reading["omitted"] if s != "other"]
     named = ", ".join([*missing, "other energy"]) if missing else "other energy"
     exits: list[dict[str, Any]] = []
-    if addable:
+    add_shares = [c for c in addable if is_percent_of_energy(c)]
+    if add_shares and len(add_shares) == len(addable) \
+            and compositions(frame, [*shares_in, *add_shares]):
+        # Every share added would sum to 100%: leave one of them out as the reference.
+        for reference in by_share(add_shares):
+            rest = [c for c in add_shares if c != reference]
+            exits.append({
+                "label": (f"Add {_and(rest)} to the model, with `{reference}` left out as the "
+                          f"reference"),
+                "decision": SetRoles(roles={**roles, **{c: "exposure" for c in rest},
+                                            reference: "excluded"})})
+    elif addable:
         exits.append({"label": f"Add {_and(addable)} to the model",
                       "decision": SetRoles(roles={**roles, **{c: "exposure" for c in addable}})})
     exits += [
         {"label": "Keep this swap; the curve carries their confounding",
          "decision": SetSubstitution(**{**base, "acknowledged": True})},
-        {"label": "Choose another swap", "decision": None},
+        another,
     ]
     raise Refusal(
         "omitted_energy_sources",

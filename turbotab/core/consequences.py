@@ -13,6 +13,9 @@ Rules every builder keeps:
 - **Held-out rows stay sealed.** Once the split exists, anything that informs a modeling choice is
   computed on training rows only (Nolan's ruling, F:GUIDED-096). ``ctx.training_row_ids`` is the
   pool; before the split exists, only row-descriptive previews (exclusions, missing values) run.
+  The seal is purpose-scoped (BLUEPRINT §12 ruling 3, which supersedes the unscoped rule): under
+  inference the pool is every analyzed row (``training_kind == "analyzed"``) and no row is sealed
+  from a preview, as no row is sealed from the coefficient table.
 - **Relevance, not coverage.** Pick the column that changes most, the nutrient most correlated with
   energy, the step that loses most rows — never every column. Wide tables show the affected
   columns only, with a count of the rest.
@@ -318,6 +321,10 @@ class PreviewContext:
     training_row_ids: Any | None  # numpy array once the split exists, else None
     cohort_row_ids: Any | None  # numpy array once the cohort exists, else None
     settings: dict[str, Any] = field(default_factory=dict)
+    # What ``training_row_ids`` are, for the basis line: the training rows under prediction; under
+    # inference every analyzed row (``analyzed``), since the seal is a prediction concept and the
+    # coefficient table is estimated from all of them (BLUEPRINT §12 ruling 3).
+    training_kind: str = "training"
     sample_size: int = 5000
     # Every held-out row of the newest split, current or still recomputing (None: no split yet).
     # Nothing a preview reads may include them (M1_CONTRACT §3), whatever the split's status.
@@ -342,7 +349,7 @@ class PreviewContext:
         if pool is None:
             pool = self.training_row_ids if self.training_row_ids is not None else self.cohort_row_ids
         if pool is self.training_row_ids and pool is not None:
-            kind = "training"
+            kind = self.training_kind
         elif pool is self.cohort_row_ids and pool is not None:
             kind = "cohort"
         elif pool is None:

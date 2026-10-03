@@ -1304,8 +1304,9 @@ class StratifiedEnergyAdjuster(TransformerMixin, BaseEstimator):
                 f"fitting rows, r({n}_adj, {E}) is {_r3(whole['r_adj_energy'])} pooled, {within}; "
                 f"r({n}_adj, {s}) is {_r3(whole['r_adj_strata'])} pooled (correlation ratio).")
 
-    def notes(self) -> List[str]:
-        """Plain statements for the design's warnings: the levels on the pooled slope."""
+    def notes(self, rows_word: str = "training rows") -> List[str]:
+        """Plain statements for the design's warnings: the levels on the pooled slope.
+        ``rows_word`` names the rows the step was fit on (every analyzed row under inference)."""
         check_is_fitted(self, "pooled_")
         by_level: Dict[Tuple[str, str], Dict[str, Any]] = {}
         for n, fits in self.levels_.items():
@@ -1321,7 +1322,8 @@ class StratifiedEnergyAdjuster(TransformerMixin, BaseEstimator):
             rows = entry["rows"]
             why = (f"{self.energy_column} is constant in level {level} of {self.strata}"
                    if reason.startswith("energy") else
-                   f"level {level} of {self.strata} has {rows:,} training row{'s' if rows != 1 else ''}, "
+                   f"level {level} of {self.strata} has {rows:,} "
+                   f"{rows_word if rows != 1 else rows_word[:-1]}, "
                    f"fewer than the {MIN_LEVEL_ROWS} a residual regression of its own needs")
             out.append(f"{why[0].upper()}{why[1:]}, so {who} {verb} adjusted there with the pooled "
                        f"slope, centered on the level's own means.")
@@ -1589,10 +1591,27 @@ def describe_model(adjustment: Any, predictors: Sequence[str], roles: Mapping[st
                 "is a nutrient density, so each coefficient mixes a swap between energy sources "
                 f"with any effect of total energy, an obscure quantity ({_TOMOVA}).")
     elif shares:
+        # The field's model in percent of energy leaves exactly one source out, the reference
+        # (Hu et al. 1997; NUTRITION_PACK §05): the estimand names it, and says so when the model
+        # is not that one (the methods gate, item C).
+        left = [s for s in omitted if s != "other"]
         text += (f" {_and(shares)} {'is a share' if len(shares) == 1 else 'are shares'} of energy: "
-                 "a coefficient is per percentage point of energy, and with every source but one "
-                 "in the model, plus total energy, it is the field's leave-one-out model (Hu et al. "
-                 "1997, NEJM 337:1491).")
+                 "a coefficient is per percentage point of energy.")
+        if len(left) == 1:
+            text += (f" With every source but {left[0]} in the model, plus total energy, it is the "
+                     f"field's leave-one-out model (Hu et al. 1997, NEJM 337:1491), with {left[0]} "
+                     f"as the reference: each coefficient is a point of energy from its source in "
+                     f"place of {left[0]}.")
+        elif left:
+            text += (f" {_and(left)} are left out, so no one source is the reference: each "
+                     f"coefficient is a point of energy in place of their mix, not the field's "
+                     f"leave-one-out model (Hu et al. 1997, NEJM 337:1491), which leaves out one.")
+        else:
+            text += (" Every named source is in the model, so the reference is the energy from no "
+                     "named source; where the shares sum to 100% there is none, and only "
+                     "differences between their coefficients are estimable. The field's "
+                     "leave-one-out model leaves one source out as the reference (Hu et al. 1997, "
+                     "NEJM 337:1491).")
     for parent, kids in groups.items():
         source = next((t.source for t, _ in present if t.column == parent), parent)
         text += (f" {parent} sits beside its own parts {_and(kids)}, so its coefficient is "

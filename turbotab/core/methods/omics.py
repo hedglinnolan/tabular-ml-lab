@@ -654,11 +654,14 @@ def design_normalization(state: Any, inputs: Sequence[str]) -> dict[str, Any] | 
 
 
 def library_size_check(totals: np.ndarray, y: Any, task: str, kind: str = "counts",
-                       target: str = "the outcome", event: Any = None) -> dict[str, Any] | None:
+                       target: str = "the outcome", event: Any = None,
+                       rows: str = "training rows") -> dict[str, Any] | None:
     """Whether the per-sample totals differ with the outcome; a dict with ``test``, ``statistic``,
     ``p``, ``flagged`` and the ``sentence`` to state, or None when it cannot be computed.
 
-    ``totals`` come from the assay values alone. Callers pass training rows only.
+    ``totals`` come from the assay values alone. Callers pass training rows only under
+    prediction; under inference every analyzed row (BLUEPRINT §12 ruling 3), and ``rows`` names
+    them in the sentence.
     """
     from scipy import stats
 
@@ -706,14 +709,16 @@ def library_size_check(totals: np.ndarray, y: Any, task: str, kind: str = "count
     from turbotab.core.models.inference import format_p
 
     out["flagged"] = bool(out["p"] < CHECK_ALPHA)
-    out["sentence"] = (f"{what} tracks `{target}` on the training rows ({said}, p = "
+    out["sentence"] = (f"{what} tracks `{target}` on the {rows} ({said}, p = "
                        f"{format_p(out['p'])}): {reason}.")
     return out
 
 
-def check_on(frame: pd.DataFrame, state: Any, y: Any, task: str) -> dict[str, Any] | None:
+def check_on(frame: pd.DataFrame, state: Any, y: Any, task: str,
+             rows: str = "training rows") -> dict[str, Any] | None:
     """:func:`library_size_check` over the exposures that read as raw counts or intensities in
-    ``frame`` (training rows); None when none do, or when a normalization is recorded."""
+    ``frame`` (``rows``: the training rows, or every analyzed row under inference); None when none
+    do, or when a normalization is recorded."""
     roles = getattr(state, "roles", None) or {}
     exposures = [c for c in frame.columns if roles.get(c) == "exposure"]
     reading = scale_reading(frame, getattr(state, "lens", None), getattr(state, "target", None),
@@ -725,7 +730,7 @@ def check_on(frame: pd.DataFrame, state: Any, y: Any, task: str) -> dict[str, An
         return None  # the totals are divided out of the values the models see
     return library_size_check(reading.totals, y, task, reading.kind,
                               target=str(getattr(state, "target", None) or "the outcome"),
-                              event=getattr(state, "event", None))
+                              event=getattr(state, "event", None), rows=rows)
 
 
 # ── the refusal: linear families wait for a scale ────────────────────────────
