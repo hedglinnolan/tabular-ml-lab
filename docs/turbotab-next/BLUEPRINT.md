@@ -520,3 +520,57 @@ So the invariant moves into the architecture.
 - **The gate checks the invariant structurally.** An independent census of readers and consumers
   must find no consumer reading an unsettled reading. Fresh real-world variants are then the
   confirmation, not the method.
+
+### 14.2 · Ask, don't guess (Nolan, 2026-10-03)
+
+Nolan: *"We can always just ask the user what a specific field means to avoid ambiguity, especially
+if [we] have a pretty good guess to begin with and it is important to the intelligence layer to know
+exactly what the fields are."* This is how the ledger's conservative path behaves:
+
+1. **Ask only where it matters.** The ledger knows which readings feed a number-changing consumer. A
+   column whose meaning changes nothing is never asked about.
+2. **Lead with the guess, confirm in one tap, group by consequence.** One card, "Tell me about these
+   columns", holds each field's best guess, pre-filled with its evidence ("`ALC`: alcohol (g)? Values
+   look like a lab count; r with energy 0.00"), ordered by how much the field changes. A homogeneous
+   family (20,000 genes sharing a name pattern and a value profile) is confirmed as one block.
+   **A block confirmation settles exactly the readings it lists, each with the value it shows.** It
+   never settles a reading it does not list. That is what §14.1 forbids in a bulk confirm.
+3. **Let the codebook answer.** A researcher's data dictionary — a variable/label/unit table, or an
+   NHANES codebook — settles readings in bulk from their own documentation, and the app asks only
+   about what remains. (Codebook import: recommended for v2, pending Nolan's yes.)
+
+### 14.3 · Corroboration must discriminate (2026-10-03)
+
+The fourth gate found that the ledger held, but six readers still settled themselves on evidence that
+fits the alternatives just as well:
+- repeating values read as a subject identifier (a household line number repeats too);
+- a value that varies within units read as time (so does any measurement);
+- "integer, at most 10 levels" read as the only codes worth asking about (FIPS states have 51; a
+  blank turns 1–5 into 1.0–5.0);
+- a label count read as free text (country of birth has 70);
+- `uL` read as U/L;
+- `sex` coded 1/2 read as the CDC coding.
+
+One reader also held a confirmation the fit never read. So the rule for what "corroborate" means is
+now explicit:
+
+- **A kind is settled by its values only when it declares its plausible alternatives and a value test
+  that rejects each of them.** Each alternative has a fixture showing that the test does not settle
+  it. A kind without such a test is settled only by the user or the codebook (§14.2). Names never
+  count as corroboration.
+- **The consumer sets the question's scope, not the reader.** A fit needs code-or-amount settled for
+  every whole-valued predictor, whatever its type or number of levels. Clustering needs the unit
+  settled by the grain answer or the user. Dropping or excluding a column needs its reading settled.
+  A sentence states a unit only once the unit is settled; until then it quotes the header verbatim,
+  which reads nothing into it.
+- **Every confirmation is honored.** For each consumer and each kind it reads, confirming each
+  alternative must produce that alternative's behavior. A confirmation that changes nothing is a
+  defect. Test drivers answer from the fixture's truth, never with a constant.
+- **The gate fails only on the invariant.** A wrong guess that is asked with its evidence visible is
+  working as designed. The gate fails when any of these holds:
+  - a number, default, exclusion, interval, combining rule or claim rests on an unsettled reading;
+  - a confirmation is ignored;
+  - a value test settles a reading that a plausible alternative would also pass.
+
+  The gate also reports how many questions a reference journey asks, so the leash (§11.3) is
+  weighed and not just tightened.
