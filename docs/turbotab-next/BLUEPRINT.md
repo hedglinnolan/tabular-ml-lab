@@ -491,3 +491,32 @@ wrong. A wrong recognition may never silently change a number.**
 evidence visible and confirmed individually, is an accepted limitation, because the user catches it.
 A misrecognition that changes a number without being asked is a failure. Recognizers are measured on
 a growing corpus of real-world exports, and their accuracy is reported, not assumed.
+
+### 14.1 · The readings ledger: the leash as architecture (2026-10-03)
+
+The third intelligence gate showed that the leash cannot be enforced reader by reader. After roles
+were fixed, seven other heuristics still turned a name or a value into a number-changing default
+without asking:
+- an `*_id` read as the grouping identifier;
+- `day1_day2` read as one day;
+- a weight in pounds read as kilograms;
+- an `assessment` column's occasions read as repeats;
+- `bmi_kg` given the unit kg;
+- counts combined as codes;
+- a survey design read by name over the user's confirmed roles.
+
+So the invariant moves into the architecture.
+
+- **Every interpretation the engine makes about the data is a *reading*:** subject (a column or
+  columns), kind (role, unit, day count, code-or-count, identifier-or-cluster, design, outcome unit,
+  repeat kind, …), value, confidence, evidence, and state (proposed or confirmed).
+- **A reading is *settled* when its values corroborate it at high confidence or the user confirmed
+  it.** Confirmation is one reading at a time, never a bulk confirm of uncertain readings.
+- **Every number-changing consumer reads only settled readings.** These consumers are fits,
+  intervals and clusters, screens and exclusions, weights, combining rules, units in sentences, and
+  defaults. When a needed reading is unsettled, the consumer asks, or takes the conservative path:
+  no unit in the sentence, no clustering without a confirmed unit, no screen until the unit is
+  settled.
+- **The gate checks the invariant structurally.** An independent census of readers and consumers
+  must find no consumer reading an unsettled reading. Fresh real-world variants are then the
+  confirmation, not the method.
