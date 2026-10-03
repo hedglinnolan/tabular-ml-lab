@@ -465,3 +465,29 @@ The Router derives order from these relations wherever it can, instead of from a
 The record and the canvas show the chain ("because you chose X, Y now…"). A **chain test** asserts
 that every implied consequence appears in the participant flow, the lineage and the methods
 sentence.
+
+## 14 · Recognition's leash (2026-10-03)
+
+Three rounds of intelligence fixes each closed the variants they were tested on, and each next
+verifier's fresh real-world names opened new failures: `ALC` (a lymphocyte count) read as alcohol,
+BIA `Fat%` as dietary fat, a case–control `patient` 0/1 as an identifier, `kcal_2d` as one day's
+intake. Naming conventions are effectively unbounded, so a recognizer will never be right on every
+table. The orchestrator, as the methods expert, set the standard accordingly. **A recognizer may be
+wrong. A wrong recognition may never silently change a number.**
+
+1. **"High" confidence is earned by values, never by a name alone**, codebook names included. A
+   nutrient's values are plausible as intake and rise with total energy by a meaningful effect
+   (r ≥ 0.3, not merely p < α). An identifier has at least 3 distinct values and a unit structure. A
+   flag is binary and tied to a base column's missingness. A time column varies within units. A
+   name-only reading is "medium" at most, and its reason says so.
+2. **Number-changing defaults are pre-filled only from value-corroborated, user-confirmed roles.**
+   These defaults are the energy-adjustment nutrients, the grouping identifier, the survey weights
+   and the exclusion rules. A medium or low proposal carries an attention marker and needs its own
+   confirmation; it never rides along in a bulk "confirm all".
+3. **Ambiguity that touches a number is asked.** This covers day counts in names, units known only
+   from magnitude, and repeats read from a date that does not vary within units.
+
+**The gate's criterion** follows from this. A misrecognition proposed at medium or low, with its
+evidence visible and confirmed individually, is an accepted limitation, because the user catches it.
+A misrecognition that changes a number without being asked is a failure. Recognizers are measured on
+a growing corpus of real-world exports, and their accuracy is reported, not assumed.
