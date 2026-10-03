@@ -335,8 +335,8 @@ ALSO: dict[int, dict[str, Any]] = {
 }
 
 
-def _presets() -> dict[str, Any]:
-    frame = _dietary()
+def _presets(frame: pd.DataFrame | None = None) -> dict[str, Any]:
+    frame = _dietary() if frame is None else frame
     return build_proposals(frame, _columns(frame), lens=["dietary"], target="ldl",
                            roles={"energy_kcal": "energy", "protein_g": "exposure",
                                   "carbohydrate_g": "exposure", "fat_g": "exposure",
@@ -934,7 +934,9 @@ def test_8_the_sex_specific_presets_are_attributed_and_count_what_pandas_counts(
     de Koning et al. 2011 (HPFS, Diabetes Care 34:1150, PMC3114491): "implausible energy intake
     (<800 or >4200 kcal/day)". Each preset's count is pandas' over the rows with the outcome."""
     frame = _dietary()
-    presets = {p["key"]: p for p in _presets()["exclusions"]}
+    men_at = frame.index[frame["sex"] == "M"][:5]
+    frame.loc[men_at, "energy_kcal"] = 4100.0  # between the two men's upper bounds: they differ here
+    presets = {p["key"]: p for p in _presets(frame)["exclusions"]}
     women, men, e = frame["sex"] == "F", frame["sex"] == "M", frame["energy_kcal"]
     for key, high, name in (("willett_2013_by_sex", 4000, "Willett 2013"),
                             ("nhs_hpfs_by_sex", 4200, "NHS/HPFS")):
@@ -944,7 +946,7 @@ def test_8_the_sex_specific_presets_are_attributed_and_count_what_pandas_counts(
         assert p["label"].startswith(f"{name}, by sex: women 500–3,500 and men 800–{high:,}")
         assert p["rule"]["by"]["ranges"] == {"F": [500.0, 3500.0], "M": [800.0, float(high)]}
         assert int(rule_excludes(frame, d.ExclusionRule.model_validate(p["rule"])).sum()) == int(outside.sum())
-    assert presets["willett_2013_by_sex"]["affected"] >= presets["nhs_hpfs_by_sex"]["affected"]
+    assert presets["willett_2013_by_sex"]["affected"] - presets["nhs_hpfs_by_sex"]["affected"] == 5
     rule = d.ExclusionRule.model_validate(presets["nhs_hpfs_by_sex"]["rule"])
     sentence = voice.sentence_for(d.SetExclusions(rules=[rule]), ProjectState(target="ldl"),
                                   {"frame": frame})
