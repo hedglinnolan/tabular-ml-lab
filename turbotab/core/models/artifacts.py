@@ -339,6 +339,20 @@ class Selection(_Model):
     text: str
 
 
+class AtOpening(_Model):
+    """The held-out scores recorded when the current outcome's seal was first opened: the reported
+    result, whatever is drawn, fitted or opened later (audit WP16, RO-05). Set by the server."""
+
+    seq: int  # the record that opened it
+    family: str | None  # the final model declared at the opening
+    metric: str | None  # the primary metric
+    n_holdout: int | None
+    scores: dict[str, dict[str, float | None]]  # family -> metric -> held-out score
+    # Whether the held-out scores served beside it are these (the same opening, an unchanged fit).
+    current: bool
+    note: str  # one sentence: the reported result, and what the scores shown now are
+
+
 class FitArtifact(_Model):
     """The ``fit`` artifact: cross-validated and held-out performance per model."""
 
@@ -364,6 +378,8 @@ class FitArtifact(_Model):
     # held-out score is the reported result), and the sentence that says so.
     final_model: str | None = None
     final_note: str | None = None
+    # Set by the server: the scores the first opening of this outcome's seal recorded (WP16).
+    at_opening: AtOpening | None = None
     # How the training rows validated the models (the split's answer; audit ME-11, E16).
     validation: Literal["kfold", "repeated_kfold", "bootstrap", "internal_external"] = "kfold"
     repeats: int = 1
@@ -477,7 +493,7 @@ MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
 }
 
 __all__ = [
-    "BandEstimate", "Baseline", "BrantCheck", "BrantColumn", "ExposureTest", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel", "HoldoutDetail",
+    "AtOpening", "BandEstimate", "Baseline", "BrantCheck", "BrantColumn", "ExposureTest", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel", "HoldoutDetail",
     "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "MissingData", "OmittedEnergy", "Selection", "ShelfArtifact", "ShelfFamily",
     "SubstitutionArtifact", "SubstitutionModel", "SubstitutionPair", "SubstitutionSupport",
 ]

@@ -490,7 +490,8 @@ def test_3a_opening_the_seal_needs_a_declared_final_family_whose_holdout_is_the_
     opened = _post(client, pid, {"kind": "open_seal", "family": final})
     assert opened.status_code == 200, opened.text
     record = opened.json()["decisions"][-1]
-    assert record["decision"] == {"kind": "open_seal", "family": final}
+    assert (record["decision"]["kind"], record["decision"]["family"]) == ("open_seal", final)
+    assert record["decision"]["scores"] == sealed  # WP16 (RO-05): the opening keeps its scores
     assert "declared the final model on cross-validation beforehand" in record["sentence"]
     fit = _fit(client, pid)
     assert fit["final_model"] == final
@@ -506,7 +507,7 @@ def test_3a_opening_the_seal_needs_a_declared_final_family_whose_holdout_is_the_
     single = _fitted_project(client, ["linear"])
     assert _post(client, single, {"kind": "open_seal"}).status_code == 200
     record = client.get(f"/api/projects/{single}").json()["decisions"][-1]
-    assert record["decision"] == {"kind": "open_seal", "family": "linear"}
+    assert (record["decision"]["kind"], record["decision"]["family"]) == ("open_seal", "linear")
     assert _fit(client, single)["final_model"] == "linear"
 
 

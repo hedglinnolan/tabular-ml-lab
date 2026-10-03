@@ -84,7 +84,10 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
     case "set_temporal":
       return "temporal";
     case "open_seal":
+    case "reseal":
       return "seal_opened";
+    case "lock_plan":
+      return "plan_locked";
     case "apply_repair":
     case "defer_finding":
     case "dismiss_finding":

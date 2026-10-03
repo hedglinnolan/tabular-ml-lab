@@ -357,7 +357,8 @@ def _the_only_family_is_the_final_one(decision: Any, ctx: Any) -> Any:
     if fit is None:
         return decision
     fitted = [str(m["family"]) for m in fit.get("models") or [] if m.get("family")]
-    return OpenSeal(family=fitted[0]) if len(fitted) == 1 else decision
+    # Every other field the server fills (the seal's scores at the opening, audit WP16) is kept.
+    return decision.model_copy(update={"family": fitted[0]}) if len(fitted) == 1 else decision
 
 
 decisions.register_validator("open_seal", _a_final_model_is_declared)
@@ -407,8 +408,8 @@ def mark_final(out: dict[str, Any], *, opened: bool, family: str | None) -> dict
     for m in models:
         m["role"] = "final" if m is named else "secondary"
     others = len(models) - 1
-    rest = (f"; the other {others} {'family' if others == 1 else 'families'}' held-out scores are "
-            f"secondary" if others else "")
+    rest = ("; the other family's held-out score is secondary" if others == 1 else
+            f"; the other {others} families' held-out scores are secondary" if others else "")
     out["final_note"] = (f"{named.get('label') or family} was declared the final model on "
                          f"cross-validation before the held-out rows were opened, so its held-out "
                          f"{label} is the reported result{rest}.")

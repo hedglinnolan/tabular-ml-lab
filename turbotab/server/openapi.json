@@ -430,6 +430,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/ConfirmReadings"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Reseal-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LockPlan-Input"
                   }
                 ],
                 "discriminator": {
@@ -470,7 +476,9 @@
                     "set_column_unit": "#/components/schemas/SetColumnUnit-Input",
                     "confirm_role": "#/components/schemas/ConfirmRole",
                     "confirm_reading": "#/components/schemas/ConfirmReading",
-                    "confirm_readings": "#/components/schemas/ConfirmReadings"
+                    "confirm_readings": "#/components/schemas/ConfirmReadings",
+                    "reseal": "#/components/schemas/Reseal-Input",
+                    "lock_plan": "#/components/schemas/LockPlan-Input"
                   }
                 },
                 "title": "Decision"
@@ -495,6 +503,59 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/methods": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Methods",
+        "description": "The methods text built from the decision log: the sentences in force, with decisions\nsuperseded before anything was seen folded out, and every change made after the estimates\nwere seen or the held-out rows were opened kept and marked (audit WP16).",
+        "operationId": "methods_api_projects__pid__methods_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MethodsText"
                 }
               }
             }
@@ -778,6 +839,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/ConfirmReadings"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Reseal-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LockPlan-Input"
                   }
                 ],
                 "discriminator": {
@@ -818,7 +885,9 @@
                     "set_column_unit": "#/components/schemas/SetColumnUnit-Input",
                     "confirm_role": "#/components/schemas/ConfirmRole",
                     "confirm_reading": "#/components/schemas/ConfirmReading",
-                    "confirm_readings": "#/components/schemas/ConfirmReadings"
+                    "confirm_readings": "#/components/schemas/ConfirmReadings",
+                    "reseal": "#/components/schemas/Reseal-Input",
+                    "lock_plan": "#/components/schemas/LockPlan-Input"
                   }
                 },
                 "title": "Decision"
@@ -2064,6 +2133,11 @@
             "title": "Post Seal",
             "default": false
           },
+          "after_estimates": {
+            "type": "boolean",
+            "title": "After Estimates",
+            "default": false
+          },
           "decision": {
             "oneOf": [
               {
@@ -2173,6 +2247,12 @@
               },
               {
                 "$ref": "#/components/schemas/ConfirmReadings"
+              },
+              {
+                "$ref": "#/components/schemas/Reseal-Output"
+              },
+              {
+                "$ref": "#/components/schemas/LockPlan-Output"
               }
             ],
             "title": "Decision",
@@ -2185,7 +2265,9 @@
                 "confirm_role": "#/components/schemas/ConfirmRole",
                 "defer_finding": "#/components/schemas/DeferFinding",
                 "dismiss_finding": "#/components/schemas/DismissFinding-Output",
+                "lock_plan": "#/components/schemas/LockPlan-Output",
                 "open_seal": "#/components/schemas/OpenSeal-Output",
+                "reseal": "#/components/schemas/Reseal-Output",
                 "revert": "#/components/schemas/Revert",
                 "select_models": "#/components/schemas/SelectModels",
                 "set_aggregation": "#/components/schemas/SetAggregation-Output",
@@ -2228,6 +2310,7 @@
           "note",
           "sentence",
           "post_seal",
+          "after_estimates",
           "decision"
         ],
         "title": "DecisionRecord"
@@ -2832,6 +2915,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/ConfirmReadings"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Reseal-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LockPlan-Output"
                   }
                 ],
                 "discriminator": {
@@ -2843,7 +2932,9 @@
                     "confirm_role": "#/components/schemas/ConfirmRole",
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Output",
+                    "lock_plan": "#/components/schemas/LockPlan-Output",
                     "open_seal": "#/components/schemas/OpenSeal-Output",
+                    "reseal": "#/components/schemas/Reseal-Output",
                     "revert": "#/components/schemas/Revert",
                     "select_models": "#/components/schemas/SelectModels",
                     "set_aggregation": "#/components/schemas/SetAggregation-Output",
@@ -4231,6 +4322,88 @@
         ],
         "title": "LineageView"
       },
+      "LockPlan-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "lock_plan",
+            "title": "Kind",
+            "default": "lock_plan"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan"
+          },
+          "digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "LockPlan",
+        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when inference estimates are first displayed (or by the user, before\nthat): the plan in force then is what was declared in the software before any estimate was\ndisplayed, and every later decision is marked as made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone."
+      },
+      "LockPlan-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "lock_plan",
+            "title": "Kind",
+            "default": "lock_plan"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan"
+          },
+          "digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "plan",
+          "digest"
+        ],
+        "title": "LockPlan",
+        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when inference estimates are first displayed (or by the user, before\nthat): the plan in force then is what was declared in the software before any estimate was\ndisplayed, and every later decision is marked as made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone."
+      },
       "Mark": {
         "properties": {
           "value": {
@@ -4296,6 +4469,86 @@
           "n_boot"
         ],
         "title": "MeasurementErrorSpec"
+      },
+      "MethodsLine": {
+        "properties": {
+          "record_id": {
+            "type": "string",
+            "title": "Record Id"
+          },
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          },
+          "in_force": {
+            "type": "boolean",
+            "title": "In Force"
+          },
+          "post_seal": {
+            "type": "boolean",
+            "title": "Post Seal"
+          },
+          "after_estimates": {
+            "type": "boolean",
+            "title": "After Estimates"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "record_id",
+          "seq",
+          "kind",
+          "sentence",
+          "in_force",
+          "post_seal",
+          "after_estimates"
+        ],
+        "title": "MethodsLine",
+        "description": "One record's sentence in the methods text."
+      },
+      "MethodsText": {
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/MethodsLine"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "seen_from": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen From"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "lines",
+          "seen_from",
+          "text"
+        ],
+        "title": "MethodsText",
+        "description": "The methods text: the sentences in record order, and the same joined as one paragraph."
       },
       "MissingSpec": {
         "properties": {
@@ -4410,6 +4663,63 @@
               }
             ],
             "title": "Family"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "n_holdout": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Holdout"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
+          "scores": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scores"
           }
         },
         "additionalProperties": false,
@@ -4438,13 +4748,74 @@
               }
             ],
             "title": "Family"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "n_holdout": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Holdout"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
+          "scores": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scores"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "kind",
-          "family"
+          "family",
+          "target",
+          "n_holdout",
+          "metric",
+          "scores"
         ],
         "title": "OpenSeal",
         "description": "Open the held-out rows: once, at the end. Held-out scores are withheld until then.\n\n``family`` is the final model, declared on cross-validation before any held-out score is seen\n(AUDIT_REPORT §5 WP8, ME-13; ``turbotab/core/models/selection.py``): its held-out score is the\nreported result. Required when several families are fitted; with one, the opening declares it.\nNull only in records from before the rule."
@@ -4784,6 +5155,17 @@
             ],
             "title": "Seal Opened"
           },
+          "plan_locked": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Locked"
+          },
           "findings": {
             "anyOf": [
               {
@@ -5022,6 +5404,7 @@
           "aggregation",
           "temporal",
           "seal_opened",
+          "plan_locked",
           "findings",
           "feature_table",
           "categorical",
@@ -5519,6 +5902,86 @@
           "levels"
         ],
         "title": "RepeatSpec"
+      },
+      "Reseal-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "reseal",
+            "title": "Kind",
+            "default": "reseal"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "Reseal",
+        "description": "Draw the held-out rows again after they were opened (audit WP16, RO-05).\n\nOnce opened, the held-out rows hold still: a new seed or holdout, or anything else that would\ndraw them again, waits for this recorded re-seal. It withdraws the opening of the current\noutcome's seal, so the rows drawn next are withheld until they are opened in turn; the scores\nat the first opening stay the reported result, and later held-out scores are not an\nindependent test. ``target`` is filled by the server. It stands while its outcome is the\ntarget, as the opening does."
+      },
+      "Reseal-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "reseal",
+            "title": "Kind",
+            "default": "reseal"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "reason",
+          "target"
+        ],
+        "title": "Reseal",
+        "description": "Draw the held-out rows again after they were opened (audit WP16, RO-05).\n\nOnce opened, the held-out rows hold still: a new seed or holdout, or anything else that would\ndraw them again, waits for this recorded re-seal. It withdraws the opening of the current\noutcome's seal, so the rows drawn next are withheld until they are opened in turn; the scores\nat the first opening stay the reported result, and later held-out scores are not an\nindependent test. ``target`` is filled by the server. It stands while its outcome is the\ntarget, as the opening does."
       },
       "Revert": {
         "properties": {
@@ -9065,6 +9528,85 @@
         "title": "ApplyRepair",
         "type": "object"
       },
+      "AtOpening": {
+        "additionalProperties": false,
+        "description": "The held-out scores recorded when the current outcome's seal was first opened: the reported\nresult, whatever is drawn, fitted or opened later (audit WP16, RO-05). Set by the server.",
+        "properties": {
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
+          "n_holdout": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Holdout"
+          },
+          "scores": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Scores",
+            "type": "object"
+          },
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "family",
+          "metric",
+          "n_holdout",
+          "scores",
+          "current",
+          "note"
+        ],
+        "title": "AtOpening",
+        "type": "object"
+      },
       "BandEstimate": {
         "additionalProperties": false,
         "description": "A measured estimate of what adding a band would cost: one refit per family, timed.",
@@ -11423,6 +11965,17 @@
             "default": null,
             "title": "Final Note"
           },
+          "at_opening": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AtOpening"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "validation": {
             "default": "kfold",
             "enum": [
@@ -11526,6 +12079,7 @@
           "selection",
           "final_model",
           "final_note",
+          "at_opening",
           "validation",
           "repeats",
           "ranking",

@@ -1293,6 +1293,7 @@ export function fit(
     selection: null,
     final_model: null,
     final_note: null,
+    at_opening: null,
 
     levels: null,
   };

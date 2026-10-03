@@ -43,6 +43,12 @@ What this module decides, and where each piece runs:
 * **Post-seal marking**: a decision recorded after the seal was opened says so in its sentence
   (:func:`post_seal_sentence`), its record carries ``post_seal: true`` (``DecisionLog.append``),
   and the Results say when the fit changed after the opening (:func:`changed_after_seal`).
+* **After the opening** (audit WP16, RO-05): the opening keeps every family's held-out scores in
+  its record, and the first opening of an outcome's seal stays the reported result
+  (:func:`reported_result`, served as the fit's ``at_opening``). An opening is about its outcome:
+  a new outcome starts its own seal, withheld until opened. Once opened, the held-out rows hold
+  still: a new seed or holdout, or a draw over changed answers, waits for a recorded ``reseal``;
+  the rows drawn after it are withheld until opened in turn, as a test that is not independent.
 
 Importing this module registers the validators and the ``open_seal`` preview.
 """
@@ -945,12 +951,46 @@ def serve_fit(data: Mapping[str, Any], *, opened: bool,
 # ── when the seal was opened, and what changed since ─────────────────────────
 
 
+def _live(records: Sequence[Any]) -> list[Any]:
+    ordered = sorted(records, key=lambda r: r.seq)
+    try:
+        cancelled = decisions.reverted(ordered)
+    except Refusal:
+        cancelled = {}
+    return [r for r in ordered if r.id not in cancelled]
+
+
+def _target_of(records: Sequence[Any]) -> str | None:
+    try:
+        return decisions.fold(records).target
+    except Refusal:
+        return None
+
+
+def _names(record: Any, target: str | None) -> bool:
+    """Whether an opening or a re-seal is about ``target``'s seal (records from before the rule
+    name no outcome and are about every one)."""
+    named = getattr(record.decision, "target", None)
+    return named is None or named == target
+
+
 def opening(records: Sequence[Any]) -> Any | None:
-    """The record that opened the seal (it is never reverted), or None."""
-    for record in sorted(records, key=lambda r: r.seq):
-        if record.decision.kind == "open_seal":
-            return record
+    """The record that opened the current seal: the current outcome's latest opening, unless a
+    re-seal came after it (audit WP16, RO-05). None while the current seal is sealed. An opening
+    is never reverted."""
+    target = _target_of(records)
+    for record in reversed(_live(records)):
+        if record.decision.kind in ("open_seal", "reseal") and _names(record, target):
+            return record if record.decision.kind == "open_seal" else None
     return None
+
+
+def first_opening(records: Sequence[Any], target: str | None = None) -> Any | None:
+    """The first opening of the outcome's seal (default: the current outcome): the held-out scores
+    it recorded are the reported result, whatever is drawn, fitted or opened later (RO-05)."""
+    target = _target_of(records) if target is None else target
+    return next((r for r in _live(records)
+                 if r.decision.kind == "open_seal" and _names(r, target)), None)
 
 
 def state_at_opening(records: Sequence[Any]) -> ProjectState | None:
@@ -987,16 +1027,18 @@ def slots_read_by(graph: Any, stage: str) -> set[str]:
 
 
 def post_seal_changes(records: Sequence[Any], slots: set[str]) -> list[str]:
-    """Ids of the live records made after the opening that touch one of ``slots``."""
+    """Ids of the live records made after the current seal's opening that touch one of ``slots``."""
     ordered = sorted(records, key=lambda r: r.seq)
     try:
         cancelled = decisions.reverted(ordered)
     except Refusal:
         cancelled = {}
+    opened = opening(ordered)
+    since = opened.seq if opened is not None else 0
     by_id = {r.id: r for r in ordered}
     out = []
     for record in ordered:
-        if not getattr(record, "post_seal", False) or record.id in cancelled:
+        if not getattr(record, "post_seal", False) or record.id in cancelled or record.seq <= since:
             continue
         decision = record.decision
         if isinstance(decision, Revert):
@@ -1020,11 +1062,54 @@ def changed_after_seal(graph: Any, records: Sequence[Any], fingerprint: str, ser
 
 
 def post_seal_sentence(text: str | None, state_before: Any) -> str | None:
-    """The record's sentence, marked when it is recorded after the seal was opened."""
-    if not text or not getattr(state_before, "seal_opened", False):
-        return text
-    body = text[0].lower() + text[1:] if text[:1].isupper() and not text[1:2].isupper() else text
-    return f"After the held-out rows were opened, {body}"
+    """The record's sentence, marked when it is recorded after the seal was opened. The log marks
+    every record itself (``decisions.disclose``); this is that marking for a state alone."""
+    return decisions.disclose(text, post_seal=bool(getattr(state_before, "seal_opened", False)),
+                              after_estimates=False)
+
+
+# ── the reported result: the scores at the first opening (audit WP16, RO-05) ──
+
+
+def _score_text(value: float | None) -> str:
+    return "not computed" if value is None else f"{value:.3f}"
+
+
+def reported_result(records: Sequence[Any], *, opened: bool, changed: bool) -> dict[str, Any] | None:
+    """The served fit's ``at_opening``: the held-out scores the first opening of the current
+    outcome's seal recorded, which stay the reported result (None: never opened for this outcome,
+    or opened before the scores were kept). ``opened``: the current seal is open; ``changed``: the
+    served fit differs from the one it was opened on."""
+    from turbotab.core.models.metrics import LABELS
+
+    first = first_opening(records)
+    if first is None or first.decision.scores is None:
+        return None
+    d = first.decision
+    current = opening(records)
+    metric = d.metric or ""
+    label = LABELS.get(metric, metric)
+    family = d.family
+    scores = {f: dict(s) for f, s in d.scores.items()}
+    named = family if family in scores else (next(iter(scores), None))
+    rows = f" on {d.n_holdout:,} held-out rows" if d.n_holdout else ""
+    head = (f"At the opening (decision #{first.seq}), `{named}` scored a held-out {label} of "
+            f"{_score_text(scores[named].get(metric))}{rows}: the reported result"
+            if named is not None else f"The opening at decision #{first.seq} scored no family")
+    same = opened and current is not None and current.id == first.id and not changed
+    if same:
+        tail = "."
+    elif not opened:
+        tail = ("; the held-out rows were drawn again after it, and stay withheld until they are "
+                "opened in turn, as a test that is not independent.")
+    elif current is not None and current.id != first.id:
+        tail = ("; the held-out scores shown now are from rows drawn again after it, so they are "
+                "not an independent test.")
+    else:
+        tail = ("; the held-out scores shown now are from a fit changed after it, so they are "
+                "post-seal and not an independent test.")
+    return {"seq": first.seq, "family": family, "metric": d.metric, "n_holdout": d.n_holdout,
+            "scores": scores, "current": same, "note": head + tail}
 
 
 # ── validators ───────────────────────────────────────────────────────────────
@@ -1463,7 +1548,121 @@ def _open_seal_once_on_a_fresh_fit(decision: Any, ctx: Any) -> None:
                       exits=hold)
 
 
+# ── after the opening: the scores kept, and the rows held still (audit WP16, RO-05) ──
+# Opened at AUC 0.80, the audit then re-drew seeds 1–5 and was served 0.62–0.72 at once, and a new
+# outcome's held-out R² with no seal ever drawn for it, while nothing kept the opened score. So the
+# opening keeps its scores in the record (the reported result), a new outcome starts its own seal
+# (the opening stands only for its outcome), and once opened the held-out rows hold still: anything
+# that would draw them again waits for a recorded re-seal, after which they are withheld until
+# they are opened in turn, as a test that is no longer independent.
+
+
+def _the_opening_keeps_its_scores(decision: Any, ctx: Any) -> Any:
+    """Fill what the opening records from the server, never from the client: its outcome, the
+    held-out rows' count, the primary metric and every family's held-out scores. The scores are
+    read only when the opening is recorded (``ctx.sealed_scores``), never for a preview."""
+    state = _ctx(ctx, "state")
+    fit = _fresh_artifact(ctx, "fit")
+    fit = fit if isinstance(fit, Mapping) else {}
+    reader = _ctx(ctx, "sealed_scores")
+    try:
+        scores = reader() if callable(reader) else None
+    except Exception:  # noqa: BLE001 - unreadable scores are not invented
+        scores = None
+    return decision.model_copy(update={
+        "target": getattr(state, "target", None),
+        "n_holdout": int(fit["n_holdout"]) if fit.get("n_holdout") else None,
+        "metric": fit.get("primary_metric"),
+        "scores": ({str(f): {str(m): (None if v is None else float(v)) for m, v in s.items()}
+                    for f, s in scores.items()} if scores else None),
+    })
+
+
+def _reseal_needs_an_opened_seal(decision: Any, ctx: Any) -> None:
+    state = _ctx(ctx, "state")
+    if state is None or state.seal_opened:
+        return
+    raise Refusal(
+        "nothing_to_reseal",
+        "The held-out rows are not opened, so nothing needs a re-seal: change the held-out rows "
+        "question, and they are drawn again before anything is scored on them.",
+        exits=[{"label": "Change the held-out rows question", "decision": None}],
+    )
+
+
+def _the_reseal_names_its_outcome(decision: Any, ctx: Any) -> Any:
+    state = _ctx(ctx, "state")
+    return decision.model_copy(update={"target": getattr(state, "target", None)})
+
+
+def _membership_change(then: Any, after: Any, ctx: Any) -> str | None:
+    """How the held-out rows under ``after`` differ from those drawn under ``then`` (the state the
+    seal was opened in), as a clause; None when the same rows are held out."""
+    was, now = then.split, after.split
+    if was is not None and now is not None and (was.holdout, was.seed) != (now.holdout, now.seed):
+        if was.holdout != now.holdout:
+            return (f"holding out {now.holdout:.0%} instead of {was.holdout:.0%} would draw other "
+                    f"rows")
+        return f"seed {now.seed} in place of seed {was.seed} would draw other rows"
+    for slot, what in DECISION_A.values():
+        if getattr(then, slot) != getattr(after, slot):
+            return f"changing {what} would draw them again"
+    clause = _redrawn_by(then, after, ctx)
+    if clause is None:
+        return None
+    return clause[0].lower() + clause[1:]
+
+
+def _an_opened_seal_holds_still(decision: Any, ctx: Any) -> None:
+    """Once opened, the held-out rows are drawn once: a decision that would leave the current seal
+    open over other rows (a new seed or holdout, a draw over changed answers, a revert that brings
+    an earlier draw back) waits for a recorded re-seal."""
+    records = _records(ctx)
+    if not records:
+        return
+    try:
+        probe = _probe(records, decision)
+        after = decisions.fold(probe)
+    except Refusal:
+        return  # the log refuses it with its own reason
+    if not after.seal_opened or after.split is None:
+        return
+    opened = opening(probe)
+    if opened is None:
+        return
+    then = decisions.fold([r for r in probe if r.seq <= opened.seq])
+    clause = _membership_change(then, after, ctx)
+    if clause is None:
+        return
+    if decision.kind == "revert":
+        target = next((r for r in records if r.id == decision.decision_id), None)
+        if target is not None and target.decision.kind == "reseal":
+            raise Refusal(
+                "seal_opened",
+                f"The held-out rows were drawn again after this re-seal, and withdrawing it would "
+                f"count them as opened at decision #{opened.seq}, when they were not: "
+                f"{clause}.",
+                exits=[{"label": "Keep the re-seal", "decision": None}])
+    from turbotab.core.decisions import Reseal
+
+    raise Refusal(
+        "seal_opened",
+        f"The held-out rows were opened at decision #{opened.seq}, and {clause}. Their scores were "
+        f"seen, so drawing them again needs a recorded re-seal: the scores at the opening stay the "
+        f"reported result, and rows drawn afterwards are withheld until opened, as a test that is "
+        f"no longer independent.",
+        exits=[{"label": "Re-seal: record that the held-out rows are drawn again after their "
+                         "scores were seen", "decision": Reseal()},
+               {"label": "Keep the held-out rows as they were drawn", "decision": None}],
+    )
+
+
 decisions.register_validator("open_seal", _open_seal_once_on_a_fresh_fit)
+decisions.register_completion("open_seal", _the_opening_keeps_its_scores)
+decisions.register_validator("reseal", _reseal_needs_an_opened_seal)
+decisions.register_completion("reseal", _the_reseal_names_its_outcome)
+for _kind in ("set_split", "revert"):  # first: once opened, the opening is the reason
+    decisions.register_validator(_kind, _an_opened_seal_holds_still, first=True)
 decisions.register_validator("revert", _revert_keeps_the_seal)
 for _kind in DECISION_A:  # first: once sealed, the seal is the reason, whatever the data says
     decisions.register_validator(_kind, _decision_a_waits_for_a_reseal, first=True)
@@ -1513,7 +1712,8 @@ __all__ = [
     "SealDraw", "SealFloor", "SealPlan", "changed_after_seal", "chronological_holdout",
     "decide_basis", "draw_columns", "floor_for", "holdout_options", "holds_rows_out", "keys_for",
     "measure", "open_seal_views", "r2_se", "time_order",
-    "opening", "plan", "post_seal_changes", "post_seal_sentence", "read_sealed_scores",
+    "first_opening", "opening", "plan", "post_seal_changes", "post_seal_sentence",
+    "read_sealed_scores", "reported_result",
     "read_times", "seal_inputs", "sealed_scores_frame", "serve_fit", "slots_read_by",
     "split_writer", "state_at_opening", "unsettled_on_the_draw",
 ]

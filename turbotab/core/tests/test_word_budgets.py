@@ -293,6 +293,9 @@ def representative_decisions():
                 reason="implausible energy reports")]),
         ]),
         d.SetMeasurementError(method="regression_calibration", exposures=["protein_g"]),
+        # WP16 (audit §5): a re-seal after the opening, and the inference analysis-plan lock
+        d.Reseal(reason="the first draw left one site out"),
+        d.LockPlan(plan={"target": "hba1c"}, digest="0" * 64),
     ]
 
 

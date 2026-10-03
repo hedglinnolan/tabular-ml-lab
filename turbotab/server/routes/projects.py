@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from starlette.concurrency import run_in_threadpool
 
+from turbotab.core.provenance import MethodsText
 from turbotab.server.routes import get_service, get_settings, refusal, require_local
 from turbotab.server.schemas import (
     CreateProject,
@@ -89,6 +90,18 @@ def get_project(request: Request, pid: str) -> dict:
 def decide(request: Request, pid: str, decision: Decision) -> dict:
     """Record a decision. Stages downstream of the slot it writes recompute."""
     return get_service(request).decide(pid, decision)
+
+
+@router.get(
+    "/projects/{pid}/methods",
+    response_model=MethodsText,
+    responses={404: refusal("No such project")},
+)
+def methods(request: Request, pid: str) -> MethodsText:
+    """The methods text built from the decision log: the sentences in force, with decisions
+    superseded before anything was seen folded out, and every change made after the estimates
+    were seen or the held-out rows were opened kept and marked (audit WP16)."""
+    return get_service(request).methods(pid)
 
 
 @router.get(

@@ -208,6 +208,7 @@ const fit: FitArtifact = {
   comparisons: [],
   precision: null,
   imbalance: null,
+  at_opening: null,
 };
 
 function input(over: Partial<BannerInput> = {}, viewOver: Partial<ProjectView> = {}): BannerInput {
