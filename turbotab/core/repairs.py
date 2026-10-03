@@ -375,15 +375,17 @@ def _offer_sentinels(finding: dict[str, Any], p: dict[str, Any], oc: OfferContex
             move = (f"; the mean moves {_tick(f'{x.mean():.2f}')} → {_tick(f'{kept.mean():.2f}')}")
         consequence = (f"{_count(total)} {_plural(total, 'cell')} of {said} in {_tick(column)} "
                        f"become blank{move}.")
-        sentence = (f"{said} in {_tick(column)} {_plural(len(vs), 'is a code', 'are codes')} for a "
-                    f"missing answer; {_count(total)} {_plural(total, 'cell was', 'cells were')} "
-                    f"recoded as missing.")
+        # Audit IN-03: the numbers cannot prove a value is a code, so the sentence says who decided.
+        sentence = (f"{said} in {_tick(column)} {_plural(len(vs), 'was read', 'were read')} as a "
+                    f"code for a missing answer; {_count(total)} "
+                    f"{_plural(total, 'cell was', 'cells were')} recoded as missing on the user's "
+                    f"instruction.")
     else:
         lead = max(codes, key=lambda c: (hits[c], c))
         consequence = (f"{_count(total)} {_plural(total, 'code')} in {_count(len(codes))} items become "
                        f"blank, such as {_tick(_num(codes[lead][0]))} in {_tick(lead)}.")
-        sentence = (f"Missing-answer codes in {_count(len(codes))} items were recoded as missing "
-                    f"({_count(total)} cells).")
+        sentence = (f"Values read as missing-answer codes in {_count(len(codes))} items were recoded "
+                    f"as missing on the user's instruction ({_count(total)} cells).")
     return [_option(finding, "set_missing", "Treat as missing", consequence, sentence, "values",
                     params)]
 

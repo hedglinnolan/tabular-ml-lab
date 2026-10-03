@@ -381,7 +381,9 @@ def test_histograms_count_every_finite_value_once(tmp_path):
 
     h = store.histogram("x", bins=5)
     assert set(h) == {"column", "edges", "counts", "n_missing"}
-    assert h["edges"] == pytest.approx([0, 1.8, 3.6, 5.4, 7.2, 9])
+    # Whole numbers 0–9 in at most 5 bins: two integers a bin, edges half a step off the grid
+    # (audit MI-01), so no value sits on an edge.
+    assert h["edges"] == pytest.approx([-0.5, 1.5, 3.5, 5.5, 7.5, 9.5])
     assert h["counts"] == [2, 2, 2, 2, 2] and h["n_missing"] == 2
     assert sum(h["counts"]) + h["n_missing"] == info.n_rows
 

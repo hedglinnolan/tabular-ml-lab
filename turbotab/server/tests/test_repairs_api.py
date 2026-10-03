@@ -205,7 +205,8 @@ def test_the_three_routes_for_impossible_values_preview_their_own_pictures(clien
 
     blank = preview(by_key["set_missing"])
     assert [v.kind for v in blank.views] == ["table_focus", "distribution"]
-    assert [m.label for m in blank.views[1].marks] == ["floor 40 mmHg", "ceiling 300 mmHg"]
+    # CLINICAL_SURVEY_PACK §A1.2: SBP 30–300 mmHg (audit WP14, IN-09)
+    assert [m.label for m in blank.views[1].marks] == ["floor 30 mmHg", "ceiling 300 mmHg"]
     rows = preview(by_key["exclude_rows"])
     assert [v.kind for v in rows.views] == ["row_flow", "distribution"]
     step = rows.views[0].after[-1]

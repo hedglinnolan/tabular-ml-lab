@@ -1,0 +1,312 @@
+{
+ "version": "turbotab-plausibility-1 (NHANES 2017-2018 percentiles; CLINICAL_SURVEY_PACK A1.2 limits)",
+ "status": "CONVENTION",
+ "note": "Two tiers per variable. 'impossible': values no living adult shows, the suggested EHR-cleaning limits of CLINICAL_SURVEY_PACK A1.2, which the pack itself marks CONVENTION (plausibility limits are institution- and observation-specific), or TurboTab's own where the pack gives none. 'improbable': outside the central 98% (weighted 1st-99th percentiles) of adults aged 20 and over in NHANES 2017-2018, computed by build_plausibility.py. Adult rows only; children are judged by the CDC growth charts' modified z-scores. Total energy intake is not here: it is a dietary report, judged by the dietary screens.",
+ "variables": {
+  "bp_sys": {
+   "unit": "mmHg",
+   "aliases": [
+    "systolic",
+    "systolic_bp",
+    "sbp",
+    "bp_systolic",
+    "bpxsy1"
+   ],
+   "impossible": {
+    "low": 30,
+    "high": 300,
+    "source": "CLINICAL_SURVEY_PACK §A1.2's suggested EHR-cleaning bounds",
+    "status": "CONVENTION"
+   },
+   "improbable": {
+    "cycle": "2017-2018",
+    "population": "adults aged 20 and over",
+    "source": "NHANES 2017-2018, weighted 1st and 99th percentiles",
+    "status": "CONVENTION",
+    "p01": 94.0,
+    "p99": 180.0,
+    "unit": "mmHg",
+    "nhanes_file": "BPX_J",
+    "nhanes_variable": "BPXSY1",
+    "weight": "WTMEC2YR",
+    "n": 4659
+   }
+  },
+  "bp_di": {
+   "unit": "mmHg",
+   "aliases": [
+    "diastolic",
+    "diastolic_bp",
+    "dbp",
+    "bp_diastolic",
+    "bpxdi1"
+   ],
+   "impossible": {
+    "low": 10,
+    "high": 200,
+    "source": "CLINICAL_SURVEY_PACK §A1.2's suggested EHR-cleaning bounds",
+    "status": "CONVENTION"
+   },
+   "improbable": {
+    "cycle": "2017-2018",
+    "population": "adults aged 20 and over",
+    "source": "NHANES 2017-2018, weighted 1st and 99th percentiles",
+    "status": "CONVENTION",
+    "p01": 42.0,
+    "p99": 100.0,
+    "unit": "mmHg",
+    "nhanes_file": "BPX_J",
+    "nhanes_variable": "BPXDI1",
+    "weight": "WTMEC2YR",
+    "n": 4659
+   },
+   "zero": "NHANES 2017-2018 BPX_J documentation, Data Processing and Editing: 'Diastolic BP can be zero'; BPXDI1 range of values 0 to 136."
+  },
+  "weight": {
+   "unit": "kg",
+   "aliases": [
+    "body_weight",
+    "wt",
+    "weight_kg",
+    "bmxwt"
+   ],
+   "growth": "wtage",
+   "impossible": {
+    "low": 20,
+    "high": 400,
+    "source": "CLINICAL_SURVEY_PACK §A1.2's suggested EHR-cleaning bounds for adult weight",
+    "status": "CONVENTION"
+   },
+   "improbable": {
+    "cycle": "2017-2018",
+    "population": "adults aged 20 and over",
+    "source": "NHANES 2017-2018, weighted 1st and 99th percentiles",
+    "status": "CONVENTION",
+    "p01": 47.2,
+    "p99": 157.4,
+    "unit": "kg",
+    "nhanes_file": "BMX_J",
+    "nhanes_variable": "BMXWT",
+    "weight": "WTMEC2YR",
+    "n": 5185
+   },
+   "any_age": {
+    "low": 0.4,
+    "high": 650,
+    "source": "TurboTab's own limits (no published source): below any newborn and above any recorded person, applied when the table holds children",
+    "status": "CONVENTION"
+   }
+  },
+  "height": {
+   "unit": "cm",
+   "aliases": [
+    "standing_height",
+    "ht",
+    "height_cm",
+    "bmxht"
+   ],
+   "growth": "statage",
+   "impossible": {
+    "low": 100,
+    "high": 250,
+    "source": "CLINICAL_SURVEY_PACK §A1.2's suggested EHR-cleaning bounds for adult height",
+    "status": "CONVENTION"
+   },
+   "improbable": {
+    "cycle": "2017-2018",
+    "population": "adults aged 20 and over",
+    "source": "NHANES 2017-2018, weighted 1st and 99th percentiles",
+    "status": "CONVENTION",
+    "p01": 147.0,
+    "p99": 190.3,
+    "unit": "cm",
+    "nhanes_file": "BMX_J",
+    "nhanes_variable": "BMXHT",
+    "weight": "WTMEC2YR",
+    "n": 5185
+   },
+   "any_age": {
+    "low": 20,
+    "high": 280,
+    "source": "TurboTab's own limits (no published source): below any newborn and above any recorded person, applied when the table holds children",
+    "status": "CONVENTION"
+   }
+  },
+  "bmi": {
+   "unit": "kg/m²",
+   "aliases": [
+    "body_mass_index",
+    "bmxbmi"
+   ],
+   "growth": "bmiagerev",
+   "impossible": {
+    "low": 10,
+    "high": 100,
+    "source": "CLINICAL_SURVEY_PACK §A1.2's suggested EHR-cleaning bounds",
+    "status": "CONVENTION"
+   },
+   "improbable": {
+    "cycle": "2017-2018",
+    "population": "adults aged 20 and over",
+    "source": "NHANES 2017-2018, weighted 1st and 99th percentiles",
+    "status": "CONVENTION",
+    "p01": 18.2,
+    "p99": 53.1,
+    "unit": "kg/m²",
+    "nhanes_file": "BMX_J",
+    "nhanes_variable": "BMXBMI",
+    "weight": "WTMEC2YR",
+    "n": 5175
+   },
+   "any_age": {
+    "low": 8,
+    "high": 200,
+    "source": "TurboTab's own limits (no published source): below any newborn and above any recorded person, applied when the table holds children",
+    "status": "CONVENTION"
+   }
+  },
+  "glucose": {
+   "unit": "mg/dL",
+   "aliases": [
+    "blood_glucose",
+    "serum_glucose",
+    "plasma_glucose",
+    "fasting_glucose",
+    "glucose_mgdl",
+    "glu",
+    "lbxglu"
+   ],
+   "impossible": {
+    "low": 10,
+    "high": 2000,
+    "source": "CLINICAL_SURVEY_PACK §A1.2's suggested EHR-cleaning bounds",
+    "status": "CONVENTION"
+   },
+   "improbable": {
+    "cycle": "2017-2018",
+    "population": "adults aged 20 and over, fasting subsample",
+    "source": "NHANES 2017-2018, weighted 1st and 99th percentiles",
+    "status": "CONVENTION",
+    "p01": 79.0,
+    "p99": 285.0,
+    "unit": "mg/dL",
+    "nhanes_file": "GLU_J",
+    "nhanes_variable": "LBXGLU",
+    "weight": "WTSAF2YR",
+    "n": 2435
+   }
+  },
+  "waist": {
+   "unit": "cm",
+   "aliases": [
+    "waist_circumference",
+    "waist_cm",
+    "bmxwaist"
+   ],
+   "impossible": {
+    "low": 20,
+    "high": 350,
+    "source": "TurboTab's own limits; CLINICAL_SURVEY_PACK §A1.2 gives none for waist circumference",
+    "status": "CONVENTION"
+   },
+   "improbable": {
+    "cycle": "2017-2018",
+    "population": "adults aged 20 and over",
+    "source": "NHANES 2017-2018, weighted 1st and 99th percentiles",
+    "status": "CONVENTION",
+    "p01": 69.5,
+    "p99": 149.2,
+    "unit": "cm",
+    "nhanes_file": "BMX_J",
+    "nhanes_variable": "BMXWAIST",
+    "weight": "WTMEC2YR",
+    "n": 4937
+   }
+  },
+  "triglyceride": {
+   "unit": "mg/dL",
+   "aliases": [
+    "triglycerides",
+    "trig",
+    "tg",
+    "lbxtr"
+   ],
+   "impossible": {
+    "low": 5,
+    "high": 10000,
+    "source": "TurboTab's own limits; CLINICAL_SURVEY_PACK §A1.2 gives none for triglycerides",
+    "status": "CONVENTION"
+   },
+   "improbable": {
+    "cycle": "2017-2018",
+    "population": "adults aged 20 and over, fasting subsample",
+    "source": "NHANES 2017-2018, weighted 1st and 99th percentiles",
+    "status": "CONVENTION",
+    "p01": 26.0,
+    "p99": 433.0,
+    "unit": "mg/dL",
+    "nhanes_file": "TRIGLY_J",
+    "nhanes_variable": "LBXTR",
+    "weight": "WTSAF2YR",
+    "n": 2393
+   }
+  },
+  "hba1c": {
+   "unit": "%",
+   "aliases": [
+    "a1c",
+    "hemoglobin_a1c",
+    "glycated_hemoglobin",
+    "hgba1c",
+    "lbxgh"
+   ],
+   "impossible": {
+    "low": 2.0,
+    "high": 30.0,
+    "source": "TurboTab's own limits; CLINICAL_SURVEY_PACK §A1.2 gives none for HbA1c",
+    "status": "CONVENTION"
+   },
+   "improbable": {
+    "cycle": "2017-2018",
+    "population": "adults aged 20 and over",
+    "source": "NHANES 2017-2018, weighted 1st and 99th percentiles",
+    "status": "CONVENTION",
+    "p01": 4.6,
+    "p99": 10.0,
+    "unit": "%",
+    "nhanes_file": "GHB_J",
+    "nhanes_variable": "LBXGH",
+    "weight": "WTMEC2YR",
+    "n": 5018
+   }
+  },
+  "cholesterol": {
+   "unit": "mmol/L",
+   "aliases": [
+    "total_cholesterol",
+    "chol",
+    "tc",
+    "lbxtc"
+   ],
+   "impossible": {
+    "low": 0.3,
+    "high": 40.0,
+    "source": "TurboTab's own limits; CLINICAL_SURVEY_PACK §A1.2 gives none for total cholesterol",
+    "status": "CONVENTION"
+   },
+   "improbable": {
+    "cycle": "2017-2018",
+    "population": "adults aged 20 and over",
+    "source": "NHANES 2017-2018, weighted 1st and 99th percentiles",
+    "status": "CONVENTION",
+    "p01": 2.79,
+    "p99": 7.71,
+    "unit": "mmol/L",
+    "nhanes_file": "TCHOL_J",
+    "nhanes_variable": "LBDTCSI",
+    "weight": "WTMEC2YR",
+    "n": 4937
+   }
+  }
+ }
+}

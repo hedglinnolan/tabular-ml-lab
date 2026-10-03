@@ -38,8 +38,8 @@ claim about a trajectory and cannot be built on a cross-section.
 | `sbp` exactly 120 | 35 (12.2%) | §03b default values |
 | `dbp` exactly 80 | 44 (15.3%) | §03b |
 | `temp_f` exactly 98.6 | 42 (14.6%) | §03b |
-| `sbp` below 40 mmHg | **4** — 28, 12, 0, 22 | §A1.2 impossible |
-| `sbp` above 200 mmHg | **26**, from a real severe-hypertension arm | §A1.2 abnormal but real |
+| `sbp` below 30 mmHg (§A1.2's plausibility floor) | **4** — 28, 12, 0, 22 | §A1.2 impossible |
+| `sbp` above 200 mmHg | **26**, from a real severe-hypertension arm | §A1.2 unusual but real |
 | `PT0007` height | 167.6 → 176.6 cm between visits | §A1.2 temporal |
 | `PT0021` weight | 67.9 → 44.7 kg in 21 days, −34% | §A1.2 temporal |
 | `platelets` | `320,000` — thousands separator | §A1.3 |

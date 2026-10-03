@@ -109,10 +109,11 @@ def _small_table(ctx: PreviewContext) -> Any:
 
 
 def _reads_feature_major(lens: list[str], table: Any) -> bool:
-    from turbotab import orientation
+    """Whether the orientation question would be asked (the interview's rule, audit WP14)."""
+    from turbotab.core.detectors import orientation
 
     try:
-        return orientation.fires(lens, orientation.read(table))
+        return orientation.asks(lens, orientation.read_frame(table))
     except Exception:  # noqa: BLE001 - a reading that fails asks nothing
         return False
 
@@ -123,10 +124,10 @@ def _pack_findings(ctx: PreviewContext, lens: list[str], table: Any) -> int | No
         return None
     key = (ctx.project_id, int(ctx.datastore.n_rows), tuple(table.columns), tuple(sorted(lens)))
     if key not in _FOUND:
-        from turbotab import packs
+        from turbotab.core import detectors
 
-        try:
-            _FOUND[key] = len(packs.findings(table, lens))
+        try:  # the findings stage's own pack reading (audit WP14), so the two counts agree
+            _FOUND[key] = len(detectors.pack_findings(table, lens))
         except Exception:  # noqa: BLE001 - the count is a courtesy; the lineage is the preview
             return None
         while len(_FOUND) > 64:

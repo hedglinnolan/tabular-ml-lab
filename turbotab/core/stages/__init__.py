@@ -89,11 +89,13 @@ def build_graph() -> Graph:
         [
             Stage("ingest", 1, (), (), ingest_stage, heavy=True, label="Reading the file"),
             # ── M2: what the table is (M2_CONTRACT §2) ──
-            Stage("oriented", 2, ("ingest",), ("orientation", "feature_table"), oriented_stage,
+            # oriented 3 (WP14): the names are read before the shape, and the shape is scale-aware.
+            Stage("oriented", 3, ("ingest",), ("orientation", "feature_table"), oriented_stage,
                   heavy=True, label="Reading which way round the table is"),
+            # profile 2 (WP14): lens hints need positive evidence (turbotab.core.detectors.lenses).
             Stage(
                 "profile",
-                1,
+                2,
                 ("oriented",),
                 (),
                 profile_stage,
@@ -102,9 +104,13 @@ def build_graph() -> Graph:
             ),
             # findings 5 (WP13): identifiers, kJ and NHANES weights read by the one recognizer;
             # the pack's energy findings for energy names only the recognizer reads.
+            # findings 5 (WP14): the detectors that fired on clean data are read by
+            # turbotab.core.detectors (codes, survey scales, drift, redundancy, plausibility,
+            # genomics data type).
+            # findings 6 (WP13 + WP14 merged): both of the above in one stage.
             Stage(
                 "findings",
-                5,
+                6,
                 ("oriented",),
                 ("lens", "target"),
                 findings_stage,
@@ -115,7 +121,9 @@ def build_graph() -> Graph:
             # structure reads ``findings`` for the date-reading repair: a date column that reads
             # both month-first and day-first is read only once that is answered (audit MA-05).
             # structure 5 (WP13): the grain question never suggests a measurement as the unit.
-            Stage("structure", 5, ("oriented",),
+            # structure 5 (WP14): repeats are stated only when unambiguous.
+            # structure 6 (WP13 + WP14 merged): both of the above in one stage.
+            Stage("structure", 6, ("oriented",),
                   ("grain", "target", "lens", "repeat_kind", "findings"),
                   structure_stage, heavy=True, label="Reading how the rows repeat"),
             Stage("working", 2, ("oriented", "findings", "structure"),

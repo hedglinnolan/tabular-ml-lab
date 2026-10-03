@@ -15,8 +15,9 @@ Rules:
   ``substitution`` is ``not_applicable`` with fewer than two exposures that carry energy, as an
   amount or as a share of energy.
 * The opening sequence (M2_CONTRACT §1, OPENING_SEQUENCE §01/§03), nothing resequenced:
-  ``orientation`` fires only when the lens includes an assay pack and the oriented stage's shape
-  reading is feature-major (and, while it is open, the target question waits behind it);
+  ``orientation`` fires when the lens includes an assay pack and the oriented stage's reading
+  (names first, then a scale-aware shape; audit WP14) is not "one row per sample" — feature-major
+  or undetermined (and, while it is open, the target question waits behind it);
   ``event`` only for a binary or time-to-event outcome; ``grain`` always, but ``skipped``
   (stated) when a recognized person identifier is unique on every row and nothing repeats like a
   roster (M2_CONTRACT §10; the structure stage's ``grain.stated``); ``repeat_kind`` and ``unit``
@@ -215,10 +216,12 @@ def _orientation_gate(state: Any, oriented: Any) -> Gate:
         return ("not_applicable",
                 "No assay lens is on, and other tables are not exported turned around.")
     reading = _get(oriented, "reading") or {}
-    if oriented is None or _get(reading, "reading") == "feature_major":
+    # WP14 (audit IN-11): under an assay lens it is asked unless the table reads as one row per
+    # sample; an undetermined reading is a question, never a silent "rows are samples".
+    if oriented is None or _get(reading, "reading") != "sample_major":
         return None
     sentence = _get(reading, "sentence") or ""
-    return ("not_applicable", sentence or "The table's shape does not read as features in rows.")
+    return ("not_applicable", sentence or "The table reads as one row per sample.")
 
 
 def _event_gate(state: Any, target_info: Any) -> Gate:
