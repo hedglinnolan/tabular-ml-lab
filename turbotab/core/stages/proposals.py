@@ -109,7 +109,6 @@ def rule_excludes(frame: pd.DataFrame, rule: Any) -> pd.Series:
 
 _NUMERIC = ("numeric", "integer")
 _TEXTUAL = ("categorical", "text", "boolean")
-_ENERGY_NAME = re.compile(r"kcal|(?:^|[^a-z])kj(?:$|[^a-z])|energy|calor", re.I)
 _SEX_NAMES = {"sex", "gender", "riagendr", "sex_at_birth", "gender_identity"}
 _FEMALE = {"f", "female", "woman", "women", "w", "girl", "fem"}
 _MALE = {"m", "male", "man", "men", "boy", "masc"}
@@ -126,14 +125,12 @@ def _dtype(info: Mapping[str, Any] | None) -> str:
 
 
 def is_energy_name(column: str) -> bool:
-    from turbotab.core.methods.energy import nutrient_role, unit_of
+    """The name reads as total energy intake: the one recognizer every stage shares
+    (:func:`turbotab.core.recognizers.reads_as_total_energy`; whole words, so ``alc_kcal`` is
+    alcohol's energy and ``energy_expenditure_kcal`` is not intake)."""
+    from turbotab.core.recognizers import reads_as_total_energy
 
-    if not _ENERGY_NAME.search(str(column)) or unit_of(column) == "density":
-        return False
-    try:
-        return nutrient_role(column) is None
-    except ValueError:
-        return False
+    return reads_as_total_energy(column)
 
 
 def energy_column(columns: Mapping[str, Mapping[str, Any]], roles: Mapping[str, str]) -> str | None:
@@ -143,7 +140,8 @@ def energy_column(columns: Mapping[str, Mapping[str, Any]], roles: Mapping[str, 
         return named[0]
     candidates = [c for c, info in columns.items()
                   if _dtype(info) in _NUMERIC and is_energy_name(c)
-                  and roles.get(c) not in ("identifier", "flag", "design", "time", "excluded")]
+                  and roles.get(c) not in ("identifier", "cluster", "flag", "design", "time",
+                                           "excluded")]
     if not candidates:
         return None
 
@@ -201,6 +199,10 @@ def not_adjusted(columns: Mapping[str, Mapping[str, Any]], roles: Mapping[str, s
             reason = "names two nutrients, so its energy is ambiguous"
         elif reading.role is not None and reading.unit in ("milligrams", "micrograms", "IU"):
             reason = "not in grams, which the energy factors need"
+        elif not _is_nutrient(c) and reading.unit in ("grams", "kcal", "kj"):
+            # A food or food group (``fatty_fish_g``) carries energy, but by no Atwater factor
+            # the app knows: fatty fish is about 2 kcal/g, not fat's 9 (audit IN-01).
+            reason = "a food, not a nutrient: no energy factor unless one is declared"
         else:
             reason = "carries no energy"
         out.append({"column": c, "reason": reason})
@@ -211,7 +213,8 @@ def sex_column(columns: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame | N
                roles: Mapping[str, str], *, screen: bool = False) -> tuple[str | None, dict[str, str]]:
     """The sex column and which of its levels are ``female`` and ``male``. For a screen
     (``screen``), a column left out of the model still counts."""
-    skip = ("identifier", "flag", "design") if screen else ("identifier", "flag", "design", "excluded")
+    skip = (("identifier", "cluster", "flag", "design") if screen
+            else ("identifier", "cluster", "flag", "design", "excluded"))
     for c in columns:
         if c.lower() not in _SEX_NAMES and not ({"sex", "gender"} & set(_tokens(c))):
             continue
@@ -242,7 +245,8 @@ def strata_candidates(columns: Mapping[str, Mapping[str, Any]], roles: Mapping[s
     for c, info in columns.items():
         if c in skip or _FLAG.search(c):
             continue
-        if roles.get(c) in ("identifier", "flag", "design", "excluded", "energy", "exposure"):
+        if roles.get(c) in ("identifier", "cluster", "flag", "design", "excluded", "energy",
+                            "exposure"):
             continue
         n_unique = int((info or {}).get("n_unique") or 0)
         if c != sex and (_dtype(info) not in _TEXTUAL or not 2 <= n_unique <= MAX_STRATA_LEVELS):
@@ -321,21 +325,52 @@ def nested_reason(nested: Mapping[str, str], nutrients: Sequence[str]) -> str | 
             f"would count that energy twice.")
 
 
-def _energy_unit(frame: pd.DataFrame, energy: str) -> str:
-    """``kj`` when the column is in kilojoules (its suffix, or the Atwater reconstruction)."""
-    from turbotab.core.methods.energy import unit_of
+def energy_unit_reading(frame: pd.DataFrame, energy: str) -> dict[str, str]:
+    """The energy column's unit and how it was read (audit IN-07), first signal that speaks:
 
+    1. ``name``: a ``_kj`` suffix;
+    2. ``atwater``: the reconstruction from the macronutrients (NUTRITION_PACK §01: a ratio near
+       4.18 is kJ, near 1 is kcal), which outranks a ``kcal`` in the name;
+    3. ``name``: a ``kcal`` suffix or word, or a codebook that states kcal (``DR1TKCAL``);
+    4. ``magnitude``: with no macronutrients to reconstruct from, the pack's median-magnitude prior
+       ("energy 1,600–2,600 kcal (7,000–11,000 → kJ)");
+    5. ``assumed``: kcal, said as an assumption.
+    """
+    from turbotab.core.methods.energy import atwater_check, unit_of
+    from turbotab.core.recognizers import ENERGY_PRIOR_SOURCE, energy_unit, energy_unit_by_magnitude
+    from turbotab.core.voice import tick
+
+    col = tick(energy)
     if unit_of(energy) == "kj":
-        return "kj"
+        return {"unit": "kj", "basis": "name", "sentence": f"{col} says kJ in its name."}
     try:
-        from turbotab import nutrition
-
-        reading = nutrition.atwater(frame)
-    except Exception:  # the legacy check is a second opinion, never a failure
+        reading = atwater_check(frame, energy) if energy in frame.columns else None
+    except Exception:  # noqa: BLE001 - a diagnostic that cannot run is not a verdict
         reading = None
-    if reading is not None and reading.energy_column == energy and reading.verdict == "energy_in_kj":
-        return "kj"
-    return "kcal"
+    if reading is not None and reading.verdict == "energy_in_kj":
+        return {"unit": "kj", "basis": "atwater",
+                "sentence": f"{col} is about {reading.ratio:.2f}× the energy its macronutrients "
+                            f"carry: kilojoules."}
+    if reading is not None and reading.verdict == "pass":
+        return {"unit": "kcal", "basis": "atwater",
+                "sentence": f"{col} matches the energy its macronutrients carry: kcal."}
+    if unit_of(energy) == "kcal" or energy_unit(energy) == "kcal":
+        return {"unit": "kcal", "basis": "name", "sentence": f"{col} says kcal in its name."}
+    if energy in frame.columns:
+        by = energy_unit_by_magnitude(frame[energy])
+        if by is not None:
+            median = float(pd.to_numeric(frame[energy], errors="coerce").median())
+            word = "kJ" if by == "kj" else "kcal"
+            return {"unit": by, "basis": "magnitude",
+                    "sentence": f"{col}'s median, {tick(f'{median:,.0f}')}, is a day's energy in "
+                                f"{word} ({ENERGY_PRIOR_SOURCE})."}
+    return {"unit": "kcal", "basis": "assumed",
+            "sentence": f"Nothing says what unit {col} is in; kcal is assumed."}
+
+
+def _energy_unit(frame: pd.DataFrame, energy: str) -> str:
+    """``kj`` when the column is in kilojoules, else ``kcal`` (:func:`energy_unit_reading`)."""
+    return energy_unit_reading(frame, energy)["unit"]
 
 
 # ── the proposals ────────────────────────────────────────────────────────────
@@ -408,7 +443,7 @@ GOLDBERG_EVIDENCE = {
 # A screen reads a column whatever its model role, so a weight or height left out of the model
 # ("excluded") still serves the Goldberg screen (repair round: the menu was too tight); a column
 # that names rows, flags others or describes the design is never read as a body measure.
-_NOT_A_MEASURE = ("identifier", "flag", "design")
+_NOT_A_MEASURE = ("identifier", "cluster", "flag", "design")
 
 
 def _named(info: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame, names: set[str],
@@ -640,7 +675,8 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     if "dietary" not in (lens or []):
         return {"exclusions": [], "energy": None, "missing": missing, "n_base": n_base,
                 "coach": _card_lines(frame, target=target, energy=None, unit="kcal", missing=missing),
-                "basis": "Only the missing-values reading is proposed: the dietary lens is not chosen."}
+                "basis": "Only the missing-values reading is proposed: the dietary lens is not chosen.",
+                "energy_unit": None}
     energy = energy_column(info, roles)
     nutrients = nutrient_candidates(info, roles, energy=energy, target=target)
     sex, sex_levels = sex_column(info, frame, roles)
@@ -655,8 +691,10 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
         basis = f"Counted across all {tick(f'{len(frame):,}')} rows; no outcome is chosen yet."
     exclusions: list[dict[str, Any]] = []
     unit = "kcal"
+    unit_reading = None
     if energy is not None and energy in frame.columns:
-        unit = _energy_unit(frame, energy)
+        unit_reading = energy_unit_reading(frame, energy)
+        unit = unit_reading["unit"]
         if energy != target:  # an eligibility rule never reads the outcome (audit RO-01)
             # A screen reads a column whatever its model role: sex left out of the model still
             # serves Willett's sex-specific cut-offs, as it serves the Goldberg screen (the methods
@@ -676,7 +714,7 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
                                  target=target, purpose=purpose)
     return {"exclusions": exclusions, "energy": reading, "missing": missing, "n_base": n_base,
             "coach": _card_lines(frame, target=target, energy=energy, unit=unit, missing=missing),
-            "basis": basis}
+            "basis": basis, "energy_unit": unit_reading}
 
 
 def _card_lines(frame: pd.DataFrame, *, target: str | None, energy: str | None, unit: str,

@@ -638,6 +638,8 @@ function slotOf(d: Decision): Slot | null {
       return "exposure_forms";
     case "set_outcome_order":
       return "outcome_order";
+    case "set_outcome_unit":
+      return "outcome_unit";
     case "set_follow_up":
       return "follow_up";
     case "set_sensitivity":
@@ -734,6 +736,8 @@ function valueOf(d: Decision): ProjectState[Slot] {
     }
     case "set_outcome_order":
       return d.levels;
+    case "set_outcome_unit":
+      return d.unit;
     case "set_exposure_form": // keyed by column; the fold merges it
     case "apply_repair":
     case "defer_finding":
@@ -803,6 +807,7 @@ export function fold(records: DecisionRecord[]): ProjectState {
     follow_up: null,
     sensitivity: null,
     measurement_error: null,
+    outcome_unit: null,
   };
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }>();
   for (const r of [...records].sort((a, b) => a.seq - b.seq)) {

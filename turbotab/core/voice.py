@@ -276,34 +276,26 @@ def _set_lens(d: Any, state: Any, ctx: Any) -> str:
     return f"The table was read through the {listing(d.lenses, limit=5)} {noun}"
 
 
-def _outcome_unit(ctx: Any, column: str) -> str | None:
-    """The outcome's unit, from ``ctx["outcome_unit"]``, its name, or the clinical pack on its
-    values (``frame`` or ``datastore``); None when nothing says."""
-    from turbotab.core.units import from_name, outcome_unit
+def _outcome_unit(ctx: Any, column: str, state: Any = None) -> str | None:
+    """The outcome's unit a sentence may state: the one the user recorded
+    (``set_outcome_unit``), ``ctx["outcome_unit"]`` (the target stage's stated unit), or a full
+    unit the name spells out; None otherwise. A unit is never guessed from the values (audit IN-05;
+    CLINICAL_SURVEY_PACK §A1.1: "TurboTab will not guess")."""
+    from turbotab.core.units import from_name, recorded_unit
 
+    recorded = recorded_unit(state, column) if state is not None else None
+    if recorded:
+        return recorded
     given = _get(ctx, "outcome_unit")
     if given:
         return str(given)
-    if from_name(column):
-        return from_name(column)
-    values = None
-    frame, store = _get(ctx, "frame"), _get(ctx, "datastore")
-    try:
-        if frame is not None and column in frame.columns:
-            values = frame[column]
-        elif store is not None and column in store.columns:
-            values = store.materialize([column])[column]
-    except Exception:  # a sentence never fails a decision
-        values = None
-    if values is None or values.dtype.kind not in "iuf" or values.nunique() <= 2:
-        return None  # a class label has no unit
-    return outcome_unit(column, values)[0]
+    return from_name(column)
 
 
 @register_sentence("set_target")
 def _set_target(d: Any, state: Any, ctx: Any) -> str:
     text = f"{tick(d.column)} was chosen as the outcome"
-    unit = _outcome_unit(ctx, d.column)
+    unit = _outcome_unit(ctx, d.column, state)
     if unit:
         text += f", in {'percent' if unit == '%' else unit}"
     entry = _column_entry(ctx, d.column)
@@ -362,6 +354,7 @@ _SLOT_SUBJECT = {
     "survey": "the survey answer",
     "exposure_forms": "the exposure forms",
     "outcome_order": "the order of the outcome's levels",
+    "outcome_unit": "the outcome's unit",
 }
 _PLURAL_SUBJECTS = {"roles", "exclusions", "models"}
 
@@ -474,12 +467,14 @@ def _revert(d: Any, state: Any, ctx: Any) -> str:
 
 # set_roles
 
-_ROLE_ORDER = ("energy", "exposure", "covariate", "identifier", "design", "flag", "time", "excluded")
+_ROLE_ORDER = ("energy", "exposure", "covariate", "identifier", "cluster", "design", "flag", "time",
+               "excluded")
 _ROLE_NOUN = {
     "energy": ("energy", "energy"),
     "exposure": ("exposure", "exposures"),
     "covariate": ("covariate", "covariates"),
     "identifier": ("identifier", "identifiers"),
+    "cluster": ("cluster", "clusters"),
     "design": ("design column", "design columns"),
     "flag": ("flag", "flags"),
     "time": ("time column", "time columns"),
@@ -490,6 +485,7 @@ _ROLE_AS = {
     "exposure": "an exposure",
     "covariate": "a covariate",
     "identifier": "an identifier",
+    "cluster": "a cluster",
     "design": "a design column",
     "flag": "a flag",
     "time": "a time column",
@@ -1068,6 +1064,12 @@ def _set_exposure_form(d: Any, state: Any, ctx: Any) -> str:
              if tested else "")
     return (f"{tick(d.column)} entered the models as quintiles of its {values} in the rows each "
             f"model was fit on, the lowest the reference{trend}")
+
+
+@register_sentence("set_outcome_unit")
+def _set_outcome_unit(d: Any, state: Any, ctx: Any) -> str:
+    unit = "percent" if d.unit == "%" else d.unit
+    return f"The unit of {tick(d.column)} was recorded as {unit}"
 
 
 @register_sentence("set_outcome_order")

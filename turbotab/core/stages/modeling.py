@@ -1627,8 +1627,11 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         shift = Shift(X, donor=sub.donor, recipient=sub.recipient, kcal_per_unit=kcal_per_unit,
                       nested=nested, total=total_energy)
     from turbotab.core.units import outcome_unit as _unit_of_outcome
+    from turbotab.core.units import recorded_unit
 
-    outcome_unit = _unit_of_outcome(target, fit_frame[target])[0] if task == "regression" else None
+    # Stated only as recorded or as the name spells it out, never guessed (audit IN-05).
+    outcome_unit = (_unit_of_outcome(target, recorded=recorded_unit(ctx.state, target))[0]
+                    if task == "regression" else None)
     models = []
     note = None
     support = None

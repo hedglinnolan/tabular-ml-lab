@@ -217,31 +217,48 @@ def test_a_nutrient_without_energy_makes_partition_inapplicable_and_fit_refuses(
 
 
 def test_unmarked_units_are_confirmed_by_the_atwater_reconstruction():
-    """NHANES names declare no unit; partition runs only once the arithmetic says grams."""
+    """A name that states no unit (``fat_total``) is partitioned only once the arithmetic says
+    grams. The NHANES codebook states its own (DR1TOT: ``DR1TTFAT`` "Total fat (gm)"; audit
+    IN-08), so ``DR1TTFAT`` is declared, while the reconstruction still refuses kJ energy."""
     df = diet(300, seed=5)
     alcohol = np.random.default_rng(5).gamma(0.5, 8.0, len(df))
     energy = 4 * df["protein_g"] + 4 * df["carbohydrate_g"] + 9 * df["fat_g"] + 7 * alcohol
-    nhanes = pd.DataFrame({"DR1TKCAL": energy * 1.02, "DR1TPROT": df["protein_g"],
-                           "DR1TCARB": df["carbohydrate_g"], "DR1TTFAT": df["fat_g"],
-                           "DR1TALCO": alcohol})
-    verdict = applicable_methods(list(nhanes.columns), "DR1TKCAL", ["DR1TTFAT"])["partition"]
+    plain = pd.DataFrame({"kcal": energy * 1.02, "protein": df["protein_g"],
+                          "carb": df["carbohydrate_g"], "fat_total": df["fat_g"],
+                          "alcohol": alcohol})
+    verdict = applicable_methods(list(plain.columns), "kcal", ["fat_total"])["partition"]
     assert verdict["ok"] and "Atwater reconstruction" in verdict["reason"]
-    step = EnergyAdjuster("partition", "DR1TKCAL", ["DR1TTFAT"]).fit(nhanes)
+    step = EnergyAdjuster("partition", "kcal", ["fat_total"]).fit(plain)
     assert step.atwater_check_["verdict"] == "pass"
-    np.testing.assert_allclose(step.transform(nhanes)["kcal_from_DR1TTFAT"], 9.0 * nhanes["DR1TTFAT"])
+    np.testing.assert_allclose(step.transform(plain)["kcal_from_fat_total"], 9.0 * plain["fat_total"])
 
-    in_kj = nhanes.assign(DR1TKCAL=nhanes["DR1TKCAL"] * 4.184)
+    in_kj = plain.assign(kcal=plain["kcal"] * 4.184)
     with pytest.raises(EnergyAdjustmentNotApplicable, match="kJ"):
-        EnergyAdjuster("partition", "DR1TKCAL", ["DR1TTFAT"]).fit(in_kj)
+        EnergyAdjuster("partition", "kcal", ["fat_total"]).fit(in_kj)
     # The unit-free methods do not care what unit energy is in.
-    EnergyAdjuster("residual", "DR1TKCAL", ["DR1TTFAT"]).fit(in_kj)
+    EnergyAdjuster("residual", "kcal", ["fat_total"]).fit(in_kj)
     # Without protein the reconstruction cannot vouch for anything, so an unmarked
     # column is refused and a declared one is not.
-    no_protein = nhanes.drop(columns="DR1TPROT")
+    no_protein = plain.drop(columns="protein")
     with pytest.raises(EnergyAdjustmentNotApplicable, match="protein, carbohydrate and fat"):
-        EnergyAdjuster("partition", "DR1TKCAL", ["DR1TTFAT"]).fit(no_protein)
-    declared = no_protein.rename(columns={"DR1TTFAT": "fat_g"})
-    EnergyAdjuster("partition", "DR1TKCAL", ["fat_g"]).fit(declared)
+        EnergyAdjuster("partition", "kcal", ["fat_total"]).fit(no_protein)
+    declared = no_protein.rename(columns={"fat_total": "fat_g"})
+    EnergyAdjuster("partition", "kcal", ["fat_g"]).fit(declared)
+
+    # NHANES names: the codebook declares grams, and the reconstruction still reads the energy.
+    nhanes = plain.rename(columns={"kcal": "DR1TKCAL", "protein": "DR1TPROT", "carb": "DR1TCARB",
+                                   "fat_total": "DR1TTFAT", "alcohol": "DR1TALCO"})
+    verdict = applicable_methods(list(nhanes.columns), "DR1TKCAL", ["DR1TTFAT"])["partition"]
+    assert verdict["ok"] and "Atwater reconstruction" not in verdict["reason"]
+    step = EnergyAdjuster("partition", "DR1TKCAL", ["DR1TTFAT"]).fit(nhanes)
+    assert step.atwater_check_["verdict"] == "pass"
+    with pytest.raises(EnergyAdjustmentNotApplicable, match="kJ"):
+        EnergyAdjuster("partition", "DR1TKCAL", ["DR1TTFAT"]).fit(
+            nhanes.assign(DR1TKCAL=nhanes["DR1TKCAL"] * 4.184))
+    # With no reconstruction possible, the pack's magnitude prior refuses kJ-sized energy.
+    with pytest.raises(EnergyAdjustmentNotApplicable, match="kilojoule range"):
+        EnergyAdjuster("partition", "DR1TKCAL", ["DR1TTFAT"]).fit(
+            nhanes.drop(columns="DR1TPROT").assign(DR1TKCAL=nhanes["DR1TKCAL"] * 4.184))
 
 
 # ── applicability ────────────────────────────────────────────────────────────

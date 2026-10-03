@@ -415,6 +415,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetMeasurementError-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOutcomeUnit"
                   }
                 ],
                 "discriminator": {
@@ -450,7 +453,8 @@
                     "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
                     "set_follow_up": "#/components/schemas/SetFollowUp-Input",
                     "set_sensitivity": "#/components/schemas/SetSensitivity-Input",
-                    "set_measurement_error": "#/components/schemas/SetMeasurementError-Input"
+                    "set_measurement_error": "#/components/schemas/SetMeasurementError-Input",
+                    "set_outcome_unit": "#/components/schemas/SetOutcomeUnit"
                   }
                 },
                 "title": "Decision"
@@ -743,6 +747,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetMeasurementError-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOutcomeUnit"
                   }
                 ],
                 "discriminator": {
@@ -778,7 +785,8 @@
                     "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
                     "set_follow_up": "#/components/schemas/SetFollowUp-Input",
                     "set_sensitivity": "#/components/schemas/SetSensitivity-Input",
-                    "set_measurement_error": "#/components/schemas/SetMeasurementError-Input"
+                    "set_measurement_error": "#/components/schemas/SetMeasurementError-Input",
+                    "set_outcome_unit": "#/components/schemas/SetOutcomeUnit"
                   }
                 },
                 "title": "Decision"
@@ -1977,6 +1985,9 @@
               },
               {
                 "$ref": "#/components/schemas/SetMeasurementError-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetOutcomeUnit"
               }
             ],
             "title": "Decision",
@@ -2003,6 +2014,7 @@
                 "set_missing": "#/components/schemas/SetMissing-Output",
                 "set_orientation": "#/components/schemas/SetOrientation",
                 "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
+                "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
                 "set_purpose": "#/components/schemas/SetPurpose",
                 "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                 "set_roles": "#/components/schemas/SetRoles",
@@ -2616,6 +2628,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetMeasurementError-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetOutcomeUnit"
                   }
                 ],
                 "discriminator": {
@@ -2641,6 +2656,7 @@
                     "set_missing": "#/components/schemas/SetMissing-Output",
                     "set_orientation": "#/components/schemas/SetOrientation",
                     "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
+                    "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
                     "set_purpose": "#/components/schemas/SetPurpose",
                     "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                     "set_roles": "#/components/schemas/SetRoles",
@@ -3869,7 +3885,8 @@
                   "design",
                   "flag",
                   "time",
-                  "excluded"
+                  "excluded",
+                  "cluster"
                 ]
               },
               {
@@ -4364,7 +4381,8 @@
                     "design",
                     "flag",
                     "time",
-                    "excluded"
+                    "excluded",
+                    "cluster"
                   ]
                 },
                 "type": "object"
@@ -4651,6 +4669,17 @@
                 "type": "null"
               }
             ]
+          },
+          "outcome_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Unit"
           }
         },
         "type": "object",
@@ -4682,7 +4711,8 @@
           "outcome_order",
           "follow_up",
           "sensitivity",
-          "measurement_error"
+          "measurement_error",
+          "outcome_unit"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -6649,6 +6679,37 @@
         "title": "SetOutcomeOrder",
         "description": "The order of an ordinal outcome's levels, lowest first. Stands only while ``column`` is the\ntarget. Numbers are ordered by value without it; text levels need it (asked, never inferred)."
       },
+      "SetOutcomeUnit": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_outcome_unit",
+            "title": "Kind",
+            "default": "set_outcome_unit"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "unit": {
+            "type": "string",
+            "maxLength": 24,
+            "minLength": 1,
+            "pattern": "^[^`\\n\\r]+$",
+            "title": "Unit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "unit"
+        ],
+        "title": "SetOutcomeUnit",
+        "description": "The outcome's unit, as the user reads it from the source's data dictionary. Stands only\nwhile ``column`` is the target. A unit the name does not spell out is never guessed into a\nsentence (audit IN-05; CLINICAL_SURVEY_PACK §A1.1: \"TurboTab will not guess\")."
+      },
       "SetPurpose": {
         "properties": {
           "kind": {
@@ -6795,7 +6856,8 @@
                 "design",
                 "flag",
                 "time",
-                "excluded"
+                "excluded",
+                "cluster"
               ]
             },
             "type": "object",
@@ -9974,6 +10036,40 @@
         "title": "EnergyReading",
         "type": "object"
       },
+      "EnergyUnitReading": {
+        "description": "The energy column's unit and how it was read (audit IN-07).",
+        "properties": {
+          "unit": {
+            "enum": [
+              "kcal",
+              "kj"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "basis": {
+            "enum": [
+              "name",
+              "atwater",
+              "magnitude",
+              "assumed"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit",
+          "basis",
+          "sentence"
+        ],
+        "title": "EnergyUnitReading",
+        "type": "object"
+      },
       "ExclusionProposal": {
         "description": "One of the pack's exclusion rules, with the rows it would remove. Never pre-selected.",
         "properties": {
@@ -12874,6 +12970,17 @@
             },
             "title": "Exposure Forms",
             "type": "array"
+          },
+          "energy_unit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnergyUnitReading"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -12884,7 +12991,8 @@
           "basis",
           "coach",
           "survey",
-          "exposure_forms"
+          "exposure_forms",
+          "energy_unit"
         ],
         "title": "ProposalsArtifact",
         "type": "object"
@@ -13120,7 +13228,8 @@
               "design",
               "flag",
               "time",
-              "excluded"
+              "excluded",
+              "cluster"
             ],
             "title": "Proposed",
             "type": "string"
@@ -13170,6 +13279,19 @@
               }
             ],
             "title": "Nested In"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "const": "acquisition",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kind"
           }
         },
         "required": [
@@ -13179,7 +13301,8 @@
           "reason",
           "linked_to",
           "unit",
-          "nested_in"
+          "nested_in",
+          "kind"
         ],
         "title": "RoleProposal",
         "type": "object"
@@ -15108,7 +15231,7 @@
               {
                 "enum": [
                   "name",
-                  "pack"
+                  "decision"
                 ],
                 "type": "string"
               },
@@ -15118,6 +15241,26 @@
             ],
             "default": null,
             "title": "Unit Source"
+          },
+          "proposed_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Proposed Unit"
+          },
+          "unit_candidates": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Unit Candidates",
+            "type": "array"
           }
         },
         "required": [
@@ -15129,7 +15272,9 @@
           "histogram",
           "classes",
           "unit",
-          "unit_source"
+          "unit_source",
+          "proposed_unit",
+          "unit_candidates"
         ],
         "title": "TargetInfo",
         "type": "object"

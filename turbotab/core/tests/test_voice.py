@@ -283,7 +283,16 @@ def test_reverting_a_disposition_or_a_structural_answer(tmp_path):
 
 
 def test_the_outcome_sentence_carries_its_unit():
+    """Only a unit the name spells out or the user recorded (audit IN-05: never guessed)."""
+    frame = RECALLS.assign(glucose_mg_dl=RECALLS["glucose"])
+    assert voice.sentence_for(d.SetTarget(column="glucose_mg_dl"), None, {"frame": frame}) == \
+        "`glucose_mg_dl` was chosen as the outcome, in mg/dL."
     assert voice.sentence_for(d.SetTarget(column="glucose"), None, {"frame": RECALLS}) == \
-        "`glucose` was chosen as the outcome, in mg/dL."
+        "`glucose` was chosen as the outcome."
+    recorded = ProjectState(target="glucose", outcome_unit="mmol/L")
+    assert voice.sentence_for(d.SetTarget(column="glucose"), recorded, {"frame": RECALLS}) == \
+        "`glucose` was chosen as the outcome, in mmol/L."
+    assert voice.sentence_for(d.SetOutcomeUnit(column="glucose", unit="mg/dL"), None, {}) == \
+        "The unit of `glucose` was recorded as mg/dL."
     assert voice.sentence_for(d.SetTarget(column="diabetes"), None, {"frame": RECALLS}) == \
         "`diabetes` was chosen as the outcome."

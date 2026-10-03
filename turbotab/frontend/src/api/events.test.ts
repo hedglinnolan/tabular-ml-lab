@@ -75,6 +75,7 @@ function view(): ProjectView {
       follow_up: null,
       sensitivity: null,
       measurement_error: null,
+      outcome_unit: null,
     },
     decisions: [record(1)],
     stages: {

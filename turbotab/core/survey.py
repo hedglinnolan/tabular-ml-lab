@@ -174,9 +174,19 @@ def offered(state: Any, pooled_cycle: str | None = None) -> list[dict[str, Any]]
     psu = reading.psu[0] if reading.psu else None
     weights = list(reading.weights)
     if "dietary" in (getattr(state, "lens", None) or []):
-        # Dietary analyses take the dietary weights (NUTRITION_PACK §01); which subsample weight
-        # suits the variables used is WP13's least-common-denominator rule.
+        # Dietary analyses take the dietary weights (NUTRITION_PACK §01).
         weights.sort(key=lambda w: not w.upper().startswith("WTDR"))
+    # Which weight suits the variables used is NHANES's least-common-denominator rule (audit
+    # IN-19; the NHANES weighting tutorial: "use the weight of the smallest subpopulation that
+    # includes all the variables you want to include in your analysis"): it is offered first.
+    from turbotab.core.recognizers import least_common_denominator
+
+    roles = getattr(state, "roles", None) or {}
+    target = getattr(state, "target", None)
+    used = [c for c, r in roles.items() if r in ("exposure", "covariate", "energy")]
+    lcd = least_common_denominator([*([target] if target else []), *used, *weights])
+    if lcd is not None and lcd["use"] in weights:
+        weights.sort(key=lambda w: w != lcd["use"])
     out: list[dict[str, Any]] = []
     for w in weights[:4]:
         # Never pre-acknowledged: with no strata or PSU the server asks for the attestation.

@@ -227,34 +227,45 @@ def test_no_coach_note_reads_a_held_out_row(recalls, decision):
 
 # ── outcome units ────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("column, values, unit", [
-    ("glucose", [99, 101, 110], ("mg/dL", "pack")),
-    ("glucose", [5.2, 5.9, 6.1], ("mmol/L", "pack")),
-    ("glucose_mgdl", None, ("mg/dL", "name")),
-    ("ldl_mmol_l", None, ("mmol/L", "name")),
-    ("hba1c", [5.4, 5.9], ("%", "pack")),
-    ("bp_sys", None, ("mmHg", "pack")),
-    ("bmi", None, ("kg/m²", "pack")),
-    ("progressed", [0, 1], (None, None)),
-    ("score", [1, 2, 3], (None, None)),
+@pytest.mark.parametrize("column, values, unit, proposed", [
+    ("glucose", [99, 101, 110], (None, None), "mg/dL"),
+    ("glucose", [5.2, 5.9, 6.1], (None, None), "mmol/L"),
+    ("glucose_mgdl", None, ("mg/dL", "name"), None),
+    ("ldl_mmol_l", None, ("mmol/L", "name"), None),
+    ("hba1c", [5.4, 5.9], (None, None), "%"),
+    ("bp_sys", None, (None, None), "mmHg"),
+    ("bmi", None, (None, None), "kg/m²"),
+    ("progressed", [0, 1], (None, None), None),
+    ("score", [1, 2, 3], (None, None), None),
 ])
-def test_the_outcome_unit_comes_from_the_name_or_the_pack(column, values, unit):
-    from turbotab.core.units import outcome_unit
+def test_the_outcome_unit_is_stated_from_the_name_and_proposed_from_the_pack(column, values, unit,
+                                                                               proposed):
+    """Audit IN-05: a unit is stated only when the name spells it out (or a decision records it);
+    the clinical pack's reading is a proposal, never a statement."""
+    from turbotab.core.units import from_pack, outcome_unit
 
     assert outcome_unit(column, values) == unit
+    assert outcome_unit(column, values, recorded="mg/dL") == ("mg/dL", "decision")
+    if unit[0] is None:
+        assert from_pack(column, values) == proposed
 
 
 def test_the_target_preview_shows_the_outcome_with_its_unit(tmp_path):
     rng = np.random.default_rng(1)
     src = tmp_path / "labs.csv"
-    pd.DataFrame({"glucose": rng.normal(100, 12, 300), "diabetes": rng.choice(["no", "yes"], 300),
+    pd.DataFrame({"glucose_mg_dl": rng.normal(100, 12, 300), "glucose": rng.normal(100, 12, 300),
+                  "diabetes": rng.choice(["no", "yes"], 300),
                   "age": rng.integers(20, 80, 300)}).to_csv(src, index=False)
     ingest(src, tmp_path / "labs.parquet")
     with DataStore(tmp_path / "labs.parquet", 2 << 30) as store:
         ctx = ctx_for(store, ProjectState())
-        result = plan(d.SetTarget(column="glucose"), ctx, basis="")
+        result = plan(d.SetTarget(column="glucose_mg_dl"), ctx, basis="")
         dist = next(v for v in result.views if v.kind == "distribution")
         assert " mg/dL, middle half " in dist.caption and dist.before_label.endswith("(mg/dL)")
+        # A name that does not spell its unit out states none (audit IN-05: never guessed).
+        result = plan(d.SetTarget(column="glucose"), ctx_for(store, ProjectState()), basis="")
+        dist = next(v for v in result.views if v.kind == "distribution")
+        assert "mg/dL" not in dist.caption and "mmol" not in dist.caption
         result = plan(d.SetTarget(column="diabetes"), ctx_for(store, ProjectState()), basis="")
         assert result.note.startswith("Two levels: `")
         assert result.note.endswith("the next question asks which is the event.")

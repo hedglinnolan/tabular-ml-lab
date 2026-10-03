@@ -229,10 +229,14 @@ class TargetInfo(Model):
     reason: str
     histogram: Histogram | None
     classes: list[ValueCount] | None
-    # M2 (M2_CONTRACT §6): the outcome's unit (mg/dL…), read from its name or the clinical pack's
-    # analytes; None when neither says. ``unit_source`` is "name" or "pack".
+    # M2 (M2_CONTRACT §6): the outcome's unit (mg/dL…) as sentences may state it: recorded by
+    # ``set_outcome_unit`` ("decision") or spelled out by the name's suffix ("name"); else None.
+    # WP13 (audit IN-05): the clinical pack's reading is only proposed (``proposed_unit``, with its
+    # ``unit_candidates``) for the user's decision; it is never stated.
     unit: str | None = None
-    unit_source: Literal["name", "pack"] | None = None
+    unit_source: Literal["name", "decision"] | None = None
+    proposed_unit: str | None = None
+    unit_candidates: list[str] = []
 
 
 class FindingEvidence(Model):
@@ -282,6 +286,9 @@ class RoleProposal(Model):
     # The column this one is part of (fat_sat in fat_total, sugar in carb): the names say so and
     # the part never exceeds the total on 99% of rows. Substitution moves parts with their total.
     nested_in: str | None
+    # WP13 (audit IN-02): "acquisition" for a batch, plate or run-order column, whose proposed role
+    # follows the purpose (a covariate under inference, left out under prediction).
+    kind: Literal["acquisition"] | None = None
 
 
 class Repeats(Model):
@@ -484,6 +491,16 @@ class ExposureFormOption(Model):
     consequence: str
 
 
+class EnergyUnitReading(Model):
+    """The energy column's unit and how it was read (audit IN-07)."""
+
+    unit: Literal["kcal", "kj"]
+    # name: a suffix or codebook; atwater: the reconstruction from the macronutrients; magnitude:
+    # the pack's median-magnitude prior; assumed: nothing said, kcal assumed and said so.
+    basis: Literal["name", "atwater", "magnitude", "assumed"]
+    sentence: str
+
+
 class ProposalsArtifact(Model):
     """The ``proposals`` artifact: offered for the exclusions, missing-values and energy questions."""
 
@@ -498,6 +515,8 @@ class ProposalsArtifact(Model):
     survey: SurveyProposal | None = None
     # WP12a: the exposure-form options, soundest first for the declared purpose.
     exposure_forms: list[ExposureFormOption] = []
+    # WP13: the energy column's unit and how it was read; None without an energy column.
+    energy_unit: EnergyUnitReading | None = None
 
 
 # ── the table the analysis reads (M2_CONTRACT §2; turbotab/core/stages/working.py) ──────────

@@ -108,7 +108,7 @@ function nestedIn(ds: MockDataset, column: string): string | null {
 
 function propose(ds: MockDataset, col: MockColumn, lens: Lens[]): RoleProposal {
   const name = col.name;
-  const base = { column: name, linked_to: null, unit: null, nested_in: null } as const;
+  const base = { column: name, linked_to: null, unit: null, nested_in: null, kind: null } as const;
   const unique = nUnique(col);
   const flag = FLAG.exec(name);
   if (flag) {
@@ -345,6 +345,7 @@ export function proposalsArtifact(ds: MockDataset, state: ProjectState): Proposa
       basis: "Nothing is proposed: the dietary lens is not chosen.",
       survey: null,
       exposure_forms: [],
+      energy_unit: null,
     };
   }
   const energy =
@@ -490,6 +491,7 @@ export function proposalsArtifact(ds: MockDataset, state: ProjectState): Proposa
     basis: `Counted on the ${fmt(base.filter(Boolean).length)} rows with \`${state.target ?? "the outcome"}\` measured.`,
     survey: null,
     exposure_forms: [],
+    energy_unit: null,
   };
 }
 

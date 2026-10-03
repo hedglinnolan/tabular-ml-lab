@@ -23,6 +23,7 @@ const GROUP: Record<Role, [one: string, many: string]> = {
   energy: ["Energy", "Energy"],
   covariate: ["Covariate", "Covariates"],
   identifier: ["Identifier", "Identifiers"],
+  cluster: ["Cluster", "Clusters"],
   design: ["Survey design", "Survey design"],
   time: ["Time", "Time"],
   flag: ["Flag", "Flags"],

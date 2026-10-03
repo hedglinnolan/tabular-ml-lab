@@ -46,8 +46,16 @@ def test_m2_sentences_coach_lines_and_units_over_http(client):
     sentence = record.json()["decisions"][-1]["sentence"]
     assert sentence == ("Participants were declared to appear in more than one row, identified by "
                         "`participant_id`: `600` rows from `300` of them, at most `2` each.")
+    # Audit IN-05: a unit the name does not spell out is proposed, never stated, until recorded.
     info = client.get(f"/api/projects/{pid}/stages/target_info").json()["artifact"]
-    assert (info["unit"], info["unit_source"]) == ("%", "pack")
+    assert (info["unit"], info["unit_source"], info["proposed_unit"]) == (None, None, "%")
+    record = client.post(f"/api/projects/{pid}/decisions",
+                         json={"kind": "set_outcome_unit", "column": "hba1c", "unit": "%"})
+    assert record.status_code == 200, record.text
+    assert record.json()["decisions"][-1]["sentence"] == "The unit of `hba1c` was recorded as percent."
+    wait_for(client, pid, {"target_info": "fresh"})
+    info = client.get(f"/api/projects/{pid}/stages/target_info").json()["artifact"]
+    assert (info["unit"], info["unit_source"]) == ("%", "decision")
     proposals = client.get(f"/api/projects/{pid}/stages/proposals").json()["artifact"]
     assert proposals["coach"]["exclusions"]["text"].endswith("kcal: likely under-reporting.")
     shown = client.get(f"/api/projects/{pid}/findings/pack::dietary::implausible_intake/evidence")

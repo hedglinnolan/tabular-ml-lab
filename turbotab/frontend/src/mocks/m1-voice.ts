@@ -65,6 +65,7 @@ const ROLE_GROUP: Record<Role, [string, string]> = {
   exposure: ["exposure", "exposures"],
   covariate: ["covariate", "covariates"],
   identifier: ["identifier", "identifiers"],
+  cluster: ["cluster", "clusters"],
   flag: ["flag", "flags"],
   time: ["time column", "time columns"],
   design: ["design column", "design columns"],

@@ -256,6 +256,7 @@ def representative_decisions():
         d.SetExposureForm(column="protein_g", form="spline", knots=4),
         d.SetExposureForm(column="fat_g", form="quintiles"),
         d.SetOutcomeOrder(column="hba1c", levels=["normal", "prediabetes", "diabetes"]),
+        d.SetOutcomeUnit(column="hba1c", unit="%"),
         d.SetSubstitution(donor="fat_g", recipient="carbohydrate_g", scale="percent_energy",
                           step_percent=5),
         # WP12: a time-to-event outcome's follow-up
